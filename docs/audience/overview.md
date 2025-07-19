@@ -49,12 +49,13 @@ Report daily usage for accurate billing.
 ```mermaid
 flowchart LR
     A[Describe Audience] --> B[Get Results]
-    B --> C{Already Live?}
-    C -->|Yes| D[Start Using]
-    C -->|No| E[Activate]
-    E --> F[Monitor Status]
-    F --> D
-    D --> G[Report Usage]
+    B --> C[Review & Choose Audience]
+    C --> D{Already Live for Your Campaign?}
+    D -->|Yes| E[Launch Campaign]
+    D -->|No| F[Activate Audience]
+    F --> G[Monitor Activation]
+    G --> E
+    E --> H[Report Usage]
 ```
 
 ## Platform vs Direct Accounts
