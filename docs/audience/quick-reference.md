@@ -9,7 +9,7 @@ title: Quick Reference
 
 | Tool | Purpose | Key Fields |
 |------|---------|------------|
-| `get_audiences` | Search for audiences | `prompt`, `platform`, `seat` |
+| `get_audiences` | Search for audiences | `audience_spec`, `deliver_to` |
 | `activate_audience` | Turn on an audience | `segment_id`, `platform`, `seat` |
 | `check_audience_status` | Check deployment | `segment_id` |
 | `report_usage` | Report for billing | `reporting_date`, `usage[]` |
@@ -19,8 +19,12 @@ title: Quick Reference
 ### Find Audiences
 ```json
 {
-  "prompt": "affluent sports fans interested in running",
-  "platform": "scope3",
+  "audience_spec": "affluent sports fans interested in running",
+  "deliver_to": {
+    "platform": "scope3",
+    "seat": "brand_us_001",
+    "countries": ["US", "CA"]
+  },
   "filters": {
     "min_size": 100000,
     "max_cpm": 5.00

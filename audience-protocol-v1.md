@@ -51,22 +51,24 @@ Each MCP session is authenticated as one of:
 
 ### get_audiences
 
-Discovers relevant audiences based on a marketing prompt.
+Discovers relevant audiences based on a marketing specification.
 
 #### Request
 
 ```json
 {
-  "prompt": "string",      // Natural language description (required)
-  "platform": "string",    // Platform to check availability for
-  "seat": "string",        // Specific seat within platform
+  "audience_spec": "string",      // Natural language audience specification (required)
+  "deliver_to": {
+    "platform": "string",        // Platform to check availability for
+    "seat": "string",            // Specific seat within platform  
+    "countries": ["string"]      // Target countries (e.g., ["US", "CA"])
+  },
   "filters": {
     "audience_types": ["owned", "marketplace", "destination"],
     "max_cpm": "number",
     "max_rev_share": "number",
     "min_size": "integer",
-    "max_size": "integer",
-    "regions": ["string"]
+    "max_size": "integer"
   },
   "max_results": "integer" // Default: 5
 }

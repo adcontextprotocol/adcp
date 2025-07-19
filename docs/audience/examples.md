@@ -16,12 +16,15 @@ Nike wants to find audiences interested in premium running gear for a new shoe l
 **Request**:
 ```json
 {
-  "prompt": "High-income runners and marathon enthusiasts who buy premium athletic gear",
-  "platform": "scope3",
+  "audience_spec": "High-income runners and marathon enthusiasts who buy premium athletic gear",
+  "deliver_to": {
+    "platform": "scope3",
+    "seat": "nike_us_001",
+    "countries": ["US", "CA"]
+  },
   "filters": {
     "min_size": 500000,
-    "max_cpm": 10.00,
-    "regions": ["US", "CA"]
+    "max_cpm": 10.00
   },
   "max_results": 3
 }
@@ -205,8 +208,12 @@ A SaaS company wants to target small business owners for their accounting softwa
 
 ```json
 {
-  "prompt": "Small business owners who need accounting software, particularly restaurants and retail stores",
-  "platform": "thetradedesk",
+  "audience_spec": "Small business owners who need accounting software, particularly restaurants and retail stores",
+  "deliver_to": {
+    "platform": "thetradedesk",
+    "seat": "saas_company_001",
+    "countries": ["US"]
+  },
   "filters": {
     "audience_types": ["marketplace"],
     "min_size": 100000,

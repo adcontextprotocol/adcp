@@ -38,9 +38,52 @@ First stable release of the Audience Discovery Protocol.
 
 ---
 
+## Version 1.1.0 - January 2025
+
+### Breaking Changes
+
+#### get_audiences API Restructure
+**Breaking Change**: Updated `get_audiences` request structure for improved clarity and geographic targeting.
+
+**Before (v1.0.0)**:
+```json
+{
+  "prompt": "string",
+  "platform": "string", 
+  "seat": "string",
+  "filters": {
+    "regions": ["string"],
+    // ... other filters
+  }
+}
+```
+
+**After (v1.1.0)**:
+```json
+{
+  "audience_spec": "string",
+  "deliver_to": {
+    "platform": "string",
+    "seat": "string",
+    "countries": ["string"]
+  },
+  "filters": {
+    // ... other filters (regions removed)
+  }
+}
+```
+
+#### Migration Guide
+- Replace `prompt` with `audience_spec`
+- Move `platform` and `seat` into `deliver_to` object
+- Move `filters.regions` to `deliver_to.countries`
+- Update client code to use new structure
+
+---
+
 ## Upcoming Releases
 
-### Version 1.1.0 - Q2 2025 (Planned)
+### Version 1.2.0 - Q2 2025 (Planned)
 
 #### Planned Features
 - **Enhanced Filtering**: Additional audience filtering options
@@ -140,8 +183,9 @@ The Ad Context Protocol follows semantic versioning with these deprecation guide
 
 | Version | Release Date | Status | Support End |
 |---------|-------------|---------|-------------|
-| 1.0.0   | January 2025 | Current | Active |
-| 1.1.0   | Q2 2025 | Planned | - |
+| 1.1.0   | January 2025 | Current | Active |
+| 1.0.0   | January 2025 | Superseded | March 2025 |
+| 1.2.0   | Q2 2025 | Planned | - |
 | 2.0.0   | Q3 2025 | Planned | - |
 
 ---
