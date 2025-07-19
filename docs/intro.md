@@ -51,7 +51,7 @@ If you operate an audience platform, DSP, or ad tech solution:
 1. [Review the Protocol Specifications](./audience/specification)
 2. [Follow the Implementation Guide](./implementation/getting-started)
 3. [Test Your Implementation](./implementation/testing)
-4. [Get Listed in Our Directory](./showcase)
+4. [Get Listed in Our Directory](/showcase)
 
 ## For Advertisers & Agencies
 

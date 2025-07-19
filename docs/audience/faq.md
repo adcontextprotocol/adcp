@@ -17,7 +17,7 @@ Traditional APIs require technical integration and complex parameter mapping. AC
 
 ### Which platforms support ACP?
 
-The protocol is designed to be platform-agnostic. Platform support varies - check our [showcase page](../showcase) for current implementations.
+The protocol is designed to be platform-agnostic. Platform support varies - check our [showcase page](/showcase) for current implementations.
 
 ## Audience Discovery
 
