@@ -6,7 +6,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Ad Context Protocol',
-  tagline: 'Privacy-preserving advertising context protocol',
+  tagline: 'Enabling AI-Powered Advertising Workflows',
   favicon: 'img/favicon.ico',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
@@ -75,7 +75,7 @@ const config: Config = {
     navbar: {
       title: 'Ad Context Protocol',
       logo: {
-        alt: 'Ad Context Protocol Logo',
+        alt: 'ACP Logo',
         src: 'img/logo.svg',
       },
       items: [
@@ -83,7 +83,12 @@ const config: Config = {
           type: 'docSidebar',
           sidebarId: 'tutorialSidebar',
           position: 'left',
-          label: 'Tutorial',
+          label: 'Docs',
+        },
+        {
+          to: '/showcase',
+          label: 'Showcase',
+          position: 'left'
         },
         {to: '/blog', label: 'Blog', position: 'left'},
         {
@@ -100,8 +105,16 @@ const config: Config = {
           title: 'Docs',
           items: [
             {
-              label: 'Tutorial',
+              label: 'Getting Started',
               to: '/docs/intro',
+            },
+            {
+              label: 'Audience Protocol',
+              to: '/docs/audience/overview',
+            },
+            {
+              label: 'Implementation Guide',
+              to: '/docs/implementation/getting-started',
             },
           ],
         },
@@ -109,16 +122,12 @@ const config: Config = {
           title: 'Community',
           items: [
             {
-              label: 'Stack Overflow',
-              href: 'https://stackoverflow.com/questions/tagged/docusaurus',
+              label: 'GitHub Discussions',
+              href: 'https://github.com/adcontextprotocol/adcp/discussions',
             },
             {
-              label: 'Discord',
-              href: 'https://discordapp.com/invite/docusaurus',
-            },
-            {
-              label: 'X',
-              href: 'https://x.com/docusaurus',
+              label: 'Working Group',
+              href: '/docs/community/working-group',
             },
           ],
         },
@@ -133,6 +142,10 @@ const config: Config = {
               label: 'GitHub',
               href: 'https://github.com/adcontextprotocol/adcp',
             },
+            {
+              label: 'Roadmap',
+              href: 'https://github.com/adcontextprotocol/adcp/projects/1',
+            },
           ],
         },
       ],
@@ -141,6 +154,7 @@ const config: Config = {
     prism: {
       theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
+      additionalLanguages: ['json'],
     },
   } satisfies Preset.ThemeConfig,
 };

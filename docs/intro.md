@@ -1,47 +1,74 @@
 ---
 sidebar_position: 1
+title: Getting Started
 ---
 
-# Tutorial Intro
+# Getting Started with Ad Context Protocol
 
-Let's discover **Docusaurus in less than 5 minutes**.
+Welcome to the Ad Context Protocol (ACP) documentation. ACP enables AI assistants to interact with advertising platforms through standardized interfaces.
 
-## Getting Started
+## What is Ad Context Protocol?
 
-Get started by **creating a new site**.
+Ad Context Protocol is an open standard based on the Model Context Protocol (MCP) that allows:
 
-Or **try Docusaurus immediately** with **[docusaurus.new](https://docusaurus.new)**.
+- **Natural Language Interaction**: Describe what you want in plain English
+- **Platform Agnostic**: Works with any compatible advertising platform
+- **AI-Powered**: Designed for integration with AI assistants like Claude, GPT, and others
 
-### What you'll need
+## Quick Example
 
-- [Node.js](https://nodejs.org/en/download/) version 18.0 or above:
-  - When installing Node.js, you are recommended to check all checkboxes related to dependencies.
+Instead of navigating multiple platforms, you can now say:
 
-## Generate a new site
+> "Find audiences of premium sports enthusiasts who would be interested in high-end running shoes, activate them on Scope3, and set up daily usage reporting."
 
-Generate a new Docusaurus site using the **classic template**.
+The AI assistant will:
+1. Search for relevant audiences across connected platforms
+2. Show you options with transparent pricing
+3. Activate your chosen audiences
+4. Set up automated reporting
 
-The classic template will automatically be added to your project after you run the command:
+## Available Protocols
 
-```bash
-npm init docusaurus@latest my-website classic
-```
+### 🎯 [Audience Discovery Protocol](./audience/overview)
+**Status**: v1.0 Available
 
-You can type this command into Command Prompt, Powershell, Terminal, or any other integrated terminal of your code editor.
+Discover and activate marketing audiences using natural language.
 
-The command also installs all necessary dependencies you need to run Docusaurus.
+### 📍 Curation Protocol
+**Status**: Coming Q2 2025
 
-## Start your site
+Curate media inventory based on context and brand safety.
 
-Run the development server:
+### 💰 Media Buy Protocol  
+**Status**: Coming Q3 2025
 
-```bash
-cd my-website
-npm run start
-```
+Execute and optimize media buys programmatically.
 
-The `cd` command changes the directory you're working with. In order to work with your newly created Docusaurus site, you'll need to navigate the terminal there.
+## For Platform Providers
 
-The `npm run start` command builds your website locally and serves it through a development server, ready for you to view at http://localhost:3000/.
+If you operate an audience platform, DSP, or ad tech solution:
 
-Open `docs/intro.md` (this page) and edit some lines: the site **reloads automatically** and displays your changes.
+1. [Review the Protocol Specifications](./audience/specification)
+2. [Follow the Implementation Guide](./implementation/getting-started)
+3. [Test Your Implementation](./implementation/testing)
+4. [Get Listed in Our Directory](./showcase)
+
+## For Advertisers & Agencies
+
+If you want to use ACP with your AI assistant:
+
+1. Check if your platforms support ACP
+2. Configure your AI assistant with ACP-enabled platforms
+3. Start using natural language for your campaigns
+
+## Next Steps
+
+- **Platform Providers**: Start with the [Audience Protocol Specification](./audience/specification)
+- **Developers**: Check out our [Implementation Guide](./implementation/getting-started)
+- **Everyone**: Join the [community discussion](https://github.com/adcontextprotocol/adcp/discussions)
+
+## Need Help?
+
+- 📖 Browse the documentation
+- 💬 Ask in [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
+- 📧 Email: support@adcontextprotocol.org
