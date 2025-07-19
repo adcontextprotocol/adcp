@@ -47,7 +47,7 @@ Report daily usage for accurate billing.
 ## How It Works
 
 ```mermaid
-graph LR
+flowchart LR
     A[Describe Audience] --> B[Get Results]
     B --> C{Already Live?}
     C -->|Yes| D[Start Using]
