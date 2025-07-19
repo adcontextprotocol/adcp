@@ -6,7 +6,7 @@ Docs and reference implementation for the Ad Context Protocol
 
 This repository contains the documentation website built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
 
-The documentation is automatically deployed to [https://adcontextprotocol.github.io/docs/](https://adcontextprotocol.github.io/docs/) when changes are pushed to the main branch.
+The documentation is automatically deployed to [https://adcontextprotocol.github.io/](https://adcontextprotocol.github.io/) when changes are pushed to the main branch.
 
 ## Local Development
 
