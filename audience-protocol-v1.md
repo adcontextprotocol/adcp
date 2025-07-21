@@ -20,6 +20,26 @@ The Audience Discovery Protocol provides:
 
 ## Core Concepts
 
+### Platform Types
+
+The Ad Context Protocol works across two fundamental types of platforms:
+
+#### Decisioning Platforms
+Platforms where audiences, targeting, and optimization happen, generating decisions such as bids, PMP creation, or buy execution:
+
+- **DSPs (Demand-Side Platforms)**: Where advertisers bid on inventory
+- **SSPs (Supply-Side Platforms)**: Where publishers offer inventory  
+- **Ad Servers**: Where creative decisioning and serving occurs
+- **Injective Platforms**: Like Scope3, where campaigns are planned and executed
+
+#### Audience Platforms
+Platforms that have information about audiences (people, households, devices) and can deliver those audiences to decisioning platforms where they become transacted upon:
+
+- **Data Management Platforms (DMPs)**: Aggregate and organize audience data
+- **Customer Data Platforms (CDPs)**: Unify customer data across touchpoints
+- **Data Providers**: Like LiveRamp, Experian, who license audience segments
+- **Identity Resolution Services**: Link devices and identities across platforms
+
 ### Account Types
 
 Each MCP session is authenticated as one of:

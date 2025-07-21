@@ -58,17 +58,13 @@ flowchart LR
     E --> H[Report Usage]
 ```
 
-## Platform vs Direct Accounts
+## Integration Flow
 
-### Platform Accounts
-- Aggregate multiple advertisers (e.g., "Scope3's LiveRamp account")
-- Platform-negotiated rates
-- Simplified billing through platform
+The Audience Discovery Protocol works within the broader [Ad Tech Ecosystem Architecture](../intro#ad-tech-ecosystem-architecture):
 
-### Direct Accounts
-- Direct relationship with provider (e.g., "Omnicom's LiveRamp account")
-- Better rates typically available
-- Direct billing and control
+1. **Discover** audiences on audience platforms (LiveRamp, Experian)
+2. **Activate** audiences for decisioning platforms (Scope3, The Trade Desk)  
+3. **Execute** campaigns where decisions are made and transactions occur
 
 ## Example Interaction
 

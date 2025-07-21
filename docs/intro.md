@@ -15,6 +15,45 @@ Ad Context Protocol is an open standard based on the Model Context Protocol (MCP
 - **Platform Agnostic**: Works with any compatible advertising platform
 - **AI-Powered**: Designed for integration with AI assistants like Claude, GPT, and others
 
+## Ad Tech Ecosystem Architecture
+
+The advertising technology landscape consists of two fundamental types of platforms that ACP connects:
+
+### Decisioning Platforms
+Platforms where audiences, targeting, and optimization happen, generating decisions such as bids, PMP creation, or buy execution:
+
+- **DSPs (Demand-Side Platforms)**: Where advertisers bid on inventory (The Trade Desk, Google DV360)
+- **SSPs (Supply-Side Platforms)**: Where publishers offer inventory
+- **Ad Servers**: Where creative decisioning and serving occurs  
+- **Injective Platforms**: Like Scope3, where campaigns are planned and executed
+
+### Audience Platforms
+Platforms that have information about audiences (people, households, devices) and can deliver those audiences to decisioning platforms where they become transacted upon:
+
+- **Data Providers**: LiveRamp, Experian - license audience segments
+- **Data Management Platforms (DMPs)**: Aggregate and organize audience data
+- **Customer Data Platforms (CDPs)**: Unify customer data across touchpoints
+- **Identity Resolution Services**: Link devices and identities across platforms
+
+## How ACP Protocols Work Together
+
+Each ACP protocol operates within this ecosystem:
+
+### 🎯 Audience Discovery Protocol
+- **Scope**: Works primarily with **audience platforms** to discover and activate audiences
+- **Integration**: Activates audiences for use on **decisioning platforms**
+- **Workflow**: Find audiences → Activate for decisioning platform → Use in campaigns
+
+### 📍 Curation Protocol (Coming Q2 2025)
+- **Scope**: Works with **decisioning platforms** and **supply-side platforms**
+- **Integration**: Curates inventory that will be targeted with activated audiences
+- **Workflow**: Define requirements → Find inventory → Package with audiences
+
+### 💰 Media Buy Protocol (Coming Q3 2025)
+- **Scope**: Works primarily with **decisioning platforms** (DSPs, injective platforms)
+- **Integration**: Executes campaigns using curated inventory and activated audiences
+- **Workflow**: Set objectives → Execute buys → Optimize performance
+
 ## Quick Example
 
 Instead of navigating multiple platforms, you can now say:
