@@ -1,0 +1,24 @@
+{
+  "ai_provider": "stub",
+  "ai_config": {
+    "model": "gpt-4o-mini",
+    "api_key_env": "OPENAI_API_KEY",
+    "temperature": 0.7,
+    "max_tokens": 1000
+  },
+  "custom_audience_pricing": {
+    "min_cpm": 0.50,
+    "max_cpm": 5.00,
+    "default_currency": "GBP"
+  },
+  "oauth": {
+    "account_mapping": {
+      "example.com": "custom_catalog",
+      "premium.org": "premium_catalog"
+    },
+    "default_account": "default"
+  },
+  "cache": {
+    "auth_ttl_minutes": 60
+  }
+}

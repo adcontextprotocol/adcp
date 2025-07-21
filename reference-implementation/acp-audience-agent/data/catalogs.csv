@@ -1,0 +1,11 @@
+account_id,audience_id,currency,cpm,pct_of_media
+default,1234,GBP,1.00,10
+default,8281,GBP,2.00,15
+default,9001,GBP,1.50,12
+default,9002,GBP,1.20,8
+custom_catalog,1234,GBP,0.80,8
+custom_catalog,1234-271,GBP,0.90,5
+custom_catalog,8281,GBP,1.80,12
+premium_catalog,1234,USD,3.00,20
+premium_catalog,8282,USD,4.50,25
+premium_catalog,9001,USD,2.50,15
