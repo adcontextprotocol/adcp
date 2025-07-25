@@ -34,5 +34,5 @@ The protocol is broken down into a series of logical phases, each with its own s
 ## Next Steps
 
 - Read the full [Protocol Specification](./specification.md)
-- Review the [Creative Formats](./creative_formats.md)
+- Review the [Creative Formats](./creative-formats.md)
 - See the [reference implementation](https://github.com/google/gemini-adcp-buy-server)

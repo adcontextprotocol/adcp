@@ -9,7 +9,7 @@ A `Product` is a structured object that contains all the information a buyer nee
 - **`product_id`**: A unique identifier for the product.
 - **`name`**: A human-readable name (e.g., "Premium In-Stream Video (Sports)").
 - **`description`**: A detailed description of the inventory.
-- **`formats`**: A list of creative formats the product supports. See the [Creative Formats](./creative_formats.md) guide for details.
+- **`formats`**: A list of creative formats the product supports. See the [Creative Formats](./creative-formats.md) guide for details.
 - **`cpm`**: The base Cost Per Mille for the product.
 - **`targeting_template`**: A `Targeting` object that defines the base audience and delivery constraints for this product. See the [Targeting](./04-targeting.md) guide for details.
 

@@ -7,7 +7,7 @@ ADCP V2.3 provides a comprehensive set of tools for managing the entire lifecycl
 A `Creative` is a simple object that links a user-defined ID to a specific format and the location of the asset.
 
 - **`creative_id`**: A unique, client-defined identifier for the creative.
-- **`format_id`**: The ID of the format the creative adheres to. This must match a format supported by the products in the media buy. See the [Creative Formats](./creative_formats.md) guide for details.
+- **`format_id`**: The ID of the format the creative adheres to. This must match a format supported by the products in the media buy. See the [Creative Formats](./creative-formats.md) guide for details.
 - **`content_uri`**: The URI pointing to the creative asset (e.g., a VAST XML file, an image URL, or a ZIP file with HTML5 assets).
 
 ### Example Creative

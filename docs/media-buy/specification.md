@@ -33,4 +33,4 @@ The specification is broken down into a series of articles, each covering a logi
 
 ## Supporting Documents
 
-- **[Creative Formats](./creative_formats.md)**: A detailed guide to the standard and custom creative formats supported by the protocol.
+- **[Creative Formats](./creative-formats.md)**: A detailed guide to the standard and custom creative formats supported by the protocol.
