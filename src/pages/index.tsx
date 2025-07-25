@@ -215,8 +215,8 @@ function GetStarted() {
               <li>Get certified for quality assurance</li>
               <li>Join the growing ecosystem</li>
             </ul>
-            <Link className="button button--primary margin-top--md" to="/docs/implementation/getting-started">
-              Implementation Guide
+            <Link className="button button--primary margin-top--md" to="https://github.com/adcontextprotocol/adcp">
+              View on GitHub
             </Link>
           </div>
           <div className="col col--6">
