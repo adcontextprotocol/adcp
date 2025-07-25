@@ -81,13 +81,10 @@ The working group is guided by a steering committee with representatives from:
 
 ### For New Members
 - [Getting Started Guide](../intro)
-- [Implementation Guide](../implementation/getting-started)
-- [FAQ](../audience/faq)
 
 ### Meeting Materials
 - [Meeting Archives](https://github.com/adcontextprotocol/adcp/discussions/categories/meetings)
 - [Specification Drafts](https://github.com/adcontextprotocol/adcp/tree/main/specs)
-- [Roadmap](../reference/changelog)
 
 ## Contact
 

@@ -180,5 +180,3 @@ All deployments are $2.00 CPM. Which platforms do you need?
 ## Next Steps
 
 - Read the full [Protocol Specification](./specification)
-- Review [Implementation Examples](./examples) including multi-platform scenarios
-- See the [Quick Reference](./quick-reference)

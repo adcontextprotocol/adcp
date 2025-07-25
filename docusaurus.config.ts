@@ -101,10 +101,6 @@ const config: Config = {
               label: 'Audience Protocol',
               to: '/docs/audience/overview',
             },
-            {
-              label: 'Implementation Guide',
-              to: '/docs/implementation/getting-started',
-            },
           ],
         },
         {
