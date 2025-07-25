@@ -17,13 +17,10 @@ const sidebars: SidebarsConfig = {
     'intro',
     {
       type: 'category',
-      label: 'Audience Discovery',
+      label: 'Audience',
       items: [
         'audience/overview',
         'audience/specification',
-        'audience/quick-reference',
-        'audience/examples',
-        'audience/faq',
       ],
     },
     {
@@ -34,17 +31,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Media Buy',
-      items: ['media-buy/coming-soon'],
-    },
-    {
-      type: 'category',
-      label: 'Implementation',
-      items: [
-        'implementation/getting-started',
-        'implementation/authentication',
-        'implementation/best-practices',
-        'implementation/testing',
-      ],
+      items: ['media-buy/overview', 'media-buy/specification'],
     },
     {
       type: 'category',
@@ -52,7 +39,6 @@ const sidebars: SidebarsConfig = {
       items: [
         'reference/glossary',
         'reference/error-codes',
-        'reference/changelog',
       ],
     },
   ],

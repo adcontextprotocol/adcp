@@ -3,32 +3,32 @@ sidebar_position: 2
 title: Protocol Specification
 ---
 
-# Audience Discovery Protocol RFC
+# Audience Activation Protocol RFC
 
-**Version**: 0.1  
 **Status**: Request for Comments  
 **Last Updated**: January 2025
 
 ## Abstract
 
-The Audience Discovery Protocol defines a standard Model Context Protocol (MCP) interface for AI-powered audience discovery and management systems. This protocol enables AI assistants to help marketers discover, activate, and manage audiences through natural language interactions.
+The Audience Activation Protocol defines a standard Model Context Protocol (MCP) interface for AI-powered audience activation and management systems. This protocol enables AI assistants to help marketers discover, activate, and manage audiences through natural language interactions.
 
 ## Overview
 
-The Audience Discovery Protocol provides:
+The Audience Activation Protocol provides:
 
 - Natural language audience discovery based on marketing objectives
 - Multi-platform audience discovery in a single request
 - Audience activation for specific platforms and accounts
 - Transparent pricing with CPM and revenue share models
 - Audience size reporting with unit types (individuals, devices, households)
-- Usage reporting for billing reconciliation
 
 ## Core Concepts
 
 ### Agent Integration
 
-The Audience Discovery Protocol operates within the broader [Ad Tech Ecosystem Architecture](../intro#ad-tech-ecosystem-architecture), connecting audience agents with decisioning platforms through standardized activation workflows.
+The Audience Activation Protocol operates within the broader [Ad Tech Ecosystem Architecture](../intro#ad-tech-ecosystem-architecture), enabling audience agents to directly integrate with and activate audiences on decisioning platforms (DSPs, injective platforms). 
+
+**Direct Integration Model**: Audience agents contract directly with decisioning platforms, eliminating intermediary reporting and usage tracking. Once audiences are activated on a decisioning platform, all usage reporting, billing, and campaign metrics are handled directly by that platform.
 
 ### Request Roles and Relationships
 
@@ -173,29 +173,11 @@ This is relative to each audience agent's capabilities - a 50% coverage audience
 
 ### get_audiences
 
-Discovers relevant audiences based on a marketing specification. Supports both single-platform and multi-platform queries.
+Discovers relevant audiences based on a marketing specification across multiple platforms.
 
 #### Request
 
-**Single Platform Example** (original format, still supported):
-```json
-{
-  "audience_spec": "High-income sports enthusiasts interested in premium running gear",
-  "deliver_to": {
-    "platform": "the-trade-desk",
-    "account": "omnicom-ttd-main",
-    "countries": ["US", "CA"]
-  },
-  "filters": {
-    "catalog_types": ["marketplace"],
-    "max_cpm": 8.0,
-    "min_coverage_percentage": 25
-  },
-  "max_results": 3
-}
-```
-
-**Multi-Platform Example**:
+**Request Example**:
 ```json
 {
   "audience_spec": "Premium automotive intenders in major urban markets",
@@ -240,32 +222,6 @@ Discovers relevant audiences based on a marketing specification. Supports both s
 ```
 
 #### Response
-
-**Single Platform Response** (backward compatible):
-```json
-{
-  "audiences": [{
-    "audience_agent_segment_id": "sports_enthusiasts_public",
-    "name": "Sports Enthusiasts - Public",
-    "description": "Broad sports audience available platform-wide",
-    "audience_type": "marketplace",
-    "data_provider": "Polk",
-    "coverage_percentage": 45,
-    "deployment": {
-      "is_live": true,
-      "scope": "platform-wide",
-      "decisioning_platform_segment_id": "ttd_sports_general"
-    },
-    "pricing": {
-      "cpm": 3.50,
-      "currency": "USD"
-    },
-    "require_usage_reporting": false
-  }]
-}
-```
-
-**Multi-Platform Response**:
 ```json
 {
   "audiences": [{
@@ -308,8 +264,7 @@ Discovers relevant audiences based on a marketing specification. Supports both s
     "pricing": {
       "cpm": 2.50,
       "currency": "USD"
-    },
-    "require_usage_reporting": true
+    }
   }]
 }
 ```
@@ -360,41 +315,6 @@ Checks the deployment status of an audience on a decisioning platform.
 }
 ```
 
-### report_usage
-
-Reports usage data for billing reconciliation. When the same audience is used across multiple platforms, report each platform separately.
-
-#### Request
-
-```json
-{
-  "reporting_date": "2025-01-15",
-  "platform": "index-exchange",          
-  "account": "agency-123-ix",           
-  "usage": [{
-    "audience_agent_segment_id": "peer39_luxury_auto",
-    "decisioning_platform_segment_id": "ix_agency123_peer39_lux_auto",
-    "active": true,
-    "impressions": 5000000,
-    "media_spend": 125000.00,
-    "data_cost": 12500.00               // Based on CPM or revenue share
-  }],
-  "summary": {
-    "total_impressions": 5000000,
-    "total_media_spend": 125000.00,
-    "total_data_cost": 12500.00,
-    "unique_segments": 1
-  }
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true
-}
-```
 
 ## Typical Flow
 
@@ -428,7 +348,6 @@ Reports usage data for billing reconciliation. When the same audience is used ac
 
 6. **Launch**: Once deployed, launch the media execution (campaigns, PMPs, direct buys, etc.) on the decisioning platform
 
-7. **Report**: For segments with `require_usage_reporting: true`, report daily usage via `report_usage`
 
 ### Private Audience Agent Flow
 
@@ -444,7 +363,6 @@ Reports usage data for billing reconciliation. When the same audience is used ac
 
 6. **Launch**: Once deployed, launch the media execution using owned audiences
 
-7. **Report**: Only if `require_usage_reporting: true` (typically false for private agents)
 
 ## Error Codes
 
@@ -499,10 +417,9 @@ The principal's identity determines business-level access and pricing:
 
 ### Multi-Platform Considerations
 
-#### Response Format Selection
-- If request contains single `platform` field: Return single `deployment` object
-- If request contains `platforms` array: Return `deployments` array
-- This ensures backward compatibility while enabling multi-platform queries
+#### Response Format
+- All responses contain `deployments` array showing audience availability across platforms
+- Enables efficient multi-platform discovery and activation planning
 
 #### Platform-Specific Segment IDs
 - Same audience may have different segment IDs on different platforms
@@ -514,30 +431,11 @@ The principal's identity determines business-level access and pricing:
 - Reduces API calls from N (one per platform) to 1
 - Particularly valuable for contextual data providers with wide SSP distribution
 
-### Usage Reporting
-
-- **Frequency**: Daily reporting by 12:00 UTC
-- **Required for**: Marketplace audiences 
-- **Not required for**: Private owned audiences (no billing, optional for workflow tracking)
-- **Multi-Platform**: Report each platform separately, even for the same audience
-
-#### Audience Lifecycle Management
-
-Usage reporting handles the complete audience lifecycle:
-
-- **All Active Audiences**: Every audience currently activated must be included in daily reports
-- **Deactivation**: Set `active: false` to indicate an audience is no longer being used
-- **Final Billing**: Include final usage data when marking `active: false`
-- **Zero Usage**: Audiences with no impressions/spend should still be reported with `active: true` if they remain available for campaigns
-
-This approach eliminates the need for explicit deactivation API calls while ensuring accurate billing and lifecycle tracking.
-
 ### Best Practices
 
 1. Check `is_live` status before attempting activation
 2. Allow 24-48 hours for audience activation
-3. Report media spend accurately for revenue share audiences
-4. Understand the difference between size units
-5. Consider both pricing options when available
-6. Use multi-platform queries when discovering audiences across SSPs
-7. Store platform-specific segment IDs for campaign execution
+3. Understand the difference between size units
+4. Consider both pricing options when available
+5. Use multi-platform queries when discovering audiences across SSPs
+6. Store platform-specific segment IDs for campaign execution

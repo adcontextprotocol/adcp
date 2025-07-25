@@ -1,584 +1,671 @@
-# Agentic Media Buying Protocol (AdCP:Buy) RFC
+# Media Buying Specification
 
-**Version**: 0.1  
 **Status**: Request for Comments  
 **Last Updated**: January 2025
 
-## Abstract
-
-The Agentic Media Buying Protocol (AdCP:Buy) defines a standard Model Context Protocol (MCP) interface for AI-powered media buying systems. This protocol enables AI assistants to help advertisers discover, negotiate, execute, and optimize media buys through natural language interactions.
-
 ## Overview
 
-The AdCP:Buy protocol provides:
-
-- Collaborative media package creation between principals and publishers
-- Iterative proposal and negotiation workflows
-- Integration with real-time decisioning through the Agentic Execution Engine (AEE)
-- Performance-based optimization through measurement feedback loops
-- Flexible creative asset management
+AdCP:Buy provides a unified protocol for AI-powered media buying across guaranteed and non-guaranteed inventory, fully compatible with OpenRTB 2.6 standards.
 
 ## Core Concepts
 
-### Roles and Relationships
+### Package Types
 
-#### Orchestrator
-The AI agent or platform facilitating the media buy:
-- **Examples**: Claude AI assistant, agency trading platform, campaign management tool
-- **Responsibilities**: Translates principal objectives into technical requests, manages negotiation flow
-- **Authentication**: Uses API credentials to interact with publisher systems
+#### Catalog Packages
+- Pre-configured inventory available for immediate activation
+- Non-guaranteed delivery competing at specified bid
+- No negotiation or approval required
+- Compatible with standard OpenRTB creative formats
 
-#### Principal
-The advertiser or agency purchasing media:
-- **Examples**: Nike (brand), Omnicom (agency), media buyer
-- **Responsibilities**: Defines objectives, approves proposals, provides creative assets, shares measurement data
-- **Account**: Has commercial relationship with publisher
+#### Custom Packages  
+- Created in response to specific briefs
+- Can offer guaranteed or non-guaranteed delivery
+- May require approval workflow
+- Support specialized measurement and targeting
 
-#### Publisher
-The media owner selling inventory:
-- **Examples**: CNN, Spotify, Reddit, Meta
-- **Responsibilities**: Creates media packages, executes campaigns, optimizes based on feedback
-- **Inventory**: Can be owned & operated, network, or aggregated programmatic
+### Delivery Commitments
 
-### Proposal → Media Buy → Media Package
+#### Guaranteed Delivery
+- Fixed impressions at fixed CPM
+- Publisher commits to delivery with makegoods
+- Requires approval process
+- Higher CPMs typically
 
-The protocol follows a structured flow from discovery to execution:
+#### Non-Guaranteed Delivery
+- Best-effort delivery at competitive bid
+- No delivery commitments
+- Instant activation (usually)
+- Market-based pricing with floor guidance
 
-#### 1. Proposal
-A proposal is the publisher's response to a brief, outlining how they would execute the campaign:
-- Contains one or more media packages
-- Includes pricing, inventory sources, and delivery estimates
-- May go through multiple iterations before acceptance
-- Has an ID for reference and optional expiration date
+### Creative Formats
 
-#### 2. Media Buy
-A media buy is an accepted proposal that becomes a binding agreement:
-- Created when the principal accepts a proposal
-- Contains the selected media packages from the proposal
-- Tracks delivery, performance, and billing
-- Can be modified during flight with mutual agreement
+The protocol supports both standard IAB/OpenRTB specifications and custom publisher formats:
 
-#### 3. Media Package
-A media package is a specific execution strategy within a media buy:
-- Represents a testable hypothesis (e.g., "sports enthusiasts will convert")
-- Combines inventory, data, creative, and targeting
-- Has its own budget, pacing, and performance metrics
-- Can be optimized independently within the media buy
+#### Standard Formats (IAB/OpenRTB 2.6)
 
-### Creative Management
-
-Creatives are managed at the media buy level and assigned to packages:
-
-#### Creative Lifecycle
-1. **Upload**: Principal uploads creative assets via `add_creative_assets`
-2. **Review**: Publisher reviews for technical specs and policy compliance
-3. **Approval**: Once approved, creative is available for use
-4. **Assignment**: Approved creatives can be added to package rotations
-5. **Optimization**: Creatives can be removed from packages based on performance
-
-#### Creative Rotation
-- Publishers manage creative rotation within packages based on their optimization algorithms
-- Principals can influence rotation by adding/removing creatives from packages
-- Multiple creatives can be active per package simultaneously
-- Publishers may automatically optimize creative distribution based on performance
-
-### Mid-Flight Adjustments
-
-After a media buy launches, principals can make several adjustments:
-
-#### Available Actions
-- **Add Creative**: Upload new creative assets for approval
-- **Manage Rotation**: Add/remove approved creatives from package rotations
-- **Budget Changes**: Reallocate between packages or increase total budget
-- **Update Package Parameters**: Adjust frequency caps, geo targeting, or other package-specific settings
-- **Pause/Resume**: Pause packages or entire buy (with reason)
-- **End Early**: Terminate the buy before scheduled end date
-
-#### What Cannot Be Changed
-- Core package hypotheses or inventory sources
-- The original brief (would require new proposal)
-- Already-delivered impressions
-- Pricing/CPM rates (without new negotiation)
-- Measurement methodology mid-flight
-- Provided signals or AEE configuration
-
-### Brief Requirements
-
-A brief must provide sufficient context for publishers to create relevant proposals:
-
-#### Required Elements
-- **Objectives**: What the campaign needs to achieve (sales, awareness, etc.)
-- **Budget**: Total amount and expected CPM range with currency
-- **Timing**: Flight dates for the campaign
-- **Geography**: Countries/regions for delivery (hard requirement)
-- **Creative**: Format requirements and what assets will be provided
-- **Measurement**: How success will be measured and data sharing approach
-
-#### Recommended Elements  
-- **Target Audience**: Description of who should be reached
-- **Brand Safety**: Any content restrictions or competitive separation needs
-- **Preferred Inventory**: Types of media or specific publishers if relevant
-- **Constraints**: Frequency caps, viewability requirements, etc.
-
-#### Technical Elements
-- **Provided Signals**: Structured data about available targeting signals
-- **AEE Configuration**: If using real-time decisioning
-
-The brief should be written in natural language with technical requirements clearly specified. Publishers' AI agents will interpret the brief and create appropriate packages.
-
-## Specification
-
-### get_proposal
-The orchestrator requests a proposal from the publisher by providing a brief that describes objectives, target audience, available signals, measurement requirements, and budget range. The publisher responds with packages that match the brief as well as the creative assets required for each.
-
-The proposal phase may include multiple iterations where the principal requests changes or updates to the proposed packages.
-
-#### Request: Initial Proposal
-The orchestrator should ensure that the request includes all necessary information for the publisher to create accurate packages. A proposal parser and validator will be included as part of the reference implementation, with suggestions like always providing a currency when quoting a price, being precise about measurement resolution, and being clear about creative formats and assets.
-
-The provided signals are described separately from the brief since they come from the orchestrator and have technical implementation implications.
-
+##### Video
 ```json
 {
-  "brief": "Advertiser is a well-known sports brand looking for high-income sports enthusiasts interested in premium running gear. US only. Creative will be 6 and 15 second video with optional logo, overlay text, and endcap image. Horizontal, square, and vertical video assets will be provided. Only edge-to-edge placements or full-screen placements should be considered. The campaign will be measured based upon incremental sales at a large sports retailer, using DMA exclusions to compare packages. Approximately 50,000 exposures in a DMA will be needed to be able to see meaningful impact on sales. The media buy will run from July 1 to July 31 with an approximate budget of $150,000 USD. The principal is expecting to pay $20-25 USD CPM.",
-  "provided_signals": [
-    {
-        "must_not_be_present": true,
-        "id": "brand-safety-us-sports",
-        "description": "Brand safety check for this advertiser" // description is optional
+  "format_type": "standard",
+  "format_id": "iab_video_standard",
+  "mimes": ["video/mp4", "video/webm"],
+  "minduration": 5,
+  "maxduration": 30,
+  "protocols": [2, 3, 5, 6, 7, 8],  // VAST 2.0-4.2
+  "w": 1920,
+  "h": 1080,
+  "placement": 1,  // In-stream
+  "playbackmethod": [1, 2],  // Auto-play
+  "api": [1, 2, 7]  // VPAID, OMID
+}
+```
+
+#### Custom Publisher Formats
+
+Publishers can define custom creative formats for unique inventory:
+
+##### Example: Yahoo Edge-to-Edge
+```json
+{
+  "format_type": "custom",
+  "format_id": "yahoo_edge_to_edge",
+  "name": "Yahoo Edge-to-Edge Mobile",
+  "description": "Full-width mobile video that expands edge-to-edge",
+  "assets": {
+    "primary_video": {
+      "mimes": ["video/mp4"],
+      "aspect_ratios": ["9:16", "1:1"],
+      "min_duration": 6,
+      "max_duration": 15,
+      "max_file_size_mb": 50
     },
-    {
-        "id": "recent-site-visitor",
-        "targeting_direction": "include",
-        "description": "Audience segment for remarketing, including approximately 0.5% of user profiles. Should be present in at least one package. Lookalikes are ok on O&O inventory."
+    "end_card": {
+      "mimes": ["image/jpeg", "image/png"],
+      "w": 1080,
+      "h": 1920
     }
-  ]
+  },
+  "technical_requirements": {
+    "viewability": "100% in-view required",
+    "audio": "muted by default",
+    "interaction": "tap to unmute"
+  }
 }
 ```
 
-#### Response: Initial Packages
-The publisher responds with packages that match the brief, pricing, estimated delivery and capacity, and required creative assets. The agent may also provide notes for the principal about potential issues or questions. The proposal should include an ID that the orchestrator can use to refer to this proposal without having to send the full context again, as well as to accept the proposal if desired.
-
+##### Example: CTV Pause Ad
 ```json
 {
-    "proposal_id": "july_sports_v1",
-    "expiration_date": "2025-06-15 18:00:00 PST",       // optional expiration date to prevent reservation holds from impacting delivery
-    "total_budget": 150000,
-    "currency": "USD",
-    "start_time": "2025-07-01 00:00:00 PST",
-    "end_time": "2025-07-31 00:00:00 PST",
-    "notes": "The brief was unclear about age, gender, or geographic preferences. Please provide more detail if available.",
-    "creative_formats": [
-    {
-      "name": "E2E mobile video",
-      "assets": {
-        "video": {
-          "formats": ["mp4", "webm"],
-          "resolutions": [
-            { "width": 1080, "height": 1080, "label": "square" },
-            { "width": 1920, "height": 1080, "label": "horizontal" }
-          ],
-          "max_file_size_mb": 50,
-          "duration_options": [6, 15]
-        },
-        "companion": {
-          "logo": { "size": "300x300", "format": "png" },
-          "overlay_image": { "size": "1080x1080", "format": "jpg", "optional": true }
-        }
-      },
-      "description": "An immersive mobile video that scrolls in-feed"
-    }
-  ],
-    "media_packages": [
-        {
-            "package_id": "abcd1",
-            "name": "Remarketing with lookalikes",
-            "description": "Run of site package using the provided audience to create lookalike users to ensure sufficient reach for measurement",
-            "delivery_restrictions": "US only. Restricted to top 50 DMAs to ensure measurement reach.",
-            "provided_signals": {
-                "included_ids": ["recent-site-visitor"],
-                "excluded_ids": ["brand-safety-us-sports"]
-            },
-            "cpm": 22.00,
-            "budget": 25000,
-            "budget_capacity": 150000, // could spend more here
-            "creative_formats": "E2E mobile video"
-        },
-        {
-            "package_id": "abcd2",
-            "name": "Premium sports",
-            "description": "Runs on our premium sports inventory across sites like 'Basketball City Gazette' and 'Yoga for Tall People'",
-            "delivery_restrictions": "US only",
-            "provided_signals": {
-                "excluded_ids": ["brand-safety-us-sports"]
-            },
-            "cpm": 18.00,
-            "budget": 65000,
-            "budget_capacity": 65000, // this is all the projected inventory
-            "creative_formats": "E2E mobile video"
-        },
-        {
-            "package_id": "abcd3",
-            "name": "Home page interstitial for runners",
-            "description": "Non-skippable vertical video for known runners based on past browsing and contributed data",
-            "delivery_restrictions": "US only",
-            "provided_signals": {
-                "excluded_ids": ["brand-safety-us-sports"]
-            },
-            "cpm": 47.00,
-            "budget": 60000,
-            "creative_formats": "Vertical mobile video"
-        }
-    ]
-}
-```
-
-#### Request: Updates to a proposal
-Passing the proposal_id tells the publisher to make changes to a proposal. The get_proposal call should not be used once a proposal has been accepted.
-
-Any responses to the publisher's notes should be added to the brief, and all fields of the initial request should be provided again in subsequent requests, maeaning that the only state the publisher needs to maintain is the proposal ID.
-
-
-```json
-{
-  "brief": "Advertiser is a well-known sports brand looking for high-income sports enthusiasts interested in premium running gear. US only. Creative will be 6 and 15 second video with optional logo, overlay text, and endcap image. Horizontal, square, and vertical video assets will be provided. Only edge-to-edge placements or full-screen placements should be considered. The campaign will be measured based upon incremental sales at a large sports retailer, using DMA exclusions to compare packages. Approximately 50,000 exposures in a DMA will be needed to be able to see meaningful impact on sales. The media buy will run from July 1 to July 31 with an approximate budget of $150,000 USD. The principal is expecting to pay $20-25 USD CPM. There are no additional gender, geography, or age preferences.",
-  "provided_signals": [
-    {
-        "must_not_be_present": true,
-        "id": "brand-safety-us-sports",
-        "required_aee_fields": "content_id, URL, or adjacent posts",
-        "description": "Brand safety check for this advertiser" // description is optional
+  "format_type": "custom", 
+  "format_id": "ctv_pause_ad",
+  "name": "CTV Pause Screen Overlay",
+  "description": "L-shaped overlay shown when content is paused",
+  "assets": {
+    "overlay_image": {
+      "mimes": ["image/png"],
+      "w": 640,
+      "h": 1080,
+      "transparency": "required",
+      "position": "right_side"
     },
-    {
-        "id": "recent-site-visitor",
-        "targeting_direction": "include",
-        "required_aee_fields": "RampID or ID5",
-        "description": "Audience segment for remarketing, including approximately 0.5% of user profiles. Should be present in at least one package. Lookalikes are ok on O&O inventory."
+    "brand_logo": {
+      "mimes": ["image/png"],
+      "max_w": 200,
+      "max_h": 100
     }
-  ],
-  "proposal_id": "july_sports_v1",
-  "requested_changes": [
-    {
-        "package_id": "abcd3",
-        "field": "delivery_restrictions",
-        "notes": "With a $47 CPM and a $65K budget, only 25 DMAs will have sufficient traffic for measurement. Please restrict delivery to the top 25 DMAs or reduce the price to facilitate broader testing."
-    }
-  ]
+  },
+  "delivery_context": {
+    "trigger": "user_pause",
+    "duration": "while_paused",
+    "dismissible": false
+  }
 }
 ```
 
-#### Response: Updates to a proposal
-The publisher can respond to the requested changes. Any response should change the `proposal_id`, but the package IDs may stay the same.
+#### Audio (OpenRTB 2.6)
+```json
+{
+  "mimes": ["audio/mp3", "audio/mpeg"],
+  "minduration": 15,
+  "maxduration": 60,
+  "protocols": [9, 10],  // DAAST 1.0, 1.1
+  "api": [1, 2, 3],
+  "stitched": 1,  // Server-side insertion
+  "nvol": 2  // Volume normalized
+}
+```
 
-The update call and response continue until the principal abandons or accepts the proposal.
+#### Display Banner
+```json
+{
+  "w": [300, 728, 320],
+  "h": [250, 90, 50],
+  "mimes": ["image/jpeg", "image/png", "text/html"],
+  "api": [5, 6, 7]  // MRAID, OMID
+}
+```
 
-### accept_proposal
+#### DOOH
+```json
+{
+  "mimes": ["image/jpeg", "video/mp4"],
+  "w": 1920,
+  "h": 1080,
+  "duration": 10,  // Display seconds
+  "pxratio": 1.0,
+  "venuetypetax": 2,  // OpenOOH
+  "venuetype": ["transit/airport"]
+}
+```
 
-When the principal is ready to proceed with the buy, the orchestrator accepts the proposal. Upon receiving this request, the publisher sets up the media buy and returns the media_buy_id to the orchestrator.
+## API Specification
+
+### get_packages
+
+Discovers available packages based on media buy criteria.
 
 #### Request
-
 ```json
 {
-  "proposal_id": "july_sports_v2",
-  "accepted_packages": ["abcd1", "abcd2", "abcd3"],
-  "billing_entity": "Nike Inc.",
-  "po_number": "NIKE-2025-07-001"
+  "brief": "Optional natural language campaign context",
+  "budget": 150000,
+  "currency": "USD",
+  "start_time": "2025-07-01T00:00:00Z",
+  "end_time": "2025-07-31T23:59:59Z",
+  
+  "targeting": {
+    "geo": ["US"],
+    "device_types": [1, 2, 3],  // OpenRTB device types
+    "provided_signals": [
+      {
+        "id": "auto_intenders_q3",
+        "required_aee_fields": "RampID or ID5",
+        "description": "Auto purchase intenders"
+      }
+    ],
+    "user": {
+      "geo": {
+        "country": "US",
+        "region": ["CA", "NY", "TX"]
+      }
+    },
+    "content": {
+      "cat": ["IAB17"],  // Sports content
+      "context": 1  // Video content
+    },
+    "bcat": ["IAB23", "IAB24"],  // No gambling/alcohol
+    "badv": ["competitor.com"]
+  },
+  
+  "creatives": [
+    {
+      "id": "cr_video_30s",
+      "format_type": "standard",
+      "format_id": "iab_video_standard",
+      "media_type": "video",
+      "mime": "video/mp4",
+      "dur": 30,
+      "w": 1920,
+      "h": 1080,
+      "bitrate": 2000,
+      "api": [7],  // OMID
+      "companionad": {
+        "id": "comp_300x250",
+        "w": 300,
+        "h": 250,
+        "mime": "image/jpeg"
+      }
+    },
+    {
+      "id": "cr_edge_to_edge",
+      "format_type": "custom",
+      "format_id": "yahoo_edge_to_edge",
+      "assets": {
+        "primary_video": {
+          "url": "https://cdn.brand.com/edge_video.mp4",
+          "duration": 15,
+          "aspect_ratio": "9:16"
+        },
+        "end_card": {
+          "url": "https://cdn.brand.com/end_card.jpg"
+        }
+      }
+    },
+    {
+      "id": "cr_pause_ad",
+      "format_type": "custom",
+      "format_id": "ctv_pause_ad",
+      "assets": {
+        "overlay_image": {
+          "url": "https://cdn.brand.com/pause_overlay.png",
+          "w": 640,
+          "h": 1080
+        },
+        "brand_logo": {
+          "url": "https://cdn.brand.com/logo.png"
+        }
+      }
+    }
+  ],
+  
+  "measurement": {
+    "method": "incrementality",
+    "vendor": "moat",
+    "minimum_impressions_per_cell": 50000
+  },
+  
+  "preferences": {
+    "delivery_types": ["guaranteed", "non_guaranteed"],
+    "max_packages": 10,
+    "min_daily_impressions": 100000
+  }
 }
 ```
 
 #### Response
-
 ```json
 {
-  "media_buy_id": "buy_nike_sports_2025_07",
-  "status": "pending_creative",
-  "creative_deadline": "2025-06-25T00:00:00Z",
+  "query_id": "q_12345",
+  "valid_until": "2025-06-20T00:00:00Z",
+  "packages": [
+    {
+      "package_id": "premium_sports_guaranteed",
+      "type": "custom",
+      "name": "Premium Sports Content - Guaranteed",
+      "delivery_type": "guaranteed",
+      "impressions": 2000000,
+      "cpm": 28.00,
+      "total_cost": 56000,
+      "currency": "USD",
+      
+      "inventory": {
+        "channels": ["ESPN", "Fox Sports"],
+        "content_categories": ["IAB17-40", "IAB17-18"],
+        "device_types": [3],  // CTV
+        "geo": ["US"]
+      },
+      
+      "creative_compatibility": {
+        "cr_video_30s": {
+          "compatible": true,
+          "requires_approval": true,
+          "approval_time": "4h",
+          "technical_checks": {
+            "ssl": "required",
+            "vast_version": "4.1+"
+          }
+        },
+        "cr_edge_to_edge": {
+          "compatible": true,
+          "requires_approval": true,
+          "approval_time": "2h",
+          "format_match": "exact",
+          "notes": "Custom format fully supported"
+        },
+        "cr_pause_ad": {
+          "compatible": false,
+          "reason": "Pause ads only available on CTV inventory"
+        }
+      },
+      
+      "targeting_capabilities": {
+        "provided_signals": {
+          "supported": ["auto_intenders_q3"],
+          "match_rate": 0.15
+        },
+        "frequency_cap": {
+          "supported": true,
+          "min_hours": 1,
+          "max_impressions": 10
+        }
+      },
+      
+      "measurement": {
+        "reporting_granularity": "hourly",
+        "viewability": {
+          "vendor": "moat",
+          "predicted_rate": 0.95
+        }
+      }
+    },
+    {
+      "package_id": "audio_streaming_non_guaranteed",
+      "type": "catalog",
+      "name": "Audio Streaming Network",
+      "delivery_type": "non_guaranteed",
+      "impressions": "best_effort",
+      
+      "pricing": {
+        "floor_cpm": 8.00,
+        "suggested_cpm": 12.00,
+        "currency": "USD",
+        "bid_guidance": {
+          "p25": 9.50,
+          "p50": 12.00,
+          "p75": 15.00,
+          "p90": 18.00
+        }
+      },
+      
+      "delivery_estimates": {
+        "at_floor": {
+          "impressions": 100000,
+          "win_rate": 0.05
+        },
+        "at_suggested": {
+          "impressions": 1500000,
+          "win_rate": 0.35
+        }
+      },
+      
+      "creative_compatibility": {
+        "cr_audio_15s": {
+          "compatible": true,
+          "requires_approval": false,
+          "pre_approved_advertiser": true
+        }
+      },
+      
+      "inventory": {
+        "feed_types": [1, 3],  // Music, Podcast
+        "publishers": ["spotify", "pandora", "iheartradio"],
+        "content_language": ["en", "es"]
+      }
+    }
+  ],
+  
+  "recommendations": {
+    "optimal_mix": [
+      {
+        "package_id": "premium_sports_guaranteed",
+        "budget": 56000,
+        "reason": "Ensures 2MM impressions with target audience"
+      },
+      {
+        "package_id": "audio_streaming_non_guaranteed",
+        "budget": 30000,
+        "suggested_cpm": 12.00,
+        "reason": "Extends reach to audio listeners"
+      }
+    ],
+    "warnings": [
+      "cr_video_30s requires approval - submit by 2025-06-26",
+      "Audio inventory has 24-48h impression delay"
+    ]
+  }
 }
 ```
 
-### add_creative_assets
+### create_media_buy
 
-For the media buy to go live, the principal must provide the necessary creative assets (often requiring approval by the publisher). For publishers that generate or adapt creative on behalf of the principal, creatives may require approval by the buyer.
-
-The buyer should provide a mechanism (third-party ad server, measurement tag, log-level data endpoint, clean room) to receive exposure data from the publisher.
-
+Creates a media buy with selected packages.
 
 #### Request
-
-Raw assets should not be sent via MCP protocol to minimize token usage. Instead, they should be uploaded to a shared cloud bucket (which the orchestrator should provide).
-
 ```json
 {
-  "media_buy_id": "buy_nike_sports_2025_07",
-  "packages": ["abcd1", "abcd2"],
-  "assets": [
+  "query_id": "q_12345",  // Optional reference
+  "selected_packages": [
     {
-      "creative_id": "nike_run_6s_vertical",
-      "format": "E2E mobile video",
-      "name": "Nike Run - 6s Vertical",
-      "video_url": "https://cdn.nike.com/creatives/run_6s_vert.mp4",
-      "companion_assets": {
-        "logo": "https://cdn.nike.com/logos/swoosh_300.png",
-        "overlay_image": "https://cdn.nike.com/endcards/run_cta.jpg"
-      },
-      "click_url": "https://nike.com/running?cid=social_2025",
-      "package_assignments": ["abcd1", "abcd2"]
+      "package_id": "premium_sports_guaranteed",
+      "budget": 56000
+    },
+    {
+      "package_id": "audio_streaming_non_guaranteed",
+      "budget": 30000,
+      "max_cpm": 15.00,
+      "target_impressions": 2000000,
+      "frequency_cap": {
+        "max_impressions": 3,
+        "time_window": "24h"
+      }
     }
-  ]
+  ],
+  
+  "creative_assignments": [
+    {
+      "creative_id": "cr_video_30s",
+      "package_ids": ["premium_sports_guaranteed"]
+    },
+    {
+      "creative_id": "cr_audio_15s",
+      "package_ids": ["audio_streaming_non_guaranteed"]
+    }
+  ],
+  
+  "measurement": {
+    "attribution_window": "7d",
+    "reporting_endpoint": "https://measure.brand.com/adcp",
+    "expose_user_ids": ["RampID", "ID5"]
+  },
+  
+  "flight": {
+    "start_time": "2025-07-01T00:00:00Z",
+    "end_time": "2025-07-31T23:59:59Z",
+    "timezone": "America/New_York"
+  },
+  
+  "billing": {
+    "entity": "Nike Inc.",
+    "po_number": "NIKE-2025-07-001",
+    "contact_email": "media@nike.com"
+  }
 }
 ```
 
-#### Response  
-
+#### Response
 ```json
 {
-  "status": "received",
-  "assets": [
+  "media_buy_id": "buy_12345",
+  "status": "partially_active",
+  "created_at": "2025-06-15T10:00:00Z",
+  
+  "packages": [
     {
-      "creative_id": "nike_run_6s_vertical",
-      "status": "pending_review",
-      "estimated_approval_time": "2025-06-26T18:00:00Z"
+      "package_id": "premium_sports_guaranteed",
+      "status": "pending_creative_approval",
+      "creative_review": {
+        "cr_video_30s": {
+          "status": "in_review",
+          "eta": "2025-06-15T14:00:00Z"
+        }
+      }
+    },
+    {
+      "package_id": "audio_streaming_non_guaranteed",
+      "status": "active",
+      "activation_time": "2025-06-15T10:05:00Z",
+      "current_metrics": {
+        "win_rate": 0.31,
+        "avg_cpm": 11.85,
+        "impressions_delivered": 0
+      }
     }
+  ],
+  
+  "next_steps": [
+    "Creative cr_video_30s under review - check status in 4 hours",
+    "Audio package active and bidding in market"
   ]
 }
 ```
 
 ### check_media_buy_status
-The buyer should call `check_media_buy_status` for any pending media buy at least once a day until it is in status "ready". Any media buy that is not in "ready" status prior to the start date runs the risk of underdelivering.
 
 #### Request
-
 ```json
 {
-  "media_buy_id": "buy_nike_sports_2025_07"
+  "media_buy_id": "buy_12345"
 }
 ```
 
-#### Response - Pending
-
+#### Response
 ```json
 {
-  "media_buy_id": "buy_nike_sports_2025_07",
-  "status": "pending_creative"
-}
-```
-
-#### Response - Live
-
-```json
-{
-  "media_buy_id": "buy_nike_sports_2025_07",
+  "media_buy_id": "buy_12345",
   "status": "live",
   "flight_progress": {
-    "days_elapsed": 14,
-    "days_remaining": 17,
-    "percentage_complete": 45
+    "start_time": "2025-07-01T00:00:00Z",
+    "current_time": "2025-07-15T14:30:00Z",
+    "end_time": "2025-07-31T23:59:59Z",
+    "percentage_complete": 48
   },
-  "delivery": {
-    "impressions": 3409091,
-    "spend": 75000,
-    "pacing": "on_track"
+  
+  "overall_metrics": {
+    "total_spend": 43000,
+    "total_impressions": 1850000,
+    "avg_cpm": 23.24,
+    "pacing": "slightly_behind"
   },
+  
   "packages": [
     {
-      "package_id": "abcd1",
+      "package_id": "premium_sports_guaranteed",
       "status": "delivering",
-      "spend": 12500,
-      "pacing": "on_track"
+      "delivery_type": "guaranteed",
+      "metrics": {
+        "impressions_delivered": 950000,
+        "impressions_guaranteed": 2000000,
+        "spend": 26600,
+        "pacing": "on_track",
+        "viewability_rate": 0.96
+      }
     },
     {
-      "package_id": "abcd2", 
+      "package_id": "audio_streaming_non_guaranteed",
       "status": "delivering",
-      "spend": 32500,
-      "pacing": "slightly_behind"
+      "delivery_type": "non_guaranteed",
+      "metrics": {
+        "impressions_delivered": 900000,
+        "spend": 16400,
+        "avg_cpm": 18.22,
+        "win_rate": 0.28,
+        "listen_through_rate": 0.89
+      }
     }
-  ],
-  "issues": [],
-  "last_updated": "2025-07-15T12:00:00Z"
+  ]
 }
 ```
 
 ### update_media_buy_performance_index
 
-On a regular basis (ideally daily), the principal should share a report on performance vs index by package, including the time range for the measured exposures. The publisher can use this performance data to optimize packages.
-
 #### Request
-
 ```json
 {
-  "media_buy_id": "buy_nike_sports_2025_07",
+  "media_buy_id": "buy_12345",
   "reporting_period": {
     "start": "2025-07-01T00:00:00Z",
     "end": "2025-07-14T23:59:59Z"
   },
   "package_performance": [
     {
-      "package_id": "abcd1",
-      "performance_index": 123
+      "package_id": "premium_sports_guaranteed",
+      "performance_index": 145,
+      "confidence_interval": [125, 165],
+      "sample_size": 45000
     },
     {
-      "package_id": "abcd2",
-      "performance_index": 80
+      "package_id": "audio_streaming_non_guaranteed",
+      "performance_index": 92,
+      "confidence_interval": [78, 106],
+      "sample_size": 38000
+    }
+  ],
+  "notes": "Sports package showing strong incremental lift"
+}
+```
+
+### Additional Endpoints
+
+#### get_publisher_creative_formats (NEW)
+
+Returns all creative formats supported by a publisher.
+
+#### Request
+```json
+{
+  "publisher": "yahoo",
+  "media_types": ["video", "display"],
+  "include_standard_formats": true
+}
+```
+
+#### Response
+```json
+{
+  "publisher": "yahoo",
+  "formats": [
+    {
+      "format_type": "custom",
+      "format_id": "yahoo_edge_to_edge",
+      "name": "Edge-to-Edge Mobile Video",
+      "media_type": "video",
+      "description": "Full-width mobile video that expands edge-to-edge on scroll",
+      "preview_url": "https://yahoo.com/formats/edge-to-edge",
+      "assets": {
+        "primary_video": {
+          "required": true,
+          "mimes": ["video/mp4"],
+          "aspect_ratios": ["9:16", "1:1", "4:5"],
+          "min_duration": 6,
+          "max_duration": 15,
+          "max_file_size_mb": 50,
+          "audio": "optional"
+        },
+        "end_card": {
+          "required": false,
+          "mimes": ["image/jpeg", "image/png"],
+          "sizes": [{"w": 1080, "h": 1920}]
+        },
+        "logo": {
+          "required": true,
+          "mimes": ["image/png"],
+          "max_size": {"w": 200, "h": 100},
+          "transparency": "required"
+        }
+      },
+      "technical_specs": {
+        "viewability": "100% in-view autoplay",
+        "interaction": "tap for sound",
+        "measurement": "MOAT, IAS supported"
+      },
+      "available_on": ["mobile_web", "mobile_app"]
     },
     {
-      "package_id": "abcd3",
-      "sufficient_data": false
+      "format_type": "custom", 
+      "format_id": "nyt_flex_xl",
+      "name": "NYT Flex Frame XL",
+      "media_type": "display",
+      "description": "Expandable rich media unit with video",
+      "assets": {
+        "collapsed_state": {
+          "required": true,
+          "size": {"w": 970, "h": 250},
+          "mimes": ["text/html", "image/jpeg"]
+        },
+        "expanded_state": {
+          "required": true,
+          "size": {"w": 970, "h": 550},
+          "mimes": ["text/html"],
+          "can_include_video": true
+        }
+      }
+    },
+    {
+      "format_type": "standard",
+      "format_id": "iab_video_standard",
+      "name": "Standard In-Stream Video",
+      "media_type": "video",
+      "spec": {
+        // Standard OpenRTB video spec
+      }
     }
   ]
 }
 ```
 
-#### Response
+## AEE Integration
 
-```json
-{
-  "acknowledged": true,
-}
-```
-
-### get_media_buy_delivery
-
-The publisher should provide billable data on delivery by package to date, as well as media metrics like views, clicks, and completions.
-
-
-#### Request
-
-```json
-{
-  "media_buy_id": "buy_nike_sports_2025_07",
-  "date_range": {
-    "start": "2025-07-01T00:00:00Z",
-    "end": "2025-07-14T23:59:59Z"
-  }
-}
-```
-
-#### Response
-
-```json
-{
-  "media_buy_id": "buy_nike_sports_2025_07",
-  "reporting_period": {
-    "start": "2025-07-01T00:00:00Z", 
-    "end": "2025-07-14T23:59:59Z"
-  },
-  "totals": {
-    "impressions": 3409091,
-    "spend": 75000.00,
-    "clicks": 40909,
-    "video_completions": 2236364
-  },
-  "by_package": [
-    {
-      "package_id": "abcd1",
-      "impressions": 568182,
-      "spend": 12500.00
-    },
-    {
-      "package_id": "abcd2",
-      "impressions": 1805556,
-      "spend": 32500.00
-    }
-  ],
-  "currency": "USD"
-}
-```
-
-### update_media_buy
-
-The principal uses `update_media_buy` to request changes to packages, including updating frequency caps, budgets, pacing, and creative. The principal may also request new packages or iterations on the active packages.
-
-#### Request Examples
-
-**Adding approved creative to package rotation:**
-```json
-{
-  "media_buy_id": "buy_nike_sports_2025_07",
-  "action": "add_creative_to_rotation",
-  "creative_id": "nike_run_15s_testimonial",
-  "package_id": "abcd2"
-}
-```
-
-**Removing creative from a package:**
-```json
-{
-  "media_buy_id": "buy_nike_sports_2025_07", 
-  "action": "remove_creative_from_rotation",
-  "creative_id": "nike_run_6s_vertical",
-  "package_id": "abcd1"
-}
-```
-
-**Budget reallocation between packages:**
-```json
-{
-  "media_buy_id": "buy_nike_sports_2025_07",
-  "action": "change_package_budget",
-  "package_id": "abcd1",
-  "budget": 35000  // Was 25000
-}
-```
-
-**Increasing total media buy budget:**
-```json
-{
-  "media_buy_id": "buy_nike_sports_2025_07",
-  "action": "change_budget",
-  "budget": 170000, // was 150000
-}
-```
-
-**Pausing a package:**
-```json
-{
-  "media_buy_id": "buy_nike_sports_2025_07",
-  "action": "pause_package", // can also be unpause
-  "package_id": "abcd3"
-}
-```
-
-**Pausing entire media buy:**
-```json
-{
-  "media_buy_id": "buy_nike_sports_2025_07",
-  "action": "pause_media_buy",
-  "reason": "Product recall requires halting all advertising" // reason is optional
-}
-```
-
-
-#### Response
-
-```json
-{
-  "status": "accepted",
-  "implementation_date": "2025-07-16T00:00:00Z",
-  "notes": "Changes will take effect at midnight Pacific. Budget reallocation may take 24 hours to fully optimize."
-}
-```
-
-#### Response - rejected
-
-```json
-{
-  "status": "rejected", // note this could be "partially accepted"
-  "reason": "Can't reduce budget beneath amount delivered"
-}
-```
-
-
-## AEE (Agentic Execution Engine) Integration
-
-### AEE Protocol Flow
-
-1. **Publisher's ad server** makes OpenRTB request to Principal's AEE
-2. **AEE evaluates** the impression against active signals
-3. **AEE responds** with signal presence/absence
-4. **Publisher applies** package-level decisioning
-
-### OpenRTB Request from Publisher to AEE
+When using provided signals, publishers make OpenRTB requests to the Principal's AEE:
 
 ```json
 {
@@ -587,56 +674,61 @@ The principal uses `update_media_buy` to request changes to packages, including 
     "id": "1",
     "video": {
       "mimes": ["video/mp4"],
-      "maxduration": 30,
-      "protocols": [2, 3, 5, 6],
+      "protocols": [2, 3],
       "w": 1920,
       "h": 1080
     }
   }],
-  "site": {
-    "domain": "premiumsports.com",
-    "cat": ["IAB17"],
-    "page": "https://premiumsports.com/marathon-training"
-  },
   "user": {
     "ext": {
-      "rampid": "XY123456",
-      "id5": "ID5_ABC789"
+      "rampid": "XY123456"
     }
   },
   "ext": {
     "acp": {
-      "media_buy_id": "buy_nike_sports_2025_07",
-      "packages": ["pkg_001", "pkg_002", "pkg_003"],
-      "publisher": "premium_sports_network"
+      "media_buy_id": "buy_12345",
+      "packages": ["premium_sports_guaranteed"],
+      "provided_signals": ["auto_intenders_q3"]
     }
   }
 }
 ```
 
-### AEE Response
-
+AEE Response:
 ```json
 {
   "signals": {
-    "present": ["nike_site_visitors", "sports_enthusiasts"],
-    "absent": ["competitor_viewers"]                            // debug only
+    "present": ["auto_intenders_q3"],
+    "absent": []
   },
   "packages": {
-    "eligible": ["pkg_001", "pkg_002"],
-    "ineligible": ["pkg_003"],
-    "reasons": {
-      "pkg_003": "frequency_cap_exceeded"                        // debug only
-    }
-  },
-  "metadata": {
-    "aee_version": "1.0",
-    "processing_time_ms": 15,
-    "timestamp": "2025-07-15T14:30:00Z"
+    "eligible": ["premium_sports_guaranteed"]
   }
 }
 ```
 
-## Version History
+## Standard Creative Formats Reference
 
-- **1.0**: Initial specification (July 2025)
+The protocol adopts these IAB standard formats as the baseline:
+
+### Video
+- Formats: MP4 (H.264/H.265), WebM (VP8/VP9)
+- Resolutions: 1920x1080, 1280x720, 640x480
+- Durations: 6s, 15s, 30s, 60s
+- Protocols: VAST 2.0-4.2
+
+### Audio  
+- Formats: MP3 (128-320kbps), M4A/AAC
+- Durations: 15s, 30s, 60s
+- Companions: 640x640, 300x250
+
+### Display
+- Standard IAB sizes
+- HTML5, JPEG, PNG, GIF
+- MRAID 3.0 for mobile
+
+### DOOH
+- Venue-specific requirements
+- Min 1920x1080 for most venues
+- 10s standard rotation
+- Pre-approval required

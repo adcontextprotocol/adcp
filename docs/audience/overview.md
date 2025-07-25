@@ -3,9 +3,9 @@ sidebar_position: 1
 title: Overview
 ---
 
-# Audience Discovery Protocol Overview
+# Audience Activation Protocol Overview
 
-The Audience Discovery Protocol enables AI assistants to discover, activate, and manage marketing audiences through natural language interactions.
+The Audience Activation Protocol enables AI assistants to discover, activate, and manage marketing audiences through natural language interactions.
 
 ## Key Concepts
 
@@ -50,8 +50,6 @@ Turn on audiences for specific platforms and accounts.
 ### 3. check_audience_status
 Monitor activation progress and deployment status.
 
-### 4. report_usage
-Report daily usage for accurate billing.
 
 ## Use Cases
 
@@ -117,7 +115,7 @@ flowchart LR
 
 ## Integration Flow
 
-The Audience Discovery Protocol works within the broader [Ad Tech Ecosystem Architecture](../intro#ad-tech-ecosystem-architecture):
+The Audience Activation Protocol works within the broader [Ad Tech Ecosystem Architecture](../intro#ad-tech-ecosystem-architecture):
 
 1. **Discover** audiences on audience platforms (LiveRamp, Experian, Peer39)
 2. **Identify** where they're deployed (multiple SSPs, DSPs, DMPs)

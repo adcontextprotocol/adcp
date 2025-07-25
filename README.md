@@ -14,17 +14,16 @@ Ad Context Protocol (AdCP) is an open standard that enables AI assistants to int
 
 Instead of navigating complex interfaces:
 
-> "Find audiences of premium sports enthusiasts who would be interested in high-end running shoes, activate them on Scope3, and set up daily usage reporting."
+> "Find audiences of premium sports enthusiasts who would be interested in high-end running shoes, and activate them on Scope3."
 
 The AI assistant handles:
 - Audience discovery across platforms
 - Transparent pricing comparison  
-- Activation and deployment
-- Automated reporting setup
+- Direct activation on decisioning platforms
 
 ## Available Protocols
 
-### 🎯 Audience Discovery Protocol - RFC/v0.1
+### 🎯 Audience Activation Protocol - RFC/v0.1
 Discover and activate marketing audiences using natural language.
 
 - **Natural Language Discovery**: "High-income millennials interested in sustainable fashion"
@@ -96,7 +95,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 ### Current Support
 
 - **Reference Implementation**: Complete MCP server example
-- **Scope3**: Full Audience Discovery Protocol support
+- **Scope3**: Full Audience Activation Protocol support
 - **More Coming**: Additional platforms implementing Q1 2025
 
 ### Certification

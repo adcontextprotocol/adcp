@@ -39,10 +39,10 @@ Platforms that have information about audiences (people, households, devices) an
 
 Each AdCP protocol operates within this ecosystem:
 
-### 🎯 Audience Discovery Protocol
-- **Scope**: Works primarily with **audience platforms** to discover and activate audiences
-- **Integration**: Activates audiences for use on **decisioning platforms**
-- **Workflow**: Find audiences → Activate for decisioning platform → Use in campaigns
+### 🎯 Audience Activation Protocol
+- **Scope**: Works with **audience platforms** to discover and activate audiences directly on **decisioning platforms**
+- **Integration**: Direct integration between audience agents and decisioning platforms (DSPs, injective platforms)
+- **Workflow**: Find audiences → Direct activation on target platform → Ready for campaign use
 
 ### 📍 Curation Protocol (Coming Q2 2025)
 - **Scope**: Works with **decisioning platforms** and **supply-side platforms**
@@ -58,17 +58,16 @@ Each AdCP protocol operates within this ecosystem:
 
 Instead of navigating multiple platforms, you can now say:
 
-> "Find audiences of premium sports enthusiasts who would be interested in high-end running shoes, activate them on Scope3, and set up daily usage reporting."
+> "Find audiences of premium sports enthusiasts who would be interested in high-end running shoes, and activate them on Scope3."
 
 The AI assistant will:
 1. Search for relevant audiences across connected platforms
 2. Show you options with transparent pricing
-3. Activate your chosen audiences
-4. Set up automated reporting
+3. Activate your chosen audiences for use on decisioning platforms
 
 ## Available Protocols
 
-### 🎯 [Audience Discovery Protocol](./audience/overview)
+### 🎯 [Audience Activation Protocol](./audience/overview)
 **Status**: RFC/v0.1
 
 Discover and activate marketing audiences using natural language.
@@ -83,14 +82,17 @@ Curate media inventory based on context and brand safety.
 
 Execute and optimize media buys programmatically.
 
+## Reference Implementations
+
+- [Audience Agent](https://github.com/adcontextprotocol/audience-agent)
+- [Sales Agent](https://github.com/adcontextprotocol/salesagent)
+
 ## For Platform Providers
 
 If you operate an audience platform, DSP, or ad tech solution:
 
 1. [Review the Protocol Specifications](./audience/specification)
-2. [Follow the Implementation Guide](./implementation/getting-started)
-3. [Test Your Implementation](./implementation/testing)
-4. [Get Listed in Our Directory](/showcase)
+2. [Get Listed in Our Directory](/showcase)
 
 ## For Advertisers & Agencies
 
@@ -103,7 +105,6 @@ If you want to use AdCP with your AI assistant:
 ## Next Steps
 
 - **Platform Providers**: Start with the [Audience Protocol Specification](./audience/specification)
-- **Developers**: Check out our [Implementation Guide](./implementation/getting-started)
 - **Everyone**: Join the [community discussion](https://github.com/adcontextprotocol/adcp/discussions)
 
 ## Need Help?

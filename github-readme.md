@@ -21,13 +21,13 @@ Full documentation is available at [adcontextprotocol.org](https://adcontextprot
 
 ### Quick Links
 - [Getting Started](https://adcontextprotocol.org/docs/intro)
-- [Audience Discovery Protocol](https://adcontextprotocol.org/docs/audience)
+- [Audience Activation Protocol](https://adcontextprotocol.org/docs/audience)
 - [Implementation Guide](https://adcontextprotocol.org/docs/implementation)
 - [API Reference](https://adcontextprotocol.org/docs/reference)
 
 ## 🎯 Current Protocols
 
-### Audience Discovery Protocol (RFC/v0.1)
+### Audience Activation Protocol (RFC/v0.1)
 Enable AI assistants to discover and activate audiences across any compatible platform.
 
 **Features:**
@@ -85,7 +85,7 @@ We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for deta
 
 ## 🗺 Roadmap
 
-- 🚧 **Now**: Audience Discovery Protocol RFC/v0.1
+- 🚧 **Now**: Audience Activation Protocol RFC/v0.1
 - 🚧 **Now**: Media Buy Protocol RFC/v0.1
 - 📅 **Q2 2025**: Curation Protocol RFC
 - 🔮 **Q4 2025**: Advanced AI integrations

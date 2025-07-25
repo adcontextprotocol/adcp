@@ -6,10 +6,10 @@ import styles from './index.module.css';
 const platforms = [
   {
     name: 'Scope3',
-    description: 'Complete Audience Discovery Protocol implementation with real-time activation and reporting.',
+    description: 'Complete Audience Activation Protocol implementation with real-time activation and reporting.',
     status: 'Live',
     website: 'https://scope3.com',
-    protocols: ['Audience Discovery RFC'],
+    protocols: ['Audience Activation RFC'],
     features: ['Natural Language Search', 'Multi-Platform Activation', 'Usage Reporting'],
   },
   {
@@ -17,7 +17,7 @@ const platforms = [
     description: 'Open source reference implementation for platform providers and developers.',
     status: 'Available',
     website: 'https://github.com/adcontextprotocol/reference-implementation',
-    protocols: ['Audience Discovery RFC'],
+    protocols: ['Audience Activation RFC'],
     features: ['Complete Protocol Support', 'Test Suite Included', 'Documentation'],
   },
 ];
@@ -27,14 +27,14 @@ const comingSoon = [
     name: 'The Trade Desk',
     description: 'B2B-focused audience discovery with enhanced business targeting capabilities.',
     status: 'Coming Q1 2025',
-    protocols: ['Audience Discovery RFC'],
+    protocols: ['Audience Activation RFC'],
     features: ['B2B Audiences', 'Account-Based Targeting', 'Professional Demographics'],
   },
   {
     name: 'LiveRamp',
     description: 'Identity-resolved audience activation with household and individual targeting.',
     status: 'Coming Q1 2025', 
-    protocols: ['Audience Discovery RFC'],
+    protocols: ['Audience Activation RFC'],
     features: ['Identity Resolution', 'Cross-Device Linking', 'Privacy-Safe Targeting'],
   },
 ];
