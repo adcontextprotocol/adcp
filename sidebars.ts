@@ -34,11 +34,11 @@ const sidebars: SidebarsConfig = {
       items: [
         'media-buy/overview',
         'media-buy/specification',
-        'media-buy/01-media-products',
-        'media-buy/02-creative-lifecycle',
-        'media-buy/03-media-buys',
-        'media-buy/04-targeting',
-        'media-buy/05-reporting-and-optimization',
+        'media-buy/media-products',
+        'media-buy/creative-lifecycle',
+        'media-buy/media-buys',
+        'media-buy/targeting',
+        'media-buy/reporting-and-optimization',
         'media-buy/creative-formats'
       ],
     },

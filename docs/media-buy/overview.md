@@ -1,123 +1,38 @@
-# Media Buying Overview
+# ADCP V2.3 Media Buying Overview
 
 ## Objectives
 
-The Agentic Media Buying Protocol (AdCP:Buy) provides a unified mechanism for orchestrators to facilitate media buys on publishers on behalf of principals, supporting both guaranteed and non-guaranteed inventory through a single interface.
+The Agentic Digital Content Protocol (ADCP) V2.3 provides a streamlined, AI-first mechanism for orchestrators to facilitate and manage the **entire lifecycle** of a media buy. It is designed to be simple to implement while providing the necessary expressiveness for modern media buys, from initial discovery to in-flight optimization.
 
-A "media package" represents a combination of inventory, data, creative formats, and targeting, available at either a fixed price (guaranteed delivery) or competitive bid (non-guaranteed). Each package embodies a testable hypothesis that can be validated through measurement. The protocol seamlessly integrates with programmatic infrastructure while enabling the sophisticated collaboration of traditional media buys.
-
-## Key Concepts
-
-### Unified Package Discovery
-The protocol uses a single `get_packages` endpoint that returns both:
-- **Catalog packages**: Standardized, pre-configured inventory that accepts immediate orders at competitive bids
-- **Custom packages**: Tailored solutions created in response to specific briefs with negotiated terms
-
-### Delivery Types
-- **Guaranteed**: Fixed impressions at fixed CPM with publisher commitment
-- **Non-guaranteed**: Best-effort delivery at specified bid, competing in real-time
-
-### OpenRTB Compatibility
-All creative specifications, targeting parameters, and technical implementations align with OpenRTB 2.6 standards, ensuring compatibility with existing programmatic infrastructure.
+This document provides a high-level overview of the protocol. For detailed information on each phase, please see the full specification documents.
 
 ## Protocol Flow
 
-### Phase 1: Discovery
-The orchestrator calls `get_packages` with:
-- Optional brief describing campaign objectives
-- Complete media buy specification (budget, timing, targeting, creatives)
-- Provided signals for advanced targeting
-- Delivery preferences (guaranteed/non-guaranteed/both)
+The protocol is broken down into a series of logical phases, each with its own set of tools and data models.
 
-The publisher responds with available packages showing:
-- Compatibility with uploaded creatives
-- Estimated delivery at various bid levels
-- Pricing guidance for competitive packages
-- Approval requirements for custom packages
+1.  **[Media Products & Discovery](./01-media-products.md)**
+    -   Define a catalog of sellable **Products**.
+    -   Use a natural language **brief** with the `list_products` tool for AI-powered discovery.
 
-### Phase 2: Media Buy Creation
-The orchestrator calls `create_media_buy` to:
-- Select multiple packages (mixing guaranteed and non-guaranteed)
-- Set budgets and bids per package
-- Assign creatives to packages
-- Specify flight dates and measurement approach
+2.  **[Creative Lifecycle](./02-creative-lifecycle.md)**
+    -   Submit creatives for approval using `submit_creatives`.
+    -   Check on the approval process with `check_creative_status`.
+    -   Request new creative variations with `adapt_creative`.
 
-### Phase 3: Activation
-- Catalog packages with pre-approved creatives activate instantly
-- Custom packages may require creative review
-- Non-guaranteed packages begin competing immediately upon activation
-- Guaranteed packages activate after approval workflow
+3.  **[Media Buys](./03-media-buys.md)**
+    -   Purchase products with `create_media_buy`.
+    -   Activate creatives by mapping them to products with `assign_creatives`.
+    -   Modify live campaigns with `update_media_buy`.
 
-### Phase 4: Optimization
-- Principal provides performance indices by package
-- Publisher optimizes delivery based on feedback
-- Creatives can be added/removed from rotation
-- Budgets can be reallocated between packages
+4.  **[Targeting](./04-targeting.md)**
+    -   Understand the layered approach of combining a base `targeting_template` with a media buy's `targeting_overlay`.
 
-### Phase 5: Reporting
-- Real-time delivery metrics for all packages
-- Win rate data for non-guaranteed inventory
-- Unified reporting across package types
-- Standard OpenRTB measurement integration
-
-## Technical Architecture
-
-### Creative Standards
-The protocol adopts IAB/OpenRTB creative formats as the foundation:
-- **Video**: VAST 4.1+ with standard MIME types, durations, and companion specs
-- **Audio**: MP3/M4A with VAST 4.1, supporting pre-fetch timing
-- **Display**: Standard IAB sizes with HTML5 support
-- **DOOH**: Venue-specific formats with impression multipliers
-- **Native**: OpenRTB Native 1.2 specifications
-
-### Provided Signals Integration
-Principals can use their own data without sharing raw audiences:
-- Signals are referenced by ID in package configuration
-- AEE validates signal presence at impression time
-- Publishers never see underlying audience data
-- Seamless integration with OpenRTB bid requests
-
-### Measurement Flexibility
-- Supports indexed performance feedback
-- Integrates with standard viewability vendors
-- Enables custom measurement methodologies
-- Real-time optimization based on outcomes
-
-## Benefits of Unified Approach
-
-### For Buyers
-- Single API for all inventory types
-- Immediate activation for standard packages
-- Custom solutions when needed
-- Use existing creative assets and data
-- Mix guaranteed and non-guaranteed for optimal results
-
-### For Publishers
-- Monetize all inventory through one protocol
-- Reduce operational overhead
-- Automated creative validation
-- Dynamic pricing for non-guaranteed
-- Maintain direct relationships
-
-### For the Ecosystem
-- Bridges programmatic and direct channels
-- Reduces fragmentation
-- Enables innovation while maintaining standards
-- Supports emerging media types
-- Preserves privacy through signal abstraction
-
-## Agentic Execution Engine (AEE)
-
-The AEE enables sophisticated real-time decisioning without exposing raw audience data:
-
-1. Publisher's ad server makes OpenRTB request to Principal's AEE
-2. AEE evaluates impression against active signals
-3. Response indicates signal presence and package eligibility
-4. Publisher applies package-level decisioning rules
-
-This architecture combines the precision of RTB with the scale and privacy of traditional buys, working equally well for real-time and offline media.
+5.  **[Reporting & Optimization](./05-reporting-and-optimization.md)**
+    -   Monitor campaign delivery with `get_media_buy_delivery`.
+    -   Provide performance feedback for AI-driven optimization using `update_performance_index`.
 
 ## Next Steps
 
-- Read the full [Protocol Specification](./specification)
-- See the [Sales Agent reference implementation](https://github.com/adcontextprotocol/salesagent)
+- Read the full [Protocol Specification](./specification.md)
+- Review the [Creative Formats](./creative_formats.md)
+- See the [reference implementation](https://github.com/google/gemini-adcp-buy-server)
