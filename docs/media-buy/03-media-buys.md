@@ -1,55 +1,56 @@
 # 3. Media Buys
 
-The **Media Buy** is the central object that represents a purchase. This document covers the creation and in-flight management of a media buy.
+The Media Buy represents the client's commitment to purchase inventory.
 
-## Creating a Media Buy (`create_media_buy`)
+## Creating a Media Buy
 
-A media buy is created by specifying which products to purchase and providing the necessary campaign details.
+The `create_media_buy` tool creates the buy.
 
-- **Request**: `CreateMediaBuyRequest`
-  - **`product_ids`**: A list of products recommended by the `list_products` tool.
-  - **`po_number`**: The purchase order number for this buy.
-  - **`flight_start_date` / `flight_end_date`**: The campaign duration.
-  - **`total_budget`**: The total budget for the entire media buy.
-  - **`targeting_overlay`**: A `Targeting` object that refines the base targeting of the selected products. See the [Targeting](./04-targeting.md) guide.
-  - **`initial_creatives`**: An optional list of `Creative` objects to submit immediately.
+- `product_ids` (list[string], required)
+- `flight_start_date` / `flight_end_date` (date, required)
+- `total_budget` (float, required)
+- `targeting_overlay` (Targeting, required)
+- `po_number` (string, optional)
+- `pacing` (string, optional): "even" (default), "asap", or "daily_budget".
+- `daily_budget` (float, optional): Required if `pacing` is "daily_budget".
+- `creatives` (list[Creative], optional): Creatives to submit immediately.
 
-- **Response**: `CreateMediaBuyResponse`
-  - **`media_buy_id`**: The unique identifier for this media buy, which is used in all subsequent lifecycle calls.
-  - **`status`**: The initial status of the buy (e.g., "created").
+**Example:** A client wants to launch a $50,000 campaign as quickly as possible.
+```json
+{
+  "product_ids": ["prod_video_takeover", "prod_display_ros"],
+  "flight_start_date": "2025-08-01",
+  "flight_end_date": "2025-08-15",
+  "total_budget": 50000.00,
+  "targeting_overlay": { "geography": ["USA-CA"] },
+  "pacing": "asap"
+}
+```
 
-## In-Flight Management
+## Updating a Media Buy
 
-Once a media buy is created, it can be updated and managed using its `media_buy_id`.
+The `update_media_buy` tool is a single, powerful tool for all in-flight modifications.
 
-### Assigning Creatives (`assign_creatives`)
+- `media_buy_id` (string, required)
+- `new_total_budget` (float, optional)
+- `new_targeting_overlay` (Targeting, optional)
+- `creative_assignments` (dict, optional): Assigns creatives to products.
 
-This tool maps approved creatives to specific products within the buy. This is the final step that makes a creative eligible to serve in a specific placement. A single creative can be assigned to multiple products if it is compatible with their formats.
+### Consolidating Creative Assignment
 
-- **Request**: `AssignCreativesRequest`
-  - **`media_buy_id`**: The ID of the buy to update.
-  - **`assignments`**: A dictionary where keys are `product_id`s and values are lists of `creative_id`s.
+Instead of a separate tool, creative assignment is handled within the update call. This allows for a single, atomic update.
 
-  **Example `assignments`:**
-  ```json
-  {
-    "prod_video_instream_sports": [
-      "cr_video_catfood_promo_30s",
-      "cr_video_catfood_promo_15s"
-    ],
-    "prod_display_banner_news": [
-      "cr_banner_catfood_300x250"
+**Example:** A campaign is performing well, so the client wants to increase the budget and assign a new, high-performing creative.
+```json
+{
+  "media_buy_id": "mb_12345",
+  "new_total_budget": 75000.00,
+  "creative_assignments": {
+    "prod_video_takeover": [
+      "cr_original_promo_30s",
+      "cr_new_high_perf_15s"
     ]
   }
-  ```
-
-### Updating the Buy (`update_media_buy`)
-
-This tool allows for modifying the core parameters of a live media buy.
-
-- **Request**: `UpdateMediaBuyRequest`
-  - **`media_buy_id`**: The ID of the buy to update.
-  - **`new_total_budget`**: (Optional) A new total budget for the campaign.
-  - **`new_targeting_overlay`**: (Optional) A new `Targeting` object that will replace the previous overlay.
-
-This enables clients to react to campaign performance by reallocating budget or refining the audience.
+}
+```
+This design is more efficient, reducing the number of API calls required to manage a campaign.

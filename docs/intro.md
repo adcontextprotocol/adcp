@@ -77,7 +77,7 @@ Discover and activate marketing audiences using natural language.
 
 Curate media inventory based on context and brand safety.
 
-### 💰 [Media Buy Protocol](./media-buy/overview)
+### 💰 [Media Buy Protocol](./media-buy/index)
 **Status**: RFC/v0.1
 
 Execute and optimize media buys programmatically.
