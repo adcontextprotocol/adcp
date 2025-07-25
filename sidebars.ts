@@ -32,8 +32,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Media Buy',
       items: [
-        'media-buy/overview',
-        'media-buy/specification',
+        'media-buy/index',
         'media-buy/media-products',
         'media-buy/creative-lifecycle',
         'media-buy/media-buys',
