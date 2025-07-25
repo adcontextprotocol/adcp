@@ -6,7 +6,7 @@ title: Protocol Specification
 # Audience Activation Protocol RFC
 
 **Status**: Request for Comments  
-**Last Updated**: January 2025
+**Last Updated**: July 25, 2025
 
 ## Abstract
 
