@@ -732,3 +732,7 @@ The protocol adopts these IAB standard formats as the baseline:
 - Min 1920x1080 for most venues
 - 10s standard rotation
 - Pre-approval required
+
+## Next Steps
+
+- See the [Sales Agent reference implementation](https://github.com/adcontextprotocol/salesagent)

@@ -116,3 +116,8 @@ The AEE enables sophisticated real-time decisioning without exposing raw audienc
 4. Publisher applies package-level decisioning rules
 
 This architecture combines the precision of RTB with the scale and privacy of traditional buys, working equally well for real-time and offline media.
+
+## Next Steps
+
+- Read the full [Protocol Specification](./specification)
+- See the [Sales Agent reference implementation](https://github.com/adcontextprotocol/salesagent)

@@ -439,3 +439,7 @@ The principal's identity determines business-level access and pricing:
 4. Consider both pricing options when available
 5. Use multi-platform queries when discovering audiences across SSPs
 6. Store platform-specific segment IDs for campaign execution
+
+## Next Steps
+
+- See the [Audience Agent reference implementation](https://github.com/adcontextprotocol/audience-agent)
