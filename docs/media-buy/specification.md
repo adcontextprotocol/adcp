@@ -1,16 +1,16 @@
-# Agentic Media Buying Protocol (ACP:Buy) v1.0
+# Agentic Media Buying Protocol (AdCP:Buy) RFC
 
-**Version**: 1.0  
-**Status**: Draft  
+**Version**: 0.1  
+**Status**: Request for Comments  
 **Last Updated**: January 2025
 
 ## Abstract
 
-The Agentic Media Buying Protocol (ACP:Buy) defines a standard Model Context Protocol (MCP) interface for AI-powered media buying systems. This protocol enables AI assistants to help advertisers discover, negotiate, execute, and optimize media buys through natural language interactions.
+The Agentic Media Buying Protocol (AdCP:Buy) defines a standard Model Context Protocol (MCP) interface for AI-powered media buying systems. This protocol enables AI assistants to help advertisers discover, negotiate, execute, and optimize media buys through natural language interactions.
 
 ## Overview
 
-The ACP:Buy protocol provides:
+The AdCP:Buy protocol provides:
 
 - Collaborative media package creation between principals and publishers
 - Iterative proposal and negotiation workflows

@@ -1,8 +1,8 @@
 ## Objectives
 
-The goal of the Agentic Media Buying Protocol (ACP:Buy) is to provide a mechanism for an orchestrator to facilitate a media buy on a publisher on behalf of a principal.
+The goal of the Agentic Media Buying Protocol (AdCP:Buy) is to provide a mechanism for an orchestrator to facilitate a media buy on a publisher on behalf of a principal.
 
-In the ACP:Buy protocol, a "media package" is a collaborative combination of placements, data, creative, and targeting, delivered at a mutually-agreeable price between the principal and the publisher. A media package represents a hypothesis that can be tested through some form of measurement, whether econometric, predictive, or observed. For ACP:Buy to work properly, the principal must provide indexed measurement data on a regular basis. This enables the publisher to adjust packages to deliver optimal outcomes. Additionally, for ACP:Buy to work properly, all media packages must have sufficient exposures to facilitate measurement in a reasonable time.
+In the AdCP:Buy protocol, a "media package" is a collaborative combination of placements, data, creative, and targeting, delivered at a mutually-agreeable price between the principal and the publisher. A media package represents a hypothesis that can be tested through some form of measurement, whether econometric, predictive, or observed. For AdCP:Buy to work properly, the principal must provide indexed measurement data on a regular basis. This enables the publisher to adjust packages to deliver optimal outcomes. Additionally, for AdCP:Buy to work properly, all media packages must have sufficient exposures to facilitate measurement in a reasonable time.
 
 Media packages are executed by the publisher. The principal can contribute data and strategies to the media buy for the publisher to use in media packages. For instance, a principal may have first-party audience data. The publisher could use this to create a media package, potentially optimizing delivery using its own ata as well.
 
@@ -38,7 +38,7 @@ At the end of the flight dates, the orchestrator should request a final delivery
 
 ## Agentic Execution Engine
 
-The goal of the ACP:Buy protocol is to combine the impression-level real-time decisioning capabilities of real-time bidding (RTB) with the scale, data protection, and customizability of traditional media buys. The ACP:Buy protocol is not dependent upon impression-level decisioning and applies equally well to offline media buys (like linear television or terrestrial radio). However, when decisions are at an impression level, ACP:Buy can be combined with real-time agents to make more precise decisions.
+The goal of the AdCP:Buy protocol is to combine the impression-level real-time decisioning capabilities of real-time bidding (RTB) with the scale, data protection, and customizability of traditional media buys. The AdCP:Buy protocol is not dependent upon impression-level decisioning and applies equally well to offline media buys (like linear television or terrestrial radio). However, when decisions are at an impression level, AdCP:Buy can be combined with real-time agents to make more precise decisions.
 
 The ability to provide real-time signals at the impression level also means that the principal does not have to synchronize audiences ahead of time with a publisher, nor send raw audience data to a publisher. The signals that come from the AEE to the publisher are identified only as eligible or ineligible. For instance, an agent may be applying a frequency cap, brand safety controls, and an audience. An ineligible impression for this particular agent might be over the cap, not suitable for the brand, or not in the audience.
 

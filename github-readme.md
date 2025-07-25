@@ -8,12 +8,12 @@ Open standards enabling AI assistants to interact with advertising platforms thr
 
 ## 🚀 Overview
 
-Ad Context Protocol (ACP) provides standardized interfaces that allow AI assistants to:
+Ad Context Protocol (AdCP) provides standardized interfaces that allow AI assistants to:
 - **Discover audiences** using natural language descriptions
 - **Curate media inventory** based on campaign objectives
 - **Execute media buys** with full transparency and control
 
-Built on the Model Context Protocol (MCP), ACP makes advertising platforms accessible to AI agents, revolutionizing how media buyers work.
+Built on the Model Context Protocol (MCP), AdCP makes advertising platforms accessible to AI agents, revolutionizing how media buyers work.
 
 ## 📚 Documentation
 
@@ -27,7 +27,7 @@ Full documentation is available at [adcontextprotocol.org](https://adcontextprot
 
 ## 🎯 Current Protocols
 
-### Audience Discovery Protocol (v1.0)
+### Audience Discovery Protocol (RFC/v0.1)
 Enable AI assistants to discover and activate audiences across any compatible platform.
 
 **Features:**
@@ -43,7 +43,7 @@ Enable AI assistants to discover and activate audiences across any compatible pl
 
 ### Coming Soon
 - **Curation Protocol** (Q2 2025) - Contextual inventory discovery
-- **Media Buy Protocol** (Q3 2025) - Campaign execution and optimization
+- **Media Buy Protocol** (RFC/v0.1) - Campaign execution and optimization
 
 ## 🛠 Implementation
 
@@ -85,18 +85,18 @@ We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for deta
 
 ## 🗺 Roadmap
 
-- ✅ **Q1 2025**: Audience Discovery Protocol v1.0
-- 🚧 **Q2 2025**: Curation Protocol v1.0
-- 📅 **Q3 2025**: Media Buy Protocol v1.0
+- 🚧 **Now**: Audience Discovery Protocol RFC/v0.1
+- 🚧 **Now**: Media Buy Protocol RFC/v0.1
+- 📅 **Q2 2025**: Curation Protocol RFC
 - 🔮 **Q4 2025**: Advanced AI integrations
 
 See our [detailed roadmap](https://github.com/adcontextprotocol/adcontextprotocol/projects/1) for more.
 
-## 🏢 Who's Using ACP?
+## 🏢 Who's Using AdCP?
 
-- Platform providers implementing ACP
-- Agencies using ACP for campaigns
-- AI assistants with ACP integration
+- Platform providers implementing AdCP
+- Agencies using AdCP for campaigns
+- AI assistants with AdCP integration
 
 [View showcase →](https://adcontextprotocol.org/showcase)
 

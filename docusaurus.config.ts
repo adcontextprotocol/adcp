@@ -65,7 +65,7 @@ const config: Config = {
     navbar: {
       title: 'Ad Context Protocol',
       logo: {
-        alt: 'ACP Logo',
+        alt: 'AdCP Logo',
         src: 'img/logo.svg',
       },
       items: [

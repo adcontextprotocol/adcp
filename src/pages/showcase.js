@@ -9,7 +9,7 @@ const platforms = [
     description: 'Complete Audience Discovery Protocol implementation with real-time activation and reporting.',
     status: 'Live',
     website: 'https://scope3.com',
-    protocols: ['Audience Discovery v1.1'],
+    protocols: ['Audience Discovery RFC'],
     features: ['Natural Language Search', 'Multi-Platform Activation', 'Usage Reporting'],
   },
   {
@@ -17,7 +17,7 @@ const platforms = [
     description: 'Open source reference implementation for platform providers and developers.',
     status: 'Available',
     website: 'https://github.com/adcontextprotocol/reference-implementation',
-    protocols: ['Audience Discovery v1.1'],
+    protocols: ['Audience Discovery RFC'],
     features: ['Complete Protocol Support', 'Test Suite Included', 'Documentation'],
   },
 ];
@@ -27,14 +27,14 @@ const comingSoon = [
     name: 'The Trade Desk',
     description: 'B2B-focused audience discovery with enhanced business targeting capabilities.',
     status: 'Coming Q1 2025',
-    protocols: ['Audience Discovery v1.1'],
+    protocols: ['Audience Discovery RFC'],
     features: ['B2B Audiences', 'Account-Based Targeting', 'Professional Demographics'],
   },
   {
     name: 'LiveRamp',
     description: 'Identity-resolved audience activation with household and individual targeting.',
     status: 'Coming Q1 2025', 
-    protocols: ['Audience Discovery v1.1'],
+    protocols: ['Audience Discovery RFC'],
     features: ['Identity Resolution', 'Cross-Device Linking', 'Privacy-Safe Targeting'],
   },
 ];
@@ -96,7 +96,7 @@ export default function Showcase() {
       <main>
         <section className="container margin-top--lg margin-bottom--lg">
           <h2>Live Implementations</h2>
-          <p>Platforms currently supporting ACP in production:</p>
+          <p>Platforms currently supporting AdCP in production:</p>
           <div className="row">
             {platforms.map((props, idx) => (
               <PlatformCard key={idx} {...props} />
@@ -106,7 +106,7 @@ export default function Showcase() {
 
         <section className="container margin-bottom--lg">
           <h2>Coming Soon</h2>
-          <p>Platforms implementing ACP support:</p>
+          <p>Platforms implementing AdCP support:</p>
           <div className="row">
             {comingSoon.map((props, idx) => (
               <PlatformCard key={idx} {...props} />
@@ -127,7 +127,7 @@ export default function Showcase() {
                   </p>
                   <ol>
                     <li><strong>Complete Implementation</strong>: Implement the required protocol endpoints</li>
-                    <li><strong>Pass Validation</strong>: Run the ACP validation test suite successfully</li>
+                    <li><strong>Pass Validation</strong>: Run the AdCP validation test suite successfully</li>
                     <li><strong>Submit Application</strong>: Email us with your implementation details</li>
                   </ol>
                 </div>

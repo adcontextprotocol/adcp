@@ -1,7 +1,7 @@
 # Audience Discovery Protocol
 
-**Version**: 1.0  
-**Status**: Draft  
+**Version**: 0.1  
+**Status**: Request for Comments  
 **Last Updated**: January 2025
 
 ## Abstract

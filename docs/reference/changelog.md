@@ -7,11 +7,11 @@ title: Changelog
 
 Track changes and updates to the Ad Context Protocol specifications.
 
-## Version 1.0.0 - January 2025
+## Version 0.1 - January 2025
 
-### Initial Release
+### Initial RFC Release
 
-First stable release of the Audience Discovery Protocol.
+First Request for Comments (RFC) release of the Audience Discovery Protocol.
 
 #### New Features
 - **Core Tools**: Implemented all four essential tools
@@ -38,14 +38,14 @@ First stable release of the Audience Discovery Protocol.
 
 ---
 
-## Version 1.1.0 - January 2025
+## Updates - January 2025
 
 ### Breaking Changes
 
 #### get_audiences API Restructure
 **Breaking Change**: Updated `get_audiences` request structure for improved clarity and geographic targeting.
 
-**Before (v1.0.0)**:
+**Before**:
 ```json
 {
   "prompt": "string",

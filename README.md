@@ -8,7 +8,7 @@ Visit [adcontextprotocol.github.io](https://adcontextprotocol.github.io) for ful
 
 ## What is Ad Context Protocol?
 
-Ad Context Protocol (ACP) is an open standard that enables AI assistants to interact with advertising platforms through natural language. Built on the Model Context Protocol (MCP), ACP allows marketers to discover audiences, curate inventory, and execute campaigns using conversational AI.
+Ad Context Protocol (AdCP) is an open standard that enables AI assistants to interact with advertising platforms through natural language. Built on the Model Context Protocol (MCP), AdCP allows marketers to discover audiences, curate inventory, and execute campaigns using conversational AI.
 
 ### Quick Example
 
@@ -24,7 +24,7 @@ The AI assistant handles:
 
 ## Available Protocols
 
-### 🎯 Audience Discovery Protocol - v1.0 Available
+### 🎯 Audience Discovery Protocol - RFC/v0.1
 Discover and activate marketing audiences using natural language.
 
 - **Natural Language Discovery**: "High-income millennials interested in sustainable fashion"
@@ -35,26 +35,26 @@ Discover and activate marketing audiences using natural language.
 ### 📍 Curation Protocol - Coming Q2 2025
 Curate media inventory based on context and brand safety requirements.
 
-### 💰 Media Buy Protocol - Coming Q3 2025  
+### 💰 Media Buy Protocol - RFC/v0.1  
 Execute and optimize media buys programmatically across platforms.
 
 ## Quick Start
 
 ### For Platform Providers
 
-Implement ACP to enable AI-powered workflows for your customers:
+Implement AdCP to enable AI-powered workflows for your customers:
 
-1. **Review the Specification**: [Audience Protocol v1.0](./audience-protocol-v1.md)
+1. **Review the Specification**: [Audience Protocol RFC](./audience-protocol-v1.md)
 2. **Implement MCP Server**: Follow the [implementation guide](https://adcontextprotocol.github.io/docs/implementation/getting-started)
 3. **Test Your Implementation**: Use the validation test suite
 4. **Get Listed**: Join the [platform directory](https://adcontextprotocol.github.io/showcase)
 
 ### For Advertisers & Agencies
 
-Use ACP-enabled platforms with your AI assistant:
+Use AdCP-enabled platforms with your AI assistant:
 
-1. **Check Platform Support**: See which platforms support ACP
-2. **Configure Your AI**: Connect ACP-enabled platforms to Claude, GPT, or other assistants
+1. **Check Platform Support**: See which platforms support AdCP
+2. **Configure Your AI**: Connect AdCP-enabled platforms to Claude, GPT, or other assistants
 3. **Start Using**: Describe your marketing objectives in natural language
 
 ## Repository Structure
@@ -145,7 +145,7 @@ The Ad Context Protocol specifications are licensed under [Apache 2.0](./LICENSE
 ## Links
 
 - **Website**: [adcontextprotocol.github.io](https://adcontextprotocol.github.io)
-- **Specifications**: [Audience Protocol v1.0](./audience-protocol-v1.md)
+- **Specifications**: [Audience Protocol RFC](./audience-protocol-v1.md)
 - **Discussions**: [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
 - **Issues**: [Report Issues](https://github.com/adcontextprotocol/adcp/issues)
 

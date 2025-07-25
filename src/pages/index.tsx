@@ -223,7 +223,7 @@ function GetStarted() {
             <Heading as="h2">For Advertisers & Agencies</Heading>
             <p>Transform your advertising workflows:</p>
             <ul>
-              <li>Connect ACP-enabled platforms to your AI assistant</li>
+              <li>Connect AdCP-enabled platforms to your AI assistant</li>
               <li>Start using natural language for campaigns</li>
               <li>Reduce manual work and increase efficiency</li>
             </ul>

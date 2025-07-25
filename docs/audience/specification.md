@@ -3,10 +3,10 @@ sidebar_position: 2
 title: Protocol Specification
 ---
 
-# Audience Discovery Protocol v1.0
+# Audience Discovery Protocol RFC
 
-**Version**: 1.0  
-**Status**: Draft  
+**Version**: 0.1  
+**Status**: Request for Comments  
 **Last Updated**: January 2025
 
 ## Abstract
@@ -18,6 +18,7 @@ The Audience Discovery Protocol defines a standard Model Context Protocol (MCP) 
 The Audience Discovery Protocol provides:
 
 - Natural language audience discovery based on marketing objectives
+- Multi-platform audience discovery in a single request
 - Audience activation for specific platforms and accounts
 - Transparent pricing with CPM and revenue share models
 - Audience size reporting with unit types (individuals, devices, households)
@@ -83,6 +84,13 @@ The entity on whose behalf the request is being made:
 - **Decisioning Platform**: The Trade Desk (where audiences will be used)
 - **Flow**: Claude (on behalf of Startup Brand) → LiveRamp (public catalog, standard pricing) → delivers to Startup Brand's account on The Trade Desk
 
+**Scenario 5: Data Provider with Multi-Platform Deployment**
+- **Orchestrator**: Agency trading desk platform
+- **Principal**: Media Agency (looking for contextual segments)
+- **Audience Agent**: Peer39 (contextual data provider)
+- **Decisioning Platforms**: Multiple SSPs (Index Exchange, OpenX, PubMatic)
+- **Flow**: Trading desk (on behalf of Agency) → Peer39 (returns same segments deployed across multiple SSPs) → Agency can activate on any/all SSPs
+
 ### Audience Agent Types
 
 #### Private Audience Agents
@@ -120,7 +128,6 @@ External agents that license audience data with catalog-based access:
   - Public catalog: Orchestrator credentials sufficient
   - Personalized catalog: Requires principal account with audience agent
 
-
 ### Segment ID Structure
 
 Audience discovery involves multiple segment identifiers at different stages:
@@ -137,11 +144,12 @@ The identifier assigned by the decisioning platform after activation:
 - **Usage**: Returned in `activate_audience` responses and used for campaign targeting
 - **Scope**: Internal to the decisioning platform
 - **Timing**: Only available after successful activation
+- **Variability**: May differ by platform and account for the same audience
 
 ### Agent vs Data Provider
 
 - **Agent**: The audience platform facilitating access (e.g., LiveRamp, Experian)
-- **Data Provider**: The original source of the audience data (e.g., Polk, Acxiom)
+- **Data Provider**: The original source of the audience data (e.g., Polk, Acxiom, Peer39)
 
 An audience agent may host segments from multiple data providers in their marketplace.
 
@@ -165,16 +173,17 @@ This is relative to each audience agent's capabilities - a 50% coverage audience
 
 ### get_audiences
 
-Discovers relevant audiences based on a marketing specification.
+Discovers relevant audiences based on a marketing specification. Supports both single-platform and multi-platform queries.
 
 #### Request
 
-**Public Catalog Example** (no account field):
+**Single Platform Example** (original format, still supported):
 ```json
 {
   "audience_spec": "High-income sports enthusiasts interested in premium running gear",
   "deliver_to": {
-    "platform": "the-trade-desk",          // Decisioning platform
+    "platform": "the-trade-desk",
+    "account": "omnicom-ttd-main",
     "countries": ["US", "CA"]
   },
   "filters": {
@@ -186,27 +195,53 @@ Discovers relevant audiences based on a marketing specification.
 }
 ```
 
-**Personalized Catalog Example** (account field required):
+**Multi-Platform Example**:
 ```json
 {
-  "audience_spec": "High-income sports enthusiasts interested in premium running gear",
+  "audience_spec": "Premium automotive intenders in major urban markets",
   "deliver_to": {
-    "platform": "the-trade-desk",          // Decisioning platform
-    "account": "omnicom-ttd-main",        // Account required for personalized catalog
+    "platforms": [
+      {
+        "platform": "index-exchange",
+        "account": "agency-123-ix"        // Optional - for account-specific segments
+      },
+      {
+        "platform": "openx"                // No account = platform-wide segments only
+      },
+      {
+        "platform": "pubmatic",
+        "account": "brand-456-pm"
+      }
+    ],
     "countries": ["US", "CA"]
   },
   "filters": {
-    "catalog_types": ["marketplace", "owned"],
-    "max_cpm": 8.0,
-    "min_coverage_percentage": 25
+    "catalog_types": ["marketplace"],
+    "max_cpm": 5.0,
+    "min_coverage_percentage": 10
   },
-  "max_results": 3
+  "max_results": 5
+}
+```
+
+**All Platforms Example** (discover all available deployments):
+```json
+{
+  "audience_spec": "Contextual segments for luxury automotive content",
+  "deliver_to": {
+    "platforms": "all",                   // Returns all platforms where segments are deployed
+    "countries": ["US"]
+  },
+  "filters": {
+    "data_providers": ["Peer39"],         // Optional filter by data provider
+    "catalog_types": ["marketplace"]
+  }
 }
 ```
 
 #### Response
 
-**Example showing mixed scope types** (from personalized catalog):
+**Single Platform Response** (backward compatible):
 ```json
 {
   "audiences": [{
@@ -225,24 +260,56 @@ Discovers relevant audiences based on a marketing specification.
       "cpm": 3.50,
       "currency": "USD"
     },
-    "require_usage_reporting": false     // Usage reporting not required for platform-wide segments
-  }, {
-    "audience_agent_segment_id": "omnicom_custom_sports",
-    "name": "Premium Sports - Omnicom Custom",
-    "description": "Custom sports audience built for Omnicom",
-    "audience_type": "marketplace", 
-    "data_provider": "Experian",
-    "coverage_percentage": 12,
-    "deployment": {
-      "is_live": false,
-      "scope": "account-specific",
-      "estimated_activation_duration_minutes": 1440
-    },
+    "require_usage_reporting": false
+  }]
+}
+```
+
+**Multi-Platform Response**:
+```json
+{
+  "audiences": [{
+    "audience_agent_segment_id": "peer39_luxury_auto",
+    "name": "Luxury Automotive Context",
+    "description": "Pages with luxury automotive content and high viewability",
+    "audience_type": "marketplace",
+    "data_provider": "Peer39",
+    "coverage_percentage": 15,
+    "deployments": [                      // Array of deployments across platforms
+      {
+        "platform": "index-exchange",
+        "account": "agency-123-ix",
+        "is_live": true,
+        "scope": "account-specific",
+        "decisioning_platform_segment_id": "ix_agency123_peer39_lux_auto"
+      },
+      {
+        "platform": "index-exchange",
+        "account": null,                  // Platform-wide version also available
+        "is_live": true,
+        "scope": "platform-wide",
+        "decisioning_platform_segment_id": "ix_peer39_luxury_auto_gen"
+      },
+      {
+        "platform": "openx",
+        "account": null,
+        "is_live": true,
+        "scope": "platform-wide",
+        "decisioning_platform_segment_id": "ox_peer39_lux_auto_456"
+      },
+      {
+        "platform": "pubmatic",
+        "account": "brand-456-pm",
+        "is_live": false,
+        "scope": "account-specific",
+        "estimated_activation_duration_minutes": 60
+      }
+    ],
     "pricing": {
-      "cpm": 8.00,
+      "cpm": 2.50,
       "currency": "USD"
     },
-    "require_usage_reporting": true      // Usage reporting required for account-specific segments
+    "require_usage_reporting": true
   }]
 }
 ```
@@ -255,9 +322,9 @@ Activates an audience for use on a specific platform/account.
 
 ```json
 {
-  "audience_agent_segment_id": "polk_001382",  // From get_audiences response
-  "platform": "the-trade-desk",              // Decisioning platform where audience will be used
-  "account": "omnicom-ttd-main"              // Account on decisioning platform (optional for platform-wide segments)
+  "audience_agent_segment_id": "peer39_luxury_auto",
+  "platform": "pubmatic",                   
+  "account": "brand-456-pm"                 // Required for account-specific activation
 }
 ```
 
@@ -265,8 +332,8 @@ Activates an audience for use on a specific platform/account.
 
 ```json
 {
-  "decisioning_platform_segment_id": "liveramp_polk_dallas_lexus",  // ID assigned by decisioning platform
-  "estimated_activation_duration_minutes": 1440       // How long activation will take (e.g., 24 hours)
+  "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
+  "estimated_activation_duration_minutes": 60
 }
 ```
 
@@ -278,10 +345,9 @@ Checks the deployment status of an audience on a decisioning platform.
 
 ```json
 {
-  "audience_agent_segment_id": "polk_001382",         // Either this...
-  "decisioning_platform_segment_id": "ttd_sports_general", // ...or this (but not both)
-  "decisioning_platform": "the-trade-desk",          // Required
-  "account": "omnicom-ttd-main"                      // Optional - only for account-specific segments
+  "audience_agent_segment_id": "peer39_luxury_auto",
+  "decisioning_platform": "index-exchange",
+  "account": "agency-123-ix"                // Optional - only for account-specific segments
 }
 ```
 
@@ -289,34 +355,34 @@ Checks the deployment status of an audience on a decisioning platform.
 
 ```json
 {
-  "status": "deployed|pending|not_deployed",         // Current deployment status
-  "deployed_at": "2025-01-15T14:30:00Z"             // Only present if status is "deployed"
+  "status": "deployed",
+  "deployed_at": "2025-01-15T14:30:00Z"
 }
 ```
 
 ### report_usage
 
-Reports usage data for billing reconciliation.
+Reports usage data for billing reconciliation. When the same audience is used across multiple platforms, report each platform separately.
 
 #### Request
 
 ```json
 {
   "reporting_date": "2025-01-15",
-  "platform": "the-trade-desk",           // Decisioning platform where spend occurred
-  "account": "omnicom-ttd-main",         // Account on decisioning platform
+  "platform": "index-exchange",          
+  "account": "agency-123-ix",           
   "usage": [{
-    "audience_agent_segment_id": "polk_001382",      // Original agent segment ID
-    "decisioning_platform_segment_id": "liveramp_polk_dallas_lexus",  // Decisioning platform ID
-    "active": true,                      // false if no longer using this audience
-    "impressions": 2500000,
-    "media_spend": 75000.00,             // Spend on decisioning platform
-    "data_cost": 3750.00                // 5% revenue share to audience agent
+    "audience_agent_segment_id": "peer39_luxury_auto",
+    "decisioning_platform_segment_id": "ix_agency123_peer39_lux_auto",
+    "active": true,
+    "impressions": 5000000,
+    "media_spend": 125000.00,
+    "data_cost": 12500.00               // Based on CPM or revenue share
   }],
   "summary": {
-    "total_impressions": 2500000,
-    "total_media_spend": 75000.00,
-    "total_data_cost": 3750.00,
+    "total_impressions": 5000000,
+    "total_media_spend": 125000.00,
+    "total_data_cost": 12500.00,
     "unique_segments": 1
   }
 }
@@ -332,7 +398,24 @@ Reports usage data for billing reconciliation.
 
 ## Typical Flow
 
-**Marketplace Audience Agent Flow:**
+### Data Provider Multi-Platform Flow (e.g., Peer39)
+
+1. **Discovery**: Call `get_audiences` with multiple platforms to see all deployments at once
+
+2. **Review**: See which platforms have segments live vs. requiring activation, compare segment IDs across platforms
+
+3. **Select**: Choose which platforms to use based on campaign needs and existing deployments
+
+4. **Activate**: For any platforms where segments aren't live, call `activate_audience`
+
+5. **Monitor**: Use `check_audience_status` to track activation progress
+
+6. **Launch**: Run campaigns across multiple SSPs using the platform-specific segment IDs
+
+7. **Report**: Report usage separately for each platform where the audience was used
+
+### Marketplace Audience Agent Flow
+
 1. **Discovery**: Call `get_audiences` multiple times to explore different audience options - response varies by authentication (public vs personalized catalog)
 
 2. **Review**: Evaluate audience options, pricing, and `deployment.is_live` status for the specific decisioning platform
@@ -347,7 +430,8 @@ Reports usage data for billing reconciliation.
 
 7. **Report**: For segments with `require_usage_reporting: true`, report daily usage via `report_usage`
 
-**Private Audience Agent Flow:**
+### Private Audience Agent Flow
+
 1. **Discovery**: Call `get_audiences` on owned audience agent (Walmart), with no licensing costs
 
 2. **Review**: Check `deployment.is_live` status for workflow orchestration (no pricing review needed)
@@ -413,11 +497,29 @@ The principal's identity determines business-level access and pricing:
 - **Account Benefits**: Principals with marketplace agent accounts get their own data plus negotiated rates
 - **Privacy**: Private agents ensure data sovereignty for owned audiences
 
+### Multi-Platform Considerations
+
+#### Response Format Selection
+- If request contains single `platform` field: Return single `deployment` object
+- If request contains `platforms` array: Return `deployments` array
+- This ensures backward compatibility while enabling multi-platform queries
+
+#### Platform-Specific Segment IDs
+- Same audience may have different segment IDs on different platforms
+- Account-specific deployments may have different IDs than platform-wide deployments
+- Always use the correct `decisioning_platform_segment_id` for each platform/account combination
+
+#### Efficient Discovery
+- Data providers like Peer39 can return all their deployments in one response
+- Reduces API calls from N (one per platform) to 1
+- Particularly valuable for contextual data providers with wide SSP distribution
+
 ### Usage Reporting
 
 - **Frequency**: Daily reporting by 12:00 UTC
 - **Required for**: Marketplace audiences 
 - **Not required for**: Private owned audiences (no billing, optional for workflow tracking)
+- **Multi-Platform**: Report each platform separately, even for the same audience
 
 #### Audience Lifecycle Management
 
@@ -437,3 +539,5 @@ This approach eliminates the need for explicit deactivation API calls while ensu
 3. Report media spend accurately for revenue share audiences
 4. Understand the difference between size units
 5. Consider both pricing options when available
+6. Use multi-platform queries when discovering audiences across SSPs
+7. Store platform-specific segment IDs for campaign execution

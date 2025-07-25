@@ -5,7 +5,7 @@ title: Getting Started
 
 # Getting Started with Ad Context Protocol
 
-Welcome to the Ad Context Protocol (ACP) documentation. ACP enables AI assistants to interact with advertising platforms through standardized interfaces.
+Welcome to the Ad Context Protocol (AdCP) documentation. AdCP enables AI assistants to interact with advertising platforms through standardized interfaces.
 
 ## What is Ad Context Protocol?
 
@@ -17,7 +17,7 @@ Ad Context Protocol is an open standard based on the Model Context Protocol (MCP
 
 ## Ad Tech Ecosystem Architecture
 
-The advertising technology landscape consists of two fundamental types of platforms that ACP connects:
+The advertising technology landscape consists of two fundamental types of platforms that AdCP connects:
 
 ### Decisioning Platforms
 Platforms where audiences, targeting, and optimization happen, generating decisions such as bids, PMP creation, or buy execution:
@@ -35,9 +35,9 @@ Platforms that have information about audiences (people, households, devices) an
 - **Customer Data Platforms (CDPs)**: Unify customer data across touchpoints
 - **Identity Resolution Services**: Link devices and identities across platforms
 
-## How ACP Protocols Work Together
+## How AdCP Protocols Work Together
 
-Each ACP protocol operates within this ecosystem:
+Each AdCP protocol operates within this ecosystem:
 
 ### 🎯 Audience Discovery Protocol
 - **Scope**: Works primarily with **audience platforms** to discover and activate audiences
@@ -49,7 +49,7 @@ Each ACP protocol operates within this ecosystem:
 - **Integration**: Curates inventory that will be targeted with activated audiences
 - **Workflow**: Define requirements → Find inventory → Package with audiences
 
-### 💰 Media Buy Protocol (Coming Q3 2025)
+### 💰 Media Buy Protocol
 - **Scope**: Works primarily with **decisioning platforms** (DSPs, injective platforms)
 - **Integration**: Executes campaigns using curated inventory and activated audiences
 - **Workflow**: Set objectives → Execute buys → Optimize performance
@@ -69,7 +69,7 @@ The AI assistant will:
 ## Available Protocols
 
 ### 🎯 [Audience Discovery Protocol](./audience/overview)
-**Status**: v1.0 Available
+**Status**: RFC/v0.1
 
 Discover and activate marketing audiences using natural language.
 
@@ -78,8 +78,8 @@ Discover and activate marketing audiences using natural language.
 
 Curate media inventory based on context and brand safety.
 
-### 💰 Media Buy Protocol  
-**Status**: Coming Q3 2025
+### 💰 [Media Buy Protocol](./media-buy/overview)
+**Status**: RFC/v0.1
 
 Execute and optimize media buys programmatically.
 
@@ -94,10 +94,10 @@ If you operate an audience platform, DSP, or ad tech solution:
 
 ## For Advertisers & Agencies
 
-If you want to use ACP with your AI assistant:
+If you want to use AdCP with your AI assistant:
 
-1. Check if your platforms support ACP
-2. Configure your AI assistant with ACP-enabled platforms
+1. Check if your platforms support AdCP
+2. Configure your AI assistant with AdCP-enabled platforms
 3. Start using natural language for your campaigns
 
 ## Next Steps
