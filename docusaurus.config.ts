@@ -76,11 +76,6 @@ const config: Config = {
           label: 'Docs',
         },
         {
-          to: '/showcase',
-          label: 'Showcase',
-          position: 'left'
-        },
-        {
           href: 'https://github.com/adcontextprotocol/adcp',
           label: 'GitHub',
           position: 'right',

@@ -98,7 +98,7 @@ See our [detailed roadmap](https://github.com/adcontextprotocol/adcontextprotoco
 - Agencies using AdCP for campaigns
 - AI assistants with AdCP integration
 
-[View showcase →](https://adcontextprotocol.org/showcase)
+
 
 ## 📬 Get Involved
 

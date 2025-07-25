@@ -290,7 +290,7 @@ Platforms may need additional testing for:
 
 ### Current Certified Platforms
 
-See our [Platform Showcase](../../showcase) for a complete list of certified implementations.
+
 
 ### Certification Status Verification
 

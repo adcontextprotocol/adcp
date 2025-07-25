@@ -92,7 +92,6 @@ Execute and optimize media buys programmatically.
 If you operate an audience platform, DSP, or ad tech solution:
 
 1. [Review the Protocol Specifications](./audience/specification)
-2. [Get Listed in Our Directory](/showcase)
 
 ## For Advertisers & Agencies
 

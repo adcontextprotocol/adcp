@@ -24,11 +24,6 @@ function HomepageHeader() {
             to="/docs/intro">
             Get Started 🚀
           </Link>
-          <Link
-            className="button button--outline button--lg"
-            to="/showcase">
-            View Platforms
-          </Link>
         </div>
       </div>
     </header>

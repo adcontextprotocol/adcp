@@ -46,7 +46,7 @@ Implement AdCP to enable AI-powered workflows for your customers:
 1. **Review the Specification**: [Audience Protocol RFC](./audience-protocol-v1.md)
 2. **Implement MCP Server**: Follow the [implementation guide](https://adcontextprotocol.github.io/docs/implementation/getting-started)
 3. **Test Your Implementation**: Use the validation test suite
-4. **Get Listed**: Join the [platform directory](https://adcontextprotocol.github.io/showcase)
+4. **Get Certified**: Ensure your implementation meets quality standards.
 
 ### For Advertisers & Agencies
 
