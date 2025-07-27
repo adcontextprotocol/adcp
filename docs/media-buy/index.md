@@ -27,4 +27,5 @@ This specification is broken down into a series of articles, each covering a log
 ## Supporting Documents
 
 - **[Creative Formats](creative-formats.md)**: A detailed guide to creative formats.
-- **[Reference Implementation](https://github.com/adcontextprotocol/salesagent)**: A buy-side server implementation in Python.
+6.  **[Principals & Security](06-Principals-and-Security.md)**
+    -   Explains the data isolation model and platform mappings.
