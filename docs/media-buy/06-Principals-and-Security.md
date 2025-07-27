@@ -14,7 +14,6 @@ The server is responsible for validating this token and associating it with a sp
 
 On the server, a Principal is defined by:
 - **`principal_id`** (string): A unique identifier for the client (e.g., `"purina"`).
-- **`access_token`** (string): The secret bearer token used for authentication.
 - **`platform_mappings`** (dict): A JSON object that maps the `principal_id` to identifiers in various ad serving platforms (e.g., `{"gam_advertiser_id": 12345}`).
 
 ## Data Isolation

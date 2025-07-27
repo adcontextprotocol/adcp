@@ -24,8 +24,9 @@ This specification is broken down into a series of articles, each covering a log
 5.  **[Reporting & Optimization](05-reporting-and-optimization.md)**
     -   Covers delivery monitoring and the performance feedback loop.
 
+6.  **[Principals & Security](06-Principals-and-Security.md)**
+    -   Explains the data isolation model and platform mappings.
+
 ## Supporting Documents
 
 - **[Creative Formats](creative-formats.md)**: A detailed guide to creative formats.
-6.  **[Principals & Security](06-Principals-and-Security.md)**
-    -   Explains the data isolation model and platform mappings.

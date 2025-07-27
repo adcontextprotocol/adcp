@@ -38,7 +38,8 @@ const sidebars: SidebarsConfig = {
         'media-buy/media-buys',
         'media-buy/targeting',
         'media-buy/reporting-and-optimization',
-        'media-buy/creative-formats'
+        'media-buy/creative-formats',
+        'media-buy/Principals-and-Security'
       ],
     },
     {
