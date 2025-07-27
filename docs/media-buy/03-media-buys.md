@@ -1,4 +1,8 @@
-# 3. Media Buys
+---
+title: Media Buys
+---
+
+# Media Buys
 
 The Media Buy represents the client's commitment to purchase inventory.
 

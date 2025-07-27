@@ -33,12 +33,12 @@ const sidebars: SidebarsConfig = {
       label: 'Media Buy',
       items: [
         'media-buy/index',
+        'media-buy/creative-formats',
         'media-buy/media-products',
         'media-buy/creative-lifecycle',
         'media-buy/media-buys',
         'media-buy/targeting',
         'media-buy/reporting-and-optimization',
-        'media-buy/creative-formats',
         'media-buy/Principals-and-Security'
       ],
     },

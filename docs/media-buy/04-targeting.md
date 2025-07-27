@@ -1,4 +1,8 @@
-# 4. Targeting
+---
+title: Targeting
+---
+
+# Targeting
 
 Targeting in ADCP V2.3 is designed to be both powerful and human-readable. It uses a layered approach, combining a base template from a `Product` with a specific `Targeting Overlay` from a `Media Buy`.
 

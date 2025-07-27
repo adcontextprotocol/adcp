@@ -1,4 +1,8 @@
-# 5. Reporting & Optimization
+---
+title: Reporting & Optimization
+---
+
+# Reporting & Optimization
 
 ADCP V2.3 includes tools for monitoring campaign delivery and providing performance feedback, creating a closed loop for optimization.
 

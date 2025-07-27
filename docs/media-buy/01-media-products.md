@@ -1,4 +1,8 @@
-# 1. Media Products & Discovery
+---
+title: Media Products & Discovery
+---
+
+# Media Products & Discovery
 
 A **Product** is the core sellable unit in AdCP. This document details the Product model, including its pricing and delivery types, and the process for discovering standard, principal-specific, and custom-generated products.
 
