@@ -30,9 +30,9 @@ Authentication provides the foundation for strict data isolation. The server **M
 
 This model ensures that one principal can never view or modify another principal's data, as they will not possess the correct bearer token to do so. Passing a `principal_id` in the request body is not required or respected; the identity is based solely on the validated token.
 
-## Multi-Tenant Architecture (V2.3)
+## Multi-Tenant Architecture
 
-AdCP V2.3 introduces full multi-tenant support, allowing a single deployment to serve multiple publishers:
+AdCP supports full multi-tenant deployment, allowing a single instance to serve multiple publishers:
 
 ### Tenant Model
 

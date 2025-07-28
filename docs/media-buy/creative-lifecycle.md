@@ -37,7 +37,7 @@ The `CreativeStatus` object includes:
 - **`review_notes`**: Feedback from review process
 - **`estimated_review_time`**: When review will complete
 
-### 2. Auto-Approval (V2.3)
+### 2. Auto-Approval
 
 Publishers can configure auto-approval for standard formats:
 
@@ -71,7 +71,7 @@ Admin users can review pending creatives:
 }
 ```
 
-### 5. Creative Groups (V2.3)
+### 5. Creative Groups
 
 Creatives can be organized into groups for easier management across campaigns:
 - Share creatives across multiple media buys

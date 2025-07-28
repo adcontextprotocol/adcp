@@ -8,7 +8,7 @@ Targeting in AdCP builds upon the [Dimensions](dimensions.md) system to specify 
 
 ## Access Levels
 
-AdCP V2.3 introduces two levels of targeting access:
+AdCP provides two levels of targeting access:
 
 1. **Overlay Targeting**: Available to principals via API for campaign customization
 2. **Managed-Only Targeting**: Reserved for internal use (AEE signals, optimization)
@@ -104,7 +104,7 @@ Platform-specific targeting that doesn't map to standard dimensions:
 }
 ```
 
-## Managed-Only Targeting (V2.3)
+## Managed-Only Targeting
 
 These targeting dimensions are reserved for internal use and cannot be set via the public API:
 

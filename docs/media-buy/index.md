@@ -20,7 +20,7 @@ The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-fi
 
 6. **Multi-Tenant Architecture**: Database-backed tenant isolation supporting multiple publishers on a single deployment.
 
-## What's New in V2.3
+## Key Features
 
 - **Advanced Targeting System**: Two-tier targeting with overlay (principal-accessible) and managed-only (internal) dimensions
 - **Creative Management**: Auto-approval workflows, creative groups, and admin review queues
