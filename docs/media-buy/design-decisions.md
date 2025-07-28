@@ -30,7 +30,7 @@ Some use cases might benefit from multiple flights per package:
 - **Audience Splits**: Different targeting for same product
 
 ### 🔵 Industry Question
-Should AdCP v3 support multiple flights per package? What are the real-world use cases?
+Should AdCP support multiple flights per package? What are the real-world use cases?
 
 ## 2. Update Semantics: PATCH vs PUT
 
@@ -201,7 +201,7 @@ Should we also offer structured search for precision? Faceted filters?
 ## 10. Dry Run Mode
 
 ### Current Design
-Environment variable (`ADCP_DRY_RUN=true`) shows platform API calls without execution.
+Environment variable (`AdCP_DRY_RUN=true`) shows platform API calls without execution.
 
 ### Rationale
 - **Testing**: Safe experimentation
@@ -218,7 +218,7 @@ What additional information would be valuable in dry run mode?
 
 ## Future Considerations
 
-### Potential v3 Features
+### Potential Future Features
 1. **Package Templates**: Reusable package configurations
 2. **Campaign Cloning**: Duplicate successful campaigns
 3. **Bulk Operations**: Update multiple media buys

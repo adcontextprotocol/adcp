@@ -33,17 +33,41 @@ const sidebars: SidebarsConfig = {
       label: 'Media Buy',
       items: [
         'media-buy/index',
-        'media-buy/media-products',
-        'media-buy/creative-lifecycle',
-        'media-buy/media-buys',
-        'media-buy/dimensions',
-        'media-buy/targeting',
-        'media-buy/reporting-and-optimization',
-        'media-buy/principals-and-security',
-        'media-buy/api-reference',
-        'media-buy/design-decisions',
-        'media-buy/media-buy-lifecycle',
-        'media-buy/creative-formats'
+        {
+          type: 'category',
+          label: 'Core Concepts',
+          items: [
+            'media-buy/media-products',
+            'media-buy/media-buys',
+            'media-buy/dimensions',
+            'media-buy/targeting',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Creatives',
+          items: [
+            'media-buy/creative-lifecycle',
+            'media-buy/creative-formats',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Operations',
+          items: [
+            'media-buy/media-buy-lifecycle',
+            'media-buy/reporting-and-optimization',
+            'media-buy/principals-and-security',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Technical Reference',
+          items: [
+            'media-buy/api-reference',
+            'media-buy/design-decisions',
+          ],
+        },
       ],
     },
     {

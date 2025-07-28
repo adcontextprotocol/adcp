@@ -634,7 +634,7 @@ All tools return errors in consistent format:
 
 ### Dry Run Mode
 
-Set environment variable `ADCP_DRY_RUN=true` to see platform API calls without execution:
+Set environment variable `AdCP_DRY_RUN=true` to see platform API calls without execution:
 ```
 [dry-run] Would call: POST https://api.kevel.co/v1/campaign
 [dry-run]   Campaign Payload: {

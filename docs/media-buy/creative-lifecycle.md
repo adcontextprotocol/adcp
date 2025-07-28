@@ -4,7 +4,7 @@ title: Creative Lifecycle
 
 # Creative Lifecycle
 
-ADCP V2.3 provides a comprehensive set of tools for managing the entire lifecycle of creative assets within a media buy. This includes initial submission, status tracking, and publisher-assisted adaptation.
+AdCP provides a comprehensive set of tools for managing the entire lifecycle of creative assets within a media buy. This includes initial submission, status tracking, and publisher-assisted adaptation.
 
 ## The Creative Model
 
