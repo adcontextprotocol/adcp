@@ -118,8 +118,9 @@ Checks availability and pricing for specific products.
   "end_date": "2024-02-14",
   "budget": 50000,
   "targeting_overlay": {
-    "geography": ["US-CA", "US-NY"],
-    "audiences": ["pet_owners"]
+    "geo_country_any_of": ["US"],
+    "geo_region_any_of": ["CA", "NY"],
+    "audience_segment_any_of": ["3p:pet_owners"]
   }
 }
 ```
@@ -137,9 +138,12 @@ Checks availability and pricing for specific products.
       "total_cost": 34615.35,
       "availability": 0.92,
       "targeting_applied": {
-        "geography": ["US-CA", "US-NY"],
-        "audiences": ["pet_owners"],
-        "dayparts": ["prime_time"]
+        "geo_country_any_of": ["US"],
+        "geo_region_any_of": ["CA", "NY"],
+        "audience_segment_any_of": ["3p:pet_owners"],
+        "dayparting": {
+          "presets": ["prime_time"]
+        }
       }
     },
     {
@@ -174,12 +178,12 @@ Creates a media buy from selected packages.
   "po_number": "PO-2024-Q1-0123",
   "total_budget": 50000,
   "targeting_overlay": {
-    "geography": ["US-CA", "US-NY"],
-    "audiences": ["pet_owners"],
+    "geo_country_any_of": ["US"],
+    "geo_region_any_of": ["CA", "NY"],
+    "audience_segment_any_of": ["3p:pet_owners"],
     "frequency_cap": {
-      "impressions": 5,
-      "period": "day",
-      "per": "user"
+      "suppress_minutes": 30,
+      "scope": "media_buy"
     }
   },
   "pacing": "even",
@@ -605,61 +609,90 @@ Set environment variable `ADCP_DRY_RUN=true` to see platform API calls without e
 
 ### Targeting Schema
 
-The Targeting object provides comprehensive audience selection capabilities:
+The Targeting object uses any_of/none_of patterns for flexible audience selection:
 
 ```typescript
 interface Targeting {
-  // Geographic targeting
-  geography?: string[];              // ["US", "US-CA", "DMA-501", "city:New York,NY"]
-  geography_exclude?: string[];      // Same format for exclusions
+  // Geographic targeting - aligned with OpenRTB
+  geo_country_any_of?: string[];     // ISO codes: ["US", "CA", "GB"]
+  geo_country_none_of?: string[];
+  
+  geo_region_any_of?: string[];      // Region/state codes: ["NY", "CA", "ON"]
+  geo_region_none_of?: string[];
+  
+  geo_metro_any_of?: string[];       // Metro/DMA codes: ["501", "803"]
+  geo_metro_none_of?: string[];
+  
+  geo_city_any_of?: string[];        // City names: ["New York", "Los Angeles"]
+  geo_city_none_of?: string[];
+  
+  geo_zip_any_of?: string[];         // Postal codes: ["10001", "90210"]
+  geo_zip_none_of?: string[];
   
   // Device and platform targeting
-  device_types?: string[];          // ["desktop", "mobile", "tablet", "ctv", "audio_player"]
-  platforms?: string[];             // ["ios", "android", "windows", "macos"]
-  browsers?: string[];              // ["chrome", "safari", "firefox", "edge"]
+  device_type_any_of?: string[];     // ["mobile", "desktop", "tablet", "ctv", "audio", "dooh"]
+  device_type_none_of?: string[];
+  
+  os_any_of?: string[];              // ["iOS", "Android", "Windows", "macOS"]
+  os_none_of?: string[];
+  
+  browser_any_of?: string[];         // ["Chrome", "Safari", "Firefox", "Edge"]
+  browser_none_of?: string[];
+  
+  connection_type_any_of?: string[]; // ["ethernet", "wifi", "cellular"]
+  connection_type_none_of?: string[];
   
   // Content and contextual targeting
-  content_categories_include?: string[];  // IAB categories ["IAB17", "IAB19"]
-  content_categories_exclude?: string[];  // IAB categories to exclude
-  keywords_include?: string[];            // Positive keywords
-  keywords_exclude?: string[];            // Negative keywords
+  content_category_any_of?: string[];    // IAB categories: ["IAB17", "IAB19"]
+  content_category_none_of?: string[];
+  
+  content_genre_any_of?: string[];       // ["news", "sports", "music"]
+  content_genre_none_of?: string[];
+  
+  content_rating_any_of?: string[];      // ["G", "PG", "PG-13", "R"]
+  content_rating_none_of?: string[];
+  
+  language_any_of?: string[];            // ISO 639-1: ["en", "es", "fr"]
+  language_none_of?: string[];
   
   // Audience targeting
-  audiences?: string[];             // ["crm:vip", "3p:auto_buyers", "behavior:travelers"]
+  audience_segment_any_of?: string[];    // ["1p:loyalty", "3p:auto_intenders"]
+  audience_segment_none_of?: string[];
+  
+  // Media type targeting
+  media_type_any_of?: string[];          // ["video", "audio", "display", "native"]
+  media_type_none_of?: string[];
   
   // Time-based targeting
-  dayparting?: Dayparting;          // Structured schedule (see below)
-  day_parts?: string[];             // Legacy field
+  dayparting?: Dayparting;               // Structured schedule (see below)
   
   // Frequency control
-  frequency_cap?: FrequencyCap;     // Impression limits (see below)
-  
-  // Technology targeting
-  technology?: string[];            // Legacy field for connections/carriers
+  frequency_cap?: FrequencyCap;          // Simple suppression (see below)
   
   // Platform-specific custom targeting
-  custom?: {[key: string]: any};    // Platform-specific options
+  custom?: {[key: string]: any};         // Platform-specific options
 }
 
 interface Dayparting {
-  timezone: string;                 // "America/New_York"
+  timezone: string;                      // "America/New_York"
   schedules: DaypartSchedule[];
-  presets?: string[];              // ["drive_time_morning"] for audio
+  presets?: string[];                    // ["drive_time_morning"] for audio
 }
 
 interface DaypartSchedule {
-  days: number[];                  // [1,2,3,4,5] (0=Sunday, 6=Saturday)
-  start_hour: number;              // 0-23
-  end_hour: number;                // 0-23
-  timezone?: string;               // Override default timezone
+  days: number[];                        // [1,2,3,4,5] (0=Sunday, 6=Saturday)
+  start_hour: number;                    // 0-23
+  end_hour: number;                      // 0-23
+  timezone?: string;                     // Override default timezone
 }
 
 interface FrequencyCap {
-  impressions: number;             // Max impressions
-  period: "hour" | "day" | "week" | "month" | "lifetime";
-  per: "user" | "ip" | "household" | "device";
+  suppress_minutes: number;              // Suppress after impression for N minutes
+  scope: "media_buy" | "package";        // Apply at campaign or flight level
 }
 ```
+
+**Note**: Basic frequency capping provides simple time-based suppression. More sophisticated frequency management (cross-device, complex attribution windows) is handled by the AEE layer.
 
 ### Package Update Schema
 

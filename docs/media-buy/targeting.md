@@ -69,17 +69,18 @@ Time-based targeting uses a structured schedule format:
 
 ### Frequency Capping
 
-Impression frequency limits use a structured format:
+Basic time-based impression suppression:
 
 ```json
 {
   "frequency_cap": {
-    "impressions": 5,
-    "period": "day",  // hour, day, week, month, lifetime
-    "per": "user"     // user, ip, household, device
+    "suppress_minutes": 30,    // Suppress for 30 minutes after impression
+    "scope": "media_buy"       // Apply at media_buy or package level
   }
 }
 ```
+
+**Note**: This provides simple suppression. More sophisticated frequency management (cross-device, complex attribution windows, household-level) is handled by the AEE layer.
 
 ### Custom Platform Targeting
 
@@ -126,9 +127,8 @@ Media buys can refine the targeting:
     "geo_region_any_of": ["CA", "NY"],
     "audience_segment_any_of": ["3p:sports_fans"],
     "frequency_cap": {
-      "impressions": 3,
-      "period": "day",
-      "per": "user"
+      "suppress_minutes": 30,
+      "scope": "media_buy"
     }
   }
 }
@@ -155,7 +155,7 @@ Example error:
   "error": "Unsupported targeting features for Kevel",
   "details": [
     "Device type 'ctv' not supported (supported: mobile, desktop, tablet)",
-    "Dayparting not supported by Kevel"
+    "Media buy level frequency capping not supported (Kevel only supports package/flight level)"
   ]
 }
 ```
@@ -192,9 +192,8 @@ Example error:
     ]
   },
   "frequency_cap": {
-    "impressions": 5,
-    "period": "week",
-    "per": "household"
+    "suppress_minutes": 180,  // 3 hours
+    "scope": "package"       // Applied at package level for CTV
   }
 }
 ```
