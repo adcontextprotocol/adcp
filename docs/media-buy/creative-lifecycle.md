@@ -25,19 +25,58 @@ A `Creative` is a simple object that links a user-defined ID to a specific forma
 
 ## The Submission & Approval Process
 
-### 1. Submitting Creatives (`submit_creatives`)
-Creatives are submitted for a specific media buy using the `submit_creatives` tool. The publisher's system (the "Creative Engine") then begins processing them.
+### 1. Submitting Creatives (`add_creative_assets`)
+Creatives are submitted for a specific media buy using the `add_creative_assets` tool. The publisher's system (the "Creative Engine") then begins processing them.
 
-- **Request**: `SubmitCreativesRequest` (contains `media_buy_id` and a list of `Creative` objects).
-- **Response**: `SubmitCreativesResponse` (contains a list of `CreativeStatus` objects).
+- **Request**: Contains `media_buy_id`, `package_id`, and a list of `Creative` objects.
+- **Response**: Contains a list of `CreativeStatus` objects.
 
-The `CreativeStatus` object includes the `status` ("pending_review", "approved", "rejected") and an estimated time for approval.
+The `CreativeStatus` object includes:
+- **`status`**: "pending", "approved", "rejected"
+- **`creative_id`**: Unique identifier
+- **`review_notes`**: Feedback from review process
+- **`estimated_review_time`**: When review will complete
 
-### 2. Checking Status (`check_creative_status`)
-The client can poll the `check_creative_status` tool at any time to get the latest status for one or more creatives.
+### 2. Auto-Approval (V2.3)
 
-- **Request**: `CheckCreativeStatusRequest` (contains a list of `creative_ids`).
-- **Response**: `CheckCreativeStatusResponse` (contains the corresponding list of `CreativeStatus` objects).
+Publishers can configure auto-approval for standard formats:
+
+```json
+{
+  "creative_engine": {
+    "auto_approve_formats": ["display_300x250", "display_728x90"],
+    "human_review_required": true
+  }
+}
+```
+
+Creatives matching auto-approved formats bypass human review and are immediately activated.
+
+### 3. Checking Status (`get_creatives`)
+The `get_creatives` tool provides comprehensive creative management:
+
+- Filter by media buy, status, or format
+- View associations with packages
+- Track approval history
+
+### 4. Admin Review (`review_pending_creatives`)
+
+Admin users can review pending creatives:
+
+```json
+{
+  "creative_id": "cr_video_30s",
+  "action": "approve",
+  "reason": "Meets brand safety guidelines"
+}
+```
+
+### 5. Creative Groups (V2.3)
+
+Creatives can be organized into groups for easier management across campaigns:
+- Share creatives across multiple media buys
+- Rotate creatives within a group
+- Apply distribution rules
 
 ## Creative Adaptation (`adapt_creative`)
 

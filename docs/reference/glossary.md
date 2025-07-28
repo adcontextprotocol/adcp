@@ -13,8 +13,8 @@ Classification of MCP session credentials as either "platform" (aggregator) or "
 **Activation**  
 The process of making an audience available for targeting on a specific platform and seat.
 
-**Ad Context Protocol (ACP)**  
-An open standard based on Model Context Protocol (MCP) that enables AI-powered advertising workflows.
+**Ad Context Protocol (AdCP)**  
+An open standard based on Model Context Protocol (MCP) that enables AI-powered advertising workflows through natural language interfaces.
 
 **Audience Discovery**  
 The process of finding relevant marketing audiences using natural language descriptions.
@@ -35,11 +35,14 @@ Direct advertiser or agency account with specific seat access and negotiated rat
 
 ## D
 
-**Deployment**  
+**Deployment** (Audience Protocol)  
 The availability status of an audience on specific platforms, including activation state and timing.
 
-**Devices**  
+**Devices** (Audience Protocol)  
 Size unit representing unique device identifiers (cookies, mobile IDs) - typically the largest reach metric.
+
+**Device Type** (Media Buy Protocol)  
+Targeting dimension for platform types: mobile, desktop, tablet, CTV, audio, DOOH.
 
 **DSP (Demand-Side Platform)**  
 Technology platform that allows advertisers to buy advertising inventory programmatically.
@@ -56,7 +59,10 @@ Size unit representing unique household addresses, useful for geographic and fam
 
 ## I
 
-**Individuals**  
+**Impressions** (Media Buy Protocol)  
+The number of times an ad is displayed, used for pricing and delivery tracking.
+
+**Individuals** (Audience Protocol)  
 Size unit representing unique people, best for frequency capping and demographic targeting.
 
 **Inventory**  
@@ -110,7 +116,7 @@ A specific advertising account within a platform, typically representing a brand
 **Segment ID**  
 The specific identifier used for audience activation, may differ from audience_id.
 
-**Size Unit**  
+**Size Unit** (Audience Protocol)  
 The measurement type for audience size: individuals, devices, or households.
 
 ## T
@@ -123,9 +129,54 @@ Audience data licensed from external providers, also known as marketplace audien
 **Usage Reporting**  
 Daily reporting of audience utilization for billing and optimization purposes.
 
+## B
+
+**Budget**  
+Total monetary allocation for a media buy, which can be distributed across multiple packages.
+
+## F
+
+**Flight**  
+A time-bounded advertising campaign segment, mapped to line items in ad servers.
+
+## H
+
+**Households** (Audience Protocol)  
+Size unit representing unique household addresses, useful for geographic and family-based targeting.
+
+**Human-in-the-Loop (HITL)** (Media Buy Protocol)  
+Protocol feature allowing publishers to require manual approval for operations.
+
+## L
+
+**Line Item**  
+The basic unit of inventory in ad servers like Google Ad Manager, represented as packages in AdCP.
+
+## M
+
+**MCP (Model Context Protocol)**  
+The underlying protocol framework that enables AI assistants to interact with external systems.
+
+**Marketplace Audience**  
+Third-party audience available for licensing from data providers.
+
+**Media Buy**  
+A complete advertising campaign containing packages, budget, targeting, and creative assets.
+
+## P
+
+**Package**  
+A specific advertising product within a media buy, representing a flight or line item with its own pricing and targeting.
+
+**Principal**  
+An authenticated entity (advertiser, agency, or brand) with unique access credentials and platform mappings.
+
+**Product**  
+Advertising inventory available for purchase, discovered through natural language queries.
+
 ## Acronyms
 
-- **ACP**: Ad Context Protocol
+- **AdCP**: Ad Context Protocol
 - **API**: Application Programming Interface
 - **CPM**: Cost Per Mille (thousand)
 - **DSP**: Demand-Side Platform
@@ -149,19 +200,26 @@ Daily reporting of audience utilization for billing and optimization purposes.
 - CPM expressed as cost per 1,000 impressions
 - Revenue share expressed as decimal (0.15 = 15%)
 
-**Size Reporting**
+**Size Reporting** (Audience Protocol)
 - Counts expressed as integers
 - Units clearly specified (individuals/devices/households)
 - Dated with "as_of" timestamp for freshness
 
+**Impression Reporting** (Media Buy Protocol)
+- Delivery counts by package
+- Pacing metrics for optimization
+- Dimensional breakdowns available
+
 ## Error Codes Reference
 
-Common error codes across all ACP implementations:
+Common error codes across all AdCP implementations:
 
 - `SEGMENT_NOT_FOUND`: Invalid or expired segment ID
 - `ACTIVATION_FAILED`: Unable to complete activation process
 - `ALREADY_ACTIVATED`: Audience already active for platform/seat
 - `DEPLOYMENT_UNAUTHORIZED`: Insufficient permissions for platform/seat
+- `BUDGET_EXCEEDED`: Operation would exceed allocated budget
+- `CREATIVE_REJECTED`: Creative asset failed platform review
 - `INVALID_PRICING_MODEL`: Requested pricing model unavailable
 - `RATE_LIMIT_EXCEEDED`: Too many requests in time window
 - `AUTHENTICATION_FAILED`: Invalid or expired credentials

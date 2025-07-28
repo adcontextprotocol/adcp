@@ -13,7 +13,7 @@ title: API Reference
 
 ## Overview
 
-The Advertising Campaign Protocol (AdCP) Buy-side specification defines a standardized interface for programmatic media buying across diverse advertising platforms. This document specifies the protocol for buy-side operations, enabling AI agents and automated systems to discover, plan, purchase, and manage advertising campaigns.
+The Advertising Context Protocol (AdCP) Sales Agent specification defines a standardized MCP (Model Context Protocol) interface for programmatic media buying across diverse advertising platforms. This document specifies the protocol for sales agent operations, enabling AI agents and automated systems to discover, plan, purchase, and manage advertising campaigns through MCP tools.
 
 ### Goals
 - **Platform Agnostic**: Abstract away platform-specific terminology and workflows
@@ -526,6 +526,166 @@ Retrieves delivery metrics for all active media buys owned by the principal. Thi
   "total_impressions": 8500000,
   "active_count": 1,
   "summary_date": "2024-02-08"
+}
+```
+
+### 10. get_creatives
+
+Lists creative assets for a principal or media buy.
+
+**Request:**
+```json
+{
+  "media_buy_id": "gam_1234567890",  // Optional - filter by media buy
+  "status": "approved",              // Optional - filter by status
+  "format": "video"                  // Optional - filter by format
+}
+```
+
+**Response:**
+```json
+{
+  "creatives": [
+    {
+      "creative_id": "pet_food_30s_v2",
+      "name": "Premium Pet Food - Hero 30s",
+      "format": "video",
+      "status": "approved",
+      "created_at": "2024-02-01T10:00:00Z",
+      "associations": [
+        {
+          "media_buy_id": "gam_1234567890",
+          "package_id": "pkg_ctv_prime_ca_ny"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 11. review_pending_creatives (Admin Only)
+
+Reviews and approves/rejects pending creatives.
+
+**Request:**
+```json
+{
+  "creative_id": "pet_food_30s_v3",
+  "action": "approve",
+  "reason": "Meets brand guidelines"
+}
+```
+
+**Response:**
+```json
+{
+  "creative_id": "pet_food_30s_v3",
+  "status": "approved",
+  "reviewed_by": "admin",
+  "reviewed_at": "2024-02-08T14:30:00Z"
+}
+```
+
+### 12. list_human_tasks (Admin Only)
+
+Lists pending human approval tasks.
+
+**Request:**
+```json
+{
+  "status": "pending",  // Optional - filter by status
+  "task_type": "media_buy_approval"  // Optional - filter by type
+}
+```
+
+**Response:**
+```json
+{
+  "tasks": [
+    {
+      "task_id": "task_001",
+      "task_type": "media_buy_approval",
+      "status": "pending",
+      "created_at": "2024-02-08T10:00:00Z",
+      "principal_id": "nike",
+      "description": "Approve media buy creation: $50,000 CTV campaign",
+      "metadata": {
+        "media_buy_id": "pending_mb_001",
+        "total_budget": 50000,
+        "products": ["connected_tv_prime"]
+      }
+    }
+  ]
+}
+```
+
+### 13. complete_human_task (Admin Only)
+
+Completes a human approval task.
+
+**Request:**
+```json
+{
+  "task_id": "task_001",
+  "action": "approve",
+  "notes": "Budget verified, targeting appropriate"
+}
+```
+
+**Response:**
+```json
+{
+  "task_id": "task_001",
+  "status": "completed",
+  "completed_by": "admin",
+  "completed_at": "2024-02-08T14:45:00Z",
+  "result": {
+    "media_buy_id": "gam_1234567890",
+    "status": "active"
+  }
+}
+```
+
+### 14. get_all_media_buy_delivery (Admin Only)
+
+Retrieves delivery data for all active media buys across all principals.
+
+**Request:**
+```json
+{
+  "today": "2024-02-08",
+  "status": "active"  // Optional - filter by status
+}
+```
+
+**Response:** Same format as get_media_buy_delivery but includes all media buys.
+
+### 15. list_products
+
+Lists all available advertising products for the authenticated principal.
+
+**Request:**
+```json
+{
+  "category": "video",  // Optional - filter by category
+  "min_budget": 1000    // Optional - filter by minimum budget
+}
+```
+
+**Response:**
+```json
+{
+  "products": [
+    {
+      "product_id": "connected_tv_prime",
+      "name": "Connected TV - Prime Time",
+      "description": "Premium CTV inventory 8PM-11PM",
+      "formats": ["video"],
+      "delivery_type": "guaranteed",
+      "min_spend": 10000,
+      "targeting_available": ["geography", "demographics", "interests"]
+    }
+  ]
 }
 ```
 

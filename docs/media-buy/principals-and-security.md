@@ -8,11 +8,11 @@ A critical concept in AdCP is the **Principal**. A Principal represents a distin
 
 ## Authentication
 
-All API requests must be authenticated using a bearer token. The client must include an `Authorization` header with each request:
+All MCP requests must be authenticated using a bearer token. The client must include an `x-adcp-auth` header with each request:
 
-`Authorization: Bearer <your_secret_token>`
+`x-adcp-auth: <your_secret_token>`
 
-The server is responsible for validating this token and associating it with a specific `principal_id`. All subsequent operations within that request are scoped to that authenticated principal.
+The server validates this token and associates it with both a specific `tenant_id` and `principal_id`. All subsequent operations within that request are scoped to that authenticated tenant and principal.
 
 ### The Principal Model
 
@@ -29,3 +29,47 @@ Authentication provides the foundation for strict data isolation. The server **M
 3.  If the IDs do not match, the server **MUST** return a permission denied error.
 
 This model ensures that one principal can never view or modify another principal's data, as they will not possess the correct bearer token to do so. Passing a `principal_id` in the request body is not required or respected; the identity is based solely on the validated token.
+
+## Multi-Tenant Architecture (V2.3)
+
+AdCP V2.3 introduces full multi-tenant support, allowing a single deployment to serve multiple publishers:
+
+### Tenant Model
+
+Each tenant represents a publisher with:
+- **`tenant_id`**: Unique identifier for the publisher
+- **`subdomain`**: Optional subdomain for routing (e.g., `sports.example.com`)
+- **`config`**: JSON configuration including adapter settings, features, and limits
+- **`admin_token`**: Special token for administrative operations
+
+### Tenant Isolation
+
+1. **Data Isolation**: All data (principals, products, media buys, creatives) is scoped by `tenant_id`
+2. **Configuration Isolation**: Each tenant has independent adapter configuration
+3. **Token Namespace**: Authentication tokens are unique within each tenant
+
+### Admin Operations
+
+Some tools are restricted to admin users with the tenant's admin token:
+- `review_pending_creatives`: Approve/reject creative submissions
+- `list_human_tasks`: View manual approval queue
+- `complete_human_task`: Process manual approvals
+- `get_all_media_buy_delivery`: View all media buys across principals
+
+## Security Boundaries
+
+### Adapter Security
+
+Each ad server adapter enforces its own security perimeter:
+- **Read vs Write**: Some adapters may have read-only access
+- **Scope Limitations**: Access may be limited to specific accounts/networks
+- **API Quotas**: Platform-specific rate limits and quotas
+
+### Audit Logging
+
+All operations are logged with:
+- Timestamp
+- Principal and tenant context
+- Operation type and parameters
+- Success/failure status
+- Security-relevant events (auth failures, permission denials)

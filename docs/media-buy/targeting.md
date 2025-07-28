@@ -4,7 +4,14 @@ title: Targeting
 
 # Targeting
 
-Targeting in AdCP:Buy builds upon the [Dimensions](dimensions.md) system to specify audience selection criteria. While dimensions define the available attributes, targeting applies filters using those dimensions to reach specific audiences.
+Targeting in AdCP builds upon the [Dimensions](dimensions.md) system to specify audience selection criteria. While dimensions define the available attributes, targeting applies filters using those dimensions to reach specific audiences.
+
+## Access Levels
+
+AdCP V2.3 introduces two levels of targeting access:
+
+1. **Overlay Targeting**: Available to principals via API for campaign customization
+2. **Managed-Only Targeting**: Reserved for internal use (AEE signals, optimization)
 
 ## Targeting Model
 
@@ -96,6 +103,31 @@ Platform-specific targeting that doesn't map to standard dimensions:
   }
 }
 ```
+
+## Managed-Only Targeting (V2.3)
+
+These targeting dimensions are reserved for internal use and cannot be set via the public API:
+
+### Key-Value Pairs
+
+Used primarily for AEE (Ad Effectiveness Engine) signal integration:
+
+```json
+{
+  "key_value_pairs": {
+    "aee_segment": "high_value_pet_owner",
+    "aee_score": "0.85",
+    "aee_recency": "7d",
+    "aee_context": "shopping_intent"
+  }
+}
+```
+
+**Important**: The `key_value_pairs` field is set internally by the orchestrator or AEE system. Principals cannot include this in their targeting overlay.
+
+### Platform Internal Targeting
+
+Some platform-specific fields within `custom` targeting may also be managed-only, depending on the adapter configuration.
 
 ## Layered Application
 

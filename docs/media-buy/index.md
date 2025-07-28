@@ -2,60 +2,65 @@
 title: Overview
 ---
 
-# AdCP:Buy Overview
+# Advertising Context Protocol (AdCP) Overview
 
-**Version**: 2.3 (Revised)
-
-The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-first standard for the entire media buying lifecycle. It is designed to be language-agnostic and flexible, guiding any implementation of a buy-side server.
+The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-first standard for the entire media buying lifecycle. It is designed to be language-agnostic and flexible, guiding any implementation of a sales agent server that exposes publisher inventory to AI-driven buyers.
 
 ## Key Design Principles
 
-1. **Asynchronous by Design**: Operations may take seconds to days to complete. The protocol embraces pending states as normal workflow elements.
+1. **MCP-Based Interface**: Built on Model Context Protocol (MCP) for standardized AI agent interaction, not REST APIs.
 
-2. **Human-in-the-Loop**: Publishers can require manual approval for any operation. The protocol includes comprehensive task management for human intervention.
+2. **Asynchronous by Design**: Operations may take seconds to days to complete. The protocol embraces pending states as normal workflow elements.
 
-3. **Multi-Platform Abstraction**: A unified interface that works across Google Ad Manager, Kevel, Triton Digital, and more.
+3. **Human-in-the-Loop**: Publishers can require manual approval for any operation. The protocol includes comprehensive task management for human intervention.
 
-4. **AI-Optimized**: Designed for AI agents to discover, negotiate, and optimize media buys programmatically.
+4. **Multi-Platform Abstraction**: A unified interface that works across Google Ad Manager, Kevel, Triton Digital, and more.
 
-This specification is broken down into a series of articles, each covering a logical phase of the protocol.
+5. **AI-Optimized**: Designed for AI agents to discover, negotiate, and optimize media buys programmatically.
 
-## Specification Documents
+6. **Multi-Tenant Architecture**: Database-backed tenant isolation supporting multiple publishers on a single deployment.
 
-1.  **[Media Products](media-products.md)**
-    -   Defines the `Product` model, including custom and principal-specific products.
-    -   Describes the AI-driven discovery process.
+## What's New in V2.3
 
-2.  **[Creative Lifecycle](creative-lifecycle.md)**
-    -   Details the creative submission, approval, and adaptation workflow.
+- **Advanced Targeting System**: Two-tier targeting with overlay (principal-accessible) and managed-only (internal) dimensions
+- **Creative Management**: Auto-approval workflows, creative groups, and admin review queues
+- **AEE Integration**: Built-in support for Ad Effectiveness Engine signals via key-value targeting
+- **Security Enhancements**: Comprehensive audit logging, principal context tracking, and adapter security boundaries
+- **Production Features**: PostgreSQL support, Docker deployment, health monitoring, and Admin UI
+- **Human Task Management**: Complete workflow for manual approval with AI verification of task completion
 
-3.  **[Media Buys](media-buys.md)**
-    -   Specifies the creation and in-flight updating of media buys.
+## Documentation Structure
 
-4.  **[Dimensions](dimensions.md)**
-    -   Unified dimension system for products, targeting, and reporting.
+### Core Concepts
+Foundational elements of the Advertising Context Protocol:
 
-5.  **[Targeting](targeting.md)**
-    -   Explains the layered application of targeting using dimensions.
+- **[Media Products & Discovery](media-products.md)** - Learn how advertising inventory is discovered and selected through natural language
+- **[Media Buys](media-buys.md)** - Understand how campaigns are created and managed across platforms
+- **[Dimensions](dimensions.md)** - Explore the unified system for categorizing products, targeting, and reporting
+- **[Targeting](targeting.md)** - Master the layered targeting approach using dimensional attributes
 
-6.  **[Reporting & Optimization](reporting-and-optimization.md)**
-    -   Covers delivery monitoring and the performance feedback loop.
+### Creatives
+Managing creative assets throughout their lifecycle:
 
-7.  **[Principals & Security](principals-and-security.md)**
-    -   Explains the data isolation model and platform mappings.
+- **[Creative Lifecycle](creative-lifecycle.md)** - Submit, track, and adapt creative assets
+- **[Creative Formats](creative-formats.md)** - Detailed specifications for supported creative types
 
-8.  **[API Reference](api-reference.md)**
-    -   Complete API documentation with request/response examples.
+### Operations
+Running successful campaigns:
 
-9.  **[Design Decisions](design-decisions.md)**
-    -   Key architectural choices and industry questions.
+- **[Media Buy Lifecycle](media-buy-lifecycle.md)** - End-to-end campaign workflow and state management
+- **[Reporting & Optimization](reporting-and-optimization.md)** - Monitor delivery and optimize performance
+- **[Principals & Security](principals-and-security.md)** - Multi-tenant security model and access control
 
-10. **[Media Buy Lifecycle](media-buy-lifecycle.md)**
-    -   End-to-end lifecycle and update management.
+### Technical Reference
+Detailed implementation guidance:
 
-11. **[Orchestrator Design Guide](orchestrator-design.md)**
-    -   Requirements and best practices for implementing orchestrators.
+- **[API Reference](api-reference.md)** - Complete tool documentation with examples
+- **[Design Decisions](design-decisions.md)** - Architectural choices and rationale
 
-## Supporting Documents
+## Getting Started
 
-- **[Creative Formats](creative-formats.md)**: A detailed guide to creative formats.
+1. **Understand the Basics**: Start with [Media Products](media-products.md) to learn how inventory discovery works
+2. **Learn the Workflow**: Follow the [Media Buy Lifecycle](media-buy-lifecycle.md) for the complete process
+3. **Implement**: Use the [API Reference](api-reference.md) for technical details
+4. **Optimize**: Apply [Reporting & Optimization](reporting-and-optimization.md) techniques
