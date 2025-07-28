@@ -4,7 +4,7 @@ title: Reporting & Optimization
 
 # Reporting & Optimization
 
-Reporting in AdCP:Buy leverages the same [Dimensions](05-dimensions.md) system used for targeting, enabling consistent analysis across the campaign lifecycle. This unified approach means you can report on exactly what you targeted.
+Reporting in AdCP:Buy leverages the same [Dimensions](dimensions.md) system used for targeting, enabling consistent analysis across the campaign lifecycle. This unified approach means you can report on exactly what you targeted.
 
 ## Delivery Reporting
 

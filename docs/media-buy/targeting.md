@@ -4,7 +4,7 @@ title: Targeting
 
 # Targeting
 
-Targeting in AdCP:Buy builds upon the [Dimensions](05-dimensions.md) system to specify audience selection criteria. While dimensions define the available attributes, targeting applies filters using those dimensions to reach specific audiences.
+Targeting in AdCP:Buy builds upon the [Dimensions](dimensions.md) system to specify audience selection criteria. While dimensions define the available attributes, targeting applies filters using those dimensions to reach specific audiences.
 
 ## Targeting Model
 
