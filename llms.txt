@@ -1,0 +1,49 @@
+# Ad Context Protocol (AdCP)
+
+## Project Overview
+Ad Context Protocol (AdCP) is an open standard that enables AI assistants to interact with advertising platforms through natural language. Built on the Model Context Protocol (MCP), AdCP allows marketers to discover audiences, curate inventory, and execute campaigns using conversational AI.
+
+## Key Features
+- Natural language audience discovery and activation
+- Multi-platform integration for advertising workflows
+- Transparent pricing and real-time status tracking
+- Open standards-based approach for AI-powered advertising
+
+## Available Protocols
+1. **Audience Activation Protocol (RFC/v0.1)** - Discover and activate marketing audiences using natural language
+2. **Curation Protocol** - Coming Q2 2025 - Curate media inventory based on context and brand safety
+3. **Media Buy Protocol (RFC/v0.1)** - Execute and optimize media buys programmatically
+
+## Technical Stack
+- Built with Docusaurus for documentation
+- Node.js 18+ required
+- TypeScript for type safety
+- GitHub Pages for deployment
+
+## Project Structure
+- `/docs/` - Documentation source files including audience protocol, implementation guides, and API reference
+- `/src/` - Website source components and customizations
+- `/audience-protocol-v1.md` - Main protocol specification
+- `/.husky/` - Git hooks for pre-push validation
+
+## Development Commands
+- `npm install` - Install dependencies
+- `npm start` - Start development server
+- `npm run build` - Build for production
+- `npm run typecheck` - Run TypeScript type checking
+
+## Key URLs
+- Documentation: https://adcontextprotocol.github.io
+- GitHub: https://github.com/adcontextprotocol/adcp
+- Discussions: https://github.com/adcontextprotocol/adcp/discussions
+
+## Current Implementation Status
+- Reference implementation available
+- Scope3 has full Audience Activation Protocol support
+- Additional platforms implementing in Q1 2025
+
+## Contact
+- General: hello@adcontextprotocol.org
+- Technical: support@adcontextprotocol.org
+- Security: security@adcontextprotocol.org
+- Partnerships: partnerships@adcontextprotocol.org
