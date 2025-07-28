@@ -1,4 +1,8 @@
-# AdCP:Buy Design Decisions
+---
+title: Design Decisions
+---
+
+# Design Decisions
 
 This document captures key design decisions made in the AdCP:Buy protocol and implementation, highlighting areas where industry feedback would be valuable.
 

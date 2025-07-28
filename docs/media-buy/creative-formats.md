@@ -3,7 +3,7 @@
 title: Creative Formats
 ---
 
-### Creative Formats
+# Creative Formats
 
 All creative formats have a unique identifier and specify delivery methods:
 

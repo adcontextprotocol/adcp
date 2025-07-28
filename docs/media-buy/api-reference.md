@@ -1,4 +1,8 @@
-# AdCP:Buy Specification v2.4
+---
+title: API Reference
+---
+
+# API Reference
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -595,6 +599,85 @@ Set environment variable `ADCP_DRY_RUN=true` to see platform API calls without e
 [dry-run]     'DailyBudget': 3571.43,
 [dry-run]     'IsActive': true
 [dry-run]   }
+```
+
+## Data Models
+
+### Targeting Schema
+
+The Targeting object provides comprehensive audience selection capabilities:
+
+```typescript
+interface Targeting {
+  // Geographic targeting
+  geography?: string[];              // ["US", "US-CA", "DMA-501", "city:New York,NY"]
+  geography_exclude?: string[];      // Same format for exclusions
+  
+  // Device and platform targeting
+  device_types?: string[];          // ["desktop", "mobile", "tablet", "ctv", "audio_player"]
+  platforms?: string[];             // ["ios", "android", "windows", "macos"]
+  browsers?: string[];              // ["chrome", "safari", "firefox", "edge"]
+  
+  // Content and contextual targeting
+  content_categories_include?: string[];  // IAB categories ["IAB17", "IAB19"]
+  content_categories_exclude?: string[];  // IAB categories to exclude
+  keywords_include?: string[];            // Positive keywords
+  keywords_exclude?: string[];            // Negative keywords
+  
+  // Audience targeting
+  audiences?: string[];             // ["crm:vip", "3p:auto_buyers", "behavior:travelers"]
+  
+  // Time-based targeting
+  dayparting?: Dayparting;          // Structured schedule (see below)
+  day_parts?: string[];             // Legacy field
+  
+  // Frequency control
+  frequency_cap?: FrequencyCap;     // Impression limits (see below)
+  
+  // Technology targeting
+  technology?: string[];            // Legacy field for connections/carriers
+  
+  // Platform-specific custom targeting
+  custom?: {[key: string]: any};    // Platform-specific options
+}
+
+interface Dayparting {
+  timezone: string;                 // "America/New_York"
+  schedules: DaypartSchedule[];
+  presets?: string[];              // ["drive_time_morning"] for audio
+}
+
+interface DaypartSchedule {
+  days: number[];                  // [1,2,3,4,5] (0=Sunday, 6=Saturday)
+  start_hour: number;              // 0-23
+  end_hour: number;                // 0-23
+  timezone?: string;               // Override default timezone
+}
+
+interface FrequencyCap {
+  impressions: number;             // Max impressions
+  period: "hour" | "day" | "week" | "month" | "lifetime";
+  per: "user" | "ip" | "household" | "device";
+}
+```
+
+### Package Update Schema
+
+For PATCH updates to packages within a media buy:
+
+```typescript
+interface PackageUpdate {
+  package_id: string;              // Required: which package to update
+  active?: boolean;                // Pause/resume package
+  budget?: number;                 // New budget in dollars
+  impressions?: number;            // Direct impression goal
+  cpm?: number;                    // Update CPM rate
+  daily_budget?: number;           // Daily spend cap
+  daily_impressions?: number;      // Daily impression cap
+  pacing?: "even" | "asap" | "front_loaded";
+  creative_ids?: string[];         // Update creative assignments
+  targeting_overlay?: Targeting;   // Package-specific targeting
+}
 ```
 
 ## Future Considerations

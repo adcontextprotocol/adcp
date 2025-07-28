@@ -1,4 +1,8 @@
-# AdCP Media Buy Management Documentation
+---
+title: Media Buy Lifecycle
+---
+
+# Media Buy Lifecycle
 
 ## Overview
 
