@@ -487,6 +487,48 @@ Provides performance feedback for AI optimization.
 }
 ```
 
+### 10. get_all_media_buy_delivery
+
+Retrieves delivery metrics for all active media buys owned by the principal. This is optimized for performance by batching requests.
+
+**Request:**
+```json
+{
+  "today": "2024-02-08",
+  "media_buy_ids": ["gam_1234567890", "gam_9876543210"]  // Optional - omit to get all
+}
+```
+
+**Response:**
+```json
+{
+  "deliveries": [
+    {
+      "media_buy_id": "gam_1234567890",
+      "status": "delivering",
+      "spend": 35000.50,
+      "impressions": 3500000,
+      "pacing": "on_track",
+      "days_elapsed": 7,
+      "total_days": 14
+    },
+    {
+      "media_buy_id": "gam_9876543210", 
+      "status": "completed",
+      "spend": 50000.00,
+      "impressions": 5000000,
+      "pacing": "on_track",
+      "days_elapsed": 30,
+      "total_days": 30
+    }
+  ],
+  "total_spend": 85000.50,
+  "total_impressions": 8500000,
+  "active_count": 1,
+  "summary_date": "2024-02-08"
+}
+```
+
 ## Design Decisions
 
 ### 1. Package Model (Single Flight)
