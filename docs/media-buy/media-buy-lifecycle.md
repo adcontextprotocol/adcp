@@ -19,6 +19,18 @@ Creates a new media buy (campaign/order) with one or more packages (flights/line
 - `total_budget`: Total budget for the buy
 - `targeting_overlay`: Targeting criteria to apply
 
+**Response States:**
+- `pending_activation`: Created and awaiting creative assets
+- `pending_manual`: Requires human approval before creation
+- `pending_permission`: Requires permission grant or manual intervention
+- `failed`: Creation failed with error details
+
+**Asynchronous Behavior:**
+Orchestrators MUST handle pending states as normal operation flow. Publishers may require manual approval for all operations, resulting in `pending_manual` status with a task ID. The orchestrator should:
+1. Store the task ID for tracking
+2. Poll `get_pending_tasks` or receive webhook notifications
+3. Handle eventual completion or rejection
+
 **Platform Mapping:**
 - **Google Ad Manager**: Creates an Order with LineItems
 - **Kevel**: Creates a Campaign with Flights
@@ -38,11 +50,16 @@ Returns the current status of a media buy.
 
 **Status Values:**
 - `pending_activation`: Awaiting creative assets
-- `pending_approval`: Under review
+- `pending_approval`: Under review by ad server
+- `pending_manual`: Awaiting human approval (HITL task)
+- `pending_permission`: Awaiting permission grant
 - `active`: Currently delivering
 - `paused`: Temporarily stopped
 - `completed`: Finished delivering
 - `failed`: Error state
+
+**Pending State Handling:**
+Orchestrators MUST NOT treat pending states as errors. These are normal operational states that may persist for hours or days depending on publisher workflows. Use `get_pending_tasks` to monitor HITL tasks.
 
 ### 4. Delivery Reporting (`get_media_buy_delivery`)
 Retrieves performance metrics for a date range.
@@ -225,11 +242,84 @@ response = await mcp.call_tool(
 All update operations return a standardized response:
 ```python
 {
-    "status": "accepted" | "failed",
+    "status": "accepted" | "failed" | "pending_manual" | "pending_permission",
     "implementation_date": "2024-01-20T10:00:00Z",  # When change takes effect
     "reason": "Error description if failed",
-    "detail": "Additional context"
+    "detail": "Additional context or task ID for pending states"
 }
+```
+
+### Pending States vs Errors
+
+**Pending States (Normal Flow):**
+- `pending_manual`: Operation requires human approval
+- `pending_permission`: Operation blocked by permissions
+- `pending_approval`: Awaiting ad server approval
+
+These are NOT errors and should be handled as part of normal operation flow.
+
+**Error States (Exceptional):**
+- `failed`: Operation cannot be completed
+- `AUTHENTICATION_REQUIRED`: Missing or invalid auth
+- `INVALID_PARAMETER`: Bad request data
+- `NOT_FOUND`: Resource doesn't exist
+
+## Asynchronous Operations and HITL
+
+The AdCP:Buy protocol is designed for asynchronous operations as a core principle. Orchestrators MUST handle pending states gracefully.
+
+### Human-in-the-Loop (HITL) Operations
+
+Many publishers require manual approval for automated operations. The protocol supports this through the HITL task queue:
+
+1. **Operation Request**: Orchestrator calls `create_media_buy` or `update_media_buy`
+2. **Pending Response**: Server returns `pending_manual` status with task ID
+3. **Task Monitoring**: Orchestrator polls `get_pending_tasks` or receives webhooks
+4. **Human Review**: Publisher reviews and approves/rejects via admin interface
+5. **Completion**: Original operation executes upon approval
+
+### HITL Task States
+
+```
+pending → assigned → in_progress → completed/failed
+                  ↓
+              escalated
+```
+
+### Orchestrator Requirements
+
+Orchestrators MUST:
+1. Handle `pending_manual` and `pending_permission` as normal states
+2. Store task IDs for tracking pending operations
+3. Implement retry logic with exponential backoff for polling
+4. Handle eventual rejection of operations gracefully
+5. Support webhook callbacks for real-time updates (recommended)
+
+### Example Pending Operation Flow
+
+```python
+# 1. Create media buy
+response = await mcp.call_tool("create_media_buy", {...})
+
+if response["status"] == "pending_manual":
+    task_id = extract_task_id(response["detail"])
+    
+    # 2. Poll for completion (or use webhooks)
+    while True:
+        tasks = await mcp.call_tool("get_pending_tasks", {
+            "task_type": "manual_approval"
+        })
+        
+        task = find_task(tasks, task_id)
+        if task["status"] == "completed":
+            # Operation was approved and executed
+            break
+        elif task["status"] == "failed":
+            # Operation was rejected
+            handle_rejection(task)
+            break
+            
+        await sleep(60)  # Poll every minute
 ```
 
 ## Best Practices
@@ -243,3 +333,11 @@ All update operations return a standardized response:
 4. **Creative Timing**: Upload creatives before the deadline to ensure smooth campaign launch.
 
 5. **Monitoring**: Regular status checks and delivery reports ensure campaigns stay on track.
+
+6. **Asynchronous Design**: Design orchestrators to handle long-running operations. Never assume immediate completion.
+
+7. **Task Tracking**: Maintain persistent storage for pending task IDs across orchestrator restarts.
+
+8. **Webhook Integration**: Implement webhook endpoints for real-time task updates to reduce polling overhead.
+
+9. **User Communication**: Clearly communicate pending states to end users with expected resolution times.

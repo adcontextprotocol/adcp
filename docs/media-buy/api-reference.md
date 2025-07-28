@@ -598,6 +598,121 @@ Retrieves delivery metrics for all active media buys owned by the principal. Thi
 
 ## Implementation Notes
 
+## Human-in-the-Loop (HITL) Operations
+
+The AdCP:Buy protocol includes tools for managing operations that require human intervention.
+
+### create_human_task
+
+Creates a task requiring human intervention. Used internally by the system when manual approval is required.
+
+**Request:**
+```json
+{
+  "task_type": "manual_approval",
+  "priority": "high",
+  "media_buy_id": "gam_12345",
+  "operation": "create_media_buy",
+  "error_detail": "Publisher requires manual approval for all media buy creation",
+  "context_data": {
+    "request": {...},
+    "principal_id": "acme_corp"
+  },
+  "due_in_hours": 4
+}
+```
+
+**Response:**
+```json
+{
+  "task_id": "task_a1b2c3d4",
+  "status": "pending",
+  "due_by": "2024-02-15T16:00:00Z"
+}
+```
+
+### get_pending_tasks
+
+Retrieves pending human tasks. Principals see their own tasks; admins see all tasks.
+
+**Request:**
+```json
+{
+  "task_type": "manual_approval",
+  "priority": "high",
+  "include_overdue": true
+}
+```
+
+**Response:**
+```json
+{
+  "tasks": [
+    {
+      "task_id": "task_a1b2c3d4",
+      "task_type": "manual_approval",
+      "principal_id": "acme_corp",
+      "status": "pending",
+      "priority": "high",
+      "operation": "create_media_buy",
+      "error_detail": "Publisher requires manual approval",
+      "created_at": "2024-02-15T12:00:00Z",
+      "due_by": "2024-02-15T16:00:00Z"
+    }
+  ],
+  "total_count": 1,
+  "overdue_count": 0
+}
+```
+
+### assign_task (Admin Only)
+
+Assigns a task to a human operator for processing.
+
+**Request:**
+```json
+{
+  "task_id": "task_a1b2c3d4",
+  "assigned_to": "ops@publisher.com"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "detail": "Task task_a1b2c3d4 assigned to ops@publisher.com"
+}
+```
+
+### complete_task (Admin Only)
+
+Completes a human task with resolution. For manual approval tasks, approved operations are executed automatically.
+
+**Request:**
+```json
+{
+  "task_id": "task_a1b2c3d4",
+  "resolution": "approved",
+  "resolution_detail": "Verified budget and targeting parameters",
+  "resolved_by": "ops@publisher.com"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "detail": "Task task_a1b2c3d4 completed with resolution: approved"
+}
+```
+
+**Resolution Values:**
+- `approved`: Execute the deferred operation
+- `rejected`: Cancel the operation
+- `completed`: Generic task completion
+- `cannot_complete`: Task cannot be resolved
+
 ### Platform Mappings
 
 | AdCP Concept | Google Ad Manager | Kevel | Triton Digital |
@@ -610,13 +725,17 @@ Retrieves delivery metrics for all active media buys owned by the principal. Thi
 ### Status Normalization
 
 Platforms use different status values. AdCP normalizes to:
-- `pending_activation`
-- `pending_approval`
-- `scheduled`
-- `active`
-- `paused`
-- `completed`
-- `failed`
+- `pending_activation` - Awaiting creative assets
+- `pending_approval` - Under review by ad server
+- `pending_manual` - Awaiting human approval (HITL)
+- `pending_permission` - Blocked by permissions
+- `scheduled` - Future start date
+- `active` - Currently delivering
+- `paused` - Temporarily stopped
+- `completed` - Finished delivering
+- `failed` - Error state
+
+**Important**: Pending states are normal operational states, not errors. Orchestrators must handle them gracefully.
 
 ### Error Handling
 

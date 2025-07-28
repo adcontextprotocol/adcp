@@ -8,6 +8,16 @@ title: Overview
 
 The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-first standard for the entire media buying lifecycle. It is designed to be language-agnostic and flexible, guiding any implementation of a buy-side server.
 
+## Key Design Principles
+
+1. **Asynchronous by Design**: Operations may take seconds to days to complete. The protocol embraces pending states as normal workflow elements.
+
+2. **Human-in-the-Loop**: Publishers can require manual approval for any operation. The protocol includes comprehensive task management for human intervention.
+
+3. **Multi-Platform Abstraction**: A unified interface that works across Google Ad Manager, Kevel, Triton Digital, and more.
+
+4. **AI-Optimized**: Designed for AI agents to discover, negotiate, and optimize media buys programmatically.
+
 This specification is broken down into a series of articles, each covering a logical phase of the protocol.
 
 ## Specification Documents
@@ -42,6 +52,9 @@ This specification is broken down into a series of articles, each covering a log
 
 10. **[Media Buy Lifecycle](media-buy-lifecycle.md)**
     -   End-to-end lifecycle and update management.
+
+11. **[Orchestrator Design Guide](orchestrator-design.md)**
+    -   Requirements and best practices for implementing orchestrators.
 
 ## Supporting Documents
 
