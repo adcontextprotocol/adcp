@@ -748,6 +748,86 @@ Lists available advertising products for the authenticated principal.
 }
 ```
 
+### 17. get_targeting_capabilities
+
+Discover available targeting dimensions for specified channels.
+
+**Request:**
+```json
+{
+  "channels": ["web", "mobile_app"],  // Optional - defaults to all channels
+  "include_aee_dimensions": true      // Include AEE signal dimensions
+}
+```
+
+**Response:**
+```json
+{
+  "capabilities": [
+    {
+      "channel": "web",
+      "overlay_dimensions": [
+        {
+          "key": "country",
+          "display_name": "Country",
+          "description": "User's country (ISO 3166-1 alpha-2)",
+          "data_type": "array",
+          "required": false,
+          "values": null
+        },
+        {
+          "key": "content_categories",
+          "display_name": "Content Categories",
+          "description": "IAB content categories",
+          "data_type": "array",
+          "required": false,
+          "values": null
+        }
+      ],
+      "aee_dimensions": [
+        {
+          "key": "page_url",
+          "display_name": "Page URL",
+          "description": "Current page URL",
+          "data_type": "string",
+          "required": true,
+          "values": null
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 18. check_aee_requirements
+
+Verify if required AEE dimensions are supported for a channel.
+
+**Request:**
+```json
+{
+  "channel": "ctv",
+  "required_dimensions": ["iris_id", "show_name", "content_rating"]
+}
+```
+
+**Response:**
+```json
+{
+  "supported": true,
+  "missing_dimensions": [],
+  "available_dimensions": [
+    "dayparting", "browser", "device_type", "os", "language",
+    "country", "region", "metro", "city", "user_ids",
+    "genre", "content_rating", "content_duration", "channel_network",
+    "timezone", "postal_code", "postal_district", "lat_long",
+    "show_name", "show_metadata", "content_ids", "iris_id", "gracenote_id"
+  ]
+}
+```
+
+Use this before creating a media buy to ensure the publisher can provide required AEE signals.
+
 ## Design Decisions
 
 ### 1. Package Model (Single Flight)
