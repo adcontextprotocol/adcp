@@ -252,13 +252,29 @@ Uploads creative assets and assigns to packages.
       "creative_id": "pet_food_30s_v1",
       "status": "approved",
       "platform_id": "gam_creative_987654",
-      "review_feedback": null
+      "review_feedback": null,
+      "suggested_adaptations": [
+        {
+          "adaptation_id": "adapt_vertical_v1",
+          "format_id": "video_vertical_9x16",
+          "name": "Mobile Vertical Version",
+          "description": "9:16 version optimized for mobile feeds",
+          "changes_summary": [
+            "Crop to 9:16 aspect ratio",
+            "Add captions for sound-off viewing",
+            "Optimize for 6-second view"
+          ],
+          "rationale": "Mobile inventory converts 35% better with vertical format",
+          "estimated_performance_lift": 35.0
+        }
+      ]
     },
     {
       "creative_id": "pet_food_audio_15s",
       "status": "approved",
       "platform_id": "gam_creative_987655",
-      "review_feedback": null
+      "review_feedback": null,
+      "suggested_adaptations": []
     }
   ]
 }
@@ -563,7 +579,41 @@ Lists creative assets for a principal or media buy.
 }
 ```
 
-### 11. review_pending_creatives (Admin Only)
+### 11. approve_adaptation
+
+Approves or rejects a suggested creative adaptation.
+
+**Request:**
+```json
+{
+  "creative_id": "pet_food_30s_v1",
+  "adaptation_id": "adapt_vertical_v1",
+  "approve": true,
+  "modifications": {
+    "name": "Pet Food Hero - Mobile Vertical"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "new_creative": {
+    "creative_id": "pet_food_30s_vertical_auto",
+    "format_id": "video_vertical_9x16",
+    "content_uri": "https://cdn.publisher.com/adapted/pet_food_vertical.mp4",
+    "name": "Pet Food Hero - Mobile Vertical"
+  },
+  "status": {
+    "creative_id": "pet_food_30s_vertical_auto",
+    "status": "approved"
+  },
+  "message": "Adaptation approved and creative generated"
+}
+```
+
+### 12. review_pending_creatives (Admin Only)
 
 Reviews and approves/rejects pending creatives.
 
@@ -586,7 +636,7 @@ Reviews and approves/rejects pending creatives.
 }
 ```
 
-### 12. list_human_tasks (Admin Only)
+### 13. list_human_tasks (Admin Only)
 
 Lists pending human approval tasks.
 
@@ -619,7 +669,7 @@ Lists pending human approval tasks.
 }
 ```
 
-### 13. complete_human_task (Admin Only)
+### 14. complete_human_task (Admin Only)
 
 Completes a human approval task.
 
@@ -646,7 +696,7 @@ Completes a human approval task.
 }
 ```
 
-### 14. get_all_media_buy_delivery (Admin Only)
+### 15. get_all_media_buy_delivery (Admin Only)
 
 Retrieves delivery data for all active media buys across all principals.
 
@@ -660,7 +710,7 @@ Retrieves delivery data for all active media buys across all principals.
 
 **Response:** Same format as get_media_buy_delivery but includes all media buys.
 
-### 15. list_products
+### 16. list_products
 
 Lists all available advertising products for the authenticated principal.
 

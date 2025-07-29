@@ -78,19 +78,71 @@ Creatives can be organized into groups for easier management across campaigns:
 - Rotate creatives within a group
 - Apply distribution rules
 
-## Creative Adaptation (`adapt_creative`)
+## Creative Adaptation
 
-A key feature of the protocol is the ability to request that the publisher adapt an existing creative to a new format. This is useful for creating variations for different placements (e.g., adapting a 16:9 video to a vertical 9:16 format for mobile).
+A key feature of the protocol is the publisher's ability to suggest adaptations when creatives are submitted. This is useful for optimizing creatives for different placements (e.g., adapting a 16:9 video to a vertical 9:16 format for mobile).
 
-The `adapt_creative` tool allows the client to specify the original creative, the target format, a new ID for the adapted creative, and natural language instructions.
+### Automatic Adaptation Suggestions
 
-- **Request**: `AdaptCreativeRequest`
+When creatives are submitted via `add_creative_assets`, the publisher's system may automatically suggest adaptations:
+
+- **Response Enhancement**: The `CreativeStatus` object now includes suggested adaptations
   ```json
   {
-    "original_creative_id": "cr_video_catfood_promo_30s",
-    "target_format_id": "video_vertical_mobile",
-    "new_creative_id": "cr_video_catfood_promo_vertical",
-    "instructions": "Please create a 9:16 vertical version of this ad. Focus on the cat in the first 3 seconds."
+    "creative_id": "cr_video_catfood_promo_30s",
+    "status": "approved",
+    "suggested_adaptations": [
+      {
+        "adaptation_id": "adapt_vertical_mobile",
+        "format_id": "video_vertical_mobile", 
+        "name": "Vertical Mobile Version",
+        "description": "9:16 vertical version optimized for mobile viewing",
+        "changes_summary": [
+          "Crop to 9:16 aspect ratio",
+          "Focus on cat in first 3 seconds",
+          "Add text overlay for sound-off viewing"
+        ],
+        "rationale": "Mobile inventory performs 40% better with vertical creatives",
+        "estimated_performance_lift": 40.0
+      }
+    ]
   }
   ```
-- **Response**: A `CreativeStatus` object for the new creative, which will enter the standard approval workflow.
+
+### Approving Adaptations
+
+Buyers can approve suggested adaptations using the `approve_adaptation` tool:
+
+- **Request**: `ApproveAdaptationRequest`
+  ```json
+  {
+    "creative_id": "cr_video_catfood_promo_30s",
+    "adaptation_id": "adapt_vertical_mobile",
+    "approve": true,
+    "modifications": {
+      "name": "Cat Food Promo - Mobile Vertical"
+    }
+  }
+  ```
+- **Response**: A new creative is created and enters the standard approval workflow
+  ```json
+  {
+    "success": true,
+    "new_creative": {
+      "creative_id": "cr_video_catfood_promo_vertical_auto",
+      "format_id": "video_vertical_mobile",
+      "content_uri": "https://publisher.com/adapted/catfood_vertical.mp4"
+    },
+    "status": {
+      "creative_id": "cr_video_catfood_promo_vertical_auto",
+      "status": "approved"
+    }
+  }
+  ```
+
+### Benefits of Integrated Adaptation
+
+1. **Proactive Optimization**: Publishers can suggest improvements based on their inventory
+2. **Performance-Driven**: Adaptations come with performance estimates
+3. **Streamlined Workflow**: No separate tool needed, adaptations are part of the submission flow
+4. **Buyer Control**: All adaptations require explicit approval

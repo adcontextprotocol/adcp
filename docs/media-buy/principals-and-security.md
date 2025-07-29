@@ -67,9 +67,17 @@ Each ad server adapter enforces its own security perimeter:
 
 ### Audit Logging
 
-All operations are logged with:
+All operations are logged to the database with:
 - Timestamp
 - Principal and tenant context
 - Operation type and parameters
 - Success/failure status
 - Security-relevant events (auth failures, permission denials)
+- Full request/response details for compliance
+
+The audit logging system provides:
+- **Database Persistence**: All logs stored in `audit_logs` table with tenant isolation
+- **File Backup**: Redundant file-based logging for disaster recovery
+- **Real-time Monitoring**: Operations dashboard shows audit trail with filtering
+- **Security Alerts**: Highlights authentication failures and permission violations
+- **Compliance Ready**: Full audit trail for regulatory requirements

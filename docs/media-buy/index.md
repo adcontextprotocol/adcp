@@ -28,6 +28,8 @@ The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-fi
 - **Security Enhancements**: Comprehensive audit logging, principal context tracking, and adapter security boundaries
 - **Production Features**: PostgreSQL support, Docker deployment, health monitoring, and Admin UI
 - **Human Task Management**: Complete workflow for manual approval with AI verification of task completion
+- **Operations Dashboard**: Real-time monitoring of media buys, tasks, and audit trails with database persistence
+- **Database Persistence**: All operations logged to database with full audit trail and tenant isolation
 
 ## Documentation Structure
 
