@@ -31,6 +31,12 @@ The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-fi
 - **Operations Dashboard**: Real-time monitoring of media buys, tasks, and audit trails with database persistence
 - **Database Persistence**: All operations logged to database with full audit trail and tenant isolation
 
+## Media Buying Lifecycle
+
+The following diagram illustrates the complete lifecycle of a media buy in AdCP:
+
+![Media Buying Lifecycle](./media-buying-lifecycle.png)
+
 ## Documentation Structure
 
 ### Core Concepts
