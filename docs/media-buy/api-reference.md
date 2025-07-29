@@ -828,231 +828,53 @@ Verify if required AEE dimensions are supported for a channel.
 
 Use this before creating a media buy to ensure the publisher can provide required AEE signals.
 
-### 19. get_creative_macros
 
-Get available creative macros for dynamic content and measurement.
+## Creative Macro Signal
 
-**Request:**
-```json
-{
-  "category": "dco"  // Optional: filter by category (dco, measurement, privacy)
-}
-```
+The creative macro is a third type of provided signal from AEE, enabling dynamic creative customization.
 
-**Response:**
-```json
-{
-  "macros": [
-    {
-      "macro": "DCO_GEO_CITY",
-      "syntax": "${DCO_GEO_CITY}",
-      "name": "City Name",
-      "description": "User's city for localized messaging",
-      "category": "dco"
-    },
-    {
-      "macro": "MEASURE_IMPRESSION_ID",
-      "syntax": "${MEASURE_IMPRESSION_ID}",
-      "name": "Impression ID",
-      "description": "Unique impression identifier",
-      "category": "measurement"
-    }
-  ],
-  "categories": ["dco", "measurement", "privacy"]
-}
-```
+### AEE Provided Signals
 
-### 20. validate_creative_macros
+1. **may_include** - Signals to include for targeting
+2. **must_exclude** - Signals that must be excluded  
+3. **creative_macro** - Arbitrary string to inject into creative
 
-Validate macros in creative content before submission.
+### How It Works
 
-**Request:**
-```json
-{
-  "creative_content": "<div>Great deals in ${DCO_GEO_CITY}!</div>"
-}
-```
-
-**Response:**
-```json
-{
-  "valid": true,
-  "macros_found": ["DCO_GEO_CITY"],
-  "unknown_macros": [],
-  "required_aee_fields": ["geo.city"],
-  "warnings": []
-}
-```
-
-### 21. process_creative_macros (Admin Only)
-
-Test macro processing with sample AEE creative_macros signals.
-
-**Request:**
-```json
-{
-  "principal_id": "admin@publisher.com",
-  "creative_content": "<div>Good ${time_of_day}, ${user_segment}!</div>",
-  "aee_context": {
-    "creative_macros": {
-      "time_of_day": "morning",
-      "user_segment": "sports fan"
-    }
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "processed_content": "<div>Good morning, sports fan!</div>",
-  "macros_replaced": ["time_of_day", "user_segment"]
-}
-```
-
-### 22. get_publisher_macro_capabilities
-
-Get which creative macros a publisher can provide via AEE.
-
-**Request:**
-```json
-{}
-```
-
-**Response:**
-```json
-{
-  "supported_macros": [
-    "user_segment",
-    "time_of_day",
-    "content_context",
-    "impression_id",
-    "content_id",
-    "placement_id"
-  ],
-  "macro_definitions": {
-    "user_segment": {
-      "description": "User segment for personalization",
-      "category": "dco",
-      "example_value": "sports_enthusiast",
-      "data_source": "First-party data"
-    },
-    "impression_id": {
-      "description": "Unique impression identifier",
-      "category": "measurement",
-      "example_value": "imp_abc123def456",
-      "data_source": "Publisher-generated"
-    }
-  }
-}
-```
-
-### 23. validate_macro_requirements
-
-Check if publisher can fulfill creative macro requirements.
-
-**Request:**
-```json
-{
-  "requested_macros": ["user_segment", "time_of_day", "local_weather"],
-  "required_macros": ["impression_id"]
-}
-```
-
-**Response:**
-```json
-{
-  "can_fulfill": true,
-  "missing_required_macros": [],
-  "available_macros": ["user_segment", "time_of_day"],
-  "all_supported_macros": ["user_segment", "time_of_day", "content_context", "impression_id", "content_id", "placement_id"]
-}
-```
-
-## Creative Macros as AEE Signals
-
-Creative macros are a third category of signals provided by the Ad Execution Engine (AEE), alongside targeting and pricing signals. They enable dynamic creative optimization and measurement.
-
-### AEE Signal Categories
-
-1. **Targeting Signals** - For ad decisioning (geo, device, context)
-2. **Pricing Signals** - For bid optimization (floors, competition)  
-3. **Creative Macros** - For dynamic content (personalization, measurement)
-
-### Standard Creative Macros
-
-Publishers can provide these standard macros via AEE:
-
-#### DCO (Dynamic Creative Optimization)
-- `user_segment` - User segment for personalization (e.g., "sports_enthusiast")
-- `local_weather` - Current weather condition (e.g., "sunny")
-- `time_of_day` - Part of day (e.g., "evening")
-- `content_context` - Adjacent content context (e.g., "technology_news")
-- `device_context` - Device usage context (e.g., "commuting")
-
-#### Measurement & Attribution
-- `impression_id` - Unique impression identifier
-- `content_id` - ID of adjacent content
-- `placement_id` - Ad placement identifier  
-- `session_id` - User session identifier
-
-#### Publisher-Specific
-- `publisher_segment` - Publisher's audience segment
-- `content_sentiment` - Sentiment of adjacent content
-
-### Media Buy Integration
-
-When creating a media buy, buyers can specify creative macro requirements:
+When creating a media buy, buyers can enable the creative macro:
 
 ```json
 {
-  "creative_macros": {
-    "requested": ["user_segment", "time_of_day", "content_context"],
-    "required": ["impression_id"]  // Must be provided or ad won't serve
-  }
+  "enable_creative_macro": true
 }
 ```
 
-### AEE Response Example
-
-The AEE provides creative macros as a third signal category:
+The AEE can then provide a creative_macro string in its response:
 
 ```json
 {
   "should_bid": true,
   "bid_price": 5.50,
   "provided_signals": {
-    "targeting": {
-      "geo": {"city": "San Francisco", "country": "US"},
-      "device": {"type": "mobile", "os": "iOS"}
-    },
-    "pricing": {
-      "floor_price": 3.00,
-      "competition_level": "medium"
-    },
-    "creative_macros": {
-      "user_segment": "tech_professional",
-      "time_of_day": "morning",
-      "content_context": "business_news",
-      "impression_id": "imp_abc123def456"
-    }
+    "may_include": ["sports", "premium_user"],
+    "must_exclude": ["competitor_xyz"],
+    "creative_macro": "city:San Francisco|weather:sunny|segment:tech_professional"
   }
 }
 ```
 
-### Creative Usage
+### Ad Server Integration
 
-Creatives use standard macro placeholders:
+Ad servers like Google Ad Manager support injecting custom strings into creatives. The creative_macro value from AEE can be passed to the ad server, which injects it into the creative at a designated placeholder.
 
-```html
-<div class="ad-container">
-  <h1>Good ${time_of_day}!</h1>
-  <p>Special offers for ${user_segment} readers</p>
-  <img src="https://track.example.com/pixel?id=${impression_id}">
-</div>
-```
+This enables dynamic content without predefined macro substitution - the AEE can format the string however makes sense for the use case, and the creative can parse and use it as needed.
 
-Publishers process these macros when serving the creative, replacing placeholders with values from AEE creative_macros signals.
+### Benefits
+
+- **Flexibility**: No predefined macro structure required
+- **Simplicity**: Just one string to pass through the system
+- **Compatibility**: Works with existing ad server capabilities
+- **Extensibility**: Format can evolve without protocol changes
 
 ## Design Decisions
 
