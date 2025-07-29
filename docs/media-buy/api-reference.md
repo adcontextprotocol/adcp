@@ -828,6 +828,131 @@ Verify if required AEE dimensions are supported for a channel.
 
 Use this before creating a media buy to ensure the publisher can provide required AEE signals.
 
+### 19. get_creative_macros
+
+Get available creative macros for dynamic content and measurement.
+
+**Request:**
+```json
+{
+  "category": "dco"  // Optional: filter by category (dco, measurement, privacy)
+}
+```
+
+**Response:**
+```json
+{
+  "macros": [
+    {
+      "macro": "DCO_GEO_CITY",
+      "syntax": "${DCO_GEO_CITY}",
+      "name": "City Name",
+      "description": "User's city for localized messaging",
+      "category": "dco"
+    },
+    {
+      "macro": "MEASURE_IMPRESSION_ID",
+      "syntax": "${MEASURE_IMPRESSION_ID}",
+      "name": "Impression ID",
+      "description": "Unique impression identifier",
+      "category": "measurement"
+    }
+  ],
+  "categories": ["dco", "measurement", "privacy"]
+}
+```
+
+### 20. validate_creative_macros
+
+Validate macros in creative content before submission.
+
+**Request:**
+```json
+{
+  "creative_content": "<div>Great deals in ${DCO_GEO_CITY}!</div>"
+}
+```
+
+**Response:**
+```json
+{
+  "valid": true,
+  "macros_found": ["DCO_GEO_CITY"],
+  "unknown_macros": [],
+  "required_aee_fields": ["geo.city"],
+  "warnings": []
+}
+```
+
+### 21. process_creative_macros (Admin Only)
+
+Test macro processing with sample AEE context.
+
+**Request:**
+```json
+{
+  "principal_id": "admin@publisher.com",
+  "creative_content": "<div>Great deals in ${DCO_GEO_CITY}!</div>",
+  "aee_context": {
+    "geo": {
+      "city": "San Francisco"
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "processed_content": "<div>Great deals in San Francisco!</div>",
+  "macros_replaced": ["DCO_GEO_CITY"]
+}
+```
+
+## Creative Macros
+
+Creative macros enable dynamic creative optimization (DCO) and measurement by allowing publishers to fill placeholders with AEE context data.
+
+### Macro Categories
+
+1. **DCO (Dynamic Creative Optimization)**
+   - `${DCO_USER_SEGMENT}` - User segment for personalization
+   - `${DCO_GEO_CITY}` - City name
+   - `${DCO_GEO_REGION}` - State/region
+   - `${DCO_WEATHER}` - Current weather
+   - `${DCO_TIME_OF_DAY}` - Morning/afternoon/evening
+   - `${DCO_DEVICE_TYPE}` - Device category
+   - `${DCO_CONTENT_CATEGORY}` - Adjacent content category
+
+2. **Measurement & Attribution**
+   - `${MEASURE_IMPRESSION_ID}` - Unique impression ID
+   - `${MEASURE_TIMESTAMP}` - Unix timestamp
+   - `${MEASURE_PAGE_URL}` - Current page URL
+   - `${MEASURE_APP_BUNDLE}` - Mobile app bundle
+   - `${MEASURE_USER_ID}` - Hashed user ID
+   - `${MEASURE_LAT_LONG}` - Geo coordinates
+   - `${MEASURE_POSTAL_CODE}` - ZIP/postal code
+   - `${MEASURE_CONTENT_ID}` - Content identifier
+   - `${MEASURE_AD_SLOT}` - Ad placement ID
+
+3. **Privacy & Consent**
+   - `${PRIVACY_CONSENT}` - User consent status
+   - `${PRIVACY_DO_NOT_TRACK}` - DNT signal
+
+### Usage Example
+
+```html
+<!-- Creative with macros -->
+<div class="ad-container">
+  <h1>Great deals in ${DCO_GEO_CITY}!</h1>
+  <p>Perfect for ${DCO_TIME_OF_DAY} shopping on your ${DCO_DEVICE_TYPE}</p>
+  <img src="https://track.example.com/pixel?id=${MEASURE_IMPRESSION_ID}&ts=${MEASURE_TIMESTAMP}">
+  <div data-consent="${PRIVACY_CONSENT}"></div>
+</div>
+```
+
+Publishers process these macros using AEE context to deliver personalized, measurable ads while respecting privacy preferences.
+
 ## Design Decisions
 
 ### 1. Package Model (Single Flight)
