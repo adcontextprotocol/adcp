@@ -60,7 +60,75 @@ A package represents a specific advertising product within a media buy:
 
 ## API Tools Reference
 
-### 1. discover_products
+### 1. list_creative_formats
+
+Lists all supported creative formats in the system.
+
+**Request:**
+```json
+{
+  "type": "audio",              // Optional - filter by format type
+  "standard_only": true         // Optional - only return IAB standard formats
+}
+```
+
+**Response:**
+```json
+{
+  "formats": [
+    {
+      "format_id": "audio_standard_30s",
+      "name": "Standard Audio - 30 seconds", 
+      "type": "audio",
+      "is_standard": true,
+      "iab_specification": "DAAST 1.0",
+      "requirements": {
+        "duration": 30,
+        "file_types": ["mp3", "m4a"],
+        "bitrate_min": 128,
+        "bitrate_max": 320
+      }
+    },
+    {
+      "format_id": "display_carousel_5",
+      "name": "Product Carousel - 5 Items",
+      "type": "display",
+      "is_standard": false,
+      "assets_required": [
+        {
+          "asset_type": "product_image",
+          "quantity": 5,
+          "requirements": {
+            "width": 300,
+            "height": 300,
+            "file_types": ["jpg", "png"],
+            "max_file_size": 150000
+          }
+        },
+        {
+          "asset_type": "logo",
+          "quantity": 1,
+          "requirements": {
+            "width": 200,
+            "height": 50,
+            "file_types": ["png", "svg"]
+          }
+        },
+        {
+          "asset_type": "headline",
+          "quantity": 5,
+          "requirements": {
+            "max_length": 25,
+            "type": "text"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 2. discover_products
 
 Discovers available advertising products based on natural language brief.
 
@@ -712,7 +780,7 @@ Retrieves delivery data for all active media buys across all principals.
 
 ### 16. list_products
 
-Lists available advertising products for the authenticated principal.
+Lists available advertising products for the authenticated principal with optional natural language brief and filtering.
 
 **Request:**
 ```json
@@ -722,10 +790,14 @@ Lists available advertising products for the authenticated principal.
     "delivery_type": "guaranteed",  // "guaranteed" or "non_guaranteed"
     "formats": ["video"],  // Filter by specific formats
     "is_fixed_price": true,  // Fixed price vs auction
-    "creative_types": ["video", "display"]  // Filter by creative type
+    "format_types": ["video", "display"],  // Filter by format types
+    "format_ids": ["video_standard_30s"],  // Filter by specific format IDs
+    "standard_formats_only": true  // Only return products accepting IAB standard formats
   }
 }
 ```
+
+**Note**: Format filtering ensures advertisers only see inventory that matches their creative capabilities.
 
 **Response:**
 ```json
@@ -736,17 +808,28 @@ Lists available advertising products for the authenticated principal.
       "name": "Connected TV - Prime Time",
       "description": "Premium CTV inventory 8PM-11PM",
       "formats": [{
-        "format_id": "video_standard"
+        "format_id": "video_standard",
+        "name": "Standard Video"
       }],
+      "targeting_template": {
+        "geo_country_any_of": ["US"],
+        "dayparting": {
+          "timezone": "America/New_York",
+          "presets": ["prime_time"]
+        }
+      },
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
       "min_spend": 10000,
+      "is_custom": false,
       "brief_relevance": "Premium CTV inventory aligns with sports content request and prime time targeting"  // If brief was provided
     }
   ]
 }
 ```
+
+**Note**: If no brief is provided, returns all available products for the principal.
 
 ### 17. get_targeting_capabilities
 

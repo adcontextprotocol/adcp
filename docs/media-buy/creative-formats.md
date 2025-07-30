@@ -5,7 +5,7 @@ title: Creative Formats
 
 # Creative Formats
 
-All creative formats have a unique identifier and specify delivery methods.
+All creative formats have a unique identifier and specify delivery methods. Formats can require either a single asset or multiple assets for rich media experiences.
 
 ## Authoritative Source
 
@@ -32,6 +32,7 @@ The JSON schema includes:
 - **specs**: Technical specifications for each format
 - **delivery_options**: Supported delivery methods and protocols
 - **delivery_protocols**: Reference information for VAST, MRAID, etc.
+- **assets_required**: For multi-asset formats like carousels and sliders
 
 ### Version Management
 
@@ -167,6 +168,144 @@ The JSON schema includes:
         "No auto-expand",
         "No auto-audio"
       ]
+    }
+  }
+}
+```
+
+#### Multi-Asset Display Formats
+
+##### display_product_carousel
+```json
+{
+  "format_id": "display_product_carousel",
+  "name": "Dynamic Product Carousel",
+  "type": "display",
+  "format_type": "product_carousel",
+  "description": "Interactive carousel showcasing multiple products",
+  "min_products": 3,
+  "max_products": 10,
+  "product_schema": {
+    "product_image": {
+      "required": true,
+      "requirements": {
+        "width": 300,
+        "height": 300,
+        "file_types": ["jpg", "png", "webp"],
+        "max_file_size": 150000
+      }
+    },
+    "product_name": {
+      "required": true,
+      "requirements": {
+        "type": "text",
+        "max_length": 50
+      }
+    },
+    "product_price": {
+      "required": true,
+      "requirements": {
+        "type": "text",
+        "max_length": 20,
+        "format": "currency"
+      }
+    },
+    "product_url": {
+      "required": true,
+      "requirements": {
+        "type": "url",
+        "must_be_https": true
+      }
+    },
+    "product_description": {
+      "required": false,
+      "requirements": {
+        "type": "text",
+        "max_length": 150
+      }
+    },
+    "sale_price": {
+      "required": false,
+      "requirements": {
+        "type": "text",
+        "max_length": 20,
+        "format": "currency"
+      }
+    }
+  },
+  "global_assets": {
+    "brand_logo": {
+      "required": true,
+      "requirements": {
+        "width": 200,
+        "height": 50,
+        "file_types": ["png", "svg"]
+      }
+    },
+    "cta_text": {
+      "required": true,
+      "requirements": {
+        "type": "text",
+        "max_length": 20,
+        "default": "Shop Now"
+      }
+    }
+  },
+  "delivery_options": {
+    "hosted": {
+      "supported": true,
+      "description": "Publisher dynamically assembles carousel from product feed"
+    }
+  }
+}
+```
+
+##### display_slider_300x600
+```json
+{
+  "format_id": "display_slider_300x600",
+  "name": "Half Page Slider - 2 Frames",
+  "type": "display",
+  "description": "Alternating half-page banner with 2 frames",
+  "assets_required": [
+    {
+      "asset_type": "frame_1",
+      "quantity": 1,
+      "requirements": {
+        "width": 300,
+        "height": 600,
+        "file_types": ["jpg", "png"],
+        "max_file_size": 300000
+      }
+    },
+    {
+      "asset_type": "frame_2",
+      "quantity": 1,
+      "requirements": {
+        "width": 300,
+        "height": 600,
+        "file_types": ["jpg", "png"],
+        "max_file_size": 300000
+      }
+    },
+    {
+      "asset_type": "clickthrough_url",
+      "quantity": 1,
+      "requirements": {
+        "type": "url",
+        "must_be_https": true
+      }
+    }
+  ],
+  "animation": {
+    "type": "alternating",
+    "transition_interval": 5,
+    "transition_type": "fade"
+  },
+  "delivery_options": {
+    "hosted": {
+      "supported": true,
+      "description": "Publisher handles animation between frames"
     }
   }
 }

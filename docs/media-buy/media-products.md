@@ -1,10 +1,10 @@
 ---
-title: Media Products & Discovery
+title: Media Products
 ---
 
-# Media Products & Discovery
+# Media Products
 
-A **Product** is the core sellable unit in AdCP. This document details the Product model, including its pricing and delivery types, and how products are discovered through the protocol.
+A **Product** is the core sellable unit in AdCP. This document details the Product model, including its pricing and delivery types, and how products are discovered and structured in the system.
 
 ## The Product Model
 
@@ -49,137 +49,60 @@ These products represent inventory available in an auction. The final price is n
 ### Custom & Principal-Specific Products
 
 A server can offer a general catalog, but it can also return:
-- **Principal-Specific Products**: Servers can return products reserved for or negotiated with the authenticated principal.
-- **Custom Products**: The server can generate new, temporary products in response to a `brief`, returning them with `is_custom: true` and an `expires_at` timestamp. This allows for maximum flexibility without cluttering the main catalog.
+- **Principal-Specific Products**: Products reserved for or negotiated with specific clients
+- **Custom Products**: Dynamically generated products with `is_custom: true` and an `expires_at` timestamp
 
-## Product Discovery
+## Product Examples
 
-Servers determine how to match products to requests based on:
-- The authenticated principal's identity and permissions
-- Optional brief describing campaign objectives
-- Optional filters for product attributes
-
-## Product Discovery Lifecycle
-
-The product discovery process is designed to be intuitive and AI-friendly, allowing buyers to find relevant inventory using natural language:
-
-### 1. Natural Language Discovery (`discover_products`)
-
-The discovery process starts with a natural language brief that describes the campaign objectives:
-
+### Standard Product
 ```json
 {
-  "campaign_brief": "I want to reach pet owners in California with video ads during prime time"
-}
-```
-
-The system uses AI to interpret this brief and match it against available inventory, returning relevant products with:
-- **Match scores**: How well each product aligns with the brief
-- **Match reasons**: Why each product was recommended
-- **Product details**: Pricing, targeting capabilities, and formats
-
-### 2. Discovery Response
-
-The system returns products ranked by relevance:
-
-```json
-{
-  "recommended_products": [
-    {
-      "product_id": "connected_tv_prime",
-      "name": "Connected TV - Prime Time",
-      "description": "Premium CTV inventory 8PM-11PM PST",
-      "min_spend": 10000,
-      "cpm_range": {
-        "min": 35.00,
-        "max": 65.00
-      },
-      "brief_relevance": "Premium CTV inventory with prime time daypart and California geo-targeting matches sports content request"
+  "product_id": "connected_tv_prime",
+  "name": "Connected TV - Prime Time",
+  "description": "Premium CTV inventory 8PM-11PM",
+  "formats": [{"format_id": "video_standard", "name": "Standard Video"}],
+  "targeting_template": {
+    "geo_country_any_of": ["US"],
+    "dayparting": {
+      "timezone": "America/New_York",
+      "presets": ["prime_time"]
     }
-  ]
-}
-```
-
-### 3. Product Catalog Browsing (`list_products`)
-
-Buyers can browse the product catalog with filters:
-
-```json
-{
-  "brief": "Looking for premium sports inventory",
-  "filters": {
-    "formats": ["video"],
-    "delivery_type": "guaranteed"
-  }
-}
-```
-
-The server returns products based on:
-- The authenticated principal's access
-- Brief matching (if provided)
-- Applied filters
-
-### 4. Custom Product Generation
-
-For unique requirements, servers can generate custom products on-demand:
-- Products are marked with `is_custom: true`
-- Include `expires_at` to prevent catalog bloat
-- Pricing based on the specific requirements
-
-### Off-the-Shelf Products
-
-Publishers may offer standard products that are common across the industry, depending on their type:
-
-1. **Display Products**:
-   - Homepage takeover
-   - Run of site banner
-   - Mobile interstitial
-   - Native content units
-
-2. **Video Products**:
-   - Pre-roll video
-   - Mid-roll video
-   - Connected TV spots
-   - Outstream video
-
-3. **Audio Products**:
-   - Podcast pre-roll
-   - Streaming audio spots
-   - Voice assistant placements
-
-4. **DOOH Products**:
-   - Digital billboards
-   - Transit displays
-   - Retail screens
-
-### Discovery Best Practices
-
-1. **Use Natural Language Briefs**: Help servers understand campaign intent
-2. **Apply Relevant Filters**: Use product field filters effectively
-3. **Consider Custom Products**: For unique campaigns that don't match standard inventory
-
-### Example Product
-
-```json
-{
-  "product_id": "sports_premium",
-  "name": "Sports - Premium Inventory",
-  "description": "High-impact placements on sports content",
-  "formats": [{
-    "format_id": "display_leaderboard"
-  }],
+  },
   "delivery_type": "guaranteed",
   "is_fixed_price": true,
-  "cpm": 25.00
+  "cpm": 45.00
 }
 ```
 
-### Discovery to Purchase Flow
+### Custom Product
+```json
+{
+  "product_id": "custom_abc123",
+  "name": "Custom - Gaming Enthusiasts",
+  "description": "Custom audience package for gaming campaign",
+  "formats": [{"format_id": "display_300x250", "name": "Medium Rectangle"}],
+  "targeting_template": {
+    "audience_segment_any_of": ["gaming_enthusiasts", "console_owners"]
+  },
+  "delivery_type": "non_guaranteed",
+  "is_fixed_price": false,
+  "price_guidance": {
+    "floor": 5.00,
+    "p50": 8.00,
+    "p75": 12.00
+  },
+  "is_custom": true,
+  "expires_at": "2024-02-15T00:00:00Z"
+}
+```
 
-```
-1. list_products → Find relevant inventory
-2. get_avails → Check availability and pricing
-3. create_media_buy → Purchase using product_id
-4. add_creative_assets → Upload creatives
-5. Monitor delivery → Track performance
-```
+## Integration with Discovery
+
+Products are discovered through the [Product Discovery](./product-discovery.md) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be checked for availability using `get_avails` and then purchased via `create_media_buy`.
+
+## See Also
+
+- [Product Discovery](./product-discovery.md) - How to discover products using natural language
+- [Media Buys](./media-buys.md) - How to purchase products
+- [Targeting](./targeting.md) - Detailed targeting options
+- [Creative Formats](./creative-formats.md) - Supported creative specifications

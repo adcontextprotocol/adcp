@@ -37,6 +37,7 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'Core Concepts',
           items: [
+            'media-buy/product-discovery',
             'media-buy/media-products',
             'media-buy/media-buys',
             'media-buy/dimensions',

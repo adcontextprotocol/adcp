@@ -14,12 +14,60 @@ A `Creative` is a simple object that links a user-defined ID to a specific forma
 - **`format_id`**: The ID of the format the creative adheres to. This must match a format supported by the products in the media buy. See the [Creative Formats](creative-formats.md) guide for details.
 - **`content_uri`**: The URI pointing to the creative asset (e.g., a VAST XML file, an image URL, or a ZIP file with HTML5 assets).
 
-### Example Creative
+### Example: Single Asset Creative
 ```json
 {
   "creative_id": "cr_video_catfood_promo_30s",
   "format_id": "video_standard_1080p",
-  "content_uri": "https://example.com/assets/catfood_promo_30s.zip"
+  "content_uri": "https://example.com/assets/catfood_promo_30s.mp4"
+}
+```
+
+### Example: Multi-Asset Creative
+For formats requiring multiple assets (like carousels or sliders), the creative references a manifest:
+
+```json
+{
+  "creative_id": "cr_carousel_summer_sale",
+  "format_id": "display_carousel_5",
+  "content_uri": "https://example.com/assets/summer_sale_carousel.json",
+  "assets": [
+    {
+      "asset_type": "product_image",
+      "asset_id": "prod_img_1",
+      "content_uri": "https://example.com/assets/product1.jpg"
+    },
+    {
+      "asset_type": "product_image", 
+      "asset_id": "prod_img_2",
+      "content_uri": "https://example.com/assets/product2.jpg"
+    },
+    {
+      "asset_type": "product_image",
+      "asset_id": "prod_img_3", 
+      "content_uri": "https://example.com/assets/product3.jpg"
+    },
+    {
+      "asset_type": "product_image",
+      "asset_id": "prod_img_4",
+      "content_uri": "https://example.com/assets/product4.jpg"
+    },
+    {
+      "asset_type": "product_image",
+      "asset_id": "prod_img_5",
+      "content_uri": "https://example.com/assets/product5.jpg"
+    },
+    {
+      "asset_type": "logo",
+      "asset_id": "brand_logo",
+      "content_uri": "https://example.com/assets/logo.png"
+    },
+    {
+      "asset_type": "headline",
+      "asset_id": "headlines",
+      "content": ["Summer Sale!", "50% Off", "Limited Time", "Shop Now", "Best Deals"]
+    }
+  ]
 }
 ```
 
