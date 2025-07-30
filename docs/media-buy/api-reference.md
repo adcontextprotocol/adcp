@@ -736,17 +736,13 @@ Lists available advertising products for the authenticated principal.
       "name": "Connected TV - Prime Time",
       "description": "Premium CTV inventory 8PM-11PM",
       "formats": [{
-        "format_id": "video_standard",
-        "name": "Standard Video"
+        "format_id": "video_standard"
       }],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
       "min_spend": 10000,
-      "relevance_indicators": [    // If brief was provided
-        "Sports content alignment",
-        "Premium inventory matches request"
-      ]
+      "brief_relevance": "Premium CTV inventory aligns with sports content request and prime time targeting"  // If brief was provided
     }
   ]
 }

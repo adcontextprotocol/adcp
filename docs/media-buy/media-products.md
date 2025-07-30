@@ -94,16 +94,7 @@ The system returns products ranked by relevance:
         "min": 35.00,
         "max": 65.00
       },
-      "match_reasons": [
-        "Prime time daypart matches request",
-        "CTV reaches pet owner households", 
-        "California geo-targeting available"
-      ],
-      "relevance_indicators": [
-        "Prime time daypart matches request",
-        "CTV reaches pet owner households",
-        "California geo-targeting available"
-      ]
+      "brief_relevance": "Premium CTV inventory with prime time daypart and California geo-targeting matches sports content request"
     }
   ]
 }
@@ -135,9 +126,9 @@ For unique requirements, servers can generate custom products on-demand:
 - Include `expires_at` to prevent catalog bloat
 - Pricing based on the specific requirements
 
-### Standard Run-of-Site Products
+### Off-the-Shelf Products
 
-Every publisher should offer standard products that advertisers expect:
+Publishers may offer standard products that are common across the industry, depending on their type:
 
 1. **Display Products**:
    - Homepage takeover
@@ -156,6 +147,11 @@ Every publisher should offer standard products that advertisers expect:
    - Streaming audio spots
    - Voice assistant placements
 
+4. **DOOH Products**:
+   - Digital billboards
+   - Transit displays
+   - Retail screens
+
 ### Discovery Best Practices
 
 1. **Use Natural Language Briefs**: Help servers understand campaign intent
@@ -170,8 +166,7 @@ Every publisher should offer standard products that advertisers expect:
   "name": "Sports - Premium Inventory",
   "description": "High-impact placements on sports content",
   "formats": [{
-    "format_id": "display_leaderboard",
-    "name": "Leaderboard Banner"
+    "format_id": "display_leaderboard"
   }],
   "delivery_type": "guaranteed",
   "is_fixed_price": true,

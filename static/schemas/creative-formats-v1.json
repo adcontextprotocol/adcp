@@ -6,164 +6,177 @@
   "lastUpdated": "2024-01-30",
   "formats": {
     "display": {
+      "display_300x250": {
+        "format_id": "display_300x250",
+        "type": "display",
+        "description": "Medium Rectangle banner",
+        "specs": {
+          "dimensions": "300x250"
+        },
+        "is_3p_served": false
+      },
       "display_3p_300x250": {
         "format_id": "display_3p_300x250",
-        "name": "Medium Rectangle - Third Party",
         "type": "display",
-        "description": "300x250 banner with third-party ad tag",
+        "description": "Medium Rectangle with third-party tag",
         "specs": {
-          "dimensions": "300x250",
-          "delivery": "ad tag"
-        }
+          "dimensions": "300x250"
+        },
+        "is_3p_served": true
       },
-      "display_image_300x250": {
-        "format_id": "display_image_300x250",
-        "name": "Medium Rectangle - Image",
+      "display_728x90": {
+        "format_id": "display_728x90",
         "type": "display",
-        "description": "300x250 banner with image asset",
+        "description": "Leaderboard banner",
         "specs": {
-          "dimensions": "300x250",
-          "requirements": ["image", "click URL", "optional ad verification code"]
-        }
+          "dimensions": "728x90"
+        },
+        "is_3p_served": false
       },
       "display_3p_728x90": {
         "format_id": "display_3p_728x90",
-        "name": "Leaderboard - Third Party",
         "type": "display",
-        "description": "728x90 banner with third-party ad tag",
+        "description": "Leaderboard with third-party tag",
         "specs": {
-          "dimensions": "728x90",
-          "delivery": "ad tag"
-        }
+          "dimensions": "728x90"
+        },
+        "is_3p_served": true
       },
-      "display_image_728x90": {
-        "format_id": "display_image_728x90",
-        "name": "Leaderboard - Image",
+      "display_320x50": {
+        "format_id": "display_320x50",
         "type": "display",
-        "description": "728x90 banner with image asset",
+        "description": "Mobile banner",
         "specs": {
-          "dimensions": "728x90",
-          "requirements": ["image", "click URL", "optional ad verification code"]
-        }
+          "dimensions": "320x50"
+        },
+        "is_3p_served": false
       },
       "display_3p_320x50": {
         "format_id": "display_3p_320x50",
-        "name": "Mobile Banner - Third Party",
         "type": "display",
-        "description": "320x50 mobile banner with third-party ad tag",
+        "description": "Mobile banner with third-party tag",
         "specs": {
-          "dimensions": "320x50",
-          "delivery": "ad tag"
-        }
-      },
-      "display_image_320x50": {
-        "format_id": "display_image_320x50",
-        "name": "Mobile Banner - Image",
-        "type": "display",
-        "description": "320x50 mobile banner with image asset",
-        "specs": {
-          "dimensions": "320x50",
-          "requirements": ["image", "click URL", "optional ad verification code"]
-        }
+          "dimensions": "320x50"
+        },
+        "is_3p_served": true
       },
       "display_native": {
         "format_id": "display_native",
-        "name": "Native Display",
         "type": "display",
         "subtype": "native",
         "description": "Native ad matching content style",
         "specs": {
-          "requirements": ["title", "description", "image", "click URL", "optional logo", "optional CTA"]
-        }
+          "requirements": ["title", "description", "image", "click URL"]
+        },
+        "is_3p_served": false
       }
     },
     "video": {
       "video_standard": {
         "format_id": "video_standard",
-        "name": "Standard Video",
         "type": "video",
         "description": "Standard video ad",
         "specs": {
-          "delivery": "VAST URL or hosted video file",
           "common_durations": ["15s", "30s"],
           "common_resolutions": ["1920x1080", "1280x720"]
-        }
+        },
+        "is_3p_served": false
+      },
+      "video_3p_standard": {
+        "format_id": "video_3p_standard",
+        "type": "video",
+        "description": "Standard video with VAST tag",
+        "specs": {
+          "delivery": "VAST URL"
+        },
+        "is_3p_served": true
       },
       "video_vertical": {
         "format_id": "video_vertical",
-        "name": "Vertical Video",
         "type": "video",
         "description": "Vertical video for mobile",
         "specs": {
-          "delivery": "VAST URL or hosted video file",
           "aspect_ratio": "9:16",
           "common_durations": ["6s", "15s", "30s"]
-        }
+        },
+        "is_3p_served": false
       },
       "video_ctv": {
         "format_id": "video_ctv",
-        "name": "Connected TV Video",
         "type": "video",
-        "description": "Video for connected TV/OTT",
+        "description": "Connected TV video",
         "specs": {
-          "delivery": "VAST URL",
           "features": ["non-skippable", "sound on"],
           "common_durations": ["15s", "30s", "60s"]
-        }
+        },
+        "is_3p_served": false
+      },
+      "video_3p_ctv": {
+        "format_id": "video_3p_ctv",
+        "type": "video",
+        "description": "Connected TV with VAST tag",
+        "specs": {
+          "delivery": "VAST URL"
+        },
+        "is_3p_served": true
       }
     },
     "audio": {
       "audio_standard": {
         "format_id": "audio_standard",
-        "name": "Standard Audio",
         "type": "audio",
         "description": "Standard audio ad",
         "specs": {
-          "delivery": "hosted audio file or VAST",
-          "common_durations": ["15s", "30s", "60s"],
-          "optional": "companion banner"
-        }
+          "common_durations": ["15s", "30s", "60s"]
+        },
+        "is_3p_served": false
+      },
+      "audio_3p_standard": {
+        "format_id": "audio_3p_standard",
+        "type": "audio",
+        "description": "Audio with VAST tag",
+        "specs": {
+          "delivery": "VAST URL"
+        },
+        "is_3p_served": true
       },
       "audio_podcast": {
         "format_id": "audio_podcast",
-        "name": "Podcast Audio",
         "type": "audio",
-        "description": "Audio ad for podcast insertion",
+        "description": "Podcast audio ad",
         "specs": {
-          "delivery": "hosted audio file",
           "insertion_points": ["pre-roll", "mid-roll", "post-roll"]
-        }
+        },
+        "is_3p_served": false
       }
     },
     "rich_media": {
       "rich_interstitial": {
         "format_id": "rich_interstitial",
-        "name": "Rich Media Interstitial",
         "type": "rich_media",
         "description": "Full-screen interactive ad",
         "specs": {
-          "delivery": "HTML5 with MRAID for mobile",
           "features": ["interactive", "expandable"]
-        }
+        },
+        "is_3p_served": false
       }
     },
     "dooh": {
       "dooh_standard": {
         "format_id": "dooh_standard",
-        "name": "Digital Out-of-Home",
         "type": "dooh",
-        "description": "Digital billboard or screen",
+        "description": "Digital out-of-home display",
         "specs": {
-          "delivery": "image or video file",
           "common_durations": ["8s", "10s", "15s"],
           "features": ["weather triggers", "dayparting"]
-        }
+        },
+        "is_3p_served": false
       }
     }
   },
   "notes": {
     "flexibility": "These formats are intentionally underspecified to allow maximum flexibility. Publishers should accept standard assets and handle platform-specific requirements.",
-    "third_party": "Formats with '3p' accept third-party ad tags. Others accept direct assets.",
+    "third_party": "Formats with is_3p_served: true accept third-party ad tags. Others accept direct assets.",
     "verification": "All formats should support optional ad verification/measurement tags where applicable."
   }
 }
