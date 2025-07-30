@@ -128,114 +128,7 @@ Lists all supported creative formats in the system.
 }
 ```
 
-### 2. discover_products
-
-Discovers available advertising products based on natural language brief.
-
-**Request:**
-```json
-{
-  "campaign_brief": "I want to reach pet owners in California with video ads during prime time"
-}
-```
-
-**Response:**
-```json
-{
-  "recommended_products": [
-    {
-      "product_id": "connected_tv_prime",
-      "name": "Connected TV - Prime Time",
-      "description": "Premium CTV inventory 8PM-11PM PST",
-      "min_spend": 10000,
-      "cpm_range": {
-        "min": 35.00,
-        "max": 65.00
-      },
-      "targeting_available": [
-        "geography",
-        "interests",
-        "demographics",
-        "device_types"
-      ],
-      "formats": ["video"],
-      "match_reasons": [
-        "Prime time daypart matches request",
-        "CTV reaches pet owner households",
-        "California geo-targeting available"
-      ]
-    }
-  ]
-}
-```
-
-**Error Handling:**
-- `400 Bad Request`: Brief too vague or short
-- `401 Unauthorized`: Invalid authentication
-- `500 Internal Server Error`: AI processing failure
-
-### 2. get_avails
-
-Checks availability and pricing for specific products.
-
-**Request:**
-```json
-{
-  "product_ids": ["connected_tv_prime", "streaming_audio_drive"],
-  "start_date": "2024-02-01",
-  "end_date": "2024-02-14",
-  "budget": 50000,
-  "targeting_overlay": {
-    "geo_country_any_of": ["US"],
-    "geo_region_any_of": ["CA", "NY"],
-    "audience_segment_any_of": ["3p:pet_owners"]
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "packages": [
-    {
-      "package_id": "pkg_ctv_prime_ca_ny",
-      "product_id": "connected_tv_prime",
-      "name": "CTV Prime - CA/NY Pet Owners",
-      "impressions": 769230,
-      "cpm": 45.00,
-      "total_cost": 34615.35,
-      "availability": 0.92,
-      "targeting_applied": {
-        "geo_country_any_of": ["US"],
-        "geo_region_any_of": ["CA", "NY"],
-        "audience_segment_any_of": ["3p:pet_owners"],
-        "dayparting": {
-          "presets": ["prime_time"]
-        }
-      }
-    },
-    {
-      "package_id": "pkg_audio_drive_ca_ny",
-      "product_id": "streaming_audio_drive",
-      "name": "Streaming Audio - Drive Time",
-      "impressions": 625000,
-      "cpm": 25.00,
-      "total_cost": 15625.00,
-      "availability": 0.88
-    }
-  ],
-  "total_budget": 50240.35,
-  "total_impressions": 1394230,
-  "budget_utilization": 1.005
-}
-```
-
-**Error Cases:**
-- `404 Not Found`: Invalid product IDs
-- `400 Bad Request`: Invalid date range or targeting
-- `409 Conflict`: No availability for requested criteria
-
-### 3. create_media_buy
+### 2. create_media_buy
 
 Creates a media buy from selected packages.
 
@@ -279,7 +172,7 @@ Creates a media buy from selected packages.
 - **Kevel**: Creates Campaign with Flights, instant activation
 - **Triton**: Creates Campaign for audio delivery
 
-### 4. add_creative_assets
+### 3. add_creative_assets
 
 Uploads creative assets and assigns to packages.
 
@@ -354,7 +247,7 @@ Uploads creative assets and assigns to packages.
 - Content policies
 - Technical specifications
 
-### 5. check_media_buy_status
+### 4. check_media_buy_status
 
 Monitors the status of a media buy.
 
@@ -397,7 +290,7 @@ Monitors the status of a media buy.
 - `completed`: Finished delivery
 - `failed`: Critical error
 
-### 6. get_media_buy_delivery
+### 5. get_media_buy_delivery
 
 Retrieves delivery metrics for reporting.
 
@@ -454,7 +347,7 @@ Retrieves delivery metrics for reporting.
 }
 ```
 
-### 7. update_media_buy
+### 6. update_media_buy
 
 Updates campaign and package settings using PATCH semantics.
 
@@ -501,7 +394,7 @@ Updates campaign and package settings using PATCH semantics.
 - Omitted packages remain unchanged
 - Null values clear/reset fields (where applicable)
 
-### 8. update_package
+### 7. update_package
 
 Focused tool for package-only updates.
 
@@ -527,7 +420,7 @@ Focused tool for package-only updates.
 
 **Design Note**: Adding new packages post-creation not yet supported. Under consideration for future version.
 
-### 9. update_performance_index
+### 8. update_performance_index
 
 Provides performance feedback for AI optimization.
 
@@ -571,7 +464,7 @@ Provides performance feedback for AI optimization.
 }
 ```
 
-### 10. get_all_media_buy_delivery
+### 9. get_all_media_buy_delivery
 
 Retrieves delivery metrics for all active media buys owned by the principal. This is optimized for performance by batching requests.
 
@@ -764,7 +657,7 @@ Completes a human approval task.
 }
 ```
 
-### 15. get_all_media_buy_delivery (Admin Only)
+### 15. list_all_media_buys (Admin Only)
 
 Retrieves delivery data for all active media buys across all principals.
 
@@ -811,13 +704,6 @@ Lists available advertising products for the authenticated principal with option
         "format_id": "video_standard",
         "name": "Standard Video"
       }],
-      "targeting_template": {
-        "geo_country_any_of": ["US"],
-        "dayparting": {
-          "timezone": "America/New_York",
-          "presets": ["prime_time"]
-        }
-      },
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,

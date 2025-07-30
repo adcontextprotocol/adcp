@@ -61,13 +61,6 @@ A server can offer a general catalog, but it can also return:
   "name": "Connected TV - Prime Time",
   "description": "Premium CTV inventory 8PM-11PM",
   "formats": [{"format_id": "video_standard", "name": "Standard Video"}],
-  "targeting_template": {
-    "geo_country_any_of": ["US"],
-    "dayparting": {
-      "timezone": "America/New_York",
-      "presets": ["prime_time"]
-    }
-  },
   "delivery_type": "guaranteed",
   "is_fixed_price": true,
   "cpm": 45.00
@@ -81,9 +74,6 @@ A server can offer a general catalog, but it can also return:
   "name": "Custom - Gaming Enthusiasts",
   "description": "Custom audience package for gaming campaign",
   "formats": [{"format_id": "display_300x250", "name": "Medium Rectangle"}],
-  "targeting_template": {
-    "audience_segment_any_of": ["gaming_enthusiasts", "console_owners"]
-  },
   "delivery_type": "non_guaranteed",
   "is_fixed_price": false,
   "price_guidance": {
@@ -98,7 +88,7 @@ A server can offer a general catalog, but it can also return:
 
 ## Integration with Discovery
 
-Products are discovered through the [Product Discovery](./product-discovery.md) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be checked for availability using `get_avails` and then purchased via `create_media_buy`.
+Products are discovered through the [Product Discovery](./product-discovery.md) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be purchased via `create_media_buy`.
 
 ## See Also
 

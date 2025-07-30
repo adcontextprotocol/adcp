@@ -45,14 +45,6 @@ The `list_products` tool accepts a natural language brief and optional format fi
         "format_id": "video_standard",
         "name": "Standard Video"
       }],
-      "targeting_template": {
-        "geo_country_any_of": ["US"],
-        "geo_region_any_of": ["CA"],
-        "dayparting": {
-          "timezone": "America/Los_Angeles",
-          "presets": ["prime_time"]
-        }
-      },
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
@@ -83,13 +75,6 @@ def get_product_catalog():
             name="Connected TV - Prime Time",
             description="Premium CTV inventory 8PM-11PM",
             formats=[Format(format_id="video_standard", name="Standard Video")],
-            targeting_template=Targeting(
-                geo_country_any_of=["US"],
-                dayparting=Dayparting(
-                    timezone="America/Los_Angeles",
-                    presets=["prime_time"]
-                )
-            ),
             delivery_type="guaranteed",
             is_fixed_price=True,
             cpm=45.00
@@ -222,9 +207,8 @@ graph TD
     D --> E{Products found?}
     E -->|Yes| F[Review products]
     E -->|No| G[Generate custom products]
-    F --> H[get_avails]
+    F --> H[Check pricing and availability]
     G --> H
-    H --> I[Check pricing and availability]
     I --> J[create_media_buy]
 ```
 
@@ -368,8 +352,7 @@ for brief in test_briefs:
 Discovery is just the first step. Ensure smooth transitions to the next phases:
 
 1. **Discovery** → `list_products` finds relevant inventory
-2. **Availability** → `get_avails` checks pricing and availability  
-3. **Purchase** → `create_media_buy` executes the campaign
+2. **Purchase** → `create_media_buy` executes the campaign
 4. **Creative** → `add_creative_assets` uploads assets
 5. **Monitor** → Track delivery and optimize
 
