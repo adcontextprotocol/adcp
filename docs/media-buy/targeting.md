@@ -151,7 +151,7 @@ Media buys apply targeting through the overlay:
 
 ### Final Effective Targeting
 
-The targeting overlay is applied directly to the media buy. The implementation_config in the product contains ad server-specific settings, while the targeting overlay controls audience selection.
+The targeting overlay is applied to the media buy and combined with any targeting inherent in the product. This includes both audience selection criteria and ad server-specific settings like geographic targeting.
 
 ## Platform Compatibility
 

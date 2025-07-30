@@ -5,195 +5,133 @@
   "description": "Authoritative list of standard creative formats for Ad Context Protocol",
   "lastUpdated": "2024-01-30",
   "formats": {
+    "display": {
+      "display_3p_300x250": {
+        "format_id": "display_3p_300x250",
+        "name": "Medium Rectangle - Third Party",
+        "type": "display",
+        "description": "300x250 banner with third-party ad tag",
+        "specs": {
+          "dimensions": "300x250",
+          "delivery": "ad tag"
+        }
+      },
+      "display_image_300x250": {
+        "format_id": "display_image_300x250",
+        "name": "Medium Rectangle - Image",
+        "type": "display",
+        "description": "300x250 banner with image asset",
+        "specs": {
+          "dimensions": "300x250",
+          "requirements": ["image", "click URL", "optional ad verification code"]
+        }
+      },
+      "display_3p_728x90": {
+        "format_id": "display_3p_728x90",
+        "name": "Leaderboard - Third Party",
+        "type": "display",
+        "description": "728x90 banner with third-party ad tag",
+        "specs": {
+          "dimensions": "728x90",
+          "delivery": "ad tag"
+        }
+      },
+      "display_image_728x90": {
+        "format_id": "display_image_728x90",
+        "name": "Leaderboard - Image",
+        "type": "display",
+        "description": "728x90 banner with image asset",
+        "specs": {
+          "dimensions": "728x90",
+          "requirements": ["image", "click URL", "optional ad verification code"]
+        }
+      },
+      "display_3p_320x50": {
+        "format_id": "display_3p_320x50",
+        "name": "Mobile Banner - Third Party",
+        "type": "display",
+        "description": "320x50 mobile banner with third-party ad tag",
+        "specs": {
+          "dimensions": "320x50",
+          "delivery": "ad tag"
+        }
+      },
+      "display_image_320x50": {
+        "format_id": "display_image_320x50",
+        "name": "Mobile Banner - Image",
+        "type": "display",
+        "description": "320x50 mobile banner with image asset",
+        "specs": {
+          "dimensions": "320x50",
+          "requirements": ["image", "click URL", "optional ad verification code"]
+        }
+      },
+      "display_native": {
+        "format_id": "display_native",
+        "name": "Native Display",
+        "type": "display",
+        "subtype": "native",
+        "description": "Native ad matching content style",
+        "specs": {
+          "requirements": ["title", "description", "image", "click URL", "optional logo", "optional CTA"]
+        }
+      }
+    },
     "video": {
-      "video_standard_1080p": {
-        "format_id": "video_standard_1080p",
-        "name": "Standard HD Video",
+      "video_standard": {
+        "format_id": "video_standard",
+        "name": "Standard Video",
         "type": "video",
-        "description": "Standard 1080p video ad",
+        "description": "Standard video ad",
         "specs": {
-          "resolution": "1920x1080",
-          "duration": "15s or 30s",
-          "file_format": "MP4",
-          "max_file_size": "50MB"
-        },
-        "delivery_options": {
-          "hosted": {
-            "supported": true,
-            "description": "Direct URL to video file"
-          },
-          "vast": {
-            "supported": true,
-            "versions": ["3.0", "4.0", "4.1", "4.2"],
-            "features": ["linear", "skippable", "companions"]
-          },
-          "vpaid": {
-            "supported": false,
-            "reason": "Security and performance concerns"
-          }
+          "delivery": "VAST URL or hosted video file",
+          "common_durations": ["15s", "30s"],
+          "common_resolutions": ["1920x1080", "1280x720"]
         }
       },
-      "video_vertical_mobile": {
-        "format_id": "video_vertical_mobile",
-        "name": "Vertical Mobile Video",
+      "video_vertical": {
+        "format_id": "video_vertical",
+        "name": "Vertical Video",
         "type": "video",
-        "description": "Full-screen vertical video for mobile",
+        "description": "Vertical video for mobile",
         "specs": {
-          "resolution": "1080x1920 (9:16)",
-          "duration": "6s, 15s, or 30s",
-          "file_format": "MP4",
-          "features": ["skippable after 5s", "sound off by default"]
-        },
-        "delivery_options": {
-          "hosted": {
-            "supported": true
-          },
-          "vast": {
-            "supported": true,
-            "versions": ["4.0+"],
-            "required_extensions": ["OMID for viewability"]
-          }
+          "delivery": "VAST URL or hosted video file",
+          "aspect_ratio": "9:16",
+          "common_durations": ["6s", "15s", "30s"]
         }
       },
-      "video_ctv_standard": {
-        "format_id": "video_ctv_standard",
+      "video_ctv": {
+        "format_id": "video_ctv",
         "name": "Connected TV Video",
         "type": "video",
-        "description": "Standard CTV/OTT video ad",
+        "description": "Video for connected TV/OTT",
         "specs": {
-          "resolution": "1920x1080 or 3840x2160 (4K)",
-          "duration": "15s, 30s, or 60s",
-          "file_format": "MP4",
-          "features": ["non-skippable", "sound on by default"]
-        },
-        "delivery_options": {
-          "vast": {
-            "supported": true,
-            "versions": ["4.0+"],
-            "required": true,
-            "features": ["ad pods", "server-side ad insertion"]
-          }
+          "delivery": "VAST URL",
+          "features": ["non-skippable", "sound on"],
+          "common_durations": ["15s", "30s", "60s"]
         }
       }
     },
     "audio": {
-      "audio_streaming": {
-        "format_id": "audio_streaming",
-        "name": "Streaming Audio Ad",
+      "audio_standard": {
+        "format_id": "audio_standard",
+        "name": "Standard Audio",
         "type": "audio",
-        "description": "Audio ad for music/podcast streaming",
+        "description": "Standard audio ad",
         "specs": {
-          "duration": "15s, 30s, or 60s",
-          "file_format": "MP3 or M4A",
-          "bitrate": "128kbps minimum",
-          "companion_banner": "640x640 optional"
-        },
-        "delivery_options": {
-          "hosted": {
-            "supported": true,
-            "description": "Direct URL to audio file"
-          },
-          "vast": {
-            "supported": true,
-            "versions": ["4.1+"],
-            "notes": "Audio delivered via VAST MediaFile"
-          },
-          "daast": {
-            "supported": false,
-            "reason": "Deprecated in favor of VAST 4.1"
-          }
+          "delivery": "hosted audio file or VAST",
+          "common_durations": ["15s", "30s", "60s"],
+          "optional": "companion banner"
         }
       },
       "audio_podcast": {
         "format_id": "audio_podcast",
-        "name": "Podcast Ad",
+        "name": "Podcast Audio",
         "type": "audio",
-        "description": "Dynamic ad insertion for podcasts",
+        "description": "Audio ad for podcast insertion",
         "specs": {
-          "duration": "15s, 30s, 60s, or host-read",
-          "file_format": "MP3",
-          "bitrate": "128kbps minimum",
-          "insertion_type": ["pre-roll", "mid-roll", "post-roll"]
-        },
-        "delivery_options": {
-          "hosted": {
-            "supported": true,
-            "required": true
-          },
-          "vast": {
-            "supported": true,
-            "versions": ["4.1+"]
-          }
-        }
-      }
-    },
-    "display": {
-      "display_banner_728x90": {
-        "format_id": "display_banner_728x90",
-        "name": "Leaderboard Banner",
-        "type": "display",
-        "description": "Standard leaderboard banner",
-        "specs": {
-          "dimensions": "728x90",
-          "file_format": "JPG, PNG, or HTML5",
-          "max_file_size": "200KB",
-          "animation": "15s max"
-        },
-        "delivery_options": {
-          "hosted": {
-            "supported": true
-          },
-          "html": {
-            "supported": true,
-            "container": "SafeFrame or friendly iframe"
-          },
-          "mraid": {
-            "supported": false,
-            "reason": "Desktop format"
-          }
-        }
-      },
-      "display_mobile_320x50": {
-        "format_id": "display_mobile_320x50",
-        "name": "Mobile Banner",
-        "type": "display",
-        "description": "Standard mobile banner",
-        "specs": {
-          "dimensions": "320x50",
-          "file_format": "JPG, PNG, or HTML5",
-          "max_file_size": "50KB"
-        },
-        "delivery_options": {
-          "hosted": {
-            "supported": true
-          },
-          "mraid": {
-            "supported": true,
-            "versions": ["2.0", "3.0"],
-            "features": ["expand", "resize"]
-          }
-        }
-      },
-      "display_native_feed": {
-        "format_id": "display_native_feed",
-        "name": "Native In-Feed",
-        "type": "display",
-        "subtype": "native",
-        "description": "Native ad matching feed content style",
-        "specs": {
-          "components": {
-            "title": "25 chars",
-            "description": "90 chars",
-            "image": "1200x627",
-            "logo": "200x200",
-            "cta": "15 chars"
-          }
-        },
-        "delivery_options": {
-          "native": {
-            "supported": true,
-            "protocol": "OpenRTB Native 1.2"
-          }
+          "delivery": "hosted audio file",
+          "insertion_points": ["pre-roll", "mid-roll", "post-roll"]
         }
       }
     },
@@ -204,60 +142,28 @@
         "type": "rich_media",
         "description": "Full-screen interactive ad",
         "specs": {
-          "dimensions": "responsive",
-          "file_format": "HTML5",
-          "max_initial_load": "1MB",
-          "features": ["touch gestures", "accelerometer", "video"]
-        },
-        "delivery_options": {
-          "mraid": {
-            "supported": true,
-            "versions": ["3.0"],
-            "required": true
-          }
+          "delivery": "HTML5 with MRAID for mobile",
+          "features": ["interactive", "expandable"]
         }
       }
     },
     "dooh": {
-      "dooh_digital_billboard": {
-        "format_id": "dooh_digital_billboard",
-        "name": "Digital Billboard",
+      "dooh_standard": {
+        "format_id": "dooh_standard",
+        "name": "Digital Out-of-Home",
         "type": "dooh",
-        "description": "Large format digital out-of-home",
+        "description": "Digital billboard or screen",
         "specs": {
-          "resolution": "1920x1080 minimum",
-          "duration": "8s rotation",
-          "file_format": "JPG or MP4",
-          "features": ["weather triggers", "time-based creative"]
-        },
-        "delivery_options": {
-          "hosted": {
-            "supported": true,
-            "required": true
-          },
-          "programmatic": {
-            "supported": true,
-            "protocol": "OpenRTB DOOH 1.0"
-          }
+          "delivery": "image or video file",
+          "common_durations": ["8s", "10s", "15s"],
+          "features": ["weather triggers", "dayparting"]
         }
       }
     }
   },
-  "delivery_protocols": {
-    "vast": {
-      "name": "Video Ad Serving Template",
-      "current_version": "4.2",
-      "documentation": "https://iabtechlab.com/standards/vast/"
-    },
-    "mraid": {
-      "name": "Mobile Rich Media Ad Interface Definitions",
-      "current_version": "3.0",
-      "documentation": "https://iabtechlab.com/standards/mraid/"
-    },
-    "native": {
-      "name": "OpenRTB Native",
-      "current_version": "1.2",
-      "documentation": "https://iabtechlab.com/standards/openrtb-native/"
-    }
+  "notes": {
+    "flexibility": "These formats are intentionally underspecified to allow maximum flexibility. Publishers should accept standard assets and handle platform-specific requirements.",
+    "third_party": "Formats with '3p' accept third-party ad tags. Others accept direct assets.",
+    "verification": "All formats should support optional ad verification/measurement tags where applicable."
   }
 }
