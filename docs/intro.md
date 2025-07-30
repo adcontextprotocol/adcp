@@ -48,12 +48,17 @@ These parties exchange impressions and money through the orchestration layer bel
 Platforms that evaluate sellers and audiences, and execute buying strategies:
 - **Examples**: Scope3, custom orchestration solutions
 - **Function**: Strategy execution, seller evaluation, optimization
-- **Integration**: Uses MCP to communicate with Sales Agents
+- **Integration**: Uses MCP to communicate with both Audience and Sales Agents
 
-#### Sales Agent (Right)
+#### Audience Agent (Right, Top)
 MCP servers that provide:
-- **Product Discovery**: Natural language inventory search
-- **Audience Discovery**: Finding relevant audiences
+- **Audience Discovery**: Finding relevant audiences using natural language
+- **Audience Activation**: Pushing audiences to decisioning platforms
+- **Integration**: Connects audience platforms to orchestration via MCP
+
+#### Sales Agent (Right, Bottom)
+MCP servers that provide:
+- **Media Product Discovery**: Natural language inventory search
 - **Media Execution**: Creating and managing campaigns
 - **Integration**: Exposes publisher capabilities via MCP
 
@@ -66,11 +71,11 @@ Real-time systems for:
 - **First-Party Data**: Activating advertiser data
 - **Integration**: Connects via key-value pairs or RTB protocols
 
-#### Publisher Ad Tech (Right)
+#### Decisioning Platform (Right)
 The technical infrastructure that:
 - **Selects Impressions**: Decides which ad to serve
 - **Delivery Method**: Direct campaigns or programmatic (RTB)
-- **Examples**: Google Ad Manager, Kevel, proprietary systems
+- **Examples**: DSPs, SSPs, Ad Servers, Google Ad Manager, Kevel
 
 ## How AdCP Protocols Work Together
 
