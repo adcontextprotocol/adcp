@@ -15,25 +15,62 @@ Ad Context Protocol is an open standard based on the Model Context Protocol (MCP
 - **Platform Agnostic**: Works with any compatible advertising platform
 - **AI-Powered**: Designed for integration with AI assistants like Claude, GPT, and others
 
-## Ad Tech Ecosystem Architecture
+## Protocol Architecture
 
-The advertising technology landscape consists of two fundamental types of platforms that AdCP connects:
+AdCP operates at multiple layers, providing a clean separation between the business roles, orchestration layer, and technical execution:
 
-### Decisioning Platforms
-Platforms where audiences, targeting, and optimization happen, generating decisions such as bids, PMP creation, or buy execution:
+![Layers of the Stack](./layers-of-the-stack.png)
 
-- **DSPs (Demand-Side Platforms)**: Where advertisers bid on inventory (The Trade Desk, Google DV360)
-- **SSPs (Supply-Side Platforms)**: Where publishers offer inventory
-- **Ad Servers**: Where creative decisioning and serving occurs  
-- **Injective Platforms**: Like Scope3, where campaigns are planned and executed
+## The AdCP Ecosystem Layers
 
-### Audience Platforms
-Platforms that have information about audiences (people, households, devices) and can deliver those audiences to decisioning platforms where they become transacted upon:
+### Top Layer: Business Principals
 
-- **Data Providers**: LiveRamp, Experian - license audience segments
-- **Data Management Platforms (DMPs)**: Aggregate and organize audience data
-- **Customer Data Platforms (CDPs)**: Unify customer data across touchpoints
-- **Identity Resolution Services**: Link devices and identities across platforms
+#### Buying Principal (Left)
+The demand side of advertising, including:
+- **Advertisers**: Brands with products/services to promote
+- **Agencies**: Acting on behalf of advertisers
+- **Retail Media Networks**: Retailers monetizing their audiences
+- **Curators**: Packaging inventory and data for specific use cases
+
+#### Media Seller (Right)
+The supply side of advertising, including:
+- **Publishers**: Content creators with audience reach
+- **Sales Houses**: Representing multiple publishers
+- **Rep Firms**: Specialized sales representation
+- **SSPs**: Supply-side platforms aggregating inventory
+- **Ad Networks**: Aggregating and reselling inventory
+
+These parties exchange impressions and money through the orchestration layer below.
+
+### Middle Layer: Orchestration
+
+#### Media Orchestration Platform (Left)
+Platforms that evaluate sellers and audiences, and execute buying strategies:
+- **Examples**: Scope3, custom orchestration solutions
+- **Function**: Strategy execution, seller evaluation, optimization
+- **Integration**: Uses MCP to communicate with Sales Agents
+
+#### Sales Agent (Right)
+MCP servers that provide:
+- **Product Discovery**: Natural language inventory search
+- **Audience Discovery**: Finding relevant audiences
+- **Media Execution**: Creating and managing campaigns
+- **Integration**: Exposes publisher capabilities via MCP
+
+### Bottom Layer: Technical Execution
+
+#### Agent Execution Environment (Left)
+Real-time systems for:
+- **Brand Safety**: Ensuring appropriate ad placement
+- **Frequency Capping**: Managing exposure limits
+- **First-Party Data**: Activating advertiser data
+- **Integration**: Connects via key-value pairs or RTB protocols
+
+#### Publisher Ad Tech (Right)
+The technical infrastructure that:
+- **Selects Impressions**: Decides which ad to serve
+- **Delivery Method**: Direct campaigns or programmatic (RTB)
+- **Examples**: Google Ad Manager, Kevel, proprietary systems
 
 ## How AdCP Protocols Work Together
 

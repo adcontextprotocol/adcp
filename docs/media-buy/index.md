@@ -18,7 +18,6 @@ The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-fi
 
 5. **AI-Optimized**: Designed for AI agents to discover, negotiate, and optimize media buys programmatically.
 
-
 ## Key Features
 
 - **Natural Language Discovery**: Find advertising inventory using plain English briefs
