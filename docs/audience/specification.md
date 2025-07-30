@@ -26,7 +26,7 @@ The Audience Activation Protocol provides:
 
 ### Agent Integration
 
-The Audience Activation Protocol operates within the broader [Ad Tech Ecosystem Architecture](../intro#ad-tech-ecosystem-architecture), enabling audience agents to directly integrate with and activate audiences on decisioning platforms (DSPs, injective platforms). 
+The Audience Activation Protocol operates within the broader [AdCP Ecosystem Layers](../intro#the-adcp-ecosystem-layers), enabling audience agents to directly integrate with and activate audiences on decisioning platforms (DSPs, orchestration platforms). 
 
 **Direct Integration Model**: Audience agents contract directly with decisioning platforms, eliminating intermediary reporting and usage tracking. Once audiences are activated on a decisioning platform, all usage reporting, billing, and campaign metrics are handled directly by that platform.
 

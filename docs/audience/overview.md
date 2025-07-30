@@ -115,7 +115,7 @@ flowchart LR
 
 ## Integration Flow
 
-The Audience Activation Protocol works within the broader [Ad Tech Ecosystem Architecture](../intro#ad-tech-ecosystem-architecture):
+The Audience Activation Protocol works within the broader [AdCP Ecosystem Layers](../intro#the-adcp-ecosystem-layers):
 
 1. **Discover** audiences on audience platforms (LiveRamp, Experian, Peer39)
 2. **Identify** where they're deployed (multiple SSPs, DSPs, DMPs)
