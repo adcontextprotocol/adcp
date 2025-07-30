@@ -18,18 +18,14 @@ The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-fi
 
 5. **AI-Optimized**: Designed for AI agents to discover, negotiate, and optimize media buys programmatically.
 
-6. **Multi-Tenant Architecture**: Database-backed tenant isolation supporting multiple publishers on a single deployment.
 
 ## Key Features
 
-- **Advanced Targeting System**: Two-tier targeting with overlay (principal-accessible) and managed-only (internal) dimensions
-- **Creative Management**: Auto-approval workflows, creative groups, and admin review queues
-- **AEE Integration**: Built-in support for Ad Effectiveness Engine signals via key-value targeting
-- **Security Enhancements**: Comprehensive audit logging, principal context tracking, and adapter security boundaries
-- **Production Features**: PostgreSQL support, Docker deployment, health monitoring, and Admin UI
-- **Human Task Management**: Complete workflow for manual approval with AI verification of task completion
-- **Operations Dashboard**: Real-time monitoring of media buys, tasks, and audit trails with database persistence
-- **Database Persistence**: All operations logged to database with full audit trail and tenant isolation
+- **Natural Language Discovery**: Find advertising inventory using plain English briefs
+- **Unified Targeting**: Consistent targeting dimensions across all platforms
+- **Creative Flexibility**: Support for standard IAB and custom publisher formats
+- **Real-time Optimization**: Continuous performance monitoring and adjustment
+- **Human-in-the-Loop**: Optional manual approval workflows where needed
 
 ## Separation of Concerns: A Collaborative Model
 
