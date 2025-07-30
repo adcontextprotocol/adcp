@@ -712,13 +712,18 @@ Retrieves delivery data for all active media buys across all principals.
 
 ### 16. list_products
 
-Lists all available advertising products for the authenticated principal.
+Lists available advertising products for the authenticated principal.
 
 **Request:**
 ```json
 {
-  "category": "video",  // Optional - filter by category
-  "min_budget": 1000    // Optional - filter by minimum budget
+  "brief": "Looking for premium sports inventory",  // Optional - natural language brief
+  "filters": {  // Optional filters based on product fields
+    "delivery_type": "guaranteed",  // "guaranteed" or "non_guaranteed"
+    "formats": ["video"],  // Filter by specific formats
+    "is_fixed_price": true,  // Fixed price vs auction
+    "creative_types": ["video", "display"]  // Filter by creative type
+  }
 }
 ```
 
@@ -730,10 +735,14 @@ Lists all available advertising products for the authenticated principal.
       "product_id": "connected_tv_prime",
       "name": "Connected TV - Prime Time",
       "description": "Premium CTV inventory 8PM-11PM",
-      "formats": ["video"],
+      "formats": [{
+        "format_id": "video_standard"
+      }],
       "delivery_type": "guaranteed",
+      "is_fixed_price": true,
+      "cpm": 45.00,
       "min_spend": 10000,
-      "targeting_available": ["geography", "demographics", "interests"]
+      "brief_relevance": "Premium CTV inventory aligns with sports content request and prime time targeting"  // If brief was provided
     }
   ]
 }

@@ -129,28 +129,11 @@ Used primarily for AEE (Ad Effectiveness Engine) signal integration:
 
 Some platform-specific fields within `custom` targeting may also be managed-only, depending on the adapter configuration.
 
-## Layered Application
+## Targeting Application
 
-Targeting is applied in two layers:
+### Media Buy Targeting Overlay
 
-### 1. Product Targeting Template
-
-Products define their base audience:
-
-```json
-{
-  "product_id": "premium_sports_video",
-  "targeting_template": {
-    "content_category_any_of": ["IAB17"],  // Sports
-    "device_type_any_of": ["ctv", "desktop"],
-    "media_type_any_of": ["video"]
-  }
-}
-```
-
-### 2. Media Buy Targeting Overlay
-
-Media buys can refine the targeting:
+Media buys apply targeting through the overlay:
 
 ```json
 {
@@ -166,12 +149,9 @@ Media buys can refine the targeting:
 }
 ```
 
-### 3. Final Effective Targeting
+### Final Effective Targeting
 
-The system combines both layers:
-- Lists are merged (union for `any_of`, union for `none_of`)
-- Structured fields use the most specific value
-- Custom fields are merged by platform
+The targeting overlay is applied to the media buy and combined with any targeting inherent in the product. This includes both audience selection criteria and ad server-specific settings like geographic targeting.
 
 ## Platform Compatibility
 
@@ -261,7 +241,7 @@ Example error:
 1. **Validate Support**: Check platform capabilities before creating media buys
 2. **Start Broad**: Begin with fewer restrictions and refine based on performance
 3. **Use Standard Dimensions**: Prefer standard over custom targeting when possible
-4. **Layer Thoughtfully**: Use product templates for common criteria, overlays for campaign-specific needs
+4. **Apply Targeting via Overlay**: All targeting is applied through the media buy's targeting_overlay
 5. **Monitor Compatibility**: Pay attention to platform warnings and errors
 
 ## Future Enhancements

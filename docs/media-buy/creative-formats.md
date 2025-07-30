@@ -5,7 +5,40 @@ title: Creative Formats
 
 # Creative Formats
 
-All creative formats have a unique identifier and specify delivery methods:
+All creative formats have a unique identifier and specify delivery methods.
+
+## Authoritative Source
+
+The official JSON schema for standard creative formats is available at:
+- **Production**: https://adcontextprotocol.org/schemas/creative-formats-v1.json
+- **GitHub**: https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/creative-formats-v1.json
+
+### Programmatic Access
+
+Servers should fetch and cache this schema:
+
+```bash
+# Fetch the latest creative formats
+curl https://adcontextprotocol.org/schemas/creative-formats-v1.json
+
+# Or use the GitHub raw URL
+curl https://raw.githubusercontent.com/adcontextprotocol/adcp/main/static/schemas/creative-formats-v1.json
+```
+
+### Schema Structure
+
+The JSON schema includes:
+- **formats**: Organized by type (video, audio, display, rich_media, dooh)
+- **specs**: Technical specifications for each format
+- **delivery_options**: Supported delivery methods and protocols
+- **delivery_protocols**: Reference information for VAST, MRAID, etc.
+
+### Version Management
+
+- Current version: v1
+- Updates will be versioned (creative-formats-v2.json, etc.)
+- Breaking changes will increment the major version
+- Implementations should check the `version` field
 
 #### Standard Video Formats
 
