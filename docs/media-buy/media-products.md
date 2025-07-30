@@ -12,7 +12,7 @@ A **Product** is the core sellable unit in AdCP. This document details the Produ
 - `name` (string, required)
 - `description` (string, required)
 - `formats` (list[Format], required): See [Creative Formats](creative-formats.md).
-- `targeting_template` (Targeting, required): See [Targeting](targeting.md).
+- `implementation_config` (JSON, required): Ad server-specific configuration for creating the media buy.
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `is_fixed_price` (bool, required): `true` if the price is fixed, `false` if it is auction-based.
 - `cpm` (float, optional): The fixed Cost Per Mille. **Required** if `is_fixed_price` is `true`.
