@@ -43,10 +43,9 @@ Execute and optimize media buys programmatically across platforms.
 
 Implement AdCP to enable AI-powered workflows for your customers:
 
-1. **Review the Specification**: [Audience Protocol RFC](./audience-protocol-v1.md)
-2. **Implement MCP Server**: Follow the [implementation guide](https://adcontextprotocol.github.io/docs/implementation/getting-started)
+1. **Review the Specification**: [Audience Protocol](https://adcontextprotocol.github.io/docs/audience/specification)
+2. **Implement MCP Server**: Check out the [reference implementations](#reference-implementations)
 3. **Test Your Implementation**: Use the validation test suite
-4. **Get Certified**: Ensure your implementation meets quality standards.
 
 ### For Advertisers & Agencies
 
@@ -62,10 +61,10 @@ Use AdCP-enabled platforms with your AI assistant:
 adcontextprotocol/
 ├── docs/                    # Documentation source files
 │   ├── audience/           # Audience protocol docs
-│   ├── implementation/     # Implementation guides  
+│   ├── curation/           # Curation protocol (coming soon)
+│   ├── media-buy/          # Media Buy protocol docs
 │   └── reference/          # API reference
 ├── src/                    # Website source files
-├── audience-protocol-v1.md # Protocol specification
 └── README.md              # This file
 ```
 
@@ -90,6 +89,11 @@ We welcome contributions from:
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
+## Reference Implementations
+
+- [Audience Agent](https://github.com/adcontextprotocol/audience-agent)
+- [Sales Agent](https://github.com/adcontextprotocol/salesagent)
+
 ## Platform Implementations
 
 ### Current Support
@@ -98,16 +102,6 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 - **Scope3**: Full Audience Activation Protocol support
 - **More Coming**: Additional platforms implementing Q1 2025
 
-### Certification
-
-Platform implementations can be certified for compliance and quality:
-
-1. **Technical Compliance**: Pass validation test suite
-2. **Performance Standards**: Meet response time requirements  
-3. **Security Review**: Complete security assessment
-4. **Documentation**: Provide complete integration docs
-
-Learn more: [Certification Process](https://adcontextprotocol.github.io/docs/reference/certification)
 
 ## Documentation Website
 
