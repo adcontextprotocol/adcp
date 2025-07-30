@@ -712,13 +712,25 @@ Retrieves delivery data for all active media buys across all principals.
 
 ### 16. list_products
 
-Lists all available advertising products for the authenticated principal.
+Lists available advertising products, optionally filtered by brief and principal context.
 
 **Request:**
 ```json
 {
+  "principal": {  // Optional - provides context for personalized results
+    "principal_id": "nike",
+    "organization": "Nike Inc.",
+    "ad_server_mappings": {
+      "gam": {
+        "network_code": "123456",
+        "advertiser_id": "nike_sports_2024"
+      }
+    }
+  },
+  "brief": "Looking for premium sports inventory",  // Optional - natural language brief
   "category": "video",  // Optional - filter by category
-  "min_budget": 1000    // Optional - filter by minimum budget
+  "min_budget": 1000,   // Optional - filter by minimum budget
+  "formats": ["video"]  // Optional - filter by formats
 }
 ```
 
@@ -730,10 +742,26 @@ Lists all available advertising products for the authenticated principal.
       "product_id": "connected_tv_prime",
       "name": "Connected TV - Prime Time",
       "description": "Premium CTV inventory 8PM-11PM",
-      "formats": ["video"],
+      "formats": [{
+        "format_id": "video_standard",
+        "name": "Standard Video"
+      }],
+      "implementation_config": {
+        "gam": {
+          "placement_ids": ["123456"],
+          "ad_unit_paths": ["/video/ctv/prime"],
+          "targeting_keys": {"daypart": "prime"}
+        }
+      },
       "delivery_type": "guaranteed",
+      "is_fixed_price": true,
+      "cpm": 45.00,
       "min_spend": 10000,
-      "targeting_available": ["geography", "demographics", "interests"]
+      "match_score": 0.92,  // If brief was provided
+      "match_reasons": [    // If brief was provided
+        "Sports content alignment",
+        "Premium inventory matches request"
+      ]
     }
   ]
 }
