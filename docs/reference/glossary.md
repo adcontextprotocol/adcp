@@ -11,19 +11,19 @@ title: Glossary
 Classification of MCP session credentials as either "platform" (aggregator) or "customer" (direct advertiser/agency).
 
 **Activation**  
-The process of making an audience available for targeting on a specific platform and seat.
+The process of making a signal available for targeting on a specific platform and seat.
 
 **Ad Context Protocol (AdCP)**  
 An open standard based on Model Context Protocol (MCP) that enables AI-powered advertising workflows through natural language interfaces.
 
-**Audience Discovery**  
-The process of finding relevant marketing audiences using natural language descriptions.
+**Signal Discovery**  
+The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions.
 
-**Audience ID**  
-A unique identifier for an audience within a provider's catalog.
+**Signal ID**  
+A unique identifier for a signal within a provider's catalog.
 
-**Audience Type**  
-Classification of audiences as "marketplace" (third-party), "owned" (first-party), or "destination" (bundled with media).
+**Signal Type**  
+Classification of signals as "marketplace" (third-party), "owned" (first-party), "destination" (bundled with media), "contextual", "geographical", or "temporal".
 
 ## C
 
@@ -35,10 +35,10 @@ Direct advertiser or agency account with specific seat access and negotiated rat
 
 ## D
 
-**Deployment** (Audience Protocol)  
-The availability status of an audience on specific platforms, including activation state and timing.
+**Deployment** (Signals Protocol)  
+The availability status of a signal on specific platforms, including activation state and timing.
 
-**Devices** (Audience Protocol)  
+**Devices** (Signals Protocol)  
 Size unit representing unique device identifiers (cookies, mobile IDs) - typically the largest reach metric.
 
 **Device Type** (Media Buy Protocol)  
@@ -50,7 +50,7 @@ Technology platform that allows advertisers to buy advertising inventory program
 ## E
 
 **Estimated Activation Time**  
-Predicted timeframe for audience deployment, typically 24-48 hours for new activations.
+Predicted timeframe for signal deployment, typically 24-48 hours for new activations.
 
 ## H
 
@@ -62,7 +62,7 @@ Size unit representing unique household addresses, useful for geographic and fam
 **Impressions** (Media Buy Protocol)  
 The number of times an ad is displayed, used for pricing and delivery tracking.
 
-**Individuals** (Audience Protocol)  
+**Individuals** (Signals Protocol)  
 Size unit representing unique people, best for frequency capping and demographic targeting.
 
 **Inventory**  
@@ -73,8 +73,8 @@ Available advertising space on websites, apps, or other media properties.
 **MCP (Model Context Protocol)**  
 The underlying protocol framework that enables AI assistants to interact with external systems.
 
-**Marketplace Audience**  
-Third-party audience available for licensing from data providers.
+**Marketplace Signal**  
+Third-party signal available for licensing from data providers.
 
 ## N
 
@@ -83,24 +83,24 @@ The AI capability that allows audience discovery through conversational descript
 
 ## O
 
-**Owned Audience**  
-First-party audience data belonging to the advertiser or platform.
+**Owned Signal**  
+First-party signal data belonging to the advertiser or platform.
 
 ## P
 
 **Platform Account**  
-Master account representing an advertising platform that can syndicate audiences to multiple customers.
+Master account representing an advertising platform that can syndicate signals to multiple customers.
 
 **Prompt**  
-Natural language description used to discover relevant audiences (e.g., "high-income sports enthusiasts").
+Natural language description used to discover relevant signals (e.g., "high-income sports enthusiasts", "premium automotive content", "users in urban areas during evening hours").
 
 **Provider**  
-The company or platform that supplies audience data (e.g., LiveRamp, Experian).
+The company or platform that supplies signal data (e.g., LiveRamp, Experian, Peer39, weather services).
 
 ## R
 
 **Relevance Score**  
-Numerical rating (0-1) indicating how well an audience matches the discovery prompt.
+Numerical rating (0-1) indicating how well a signal matches the discovery prompt.
 
 **Relevance Rationale**  
 Human-readable explanation of why an audience received its relevance score.
@@ -114,20 +114,20 @@ Pricing model based on a percentage of media spend rather than fixed CPM.
 A specific advertising account within a platform, typically representing a brand or campaign.
 
 **Segment ID**  
-The specific identifier used for audience activation, may differ from audience_id.
+The specific identifier used for signal activation, may differ from signal_id.
 
-**Size Unit** (Audience Protocol)  
-The measurement type for audience size: individuals, devices, or households.
+**Size Unit** (Signals Protocol)  
+The measurement type for signal size: individuals, devices, or households.
 
 ## T
 
-**Third-Party Audience**  
-Audience data licensed from external providers, also known as marketplace audiences.
+**Third-Party Signal**  
+Signal data licensed from external providers, also known as marketplace signals.
 
 ## U
 
 **Usage Reporting**  
-Daily reporting of audience utilization for billing and optimization purposes.
+Daily reporting of signal utilization for billing and optimization purposes.
 
 ## B
 
@@ -141,7 +141,7 @@ A time-bounded advertising campaign segment, mapped to line items in ad servers.
 
 ## H
 
-**Households** (Audience Protocol)  
+**Households** (Signals Protocol)  
 Size unit representing unique household addresses, useful for geographic and family-based targeting.
 
 **Human-in-the-Loop (HITL)** (Media Buy Protocol)  
@@ -157,8 +157,8 @@ The basic unit of inventory in ad servers like Google Ad Manager, represented as
 **MCP (Model Context Protocol)**  
 The underlying protocol framework that enables AI assistants to interact with external systems.
 
-**Marketplace Audience**  
-Third-party audience available for licensing from data providers.
+**Marketplace Signal**  
+Third-party signal available for licensing from data providers.
 
 **Media Buy**  
 A complete advertising campaign containing packages, budget, targeting, and creative assets.
@@ -200,7 +200,7 @@ Advertising inventory available for purchase, discovered through natural languag
 - CPM expressed as cost per 1,000 impressions
 - Revenue share expressed as decimal (0.15 = 15%)
 
-**Size Reporting** (Audience Protocol)
+**Size Reporting** (Signals Protocol)
 - Counts expressed as integers
 - Units clearly specified (individuals/devices/households)
 - Dated with "as_of" timestamp for freshness
@@ -216,7 +216,7 @@ Common error codes across all AdCP implementations:
 
 - `SEGMENT_NOT_FOUND`: Invalid or expired segment ID
 - `ACTIVATION_FAILED`: Unable to complete activation process
-- `ALREADY_ACTIVATED`: Audience already active for platform/seat
+- `ALREADY_ACTIVATED`: Signal already active for platform/seat
 - `DEPLOYMENT_UNAUTHORIZED`: Insufficient permissions for platform/seat
 - `BUDGET_EXCEEDED`: Operation would exceed allocated budget
 - `CREATIVE_REJECTED`: Creative asset failed platform review

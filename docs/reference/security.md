@@ -33,16 +33,16 @@ Security best practices for implementing and using the Ad Context Protocol.
 
 ## Data Protection
 
-### Audience Data
+### Signal Data
 
 **Data Minimization**:
-- Only request audience data necessary for the specific use case
-- Avoid storing audience metadata longer than required
+- Only request signal data necessary for the specific use case
+- Avoid storing signal metadata longer than required
 - Implement data retention policies aligned with business needs
 
 **PII Protection**:
 - ACP protocols do not expose personally identifiable information
-- Audience descriptions should use aggregate, non-identifying language
+- Signal descriptions should use aggregate, non-identifying language
 - Platform providers must ensure underlying data complies with privacy regulations
 
 ### Usage Reporting
@@ -75,8 +75,8 @@ Security best practices for implementing and using the Ad Context Protocol.
 
 **Parameter Sanitization**:
 ```typescript
-// Example: Sanitize audience_spec input
-function sanitizeAudienceSpec(spec: string): string {
+// Example: Sanitize signal_spec input
+function sanitizeSignalSpec(spec: string): string {
   return spec
     .replace(/[<>]/g, '') // Remove potential HTML
     .replace(/['"]/g, '') // Remove quotes
@@ -114,9 +114,9 @@ function validateDeliverTo(deliverTo: any): boolean {
 **Rate Limit Guidelines**:
 ```typescript
 const rateLimits = {
-  get_audiences: 100,     // requests per minute
-  activate_audience: 10,   // requests per minute  
-  check_audience_status: 200, // requests per minute
+  get_signals: 100,     // requests per minute
+  activate_signal: 10,   // requests per minute  
+  check_signal_status: 200, // requests per minute
   report_usage: 50        // requests per minute
 };
 ```
@@ -128,7 +128,7 @@ const rateLimits = {
 **Required Log Events**:
 - All authentication attempts (success and failure)
 - Authorization decisions and permission changes
-- Audience activation and deactivation events
+- Signal activation and deactivation events
 - Usage reporting submissions
 - Error conditions and exceptions
 

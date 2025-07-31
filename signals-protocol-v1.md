@@ -1,4 +1,4 @@
-# Audience Discovery Protocol
+# Signals Discovery Protocol
 
 **Version**: 1.0  
 **Status**: Draft  
@@ -6,16 +6,17 @@
 
 ## Abstract
 
-The Audience Discovery Protocol defines a standard Model Context Protocol (MCP) interface for AI-powered audience discovery and management systems. This protocol enables AI assistants to help marketers discover, activate, and manage audiences through natural language interactions.
+The Signals Discovery Protocol defines a standard Model Context Protocol (MCP) interface for AI-powered signal discovery and management systems. This protocol enables AI assistants to help marketers discover, activate, and manage data signals (audiences, contextual, geographical, temporal, and multi-dimensional data) through natural language interactions.
 
 ## Overview
 
-The Audience Discovery Protocol provides:
+The Signals Discovery Protocol provides:
 
-- Natural language audience discovery based on marketing objectives
-- Audience activation for specific platforms and seats
+- Natural language signal discovery based on marketing objectives
+- Signal activation for specific platforms and seats
+- Support for diverse signal types (audiences, contextual, geographical, temporal)
 - Transparent pricing with CPM and revenue share models
-- Audience size reporting with unit types (individuals, devices, households)
+- Signal size reporting with unit types (individuals, devices, households)
 - Usage reporting for billing reconciliation
 
 ## Core Concepts
@@ -25,27 +26,30 @@ The Audience Discovery Protocol provides:
 The Ad Context Protocol works across two fundamental types of platforms:
 
 #### Decisioning Platforms
-Platforms where audiences, targeting, and optimization happen, generating decisions such as bids, PMP creation, or buy execution:
+Platforms where signals, targeting, and optimization happen, generating decisions such as bids, PMP creation, or buy execution:
 
 - **DSPs (Demand-Side Platforms)**: Where advertisers bid on inventory
 - **SSPs (Supply-Side Platforms)**: Where publishers offer inventory  
 - **Ad Servers**: Where creative decisioning and serving occurs
 - **Injective Platforms**: Like Scope3, where campaigns are planned and executed
 
-#### Audience Platforms
-Platforms that have information about audiences (people, households, devices) and can deliver those audiences to decisioning platforms where they become transacted upon:
+#### Signal Platforms
+Platforms that have information about signals (audiences, contexts, locations, behaviors) and can deliver those signals to decisioning platforms where they become transacted upon:
 
-- **Data Management Platforms (DMPs)**: Aggregate and organize audience data
+- **Data Management Platforms (DMPs)**: Aggregate and organize signal data
 - **Customer Data Platforms (CDPs)**: Unify customer data across touchpoints
-- **Data Providers**: Like LiveRamp, Experian, who license audience segments
+- **Data Providers**: Like LiveRamp, Experian, Peer39, who license data signals
 - **Identity Resolution Services**: Link devices and identities across platforms
+- **Contextual Providers**: Classify content and contexts
+- **Location Intelligence**: Provide geographical and movement signals
+- **Environmental Data**: Weather, events, and temporal signals
 
 ### Account Types
 
 Each MCP session is authenticated as one of:
 
 1. **Platform Account**: A platform's master account (e.g., "Scope3's LiveRamp account")
-   - Can activate audiences for platform syndication
+   - Can activate signals for platform syndication
    - Sees platform-negotiated rates
    - Usage aggregated across platform customers
 

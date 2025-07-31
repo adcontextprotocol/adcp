@@ -6,10 +6,10 @@ import styles from './index.module.css';
 const platforms = [
   {
     name: 'Scope3',
-    description: 'Complete Audience Discovery Protocol implementation with real-time activation and reporting.',
+    description: 'Complete Signals Discovery Protocol implementation with real-time activation and reporting.',
     status: 'Live',
     website: 'https://scope3.com',
-    protocols: ['Audience Discovery v1.1'],
+    protocols: ['Signals Discovery v1.1'],
     features: ['Natural Language Search', 'Multi-Platform Activation', 'Usage Reporting'],
   },
   {
@@ -17,7 +17,7 @@ const platforms = [
     description: 'Open source reference implementation for platform providers and developers.',
     status: 'Available',
     website: 'https://github.com/adcontextprotocol/reference-implementation',
-    protocols: ['Audience Discovery v1.1'],
+    protocols: ['Signals Discovery v1.1'],
     features: ['Complete Protocol Support', 'Test Suite Included', 'Documentation'],
   },
 ];
@@ -25,16 +25,16 @@ const platforms = [
 const comingSoon = [
   {
     name: 'The Trade Desk',
-    description: 'B2B-focused audience discovery with enhanced business targeting capabilities.',
+    description: 'B2B-focused signal discovery with enhanced business targeting capabilities.',
     status: 'Coming Q1 2025',
-    protocols: ['Audience Discovery v1.1'],
-    features: ['B2B Audiences', 'Account-Based Targeting', 'Professional Demographics'],
+    protocols: ['Signals Discovery v1.1'],
+    features: ['B2B Signals', 'Account-Based Targeting', 'Professional Demographics'],
   },
   {
     name: 'LiveRamp',
-    description: 'Identity-resolved audience activation with household and individual targeting.',
+    description: 'Identity-resolved signal activation with household and individual targeting.',
     status: 'Coming Q1 2025', 
-    protocols: ['Audience Discovery v1.1'],
+    protocols: ['Signals Discovery v1.1'],
     features: ['Identity Resolution', 'Cross-Device Linking', 'Privacy-Safe Targeting'],
   },
 ];
