@@ -172,11 +172,103 @@
         },
         "is_3p_served": false
       }
+    },
+    "foundational": {
+      "foundational_immersive_canvas": {
+        "format_id": "foundational_immersive_canvas",
+        "type": "rich_media",
+        "category": "foundational",
+        "description": "Premium responsive canvas format adaptable across publishers",
+        "specs": {
+          "hero_image": "1200x627",
+          "logo": "250x150 transparent",
+          "headline": "80 characters max",
+          "description": "200 characters max",
+          "optional_video": "15-30s MP4"
+        },
+        "publisher_coverage": "8+ major publishers",
+        "is_3p_served": false
+      },
+      "foundational_product_carousel": {
+        "format_id": "foundational_product_carousel",
+        "type": "display",
+        "category": "foundational",
+        "description": "Multi-product interactive carousel",
+        "specs": {
+          "products": "3-10",
+          "image_sizes": ["627x627", "1200x627"],
+          "per_product_data": ["name", "price", "url"],
+          "interaction": "swipe/click navigation"
+        },
+        "publisher_coverage": "7+ major publishers",
+        "is_3p_served": false
+      },
+      "foundational_expandable": {
+        "format_id": "foundational_expandable",
+        "type": "rich_media",
+        "category": "foundational",
+        "description": "Banner with expandable canvas",
+        "specs": {
+          "collapsed_sizes": ["728x90", "970x250", "320x50"],
+          "expanded_height": "250-600px",
+          "format": "HTML5",
+          "auto_collapse": "15s"
+        },
+        "publisher_coverage": "10+ major publishers",
+        "is_3p_served": false
+      },
+      "foundational_scroll_reveal": {
+        "format_id": "foundational_scroll_reveal",
+        "type": "rich_media",
+        "category": "foundational",
+        "description": "Scroll-triggered mobile experience",
+        "specs": {
+          "mobile_size": "640x960 (retina)",
+          "trigger": "scroll position",
+          "optional_vertical_video": "9:16 aspect"
+        },
+        "publisher_coverage": "6+ major publishers",
+        "is_3p_served": false
+      },
+      "foundational_video": {
+        "format_id": "foundational_video",
+        "type": "video",
+        "category": "foundational",
+        "description": "Universal video format across all publishers",
+        "specs": {
+          "durations": ["15s", "30s"],
+          "aspect_ratios": ["16:9", "9:16", "1:1"],
+          "format": "MP4 H.264",
+          "delivery": "VAST 2.0/3.0/4.0+"
+        },
+        "publisher_coverage": "All publishers",
+        "is_3p_served": false
+      }
+    },
+    "extensions_example": {
+      "publisher_premium_canvas": {
+        "format_id": "publisher_premium_canvas",
+        "extends": "foundational_immersive_canvas",
+        "publisher": "example_publisher",
+        "type": "rich_media",
+        "description": "Publisher's premium canvas extending foundational format",
+        "modifications": {
+          "placement": ["hero", "mid_article"],
+          "additional_specs": {
+            "secondary_cta": "optional 15 chars"
+          }
+        },
+        "is_3p_served": false
+      }
     }
   },
   "notes": {
     "flexibility": "These formats are intentionally underspecified to allow maximum flexibility. Publishers should accept standard assets and handle platform-specific requirements.",
     "third_party": "Formats with is_3p_served: true accept third-party ad tags. Others accept direct assets.",
-    "verification": "All formats should support optional ad verification/measurement tags where applicable."
+    "verification": "All formats should support optional ad verification/measurement tags where applicable.",
+    "foundational_formats": "Foundational formats represent common patterns across publishers. Publishers can declare support by mapping their custom formats to foundational IDs.",
+    "publisher_declaration": "Publishers indicate foundational format support in their capabilities response with format_id mapping and any customizations.",
+    "extensions": "Publishers should extend standard formats using the 'extends' field rather than creating custom formats. Only create custom formats for truly unique inventory that doesn't fit any standard pattern.",
+    "extension_pattern": "When extending a format, declare the base format_id in the 'extends' field and document modifications in a 'modifications' object."
   }
 }
