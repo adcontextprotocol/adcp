@@ -29,7 +29,6 @@ That's it. No complex configuration needed.
 - **sales**: Media buying and inventory management
 - **signals**: Analytics and performance data
 - **curation**: Content and audience curation
-- **orchestrator**: Meta-orchestrator capabilities
 
 ## Examples
 

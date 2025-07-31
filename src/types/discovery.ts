@@ -5,7 +5,7 @@
  * that maps agent types to their MCP endpoints.
  */
 
-export type AgentType = 'sales' | 'curation' | 'signals' | 'orchestrator';
+export type AgentType = 'sales' | 'curation' | 'signals';
 
 /**
  * Discovery document - simple mapping of agent types to MCP endpoints
@@ -35,7 +35,7 @@ export type DiscoveryResult = DiscoverySuccess | DiscoveryError;
 export function isDiscoveryDocument(value: unknown): value is DiscoveryDocument {
   if (typeof value !== 'object' || value === null) return false;
   
-  const validTypes: AgentType[] = ['sales', 'curation', 'signals', 'orchestrator'];
+  const validTypes: AgentType[] = ['sales', 'curation', 'signals'];
   
   return Object.entries(value).every(([key, val]) => 
     validTypes.includes(key as AgentType) && typeof val === 'string'
