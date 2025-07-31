@@ -76,8 +76,8 @@ Account lacks required permissions for the operation.
     "code": "INSUFFICIENT_PERMISSIONS",
     "message": "Account does not have activation permissions",
     "details": {
-      "required_permission": "activate_audience",
-      "account_permissions": ["get_audiences", "check_audience_status"]
+      "required_permission": "activate_signal",
+      "account_permissions": ["get_signals", "check_signal_status"]
     }
   }
 }
@@ -96,7 +96,7 @@ Required request parameter is missing.
   "success": false,
   "error": {
     "code": "MISSING_REQUIRED_FIELD",
-    "message": "prompt is required for audience discovery",
+    "message": "prompt is required for signal discovery",
     "details": {
       "field": "prompt",
       "provided_fields": ["platform", "max_results"]
@@ -163,24 +163,24 @@ Specified segment ID doesn't exist or is no longer available.
     "message": "Segment ID not found or has expired",
     "details": {
       "segment_id": "seg_invalid_123",
-      "suggestion": "Use get_audiences to find current segment IDs"
+      "suggestion": "Use get_signals to find current segment IDs"
     }
   }
 }
 ```
 
-**Resolution**: Use current segment ID from recent `get_audiences` response.
+**Resolution**: Use current segment ID from recent `get_signals` response.
 
-### AUDIENCE_UNAVAILABLE
-Audience exists but is not available for the requested platform/seat.
+### SIGNAL_UNAVAILABLE
+Signal exists but is not available for the requested platform/seat.
 
 **Example**:
 ```json
 {
   "success": false,
   "error": {
-    "code": "AUDIENCE_UNAVAILABLE",
-    "message": "Audience not available for the specified platform",
+    "code": "SIGNAL_UNAVAILABLE",
+    "message": "Signal not available for the specified platform",
     "details": {
       "segment_id": "seg_12345",
       "requested_platform": "unavailable_platform",
@@ -237,7 +237,7 @@ Account cannot access specified seat.
 ## Operation Errors
 
 ### ALREADY_ACTIVATED
-Audience is already active for the specified platform/seat.
+Signal is already active for the specified platform/seat.
 
 **Example**:
 ```json
@@ -245,7 +245,7 @@ Audience is already active for the specified platform/seat.
   "success": false,
   "error": {
     "code": "ALREADY_ACTIVATED",
-    "message": "Audience already activated for this platform and seat",
+    "message": "Signal already activated for this platform and seat",
     "details": {
       "segment_id": "seg_12345",
       "platform": "scope3",
@@ -257,10 +257,10 @@ Audience is already active for the specified platform/seat.
 }
 ```
 
-**Resolution**: Use existing activation or check status with `check_audience_status`.
+**Resolution**: Use existing activation or check status with `check_signal_status`.
 
 ### ACTIVATION_FAILED
-Audience activation process failed.
+Signal activation process failed.
 
 **Example**:
 ```json
@@ -268,7 +268,7 @@ Audience activation process failed.
   "success": false,
   "error": {
     "code": "ACTIVATION_FAILED",
-    "message": "Failed to activate audience due to provider error",
+    "message": "Failed to activate signal due to provider error",
     "details": {
       "segment_id": "seg_12345",
       "provider_error": "Segment temporarily unavailable",
@@ -282,7 +282,7 @@ Audience activation process failed.
 **Resolution**: Wait and retry, or contact support if persistent.
 
 ### INVALID_PRICING_MODEL
-Requested pricing model is not available for this audience.
+Requested pricing model is not available for this signal.
 
 **Example**:
 ```json
@@ -290,7 +290,7 @@ Requested pricing model is not available for this audience.
   "success": false,
   "error": {
     "code": "INVALID_PRICING_MODEL",
-    "message": "CPM pricing not available for this audience",
+    "message": "CPM pricing not available for this signal",
     "details": {
       "segment_id": "seg_12345",
       "requested_model": "cpm",
@@ -300,7 +300,7 @@ Requested pricing model is not available for this audience.
 }
 ```
 
-**Resolution**: Use available pricing model or choose different audience.
+**Resolution**: Use available pricing model or choose different signal.
 
 ## Rate Limiting Errors
 
@@ -400,7 +400,7 @@ Data quality problem detected.
   "success": false,
   "error": {
     "code": "DATA_QUALITY_ISSUE",
-    "message": "Audience size data is stale",
+    "message": "Signal size data is stale",
     "details": {
       "segment_id": "seg_12345",
       "last_updated": "2024-12-01T00:00:00Z",
@@ -410,7 +410,7 @@ Data quality problem detected.
 }
 ```
 
-**Resolution**: Contact provider for updated audience data.
+**Resolution**: Contact provider for updated signal data.
 
 ### USAGE_REPORT_REJECTED
 Usage report failed validation.
@@ -487,7 +487,7 @@ Convert technical errors to user-friendly messages:
 
 ```typescript
 const USER_MESSAGES = {
-  'SEGMENT_NOT_FOUND': 'This audience is no longer available. Please search for audiences again.',
+  'SEGMENT_NOT_FOUND': 'This signal is no longer available. Please search for signals again.',
   'RATE_LIMIT_EXCEEDED': 'Too many requests. Please wait a moment and try again.',
   'INSUFFICIENT_PERMISSIONS': 'Your account does not have permission for this action. Contact your administrator.',
   // ... more mappings

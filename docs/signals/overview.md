@@ -3,28 +3,30 @@ sidebar_position: 1
 title: Overview
 ---
 
-# Audience Activation Protocol Overview
+# Signals Activation Protocol Overview
 
-The Audience Activation Protocol enables AI assistants to discover, activate, and manage marketing audiences through natural language interactions.
+The Signals Activation Protocol enables AI assistants to discover, activate, and manage data signals through natural language interactions.
 
 ## Key Concepts
 
 ### Natural Language Discovery
-Instead of complex filtering interfaces, describe your audience naturally:
-- "High-income sports enthusiasts in major US cities"
-- "People interested in sustainable fashion who shop online"
-- "Small business owners looking for financial services"
-- "Premium automotive content with high viewability"
+Instead of complex filtering interfaces, describe your signals naturally:
+- "High-income sports enthusiasts in major US cities" (audience signal)
+- "People interested in sustainable fashion who shop online" (behavioral signal)
+- "Small business owners looking for financial services" (B2B signal)
+- "Premium automotive content with high viewability" (contextual signal)
+- "Users in urban areas during evening hours" (geographical + temporal signal)
+- "Weather-triggered demand patterns" (environmental signal)
 
 ### Multi-Platform Discovery
-Discover audiences across multiple platforms in a single request:
+Discover signals across multiple platforms in a single request:
 - See where segments are already deployed (SSPs, DSPs, DMPs)
 - Compare segment IDs across platforms
 - Identify which platforms require activation
 - Perfect for data providers like Peer39 with wide distribution
 
 ### Transparent Activation
-- See which audiences are immediately available (`is_live: true`)
+- See which signals are immediately available (`is_live: true`)
 - Know activation timeframes before committing (typically 24-48 hours)
 - Clear segment IDs for each platform
 - Account-specific vs platform-wide deployments
@@ -32,7 +34,7 @@ Discover audiences across multiple platforms in a single request:
 ### Flexible Pricing Models
 - **CPM**: Traditional cost per thousand impressions
 - **Revenue Share**: Percentage of media spend
-- **Choice**: Some audiences offer both options
+- **Choice**: Some signals offer both options
 
 ### Standardized Size Reporting
 - **Individuals**: Unique people (best for frequency capping)
@@ -41,13 +43,13 @@ Discover audiences across multiple platforms in a single request:
 
 ## The Four Essential Tools
 
-### 1. get_audiences
-Discover audiences based on your campaign needs across one or many platforms.
+### 1. get_signals
+Discover signals based on your campaign needs across one or many platforms.
 
-### 2. activate_audience  
-Turn on audiences for specific platforms and accounts.
+### 2. activate_signal  
+Turn on signals for specific platforms and accounts.
 
-### 3. check_audience_status
+### 3. check_signal_status
 Monitor activation progress and deployment status.
 
 
@@ -83,9 +85,9 @@ Would you like to activate on PubMatic?
 Agencies often have accounts with multiple data providers, each offering both public and custom segments:
 
 ```
-Human: Find audiences for our Nike running campaign
+Human: Find signals for our Nike running campaign
 
-AI: I found relevant audiences from your data providers:
+AI: I found relevant signals from your data providers:
 
 **LiveRamp (Your Omnicom catalog):**
 1. Marathon Enthusiasts - Custom
@@ -103,11 +105,11 @@ AI: I found relevant audiences from your data providers:
 
 ```mermaid
 flowchart LR
-    A[Describe Audience] --> B[Get Results Across Platforms]
+    A[Describe Signal] --> B[Get Results Across Platforms]
     B --> C[Review Deployments]
     C --> D{Already Live?}
     D -->|Yes| E[Launch Campaign]
-    D -->|No| F[Activate Audience]
+    D -->|No| F[Activate Signal]
     F --> G[Monitor Activation]
     G --> E
     E --> H[Report Usage Per Platform]
@@ -115,11 +117,11 @@ flowchart LR
 
 ## Integration Flow
 
-The Audience Activation Protocol works within the broader [AdCP Ecosystem Layers](../intro#the-adcp-ecosystem-layers):
+The Signals Activation Protocol works within the broader [AdCP Ecosystem Layers](../intro#the-adcp-ecosystem-layers):
 
-1. **Discover** audiences on audience platforms (LiveRamp, Experian, Peer39)
+1. **Discover** signals on data platforms (LiveRamp, Experian, Peer39, weather APIs, location providers)
 2. **Identify** where they're deployed (multiple SSPs, DSPs, DMPs)
-3. **Activate** audiences for platforms where they're not yet live
+3. **Activate** signals for platforms where they're not yet live
 4. **Execute** campaigns on decisioning platforms using platform-specific IDs
 
 ## Example Interactions
@@ -127,9 +129,9 @@ The Audience Activation Protocol works within the broader [AdCP Ecosystem Layers
 ### Single Platform Discovery (Traditional)
 
 ```
-Human: Find me audiences interested in premium running gear for The Trade Desk
+Human: Find me audience signals interested in premium running gear for The Trade Desk
 
-AI: I found 3 relevant audiences for The Trade Desk:
+AI: I found 3 relevant signals for The Trade Desk:
 
 1. **Endurance Athletes** - 2.5M individuals
    - Status: ✅ Ready to use
@@ -180,4 +182,4 @@ All deployments are $2.00 CPM. Which platforms do you need?
 ## Next Steps
 
 - Read the full [Protocol Specification](./specification)
-- See the [Audience Agent reference implementation](https://github.com/adcontextprotocol/audience-agent)
+- See the [Signals Agent reference implementation](https://github.com/adcontextprotocol/signals-agent)

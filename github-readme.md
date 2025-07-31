@@ -9,7 +9,7 @@ Open standards enabling AI assistants to interact with advertising platforms thr
 ## 🚀 Overview
 
 Ad Context Protocol (AdCP) provides standardized interfaces that allow AI assistants to:
-- **Discover audiences** using natural language descriptions
+- **Discover signals** (audiences, contextual, geographical, temporal) using natural language descriptions
 - **Curate media inventory** based on campaign objectives
 - **Execute media buys** with full transparency and control
 
@@ -21,17 +21,18 @@ Full documentation is available at [adcontextprotocol.org](https://adcontextprot
 
 ### Quick Links
 - [Getting Started](https://adcontextprotocol.org/docs/intro)
-- [Audience Activation Protocol](https://adcontextprotocol.org/docs/audience)
+- [Signals Activation Protocol](https://adcontextprotocol.org/docs/signals)
 - [Implementation Guide](https://adcontextprotocol.org/docs/implementation)
 - [API Reference](https://adcontextprotocol.org/docs/reference)
 
 ## 🎯 Current Protocols
 
-### Audience Activation Protocol (RFC/v0.1)
-Enable AI assistants to discover and activate audiences across any compatible platform.
+### Signals Activation Protocol (RFC/v0.1)
+Enable AI assistants to discover and activate data signals across any compatible platform.
 
 **Features:**
-- Natural language audience search
+- Natural language signal discovery (audiences, contextual, geographical, temporal)
+- Multi-dimensional signal combinations
 - Multi-unit size reporting (individuals, devices, households)
 - Flexible pricing models (CPM, revenue share)
 - Automated activation and usage reporting
@@ -55,11 +56,11 @@ Enable AI assistants to discover and activate audiences across any compatible pl
 4. Get listed in our directory
 
 ```typescript
-// Example: Handling audience discovery
-async function getAudiences(prompt: string, platform: string) {
+// Example: Handling signal discovery
+async function getSignals(prompt: string, platform: string) {
   // Your implementation here
   return {
-    audiences: [...],
+    signals: [...],
     totalMatching: 47
   };
 }
@@ -85,7 +86,7 @@ We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for deta
 
 ## 🗺 Roadmap
 
-- 🚧 **Now**: Audience Activation Protocol RFC/v0.1
+- 🚧 **Now**: Signals Activation Protocol RFC/v0.1
 - 🚧 **Now**: Media Buy Protocol RFC/v0.1
 - 📅 **Q2 2025**: Curation Protocol RFC
 - 🔮 **Q4 2025**: Advanced AI integrations
@@ -124,5 +125,5 @@ Ad Context Protocol is an industry initiative supported by:
   <strong>Ready to make advertising AI-native?</strong><br>
   <a href="https://adcontextprotocol.org/docs/intro">Get Started</a> •
   <a href="https://github.com/adcontextprotocol/adcontextprotocol/discussions">Join Discussion</a> •
-  <a href="https://adcontextprotocol.org/docs/audience/specification">Read Spec</a>
+  <a href="https://adcontextprotocol.org/docs/signals/specification">Read Spec</a>
 </p>

@@ -8,25 +8,27 @@ Visit [adcontextprotocol.github.io](https://adcontextprotocol.github.io) for ful
 
 ## What is Ad Context Protocol?
 
-Ad Context Protocol (AdCP) is an open standard that enables AI assistants to interact with advertising platforms through natural language. Built on the Model Context Protocol (MCP), AdCP allows marketers to discover audiences, curate inventory, and execute campaigns using conversational AI.
+Ad Context Protocol (AdCP) is an open standard that enables AI assistants to interact with advertising platforms through natural language. Built on the Model Context Protocol (MCP), AdCP allows marketers to discover signals (audiences, contextual, geographical, temporal data), curate inventory, and execute campaigns using conversational AI.
 
 ### Quick Example
 
 Instead of navigating complex interfaces:
 
-> "Find audiences of premium sports enthusiasts who would be interested in high-end running shoes, and activate them on Scope3."
+> "Find audience signals of premium sports enthusiasts who would be interested in high-end running shoes, and activate them on Scope3."
 
 The AI assistant handles:
-- Audience discovery across platforms
+- Signal discovery across platforms
 - Transparent pricing comparison  
 - Direct activation on decisioning platforms
 
 ## Available Protocols
 
-### 🎯 Audience Activation Protocol - RFC/v0.1
-Discover and activate marketing audiences using natural language.
+### 🎯 Signals Activation Protocol - RFC/v0.1
+Discover and activate data signals using natural language.
 
-- **Natural Language Discovery**: "High-income millennials interested in sustainable fashion"
+- **Natural Language Discovery**: "High-income millennials interested in sustainable fashion" (audience signal)
+- **Contextual Signals**: "Premium automotive content with high viewability"
+- **Multi-Dimensional**: Combine geographical, temporal, and behavioral signals
 - **Multi-Platform Activation**: Deploy across DSPs and data platforms
 - **Transparent Pricing**: CPM and revenue share models
 - **Real-time Status**: Track activation and deployment progress
@@ -43,7 +45,7 @@ Execute and optimize media buys programmatically across platforms.
 
 Implement AdCP to enable AI-powered workflows for your customers:
 
-1. **Review the Specification**: [Audience Protocol](https://adcontextprotocol.github.io/docs/audience/specification)
+1. **Review the Specification**: [Signals Protocol](https://adcontextprotocol.github.io/docs/signals/specification)
 2. **Implement MCP Server**: Check out the [reference implementations](#reference-implementations)
 3. **Test Your Implementation**: Use the validation test suite
 
@@ -60,7 +62,7 @@ Use AdCP-enabled platforms with your AI assistant:
 ```
 adcontextprotocol/
 ├── docs/                    # Documentation source files
-│   ├── audience/           # Audience protocol docs
+│   ├── signals/            # Signals protocol docs
 │   ├── curation/           # Curation protocol (coming soon)
 │   ├── media-buy/          # Media Buy protocol docs
 │   └── reference/          # API reference
@@ -91,7 +93,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
 ## Reference Implementations
 
-- [Audience Agent](https://github.com/adcontextprotocol/audience-agent)
+- [Signals Agent](https://github.com/adcontextprotocol/signals-agent)
 - [Sales Agent](https://github.com/adcontextprotocol/salesagent)
 
 ## Platform Implementations
@@ -99,7 +101,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 ### Current Support
 
 - **Reference Implementation**: Complete MCP server example
-- **Scope3**: Full Audience Activation Protocol support
+- **Scope3**: Full Signals Activation Protocol support
 - **More Coming**: Additional platforms implementing Q1 2025
 
 
@@ -138,7 +140,7 @@ The Ad Context Protocol specifications are licensed under [Apache 2.0](./LICENSE
 ## Links
 
 - **Website**: [adcontextprotocol.github.io](https://adcontextprotocol.github.io)
-- **Specifications**: [Audience Protocol RFC](./audience-protocol-v1.md)
+- **Specifications**: [Signals Protocol RFC](./signals-protocol-v1.md)
 - **Discussions**: [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
 - **Issues**: [Report Issues](https://github.com/adcontextprotocol/adcp/issues)
 

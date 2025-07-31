@@ -50,11 +50,11 @@ Platforms that evaluate sellers and audiences, and execute buying strategies:
 - **Function**: Strategy execution, seller evaluation, optimization
 - **Integration**: Uses MCP to communicate with both Audience and Sales Agents
 
-#### Audience Agent (Right, Top)
+#### Signal Agent (Right, Top)
 MCP servers that provide:
-- **Audience Discovery**: Finding relevant audiences using natural language
-- **Audience Activation**: Pushing audiences to decisioning platforms
-- **Integration**: Connects audience platforms to orchestration via MCP
+- **Signal Discovery**: Finding relevant signals (audiences, contextual, geographical, temporal) using natural language
+- **Signal Activation**: Pushing signals to decisioning platforms
+- **Integration**: Connects signal platforms to orchestration via MCP
 
 #### Sales Agent (Right, Bottom)
 MCP servers that provide:
@@ -81,38 +81,38 @@ The technical infrastructure that:
 
 Each AdCP protocol operates within this ecosystem:
 
-### 🎯 Audience Activation Protocol
-- **Scope**: Works with **audience platforms** to discover and activate audiences directly on **decisioning platforms**
-- **Integration**: Direct integration between audience agents and decisioning platforms (DSPs, injective platforms)
-- **Workflow**: Find audiences → Direct activation on target platform → Ready for campaign use
+### 🎯 Signals Activation Protocol
+- **Scope**: Works with **signal platforms** to discover and activate signals directly on **decisioning platforms**
+- **Integration**: Direct integration between signal agents and decisioning platforms (DSPs, injective platforms)
+- **Workflow**: Find signals → Direct activation on target platform → Ready for campaign use
 
 ### 📍 Curation Protocol (Coming Q2 2025)
 - **Scope**: Works with **decisioning platforms** and **supply-side platforms**
-- **Integration**: Curates inventory that will be targeted with activated audiences
-- **Workflow**: Define requirements → Find inventory → Package with audiences
+- **Integration**: Curates inventory that will be targeted with activated signals
+- **Workflow**: Define requirements → Find inventory → Package with signals
 
 ### 💰 Media Buy Protocol
 - **Scope**: Works primarily with **decisioning platforms** (DSPs, injective platforms)
-- **Integration**: Executes campaigns using curated inventory and activated audiences
+- **Integration**: Executes campaigns using curated inventory and activated signals
 - **Workflow**: Set objectives → Execute buys → Optimize performance
 
 ## Quick Example
 
 Instead of navigating multiple platforms, you can now say:
 
-> "Find audiences of premium sports enthusiasts who would be interested in high-end running shoes, and activate them on Scope3."
+> "Find audience signals of premium sports enthusiasts who would be interested in high-end running shoes, and activate them on Scope3."
 
 The AI assistant will:
-1. Search for relevant audiences across connected platforms
+1. Search for relevant signals across connected platforms
 2. Show you options with transparent pricing
-3. Activate your chosen audiences for use on decisioning platforms
+3. Activate your chosen signals for use on decisioning platforms
 
 ## Available Protocols
 
-### 🎯 [Audience Activation Protocol](./audience/overview)
+### 🎯 [Signals Activation Protocol](./signals/overview)
 **Status**: RFC/v0.1
 
-Discover and activate marketing audiences using natural language.
+Discover and activate data signals (audiences, contextual, geographical, temporal) using natural language.
 
 ### 📍 Curation Protocol
 **Status**: Coming Q2 2025
@@ -126,14 +126,14 @@ Execute and optimize media buys programmatically.
 
 ## Reference Implementations
 
-- [Audience Agent](https://github.com/adcontextprotocol/audience-agent)
+- [Signals Agent](https://github.com/adcontextprotocol/signals-agent)
 - [Sales Agent](https://github.com/adcontextprotocol/salesagent)
 
 ## For Platform Providers
 
-If you operate an audience platform, DSP, or ad tech solution:
+If you operate a signal platform, DSP, or ad tech solution:
 
-1. [Review the Protocol Specifications](./audience/specification)
+1. [Review the Protocol Specifications](./signals/specification)
 
 ## For Advertisers & Agencies
 
@@ -145,7 +145,7 @@ If you want to use AdCP with your AI assistant:
 
 ## Next Steps
 
-- **Platform Providers**: Start with the [Audience Protocol Specification](./audience/specification)
+- **Platform Providers**: Start with the [Signals Protocol Specification](./signals/specification)
 - **Everyone**: Join the [community discussion](https://github.com/adcontextprotocol/adcp/discussions)
 
 ## Need Help?
