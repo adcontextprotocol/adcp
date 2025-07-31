@@ -73,6 +73,14 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Discovery',
+      items: [
+        'discovery/protocol',
+        'discovery/implementation-guide',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Reference',
       items: [
         'reference/glossary',

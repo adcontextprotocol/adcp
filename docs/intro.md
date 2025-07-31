@@ -109,6 +109,11 @@ The AI assistant will:
 
 ## Available Protocols
 
+### 🔍 [Discovery Protocol](./discovery/protocol)
+**Status**: RFC/v1.0
+
+Automatically discover AdCP agents using `.well-known/adcp` endpoints.
+
 ### 🎯 [Audience Activation Protocol](./audience/overview)
 **Status**: RFC/v0.1
 
