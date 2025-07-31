@@ -93,8 +93,8 @@ const config: Config = {
               to: '/docs/intro',
             },
             {
-              label: 'Audience Protocol',
-              to: '/docs/audience/overview',
+              label: 'Signals Protocol',
+              to: '/docs/signals/overview',
             },
           ],
         },

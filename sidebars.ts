@@ -17,10 +17,10 @@ const sidebars: SidebarsConfig = {
     'intro',
     {
       type: 'category',
-      label: 'Audience',
+      label: 'Signals',
       items: [
-        'audience/overview',
-        'audience/specification',
+        'signals/overview',
+        'signals/specification',
       ],
     },
     {
@@ -69,6 +69,14 @@ const sidebars: SidebarsConfig = {
             'media-buy/design-decisions',
           ],
         },
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Discovery',
+      items: [
+        'discovery/protocol',
+        'discovery/implementation-guide',
       ],
     },
     {
