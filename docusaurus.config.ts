@@ -41,6 +41,13 @@ const config: Config = {
     mermaid: true,
   },
 
+  plugins: [
+    ['docusaurus-plugin-llms-txt', {
+      title: 'Ad Context Protocol',
+      description: 'Open standards for AI-powered advertising workflows',
+    }],
+  ],
+
   presets: [
     [
       'classic',
