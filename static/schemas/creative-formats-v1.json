@@ -485,45 +485,52 @@
         "type": "display",
         "category": "foundational",
         "description": "Multi-product interactive carousel",
-        "min_products": 3,
-        "max_products": 10,
-        "product_schema": {
-          "product_image": {
-            "required": true,
-            "requirements": {
-              "dimensions": ["627x627", "1200x627"],
-              "file_types": ["jpg", "png", "webp"],
-              "max_file_size": "150KB"
+        "min_frames": 3,
+        "max_frames": 10,
+        "frame_schema": {
+          "assets": [
+            {
+              "asset_type": "product_image",
+              "required": true,
+              "requirements": {
+                "dimensions": ["627x627", "1200x627"],
+                "file_types": ["jpg", "png", "webp"],
+                "max_file_size": "150KB"
+              }
+            },
+            {
+              "asset_type": "product_name",
+              "required": true,
+              "requirements": {
+                "type": "text",
+                "max_length": 50
+              }
+            },
+            {
+              "asset_type": "product_price",
+              "required": true,
+              "requirements": {
+                "type": "text",
+                "format": "currency"
+              }
+            },
+            {
+              "asset_type": "product_url",
+              "required": true,
+              "requirements": {
+                "type": "url",
+                "must_be_https": true
+              }
+            },
+            {
+              "asset_type": "product_description",
+              "required": false,
+              "requirements": {
+                "type": "text",
+                "max_length": 150
+              }
             }
-          },
-          "product_name": {
-            "required": true,
-            "requirements": {
-              "type": "text",
-              "max_length": 50
-            }
-          },
-          "product_price": {
-            "required": true,
-            "requirements": {
-              "type": "text",
-              "format": "currency"
-            }
-          },
-          "product_url": {
-            "required": true,
-            "requirements": {
-              "type": "url",
-              "must_be_https": true
-            }
-          },
-          "product_description": {
-            "required": false,
-            "requirements": {
-              "type": "text",
-              "max_length": 150
-            }
-          }
+          ]
         },
         "global_assets": [
           {
@@ -544,6 +551,7 @@
             }
           }
         ],
+        "interaction": "swipe/click navigation",
         "publisher_coverage": "7+ major publishers",
         "is_3p_served": false
       },
@@ -682,6 +690,76 @@
           }
         },
         "is_3p_served": false
+      },
+      "nytimes_slideshow_flex_xl_desktop": {
+        "format_id": "display_slideshow_flex_xl_desktop_1125x600",
+        "extends": "foundational_product_carousel",
+        "publisher": "nytimes",
+        "type": "display",
+        "description": "Split screen slideshow format for multi-part image-led storytelling on desktop (1125x600 breakpoint)",
+        "dimensions": "1125x600",
+        "platform": "desktop",
+        "is_standard": false,
+        "is_3p_served": false,
+        "min_frames": 3,
+        "max_frames": 5,
+        "frame_schema": {
+          "assets": [
+            {
+              "asset_type": "primary_image",
+              "required": true,
+              "requirements": {
+                "dimensions": "600x600",
+                "file_types": ["jpg", "png"],
+                "notes": "Must be free of text, logo or branding"
+              }
+            },
+            {
+              "asset_type": "headline",
+              "required": true,
+              "requirements": {
+                "type": "text",
+                "max_length": 100
+              }
+            },
+            {
+              "asset_type": "descriptor_message",
+              "required": true,
+              "requirements": {
+                "type": "text",
+                "max_length": 210
+              }
+            }
+          ]
+        },
+        "global_assets": [
+          {
+            "asset_type": "cta_message",
+            "required": true,
+            "requirements": {
+              "type": "text",
+              "max_length": 15
+            }
+          },
+          {
+            "asset_type": "logo",
+            "required": true,
+            "requirements": {
+              "file_types": ["png", "eps"],
+              "transparency": true,
+              "notes": "Transparent background required"
+            }
+          },
+          {
+            "asset_type": "click_through_url",
+            "required": true,
+            "requirements": {
+              "type": "url",
+              "must_be_https": true
+            }
+          }
+        ],
+        "source_url": "https://advertising.nytimes.com/formats/display-formats/slideshow-flex-xl/"
       }
     }
   },

@@ -43,6 +43,52 @@ The JSON schema includes:
 - Breaking changes will increment the major version
 - Implementations should check the `version` field
 
+### Frame-Based Formats
+
+Some formats support multiple frames, where each frame contains a collection of assets that are displayed together. This is particularly useful for carousel, slideshow, and story-like formats.
+
+#### Frame Structure
+
+Frame-based formats use the following structure:
+
+```json
+{
+  "specs": {
+    "min_frames": 3,
+    "max_frames": 10,
+    "frame_schema": {
+      "assets": [
+        {
+          "type": "image",
+          "id": "primary_image",
+          "size": "600x600",
+          "file_types": ["jpg", "png"],
+          "required": true
+        },
+        {
+          "type": "text",
+          "id": "headline",
+          "max_characters": 100,
+          "required": true
+        }
+      ]
+    },
+    "global_assets": [
+      {
+        "type": "image",
+        "id": "logo",
+        "file_types": ["png", "svg"],
+        "requirements": "Transparent background"
+      }
+    ]
+  }
+}
+```
+
+- **min_frames/max_frames**: Defines the allowed range of frames
+- **frame_schema**: Defines assets that must be provided for each frame
+- **global_assets**: Assets that apply to the entire format (logos, CTAs, etc.)
+
 #### Standard Video Formats
 
 Video formats are now split by duration and delivery method to provide more specific requirements. Each format clearly defines whether it accepts a hosted video file or a VAST tag.
