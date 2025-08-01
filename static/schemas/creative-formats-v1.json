@@ -14,19 +14,16 @@
           {
             "asset_type": "image",
             "required": true,
-            "requirements": {
-              "dimensions": "300x250",
-              "file_types": ["jpg", "png", "gif"],
-              "max_file_size": "200KB"
-            }
+            "width": 300,
+            "height": 250,
+            "acceptable_formats": ["jpg", "png", "gif"],
+            "max_file_size_kb": 200
           },
           {
-            "asset_type": "clickthrough_url",
+            "asset_type": "url",
             "required": true,
-            "requirements": {
-              "type": "url",
-              "must_be_https": true
-            }
+            "url_type": "clickthrough",
+            "must_be_https": true
           }
         ],
         "is_3p_served": false
@@ -51,19 +48,16 @@
           {
             "asset_type": "image",
             "required": true,
-            "requirements": {
-              "dimensions": "728x90",
-              "file_types": ["jpg", "png", "gif"],
-              "max_file_size": "200KB"
-            }
+            "width": 728,
+            "height": 90,
+            "acceptable_formats": ["jpg", "png", "gif"],
+            "max_file_size_kb": 200
           },
           {
-            "asset_type": "clickthrough_url",
+            "asset_type": "url",
             "required": true,
-            "requirements": {
-              "type": "url",
-              "must_be_https": true
-            }
+            "url_type": "clickthrough",
+            "must_be_https": true
           }
         ],
         "is_3p_served": false
@@ -124,45 +118,36 @@
         "description": "Native ad matching content style",
         "assets": [
           {
-            "asset_type": "title",
+            "asset_type": "text",
             "required": true,
-            "requirements": {
-              "type": "text",
-              "max_length": 90
-            }
+            "text_type": "title",
+            "max_length": 90
           },
           {
-            "asset_type": "description",
+            "asset_type": "text",
             "required": true,
-            "requirements": {
-              "type": "text",
-              "max_length": 140
-            }
+            "text_type": "description",
+            "max_length": 140
           },
           {
             "asset_type": "image",
             "required": true,
-            "requirements": {
-              "dimensions": "1200x627",
-              "file_types": ["jpg", "png"],
-              "max_file_size": "500KB"
-            }
+            "width": 1200,
+            "height": 627,
+            "acceptable_formats": ["jpg", "png"],
+            "max_file_size_kb": 500
           },
           {
-            "asset_type": "clickthrough_url",
+            "asset_type": "url",
             "required": true,
-            "requirements": {
-              "type": "url",
-              "must_be_https": true
-            }
+            "url_type": "clickthrough",
+            "must_be_https": true
           },
           {
-            "asset_type": "advertiser_name",
+            "asset_type": "text",
             "required": false,
-            "requirements": {
-              "type": "text",
-              "max_length": 25
-            }
+            "text_type": "advertiser_name",
+            "max_length": 25
           }
         ],
         "is_3p_served": false
@@ -176,15 +161,15 @@
         "duration": "15s",
         "assets": [
           {
-            "asset_type": "video_file",
+            "asset_type": "video",
             "required": true,
-            "requirements": {
-              "duration": "15s",
-              "format": "MP4 H.264",
-              "resolution": ["1920x1080", "1280x720"],
-              "max_file_size": "30MB",
-              "bitrate": "8-10 Mbps"
-            }
+            "duration_seconds": 15,
+            "acceptable_formats": ["mp4"],
+            "acceptable_codecs": ["h264"],
+            "acceptable_resolutions": ["1920x1080", "1280x720"],
+            "max_file_size_mb": 30,
+            "min_bitrate_mbps": 8,
+            "max_bitrate_mbps": 10
           }
         ],
         "is_3p_served": false
@@ -196,15 +181,15 @@
         "duration": "30s",
         "assets": [
           {
-            "asset_type": "video_file",
+            "asset_type": "video",
             "required": true,
-            "requirements": {
-              "duration": "30s",
-              "format": "MP4 H.264",
-              "resolution": ["1920x1080", "1280x720"],
-              "max_file_size": "50MB",
-              "bitrate": "8-10 Mbps"
-            }
+            "duration_seconds": 30,
+            "acceptable_formats": ["mp4"],
+            "acceptable_codecs": ["h264"],
+            "acceptable_resolutions": ["1920x1080", "1280x720"],
+            "max_file_size_mb": 50,
+            "min_bitrate_mbps": 8,
+            "max_bitrate_mbps": 10
           }
         ],
         "is_3p_served": false
@@ -238,15 +223,14 @@
         "duration": "6s",
         "assets": [
           {
-            "asset_type": "video_file",
+            "asset_type": "video",
             "required": true,
-            "requirements": {
-              "duration": "6s",
-              "format": "MP4 H.264",
-              "aspect_ratio": "9:16",
-              "resolution": "1080x1920",
-              "max_file_size": "15MB"
-            }
+            "duration_seconds": 6,
+            "acceptable_formats": ["mp4"],
+            "acceptable_codecs": ["h264"],
+            "aspect_ratio": "9:16",
+            "acceptable_resolutions": ["1080x1920"],
+            "max_file_size_mb": 15
           }
         ],
         "is_3p_served": false
@@ -434,47 +418,43 @@
         "description": "Premium responsive canvas format adaptable across publishers",
         "assets": [
           {
-            "asset_type": "hero_image",
+            "asset_type": "image",
             "required": true,
-            "requirements": {
-              "dimensions": "1200x627",
-              "file_types": ["jpg", "png", "webp"],
-              "max_file_size": "500KB"
-            }
+            "image_role": "hero",
+            "width": 1200,
+            "height": 627,
+            "acceptable_formats": ["jpg", "png", "webp"],
+            "max_file_size_kb": 500
           },
           {
-            "asset_type": "logo",
+            "asset_type": "image",
             "required": true,
-            "requirements": {
-              "dimensions": "250x150",
-              "file_types": ["png", "svg"],
-              "transparency": true
-            }
+            "image_role": "logo",
+            "width": 250,
+            "height": 150,
+            "acceptable_formats": ["png", "svg"],
+            "transparency": true
           },
           {
-            "asset_type": "headline",
+            "asset_type": "text",
             "required": true,
-            "requirements": {
-              "type": "text",
-              "max_length": 80
-            }
+            "text_type": "headline",
+            "max_length": 80
           },
           {
-            "asset_type": "description",
+            "asset_type": "text",
             "required": true,
-            "requirements": {
-              "type": "text",
-              "max_length": 200
-            }
+            "text_type": "description",
+            "max_length": 200
           },
           {
             "asset_type": "video",
             "required": false,
-            "requirements": {
-              "duration": "15-30s",
-              "format": "MP4 H.264",
-              "max_file_size": "50MB"
-            }
+            "min_duration_seconds": 15,
+            "max_duration_seconds": 30,
+            "acceptable_formats": ["mp4"],
+            "acceptable_codecs": ["h264"],
+            "max_file_size_mb": 50
           }
         ],
         "publisher_coverage": "8+ major publishers",
@@ -490,65 +470,61 @@
         "frame_schema": {
           "assets": [
             {
-              "asset_type": "product_image",
+              "asset_type": "image",
               "required": true,
-              "requirements": {
-                "dimensions": ["627x627", "1200x627"],
-                "file_types": ["jpg", "png", "webp"],
-                "max_file_size": "150KB"
-              }
+              "image_role": "product",
+              "acceptable_dimensions": [
+                {"width": 627, "height": 627},
+                {"width": 1200, "height": 627}
+              ],
+              "acceptable_formats": ["jpg", "png", "webp"],
+              "max_file_size_kb": 150
             },
             {
-              "asset_type": "product_name",
+              "asset_type": "text",
               "required": true,
-              "requirements": {
-                "type": "text",
-                "max_length": 50
-              }
+              "text_type": "title",
+              "text_role": "product_name",
+              "max_length": 50
             },
             {
-              "asset_type": "product_price",
+              "asset_type": "text",
               "required": true,
-              "requirements": {
-                "type": "text",
-                "format": "currency"
-              }
+              "text_type": "price",
+              "format": "currency",
+              "text_role": "product_price"
             },
             {
-              "asset_type": "product_url",
+              "asset_type": "url",
               "required": true,
-              "requirements": {
-                "type": "url",
-                "must_be_https": true
-              }
+              "url_type": "landing_page",
+              "url_role": "product_url",
+              "must_be_https": true
             },
             {
-              "asset_type": "product_description",
+              "asset_type": "text",
               "required": false,
-              "requirements": {
-                "type": "text",
-                "max_length": 150
-              }
+              "text_type": "description",
+              "text_role": "product_description",
+              "max_length": 150
             }
           ]
         },
         "global_assets": [
           {
-            "asset_type": "brand_logo",
+            "asset_type": "image",
             "required": true,
-            "requirements": {
-              "dimensions": "200x50",
-              "file_types": ["png", "svg"]
-            }
+            "image_role": "logo",
+            "width": 200,
+            "height": 50,
+            "acceptable_formats": ["png", "svg"]
           },
           {
-            "asset_type": "cta_text",
+            "asset_type": "text",
             "required": true,
-            "requirements": {
-              "type": "text",
-              "max_length": 20,
-              "default": "Shop Now"
-            }
+            "text_type": "cta",
+            "max_length": 20,
+            "default": "Shop Now"
           }
         ],
         "interaction": "swipe/click navigation",

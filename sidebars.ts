@@ -50,6 +50,7 @@ const sidebars: SidebarsConfig = {
           items: [
             'media-buy/creative-lifecycle',
             'media-buy/creative-formats',
+            'media-buy/asset-types',
           ],
         },
         {
