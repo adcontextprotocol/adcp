@@ -195,9 +195,35 @@
         "category": "foundational",
         "description": "Multi-product interactive carousel",
         "specs": {
-          "products": "3-10",
-          "image_sizes": ["627x627", "1200x627"],
-          "per_product_data": ["name", "price", "url"],
+          "min_frames": 3,
+          "max_frames": 10,
+          "frame_schema": {
+            "assets": [
+              {
+                "type": "image",
+                "id": "product_image",
+                "sizes": ["627x627", "1200x627"],
+                "file_types": ["jpg", "png", "webp"]
+              },
+              {
+                "type": "text",
+                "id": "product_name",
+                "required": true
+              },
+              {
+                "type": "text",
+                "id": "product_price",
+                "format": "currency",
+                "required": true
+              },
+              {
+                "type": "url",
+                "id": "product_url",
+                "format": "https",
+                "required": true
+              }
+            ]
+          },
           "interaction": "swipe/click navigation"
         },
         "publisher_coverage": "7+ major publishers",
@@ -259,6 +285,67 @@
           }
         },
         "is_3p_served": false
+      },
+      "nytimes_slideshow_flex_xl_desktop": {
+        "format_id": "display_slideshow_flex_xl_desktop_1125x600",
+        "extends": "foundational_product_carousel",
+        "publisher": "nytimes",
+        "type": "display",
+        "description": "Split screen slideshow format for multi-part image-led storytelling on desktop (1125x600 breakpoint)",
+        "width": 1125,
+        "height": 600,
+        "platform": "desktop",
+        "file_types": ["jpg", "png"],
+        "is_standard": false,
+        "is_3p_served": false,
+        "specs": {
+          "min_frames": 3,
+          "max_frames": 5,
+          "frame_schema": {
+            "assets": [
+              {
+                "type": "image",
+                "id": "primary_image",
+                "size": "600x600",
+                "file_types": ["jpg", "png"],
+                "requirements": "Must be free of text, logo or branding"
+              },
+              {
+                "type": "text",
+                "id": "headline",
+                "max_characters": 100,
+                "required": true
+              },
+              {
+                "type": "text",
+                "id": "descriptor_message",
+                "max_characters": 210,
+                "required": true
+              }
+            ]
+          },
+          "global_assets": [
+            {
+              "type": "text",
+              "id": "cta_message",
+              "max_characters": 15,
+              "required": true
+            },
+            {
+              "type": "image",
+              "id": "logo",
+              "file_types": ["png", "eps"],
+              "requirements": "Transparent background required"
+            },
+            {
+              "type": "url",
+              "id": "click_through_url",
+              "format": "https",
+              "required": true
+            }
+          ]
+        },
+        "source_url": "https://advertising.nytimes.com/formats/display-formats/slideshow-flex-xl/"
       }
     }
   },
