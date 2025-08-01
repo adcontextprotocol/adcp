@@ -28,10 +28,13 @@ curl https://raw.githubusercontent.com/adcontextprotocol/adcp/main/static/schema
 
 The JSON schema includes:
 - **formats**: Organized by type (video, audio, display, rich_media, dooh)
-- **specs**: Technical specifications for each format
-- **delivery_options**: Supported delivery methods and protocols
-- **delivery_protocols**: Reference information for VAST, MRAID, etc.
-- **assets_required**: For multi-asset formats like carousels and sliders
+- **duration**: For video/audio formats, explicitly defined duration (e.g., "15s", "30s")
+- **assets**: Array of assets with:
+  - **asset_type**: Type of asset (e.g., "video_file", "image", "headline")
+  - **required**: Boolean indicating if the asset is mandatory
+  - **requirements**: Specific technical requirements for the asset
+- **delivery**: For VAST/third-party formats, delivery method and supported versions
+- **is_3p_served**: Boolean indicating if format accepts third-party tags
 
 ### Version Management
 
@@ -88,60 +91,113 @@ Frame-based formats use the following structure:
 
 #### Standard Video Formats
 
-##### video_standard_1080p
+Video formats are now split by duration and delivery method to provide more specific requirements. Each format clearly defines whether it accepts a hosted video file or a VAST tag.
+
+##### Hosted Video Formats
+
+###### video_15s_hosted
 ```json
 {
-  "format_id": "video_standard_1080p",
-  "name": "Standard HD Video",
+  "format_id": "video_15s_hosted",
   "type": "video",
-  "description": "Standard 1080p video ad",
-  "specs": {
-    "resolution": "1920x1080",
-    "duration": "15s or 30s",
-    "file_format": "MP4",
-    "max_file_size": "50MB"
-  },
-  "delivery_options": {
-    "hosted": {
-      "supported": true,
-      "description": "Direct URL to video file"
-    },
-    "vast": {
-      "supported": true,
-      "versions": ["3.0", "4.0", "4.1", "4.2"],
-      "features": ["linear", "skippable", "companions"]
-    },
-    "vpaid": {
-      "supported": false,
-      "reason": "Security and performance concerns"
+  "description": "15-second hosted video",
+  "duration": "15s",
+  "assets": [
+    {
+      "asset_type": "video_file",
+      "required": true,
+      "requirements": {
+        "duration": "15s",
+        "format": "MP4 H.264",
+        "resolution": ["1920x1080", "1280x720"],
+        "max_file_size": "30MB",
+        "bitrate": "8-10 Mbps"
+      }
     }
-  }
+  ],
+  "is_3p_served": false
 }
 ```
 
-##### video_vertical_mobile
+###### video_30s_hosted
 ```json
 {
-  "format_id": "video_vertical_mobile",
-  "name": "Vertical Mobile Video",
+  "format_id": "video_30s_hosted",
   "type": "video",
-  "description": "Full-screen vertical video for mobile",
-  "specs": {
-    "resolution": "1080x1920 (9:16)",
-    "duration": "6s, 15s, or 30s",
-    "file_format": "MP4",
-    "features": ["skippable after 5s", "sound off by default"]
-  },
-  "delivery_options": {
-    "hosted": {
-      "supported": true
-    },
-    "vast": {
-      "supported": true,
-      "versions": ["4.0+"],
-      "required_extensions": ["OMID for viewability"]
+  "description": "30-second hosted video",
+  "duration": "30s",
+  "assets": [
+    {
+      "asset_type": "video_file",
+      "required": true,
+      "requirements": {
+        "duration": "30s",
+        "format": "MP4 H.264",
+        "resolution": ["1920x1080", "1280x720"],
+        "max_file_size": "50MB",
+        "bitrate": "8-10 Mbps"
+      }
     }
-  }
+  ],
+  "is_3p_served": false
+}
+```
+
+##### VAST Video Formats
+
+###### video_15s_vast
+```json
+{
+  "format_id": "video_15s_vast",
+  "type": "video",
+  "description": "15-second video via VAST",
+  "duration": "15s",
+  "delivery": {
+    "method": "VAST",
+    "versions": ["3.0", "4.0", "4.1", "4.2"]
+  },
+  "is_3p_served": true
+}
+```
+
+###### video_30s_vast
+```json
+{
+  "format_id": "video_30s_vast",
+  "type": "video",
+  "description": "30-second video via VAST",
+  "duration": "30s",
+  "delivery": {
+    "method": "VAST",
+    "versions": ["3.0", "4.0", "4.1", "4.2"]
+  },
+  "is_3p_served": true
+}
+```
+
+##### Vertical Video Formats
+
+###### video_vertical_15s_hosted
+```json
+{
+  "format_id": "video_vertical_15s_hosted",
+  "type": "video",
+  "description": "15-second vertical video for mobile",
+  "duration": "15s",
+  "assets": [
+    {
+      "asset_type": "video_file",
+      "required": true,
+      "requirements": {
+        "duration": "15s",
+        "format": "MP4 H.264",
+        "aspect_ratio": "9:16",
+        "resolution": "1080x1920",
+        "max_file_size": "30MB"
+      }
+    }
+  ],
+  "is_3p_served": false
 }
 ```
 
@@ -315,7 +371,7 @@ Frame-based formats use the following structure:
   "assets_required": [
     {
       "asset_type": "frame_1",
-      "quantity": 1,
+      "required": true,
       "requirements": {
         "width": 300,
         "height": 600,
@@ -325,7 +381,7 @@ Frame-based formats use the following structure:
     },
     {
       "asset_type": "frame_2",
-      "quantity": 1,
+      "required": true,
       "requirements": {
         "width": 300,
         "height": 600,
@@ -335,7 +391,7 @@ Frame-based formats use the following structure:
     },
     {
       "asset_type": "clickthrough_url",
-      "quantity": 1,
+      "required": true,
       "requirements": {
         "type": "url",
         "must_be_https": true
@@ -507,52 +563,81 @@ A premium full-width format that scales responsively across devices. Known by va
 
 #### 2. Product Showcase Carousel
 
-Interactive carousel displaying 3-10 products with swipe/click navigation. Consistent behavior across Yahoo Native Carousel, NYT Product Carousel, Hearst Cube Gallery, and others.
+Interactive carousel displaying 3-10 products with swipe/click navigation. Consistent behavior across Yahoo Native Carousel, NYT Product Carousel, Hearst Cube Gallery, and others. This format uses a frame-based structure where each frame represents a product.
 
 ```json
 {
   "format_id": "foundational_product_carousel",
-  "name": "Product Showcase Carousel",
   "type": "display",
   "category": "foundational",
   "description": "Multi-product interactive carousel",
-  "min_products": 3,
-  "max_products": 10,
-  "product_schema": {
-    "product_image": {
+  "min_frames": 3,
+  "max_frames": 10,
+  "frame_schema": {
+    "assets": [
+      {
+        "asset_type": "product_image",
+        "required": true,
+        "requirements": {
+          "dimensions": ["627x627", "1200x627"],
+          "file_types": ["jpg", "png", "webp"],
+          "max_file_size": "150KB"
+        }
+      },
+      {
+        "asset_type": "product_name",
+        "required": true,
+        "requirements": {
+          "type": "text",
+          "max_length": 50
+        }
+      },
+      {
+        "asset_type": "product_price",
+        "required": true,
+        "requirements": {
+          "type": "text",
+          "format": "currency"
+        }
+      },
+      {
+        "asset_type": "product_url",
+        "required": true,
+        "requirements": {
+          "type": "url",
+          "must_be_https": true
+        }
+      },
+      {
+        "asset_type": "product_description",
+        "required": false,
+        "requirements": {
+          "type": "text",
+          "max_length": 150
+        }
+      }
+    ]
+  },
+  "global_assets": [
+    {
+      "asset_type": "brand_logo",
       "required": true,
       "requirements": {
-        "square": "627x627",
-        "rectangle": "1200x627",
-        "file_types": ["jpg", "png", "webp"]
+        "dimensions": "200x50",
+        "file_types": ["png", "svg"]
       }
     },
-    "product_name": {
+    {
+      "asset_type": "cta_text",
       "required": true,
       "requirements": {
         "type": "text",
-        "max_length": 50
-      }
-    },
-    "product_price": {
-      "required": true,
-      "requirements": {
-        "type": "text",
-        "format": "currency"
-      }
-    },
-    "product_url": {
-      "required": true,
-      "requirements": {
-        "type": "url"
+        "max_length": 20,
+        "default": "Shop Now"
       }
     }
-  },
-  "interaction_patterns": {
-    "mobile": "horizontal_swipe",
-    "desktop": "click_navigation",
-    "tracking": "per_product"
-  },
+  ],
+  "interaction": "swipe/click navigation",
   "publisher_adaptations": [
     "Yahoo Native Carousel",
     "NYT Product Carousel",
@@ -668,43 +753,77 @@ Content that reveals or animates based on scroll position. Consistent mobile-fir
 }
 ```
 
-#### 5. Universal Video Format
+#### 5. Universal Video Formats
 
-Standardized video specifications that work across all publishers with three core aspect ratios.
+Standardized video specifications that work across all publishers, now split by duration for clarity.
 
+##### foundational_video_15s
 ```json
 {
-  "format_id": "foundational_video",
-  "name": "Universal Video",
+  "format_id": "foundational_video_15s",
   "type": "video",
   "category": "foundational",
-  "description": "Cross-publisher video standard",
-  "specs": {
-    "duration": "15s or 30s",
-    "format": "MP4 H.264",
-    "aspect_ratios": {
-      "landscape": "16:9",
-      "vertical": "9:16",
-      "square": "1:1"
-    },
-    "compliance": {
-      "vast": ["2.0", "3.0", "4.0+"],
-      "vpaid": false
-    },
-    "behavior": {
-      "autoplay": "muted",
-      "user_initiated_sound": true
+  "description": "Universal 15-second video format",
+  "duration": "15s",
+  "assets": [
+    {
+      "asset_type": "video_file",
+      "required": true,
+      "requirements": {
+        "duration": "15s",
+        "format": "MP4 H.264",
+        "aspect_ratios": ["16:9", "9:16", "1:1"],
+        "resolution": {
+          "16:9": ["1920x1080", "1280x720"],
+          "9:16": "1080x1920",
+          "1:1": "1080x1080"
+        }
+      }
+    }
+  ],
+  "delivery": {
+    "hosted": true,
+    "vast": {
+      "versions": ["2.0", "3.0", "4.0+"]
     }
   },
-  "companion_assets": {
-    "display_companion": {
-      "sizes": ["300x250", "728x90"],
-      "required": false
+  "publisher_coverage": "All publishers",
+  "is_3p_served": false
+}
+```
+
+##### foundational_video_30s
+```json
+{
+  "format_id": "foundational_video_30s",
+  "type": "video",
+  "category": "foundational",
+  "description": "Universal 30-second video format",
+  "duration": "30s",
+  "assets": [
+    {
+      "asset_type": "video_file",
+      "required": true,
+      "requirements": {
+        "duration": "30s",
+        "format": "MP4 H.264",
+        "aspect_ratios": ["16:9", "9:16", "1:1"],
+        "resolution": {
+          "16:9": ["1920x1080", "1280x720"],
+          "9:16": "1080x1920",
+          "1:1": "1080x1080"
+        }
+      }
+    }
+  ],
+  "delivery": {
+    "hosted": true,
+    "vast": {
+      "versions": ["2.0", "3.0", "4.0+"]
     }
   },
-  "publisher_adaptations": [
-    "All publishers accept these specifications"
-  ]
+  "publisher_coverage": "All publishers",
+  "is_3p_served": false
 }
 ```
 
@@ -810,6 +929,85 @@ Publishers extend formats by declaring the base format and their modifications:
   }
 }
 ```
+
+#### Real-World Extension Example: NYTimes Slideshow
+
+The NYTimes Slideshow Flex XL format extends the foundational_product_carousel with specific dimensions and storytelling capabilities:
+
+```json
+{
+  "format_id": "display_slideshow_flex_xl_desktop_1125x600",
+  "extends": "foundational_product_carousel",
+  "publisher": "nytimes",
+  "type": "display",
+  "description": "Split screen slideshow format for multi-part image-led storytelling on desktop",
+  "dimensions": "1125x600",
+  "platform": "desktop",
+  "min_frames": 3,
+  "max_frames": 5,
+  "frame_schema": {
+    "assets": [
+      {
+        "asset_type": "primary_image",
+        "required": true,
+        "requirements": {
+          "dimensions": "600x600",
+          "file_types": ["jpg", "png"],
+          "notes": "Must be free of text, logo or branding"
+        }
+      },
+      {
+        "asset_type": "headline",
+        "required": true,
+        "requirements": {
+          "type": "text",
+          "max_length": 100
+        }
+      },
+      {
+        "asset_type": "descriptor_message",
+        "required": true,
+        "requirements": {
+          "type": "text",
+          "max_length": 210
+        }
+      }
+    ]
+  },
+  "global_assets": [
+    {
+      "asset_type": "cta_message",
+      "required": true,
+      "requirements": {
+        "type": "text",
+        "max_length": 15
+      }
+    },
+    {
+      "asset_type": "logo",
+      "required": true,
+      "requirements": {
+        "file_types": ["png", "eps"],
+        "transparency": true
+      }
+    },
+    {
+      "asset_type": "click_through_url",
+      "required": true,
+      "requirements": {
+        "type": "url",
+        "must_be_https": true
+      }
+    }
+  ]
+}
+```
+
+This extension demonstrates how publishers can:
+- Maintain the frame-based structure of the foundational format
+- Add specific dimensions and platform requirements
+- Customize asset requirements (e.g., specific image dimensions, text lengths)
+- Add publisher-specific assets while maintaining compatibility
 
 ### Benefits of Extension
 

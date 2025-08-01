@@ -10,17 +10,35 @@
         "format_id": "display_300x250",
         "type": "display",
         "description": "Medium Rectangle banner",
-        "specs": {
-          "dimensions": "300x250"
-        },
+        "assets": [
+          {
+            "asset_id": "banner_image",
+            "asset_type": "image",
+            "required": true,
+            "width": 300,
+            "height": 250,
+            "acceptable_formats": ["jpg", "png", "gif"],
+            "max_file_size_kb": 200
+          },
+          {
+            "asset_id": "clickthrough_url",
+            "asset_type": "url",
+            "required": true,
+            "url_type": "clickthrough",
+            "must_be_https": true
+          }
+        ],
         "is_3p_served": false
       },
       "display_3p_300x250": {
         "format_id": "display_3p_300x250",
         "type": "display",
         "description": "Medium Rectangle with third-party tag",
-        "specs": {
-          "dimensions": "300x250"
+        "dimensions": "300x250",
+        "delivery": {
+          "method": "third_party_tag",
+          "formats": ["JavaScript tag", "iFrame tag"],
+          "restrictions": ["Must be SSL", "No auto-expand", "No auto-audio"]
         },
         "is_3p_served": true
       },
@@ -28,17 +46,35 @@
         "format_id": "display_728x90",
         "type": "display",
         "description": "Leaderboard banner",
-        "specs": {
-          "dimensions": "728x90"
-        },
+        "assets": [
+          {
+            "asset_id": "banner_image",
+            "asset_type": "image",
+            "required": true,
+            "width": 728,
+            "height": 90,
+            "acceptable_formats": ["jpg", "png", "gif"],
+            "max_file_size_kb": 200
+          },
+          {
+            "asset_id": "clickthrough_url",
+            "asset_type": "url",
+            "required": true,
+            "url_type": "clickthrough",
+            "must_be_https": true
+          }
+        ],
         "is_3p_served": false
       },
       "display_3p_728x90": {
         "format_id": "display_3p_728x90",
         "type": "display",
         "description": "Leaderboard with third-party tag",
-        "specs": {
-          "dimensions": "728x90"
+        "dimensions": "728x90",
+        "delivery": {
+          "method": "third_party_tag",
+          "formats": ["JavaScript tag", "iFrame tag"],
+          "restrictions": ["Must be SSL", "No auto-expand", "No auto-audio"]
         },
         "is_3p_served": true
       },
@@ -46,17 +82,36 @@
         "format_id": "display_320x50",
         "type": "display",
         "description": "Mobile banner",
-        "specs": {
-          "dimensions": "320x50"
-        },
+        "assets": [
+          {
+            "asset_type": "image",
+            "required": true,
+            "requirements": {
+              "dimensions": "320x50",
+              "file_types": ["jpg", "png", "gif"],
+              "max_file_size": "50KB"
+            }
+          },
+          {
+            "asset_type": "clickthrough_url",
+            "required": true,
+            "requirements": {
+              "type": "url",
+              "must_be_https": true
+            }
+          }
+        ],
         "is_3p_served": false
       },
       "display_3p_320x50": {
         "format_id": "display_3p_320x50",
         "type": "display",
         "description": "Mobile banner with third-party tag",
-        "specs": {
-          "dimensions": "320x50"
+        "dimensions": "320x50",
+        "delivery": {
+          "method": "third_party_tag",
+          "formats": ["JavaScript tag", "iFrame tag"],
+          "restrictions": ["Must be SSL", "No auto-expand", "No auto-audio"]
         },
         "is_3p_served": true
       },
@@ -65,58 +120,247 @@
         "type": "display",
         "subtype": "native",
         "description": "Native ad matching content style",
-        "specs": {
-          "requirements": ["title", "description", "image", "click URL"]
-        },
+        "assets": [
+          {
+            "asset_type": "text",
+            "required": true,
+            "text_type": "title",
+            "max_length": 90
+          },
+          {
+            "asset_type": "text",
+            "required": true,
+            "text_type": "description",
+            "max_length": 140
+          },
+          {
+            "asset_type": "image",
+            "required": true,
+            "width": 1200,
+            "height": 627,
+            "acceptable_formats": ["jpg", "png"],
+            "max_file_size_kb": 500
+          },
+          {
+            "asset_type": "url",
+            "required": true,
+            "url_type": "clickthrough",
+            "must_be_https": true
+          },
+          {
+            "asset_type": "text",
+            "required": false,
+            "text_type": "advertiser_name",
+            "max_length": 25
+          }
+        ],
         "is_3p_served": false
       }
     },
     "video": {
-      "video_standard": {
-        "format_id": "video_standard",
+      "video_15s_hosted": {
+        "format_id": "video_15s_hosted",
         "type": "video",
-        "description": "Standard video ad",
-        "specs": {
-          "common_durations": ["15s", "30s"],
-          "common_resolutions": ["1920x1080", "1280x720"]
-        },
+        "description": "15-second hosted video",
+        "duration": "15s",
+        "assets": [
+          {
+            "asset_id": "video_file",
+            "asset_type": "video",
+            "required": true,
+            "duration_seconds": 15,
+            "acceptable_formats": ["mp4"],
+            "acceptable_codecs": ["h264"],
+            "acceptable_resolutions": ["1920x1080", "1280x720"],
+            "max_file_size_mb": 30,
+            "min_bitrate_mbps": 8,
+            "max_bitrate_mbps": 10
+          }
+        ],
         "is_3p_served": false
       },
-      "video_3p_standard": {
-        "format_id": "video_3p_standard",
+      "video_30s_hosted": {
+        "format_id": "video_30s_hosted",
         "type": "video",
-        "description": "Standard video with VAST tag",
-        "specs": {
-          "delivery": "VAST URL"
+        "description": "30-second hosted video",
+        "duration": "30s",
+        "assets": [
+          {
+            "asset_id": "video_file",
+            "asset_type": "video",
+            "required": true,
+            "duration_seconds": 30,
+            "acceptable_formats": ["mp4"],
+            "acceptable_codecs": ["h264"],
+            "acceptable_resolutions": ["1920x1080", "1280x720"],
+            "max_file_size_mb": 50,
+            "min_bitrate_mbps": 8,
+            "max_bitrate_mbps": 10
+          }
+        ],
+        "is_3p_served": false
+      },
+      "video_15s_vast": {
+        "format_id": "video_15s_vast",
+        "type": "video",
+        "description": "15-second video via VAST",
+        "duration": "15s",
+        "delivery": {
+          "method": "VAST",
+          "versions": ["3.0", "4.0", "4.1", "4.2"]
         },
         "is_3p_served": true
       },
-      "video_vertical": {
-        "format_id": "video_vertical",
+      "video_30s_vast": {
+        "format_id": "video_30s_vast",
         "type": "video",
-        "description": "Vertical video for mobile",
-        "specs": {
-          "aspect_ratio": "9:16",
-          "common_durations": ["6s", "15s", "30s"]
+        "description": "30-second video via VAST",
+        "duration": "30s",
+        "delivery": {
+          "method": "VAST",
+          "versions": ["3.0", "4.0", "4.1", "4.2"]
         },
+        "is_3p_served": true
+      },
+      "video_vertical_6s_hosted": {
+        "format_id": "video_vertical_6s_hosted",
+        "type": "video",
+        "description": "6-second vertical video for mobile",
+        "duration": "6s",
+        "assets": [
+          {
+            "asset_id": "video_file",
+            "asset_type": "video",
+            "required": true,
+            "duration_seconds": 6,
+            "acceptable_formats": ["mp4"],
+            "acceptable_codecs": ["h264"],
+            "aspect_ratio": "9:16",
+            "acceptable_resolutions": ["1080x1920"],
+            "max_file_size_mb": 15
+          }
+        ],
         "is_3p_served": false
       },
-      "video_ctv": {
-        "format_id": "video_ctv",
+      "video_vertical_15s_hosted": {
+        "format_id": "video_vertical_15s_hosted",
         "type": "video",
-        "description": "Connected TV video",
-        "specs": {
-          "features": ["non-skippable", "sound on"],
-          "common_durations": ["15s", "30s", "60s"]
-        },
+        "description": "15-second vertical video for mobile",
+        "duration": "15s",
+        "assets": [
+          {
+            "asset_type": "video_file",
+            "required": true,
+            "requirements": {
+              "duration": "15s",
+              "format": "MP4 H.264",
+              "aspect_ratio": "9:16",
+              "resolution": "1080x1920",
+              "max_file_size": "30MB"
+            }
+          }
+        ],
         "is_3p_served": false
       },
-      "video_3p_ctv": {
-        "format_id": "video_3p_ctv",
+      "video_vertical_30s_hosted": {
+        "format_id": "video_vertical_30s_hosted",
         "type": "video",
-        "description": "Connected TV with VAST tag",
-        "specs": {
-          "delivery": "VAST URL"
+        "description": "30-second vertical video for mobile",
+        "duration": "30s",
+        "assets": [
+          {
+            "asset_type": "video_file",
+            "required": true,
+            "requirements": {
+              "duration": "30s",
+              "format": "MP4 H.264",
+              "aspect_ratio": "9:16",
+              "resolution": "1080x1920",
+              "max_file_size": "50MB"
+            }
+          }
+        ],
+        "is_3p_served": false
+      },
+      "video_ctv_15s_hosted": {
+        "format_id": "video_ctv_15s_hosted",
+        "type": "video",
+        "description": "15-second Connected TV video",
+        "duration": "15s",
+        "assets": [
+          {
+            "asset_type": "video_file",
+            "required": true,
+            "requirements": {
+              "duration": "15s",
+              "format": "MP4 H.264",
+              "resolution": "1920x1080",
+              "max_file_size": "50MB",
+              "features": ["non-skippable", "sound on"]
+            }
+          }
+        ],
+        "is_3p_served": false
+      },
+      "video_ctv_30s_hosted": {
+        "format_id": "video_ctv_30s_hosted",
+        "type": "video",
+        "description": "30-second Connected TV video",
+        "duration": "30s",
+        "assets": [
+          {
+            "asset_type": "video_file",
+            "required": true,
+            "requirements": {
+              "duration": "30s",
+              "format": "MP4 H.264",
+              "resolution": "1920x1080",
+              "max_file_size": "75MB",
+              "features": ["non-skippable", "sound on"]
+            }
+          }
+        ],
+        "is_3p_served": false
+      },
+      "video_ctv_60s_hosted": {
+        "format_id": "video_ctv_60s_hosted",
+        "type": "video",
+        "description": "60-second Connected TV video",
+        "duration": "60s",
+        "assets": [
+          {
+            "asset_type": "video_file",
+            "required": true,
+            "requirements": {
+              "duration": "60s",
+              "format": "MP4 H.264",
+              "resolution": "1920x1080",
+              "max_file_size": "100MB",
+              "features": ["non-skippable", "sound on"]
+            }
+          }
+        ],
+        "is_3p_served": false
+      },
+      "video_ctv_15s_vast": {
+        "format_id": "video_ctv_15s_vast",
+        "type": "video",
+        "description": "15-second Connected TV via VAST",
+        "duration": "15s",
+        "delivery": {
+          "method": "VAST",
+          "versions": ["3.0", "4.0", "4.1", "4.2"]
+        },
+        "is_3p_served": true
+      },
+      "video_ctv_30s_vast": {
+        "format_id": "video_ctv_30s_vast",
+        "type": "video",
+        "description": "30-second Connected TV via VAST",
+        "duration": "30s",
+        "delivery": {
+          "method": "VAST",
+          "versions": ["3.0", "4.0", "4.1", "4.2"]
         },
         "is_3p_served": true
       }
@@ -179,13 +423,50 @@
         "type": "rich_media",
         "category": "foundational",
         "description": "Premium responsive canvas format adaptable across publishers",
-        "specs": {
-          "hero_image": "1200x627",
-          "logo": "250x150 transparent",
-          "headline": "80 characters max",
-          "description": "200 characters max",
-          "optional_video": "15-30s MP4"
-        },
+        "assets": [
+          {
+            "asset_id": "hero_image",
+            "asset_type": "image",
+            "required": true,
+            "width": 1200,
+            "height": 627,
+            "acceptable_formats": ["jpg", "png", "webp"],
+            "max_file_size_kb": 500
+          },
+          {
+            "asset_id": "brand_logo",
+            "asset_type": "image",
+            "required": true,
+            "width": 250,
+            "height": 150,
+            "acceptable_formats": ["png", "svg"],
+            "transparency": true
+          },
+          {
+            "asset_id": "headline",
+            "asset_type": "text",
+            "required": true,
+            "text_type": "headline",
+            "max_length": 80
+          },
+          {
+            "asset_id": "description",
+            "asset_type": "text",
+            "required": true,
+            "text_type": "description",
+            "max_length": 200
+          },
+          {
+            "asset_id": "video_content",
+            "asset_type": "video",
+            "required": false,
+            "min_duration_seconds": 15,
+            "max_duration_seconds": 30,
+            "acceptable_formats": ["mp4"],
+            "acceptable_codecs": ["h264"],
+            "max_file_size_mb": 50
+          }
+        ],
         "publisher_coverage": "8+ major publishers",
         "is_3p_served": false
       },
@@ -194,38 +475,70 @@
         "type": "display",
         "category": "foundational",
         "description": "Multi-product interactive carousel",
-        "specs": {
-          "min_frames": 3,
-          "max_frames": 10,
-          "frame_schema": {
-            "assets": [
-              {
-                "type": "image",
-                "id": "product_image",
-                "sizes": ["627x627", "1200x627"],
-                "file_types": ["jpg", "png", "webp"]
-              },
-              {
-                "type": "text",
-                "id": "product_name",
-                "required": true
-              },
-              {
-                "type": "text",
-                "id": "product_price",
-                "format": "currency",
-                "required": true
-              },
-              {
-                "type": "url",
-                "id": "product_url",
-                "format": "https",
-                "required": true
-              }
-            ]
-          },
-          "interaction": "swipe/click navigation"
+        "min_frames": 3,
+        "max_frames": 10,
+        "frame_schema": {
+          "assets": [
+            {
+              "asset_id": "product_image",
+              "asset_type": "image",
+              "required": true,
+              "acceptable_dimensions": [
+                {"width": 627, "height": 627},
+                {"width": 1200, "height": 627}
+              ],
+              "acceptable_formats": ["jpg", "png", "webp"],
+              "max_file_size_kb": 150
+            },
+            {
+              "asset_id": "product_name",
+              "asset_type": "text",
+              "required": true,
+              "text_type": "title",
+              "max_length": 50
+            },
+            {
+              "asset_id": "product_price",
+              "asset_type": "text",
+              "required": true,
+              "text_type": "price",
+              "format": "currency"
+            },
+            {
+              "asset_id": "product_url",
+              "asset_type": "url",
+              "required": true,
+              "url_type": "landing_page",
+              "must_be_https": true
+            },
+            {
+              "asset_id": "product_description",
+              "asset_type": "text",
+              "required": false,
+              "text_type": "description",
+              "max_length": 150
+            }
+          ]
         },
+        "global_assets": [
+          {
+            "asset_id": "brand_logo",
+            "asset_type": "image",
+            "required": true,
+            "width": 200,
+            "height": 50,
+            "acceptable_formats": ["png", "svg"]
+          },
+          {
+            "asset_id": "cta_text",
+            "asset_type": "text",
+            "required": true,
+            "text_type": "cta",
+            "max_length": 20,
+            "default": "Shop Now"
+          }
+        ],
+        "interaction": "swipe/click navigation",
         "publisher_coverage": "7+ major publishers",
         "is_3p_served": false
       },
@@ -234,12 +547,27 @@
         "type": "rich_media",
         "category": "foundational",
         "description": "Banner with expandable canvas",
-        "specs": {
-          "collapsed_sizes": ["728x90", "970x250", "320x50"],
-          "expanded_height": "250-600px",
-          "format": "HTML5",
-          "auto_collapse": "15s"
-        },
+        "assets": [
+          {
+            "asset_type": "collapsed_creative",
+            "required": true,
+            "requirements": {
+              "dimensions": ["728x90", "970x250", "320x50"],
+              "format": "HTML5",
+              "max_initial_load": "200KB"
+            }
+          },
+          {
+            "asset_type": "expanded_creative",
+            "required": true,
+            "requirements": {
+              "height_range": "250-600px",
+              "format": "HTML5",
+              "max_file_size": "500KB",
+              "auto_collapse": "15s"
+            }
+          }
+        ],
         "publisher_coverage": "10+ major publishers",
         "is_3p_served": false
       },
@@ -248,24 +576,88 @@
         "type": "rich_media",
         "category": "foundational",
         "description": "Scroll-triggered mobile experience",
-        "specs": {
-          "mobile_size": "640x960 (retina)",
-          "trigger": "scroll position",
-          "optional_vertical_video": "9:16 aspect"
-        },
+        "trigger": "scroll_position",
+        "assets": [
+          {
+            "asset_type": "scroll_creative",
+            "required": true,
+            "requirements": {
+              "mobile_size": "640x960",
+              "format": "HTML5",
+              "animation": "CSS or lightweight JS"
+            }
+          },
+          {
+            "asset_type": "vertical_video",
+            "required": false,
+            "requirements": {
+              "aspect_ratio": "9:16",
+              "duration": "6-15s",
+              "format": "MP4 H.264"
+            }
+          }
+        ],
         "publisher_coverage": "6+ major publishers",
         "is_3p_served": false
       },
-      "foundational_video": {
-        "format_id": "foundational_video",
+      "foundational_video_15s": {
+        "format_id": "foundational_video_15s",
         "type": "video",
         "category": "foundational",
-        "description": "Universal video format across all publishers",
-        "specs": {
-          "durations": ["15s", "30s"],
-          "aspect_ratios": ["16:9", "9:16", "1:1"],
-          "format": "MP4 H.264",
-          "delivery": "VAST 2.0/3.0/4.0+"
+        "description": "Universal 15-second video format",
+        "duration": "15s",
+        "assets": [
+          {
+            "asset_type": "video_file",
+            "required": true,
+            "requirements": {
+              "duration": "15s",
+              "format": "MP4 H.264",
+              "aspect_ratios": ["16:9", "9:16", "1:1"],
+              "resolution": {
+                "16:9": ["1920x1080", "1280x720"],
+                "9:16": "1080x1920",
+                "1:1": "1080x1080"
+              }
+            }
+          }
+        ],
+        "delivery": {
+          "hosted": true,
+          "vast": {
+            "versions": ["2.0", "3.0", "4.0+"]
+          }
+        },
+        "publisher_coverage": "All publishers",
+        "is_3p_served": false
+      },
+      "foundational_video_30s": {
+        "format_id": "foundational_video_30s",
+        "type": "video",
+        "category": "foundational",
+        "description": "Universal 30-second video format",
+        "duration": "30s",
+        "assets": [
+          {
+            "asset_type": "video_file",
+            "required": true,
+            "requirements": {
+              "duration": "30s",
+              "format": "MP4 H.264",
+              "aspect_ratios": ["16:9", "9:16", "1:1"],
+              "resolution": {
+                "16:9": ["1920x1080", "1280x720"],
+                "9:16": "1080x1920",
+                "1:1": "1080x1080"
+              }
+            }
+          }
+        ],
+        "delivery": {
+          "hosted": true,
+          "vast": {
+            "versions": ["2.0", "3.0", "4.0+"]
+          }
         },
         "publisher_coverage": "All publishers",
         "is_3p_served": false
@@ -292,59 +684,68 @@
         "publisher": "nytimes",
         "type": "display",
         "description": "Split screen slideshow format for multi-part image-led storytelling on desktop (1125x600 breakpoint)",
-        "width": 1125,
-        "height": 600,
+        "dimensions": "1125x600",
         "platform": "desktop",
-        "file_types": ["jpg", "png"],
         "is_standard": false,
         "is_3p_served": false,
-        "specs": {
-          "min_frames": 3,
-          "max_frames": 5,
-          "frame_schema": {
-            "assets": [
-              {
-                "type": "image",
-                "id": "primary_image",
-                "size": "600x600",
+        "min_frames": 3,
+        "max_frames": 5,
+        "frame_schema": {
+          "assets": [
+            {
+              "asset_type": "primary_image",
+              "required": true,
+              "requirements": {
+                "dimensions": "600x600",
                 "file_types": ["jpg", "png"],
-                "requirements": "Must be free of text, logo or branding"
-              },
-              {
-                "type": "text",
-                "id": "headline",
-                "max_characters": 100,
-                "required": true
-              },
-              {
-                "type": "text",
-                "id": "descriptor_message",
-                "max_characters": 210,
-                "required": true
+                "notes": "Must be free of text, logo or branding"
               }
-            ]
-          },
-          "global_assets": [
-            {
-              "type": "text",
-              "id": "cta_message",
-              "max_characters": 15,
-              "required": true
             },
             {
-              "type": "image",
-              "id": "logo",
-              "file_types": ["png", "eps"],
-              "requirements": "Transparent background required"
+              "asset_type": "headline",
+              "required": true,
+              "requirements": {
+                "type": "text",
+                "max_length": 100
+              }
             },
             {
-              "type": "url",
-              "id": "click_through_url",
-              "format": "https",
-              "required": true
+              "asset_type": "descriptor_message",
+              "required": true,
+              "requirements": {
+                "type": "text",
+                "max_length": 210
+              }
             }
           ]
         },
+        "global_assets": [
+          {
+            "asset_type": "cta_message",
+            "required": true,
+            "requirements": {
+              "type": "text",
+              "max_length": 15
+            }
+          },
+          {
+            "asset_type": "logo",
+            "required": true,
+            "requirements": {
+              "file_types": ["png", "eps"],
+              "transparency": true,
+              "notes": "Transparent background required"
+            }
+          },
+          {
+            "asset_type": "click_through_url",
+            "required": true,
+            "requirements": {
+              "type": "url",
+              "must_be_https": true
+            }
+          }
+        ],
         "source_url": "https://advertising.nytimes.com/formats/display-formats/slideshow-flex-xl/"
       }
     }
