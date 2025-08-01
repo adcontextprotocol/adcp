@@ -798,51 +798,23 @@ Verify if required AEE dimensions are supported for a channel.
 
 Use this before creating a media buy to ensure the publisher can provide required AEE signals.
 
-### 19. get_signals (Optional)
+### 19. get_audiences (Optional)
 
-Lists available audience segments and signals that the publisher can activate for targeting. This optional endpoint allows publishers to advertise the segments they have available through their data partnerships.
+Publishers may optionally implement the `get_audiences` endpoint from the [Signals Discovery Protocol](../../signals-protocol-v1.md#get_audiences) to advertise available audience segments for targeting.
 
-**Request:**
-```json
-{
-  "signal_type": "audience",  // Optional: "audience", "contextual", "geographic", etc.
-  "category": "string",       // Optional: Filter by category (e.g., "demographics", "interests")
-  "search": "string"          // Optional: Natural language search for signals
-}
-```
+**Purpose:** Allows buyers to discover what audience segments are available through the publisher's data partnerships.
 
-**Response:**
-```json
-{
-  "signals": [
-    {
-      "signal_id": "auto_intenders_q1_2025",
-      "name": "Auto Intenders Q1 2025",
-      "description": "In-market for new vehicles in Q1 2025",
-      "type": "audience",
-      "category": "purchase_intent",
-      "size": {
-        "value": 2500000,
-        "unit": "individuals"  // "individuals", "devices", or "households"
-      },
-      "geography": ["US", "CA"],
-      "freshness": "2025-01-15",  // Last update date
-      "provider": "LiveRamp",
-      "cost": {
-        "cpm": 2.50,
-        "revenue_share": 0.05,
-        "pricing_model": "both"  // "cpm", "revenue_share", or "both"
-      }
-    }
-  ]
-}
-```
+**Implementation:** See the [Signals Discovery Protocol specification](../../signals-protocol-v1.md#get_audiences) for the complete interface definition.
+
+**Integration with Media Buy:**
+- The `audience_id` returned by `get_audiences` can be used in the `targeting.signals` array when creating a media buy
+- Publishers implementing this endpoint should ensure the audience IDs are compatible with their targeting systems
+- Cost information in the response helps buyers understand incremental data costs
 
 **Notes:**
-- This is an optional endpoint for publishers who want to expose available segments
-- The signal_id returned here can be used in create_media_buy's targeting.signals array
-- Publishers may choose to expose all segments or only premium/differentiated ones
-- Cost information helps buyers understand incremental data costs
+- This is an optional endpoint - publishers may choose to expose all, some, or no audience segments
+- The protocol supports various audience types: owned, marketplace, and destination audiences
+- Publishers should coordinate with their data providers on which segments to expose
 
 
 ## Creative Macro Signal
