@@ -142,6 +142,7 @@ Creates a media buy from selected packages.
     "geo_country_any_of": ["US"],
     "geo_region_any_of": ["CA", "NY"],
     "audience_segment_any_of": ["3p:pet_owners"],
+    "signals": ["auto_intenders_q1_2025"],  // Optional: Signal IDs from get_signals
     "frequency_cap": {
       "suppress_minutes": 30,
       "scope": "media_buy"
@@ -671,7 +672,7 @@ Retrieves delivery data for all active media buys across all principals.
 
 **Response:** Same format as get_media_buy_delivery but includes all media buys.
 
-### 16. list_products
+### 16. get_products
 
 Lists available advertising products for the authenticated principal with optional natural language brief and filtering.
 
@@ -797,12 +798,58 @@ Verify if required AEE dimensions are supported for a channel.
 
 Use this before creating a media buy to ensure the publisher can provide required AEE signals.
 
+### 19. get_signals (Optional)
+
+Lists available audience segments and signals that the publisher can activate for targeting. This optional endpoint allows publishers to advertise the segments they have available through their data partnerships.
+
+**Request:**
+```json
+{
+  "signal_type": "audience",  // Optional: "audience", "contextual", "geographic", etc.
+  "category": "string",       // Optional: Filter by category (e.g., "demographics", "interests")
+  "search": "string"          // Optional: Natural language search for signals
+}
+```
+
+**Response:**
+```json
+{
+  "signals": [
+    {
+      "signal_id": "auto_intenders_q1_2025",
+      "name": "Auto Intenders Q1 2025",
+      "description": "In-market for new vehicles in Q1 2025",
+      "type": "audience",
+      "category": "purchase_intent",
+      "size": {
+        "value": 2500000,
+        "unit": "individuals"  // "individuals", "devices", or "households"
+      },
+      "geography": ["US", "CA"],
+      "freshness": "2025-01-15",  // Last update date
+      "provider": "LiveRamp",
+      "cost": {
+        "cpm": 2.50,
+        "revenue_share": 0.05,
+        "pricing_model": "both"  // "cpm", "revenue_share", or "both"
+      }
+    }
+  ]
+}
+```
+
+**Notes:**
+- This is an optional endpoint for publishers who want to expose available segments
+- The signal_id returned here can be used in create_media_buy's targeting.signals array
+- Publishers may choose to expose all segments or only premium/differentiated ones
+- Cost information helps buyers understand incremental data costs
+
 
 ## Creative Macro Signal
 
-The creative macro is a third type of provided signal from AEE, enabling dynamic creative customization.
+The creative macro is a third type of AEE signal, enabling dynamic creative customization.
 
-### AEE Provided Signals
+### AEE Signals
 
 1. **may_include** - Signals to include for targeting
 2. **must_exclude** - Signals that must be excluded  
@@ -824,7 +871,7 @@ The AEE can then provide a creative_macro string in its response:
 {
   "should_bid": true,
   "bid_price": 5.50,
-  "provided_signals": {
+  "aee_signals": {
     "may_include": ["sports", "premium_user"],
     "must_exclude": ["competitor_xyz"],
     "creative_macro": "city:San Francisco|weather:sunny|segment:tech_professional"
@@ -1135,6 +1182,9 @@ interface Targeting {
   // Audience targeting
   audience_segment_any_of?: string[];    // ["1p:loyalty", "3p:auto_intenders"]
   audience_segment_none_of?: string[];
+  
+  // Signal-based targeting (from get_signals)
+  signals?: string[];                    // ["auto_intenders_q1_2025", "high_income_households"]
   
   // Media type targeting
   media_type_any_of?: string[];          // ["video", "audio", "display", "native"]
