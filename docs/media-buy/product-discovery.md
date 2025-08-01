@@ -6,13 +6,13 @@ title: Product Discovery
 
 Product discovery is the foundation of the Media Buy Protocol, enabling AI agents to find relevant advertising inventory using natural language. This document explains the discovery lifecycle and how to implement the discovery tools.
 
-## The Discovery Tool: `list_products`
+## The Discovery Tool: `get_products`
 
 AdCP provides a single discovery tool that uses natural language to find relevant advertising inventory.
 
 ### How it Works
 
-The `list_products` tool accepts a natural language brief and optional format filters to return matching products from the catalog. If no brief is provided, it returns all available products for the authenticated principal.
+The `get_products` tool accepts a natural language brief and optional format filters to return matching products from the catalog. If no brief is provided, it returns all available products for the authenticated principal.
 
 **Request Options:**
 
@@ -85,11 +85,11 @@ def get_product_catalog():
 
 ### Step 2: Implement Natural Language Processing
 
-The `list_products` tool needs to interpret natural language briefs:
+The `get_products` tool needs to interpret natural language briefs:
 
 ```python
 @mcp.tool
-def list_products(req: ListProductsRequest, context: Context) -> ListProductsResponse:
+def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
     # Authenticate principal
     principal_id = _get_principal_id_from_context(context)
     
@@ -203,7 +203,7 @@ The complete discovery workflow with format awareness:
 graph TD
     A[list_creative_formats] --> B[Identify available formats]
     B --> C[User provides brief + format filters]
-    C --> D[list_products]
+    C --> D[get_products]
     D --> E{Products found?}
     E -->|Yes| F[Review products]
     E -->|No| G[Generate custom products]
@@ -230,7 +230,7 @@ Use format knowledge to filter products:
 
 ```javascript
 // Only discover products that accept standard audio formats
-const products = await client.call_tool("list_products", {
+const products = await client.call_tool("get_products", {
   brief: "Reach young adults interested in gaming",
   format_types: ["audio"],
   standard_formats_only: true
@@ -310,7 +310,7 @@ Common error scenarios and handling:
 
 ```python
 @mcp.tool
-def list_products(req: ListProductsRequest, context: Context) -> ListProductsResponse:
+def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
     try:
         principal_id = _get_principal_id_from_context(context)
     except:
@@ -342,7 +342,7 @@ test_briefs = [
 ]
 
 for brief in test_briefs:
-    result = list_products(ListProductsRequest(brief=brief), context)
+    result = get_products(GetProductsRequest(brief=brief), context)
     assert len(result.products) > 0
     print(f"Brief: {brief} -> Found {len(result.products)} products")
 ```
@@ -351,7 +351,7 @@ for brief in test_briefs:
 
 Discovery is just the first step. Ensure smooth transitions to the next phases:
 
-1. **Discovery** → `list_products` finds relevant inventory
+1. **Discovery** → `get_products` finds relevant inventory
 2. **Purchase** → `create_media_buy` executes the campaign
 4. **Creative** → `add_creative_assets` uploads assets
 5. **Monitor** → Track delivery and optimize

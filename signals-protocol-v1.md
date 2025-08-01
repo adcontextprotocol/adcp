@@ -73,9 +73,9 @@ Each MCP session is authenticated as one of:
 
 ## Protocol Specification
 
-### get_audiences
+### get_signals
 
-Discovers relevant audiences based on a marketing specification.
+Discovers relevant signals (audiences, contextual, geographic, etc.) based on a marketing specification.
 
 #### Request
 
@@ -141,7 +141,7 @@ Activates an audience for use on a specific platform/seat.
 
 ```json
 {
-  "segment_id": "string",  // From get_audiences (required)
+  "segment_id": "string",  // From get_signals (required)
   "platform": "string",    // Required
   "seat": "string",        // Optional
   "options": {
@@ -264,7 +264,7 @@ Reports usage data for billing reconciliation.
 
 ## Typical Flow
 
-1. **Discovery**: Use `get_audiences` to find relevant audiences
+1. **Discovery**: Use `get_signals` to find relevant signals
 2. **Review**: Check `deployment.is_live` status
 3. **Activate**: If not live, use `activate_audience`
 4. **Monitor**: Use `check_audience_status` to track activation

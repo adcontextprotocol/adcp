@@ -86,7 +86,7 @@ Implementation details can be mentioned as:
 5. **AI-Optimized**: Designed for AI agents
 
 ### What Exists vs What Doesn't
-- ✅ `list_products` - discovers inventory
+- ✅ `get_products` - discovers inventory
 - ❌ `discover_products` - doesn't exist
 - ❌ `get_avails` - removed in favor of direct purchase
 - ✅ `create_media_buy` - creates campaigns
