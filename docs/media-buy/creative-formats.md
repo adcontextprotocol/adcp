@@ -563,52 +563,81 @@ A premium full-width format that scales responsively across devices. Known by va
 
 #### 2. Product Showcase Carousel
 
-Interactive carousel displaying 3-10 products with swipe/click navigation. Consistent behavior across Yahoo Native Carousel, NYT Product Carousel, Hearst Cube Gallery, and others.
+Interactive carousel displaying 3-10 products with swipe/click navigation. Consistent behavior across Yahoo Native Carousel, NYT Product Carousel, Hearst Cube Gallery, and others. This format uses a frame-based structure where each frame represents a product.
 
 ```json
 {
   "format_id": "foundational_product_carousel",
-  "name": "Product Showcase Carousel",
   "type": "display",
   "category": "foundational",
   "description": "Multi-product interactive carousel",
-  "min_products": 3,
-  "max_products": 10,
-  "product_schema": {
-    "product_image": {
+  "min_frames": 3,
+  "max_frames": 10,
+  "frame_schema": {
+    "assets": [
+      {
+        "asset_type": "product_image",
+        "required": true,
+        "requirements": {
+          "dimensions": ["627x627", "1200x627"],
+          "file_types": ["jpg", "png", "webp"],
+          "max_file_size": "150KB"
+        }
+      },
+      {
+        "asset_type": "product_name",
+        "required": true,
+        "requirements": {
+          "type": "text",
+          "max_length": 50
+        }
+      },
+      {
+        "asset_type": "product_price",
+        "required": true,
+        "requirements": {
+          "type": "text",
+          "format": "currency"
+        }
+      },
+      {
+        "asset_type": "product_url",
+        "required": true,
+        "requirements": {
+          "type": "url",
+          "must_be_https": true
+        }
+      },
+      {
+        "asset_type": "product_description",
+        "required": false,
+        "requirements": {
+          "type": "text",
+          "max_length": 150
+        }
+      }
+    ]
+  },
+  "global_assets": [
+    {
+      "asset_type": "brand_logo",
       "required": true,
       "requirements": {
-        "square": "627x627",
-        "rectangle": "1200x627",
-        "file_types": ["jpg", "png", "webp"]
+        "dimensions": "200x50",
+        "file_types": ["png", "svg"]
       }
     },
-    "product_name": {
+    {
+      "asset_type": "cta_text",
       "required": true,
       "requirements": {
         "type": "text",
-        "max_length": 50
-      }
-    },
-    "product_price": {
-      "required": true,
-      "requirements": {
-        "type": "text",
-        "format": "currency"
-      }
-    },
-    "product_url": {
-      "required": true,
-      "requirements": {
-        "type": "url"
+        "max_length": 20,
+        "default": "Shop Now"
       }
     }
-  },
-  "interaction_patterns": {
-    "mobile": "horizontal_swipe",
-    "desktop": "click_navigation",
-    "tracking": "per_product"
-  },
+  ],
+  "interaction": "swipe/click navigation",
   "publisher_adaptations": [
     "Yahoo Native Carousel",
     "NYT Product Carousel",
@@ -900,6 +929,85 @@ Publishers extend formats by declaring the base format and their modifications:
   }
 }
 ```
+
+#### Real-World Extension Example: NYTimes Slideshow
+
+The NYTimes Slideshow Flex XL format extends the foundational_product_carousel with specific dimensions and storytelling capabilities:
+
+```json
+{
+  "format_id": "display_slideshow_flex_xl_desktop_1125x600",
+  "extends": "foundational_product_carousel",
+  "publisher": "nytimes",
+  "type": "display",
+  "description": "Split screen slideshow format for multi-part image-led storytelling on desktop",
+  "dimensions": "1125x600",
+  "platform": "desktop",
+  "min_frames": 3,
+  "max_frames": 5,
+  "frame_schema": {
+    "assets": [
+      {
+        "asset_type": "primary_image",
+        "required": true,
+        "requirements": {
+          "dimensions": "600x600",
+          "file_types": ["jpg", "png"],
+          "notes": "Must be free of text, logo or branding"
+        }
+      },
+      {
+        "asset_type": "headline",
+        "required": true,
+        "requirements": {
+          "type": "text",
+          "max_length": 100
+        }
+      },
+      {
+        "asset_type": "descriptor_message",
+        "required": true,
+        "requirements": {
+          "type": "text",
+          "max_length": 210
+        }
+      }
+    ]
+  },
+  "global_assets": [
+    {
+      "asset_type": "cta_message",
+      "required": true,
+      "requirements": {
+        "type": "text",
+        "max_length": 15
+      }
+    },
+    {
+      "asset_type": "logo",
+      "required": true,
+      "requirements": {
+        "file_types": ["png", "eps"],
+        "transparency": true
+      }
+    },
+    {
+      "asset_type": "click_through_url",
+      "required": true,
+      "requirements": {
+        "type": "url",
+        "must_be_https": true
+      }
+    }
+  ]
+}
+```
+
+This extension demonstrates how publishers can:
+- Maintain the frame-based structure of the foundational format
+- Add specific dimensions and platform requirements
+- Customize asset requirements (e.g., specific image dimensions, text lengths)
+- Add publisher-specific assets while maintaining compatibility
 
 ### Benefits of Extension
 
