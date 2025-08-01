@@ -158,8 +158,32 @@ HTML5 creative assets for rich media formats.
 
 All asset types share these common properties:
 
+- `asset_id`: Unique identifier for this asset within the format (e.g., "hero_image", "video_file", "headline")
 - `asset_type`: The type of asset (video, image, text, url, audio, html)
 - `required`: Boolean indicating if the asset is mandatory
+
+### Asset ID Usage
+
+The `asset_id` field is crucial for orchestrators and creative management systems. It provides a stable identifier for mapping uploaded assets to their correct positions in the creative format.
+
+#### Example: Uploading Assets
+
+When submitting creative assets, the orchestrator uses `asset_id` to map files:
+
+```json
+{
+  "format_id": "foundational_immersive_canvas",
+  "assets": {
+    "hero_image": "https://cdn.example.com/campaign123/hero.jpg",
+    "brand_logo": "https://cdn.example.com/brand/logo.png",
+    "headline": "Discover Our New Collection",
+    "description": "Experience premium quality with our latest products",
+    "video_content": "https://cdn.example.com/campaign123/video.mp4"
+  }
+}
+```
+
+The keys in the assets object correspond to the `asset_id` values defined in the format.
 
 ## Usage in Creative Formats
 
@@ -170,6 +194,7 @@ Creative formats specify their required assets using these standardized types:
   "format_id": "video_15s_hosted",
   "assets": [
     {
+      "asset_id": "video_file",
       "asset_type": "video",
       "required": true,
       "duration_seconds": 15,
@@ -193,6 +218,7 @@ For formats with multiple frames (like carousels), assets are defined within a `
   "frame_schema": {
     "assets": [
       {
+        "asset_id": "product_image",
         "asset_type": "image",
         "required": true,
         "width": 600,
@@ -200,6 +226,7 @@ For formats with multiple frames (like carousels), assets are defined within a `
         "acceptable_formats": ["jpg", "png"]
       },
       {
+        "asset_id": "product_headline",
         "asset_type": "text",
         "required": true,
         "text_type": "headline",
@@ -209,6 +236,7 @@ For formats with multiple frames (like carousels), assets are defined within a `
   },
   "global_assets": [
     {
+      "asset_id": "brand_logo",
       "asset_type": "image",
       "required": true,
       "width": 200,

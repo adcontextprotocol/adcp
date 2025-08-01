@@ -12,6 +12,7 @@
         "description": "Medium Rectangle banner",
         "assets": [
           {
+            "asset_id": "banner_image",
             "asset_type": "image",
             "required": true,
             "width": 300,
@@ -20,6 +21,7 @@
             "max_file_size_kb": 200
           },
           {
+            "asset_id": "clickthrough_url",
             "asset_type": "url",
             "required": true,
             "url_type": "clickthrough",
@@ -46,6 +48,7 @@
         "description": "Leaderboard banner",
         "assets": [
           {
+            "asset_id": "banner_image",
             "asset_type": "image",
             "required": true,
             "width": 728,
@@ -54,6 +57,7 @@
             "max_file_size_kb": 200
           },
           {
+            "asset_id": "clickthrough_url",
             "asset_type": "url",
             "required": true,
             "url_type": "clickthrough",
@@ -161,6 +165,7 @@
         "duration": "15s",
         "assets": [
           {
+            "asset_id": "video_file",
             "asset_type": "video",
             "required": true,
             "duration_seconds": 15,
@@ -181,6 +186,7 @@
         "duration": "30s",
         "assets": [
           {
+            "asset_id": "video_file",
             "asset_type": "video",
             "required": true,
             "duration_seconds": 30,
@@ -223,6 +229,7 @@
         "duration": "6s",
         "assets": [
           {
+            "asset_id": "video_file",
             "asset_type": "video",
             "required": true,
             "duration_seconds": 6,
@@ -418,36 +425,39 @@
         "description": "Premium responsive canvas format adaptable across publishers",
         "assets": [
           {
+            "asset_id": "hero_image",
             "asset_type": "image",
             "required": true,
-            "image_role": "hero",
             "width": 1200,
             "height": 627,
             "acceptable_formats": ["jpg", "png", "webp"],
             "max_file_size_kb": 500
           },
           {
+            "asset_id": "brand_logo",
             "asset_type": "image",
             "required": true,
-            "image_role": "logo",
             "width": 250,
             "height": 150,
             "acceptable_formats": ["png", "svg"],
             "transparency": true
           },
           {
+            "asset_id": "headline",
             "asset_type": "text",
             "required": true,
             "text_type": "headline",
             "max_length": 80
           },
           {
+            "asset_id": "description",
             "asset_type": "text",
             "required": true,
             "text_type": "description",
             "max_length": 200
           },
           {
+            "asset_id": "video_content",
             "asset_type": "video",
             "required": false,
             "min_duration_seconds": 15,
@@ -470,9 +480,9 @@
         "frame_schema": {
           "assets": [
             {
+              "asset_id": "product_image",
               "asset_type": "image",
               "required": true,
-              "image_role": "product",
               "acceptable_dimensions": [
                 {"width": 627, "height": 627},
                 {"width": 1200, "height": 627}
@@ -481,45 +491,46 @@
               "max_file_size_kb": 150
             },
             {
+              "asset_id": "product_name",
               "asset_type": "text",
               "required": true,
               "text_type": "title",
-              "text_role": "product_name",
               "max_length": 50
             },
             {
+              "asset_id": "product_price",
               "asset_type": "text",
               "required": true,
               "text_type": "price",
-              "format": "currency",
-              "text_role": "product_price"
+              "format": "currency"
             },
             {
+              "asset_id": "product_url",
               "asset_type": "url",
               "required": true,
               "url_type": "landing_page",
-              "url_role": "product_url",
               "must_be_https": true
             },
             {
+              "asset_id": "product_description",
               "asset_type": "text",
               "required": false,
               "text_type": "description",
-              "text_role": "product_description",
               "max_length": 150
             }
           ]
         },
         "global_assets": [
           {
+            "asset_id": "brand_logo",
             "asset_type": "image",
             "required": true,
-            "image_role": "logo",
             "width": 200,
             "height": 50,
             "acceptable_formats": ["png", "svg"]
           },
           {
+            "asset_id": "cta_text",
             "asset_type": "text",
             "required": true,
             "text_type": "cta",

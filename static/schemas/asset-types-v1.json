@@ -10,6 +10,11 @@
       "schema": {
         "type": "object",
         "properties": {
+          "asset_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$",
+            "description": "Unique identifier for this asset within the format"
+          },
           "asset_type": {
             "type": "string",
             "const": "video"
@@ -77,7 +82,7 @@
             "description": "Additional video features (e.g., 'non-skippable', 'sound on')"
           }
         },
-        "required": ["asset_type", "required"]
+        "required": ["asset_id", "asset_type", "required"]
       }
     },
     "image": {
@@ -124,7 +129,7 @@
             "description": "Additional requirements or restrictions"
           }
         },
-        "required": ["asset_type", "required"]
+        "required": ["asset_id", "asset_type", "required"]
       }
     },
     "text": {
@@ -238,7 +243,7 @@
             "type": "boolean"
           }
         },
-        "required": ["asset_type", "required"]
+        "required": ["asset_id", "asset_type", "required"]
       }
     },
     "html": {
@@ -286,6 +291,11 @@
     }
   },
   "common_properties": {
+    "asset_id": {
+      "description": "Unique identifier for this asset within the format, used by orchestrators to map uploaded assets",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
     "asset_type": {
       "description": "The type of asset",
       "type": "string",
