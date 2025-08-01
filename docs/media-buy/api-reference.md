@@ -798,21 +798,21 @@ Verify if required AEE dimensions are supported for a channel.
 
 Use this before creating a media buy to ensure the publisher can provide required AEE signals.
 
-### 19. get_audiences (Optional)
+### 19. get_signals (Optional)
 
-Publishers may optionally implement the `get_audiences` endpoint from the [Signals Discovery Protocol](../../signals-protocol-v1.md#get_audiences) to advertise available audience segments for targeting.
+Publishers may optionally implement the `get_signals` endpoint from the [Signals Discovery Protocol](../../signals-protocol-v1.md#get_signals) to advertise available signals for targeting.
 
-**Purpose:** Allows buyers to discover what audience segments are available through the publisher's data partnerships.
+**Purpose:** Allows buyers to discover what signals (audiences, contextual, geographic, etc.) are available through the publisher's data partnerships.
 
-**Implementation:** See the [Signals Discovery Protocol specification](../../signals-protocol-v1.md#get_audiences) for the complete interface definition.
+**Implementation:** See the [Signals Discovery Protocol specification](../../signals-protocol-v1.md#get_signals) for the complete interface definition.
 
 **Integration with Media Buy:**
-- The `audience_id` returned by `get_audiences` can be used in the `targeting.signals` array when creating a media buy
+- The signal IDs returned by `get_signals` can be used in the `targeting.signals` array when creating a media buy
 - Publishers implementing this endpoint should ensure the audience IDs are compatible with their targeting systems
 - Cost information in the response helps buyers understand incremental data costs
 
 **Notes:**
-- This is an optional endpoint - publishers may choose to expose all, some, or no audience segments
+- This is an optional endpoint - publishers may choose to expose all, some, or no signals
 - The protocol supports various audience types: owned, marketplace, and destination audiences
 - Publishers should coordinate with their data providers on which segments to expose
 
