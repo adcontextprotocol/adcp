@@ -690,15 +690,17 @@ Lists available advertising products for the authenticated principal with option
     "format_ids": ["video_standard_30s"],  // Filter by specific format IDs
     "standard_formats_only": true  // Only return products accepting IAB standard formats
   },
-  "compliance_requirements": [  // Optional - advertiser's compliance requirements
-    "age_gating_21_plus",  // For alcohol/gambling advertisers
-    "coppa_compliant",     // For advertisers targeting children
-    "political_ads_disclosure"  // For political advertisers
+  "compliance_requirements": [  // Optional - advertiser's compliance requirements (see compliance-requirements.md)
+    "age_gate_21_plus",        // For alcohol/gambling advertisers
+    "responsible_drinking_messaging",  // Required messaging for alcohol ads
+    "no_appeal_to_minors"      // Cannot appeal to minors
   ]
 }
 ```
 
 **Note**: Format filtering ensures advertisers only see inventory that matches their creative capabilities.
+
+**Compliance Requirements**: See [compliance-requirements.md](compliance-requirements.md) for the full list of standardized compliance requirement identifiers.
 
 **Response:**
 ```json
@@ -739,7 +741,7 @@ For advertisers whose compliance requirements cannot be met:
   "policy_compliance": {
     "status": "blocked",
     "message": "Cannot meet specified compliance requirements",
-    "unmet_requirements": ["age_gating_21_plus"]  // Shows which requirements cannot be met
+    "unmet_requirements": ["age_gate_21_plus"]  // Shows which requirements cannot be met
   }
 }
 ```

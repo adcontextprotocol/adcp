@@ -111,6 +111,7 @@ Running successful campaigns:
 Detailed implementation guidance:
 
 - **[API Reference](api-reference.md)** - Complete tool documentation with examples
+- **[Compliance Requirements](compliance-requirements.md)** - Standardized compliance requirement identifiers
 - **[Design Decisions](design-decisions.md)** - Architectural choices and rationale
 
 ## Getting Started
