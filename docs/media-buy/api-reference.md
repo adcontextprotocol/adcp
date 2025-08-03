@@ -136,7 +136,7 @@ Creates a media buy from selected packages.
 ```json
 {
   "packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"],
-  "promoted_offering": "Purina is a trusted leader in pet nutrition, providing high-quality food and treats that help pets live longer, healthier lives",  // Required - description of advertiser and what is being promoted
+  "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs, promoting the new salmon and rice formula for sensitive skin and stomachs",  // Required - description of advertiser and what is being promoted
   "po_number": "PO-2024-Q1-0123",
   "total_budget": 50000,
   "targeting_overlay": {
@@ -681,7 +681,7 @@ Lists available advertising products for the authenticated principal with option
 ```json
 {
   "brief": "Looking for premium sports inventory",  // Optional - natural language brief
-  "promoted_offering": "Nike is a global leader in athletic footwear and apparel, inspiring athletes worldwide with innovative products and the Just Do It spirit",  // Required - description of advertiser and what is being promoted
+  "promoted_offering": "Nike Air Max 2024 - the latest innovation in cushioning technology featuring sustainable materials, targeting runners and fitness enthusiasts",  // Required - description of advertiser and what is being promoted
   "filters": {  // Optional filters based on product fields
     "delivery_type": "guaranteed",  // "guaranteed" or "non_guaranteed"
     "formats": ["video"],  // Filter by specific formats
@@ -689,7 +689,12 @@ Lists available advertising products for the authenticated principal with option
     "format_types": ["video", "display"],  // Filter by format types
     "format_ids": ["video_standard_30s"],  // Filter by specific format IDs
     "standard_formats_only": true  // Only return products accepting IAB standard formats
-  }
+  },
+  "compliance_requirements": [  // Optional - advertiser's compliance requirements
+    "age_gating_21_plus",  // For alcohol/gambling advertisers
+    "coppa_compliant",     // For advertisers targeting children
+    "political_ads_disclosure"  // For political advertisers
+  ]
 }
 ```
 
@@ -716,8 +721,8 @@ Lists available advertising products for the authenticated principal with option
     }
   ],
   "policy_compliance": {
-    "status": "approved",
-    "message": "Advertiser and products approved for all inventory"
+    "status": "allowed",
+    "met_requirements": ["coppa_compliant"]  // Shows which requirements were verified if compliance_requirements were specified
   }
 }
 ```
@@ -727,13 +732,14 @@ Lists available advertising products for the authenticated principal with option
 **Policy Compliance Response:**
 When products array is empty due to policy restrictions, the response includes:
 
-For advertisers that cannot be supported:
+For advertisers whose compliance requirements cannot be met:
 ```json
 {
   "products": [],
   "policy_compliance": {
     "status": "blocked",
-    "message": "Alcoholic beverage advertising requires age-gated inventory. This publisher does not support age verification."
+    "message": "Cannot meet specified compliance requirements",
+    "unmet_requirements": ["age_gating_21_plus"]  // Shows which requirements cannot be met
   }
 }
 ```
@@ -751,8 +757,8 @@ For advertisers that may be approved through manual review:
 ```
 
 Policy compliance statuses:
-- `approved`: Advertiser and products approved for available inventory
-- `restricted`: Advertiser category requires manual approval (contact provided)
+- `allowed`: Promoted offering passes initial policy checks for the returned products (final approval may still be required)
+- `restricted`: Advertiser category requires manual approval before products can be shown (contact provided)
 - `blocked`: Advertiser category cannot be supported by this publisher
 
 ### 17. get_targeting_capabilities

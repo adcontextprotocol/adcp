@@ -24,7 +24,7 @@ The `create_media_buy` tool creates the buy.
 ```json
 {
   "product_ids": ["prod_video_takeover", "prod_display_ros"],
-  "promoted_offering": "Coca-Cola is the world's leading beverage company, refreshing consumers with more than 500 sparkling and still brands",
+  "promoted_offering": "Coca-Cola Zero Sugar - same great Coke taste with zero calories, promoting summer campaign with limited edition flavors",
   "flight_start_date": "2025-08-01",
   "flight_end_date": "2025-08-15",
   "total_budget": 50000.00,

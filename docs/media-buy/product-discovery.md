@@ -20,7 +20,7 @@ The `get_products` tool accepts a natural language brief and optional format fil
 ```json
 {
   "brief": "I want to reach pet owners in California with video ads during prime time",
-  "promoted_offering": "PetSmart is the leading pet specialty retailer offering products, services, and solutions for the lifetime needs of pets"
+  "promoted_offering": "PetSmart's Spring Sale Event - 20% off all dog and cat food brands, plus free grooming consultation with purchase"
 }
 ```
 
@@ -28,7 +28,7 @@ The `get_products` tool accepts a natural language brief and optional format fil
 ```json
 {
   "brief": "I want to reach sports fans with audio ads",
-  "promoted_offering": "ESPN is the worldwide leader in sports entertainment, delivering comprehensive coverage across all platforms",
+  "promoted_offering": "ESPN+ streaming service - exclusive UFC fights and premium soccer leagues, promoting annual subscription discount",
   "format_types": ["audio"],           // Filter by format type
   "format_ids": ["audio_standard_30s"], // Filter by specific formats
   "standard_formats_only": true         // Only return IAB standard formats
@@ -244,7 +244,7 @@ Use format knowledge to filter products:
 // Only discover products that accept standard audio formats
 const products = await client.call_tool("get_products", {
   brief: "Reach young adults interested in gaming",
-  promoted_offering: "Xbox is Microsoft's gaming brand, offering consoles, games, and services for gamers worldwide",
+  promoted_offering: "Xbox Game Pass Ultimate - unlimited access to 100+ games including new Halo release, promoting 3-month trial offer",
   format_types: ["audio"],
   standard_formats_only: true
 });
