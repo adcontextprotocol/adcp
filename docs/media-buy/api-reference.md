@@ -136,7 +136,7 @@ Creates a media buy from selected packages.
 ```json
 {
   "packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"],
-  "advertiser_and_product_description": "Purina is a trusted leader in pet nutrition, providing high-quality food and treats that help pets live longer, healthier lives",  // Required - advertiser and product/service description
+  "promoted_offering": "Purina is a trusted leader in pet nutrition, providing high-quality food and treats that help pets live longer, healthier lives",  // Required - description of advertiser and what is being promoted
   "po_number": "PO-2024-Q1-0123",
   "total_budget": 50000,
   "targeting_overlay": {
@@ -681,7 +681,7 @@ Lists available advertising products for the authenticated principal with option
 ```json
 {
   "brief": "Looking for premium sports inventory",  // Optional - natural language brief
-  "advertiser_and_product_description": "Nike is a global leader in athletic footwear and apparel, inspiring athletes worldwide with innovative products and the Just Do It spirit",  // Required - advertiser and product/service description
+  "promoted_offering": "Nike is a global leader in athletic footwear and apparel, inspiring athletes worldwide with innovative products and the Just Do It spirit",  // Required - description of advertiser and what is being promoted
   "filters": {  // Optional filters based on product fields
     "delivery_type": "guaranteed",  // "guaranteed" or "non_guaranteed"
     "formats": ["video"],  // Filter by specific formats
@@ -855,12 +855,12 @@ Publishers may optionally implement the `get_signals` endpoint from the [Signals
 
 ## Policy Compliance
 
-### Advertiser and Product Description
+### Promoted Offering Description
 
-All briefs in `get_products` and `create_media_buy` requests must include a clear `advertiser_and_product_description` field that describes:
+All briefs in `get_products` and `create_media_buy` requests must include a clear `promoted_offering` field that describes:
 - The advertiser/brand making the request
-- The specific product or service being promoted
-- Key brand attributes or positioning
+- What is being promoted (product, service, cause, candidate, program, etc.)
+- Key attributes or positioning of the offering
 
 ### Policy Checks
 
@@ -869,13 +869,13 @@ Publishers must implement policy checks at two key points:
 #### 1. During Product Discovery (`get_products`)
 
 When a `get_products` request is received, the publisher should:
-- Validate that the `advertiser_and_product_description` is present and meaningful
-- Check if the described advertiser/product aligns with publisher policies
+- Validate that the `promoted_offering` is present and meaningful
+- Check if the described offering aligns with publisher policies
 - Filter out any products that are not suitable for the advertiser's category
 
 **Example Policy Check Flow:**
 ```
-1. Extract advertiser and product category from advertiser_and_product_description
+1. Extract advertiser and category from promoted_offering
 2. Check against publisher's blocked categories list
 3. Check against publisher's restricted categories (may require approval)
 4. Return only products available for this advertiser category
@@ -884,9 +884,9 @@ When a `get_products` request is received, the publisher should:
 #### 2. During Media Buy Creation (`create_media_buy`)
 
 When a `create_media_buy` request is received, the publisher should:
-- Validate the `advertiser_and_product_description` against publisher policies
-- Ensure the brief content aligns with the described advertiser/product
-- Check that any uploaded creatives match the advertiser and product description
+- Validate the `promoted_offering` against publisher policies
+- Ensure the brief content aligns with the described offering
+- Check that any uploaded creatives match the promoted offering
 - Flag for manual review if automated checks raise concerns
 
 **Policy Check Response:**
@@ -895,8 +895,8 @@ If a policy violation is detected, return an appropriate error:
 {
   "error": {
     "code": "POLICY_VIOLATION",
-    "message": "Brand or product category not permitted on this publisher",
-    "field": "advertiser_and_product_description",
+    "message": "Offering category not permitted on this publisher",
+    "field": "promoted_offering",
     "suggestion": "Contact publisher for category approval process"
   }
 }
@@ -904,7 +904,7 @@ If a policy violation is detected, return an appropriate error:
 
 ### Creative Validation
 
-All uploaded creatives should be compared against the provided `advertiser_and_product_description` by either:
+All uploaded creatives should be compared against the provided `promoted_offering` by either:
 - Automated creative analysis engines
 - Human review processes
 - Combination of both

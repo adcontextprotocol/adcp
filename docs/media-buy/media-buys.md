@@ -11,7 +11,7 @@ The Media Buy represents the client's commitment to purchase inventory.
 The `create_media_buy` tool creates the buy.
 
 - `product_ids` (list[string], required)
-- `advertiser_and_product_description` (string, required): Clear description of the advertiser/brand and product/service being advertised
+- `promoted_offering` (string, required): Clear description of the advertiser and what is being promoted
 - `flight_start_date` / `flight_end_date` (date, required)
 - `total_budget` (float, required)
 - `targeting_overlay` (Targeting, required)
@@ -24,7 +24,7 @@ The `create_media_buy` tool creates the buy.
 ```json
 {
   "product_ids": ["prod_video_takeover", "prod_display_ros"],
-  "advertiser_and_product_description": "Coca-Cola is the world's leading beverage company, refreshing consumers with more than 500 sparkling and still brands",
+  "promoted_offering": "Coca-Cola is the world's leading beverage company, refreshing consumers with more than 500 sparkling and still brands",
   "flight_start_date": "2025-08-01",
   "flight_end_date": "2025-08-15",
   "total_budget": 50000.00,
