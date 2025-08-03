@@ -17,6 +17,15 @@ const sidebars: SidebarsConfig = {
     'intro',
     {
       type: 'category',
+      label: 'Protocols',
+      items: [
+        'protocols/overview',
+        'protocols/mcp',
+        'protocols/a2a',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Signals',
       items: [
         'signals/overview',

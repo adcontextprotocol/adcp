@@ -110,7 +110,7 @@ Running successful campaigns:
 ### Technical Reference
 Detailed implementation guidance:
 
-- **[API Reference](api-reference.md)** - Complete tool documentation with examples
+- **[API Reference](api-reference.md)** - Complete task documentation with examples
 - **[Design Decisions](design-decisions.md)** - Architectural choices and rationale
 
 ## Getting Started

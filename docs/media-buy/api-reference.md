@@ -58,11 +58,13 @@ A package represents a specific advertising product within a media buy:
 
 **For Industry Discussion**: Should we support multiple flights per package?
 
-## API Tools Reference
+## Tasks
+
+The Media Buy Protocol defines the following tasks that agents can perform:
 
 ### 1. list_creative_formats
 
-Lists all supported creative formats in the system.
+**Task**: Discover all supported creative formats in the system.
 
 **Request:**
 ```json
@@ -130,7 +132,7 @@ Lists all supported creative formats in the system.
 
 ### 2. create_media_buy
 
-Creates a media buy from selected packages.
+**Task**: Create a media buy from selected packages. This task handles the complete workflow including validation, approval if needed, and campaign creation.
 
 **Request:**
 ```json
@@ -175,7 +177,7 @@ Creates a media buy from selected packages.
 
 ### 3. add_creative_assets
 
-Uploads creative assets and assigns to packages.
+**Task**: Upload creative assets and assign them to packages. This task includes validation, policy review, and format adaptation suggestions.
 
 **Request:**
 ```json
@@ -250,7 +252,7 @@ Uploads creative assets and assigns to packages.
 
 ### 4. check_media_buy_status
 
-Monitors the status of a media buy.
+**Task**: Monitor the current status and delivery progress of a media buy.
 
 **Request:**
 ```json
@@ -293,7 +295,7 @@ Monitors the status of a media buy.
 
 ### 5. get_media_buy_delivery
 
-Retrieves delivery metrics for reporting.
+**Task**: Retrieve comprehensive delivery metrics and performance data for reporting.
 
 **Request:**
 ```json
@@ -350,7 +352,7 @@ Retrieves delivery metrics for reporting.
 
 ### 6. update_media_buy
 
-Updates campaign and package settings using PATCH semantics.
+**Task**: Update campaign and package settings. This task supports partial updates and handles any required approvals.
 
 **Request Example 1 - Campaign Pause:**
 ```json
@@ -674,7 +676,7 @@ Retrieves delivery data for all active media buys across all principals.
 
 ### 16. get_products
 
-Lists available advertising products for the authenticated principal with optional natural language brief and filtering.
+**Task**: Discover available advertising products based on campaign requirements, using natural language briefs or structured filters.
 
 **Request:**
 ```json

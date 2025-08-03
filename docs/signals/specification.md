@@ -170,11 +170,13 @@ This is relative to each signal agent's capabilities - a 50% coverage signal fro
 - **Both**: Some signals offer choice between models
 - **Included**: No additional cost (e.g., with media buys)
 
-## Protocol Specification
+## Tasks
+
+The Signals Activation Protocol defines the following tasks that agents can perform:
 
 ### get_signals
 
-Discovers relevant signals based on a marketing specification across multiple platforms.
+**Task**: Discover relevant signals based on a marketing specification across multiple platforms.
 
 #### Request
 
@@ -272,7 +274,12 @@ Discovers relevant signals based on a marketing specification across multiple pl
 
 ### activate_signal
 
-Activates a signal for use on a specific platform/account.
+**Task**: Activate a signal for use on a specific platform/account.
+
+This task handles the entire activation lifecycle, including:
+- Initiating the activation request
+- Monitoring activation progress
+- Returning the final deployment status
 
 #### Request
 
@@ -286,35 +293,38 @@ Activates a signal for use on a specific platform/account.
 
 #### Response
 
+The task provides status updates as the activation progresses:
+
+**Initial Response** (immediate):
 ```json
 {
+  "task_id": "activation_12345",
+  "status": "pending",
   "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
   "estimated_activation_duration_minutes": 60
 }
 ```
 
-### check_signal_status
-
-Checks the deployment status of a signal on a decisioning platform.
-
-#### Request
-
+**Status Updates** (streamed or polled):
 ```json
 {
-  "signal_agent_segment_id": "peer39_luxury_auto",
-  "decisioning_platform": "index-exchange",
-  "account": "agency-123-ix"                // Optional - only for account-specific segments
+  "task_id": "activation_12345",
+  "status": "processing",
+  "message": "Validating signal access permissions..."
 }
 ```
 
-#### Response
-
+**Final Response** (when complete):
 ```json
 {
+  "task_id": "activation_12345",
   "status": "deployed",
-  "deployed_at": "2025-01-15T14:30:00Z"
+  "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
+  "deployed_at": "2025-01-15T14:30:00Z",
+  "message": "Signal successfully activated on PubMatic"
 }
 ```
+
 
 
 ## Typical Flow
@@ -329,11 +339,9 @@ Checks the deployment status of a signal on a decisioning platform.
 
 4. **Activate**: For any platforms where signals aren't live, call `activate_signal`
 
-5. **Monitor**: Use `check_signal_status` to track activation progress
+5. **Launch**: Run campaigns across multiple SSPs using the platform-specific segment IDs
 
-6. **Launch**: Run campaigns across multiple SSPs using the platform-specific segment IDs
-
-7. **Report**: Report usage separately for each platform where the signal was used
+6. **Report**: Report usage separately for each platform where the signal was used
 
 ### Marketplace Signal Agent Flow
 
@@ -343,11 +351,9 @@ Checks the deployment status of a signal on a decisioning platform.
 
 3. **Commit**: Principal decides to proceed with specific signals for their media execution
 
-4. **Activate**: For account-specific segments that aren't live, call `activate_audience` to deploy from audience agent to decisioning platform
+4. **Activate**: For account-specific segments that aren't live, call `activate_signal` to deploy from signal agent to decisioning platform (the task handles monitoring progress automatically)
 
-5. **Monitor**: Use `check_signal_status` to track activation progress between agents
-
-6. **Launch**: Once deployed, launch the media execution (campaigns, PMPs, direct buys, etc.) on the decisioning platform using the activated signals
+5. **Launch**: Once deployed, launch the media execution (campaigns, PMPs, direct buys, etc.) on the decisioning platform using the activated signals
 
 
 ### Private Signal Agent Flow
@@ -358,11 +364,9 @@ Checks the deployment status of a signal on a decisioning platform.
 
 3. **Commit**: Principal decides to proceed with owned signals for their media execution
 
-4. **Activate**: If not live, call `activate_audience` for workflow orchestration from owned agent to decisioning platform
+4. **Activate**: If not live, call `activate_signal` for workflow orchestration from owned agent to decisioning platform (the task handles monitoring progress automatically)
 
-5. **Monitor**: Use `check_signal_status` to track activation progress
-
-6. **Launch**: Once deployed, launch the media execution using owned signals
+5. **Launch**: Once deployed, launch the media execution using owned signals
 
 
 ## Error Codes
