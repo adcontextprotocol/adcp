@@ -802,11 +802,11 @@ Use this before creating a media buy to ensure the publisher can provide require
 
 ### 19. get_signals (Optional)
 
-Publishers may optionally implement the `get_signals` endpoint from the [Signals Discovery Protocol](../../signals-protocol-v1.md#get_signals) to advertise available signals for targeting.
+Publishers may optionally implement the `get_signals` endpoint from the [Signals Protocol](../signals/specification.md#get_signals) to advertise available signals for targeting.
 
 **Purpose:** Allows buyers to discover what signals (audiences, contextual, geographic, etc.) are available through the publisher's data partnerships.
 
-**Implementation:** See the [Signals Discovery Protocol specification](../../signals-protocol-v1.md#get_signals) for the complete interface definition.
+**Implementation:** See the [Signals Protocol specification](../signals/specification.md#get_signals) for the complete interface definition.
 
 **Integration with Media Buy:**
 - The signal IDs returned by `get_signals` can be used in the `targeting.signals` array when creating a media buy
