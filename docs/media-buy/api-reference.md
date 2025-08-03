@@ -136,6 +136,7 @@ Creates a media buy from selected packages.
 ```json
 {
   "packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"],
+  "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs, promoting the new salmon and rice formula for sensitive skin and stomachs",  // Required - description of advertiser and what is being promoted
   "po_number": "PO-2024-Q1-0123",
   "total_budget": 50000,
   "targeting_overlay": {
@@ -680,6 +681,7 @@ Lists available advertising products for the authenticated principal with option
 ```json
 {
   "brief": "Looking for premium sports inventory",  // Optional - natural language brief
+  "promoted_offering": "Nike Air Max 2024 - the latest innovation in cushioning technology featuring sustainable materials, targeting runners and fitness enthusiasts",  // Required - description of advertiser and what is being promoted
   "filters": {  // Optional filters based on product fields
     "delivery_type": "guaranteed",  // "guaranteed" or "non_guaranteed"
     "formats": ["video"],  // Filter by specific formats
@@ -712,11 +714,46 @@ Lists available advertising products for the authenticated principal with option
       "is_custom": false,
       "brief_relevance": "Premium CTV inventory aligns with sports content request and prime time targeting"  // If brief was provided
     }
-  ]
+  ],
+  "policy_compliance": {
+    "status": "allowed"
+    // Optional message field may be included for additional context
+  }
 }
 ```
 
 **Note**: If no brief is provided, returns all available products for the principal.
+
+**Policy Compliance Response:**
+When products array is empty due to policy restrictions, the response includes:
+
+For advertisers that cannot be supported due to publisher policy:
+```json
+{
+  "products": [],
+  "policy_compliance": {
+    "status": "blocked",
+    "message": "Publisher policy prohibits alcohol advertising without age verification capabilities. This publisher does not currently support age-gated inventory."
+  }
+}
+```
+
+For advertisers that may be approved through manual review:
+```json
+{
+  "products": [],
+  "policy_compliance": {
+    "status": "restricted",
+    "message": "Cryptocurrency advertising is restricted but may be approved on a case-by-case basis.",
+    "contact": "sales@publisher.com"
+  }
+}
+```
+
+Policy compliance statuses:
+- `allowed`: Promoted offering passes initial policy checks for the returned products (final approval may still be required)
+- `restricted`: Advertiser category requires manual approval before products can be shown (contact provided)
+- `blocked`: Advertiser category cannot be supported by this publisher
 
 ### 17. get_targeting_capabilities
 
@@ -816,6 +853,66 @@ Publishers may optionally implement the `get_signals` endpoint from the [Signals
 - The protocol supports various audience types: owned, marketplace, and destination audiences
 - Publishers should coordinate with their data providers on which segments to expose
 
+## Policy Compliance
+
+### Promoted Offering Description
+
+All briefs in `get_products` and `create_media_buy` requests must include a clear `promoted_offering` field that describes:
+- The advertiser/brand making the request
+- What is being promoted (product, service, cause, candidate, program, etc.)
+- Key attributes or positioning of the offering
+
+### Policy Checks
+
+Publishers must implement policy checks at two key points:
+
+#### 1. During Product Discovery (`get_products`)
+
+When a `get_products` request is received, the publisher should:
+- Validate that the `promoted_offering` is present and meaningful
+- Check if the described offering aligns with publisher policies
+- Filter out any products that are not suitable for the advertiser's category
+
+**Example Policy Check Flow:**
+```
+1. Extract advertiser and category from promoted_offering
+2. Check against publisher's blocked categories list
+3. Check against publisher's restricted categories (may require approval)
+4. Return only products available for this advertiser category
+```
+
+#### 2. During Media Buy Creation (`create_media_buy`)
+
+When a `create_media_buy` request is received, the publisher should:
+- Validate the `promoted_offering` against publisher policies
+- Ensure the brief content aligns with the described offering
+- Check that any uploaded creatives match the promoted offering
+- Flag for manual review if automated checks raise concerns
+
+**Policy Check Response:**
+If a policy violation is detected, return an appropriate error:
+```json
+{
+  "error": {
+    "code": "POLICY_VIOLATION",
+    "message": "Offering category not permitted on this publisher",
+    "field": "promoted_offering",
+    "suggestion": "Contact publisher for category approval process"
+  }
+}
+```
+
+### Creative Validation
+
+All uploaded creatives should be compared against the provided `promoted_offering` by either:
+- Automated creative analysis engines
+- Human review processes
+- Combination of both
+
+This ensures that:
+- Creative content matches the declared brand
+- No misleading or deceptive advertising occurs
+- Brand safety is maintained for all parties
 
 ## Creative Macro Signal
 

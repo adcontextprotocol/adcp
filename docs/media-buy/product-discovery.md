@@ -19,7 +19,8 @@ The `get_products` tool accepts a natural language brief and optional format fil
 **Basic Discovery:**
 ```json
 {
-  "brief": "I want to reach pet owners in California with video ads during prime time"
+  "brief": "I want to reach pet owners in California with video ads during prime time",
+  "promoted_offering": "PetSmart's Spring Sale Event - 20% off all dog and cat food brands, plus free grooming consultation with purchase"
 }
 ```
 
@@ -27,6 +28,7 @@ The `get_products` tool accepts a natural language brief and optional format fil
 ```json
 {
   "brief": "I want to reach sports fans with audio ads",
+  "promoted_offering": "ESPN+ streaming service - exclusive UFC fights and premium soccer leagues, promoting annual subscription discount",
   "format_types": ["audio"],           // Filter by format type
   "format_ids": ["audio_standard_30s"], // Filter by specific formats
   "standard_formats_only": true         // Only return IAB standard formats
@@ -60,6 +62,7 @@ The `get_products` tool accepts a natural language brief and optional format fil
 2. **Smart Matching**: Uses AI to match briefs against available inventory
 3. **Principal-Specific**: Returns products available to the authenticated principal
 4. **Custom Products**: Can generate custom products for unique requirements
+5. **Policy Compliance**: Validates promoted offerings against publisher policies
 
 ## Implementation Guide
 
@@ -93,10 +96,19 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
     # Authenticate principal
     principal_id = _get_principal_id_from_context(context)
     
-    # Get all products
-    all_products = get_product_catalog()
+    # Validate promoted offering description is provided
+    if not req.promoted_offering:
+        raise ToolError("Promoted offering description is required", code="MISSING_PROMOTED_OFFERING")
     
-    # If no brief provided, return all products
+    # Run policy checks on promoted offering
+    policy_result = check_promoted_offering_policy(req.promoted_offering)
+    if not policy_result.approved:
+        raise ToolError(policy_result.message, code="POLICY_VIOLATION")
+    
+    # Get products filtered by policy
+    all_products = get_products_for_category(policy_result.category)
+    
+    # If no brief provided, return all policy-approved products
     if not req.brief:
         return ListProductsResponse(products=all_products)
     
@@ -232,6 +244,7 @@ Use format knowledge to filter products:
 // Only discover products that accept standard audio formats
 const products = await client.call_tool("get_products", {
   brief: "Reach young adults interested in gaming",
+  promoted_offering: "Xbox Game Pass Ultimate - unlimited access to 100+ games including new Halo release, promoting 3-month trial offer",
   format_types: ["audio"],
   standard_formats_only: true
 });
