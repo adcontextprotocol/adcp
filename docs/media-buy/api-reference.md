@@ -727,13 +727,13 @@ Lists available advertising products for the authenticated principal with option
 **Policy Compliance Response:**
 When products array is empty due to policy restrictions, the response includes:
 
-For advertisers that cannot be supported:
+For advertisers that cannot be supported due to publisher policy:
 ```json
 {
   "products": [],
   "policy_compliance": {
     "status": "blocked",
-    "message": "Alcoholic beverage advertising requires age-gated inventory. This publisher does not support age verification."
+    "message": "Publisher policy prohibits alcohol advertising without age verification capabilities. This publisher does not currently support age-gated inventory."
   }
 }
 ```
