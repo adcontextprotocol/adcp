@@ -689,18 +689,11 @@ Lists available advertising products for the authenticated principal with option
     "format_types": ["video", "display"],  // Filter by format types
     "format_ids": ["video_standard_30s"],  // Filter by specific format IDs
     "standard_formats_only": true  // Only return products accepting IAB standard formats
-  },
-  "compliance_requirements": [  // Optional - advertiser's compliance requirements (see compliance-requirements.md)
-    "age_gate_21_plus",        // For alcohol/gambling advertisers
-    "responsible_drinking_messaging",  // Required messaging for alcohol ads
-    "no_appeal_to_minors"      // Cannot appeal to minors
-  ]
+  }
 }
 ```
 
 **Note**: Format filtering ensures advertisers only see inventory that matches their creative capabilities.
-
-**Compliance Requirements**: See [compliance-requirements.md](compliance-requirements.md) for the full list of standardized compliance requirement identifiers.
 
 **Response:**
 ```json
@@ -723,8 +716,8 @@ Lists available advertising products for the authenticated principal with option
     }
   ],
   "policy_compliance": {
-    "status": "allowed",
-    "met_requirements": ["coppa_compliant"]  // Shows which requirements were verified if compliance_requirements were specified
+    "status": "allowed"
+    // Optional message field may be included for additional context
   }
 }
 ```
@@ -734,14 +727,13 @@ Lists available advertising products for the authenticated principal with option
 **Policy Compliance Response:**
 When products array is empty due to policy restrictions, the response includes:
 
-For advertisers whose compliance requirements cannot be met:
+For advertisers that cannot be supported:
 ```json
 {
   "products": [],
   "policy_compliance": {
     "status": "blocked",
-    "message": "Cannot meet specified compliance requirements",
-    "unmet_requirements": ["age_gate_21_plus"]  // Shows which requirements cannot be met
+    "message": "Alcoholic beverage advertising requires age-gated inventory. This publisher does not support age verification."
   }
 }
 ```
