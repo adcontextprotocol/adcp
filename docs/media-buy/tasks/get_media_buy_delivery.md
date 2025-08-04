@@ -22,6 +22,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 {
   "context_id": "string",
   "media_buy_id": "string",
+  "status": "string",
   "reporting_period": {
     "start": "string",
     "end": "string"
@@ -59,6 +60,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 
 - **context_id**: Context identifier for session persistence
 - **media_buy_id**: The media buy ID from the request
+- **status**: Current media buy status (`pending_activation`, `active`, `paused`, `completed`, `failed`)
 - **reporting_period**: Date range for the report
   - **start**: ISO 8601 start timestamp
   - **end**: ISO 8601 end timestamp
@@ -99,6 +101,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 {
   "context_id": "ctx-media-buy-abc123",  // Server maintains context
   "media_buy_id": "gam_1234567890",
+  "status": "active",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
     "end": "2024-02-07T23:59:59Z"
