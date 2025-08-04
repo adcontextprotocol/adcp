@@ -18,6 +18,7 @@ Monitor the current status and delivery progress of a media buy.
 
 ```json
 {
+  "message": "string",
   "context_id": "string",
   "media_buy_id": "string",
   "status": "string",
@@ -35,6 +36,7 @@ Monitor the current status and delivery progress of a media buy.
 
 ### Field Descriptions
 
+- **message**: Human-readable summary of the media buy's current status and performance
 - **context_id**: Context identifier for session persistence
 - **media_buy_id**: The media buy ID from the request
 - **status**: Overall media buy status
@@ -55,10 +57,11 @@ Monitor the current status and delivery progress of a media buy.
 }
 ```
 
-### Response
+### Response - Active Campaign
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // Server maintains context
+  "message": "Your campaign is active and performing well. Overall delivery is at 11.4% after 2 days (on track for full delivery). The CTV package is pacing perfectly at 12.5%, while the audio package is slightly behind at 10.2% but should catch up during tomorrow's drive time.",
+  "context_id": "ctx-media-buy-abc123",
   "media_buy_id": "gam_1234567890",
   "status": "active",
   "last_updated": "2024-02-01T08:00:00Z",
@@ -74,6 +77,56 @@ Monitor the current status and delivery progress of a media buy.
       "status": "delivering",
       "pacing": "slightly_behind",
       "delivery_percentage": 10.2
+    }
+  ]
+}
+```
+
+### Response - Pending Approval
+```json
+{
+  "message": "Your media buy is currently pending manual approval. This typically takes 2-4 hours during business hours. The campaign includes 2 packages totaling $50,000 and will start delivering immediately upon approval.",
+  "context_id": "ctx-media-buy-abc123",
+  "media_buy_id": "gam_1234567890",
+  "status": "pending_manual",
+  "last_updated": "2024-02-01T08:00:00Z",
+  "package_statuses": [
+    {
+      "package_id": "pkg_ctv_prime_ca_ny",
+      "status": "pending",
+      "pacing": "not_started",
+      "delivery_percentage": 0
+    },
+    {
+      "package_id": "pkg_audio_drive_ca_ny",
+      "status": "pending",
+      "pacing": "not_started",
+      "delivery_percentage": 0
+    }
+  ]
+}
+```
+
+### Response - Underdelivering
+```json
+{
+  "message": "Alert: Your campaign is underdelivering. At 50% of the flight, you've only delivered 35% of impressions. The CTV package is significantly behind due to limited inventory. Consider expanding targeting or increasing bid to improve delivery.",
+  "context_id": "ctx-media-buy-abc123",
+  "media_buy_id": "gam_1234567890",
+  "status": "active",
+  "last_updated": "2024-02-15T08:00:00Z",
+  "package_statuses": [
+    {
+      "package_id": "pkg_ctv_prime_ca_ny",
+      "status": "underdelivering",
+      "pacing": "behind",
+      "delivery_percentage": 30.0
+    },
+    {
+      "package_id": "pkg_audio_drive_ca_ny",
+      "status": "delivering",
+      "pacing": "slightly_behind",
+      "delivery_percentage": 40.0
     }
   ]
 }
@@ -138,3 +191,27 @@ if status_response["status"] == "pending_manual":
 - Pacing calculations consider time elapsed vs. impressions delivered
 - The `last_updated` field indicates data freshness
 - Pending states are normal operational states, not errors
+
+## Implementation Guide
+
+### Generating Status Messages
+
+The `message` field should provide actionable insights:
+
+```python
+def generate_status_message(media_buy):
+    if media_buy.status == "active":
+        overall_delivery = calculate_overall_delivery(media_buy.packages)
+        pacing_status = analyze_pacing(media_buy)
+        
+        if pacing_status == "behind":
+            return f"Alert: Your campaign is underdelivering. At {media_buy.progress}% of the flight, you've only delivered {overall_delivery}% of impressions. {get_underdelivery_recommendations(media_buy)}"
+        else:
+            return f"Your campaign is active and performing well. Overall delivery is at {overall_delivery}% after {media_buy.days_running} days. {get_package_summary(media_buy.packages)}"
+    
+    elif media_buy.status == "pending_manual":
+        return f"Your media buy is currently pending manual approval. This typically takes {get_approval_time_estimate()} during business hours. The campaign includes {len(media_buy.packages)} packages totaling ${media_buy.total_budget:,} and will start delivering immediately upon approval."
+    
+    elif media_buy.status == "completed":
+        return f"Campaign completed successfully! Delivered {media_buy.total_impressions:,} impressions with an average CPM of ${media_buy.avg_cpm:.2f}. {get_performance_summary(media_buy)}"
+```

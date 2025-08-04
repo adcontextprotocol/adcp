@@ -77,6 +77,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 **Response:**
 ```json
 {
+  "message": "string",
   "formats": [
     {
       "format_id": "audio_standard_30s",
@@ -159,6 +160,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 **Response:**
 ```json
 {
+  "message": "string",
   "media_buy_id": "gam_1234567890",
   "status": "pending_activation",
   "creative_deadline": "2024-01-30T23:59:59Z",
@@ -212,6 +214,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 **Response:**
 ```json
 {
+  "message": "string",
   "asset_statuses": [
     {
       "creative_id": "pet_food_30s_v1",
@@ -265,6 +268,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 **Response:**
 ```json
 {
+  "message": "string",
   "media_buy_id": "gam_1234567890",
   "status": "active",
   "last_updated": "2024-02-01T08:00:00Z",
@@ -310,6 +314,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 **Response:**
 ```json
 {
+  "message": "string",
   "media_buy_id": "gam_1234567890",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
@@ -366,6 +371,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 **Response:**
 ```json
 {
+  "message": "string",
   "status": "accepted",
   "implementation_date": "2024-02-08T00:00:00Z",
   "detail": "Order paused in Google Ad Manager",
@@ -452,6 +458,7 @@ Provides performance feedback for AI optimization.
 **Response:**
 ```json
 {
+  "message": "string",
   "status": "accepted",
   "optimization_actions": [
     {
@@ -483,6 +490,7 @@ Retrieves delivery metrics for all active media buys owned by the principal. Thi
 **Response:**
 ```json
 {
+  "message": "string",
   "deliveries": [
     {
       "media_buy_id": "gam_1234567890",
@@ -526,6 +534,7 @@ Lists creative assets for a principal or media buy.
 **Response:**
 ```json
 {
+  "message": "string",
   "creatives": [
     {
       "creative_id": "pet_food_30s_v2",
@@ -563,6 +572,7 @@ Approves or rejects a suggested creative adaptation.
 **Response:**
 ```json
 {
+  "message": "string",
   "success": true,
   "new_creative": {
     "creative_id": "pet_food_30s_vertical_auto",
@@ -573,8 +583,7 @@ Approves or rejects a suggested creative adaptation.
   "status": {
     "creative_id": "pet_food_30s_vertical_auto",
     "status": "approved"
-  },
-  "message": "Adaptation approved and creative generated"
+  }
 }
 ```
 
@@ -594,6 +603,7 @@ Reviews and approves/rejects pending creatives.
 **Response:**
 ```json
 {
+  "message": "string",
   "creative_id": "pet_food_30s_v3",
   "status": "approved",
   "reviewed_by": "admin",
@@ -616,6 +626,7 @@ Lists pending human approval tasks.
 **Response:**
 ```json
 {
+  "message": "string",
   "tasks": [
     {
       "task_id": "task_001",
@@ -650,6 +661,7 @@ Completes a human approval task.
 **Response:**
 ```json
 {
+  "message": "string",
   "task_id": "task_001",
   "status": "completed",
   "completed_by": "admin",
@@ -700,6 +712,8 @@ Retrieves delivery data for all active media buys across all principals.
 **Response:**
 ```json
 {
+  "message": "I found 3 premium sports-focused products that match your requirements. Connected TV Prime Time offers the best reach at $45 CPM with guaranteed delivery.",
+  "context_id": "ctx-media-buy-abc123",
   "products": [
     {
       "product_id": "connected_tv_prime",
@@ -717,14 +731,28 @@ Retrieves delivery data for all active media buys across all principals.
       "brief_relevance": "Premium CTV inventory aligns with sports content request and prime time targeting"  // If brief was provided
     }
   ],
+  "clarification_needed": false,
   "policy_compliance": {
     "status": "allowed"
-    // Optional message field may be included for additional context
   }
 }
 ```
 
 **Note**: If no brief is provided, returns all available products for the principal.
+
+**Clarification Response:**
+When the publisher needs more information to provide better recommendations:
+```json
+{
+  "message": "I'd be happy to help find the right products for your campaign. To provide the best recommendations, could you share:\n\n• What's your campaign budget?\n• When do you want the campaign to run?\n• Which geographic markets are you targeting?",
+  "context_id": "ctx-media-buy-abc123",
+  "products": [],
+  "clarification_needed": true,
+  "policy_compliance": {
+    "status": "allowed"
+  }
+}
+```
 
 **Policy Compliance Response:**
 When products array is empty due to policy restrictions, the response includes:
@@ -732,7 +760,10 @@ When products array is empty due to policy restrictions, the response includes:
 For advertisers that cannot be supported due to publisher policy:
 ```json
 {
+  "message": "I'm unable to offer products for this campaign. Our publisher policy prohibits alcohol advertising without age verification capabilities.",
+  "context_id": "ctx-media-buy-abc123",
   "products": [],
+  "clarification_needed": false,
   "policy_compliance": {
     "status": "blocked",
     "message": "Publisher policy prohibits alcohol advertising without age verification capabilities. This publisher does not currently support age-gated inventory."
@@ -743,7 +774,10 @@ For advertisers that cannot be supported due to publisher policy:
 For advertisers that may be approved through manual review:
 ```json
 {
+  "message": "Cryptocurrency advertising requires manual approval on our platform. Please reach out to sales@publisher.com to start the approval process.",
+  "context_id": "ctx-media-buy-abc123",
   "products": [],
+  "clarification_needed": false,
   "policy_compliance": {
     "status": "restricted",
     "message": "Cryptocurrency advertising is restricted but may be approved on a case-by-case basis.",
@@ -772,6 +806,7 @@ Discover available targeting dimensions for specified channels.
 **Response:**
 ```json
 {
+  "message": "string",
   "capabilities": [
     {
       "channel": "web",
@@ -823,6 +858,7 @@ Verify if required AEE dimensions are supported for a channel.
 **Response:**
 ```json
 {
+  "message": "string",
   "supported": true,
   "missing_dimensions": [],
   "available_dimensions": [
@@ -1059,6 +1095,7 @@ Creates a task requiring human intervention. Used internally by the system when 
 **Response:**
 ```json
 {
+  "message": "string",
   "task_id": "task_a1b2c3d4",
   "status": "pending",
   "due_by": "2024-02-15T16:00:00Z"
@@ -1081,6 +1118,7 @@ Retrieves pending human tasks. Principals see their own tasks; admins see all ta
 **Response:**
 ```json
 {
+  "message": "string",
   "tasks": [
     {
       "task_id": "task_a1b2c3d4",
@@ -1114,6 +1152,7 @@ Assigns a task to a human operator for processing.
 **Response:**
 ```json
 {
+  "message": "string",
   "status": "success",
   "detail": "Task task_a1b2c3d4 assigned to ops@publisher.com"
 }
@@ -1136,6 +1175,7 @@ Completes a human task with resolution. For manual approval tasks, approved oper
 **Response:**
 ```json
 {
+  "message": "string",
   "status": "success",
   "detail": "Task task_a1b2c3d4 completed with resolution: approved"
 }

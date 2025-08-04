@@ -29,6 +29,7 @@ Update campaign and package settings. This task supports partial updates and han
 
 ```json
 {
+  "message": "string",
   "context_id": "string",
   "status": "string",
   "implementation_date": "string",
@@ -39,6 +40,7 @@ Update campaign and package settings. This task supports partial updates and han
 
 ### Field Descriptions
 
+- **message**: Human-readable summary of the updates made and their impact
 - **context_id**: Context identifier for session persistence
 - **status**: Update status (e.g., `"accepted"`, `"pending_approval"`)
 - **implementation_date**: ISO 8601 timestamp when changes take effect
@@ -61,7 +63,8 @@ Update campaign and package settings. This task supports partial updates and han
 #### Response
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // Server maintains context
+  "message": "Campaign paused successfully. All 2 packages have stopped delivering impressions. You've spent $16,875 of your $50,000 budget (33.8%). Campaign can be resumed at any time to continue delivery.",
+  "context_id": "ctx-media-buy-abc123",
   "status": "accepted",
   "implementation_date": "2024-02-08T00:00:00Z",
   "detail": "Order paused in Google Ad Manager",
@@ -92,14 +95,38 @@ Update campaign and package settings. This task supports partial updates and han
 }
 ```
 
-#### Response
+#### Response - Immediate Update
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // Server maintains context
+  "message": "Campaign updated successfully. Budget increased from $50,000 to $75,000 (+50%), giving you more reach for the extended flight through February 28. CTV package switched to front-loaded pacing to maximize early delivery, while audio package has been paused. Changes take effect immediately.",
+  "context_id": "ctx-media-buy-abc123",
   "status": "accepted",
   "implementation_date": "2024-02-08T00:00:00Z",
   "detail": "Updated budget to $75,000, extended end date, modified 2 packages",
   "affected_packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"]
+}
+```
+
+### Example 3: Update Requiring Approval
+
+#### Request
+```json
+{
+  "context_id": "ctx-media-buy-abc123",
+  "media_buy_id": "gam_1234567890",
+  "total_budget": 150000
+}
+```
+
+#### Response - Pending Approval
+```json
+{
+  "message": "Budget increase to $150,000 requires manual approval due to the significant change (+200%). This typically takes 2-4 hours during business hours. Your campaign continues to deliver at the current $50,000 budget until approved. I'll notify you once the increase is approved.",
+  "context_id": "ctx-media-buy-abc123",
+  "status": "pending_approval",
+  "implementation_date": null,
+  "detail": "Budget increase requires approval (task_id: approval_98765)",
+  "affected_packages": []
 }
 ```
 
@@ -148,6 +175,50 @@ The `update_media_buy` tool provides a unified interface that supports both camp
 - Update multiple packages in one call
 - Each package update is processed independently
 - Returns immediately on first error
+
+## Usage Notes
+
+- Updates typically take effect immediately unless approval is required
+- Budget increases may require approval based on publisher policies
+- Pausing a campaign preserves all settings and can be resumed anytime
+- Package-level updates override campaign-level settings
+- Some updates may affect pacing calculations and delivery patterns
+
+## Implementation Guide
+
+### Generating Update Messages
+
+The `message` field should clearly explain what changed and the impact:
+
+```python
+def generate_update_message(request, response, current_state):
+    changes = []
+    
+    # Budget changes
+    if request.total_budget:
+        old_budget = current_state.total_budget
+        change_pct = ((request.total_budget - old_budget) / old_budget) * 100
+        changes.append(f"Budget {'increased' if change_pct > 0 else 'decreased'} from ${old_budget:,} to ${request.total_budget:,} ({change_pct:+.0f}%)")
+    
+    # Campaign pause/resume
+    if request.active is not None:
+        if request.active:
+            changes.append("Campaign resumed")
+        else:
+            spent_pct = (current_state.spent / current_state.total_budget) * 100
+            changes.append(f"Campaign paused. You've spent ${current_state.spent:,} of your ${current_state.total_budget:,} budget ({spent_pct:.1f}%)")
+    
+    # Package updates
+    if request.packages:
+        package_changes = summarize_package_changes(request.packages)
+        changes.extend(package_changes)
+    
+    # Build message based on status
+    if response.status == "accepted":
+        return f"Campaign updated successfully. {'. '.join(changes)}. Changes take effect immediately."
+    elif response.status == "pending_approval":
+        return f"{changes[0]} requires manual approval due to {get_approval_reason(request)}. This typically takes 2-4 hours during business hours. Your campaign continues with current settings until approved."
+```
 - Supports both budget and direct impression updates
 
 ## Platform Implementation
