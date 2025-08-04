@@ -216,7 +216,38 @@ Environment variable (`AdCP_DRY_RUN=true`) shows platform API calls without exec
 ### 🔵 Industry Question
 What additional information would be valuable in dry run mode?
 
-## 11. Multi-Protocol Compatibility and Task Concept
+## 11. Universal Message Field Pattern
+
+### Current Design
+All AdCP task responses include a `message` field as the first field, providing human-readable summaries.
+
+```json
+{
+  "message": "Successfully created your $50,000 media buy targeting pet owners...",
+  "context_id": "ctx-abc-123",
+  "media_buy_id": "mb_12345",
+  // ... structured data
+}
+```
+
+### Rationale
+- **AI-Native**: Agents quickly understand responses without parsing JSON
+- **Human-Friendly**: Clear summaries for sales, support, and approvers
+- **Progressive Disclosure**: Read message for quick understanding, parse data for details
+- **Conversational**: Enables natural back-and-forth interactions
+
+### Use Cases
+- **Success**: "Campaign created successfully. Upload creatives by Jan 30."
+- **Clarification**: "I need your budget and target audience to find the best products."
+- **Issues**: "Campaign underdelivering. Consider expanding targeting."
+- **Status**: "Activation 45% complete. About 30 minutes remaining."
+
+### 🔵 Industry Question
+Should messages include confidence scores? Support multiple message types (summary/detail)?
+
+For detailed information, see [Message Field Pattern Design Decision](./design-decisions-message-field.md).
+
+## 12. Multi-Protocol Compatibility and Task Concept
 
 ### Current Design
 AdCP uses a task-based architecture that maps to different protocol implementations:

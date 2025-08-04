@@ -26,6 +26,7 @@ Discover available advertising products based on campaign requirements, using na
 
 ```json
 {
+  "message": "string",
   "context_id": "string",
   "products": [
     {
@@ -46,6 +47,7 @@ Discover available advertising products based on campaign requirements, using na
       "brief_relevance": "string"
     }
   ],
+  "clarification_needed": "boolean",
   "policy_compliance": {
     "status": "string",
     "message": "string",
@@ -56,7 +58,9 @@ Discover available advertising products based on campaign requirements, using na
 
 ### Field Descriptions
 
+- **message**: Human-readable summary of the response - describes products found, clarifications needed, or policy issues
 - **context_id**: Context identifier for session persistence
+- **clarification_needed**: Boolean indicating if the publisher needs more information to provide better recommendations
 - **product_id**: Unique identifier for the product
 - **name**: Human-readable product name
 - **description**: Detailed description of the product and its inventory
@@ -99,10 +103,11 @@ Discover available advertising products based on campaign requirements, using na
 }
 ```
 
-### Response
+### Response - Products Found
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // Server creates/maintains context
+  "message": "I found 3 premium sports-focused products that match your requirements. Connected TV Prime Time offers the best reach at $45 CPM with guaranteed delivery. All options support standard video formats and have availability for your Nike campaign.",
+  "context_id": "ctx-media-buy-abc123",
   "products": [
     {
       "product_id": "connected_tv_prime",
@@ -122,6 +127,20 @@ Discover available advertising products based on campaign requirements, using na
       "brief_relevance": "Premium CTV inventory aligns with sports content request and prime time targeting"
     }
   ],
+  "clarification_needed": false,
+  "policy_compliance": {
+    "status": "allowed"
+  }
+}
+```
+
+### Response - Clarification Needed
+```json
+{
+  "message": "I'd be happy to help find the right sports inventory for your Nike campaign. To provide the best recommendations, could you share:\n\n• What's your campaign budget?\n• When do you want the campaign to run?\n• Which geographic markets are you targeting?\n• What are your success metrics (awareness, conversions, etc.)?",
+  "context_id": "ctx-media-buy-abc123",
+  "products": [],
+  "clarification_needed": true,
   "policy_compliance": {
     "status": "allowed"
   }
@@ -135,8 +154,10 @@ When the promoted offering is subject to policy restrictions, the response will 
 ### Blocked Advertiser Category
 ```json
 {
+  "message": "I'm unable to offer products for this campaign. Our publisher policy prohibits alcohol advertising without age verification capabilities, and we don't currently support age-gated inventory. You may want to explore other publishers who specialize in age-restricted content.",
   "context_id": "ctx-media-buy-abc123",
   "products": [],
+  "clarification_needed": false,
   "policy_compliance": {
     "status": "blocked",
     "message": "Publisher policy prohibits alcohol advertising without age verification capabilities. This publisher does not currently support age-gated inventory."
@@ -147,8 +168,10 @@ When the promoted offering is subject to policy restrictions, the response will 
 ### Restricted Category (Manual Approval Required)
 ```json
 {
+  "message": "Cryptocurrency advertising requires manual approval on our platform. While I can't show available products yet, our sales team can work with you to review your campaign and potentially unlock inventory. Please reach out to sales@publisher.com to start the approval process.",
   "context_id": "ctx-media-buy-abc123",
   "products": [],
+  "clarification_needed": false,
   "policy_compliance": {
     "status": "restricted",
     "message": "Cryptocurrency advertising is restricted but may be approved on a case-by-case basis.",
@@ -165,6 +188,23 @@ When the promoted offering is subject to policy restrictions, the response will 
 - The `brief_relevance` field is only included when a brief parameter is provided
 - Products represent available advertising inventory with specific targeting, format, and pricing characteristics
 - Policy compliance checks may filter out products based on the promoted offering
+- The `message` field provides a human-readable summary of the response
+- Publishers may request clarification when briefs are incomplete
+
+## Brief Expectations
+
+While briefs are natural language and can be as simple or detailed as needed, complete briefs typically include:
+
+- **Business Objectives**: What you're trying to achieve (awareness, conversions, app installs, etc.)
+- **Success Metrics**: How you'll measure success (CTR, CPA, ROAS, brand lift, etc.)
+- **Campaign Timing**: When the campaign should run (flight dates)
+- **Target Audience**: Who you want to reach (demographics, interests, behaviors)
+- **Budget**: Total spend or budget constraints
+- **Geographic Markets**: Where ads should appear
+- **Creative Constraints**: Any specific format requirements or limitations
+- **Brand Safety**: Content categories to avoid
+
+Publishers will do their best to recommend products even with incomplete briefs, but may request clarification to provide better recommendations. This creates a natural conversation between buyer and publisher agents.
 
 ## Discovery Workflow
 
@@ -271,14 +311,18 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
     # Handle policy violations
     if policy_result.status == "blocked":
         return GetProductsResponse(
+            message=f"I'm unable to offer products for this campaign. {policy_result.message}",
             context_id=context_id,
             products=[],
+            clarification_needed=False,
             policy_compliance={"status": "blocked", "message": policy_result.message}
         )
     elif policy_result.status == "restricted":
         return GetProductsResponse(
+            message=f"{policy_result.message} Please contact {policy_result.contact} for approval.",
             context_id=context_id,
             products=[],
+            clarification_needed=False,
             policy_compliance={
                 "status": "restricted",
                 "message": policy_result.message,
@@ -292,22 +336,92 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
     # If no brief provided, return all policy-approved products
     if not req.brief:
         return GetProductsResponse(
+            message=f"Here are all {len(all_products)} available products for your {req.promoted_offering}. Provide a brief to see targeted recommendations.",
             context_id=context_id,
             products=all_products,
+            clarification_needed=False,
+            policy_compliance={"status": "allowed"}
+        )
+    
+    # Check if brief needs clarification
+    missing_info = analyze_brief_completeness(req.brief)
+    if missing_info:
+        questions = generate_clarification_questions(missing_info)
+        return GetProductsResponse(
+            message=questions,
+            context_id=context_id,
+            products=[],
+            clarification_needed=True,
             policy_compliance={"status": "allowed"}
         )
     
     # Use AI to filter products based on brief
     relevant_products = filter_products_by_brief(req.brief, all_products)
     
+    # Generate summary message
+    message = generate_product_summary(relevant_products, req.brief)
+    
     return GetProductsResponse(
+        message=message,
         context_id=context_id,
         products=relevant_products,
+        clarification_needed=False,
         policy_compliance={"status": "allowed"}
     )
 ```
 
-### Step 3: AI-Powered Filtering
+### Step 3: AI-Powered Filtering and Message Generation
+
+Implement the AI logic to match briefs to products and generate helpful messages:
+
+```python
+def analyze_brief_completeness(brief: str) -> List[str]:
+    """Analyze what information is missing from the brief"""
+    missing = []
+    
+    if "budget" not in brief.lower() and "$" not in brief:
+        missing.append("budget")
+    if not any(word in brief.lower() for word in ["when", "date", "month", "quarter"]):
+        missing.append("timing")
+    if not any(word in brief.lower() for word in ["where", "geo", "market", "location"]):
+        missing.append("geography")
+    if not any(word in brief.lower() for word in ["goal", "objective", "kpi", "metric"]):
+        missing.append("objectives")
+    
+    return missing
+
+def generate_clarification_questions(missing_info: List[str]) -> str:
+    """Generate natural language questions for missing information"""
+    questions = "I'd be happy to help find the right products for your campaign. To provide the best recommendations, could you share:"
+    
+    question_map = {
+        "budget": "What's your campaign budget?",
+        "timing": "When do you want the campaign to run?", 
+        "geography": "Which geographic markets are you targeting?",
+        "objectives": "What are your success metrics (awareness, conversions, etc.)?"
+    }
+    
+    for info in missing_info:
+        questions += f"\n\n• {question_map.get(info, '')}"
+    
+    return questions
+
+def generate_product_summary(products: List[Product], brief: str) -> str:
+    """Generate a helpful summary of the products found"""
+    if not products:
+        return "I couldn't find any products matching your requirements. Let me know if you'd like to adjust your criteria."
+    
+    if len(products) == 1:
+        p = products[0]
+        return f"I found one perfect match: {p.name} at ${p.cpm} CPM with {p.delivery_type} delivery. {p.brief_relevance}"
+    
+    # Find best value and premium options
+    sorted_by_cpm = sorted(products, key=lambda p: p.cpm)
+    
+    return f"I found {len(products)} products matching your requirements. {sorted_by_cpm[0].name} offers the best value at ${sorted_by_cpm[0].cpm} CPM, while {sorted_by_cpm[-1].name} provides premium placement at ${sorted_by_cpm[-1].cpm} CPM. All options support your campaign objectives."
+```
+
+### Step 4: Brief Processing
 
 Implement the AI logic to match briefs to products:
 
@@ -415,12 +529,25 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
     
     # Policy violations are handled in the response, not as errors
     policy_result = check_promoted_offering_policy(req.promoted_offering)
-    if policy_result.status != "allowed":
+    if policy_result.status == "blocked":
         return GetProductsResponse(
+            message=f"I'm unable to offer products for this campaign. {policy_result.message}",
             context_id=context_id,
             products=[],
+            clarification_needed=False,
             policy_compliance={
-                "status": policy_result.status,
+                "status": "blocked",
+                "message": policy_result.message
+            }
+        )
+    elif policy_result.status == "restricted":
+        return GetProductsResponse(
+            message=f"{policy_result.message} Please contact {policy_result.contact} for manual approval.",
+            context_id=context_id,
+            products=[],
+            clarification_needed=False,
+            policy_compliance={
+                "status": "restricted",
                 "message": policy_result.message,
                 "contact": policy_result.contact
             }

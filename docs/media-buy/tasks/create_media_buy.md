@@ -31,6 +31,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 
 ```json
 {
+  "message": "string",
   "context_id": "string",
   "media_buy_id": "string",
   "status": "string",
@@ -42,6 +43,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 
 ### Field Descriptions
 
+- **message**: Human-readable summary of the media buy creation result
 - **context_id**: Context identifier for session persistence
 - **media_buy_id**: Unique identifier for the created media buy
 - **status**: Current status (e.g., `"pending_activation"`, `"active"`)
@@ -74,10 +76,11 @@ Create a media buy from selected packages. This task handles the complete workfl
 }
 ```
 
-### Response
+### Response - Success
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // Server maintains context
+  "message": "Successfully created your $50,000 media buy targeting pet owners in CA and NY. The campaign will reach 2.5M users through Connected TV and Audio channels. Please upload creative assets by January 30 to activate the campaign.",
+  "context_id": "ctx-media-buy-abc123",
   "media_buy_id": "gam_1234567890",
   "status": "pending_activation",
   "creative_deadline": "2024-01-30T23:59:59Z",
@@ -86,6 +89,23 @@ Create a media buy from selected packages. This task handles the complete workfl
     "Upload creative assets before deadline",
     "Assets will be reviewed by ad server",
     "Campaign will auto-activate after approval"
+  ]
+}
+```
+
+### Response - Pending Manual Approval
+```json
+{
+  "message": "Your $50,000 media buy has been submitted for approval. Due to the campaign size, it requires manual review by our sales team. Expected approval time is 2-4 hours during business hours. You'll receive a notification once approved.",
+  "context_id": "ctx-media-buy-abc123",
+  "media_buy_id": "pending_mb_789",
+  "status": "pending_manual",
+  "creative_deadline": null,
+  "detail": "Media buy requires manual approval (task_id: approval_12345)",
+  "next_steps": [
+    "Wait for approval notification",
+    "Upload creatives after approval",
+    "Campaign will activate once creatives are approved"
   ]
 }
 ```
@@ -194,3 +214,23 @@ Publishers should ensure that:
 - The promoted offering aligns with the selected packages
 - Any uploaded creatives match the declared offering
 - The campaign complies with all applicable advertising policies
+
+## Implementation Guide
+
+### Generating Helpful Messages
+
+The `message` field should provide a concise summary that includes:
+- Total budget and key targeting parameters
+- Expected reach or inventory details
+- Clear next steps and deadlines
+- Approval status and expected timelines
+
+```python
+def generate_media_buy_message(media_buy, request):
+    if media_buy.status == "pending_activation":
+        return f"Successfully created your ${request.total_budget:,} media buy targeting {format_targeting(request.targeting_overlay)}. The campaign will reach {media_buy.estimated_reach:,} users. Please upload creative assets by {format_date(media_buy.creative_deadline)} to activate the campaign."
+    elif media_buy.status == "pending_manual":
+        return f"Your ${request.total_budget:,} media buy has been submitted for approval. {media_buy.approval_reason}. Expected approval time is {media_buy.estimated_approval_time}. You'll receive a notification once approved."
+    elif media_buy.status == "active":
+        return f"Great news! Your ${request.total_budget:,} campaign is now live and delivering to your target audience. Monitor performance using check_media_buy_status."
+```

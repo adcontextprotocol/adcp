@@ -20,6 +20,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 
 ```json
 {
+  "message": "string",
   "context_id": "string",
   "media_buy_id": "string",
   "status": "string",
@@ -58,6 +59,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 
 ### Field Descriptions
 
+- **message**: Human-readable summary of campaign performance and key insights
 - **context_id**: Context identifier for session persistence
 - **media_buy_id**: The media buy ID from the request
 - **status**: Current media buy status (`pending_activation`, `active`, `paused`, `completed`, `failed`)
@@ -96,10 +98,11 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 }
 ```
 
-### Response
+### Response - Strong Performance
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // Server maintains context
+  "message": "Your campaign delivered 450,000 impressions this week with strong engagement. The 0.2% CTR exceeds industry benchmarks, and your video completion rate of 70% is excellent. You're currently pacing slightly behind (-9%) but should catch up with weekend delivery. Effective CPM is $37.50.",
+  "context_id": "ctx-media-buy-abc123",
   "media_buy_id": "gam_1234567890",
   "status": "active",
   "reporting_period": {
@@ -142,6 +145,52 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 }
 ```
 
+### Response - Underperforming Campaign
+```json
+{
+  "message": "Campaign performance needs attention. While you've delivered 125,000 impressions, the 0.08% CTR is below expectations and your 45% video completion rate suggests creative fatigue. Both packages are significantly behind pacing (-25%). Consider refreshing creatives or expanding targeting to improve delivery.",
+  "context_id": "ctx-media-buy-abc123",
+  "media_buy_id": "gam_1234567890",
+  "reporting_period": {
+    "start": "2024-02-01T00:00:00Z",
+    "end": "2024-02-07T23:59:59Z"
+  },
+  "currency": "USD",
+  "totals": {
+    "impressions": 125000,
+    "spend": 5625.00,
+    "clicks": 100,
+    "ctr": 0.0008,
+    "video_completions": 56250,
+    "completion_rate": 0.45
+  },
+  "by_package": [
+    {
+      "package_id": "pkg_ctv_prime_ca_ny",
+      "impressions": 75000,
+      "spend": 3375.00,
+      "clicks": 60,
+      "video_completions": 33750,
+      "pacing_index": 0.75
+    },
+    {
+      "package_id": "pkg_audio_drive_ca_ny",
+      "impressions": 50000,
+      "spend": 2250.00,
+      "clicks": 40,
+      "pacing_index": 0.75
+    }
+  ],
+  "daily_breakdown": [
+    {
+      "date": "2024-02-01",
+      "impressions": 17857,
+      "spend": 803.57
+    }
+  ]
+}
+```
+
 ## Metrics Definitions
 
 - **Impressions**: Number of times ads were displayed
@@ -151,6 +200,45 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 - **Video Completions**: Number of video ads watched to completion
 - **Completion Rate**: Video completions divided by video impressions
 - **Pacing Index**: Actual delivery rate vs. expected delivery rate
+
+## Usage Notes
+
+- If date range is not specified, returns lifetime delivery data
+- Daily breakdown may be truncated for long campaigns
+- Some metrics (clicks, completions) may not be available for all formats
+- Reporting data typically has a 2-4 hour delay
+- Currency is always specified to avoid ambiguity
+
+## Implementation Guide
+
+### Generating Performance Messages
+
+The `message` field should provide actionable insights:
+
+```python
+def generate_delivery_message(report):
+    # Calculate key performance indicators
+    cpm = (report.totals.spend / report.totals.impressions) * 1000
+    avg_pacing = calculate_average_pacing(report.by_package)
+    
+    # Analyze performance
+    performance_level = analyze_performance(report.totals.ctr, report.totals.completion_rate)
+    pacing_status = "on track" if avg_pacing > 0.95 else f"{int((1-avg_pacing)*100)}% behind"
+    
+    # Generate insights
+    insights = []
+    if performance_level == "strong":
+        insights.append(f"The {report.totals.ctr:.1%} CTR exceeds industry benchmarks")
+        if report.totals.completion_rate:
+            insights.append(f"your video completion rate of {report.totals.completion_rate:.0%} is excellent")
+    else:
+        insights.append(f"the {report.totals.ctr:.2%} CTR is below expectations")
+        if report.totals.completion_rate < 0.5:
+            insights.append("completion rate suggests creative fatigue")
+    
+    # Build message
+    return f"Your campaign delivered {report.totals.impressions:,} impressions {get_time_period(report.reporting_period)} with {performance_level} engagement. {'. '.join(insights)}. You're currently pacing {pacing_status}. Effective CPM is ${cpm:.2f}."
+```
 
 ## Platform-Specific Metrics
 

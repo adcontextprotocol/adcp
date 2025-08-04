@@ -151,3 +151,90 @@ Discover all available deployments across platforms:
 2. **Deployment Status**: Check `is_live` to determine if activation is needed
 3. **Platform IDs**: Use the `decisioning_platform_segment_id` when creating campaigns
 4. **Activation Required**: If `is_live` is false, use the `activate_signal` task
+5. **The message field** provides a quick summary of the most relevant findings
+
+### Response - Multiple Signals Found
+
+```json
+{
+  "message": "I found 3 signals matching your luxury goods criteria. The best option is 'Affluent Shoppers' with 22% coverage, already live across all requested platforms. 'High Income Households' offers broader reach (35%) but requires activation on OpenX. All signals are priced between $2-4 CPM.",
+  "context_id": "ctx-signals-abc123",
+  "signals": [
+    {
+      "signal_agent_segment_id": "acme_affluent_shoppers",
+      "name": "Affluent Shoppers",
+      "description": "Users with demonstrated luxury purchase behavior",
+      "signal_type": "marketplace",
+      "data_provider": "Acme Data",
+      "coverage_percentage": 22,
+      "deployments": [
+        {
+          "platform": "index-exchange",
+          "account": "agency-123-ix",
+          "is_live": true,
+          "scope": "account-specific",
+          "decisioning_platform_segment_id": "ix_agency123_acme_aff_shop"
+        },
+        {
+          "platform": "openx",
+          "account": "agency-123-ox",
+          "is_live": true,
+          "scope": "account-specific",
+          "decisioning_platform_segment_id": "ox_agency123_affluent_789"
+        }
+      ],
+      "pricing": {
+        "cpm": 3.50,
+        "currency": "USD"
+      }
+    }
+    // ... more signals
+  ]
+}
+```
+
+### Response - No Signals Found
+
+```json
+{
+  "message": "I couldn't find any signals matching 'underwater basket weavers' in the requested platforms. This appears to be a very niche audience. Consider broadening your criteria to 'craft enthusiasts' or 'hobby communities' for better results. Alternatively, we could create a custom signal for this specific audience.",
+  "context_id": "ctx-signals-abc123",
+  "signals": []
+}
+```
+
+## Implementation Guide
+
+### Generating Signal Messages
+
+The `message` field should provide actionable insights:
+
+```python
+def generate_signals_message(signals, request):
+    if not signals:
+        return generate_no_signals_message(request.signal_spec)
+    
+    # Analyze deployment readiness
+    ready_count = sum(1 for s in signals if all_platforms_live(s, request.deliver_to))
+    best_signal = find_best_signal(signals)
+    
+    if len(signals) == 1:
+        signal = signals[0]
+        deployment_status = get_deployment_summary(signal, request.deliver_to)
+        price_commentary = f"The CPM is ${signal.pricing.cpm}, which {'is well within' if signal.pricing.cpm <= request.filters.max_cpm else 'exceeds'} your budget."
+        return f"I found a perfect match: '{signal.name}' from {signal.data_provider} with {signal.coverage_percentage}% coverage. {deployment_status} {price_commentary}"
+    else:
+        return f"I found {len(signals)} signals matching your {extract_key_criteria(request.signal_spec)} criteria. {describe_best_option(best_signal)} {get_pricing_range(signals)}."
+
+def get_deployment_summary(signal, deliver_to):
+    live_platforms = [d.platform for d in signal.deployments if d.is_live]
+    needs_activation = [d for d in signal.deployments if not d.is_live and d.platform in deliver_to.platforms]
+    
+    if len(live_platforms) == len(deliver_to.platforms):
+        return "It's already live on all requested platforms, ready to use immediately."
+    elif live_platforms:
+        activation_time = max(d.estimated_activation_duration_minutes for d in needs_activation)
+        return f"It's live on {', '.join(live_platforms)}. Activation on {needs_activation[0].platform} would take about {activation_time} minutes."
+    else:
+        return "It requires activation on all platforms, which typically takes 1-2 hours."
+```

@@ -33,6 +33,7 @@ Upload creative assets and assign them to packages. This task includes validatio
 
 ```json
 {
+  "message": "string",
   "context_id": "string",
   "asset_statuses": [
     {
@@ -58,6 +59,7 @@ Upload creative assets and assign them to packages. This task includes validatio
 
 ### Field Descriptions
 
+- **message**: Human-readable summary of the creative upload results
 - **context_id**: Context identifier for session persistence
 - **asset_statuses**: Array of status information for each uploaded asset
   - **creative_id**: The creative ID from the request
@@ -163,10 +165,11 @@ Upload creative assets and assign them to packages. This task includes validatio
 }
 ```
 
-### Response
+### Response - All Approved
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // Server maintains context
+  "message": "Great news! Both creatives have been approved and are now live. Your video is serving on Connected TV and your audio spot is running during drive time. I've identified an opportunity to improve mobile performance by creating a vertical version of your video - this could increase conversions by 35%.",
+  "context_id": "ctx-media-buy-abc123",
   "asset_statuses": [
     {
       "creative_id": "pet_food_30s_v1",
@@ -188,6 +191,54 @@ Upload creative assets and assign them to packages. This task includes validatio
           "estimated_performance_lift": 35.0
         }
       ]
+    },
+    {
+      "creative_id": "pet_food_audio_15s",
+      "status": "approved",
+      "platform_id": "gam_creative_987655",
+      "review_feedback": null,
+      "suggested_adaptations": []
+    }
+  ]
+}
+```
+
+### Response - Pending Review
+```json
+{
+  "message": "Your creatives have been uploaded successfully and are in review. The video creative typically takes 2-4 hours for approval, while audio creatives are usually approved within 1 hour. I'll notify you once they're live.",
+  "context_id": "ctx-media-buy-abc123",
+  "asset_statuses": [
+    {
+      "creative_id": "pet_food_30s_v1",
+      "status": "pending_review",
+      "platform_id": "gam_creative_987654",
+      "review_feedback": null,
+      "suggested_adaptations": []
+    },
+    {
+      "creative_id": "pet_food_audio_15s",
+      "status": "pending_review",
+      "platform_id": "gam_creative_987655",
+      "review_feedback": null,
+      "suggested_adaptations": []
+    }
+  ]
+}
+```
+
+### Response - Mixed Status with Rejection
+```json
+{
+  "message": "I've processed your creatives with mixed results. The audio spot was approved and is now live. However, the video was rejected due to missing advertiser disclosure. Please add 'Advertisement' text in the first 3 seconds and resubmit. This is a common requirement that ensures transparency.",
+  "context_id": "ctx-media-buy-abc123",
+  "asset_statuses": [
+    {
+      "creative_id": "pet_food_30s_v1",
+      "status": "rejected",
+      "platform_id": "gam_creative_987654",
+      "review_feedback": "Missing required advertiser disclosure. Please add 'Advertisement' text in the first 3 seconds of the video.",
+      "suggested_adaptations": []
     },
     {
       "creative_id": "pet_food_audio_15s",
