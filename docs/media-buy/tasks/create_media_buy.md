@@ -13,6 +13,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 |-----------|------|----------|-------------|
 | `context_id` | string | No | Context identifier for session persistence |
 | `packages` | string[] | Yes | Array of package IDs to include in the media buy |
+| `promoted_offering` | string | Yes | Description of advertiser and what is being promoted |
 | `po_number` | string | Yes | Purchase order number for tracking |
 | `total_budget` | number | Yes | Total budget in USD |
 | `targeting_overlay` | object | No | Additional targeting criteria to apply across all packages |
@@ -55,6 +56,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 {
   "context_id": "ctx-media-buy-abc123",  // From product discovery
   "packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"],
+  "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs, promoting the new salmon and rice formula for sensitive skin and stomachs",
   "po_number": "PO-2024-Q1-0123",
   "total_budget": 50000,
   "targeting_overlay": {
@@ -124,6 +126,7 @@ Orchestrators MUST handle pending states as normal operation flow. Publishers ma
 # 1. Create media buy
 response = await mcp.call_tool("create_media_buy", {
     "packages": ["premium_sports", "drive_time_audio"],
+    "promoted_offering": "ESPN+ streaming service - exclusive UFC fights and soccer leagues, promoting annual subscription",
     "po_number": "PO-2024-001",
     "total_budget": 50000,
     "targeting_overlay": {
@@ -164,8 +167,30 @@ How media buy creation maps to different platforms:
 ## Usage Notes
 
 - A media buy represents a complete advertising campaign with one or more packages
+- The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted
+- Publishers will validate the promoted offering against their policies before creating the media buy
 - Targeting overlay applies additional criteria on top of package-level targeting
 - The total budget is distributed across packages based on their individual settings
 - Creative assets must be uploaded before the deadline for the campaign to activate
 - Pending states are normal operational states, not errors
 - Orchestrators MUST NOT treat pending states as errors - they are part of normal workflow
+
+## Policy Compliance
+
+The `promoted_offering` is validated during media buy creation. If a policy violation is detected, the API will return an error:
+
+```json
+{
+  "error": {
+    "code": "POLICY_VIOLATION",
+    "message": "Offering category not permitted on this publisher",
+    "field": "promoted_offering",
+    "suggestion": "Contact publisher for category approval process"
+  }
+}
+```
+
+Publishers should ensure that:
+- The promoted offering aligns with the selected packages
+- Any uploaded creatives match the declared offering
+- The campaign complies with all applicable advertising policies

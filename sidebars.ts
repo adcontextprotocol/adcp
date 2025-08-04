@@ -89,6 +89,7 @@ const sidebars: SidebarsConfig = {
             'media-buy/media-buy-lifecycle',
             'media-buy/targeting',
             'media-buy/targeting-dimensions',
+            'media-buy/policy-compliance',
             'media-buy/reporting-and-optimization',
             'media-buy/principals-and-security',
           ],

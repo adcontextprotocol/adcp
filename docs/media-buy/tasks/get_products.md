@@ -13,6 +13,7 @@ Discover available advertising products based on campaign requirements, using na
 |-----------|------|----------|-------------|
 | `context_id` | string | No | Context identifier for session persistence |
 | `brief` | string | No | Natural language description of campaign requirements |
+| `promoted_offering` | string | Yes | Description of advertiser and what is being promoted |
 | `filters` | object | No | Structured filters for product discovery |
 | `filters.delivery_type` | string | No | Filter by delivery type: `"guaranteed"` or `"non_guaranteed"` |
 | `filters.formats` | string[] | No | Filter by specific formats (e.g., `["video"]`) |
@@ -44,7 +45,12 @@ Discover available advertising products based on campaign requirements, using na
       "is_custom": "boolean",
       "brief_relevance": "string"
     }
-  ]
+  ],
+  "policy_compliance": {
+    "status": "string",
+    "message": "string",
+    "contact": "string"
+  }
 }
 ```
 
@@ -63,6 +69,10 @@ Discover available advertising products based on campaign requirements, using na
 - **min_spend**: Minimum budget requirement in USD
 - **is_custom**: Whether this is a custom product
 - **brief_relevance**: Explanation of why this product matches the brief (only included when brief is provided)
+- **policy_compliance**: Policy compliance information
+  - **status**: `"allowed"`, `"restricted"`, or `"blocked"`
+  - **message**: Explanation for restricted/blocked status (optional)
+  - **contact**: Contact information for manual approval (optional for restricted status)
 
 ## Example
 
@@ -70,7 +80,8 @@ Discover available advertising products based on campaign requirements, using na
 ```json
 {
   "context_id": null,  // First request, no context yet
-  "brief": "Looking for premium sports inventory"
+  "brief": "Looking for premium sports inventory",
+  "promoted_offering": "Nike Air Max 2024 - the latest innovation in cushioning technology featuring sustainable materials, targeting runners and fitness enthusiasts"
 }
 ```
 
@@ -78,6 +89,7 @@ Discover available advertising products based on campaign requirements, using na
 ```json
 {
   "context_id": null,  // First request, no context yet
+  "promoted_offering": "Peloton Digital Membership - unlimited access to live and on-demand fitness classes, promoting New Year special pricing",
   "filters": {
     "delivery_type": "guaranteed",
     "formats": ["video"],
@@ -109,16 +121,50 @@ Discover available advertising products based on campaign requirements, using na
       "is_custom": false,
       "brief_relevance": "Premium CTV inventory aligns with sports content request and prime time targeting"
     }
-  ]
+  ],
+  "policy_compliance": {
+    "status": "allowed"
+  }
+}
+```
+
+## Policy Compliance Responses
+
+When the promoted offering is subject to policy restrictions, the response will indicate the compliance status:
+
+### Blocked Advertiser Category
+```json
+{
+  "context_id": "ctx-media-buy-abc123",
+  "products": [],
+  "policy_compliance": {
+    "status": "blocked",
+    "message": "Publisher policy prohibits alcohol advertising without age verification capabilities. This publisher does not currently support age-gated inventory."
+  }
+}
+```
+
+### Restricted Category (Manual Approval Required)
+```json
+{
+  "context_id": "ctx-media-buy-abc123",
+  "products": [],
+  "policy_compliance": {
+    "status": "restricted",
+    "message": "Cryptocurrency advertising is restricted but may be approved on a case-by-case basis.",
+    "contact": "sales@publisher.com"
+  }
 }
 ```
 
 ## Usage Notes
 
+- The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted
 - Format filtering ensures advertisers only see inventory that matches their creative capabilities
 - If no brief is provided, returns all available products for the principal
 - The `brief_relevance` field is only included when a brief parameter is provided
 - Products represent available advertising inventory with specific targeting, format, and pricing characteristics
+- Policy compliance checks may filter out products based on the promoted offering
 
 ## Discovery Workflow
 
@@ -158,6 +204,7 @@ Use format knowledge to filter products:
 const products = await client.call_tool("get_products", {
   context_id: null,
   brief: "Reach young adults interested in gaming",
+  promoted_offering: "Discord Nitro subscription - premium features for gamers including HD video streaming and larger file uploads",
   filters: {
     format_types: ["audio"],
     standard_formats_only: true
@@ -201,9 +248,9 @@ def get_product_catalog():
     ]
 ```
 
-### Step 2: Implement Natural Language Processing
+### Step 2: Implement Policy Checking and Natural Language Processing
 
-The `get_products` tool needs to interpret natural language briefs:
+The `get_products` tool needs to validate the promoted offering and interpret briefs:
 
 ```python
 @mcp.tool
@@ -214,14 +261,40 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
     # Get context
     context_id = req.context_id or _create_context()
     
-    # Get all products
-    all_products = get_product_catalog()
+    # Validate promoted offering is provided
+    if not req.promoted_offering:
+        raise ToolError("Promoted offering description is required", code="MISSING_PROMOTED_OFFERING")
     
-    # If no brief provided, return all products
+    # Run policy checks on promoted offering
+    policy_result = check_promoted_offering_policy(req.promoted_offering)
+    
+    # Handle policy violations
+    if policy_result.status == "blocked":
+        return GetProductsResponse(
+            context_id=context_id,
+            products=[],
+            policy_compliance={"status": "blocked", "message": policy_result.message}
+        )
+    elif policy_result.status == "restricted":
+        return GetProductsResponse(
+            context_id=context_id,
+            products=[],
+            policy_compliance={
+                "status": "restricted",
+                "message": policy_result.message,
+                "contact": policy_result.contact
+            }
+        )
+    
+    # Get products filtered by policy
+    all_products = get_products_for_category(policy_result.category)
+    
+    # If no brief provided, return all policy-approved products
     if not req.brief:
         return GetProductsResponse(
             context_id=context_id,
-            products=all_products
+            products=all_products,
+            policy_compliance={"status": "allowed"}
         )
     
     # Use AI to filter products based on brief
@@ -229,7 +302,8 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
     
     return GetProductsResponse(
         context_id=context_id,
-        products=relevant_products
+        products=relevant_products,
+        policy_compliance={"status": "allowed"}
     )
 ```
 
@@ -294,6 +368,33 @@ def get_products_for_principal(principal_id: str) -> List[Product]:
     return filter_by_principal_access(products, principal_id)
 ```
 
+## Policy Checking
+
+Implement policy checks for the promoted offering:
+
+```python
+def check_promoted_offering_policy(promoted_offering: str) -> PolicyResult:
+    # Extract advertiser and category from promoted_offering
+    advertiser, category = extract_advertiser_info(promoted_offering)
+    
+    # Check against blocked categories
+    if category in BLOCKED_CATEGORIES:
+        return PolicyResult(
+            status="blocked",
+            message=f"{category} advertising is not permitted on this publisher"
+        )
+    
+    # Check against restricted categories
+    if category in RESTRICTED_CATEGORIES:
+        return PolicyResult(
+            status="restricted",
+            message=f"{category} advertising requires manual approval",
+            contact="sales@publisher.com"
+        )
+    
+    return PolicyResult(status="allowed", category=category)
+```
+
 ## Error Handling
 
 Common error scenarios and handling:
@@ -306,22 +407,26 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
     except:
         raise ToolError("Authentication required", code="AUTH_REQUIRED")
     
+    if not req.promoted_offering:
+        raise ToolError("Promoted offering description is required", code="MISSING_PROMOTED_OFFERING")
+    
     if req.brief and len(req.brief) > 1000:
         raise ToolError("Brief too long", code="INVALID_REQUEST")
     
-    products = filter_products_by_brief(req.brief, get_product_catalog())
-    
-    if not products:
-        # Don't error - return empty list and let client decide
+    # Policy violations are handled in the response, not as errors
+    policy_result = check_promoted_offering_policy(req.promoted_offering)
+    if policy_result.status != "allowed":
         return GetProductsResponse(
             context_id=context_id,
-            products=[]
+            products=[],
+            policy_compliance={
+                "status": policy_result.status,
+                "message": policy_result.message,
+                "contact": policy_result.contact
+            }
         )
     
-    return GetProductsResponse(
-        context_id=context_id,
-        products=products
-    )
+    # Continue with normal processing...
 ```
 
 ## Testing Discovery
