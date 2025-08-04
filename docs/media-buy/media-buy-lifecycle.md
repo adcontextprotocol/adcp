@@ -36,8 +36,7 @@ Once created, the media buy requires creative assets via [`add_creative_assets`]
 After creatives are uploaded and approved:
 
 - Campaign transitions from `pending_activation` to `active`
-- Use [`check_media_buy_status`](./tasks/check_media_buy_status) to monitor status
-- Track delivery progress and pacing
+- Track delivery progress and performance metrics with [`get_media_buy_delivery`](./tasks/get_media_buy_delivery)
 
 ### 4. Optimization Phase
 

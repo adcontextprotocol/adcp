@@ -58,7 +58,6 @@ const sidebars: SidebarsConfig = {
             'media-buy/tasks/list_creative_formats',
             'media-buy/tasks/create_media_buy',
             'media-buy/tasks/add_creative_assets',
-            'media-buy/tasks/check_media_buy_status',
             'media-buy/tasks/get_media_buy_delivery',
             'media-buy/tasks/update_media_buy',
           ],
