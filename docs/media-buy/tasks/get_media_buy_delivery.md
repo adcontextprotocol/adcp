@@ -23,6 +23,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
   "message": "string",
   "context_id": "string",
   "media_buy_id": "string",
+  "status": "string",
   "reporting_period": {
     "start": "string",
     "end": "string"
@@ -61,6 +62,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 - **message**: Human-readable summary of campaign performance and key insights
 - **context_id**: Context identifier for session persistence
 - **media_buy_id**: The media buy ID from the request
+- **status**: Current media buy status (`pending_activation`, `active`, `paused`, `completed`, `failed`)
 - **reporting_period**: Date range for the report
   - **start**: ISO 8601 start timestamp
   - **end**: ISO 8601 end timestamp
@@ -102,6 +104,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
   "message": "Your campaign delivered 450,000 impressions this week with strong engagement. The 0.2% CTR exceeds industry benchmarks, and your video completion rate of 70% is excellent. You're currently pacing slightly behind (-9%) but should catch up with weekend delivery. Effective CPM is $37.50.",
   "context_id": "ctx-media-buy-abc123",
   "media_buy_id": "gam_1234567890",
+  "status": "active",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
     "end": "2024-02-07T23:59:59Z"

@@ -254,51 +254,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 - Content policies
 - Technical specifications
 
-### 4. check_media_buy_status
-
-**Task**: Monitor the current status and delivery progress of a media buy.
-
-**Request:**
-```json
-{
-  "media_buy_id": "gam_1234567890"
-}
-```
-
-**Response:**
-```json
-{
-  "message": "string",
-  "media_buy_id": "gam_1234567890",
-  "status": "active",
-  "last_updated": "2024-02-01T08:00:00Z",
-  "package_statuses": [
-    {
-      "package_id": "pkg_ctv_prime_ca_ny",
-      "status": "delivering",
-      "pacing": "on_track",
-      "delivery_percentage": 12.5
-    },
-    {
-      "package_id": "pkg_audio_drive_ca_ny",
-      "status": "delivering",
-      "pacing": "slightly_behind",
-      "delivery_percentage": 10.2
-    }
-  ]
-}
-```
-
-**Status Values:**
-- `pending_activation`: Awaiting creatives or approval
-- `pending_approval`: Under platform review
-- `scheduled`: Approved, waiting for start date
-- `active`: Currently eligible to deliver
-- `paused`: Temporarily stopped
-- `completed`: Finished delivery
-- `failed`: Critical error
-
-### 5. get_media_buy_delivery
+### 4. get_media_buy_delivery
 
 **Task**: Retrieve comprehensive delivery metrics and performance data for reporting.
 
@@ -316,6 +272,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 {
   "message": "string",
   "media_buy_id": "gam_1234567890",
+  "status": "active",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
     "end": "2024-02-07T23:59:59Z"
@@ -356,7 +313,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 }
 ```
 
-### 6. update_media_buy
+### 5. update_media_buy
 
 **Task**: Update campaign and package settings. This task supports partial updates and handles any required approvals.
 
@@ -404,7 +361,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 - Omitted packages remain unchanged
 - Null values clear/reset fields (where applicable)
 
-### 7. update_package
+### 6. update_package
 
 Focused tool for package-only updates.
 
@@ -430,7 +387,7 @@ Focused tool for package-only updates.
 
 **Design Note**: Adding new packages post-creation not yet supported. Under consideration for future version.
 
-### 8. update_performance_index
+### 7. update_performance_index
 
 Provides performance feedback for AI optimization.
 
@@ -475,7 +432,7 @@ Provides performance feedback for AI optimization.
 }
 ```
 
-### 9. get_all_media_buy_delivery
+### 8. get_all_media_buy_delivery
 
 Retrieves delivery metrics for all active media buys owned by the principal. This is optimized for performance by batching requests.
 
@@ -518,7 +475,7 @@ Retrieves delivery metrics for all active media buys owned by the principal. Thi
 }
 ```
 
-### 10. get_creatives
+### 9. get_creatives
 
 Lists creative assets for a principal or media buy.
 
@@ -553,7 +510,7 @@ Lists creative assets for a principal or media buy.
 }
 ```
 
-### 11. approve_adaptation
+### 10. approve_adaptation
 
 Approves or rejects a suggested creative adaptation.
 
@@ -587,7 +544,7 @@ Approves or rejects a suggested creative adaptation.
 }
 ```
 
-### 12. review_pending_creatives (Admin Only)
+### 11. review_pending_creatives (Admin Only)
 
 Reviews and approves/rejects pending creatives.
 
@@ -611,7 +568,7 @@ Reviews and approves/rejects pending creatives.
 }
 ```
 
-### 13. list_human_tasks (Admin Only)
+### 12. list_human_tasks (Admin Only)
 
 Lists pending human approval tasks.
 
@@ -645,7 +602,7 @@ Lists pending human approval tasks.
 }
 ```
 
-### 14. complete_human_task (Admin Only)
+### 13. complete_human_task (Admin Only)
 
 Completes a human approval task.
 
@@ -673,7 +630,7 @@ Completes a human approval task.
 }
 ```
 
-### 15. list_all_media_buys (Admin Only)
+### 14. list_all_media_buys (Admin Only)
 
 Retrieves delivery data for all active media buys across all principals.
 
@@ -687,7 +644,7 @@ Retrieves delivery data for all active media buys across all principals.
 
 **Response:** Same format as get_media_buy_delivery but includes all media buys.
 
-### 16. get_products
+### 15. get_products
 
 **Task**: Discover available advertising products based on campaign requirements, using natural language briefs or structured filters.
 
@@ -791,7 +748,7 @@ Policy compliance statuses:
 - `restricted`: Advertiser category requires manual approval before products can be shown (contact provided)
 - `blocked`: Advertiser category cannot be supported by this publisher
 
-### 17. get_targeting_capabilities
+### 16. get_targeting_capabilities
 
 Discover available targeting dimensions for specified channels.
 
@@ -843,7 +800,7 @@ Discover available targeting dimensions for specified channels.
 }
 ```
 
-### 18. check_aee_requirements
+### 17. check_aee_requirements
 
 Verify if required AEE dimensions are supported for a channel.
 
@@ -873,7 +830,7 @@ Verify if required AEE dimensions are supported for a channel.
 
 Use this before creating a media buy to ensure the publisher can provide required AEE signals.
 
-### 19. get_signals (Optional)
+### 18. get_signals (Optional)
 
 Publishers may optionally implement the `get_signals` endpoint from the [Signals Discovery Protocol](../signals/specification.md#get_signals) to advertise available signals for targeting.
 
