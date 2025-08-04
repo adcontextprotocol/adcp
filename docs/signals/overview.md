@@ -41,16 +41,15 @@ Discover signals across multiple platforms in a single request:
 - **Devices**: Cookies and device IDs (largest reach)
 - **Households**: Unique households (B2B and family targeting)
 
-## The Four Essential Tools
+## Core Tasks
 
-### 1. get_signals
-Discover signals based on your campaign needs across one or many platforms.
+The Signals Activation Protocol supports two primary tasks:
 
-### 2. activate_signal  
-Turn on signals for specific platforms and accounts.
+### 1. [get_signals](./tasks/get_signals)
+**Task**: Discover signals based on your campaign needs across one or many platforms.
 
-### 3. check_signal_status
-Monitor activation progress and deployment status.
+### 2. [activate_signal](./tasks/activate_signal)  
+**Task**: Activate signals for specific platforms and accounts. This task handles the complete activation lifecycle including progress monitoring and status updates.
 
 
 ## Use Cases

@@ -216,6 +216,49 @@ Environment variable (`AdCP_DRY_RUN=true`) shows platform API calls without exec
 ### 🔵 Industry Question
 What additional information would be valuable in dry run mode?
 
+## 11. Multi-Protocol Compatibility and Task Concept
+
+### Current Design
+AdCP uses a task-based architecture that maps to different protocol implementations:
+- **MCP (Model Context Protocol)**: Tasks map to MCP tools for AI-to-application communication
+- **A2A (Agent2Agent)**: Tasks support asynchronous operations with SSE and Human-in-the-Loop
+- **Protocol Abstraction**: Task definitions remain consistent across protocols
+
+### Task Architecture
+Each task represents a discrete operation with:
+- **Unified Interface**: Same parameters and responses across protocols
+- **Protocol-Specific Features**: Enhanced capabilities per protocol (e.g., SSE in A2A)
+- **Context Persistence**: `context_id` maintains state across interactions
+
+```json
+// Task request (protocol-agnostic)
+{
+  "context_id": null,  // First request
+  "parameters": {...}
+}
+
+// Task response (includes context for persistence)
+{
+  "context_id": "ctx-abc-123",  // Server-created context
+  "result": {...}
+}
+```
+
+### Rationale
+- **Flexibility**: Support multiple integration patterns
+- **Consistency**: Unified experience across protocols
+- **Evolution**: New protocols can be added without changing task definitions
+- **AI-Native**: Optimized for LLM tool calling patterns
+
+### Protocol Mapping
+- **Synchronous Operations**: Direct MCP tool calls
+- **Asynchronous Operations**: A2A with task_id polling/SSE
+- **Human Approval**: A2A HITL workflows
+- **Batch Operations**: Future protocol extensions
+
+### 🔵 Industry Question
+Are there other protocols we should support? How can we make task definitions more extensible?
+
 ## Future Considerations
 
 ### Potential Future Features

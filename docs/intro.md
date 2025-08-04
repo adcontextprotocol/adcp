@@ -9,11 +9,17 @@ Welcome to the Ad Context Protocol (AdCP) documentation. AdCP enables AI assista
 
 ## What is Ad Context Protocol?
 
-Ad Context Protocol is an open standard based on the Model Context Protocol (MCP) that allows:
+Ad Context Protocol is an open standard that enables AI-powered advertising workflows through:
 
 - **Natural Language Interaction**: Describe what you want in plain English
 - **Platform Agnostic**: Works with any compatible advertising platform
-- **AI-Powered**: Designed for integration with AI assistants like Claude, GPT, and others
+- **Multi-Protocol Support**: Access AdCP through MCP, A2A, or future protocols
+- **AI-Powered**: Designed for integration with AI assistants and agents
+
+AdCP uses a task-first architecture where core advertising tasks (like creating media buys or discovering signals) can be accessed through multiple protocols:
+- **MCP (Model Context Protocol)**: For direct AI assistant integration
+- **A2A (Agent2Agent Protocol)**: For complex workflows and agent collaboration
+- **REST API**: Coming soon for traditional integrations
 
 ## Protocol Architecture
 
@@ -148,9 +154,20 @@ If you want to use AdCP with your AI assistant:
 2. Configure your AI assistant with AdCP-enabled platforms
 3. Start using natural language for your campaigns
 
+## Protocol Flexibility
+
+AdCP's task-first architecture means you can access the same functionality through different protocols:
+
+- **Using MCP**: Ideal for Claude and other AI assistants with direct tool integration
+- **Using A2A**: Perfect for complex workflows with approvals and multi-agent collaboration
+- **Protocol Agnostic**: Implementers write tasks once, support all protocols automatically
+
+Learn more in the [Protocols section](./protocols/overview).
+
 ## Next Steps
 
 - **Platform Providers**: Start with the [Signals Protocol Specification](./signals/specification)
+- **Developers**: Review the [Protocol Support](./protocols/overview) options
 - **Everyone**: Join the [community discussion](https://github.com/adcontextprotocol/adcp/discussions)
 
 ## Need Help?

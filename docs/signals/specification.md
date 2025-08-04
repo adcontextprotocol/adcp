@@ -170,151 +170,18 @@ This is relative to each signal agent's capabilities - a 50% coverage signal fro
 - **Both**: Some signals offer choice between models
 - **Included**: No additional cost (e.g., with media buys)
 
-## Protocol Specification
+## Tasks
 
-### get_signals
+The Signals Activation Protocol defines the following tasks that agents can perform:
 
-Discovers relevant signals based on a marketing specification across multiple platforms.
+### [get_signals](./tasks/get_signals)
 
-#### Request
+Discover relevant signals based on a marketing specification across multiple platforms. This task enables natural language search for audiences, contextual signals, and other targeting data.
 
-**Request Example**:
-```json
-{
-  "signal_spec": "Premium automotive intenders in major urban markets",
-  "deliver_to": {
-    "platforms": [
-      {
-        "platform": "index-exchange",
-        "account": "agency-123-ix"        // Optional - for account-specific segments
-      },
-      {
-        "platform": "openx"                // No account = platform-wide segments only
-      },
-      {
-        "platform": "pubmatic",
-        "account": "brand-456-pm"
-      }
-    ],
-    "countries": ["US", "CA"]
-  },
-  "filters": {
-    "catalog_types": ["marketplace"],
-    "max_cpm": 5.0,
-    "min_coverage_percentage": 10
-  },
-  "max_results": 5
-}
-```
+### [activate_signal](./tasks/activate_signal)
 
-**All Platforms Example** (discover all available deployments):
-```json
-{
-  "signal_spec": "Contextual segments for luxury automotive content",
-  "deliver_to": {
-    "platforms": "all",                   // Returns all platforms where segments are deployed
-    "countries": ["US"]
-  },
-  "filters": {
-    "data_providers": ["Peer39"],         // Optional filter by data provider
-    "catalog_types": ["marketplace"]
-  }
-}
-```
+Activate a signal for use on a specific platform/account. This task handles the entire activation lifecycle, including initiating the request, monitoring progress, and returning the final deployment status.
 
-#### Response
-```json
-{
-  "signals": [{
-    "signal_agent_segment_id": "peer39_luxury_auto",
-    "name": "Luxury Automotive Context",
-    "description": "Pages with luxury automotive content and high viewability",
-    "signal_type": "marketplace",
-    "data_provider": "Peer39",
-    "coverage_percentage": 15,
-    "deployments": [                      // Array of deployments across platforms
-      {
-        "platform": "index-exchange",
-        "account": "agency-123-ix",
-        "is_live": true,
-        "scope": "account-specific",
-        "decisioning_platform_segment_id": "ix_agency123_peer39_lux_auto"
-      },
-      {
-        "platform": "index-exchange",
-        "account": null,                  // Platform-wide version also available
-        "is_live": true,
-        "scope": "platform-wide",
-        "decisioning_platform_segment_id": "ix_peer39_luxury_auto_gen"
-      },
-      {
-        "platform": "openx",
-        "account": null,
-        "is_live": true,
-        "scope": "platform-wide",
-        "decisioning_platform_segment_id": "ox_peer39_lux_auto_456"
-      },
-      {
-        "platform": "pubmatic",
-        "account": "brand-456-pm",
-        "is_live": false,
-        "scope": "account-specific",
-        "estimated_activation_duration_minutes": 60
-      }
-    ],
-    "pricing": {
-      "cpm": 2.50,
-      "currency": "USD"
-    }
-  }]
-}
-```
-
-### activate_signal
-
-Activates a signal for use on a specific platform/account.
-
-#### Request
-
-```json
-{
-  "signal_agent_segment_id": "peer39_luxury_auto",
-  "platform": "pubmatic",                   
-  "account": "brand-456-pm"                 // Required for account-specific activation
-}
-```
-
-#### Response
-
-```json
-{
-  "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
-  "estimated_activation_duration_minutes": 60
-}
-```
-
-### check_signal_status
-
-Checks the deployment status of a signal on a decisioning platform.
-
-#### Request
-
-```json
-{
-  "signal_agent_segment_id": "peer39_luxury_auto",
-  "decisioning_platform": "index-exchange",
-  "account": "agency-123-ix"                // Optional - only for account-specific segments
-}
-```
-
-#### Response
-
-```json
-{
-  "status": "deployed",
-  "deployed_at": "2025-01-15T14:30:00Z"
-}
-```
 
 
 ## Typical Flow
@@ -329,11 +196,9 @@ Checks the deployment status of a signal on a decisioning platform.
 
 4. **Activate**: For any platforms where signals aren't live, call `activate_signal`
 
-5. **Monitor**: Use `check_signal_status` to track activation progress
+5. **Launch**: Run campaigns across multiple SSPs using the platform-specific segment IDs
 
-6. **Launch**: Run campaigns across multiple SSPs using the platform-specific segment IDs
-
-7. **Report**: Report usage separately for each platform where the signal was used
+6. **Report**: Report usage separately for each platform where the signal was used
 
 ### Marketplace Signal Agent Flow
 
@@ -343,11 +208,9 @@ Checks the deployment status of a signal on a decisioning platform.
 
 3. **Commit**: Principal decides to proceed with specific signals for their media execution
 
-4. **Activate**: For account-specific segments that aren't live, call `activate_audience` to deploy from audience agent to decisioning platform
+4. **Activate**: For account-specific segments that aren't live, call `activate_signal` to deploy from signal agent to decisioning platform (the task handles monitoring progress automatically)
 
-5. **Monitor**: Use `check_signal_status` to track activation progress between agents
-
-6. **Launch**: Once deployed, launch the media execution (campaigns, PMPs, direct buys, etc.) on the decisioning platform using the activated signals
+5. **Launch**: Once deployed, launch the media execution (campaigns, PMPs, direct buys, etc.) on the decisioning platform using the activated signals
 
 
 ### Private Signal Agent Flow
@@ -358,11 +221,9 @@ Checks the deployment status of a signal on a decisioning platform.
 
 3. **Commit**: Principal decides to proceed with owned signals for their media execution
 
-4. **Activate**: If not live, call `activate_audience` for workflow orchestration from owned agent to decisioning platform
+4. **Activate**: If not live, call `activate_signal` for workflow orchestration from owned agent to decisioning platform (the task handles monitoring progress automatically)
 
-5. **Monitor**: Use `check_signal_status` to track activation progress
-
-6. **Launch**: Once deployed, launch the media execution using owned signals
+5. **Launch**: Once deployed, launch the media execution using owned signals
 
 
 ## Error Codes

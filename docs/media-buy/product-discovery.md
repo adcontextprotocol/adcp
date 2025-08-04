@@ -4,369 +4,68 @@ title: Product Discovery
 
 # Product Discovery
 
-Product discovery is the foundation of the Media Buy Protocol, enabling AI agents to find relevant advertising inventory using natural language. This document explains the discovery lifecycle and how to implement the discovery tools.
+Product discovery is the foundation of the Media Buy Protocol, enabling AI agents to find relevant advertising inventory using natural language. This page provides a conceptual overview of how product discovery works in AdCP.
 
-## The Discovery Tool: `get_products`
+## Overview
 
-AdCP provides a single discovery tool that uses natural language to find relevant advertising inventory.
+Product discovery in AdCP follows a natural language-first approach, allowing buyers to describe their campaign goals in plain English rather than navigating complex product catalogs. The system uses AI to match these briefs against available inventory.
 
-### How it Works
+## Key Concepts
 
-The `get_products` tool accepts a natural language brief and optional format filters to return matching products from the catalog. If no brief is provided, it returns all available products for the authenticated principal.
+### Natural Language Briefs
 
-**Request Options:**
+Instead of requiring buyers to know specific product codes or navigate hierarchical catalogs, AdCP accepts natural language descriptions:
 
-**Basic Discovery:**
-```json
-{
-  "brief": "I want to reach pet owners in California with video ads during prime time",
-  "promoted_offering": "PetSmart's Spring Sale Event - 20% off all dog and cat food brands, plus free grooming consultation with purchase"
-}
-```
+- "I want to reach pet owners in California with video ads during prime time"
+- "Looking for premium sports inventory"
+- "Low budget display campaign for millennials"
 
-**With Format Filtering (Proposed):**
-```json
-{
-  "brief": "I want to reach sports fans with audio ads",
-  "promoted_offering": "ESPN+ streaming service - exclusive UFC fights and premium soccer leagues, promoting annual subscription discount",
-  "format_types": ["audio"],           // Filter by format type
-  "format_ids": ["audio_standard_30s"], // Filter by specific formats
-  "standard_formats_only": true         // Only return IAB standard formats
-}
-```
+### Format-Aware Discovery
 
-**Response:**
-```json
-{
-  "products": [
-    {
-      "product_id": "connected_tv_prime",
-      "name": "Connected TV - Prime Time",
-      "description": "Premium CTV inventory 8PM-11PM PST",
-      "formats": [{
-        "format_id": "video_standard",
-        "name": "Standard Video"
-      }],
-      "delivery_type": "guaranteed",
-      "is_fixed_price": true,
-      "cpm": 45.00,
-      "is_custom": false
-    }
-  ]
-}
-```
+Products are matched not just by audience and targeting, but also by creative format compatibility. This ensures advertisers only see inventory that matches their available creative assets.
 
-### Key Features
+### Principal-Specific Catalogs
 
-1. **Natural Language Understanding**: Interprets campaign objectives from plain English
-2. **Smart Matching**: Uses AI to match briefs against available inventory
-3. **Principal-Specific**: Returns products available to the authenticated principal
-4. **Custom Products**: Can generate custom products for unique requirements
-5. **Policy Compliance**: Validates promoted offerings against publisher policies
+Each principal (advertiser or agency) may have access to different products based on:
+- Negotiated deals and rates
+- Private marketplace access
+- Custom products created for their needs
+- Account-level permissions
 
-## Implementation Guide
+### Custom Product Generation
 
-### Step 1: Implement Product Catalog
+For unique requirements that don't match existing inventory, the system can generate custom products with specific targeting, formats, and pricing tailored to the brief.
 
-First, create a product catalog that represents your available inventory:
+## Discovery Tasks
 
-```python
-def get_product_catalog():
-    return [
-        Product(
-            product_id="connected_tv_prime",
-            name="Connected TV - Prime Time",
-            description="Premium CTV inventory 8PM-11PM",
-            formats=[Format(format_id="video_standard", name="Standard Video")],
-            delivery_type="guaranteed",
-            is_fixed_price=True,
-            cpm=45.00
-        ),
-        # Add more products...
-    ]
-```
+AdCP provides two main tasks for product discovery:
 
-### Step 2: Implement Natural Language Processing
+### [`list_creative_formats`](./tasks/list_creative_formats)
 
-The `get_products` tool needs to interpret natural language briefs:
+Discover all supported creative formats in the system. This helps advertisers understand what types of creatives they need before searching for products.
 
-```python
-@mcp.tool
-def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
-    # Authenticate principal
-    principal_id = _get_principal_id_from_context(context)
-    
-    # Validate promoted offering description is provided
-    if not req.promoted_offering:
-        raise ToolError("Promoted offering description is required", code="MISSING_PROMOTED_OFFERING")
-    
-    # Run policy checks on promoted offering
-    policy_result = check_promoted_offering_policy(req.promoted_offering)
-    if not policy_result.approved:
-        raise ToolError(policy_result.message, code="POLICY_VIOLATION")
-    
-    # Get products filtered by policy
-    all_products = get_products_for_category(policy_result.category)
-    
-    # If no brief provided, return all policy-approved products
-    if not req.brief:
-        return ListProductsResponse(products=all_products)
-    
-    # Use AI to filter products based on brief
-    relevant_products = filter_products_by_brief(req.brief, all_products)
-    
-    return ListProductsResponse(products=relevant_products)
-```
+### [`get_products`](./tasks/get_products)
 
-### Step 3: AI-Powered Filtering
+The main discovery task that accepts natural language briefs and returns matching products. See the task documentation for detailed implementation guidance and examples.
 
-Implement the AI logic to match briefs to products:
+## Discovery Flow
 
-```python
-def filter_products_by_brief(brief: str, products: List[Product]) -> List[Product]:
-    # Example implementation using an LLM
-    prompt = f"""
-    Campaign Brief: {brief}
-    
-    Available Products:
-    {json.dumps([p.dict() for p in products], indent=2)}
-    
-    Return the product IDs that best match this brief.
-    Consider targeting capabilities, formats, and inventory type.
-    """
-    
-    # Call your LLM here
-    matched_ids = call_llm_for_matching(prompt)
-    
-    # Filter products
-    return [p for p in products if p.product_id in matched_ids]
-```
-
-## Creative Formats Discovery
-
-Before discovering products, advertisers often need to understand what creative formats are supported. This ensures they only discover inventory that matches their available creative assets.
-
-### `list_creative_formats`
-
-A tool to discover all supported creative formats in the system:
-
-**Request:**
-```json
-{
-  "type": "audio",              // Optional: filter by type
-  "standard_only": true         // Optional: only IAB standard formats
-}
-```
-
-**Response:**
-```json
-{
-  "formats": [
-    {
-      "format_id": "audio_standard_30s",
-      "name": "Standard Audio - 30 seconds",
-      "type": "audio",
-      "is_standard": true,
-      "iab_specification": "DAAST 1.0",
-      "requirements": {
-        "duration": 30,
-        "file_types": ["mp3", "m4a"],
-        "bitrate_min": 128,
-        "bitrate_max": 320
-      }
-    },
-    {
-      "format_id": "display_slider_3",
-      "name": "Image Slider - 3 Frames",
-      "type": "display",
-      "is_standard": false,
-      "assets_required": [
-        {
-          "asset_type": "slide_image",
-          "quantity": 3,
-          "requirements": {
-            "width": 728,
-            "height": 90,
-            "file_types": ["jpg", "png"],
-            "max_file_size": 200000
-          }
-        },
-        {
-          "asset_type": "cta_text",
-          "quantity": 1,
-          "requirements": {
-            "max_length": 15,
-            "type": "text"
-          }
-        }
-      ]
-    }
-  ]
-}
-```
-
-This tool should be called before product discovery to understand available formats.
-
-## Discovery Workflow
-
-The complete discovery workflow with format awareness:
-
-```mermaid
-graph TD
-    A[list_creative_formats] --> B[Identify available formats]
-    B --> C[User provides brief + format filters]
-    C --> D[get_products]
-    D --> E{Products found?}
-    E -->|Yes| F[Review products]
-    E -->|No| G[Generate custom products]
-    F --> H[Check pricing and availability]
-    G --> H
-    I --> J[create_media_buy]
-```
-
-### 1. Format Discovery
-
-Start by understanding available formats:
-
-```javascript
-// Discover audio formats for a podcast advertiser
-const formats = await client.call_tool("list_creative_formats", {
-  type: "audio",
-  standard_only: true
-});
-```
-
-### 2. Product Discovery with Format Filtering
-
-Use format knowledge to filter products:
-
-```javascript
-// Only discover products that accept standard audio formats
-const products = await client.call_tool("get_products", {
-  brief: "Reach young adults interested in gaming",
-  promoted_offering: "Xbox Game Pass Ultimate - unlimited access to 100+ games including new Halo release, promoting 3-month trial offer",
-  format_types: ["audio"],
-  standard_formats_only: true
-});
-```
-
-This prevents audio advertisers from seeing video inventory they can't use.
-
-### 2. Product Review
-
-The system returns matching products with all details needed for decision-making:
-- Product specifications
-- Pricing information  
-- Available targeting
-- Creative requirements
-
-### 3. Custom Product Generation
-
-For unique requirements, implement custom product generation:
-
-```python
-def generate_custom_product(brief: str, principal_id: str) -> Product:
-    # Analyze brief for requirements
-    requirements = analyze_brief(brief)
-    
-    # Create custom product
-    return Product(
-        product_id=f"custom_{uuid.uuid4().hex[:8]}",
-        name=f"Custom - {requirements.get('summary', 'Campaign')}",
-        description="Custom product generated for your specific needs",
-        is_custom=True,
-        expires_at=datetime.now() + timedelta(days=7),
-        # ... other fields based on requirements
-    )
-```
+1. **Format Discovery**: Optionally start by understanding available creative formats
+2. **Product Search**: Use natural language or filters to find relevant products
+3. **Product Review**: Evaluate pricing, targeting, and requirements
+4. **Selection**: Choose products that best match campaign goals
+5. **Media Buy Creation**: Proceed to create a media buy with selected products
 
 ## Best Practices
 
-### 1. Brief Interpretation
+- **Be Specific**: More detailed briefs lead to better product matches
+- **Consider Formats First**: Know your creative capabilities before searching
+- **Review Multiple Options**: The system may return several matching products
+- **Check Custom Options**: For unique needs, custom products may be available
 
-- **Extract Key Elements**: Parse briefs for targeting, budget, timing, and objectives
-- **Handle Ambiguity**: Ask for clarification or provide multiple options
-- **Learn from History**: Use past campaigns to improve matching
+## Related Documentation
 
-### 2. Product Matching
-
-- **Multi-Factor Scoring**: Consider format, targeting, budget, and timing
-- **Explain Matches**: Provide clear reasons why products were recommended
-- **Fallback Options**: Always provide alternatives if perfect matches aren't found
-
-### 3. Performance Optimization
-
-- **Cache Results**: Cache brief interpretations for similar queries
-- **Batch Processing**: Process multiple briefs efficiently
-- **Feedback Loop**: Use performance data to improve recommendations
-
-## Principal-Specific Products
-
-Implement principal-specific product visibility:
-
-```python
-def get_products_for_principal(principal_id: str) -> List[Product]:
-    # Get base catalog
-    products = get_product_catalog()
-    
-    # Add principal-specific products
-    principal_products = get_principal_specific_products(principal_id)
-    products.extend(principal_products)
-    
-    # Filter based on principal's access level
-    return filter_by_principal_access(products, principal_id)
-```
-
-## Error Handling
-
-Common error scenarios and handling:
-
-```python
-@mcp.tool
-def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
-    try:
-        principal_id = _get_principal_id_from_context(context)
-    except:
-        raise ToolError("Authentication required", code="AUTH_REQUIRED")
-    
-    if not req.brief:
-        raise ToolError("Brief is required", code="INVALID_REQUEST")
-    
-    products = filter_products_by_brief(req.brief, get_product_catalog())
-    
-    if not products:
-        # Don't error - return empty list and let client decide
-        return ListProductsResponse(products=[])
-    
-    return ListProductsResponse(products=products)
-```
-
-## Testing Discovery
-
-Test your discovery implementation thoroughly:
-
-```python
-# Test various brief styles
-test_briefs = [
-    "video ads for millennials",
-    "reach pet owners in California with CTV",
-    "low budget display campaign",
-    "premium sports inventory during playoffs"
-]
-
-for brief in test_briefs:
-    result = get_products(GetProductsRequest(brief=brief), context)
-    assert len(result.products) > 0
-    print(f"Brief: {brief} -> Found {len(result.products)} products")
-```
-
-## Integration with Media Buy Flow
-
-Discovery is just the first step. Ensure smooth transitions to the next phases:
-
-1. **Discovery** → `get_products` finds relevant inventory
-2. **Purchase** → `create_media_buy` executes the campaign
-4. **Creative** → `add_creative_assets` uploads assets
-5. **Monitor** → Track delivery and optimize
-
-By implementing discovery correctly, you enable AI agents to efficiently navigate your advertising inventory and create successful campaigns.
+- [Media Products](./media-products) - Understanding product types and attributes
+- [Creative Formats](./creative-formats) - Detailed creative specifications
+- [`get_products` Task](./tasks/get_products) - Implementation guide and API reference
+- [`create_media_buy` Task](./tasks/create_media_buy) - Next step after discovery
