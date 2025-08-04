@@ -85,6 +85,17 @@ The following diagram illustrates the complete lifecycle of a media buy in AdCP:
 
 ## Documentation Structure
 
+### Tasks
+Core operations available in the Media Buy Protocol:
+
+- **[get_products](./tasks/get_products)** - Discover available advertising products
+- **[list_creative_formats](./tasks/list_creative_formats)** - View supported creative formats
+- **[create_media_buy](./tasks/create_media_buy)** - Create a media buy from selected packages
+- **[add_creative_assets](./tasks/add_creative_assets)** - Upload and assign creative assets
+- **[check_media_buy_status](./tasks/check_media_buy_status)** - Monitor campaign status and pacing
+- **[get_media_buy_delivery](./tasks/get_media_buy_delivery)** - Retrieve performance metrics
+- **[update_media_buy](./tasks/update_media_buy)** - Update campaign settings
+
 ### Core Concepts
 Foundational elements of the Advertising Context Protocol:
 

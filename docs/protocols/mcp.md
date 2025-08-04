@@ -26,6 +26,7 @@ create_media_buy
   "parameters": {
     "type": "object",
     "properties": {
+      "context_id": { "type": "string", "nullable": true },
       "packages": { "type": "array" },
       "total_budget": { "type": "number" },
       "targeting_overlay": { "type": "object" }
@@ -44,12 +45,14 @@ Quick tasks return immediately:
 {
   "tool": "get_products",
   "arguments": {
+    "context_id": null,  // First request, no context yet
     "brief": "Premium video inventory"
   }
 }
 
 // Response (immediate)
 {
+  "context_id": "ctx-discovery-abc123",  // Server creates context
   "products": [...]
 }
 ```
@@ -62,6 +65,7 @@ Long-running tasks return a task ID for polling:
 {
   "tool": "create_media_buy",
   "arguments": {
+    "context_id": "ctx-discovery-abc123",  // Use context from discovery
     "packages": ["pkg_123"],
     "total_budget": 50000
   }
@@ -69,6 +73,7 @@ Long-running tasks return a task ID for polling:
 
 // Response (immediate)
 {
+  "context_id": "ctx-discovery-abc123",  // Same context maintained
   "task_id": "task_456",
   "status": "pending",
   "poll_url": "/tasks/task_456"
@@ -95,15 +100,18 @@ Clients must poll or register webhooks to track task completion.
 ## Example: Media Buy Workflow
 
 ```javascript
-// 1. Discover products
-const products = await mcp.call('get_products', {
+// 1. Discover products (no context)
+const discovery = await mcp.call('get_products', {
+  context_id: null,  // First call, no context
   brief: "Sports inventory for Nike",
   filters: { formats: ["video"] }
 });
+// Response includes: context_id: "ctx-campaign-123"
 
-// 2. Create media buy (async)
+// 2. Create media buy (with context)
 const result = await mcp.call('create_media_buy', {
-  packages: products.slice(0, 3).map(p => p.product_id),
+  context_id: discovery.context_id,  // Use context from discovery
+  packages: discovery.products.slice(0, 3).map(p => p.product_id),
   total_budget: 100000
 });
 
@@ -117,8 +125,9 @@ if (result.task_id) {
   } while (status.state === 'pending');
 }
 
-// 4. Add creatives
+// 4. Add creatives (same context)
 await mcp.call('add_creative_assets', {
+  context_id: discovery.context_id,  // Continue in same context
   media_buy_id: result.media_buy_id,
   assets: [...]
 });
@@ -159,7 +168,7 @@ x-adcp-auth: Bearer <token>
 ## Limitations
 
 - No built-in streaming for status updates
-- Manual context management between calls
+- Context management via `context_id` parameter
 - Polling required for async operations
 - Custom implementation needed for complex workflows
 

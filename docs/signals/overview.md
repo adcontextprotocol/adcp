@@ -45,10 +45,10 @@ Discover signals across multiple platforms in a single request:
 
 The Signals Activation Protocol supports two primary tasks:
 
-### 1. get_signals
+### 1. [get_signals](./tasks/get_signals)
 **Task**: Discover signals based on your campaign needs across one or many platforms.
 
-### 2. activate_signal  
+### 2. [activate_signal](./tasks/activate_signal)  
 **Task**: Activate signals for specific platforms and accounts. This task handles the complete activation lifecycle including progress monitoring and status updates.
 
 

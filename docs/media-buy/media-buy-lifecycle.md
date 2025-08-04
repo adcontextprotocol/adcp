@@ -6,263 +6,54 @@ title: Media Buy Lifecycle
 
 ## Overview
 
-The AdCP:Buy protocol provides a unified interface for managing media buys across multiple advertising platforms. This document details the media buy lifecycle and management capabilities.
+The AdCP:Buy protocol provides a unified interface for managing media buys across multiple advertising platforms. This document details the conceptual media buy lifecycle and management workflow.
 
-## Media Buy Lifecycle
+## Media Buy Lifecycle Phases
 
-### 1. Creation (`create_media_buy`)
-Creates a new media buy (campaign/order) with one or more packages (flights/line items).
+### 1. Creation Phase
 
-**Request Parameters:**
-- `packages`: List of media packages to purchase
-- `po_number`: Optional purchase order number
-- `total_budget`: Total budget for the buy
-- `targeting_overlay`: Targeting criteria to apply
+The media buy begins with the [`create_media_buy`](./tasks/create_media_buy) task, which creates a new campaign/order with one or more packages (flights/line items). This phase may involve:
 
-**Response States:**
-- `pending_activation`: Created and awaiting creative assets
-- `pending_manual`: Requires human approval before creation
-- `pending_permission`: Requires permission grant or manual intervention
-- `failed`: Creation failed with error details
-
-**Asynchronous Behavior:**
-Orchestrators MUST handle pending states as normal operation flow. Publishers may require manual approval for all operations, resulting in `pending_manual` status with a task ID. The orchestrator should:
-1. Store the task ID for tracking
-2. Poll `get_pending_tasks` or receive webhook notifications
-3. Handle eventual completion or rejection
+- Immediate creation with `pending_activation` status
+- Human approval workflow with `pending_manual` status
+- Permission requirements with `pending_permission` status
 
 **Platform Mapping:**
 - **Google Ad Manager**: Creates an Order with LineItems
 - **Kevel**: Creates a Campaign with Flights
 - **Triton Digital**: Creates a Campaign with Flights
 
-### 2. Creative Upload (`add_creative_assets`)
-Uploads creative assets and associates them with packages.
+### 2. Creative Upload Phase
 
-**Supported Formats:**
-- **Image**: Supported by GAM, Kevel
-- **Video**: Supported by GAM, Kevel
-- **Audio**: Supported by Triton Digital
-- **Custom**: Supported by Kevel (template-based)
+Once created, the media buy requires creative assets via [`add_creative_assets`](./tasks/add_creative_assets). Key aspects:
 
-### 3. Status Monitoring (`check_media_buy_status`)
-Returns the current status of a media buy.
+- Platform-specific format support (video, audio, display, custom)
+- Validation and policy review
+- Assignment to specific packages
 
-**Status Values:**
-- `pending_activation`: Awaiting creative assets
-- `pending_approval`: Under review by ad server
-- `pending_manual`: Awaiting human approval (HITL task)
-- `pending_permission`: Awaiting permission grant
-- `active`: Currently delivering
-- `paused`: Temporarily stopped
-- `completed`: Finished delivering
-- `failed`: Error state
+### 3. Activation & Delivery Phase
 
-**Pending State Handling:**
-Orchestrators MUST NOT treat pending states as errors. These are normal operational states that may persist for hours or days depending on publisher workflows. Use `get_pending_tasks` to monitor HITL tasks.
+After creatives are uploaded and approved:
 
-### 4. Delivery Reporting (`get_media_buy_delivery`)
-Retrieves performance metrics for a date range.
+- Campaign transitions from `pending_activation` to `active`
+- Use [`check_media_buy_status`](./tasks/check_media_buy_status) to monitor status
+- Track delivery progress and pacing
 
-**Metrics Returned:**
-- Total impressions delivered
-- Total spend
-- Clicks (where applicable)
-- Video completions (where applicable)
-- Package-level breakdown
+### 4. Optimization Phase
 
-### 5. Performance Optimization (`update_media_buy_performance_index`)
-Updates performance indices for AI-driven optimization.
+During delivery, optimize performance through:
 
-**Performance Index:**
-- `1.0`: Baseline performance
-- `> 1.0`: Above average (e.g., 1.2 = 20% better)
-- `< 1.0`: Below average (e.g., 0.8 = 20% worse)
+- [`update_media_buy`](./tasks/update_media_buy) for budget and targeting adjustments
+- Performance index updates for AI-driven optimization
+- Package-level pause/resume for granular control
 
-### 6. Media Buy Updates
+### 5. Reporting Phase
 
-The update tools provide a unified interface that mirrors the create_media_buy structure for consistency.
+Monitor performance with [`get_media_buy_delivery`](./tasks/get_media_buy_delivery):
 
-#### `update_media_buy`
-
-Comprehensive tool for campaign and package updates in a single call.
-
-**Campaign-Level Updates:**
-- `active`: Pause/resume entire campaign
-- `total_budget`: Adjust overall budget
-- `flight_end_date`: Extend or shorten campaign
-- `targeting_overlay`: Update global targeting
-- `pacing`: Change delivery strategy
-- `daily_budget`: Set daily spend caps
-
-**Package-Level Updates:**
-- Apply different changes to multiple packages in one call
-- Each package can have different update parameters
-
-**Platform Implementation:**
-- **GAM**: Maps to Order and LineItem updates
-- **Kevel**: Maps to Campaign and Flight updates  
-- **Triton**: Maps to Campaign and Flight updates
-
-#### `update_package`
-
-Focused tool for package-specific updates.
-
-**Supported Updates:**
-- `active`: Pause/resume individual packages
-- `budget`: Update budget (recalculates impressions)
-- `impressions`: Set impression goal directly
-- `cpm`: Adjust CPM rate
-- `daily_budget` / `daily_impressions`: Set daily caps
-- `pacing`: Package-specific pacing strategy
-- `creative_ids`: Update creative assignments
-- `targeting_overlay`: Package-specific targeting refinements
-
-**Key Features:**
-- Update multiple packages in one call
-- Each package update is processed independently
-- Returns immediately on first error
-- Supports both budget and direct impression updates
-
-## Example Usage
-
-### Creating a Media Buy
-```python
-response = await mcp.call_tool(
-    "create_media_buy",
-    {
-        "packages": ["premium_sports", "drive_time_audio"],
-        "po_number": "PO-2024-001",
-        "total_budget": 50000,
-        "targeting_overlay": {
-            "geography": ["US-CA", "US-NY"],
-            "device_types": ["mobile", "desktop"]
-        }
-    }
-)
-# Returns: media_buy_id, status, creative_deadline
-```
-
-### Uploading Creatives
-```python
-response = await mcp.call_tool(
-    "add_creative_assets",
-    {
-        "media_buy_id": "kevel_12345",
-        "assets": [
-            {
-                "creative_id": "banner_001",
-                "name": "Spring Campaign Banner",
-                "format": "image",
-                "media_url": "https://cdn.example.com/banner.jpg",
-                "click_url": "https://example.com/landing",
-                "package_assignments": ["premium_sports"]
-            }
-        ]
-    }
-)
-```
-
-### Updating a Media Buy
-
-Using the unified interface:
-
-```python
-# Pause entire campaign and update budget
-response = await mcp.call_tool(
-    "update_media_buy",
-    {
-        "media_buy_id": "gam_67890",
-        "active": false,
-        "total_budget": 60000
-    }
-)
-
-# Update multiple packages at once
-response = await mcp.call_tool(
-    "update_package",
-    {
-        "media_buy_id": "gam_67890",
-        "packages": [
-            {
-                "package_id": "premium_sports",
-                "active": false,
-                "budget": 25000
-            },
-            {
-                "package_id": "entertainment",
-                "impressions": 750000,
-                "daily_impressions": 50000,
-                "pacing": "front_loaded"
-            }
-        ]
-    }
-)
-
-# Comprehensive update with campaign and package changes
-response = await mcp.call_tool(
-    "update_media_buy",
-    {
-        "media_buy_id": "kevel_12345",
-        "flight_end_date": "2024-02-28",
-        "daily_budget": 5000,
-        "packages": [
-            {
-                "package_id": "news",
-                "budget": 15000,
-                "creative_ids": ["banner_v2", "video_v2"]
-            }
-        ]
-    }
-)
-```
-
-## Platform-Specific Considerations
-
-### Google Ad Manager
-- Orders can contain multiple LineItems
-- LineItems map 1:1 with packages
-- Supports sophisticated targeting and frequency capping
-- Requires creative approval process
-
-### Kevel
-- Campaigns contain Flights
-- Flights map 1:1 with packages
-- Real-time decisioning engine
-- Supports custom creative templates
-
-### Triton Digital
-- Optimized for audio advertising
-- Campaigns contain Flights for different dayparts
-- Strong station/stream targeting capabilities
-- Audio-only creative support
-
-## Error Handling
-
-All update operations return a standardized response:
-```python
-{
-    "status": "accepted" | "failed" | "pending_manual" | "pending_permission",
-    "implementation_date": "2024-01-20T10:00:00Z",  # When change takes effect
-    "reason": "Error description if failed",
-    "detail": "Additional context or task ID for pending states"
-}
-```
-
-### Pending States vs Errors
-
-**Pending States (Normal Flow):**
-- `pending_manual`: Operation requires human approval
-- `pending_permission`: Operation blocked by permissions
-- `pending_approval`: Awaiting ad server approval
-
-These are NOT errors and should be handled as part of normal operation flow.
-
-**Error States (Exceptional):**
-- `failed`: Operation cannot be completed
-- `AUTHENTICATION_REQUIRED`: Missing or invalid auth
-- `INVALID_PARAMETER`: Bad request data
-- `NOT_FOUND`: Resource doesn't exist
+- Real-time delivery metrics
+- Package-level performance breakdown
+- Pacing analysis and optimization opportunities
 
 ## Asynchronous Operations and HITL
 
@@ -272,10 +63,10 @@ The AdCP:Buy protocol is designed for asynchronous operations as a core principl
 
 Many publishers require manual approval for automated operations. The protocol supports this through the HITL task queue:
 
-1. **Operation Request**: Orchestrator calls `create_media_buy` or `update_media_buy`
+1. **Operation Request**: Orchestrator calls any modification task
 2. **Pending Response**: Server returns `pending_manual` status with task ID
-3. **Task Monitoring**: Orchestrator polls `get_pending_tasks` or receives webhooks
-4. **Human Review**: Publisher reviews and approves/rejects via admin interface
+3. **Task Monitoring**: Orchestrator polls or receives webhooks
+4. **Human Review**: Publisher reviews and approves/rejects
 5. **Completion**: Original operation executes upon approval
 
 ### HITL Task States
@@ -291,53 +82,65 @@ pending → assigned → in_progress → completed/failed
 Orchestrators MUST:
 1. Handle `pending_manual` and `pending_permission` as normal states
 2. Store task IDs for tracking pending operations
-3. Implement retry logic with exponential backoff for polling
+3. Implement retry logic with exponential backoff
 4. Handle eventual rejection of operations gracefully
 5. Support webhook callbacks for real-time updates (recommended)
 
-### Example Pending Operation Flow
+## Platform-Specific Considerations
 
-```python
-# 1. Create media buy
-response = await mcp.call_tool("create_media_buy", {...})
+### Google Ad Manager
+- Orders can contain multiple LineItems
+- LineItems map 1:1 with packages
+- Sophisticated targeting and frequency capping
+- Requires creative approval process
 
-if response["status"] == "pending_manual":
-    task_id = extract_task_id(response["detail"])
-    
-    # 2. Poll for completion (or use webhooks)
-    while True:
-        tasks = await mcp.call_tool("get_pending_tasks", {
-            "task_type": "manual_approval"
-        })
-        
-        task = find_task(tasks, task_id)
-        if task["status"] == "completed":
-            # Operation was approved and executed
-            break
-        elif task["status"] == "failed":
-            # Operation was rejected
-            handle_rejection(task)
-            break
-            
-        await sleep(60)  # Poll every minute
-```
+### Kevel
+- Campaigns contain Flights
+- Flights map 1:1 with packages
+- Real-time decisioning engine
+- Supports custom creative templates
+
+### Triton Digital
+- Optimized for audio advertising
+- Campaigns contain Flights for different dayparts
+- Strong station/stream targeting capabilities
+- Audio-only creative support
 
 ## Best Practices
 
-1. **Budget Management**: When updating budgets, the system automatically recalculates impression goals based on the package's CPM rate.
+1. **Budget Management**: The system automatically recalculates impressions based on CPM when budgets are updated
 
-2. **Pause/Resume**: Use media buy level pause/resume for maintenance or emergency stops. Use package level for optimization.
+2. **Pause/Resume Strategy**: Use campaign-level controls for maintenance, package-level for optimization
 
-3. **Performance Optimization**: Regular performance index updates help the AI optimize delivery across packages.
+3. **Performance Monitoring**: Regular status checks and delivery reports ensure campaigns stay on track
 
-4. **Creative Timing**: Upload creatives before the deadline to ensure smooth campaign launch.
+4. **Asynchronous Design**: Design orchestrators to handle long-running operations gracefully
 
-5. **Monitoring**: Regular status checks and delivery reports ensure campaigns stay on track.
+5. **Task Tracking**: Maintain persistent storage for pending task IDs
 
-6. **Asynchronous Design**: Design orchestrators to handle long-running operations. Never assume immediate completion.
+6. **Webhook Integration**: Implement webhooks for real-time updates
 
-7. **Task Tracking**: Maintain persistent storage for pending task IDs across orchestrator restarts.
+7. **User Communication**: Clearly communicate pending states to end users
 
-8. **Webhook Integration**: Implement webhook endpoints for real-time task updates to reduce polling overhead.
+## Error Handling Philosophy
 
-9. **User Communication**: Clearly communicate pending states to end users with expected resolution times.
+### Pending States vs Errors
+
+**Pending States (Normal Flow):**
+- `pending_manual`: Operation requires human approval
+- `pending_permission`: Operation blocked by permissions
+- `pending_approval`: Awaiting ad server approval
+
+These are NOT errors and should be handled as part of normal operation flow.
+
+**Error States (Exceptional):**
+- `failed`: Operation cannot be completed
+- Authentication failures
+- Invalid parameters
+- Resource not found
+
+## Related Documentation
+
+- [Orchestrator Design Guide](./orchestrator-design) - Implementation best practices
+- [Design Decisions](./design-decisions) - Architectural choices and rationale
+- Task References: See individual task documentation for API details

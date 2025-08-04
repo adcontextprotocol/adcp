@@ -154,19 +154,9 @@ await a2a.send({
   }
 });
 
-// 4. Continue with creatives (same context)
-await a2a.send({
-  contextId: task.contextId,
-  message: {
-    parts: [{
-      kind: "text",
-      text: "Upload our hero creative"
-    }, {
-      kind: "file",
-      uri: "https://cdn.example.com/hero.mp4"
-    }]
-  }
-});
+// 4. Task completes
+// Result includes media_buy_id and confirmation
+// Note: Adding creatives would be a separate task with its own context
 ```
 
 ## Artifacts
@@ -178,20 +168,16 @@ A2A returns structured results as artifacts:
   "status": { "state": "completed" },
   "artifacts": [{
     "name": "media_buy_confirmation",
-    "parts": [
-      {
-        "kind": "application/json",
-        "data": {
-          "media_buy_id": "mb_123",
-          "status": "active",
-          "packages": [...]
-        }
-      },
-      {
-        "kind": "application/pdf",
-        "uri": "https://contracts.example.com/io_123.pdf"
+    "parts": [{
+      "kind": "application/json",
+      "data": {
+        "media_buy_id": "mb_123",
+        "status": "active",
+        "packages": [...],
+        "line_items": [...],
+        "total_budget": 100000
       }
-    ]
+    }]
   }]
 }
 ```
@@ -206,41 +192,64 @@ A2A returns structured results as artifacts:
 ## A2A-Specific Features
 
 ### Push Notifications
-Configure webhooks for task updates:
+Buyers can configure webhooks as an alternative to SSE for receiving task updates:
 ```json
+// Buyer configures their webhook endpoint
 {
   "configuration": {
     "pushNotificationConfig": {
-      "url": "https://myapp.com/webhooks/a2a",
+      "url": "https://buyer-app.com/webhooks/a2a",
       "token": "secure-token"
     }
   }
 }
+
+// Publisher sends updates to the configured webhook
+// instead of requiring the buyer to maintain SSE connection
 ```
 
 ### Multi-Modal Support
 A2A handles various content types:
 - Text instructions
-- File uploads (images, videos, PDFs)
+- File uploads (images, videos, documents)
 - Structured data (JSON)
 - Mixed content in single message
 
 ### Agent Capabilities
-Agents advertise capabilities via Agent Cards:
+Agents advertise capabilities via Agent Cards. This is particularly useful when an agent offers unique capabilities beyond the standard AdCP specification:
+
 ```json
 {
   "name": "AdCP Media Buy Agent",
-  "skills": [
+  "version": "1.0.0",
+  "adcp_compliant": true,
+  "standard_tasks": [
+    "get_products",
+    "create_media_buy",
+    "add_creative_assets"
+  ],
+  "unique_capabilities": [
     {
-      "name": "campaign_creation",
+      "name": "campaign_optimization",
+      "description": "AI-powered campaign optimization",
       "examples": [
-        "Create a $50K CTV campaign",
-        "Launch a holiday audio campaign"
+        "Optimize my campaign for better CTR",
+        "Reallocate budget to top performers"
+      ]
+    },
+    {
+      "name": "competitive_analysis",
+      "description": "Analyze competitor campaigns",
+      "examples": [
+        "Show me what my competitors are running",
+        "Compare my campaign to industry benchmarks"
       ]
     }
   ]
 }
 ```
+
+For standard AdCP tasks, agents should follow the specification. The Agent Card primarily highlights additional capabilities that differentiate the agent.
 
 ## Advantages Over MCP
 

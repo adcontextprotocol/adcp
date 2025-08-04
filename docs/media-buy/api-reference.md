@@ -7,7 +7,7 @@ title: API Reference
 ## Table of Contents
 1. [Overview](#overview)
 2. [Core Concepts](#core-concepts)
-3. [API Tools Reference](#api-tools-reference)
+3. [Tasks](#tasks)
 4. [Design Decisions](#design-decisions)
 5. [Implementation Notes](#implementation-notes)
 

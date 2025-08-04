@@ -30,6 +30,14 @@ const sidebars: SidebarsConfig = {
       items: [
         'signals/overview',
         'signals/specification',
+        {
+          type: 'category',
+          label: 'Tasks',
+          items: [
+            'signals/tasks/get_signals',
+            'signals/tasks/activate_signal',
+          ],
+        },
       ],
     },
     {
@@ -44,13 +52,25 @@ const sidebars: SidebarsConfig = {
         'media-buy/index',
         {
           type: 'category',
+          label: 'Tasks',
+          items: [
+            'media-buy/tasks/get_products',
+            'media-buy/tasks/list_creative_formats',
+            'media-buy/tasks/create_media_buy',
+            'media-buy/tasks/add_creative_assets',
+            'media-buy/tasks/check_media_buy_status',
+            'media-buy/tasks/get_media_buy_delivery',
+            'media-buy/tasks/update_media_buy',
+          ],
+        },
+        {
+          type: 'category',
           label: 'Core Concepts',
           items: [
             'media-buy/product-discovery',
             'media-buy/media-products',
             'media-buy/media-buys',
             'media-buy/dimensions',
-            'media-buy/targeting',
           ],
         },
         {
@@ -67,6 +87,8 @@ const sidebars: SidebarsConfig = {
           label: 'Operations',
           items: [
             'media-buy/media-buy-lifecycle',
+            'media-buy/targeting',
+            'media-buy/targeting-dimensions',
             'media-buy/reporting-and-optimization',
             'media-buy/principals-and-security',
           ],
@@ -76,6 +98,7 @@ const sidebars: SidebarsConfig = {
           label: 'Technical Reference',
           items: [
             'media-buy/api-reference',
+            'media-buy/orchestrator-design',
             'media-buy/design-decisions',
           ],
         },
