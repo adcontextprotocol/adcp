@@ -254,7 +254,113 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 - Content policies
 - Technical specifications
 
-### 4. get_media_buy_delivery
+### 4. build_creative
+
+**Task**: Build creative content through conversational interaction, returning either a creative manifest or executable code.
+
+**Request:**
+```json
+{
+  "message": "Create a native ad for premium dog food that feels trustworthy. Emphasize that it's veterinarian recommended. Use 'Learn More' as the CTA.",
+  "format": "display_native",  // Required for initial request (string for standard formats, object for custom)
+  "context_id": "ctx-creative-123",  // Optional - for continuing conversation
+  "assets": [
+    {
+      "library_id": "brand_assets",
+      "tags": ["current_campaign"]
+    }
+  ],
+  "output_mode": "manifest",  // or "code"
+  "finalize": false  // Set to true to finalize the creative
+}
+```
+
+**Response:**
+```json
+{
+  "message": "I've created a native ad that emphasizes trust through clean design and professional imagery. The veterinarian recommendation is prominently featured.",
+  "context_id": "ctx-creative-123",
+  "status": "draft",
+  "creative_output": {
+    "type": "creative_manifest",
+    "format": "display_native",
+    "assets": {
+      "headline": "Veterinarian Recommended Nutrition",
+      "description": "Premium ingredients chosen by vets for your dog's health",
+      "cta_text": "Learn More",
+      "hero_image": {
+        "url": "https://cdn.example.com/vet-approved-hero.jpg",
+        "width": 1200,
+        "height": 627
+      }
+    }
+  },
+  "preview": {
+    "static_previews": [{
+      "context": "desktop",
+      "image_url": "https://preview.example.com/desktop.png"
+    }]
+  },
+  "refinement_suggestions": [
+    "Add specific health benefits",
+    "Include customer testimonial",
+    "Emphasize natural ingredients"
+  ]
+}
+```
+
+**Key Features:**
+- Conversational refinement through natural language messages
+- Context maintained across messages with context_id
+- Two output modes: manifest (structured data) or code (executable HTML/JS)
+- Preview generation for all formats
+- Asset library integration with tags
+
+### 5. manage_creative_library
+
+**Task**: Manage assets in creative libraries including add, update, remove, and search operations.
+
+**Request:**
+```json
+{
+  "action": "add",
+  "library_id": "brand_assets",
+  "asset": {
+    "name": "Summer Campaign Hero",
+    "type": "image",
+    "url": "https://cdn.example.com/summer-hero.jpg",
+    "tags": ["summer_2024", "hero_image"],
+    "metadata": {
+      "width": 1920,
+      "height": 1080
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "message": "string",
+  "success": true,
+  "result": {
+    "asset": {
+      "asset_id": "asset_123",
+      "name": "Summer Campaign Hero",
+      "tags": ["summer_2024", "hero_image"],
+      "created_at": "2024-02-15T10:00:00Z"
+    }
+  }
+}
+```
+
+**Operations:**
+- Add assets with tags
+- Search by tags or query
+- Update asset metadata and tags
+- Remove expired or unused assets
+
+### 6. get_media_buy_delivery
 
 **Task**: Retrieve comprehensive delivery metrics and performance data for reporting.
 
@@ -313,7 +419,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 }
 ```
 
-### 5. update_media_buy
+### 7. update_media_buy
 
 **Task**: Update campaign and package settings. This task supports partial updates and handles any required approvals.
 
@@ -361,7 +467,7 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 - Omitted packages remain unchanged
 - Null values clear/reset fields (where applicable)
 
-### 6. update_package
+### 8. update_package
 
 Focused tool for package-only updates.
 
@@ -387,7 +493,7 @@ Focused tool for package-only updates.
 
 **Design Note**: Adding new packages post-creation not yet supported. Under consideration for future version.
 
-### 7. update_performance_index
+### 9. update_performance_index
 
 Provides performance feedback for AI optimization.
 
@@ -432,7 +538,7 @@ Provides performance feedback for AI optimization.
 }
 ```
 
-### 8. get_all_media_buy_delivery
+### 10. get_all_media_buy_delivery
 
 Retrieves delivery metrics for all active media buys owned by the principal. This is optimized for performance by batching requests.
 
@@ -475,7 +581,7 @@ Retrieves delivery metrics for all active media buys owned by the principal. Thi
 }
 ```
 
-### 9. get_creatives
+### 11. get_creatives
 
 Lists creative assets for a principal or media buy.
 
@@ -510,7 +616,7 @@ Lists creative assets for a principal or media buy.
 }
 ```
 
-### 10. approve_adaptation
+### 12. approve_adaptation
 
 Approves or rejects a suggested creative adaptation.
 
@@ -544,7 +650,7 @@ Approves or rejects a suggested creative adaptation.
 }
 ```
 
-### 11. review_pending_creatives (Admin Only)
+### 13. review_pending_creatives (Admin Only)
 
 Reviews and approves/rejects pending creatives.
 
@@ -568,7 +674,7 @@ Reviews and approves/rejects pending creatives.
 }
 ```
 
-### 12. list_human_tasks (Admin Only)
+### 14. list_human_tasks (Admin Only)
 
 Lists pending human approval tasks.
 
@@ -602,7 +708,7 @@ Lists pending human approval tasks.
 }
 ```
 
-### 13. complete_human_task (Admin Only)
+### 15. complete_human_task (Admin Only)
 
 Completes a human approval task.
 
@@ -630,7 +736,7 @@ Completes a human approval task.
 }
 ```
 
-### 14. list_all_media_buys (Admin Only)
+### 16. list_all_media_buys (Admin Only)
 
 Retrieves delivery data for all active media buys across all principals.
 
@@ -644,7 +750,7 @@ Retrieves delivery data for all active media buys across all principals.
 
 **Response:** Same format as get_media_buy_delivery but includes all media buys.
 
-### 15. get_products
+### 17. get_products
 
 **Task**: Discover available advertising products based on campaign requirements, using natural language briefs or structured filters.
 
@@ -748,7 +854,7 @@ Policy compliance statuses:
 - `restricted`: Advertiser category requires manual approval before products can be shown (contact provided)
 - `blocked`: Advertiser category cannot be supported by this publisher
 
-### 16. get_targeting_capabilities
+### 18. get_targeting_capabilities
 
 Discover available targeting dimensions for specified channels.
 
@@ -800,7 +906,7 @@ Discover available targeting dimensions for specified channels.
 }
 ```
 
-### 17. check_aee_requirements
+### 19. check_aee_requirements
 
 Verify if required AEE dimensions are supported for a channel.
 
@@ -830,7 +936,7 @@ Verify if required AEE dimensions are supported for a channel.
 
 Use this before creating a media buy to ensure the publisher can provide required AEE signals.
 
-### 18. get_signals (Optional)
+### 20. get_signals (Optional)
 
 Publishers may optionally implement the `get_signals` endpoint from the [Signals Discovery Protocol](../signals/specification.md#get_signals) to advertise available signals for targeting.
 
