@@ -68,10 +68,13 @@ const sidebars: SidebarsConfig = {
             'media-buy/task-reference/list_creative_formats',
             'media-buy/task-reference/list_authorized_properties',
             'media-buy/task-reference/create_media_buy',
+            'media-buy/task-reference/build_creative',
+            'media-buy/task-reference/manage_creative_library',
             'media-buy/task-reference/list_creatives',
             'media-buy/task-reference/sync_creatives',
             'media-buy/task-reference/get_media_buy_delivery',
             'media-buy/task-reference/update_media_buy',
+            'media-buy/task-reference/provide_performance_feedback',
           ],
         },
         {
@@ -108,6 +111,8 @@ const sidebars: SidebarsConfig = {
           label: 'Creatives',
           items: [
             'media-buy/creatives/index',
+            'media-buy/creative-agent-protocol',
+            'media-buy/why-creative-agents',
             'media-buy/creatives/creative-library',
             'media-buy/creatives/standard-formats-guide',
             'media-buy/creatives/asset-types',
