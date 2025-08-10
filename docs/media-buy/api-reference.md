@@ -28,11 +28,22 @@ The Advertising Context Protocol (AdCP) Sales Agent specification defines a stan
 
 ## Core Concepts
 
+### Authentication
+All requests must include authentication via one of:
+- **JWT Bearer Token**: `Authorization: Bearer <token>`
+- **API Key**: `X-API-Key: <key>`
+
+Optional tenant identification:
+- **Header**: `X-Tenant-ID: <tenant_id>`
+- **JWT Claim**: `adcp.tenant_id` in token
+- **Subdomain**: `<tenant>.adcp.com`
+
 ### Principal
 A Principal represents an authenticated entity (advertiser, agency, or brand) with:
-- Unique identifier and access token
-- Platform-specific account mappings
-- Isolated data access
+- Unique identifier (`principal_id`)
+- Type: `user`, `service`, `agency`, or `advertiser`
+- Permissions for resources (`products`, `media_buys`, `creatives`, `reports`)
+- Optional quotas and spending limits
 
 ### Media Buy
 A media buy represents a purchased advertising campaign containing:
@@ -48,6 +59,19 @@ A package represents a specific advertising product within a media buy:
 - Creative assignments
 - Delivery goals
 
+### Context Management
+All operations support context for conversation continuity:
+- **First request**: Omit `context_id` or set to `null`
+- **First response**: Returns new `context_id`
+- **Subsequent requests**: Include `context_id` to maintain state
+- **Context expires**: After 1 hour of inactivity for interactive sessions
+- **Async context**: Persists until operation completes (no timeout for HITL operations)
+
+Context maintains:
+- Current media buy, products, and creatives
+- Search results and preferences
+- Workflow state across operations
+
 ### Design Decision: Package vs Flight Model
 **Current Design**: One package = one flight/line item
 **Rationale**: Simplifies the model for most use cases
@@ -60,15 +84,37 @@ A package represents a specific advertising product within a media buy:
 
 ## Tasks
 
-The Media Buy Protocol defines the following tasks that agents can perform:
+The Media Buy Protocol defines the following tasks that agents can perform.
+
+### Operation Types
+
+Each operation has a defined execution type:
+- **Synchronous**: Returns immediately (< 1 second typical)
+- **Asynchronous**: Returns task ID for long-running operations
+- **Adaptive**: Can be either based on parameters
+
+### Response Format
+
+All responses follow this structure:
+```json
+{
+  "message": "Human-readable summary (always present)",
+  "data": { /* Structured data when applicable */ },
+  "context_id": "ctx-abc123",  // For conversation continuity
+  "errors": []  // Non-fatal errors/warnings
+}
+```
 
 ### 1. list_creative_formats
+
+**Operation Type**: Synchronous
 
 **Task**: Discover all supported creative formats in the system.
 
 **Request:**
 ```json
 {
+  "context_id": null,           // Optional - null for first request
   "type": "audio",              // Optional - filter by format type
   "standard_only": true         // Optional - only return IAB standard formats
 }
@@ -77,7 +123,8 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 **Response:**
 ```json
 {
-  "message": "string",
+  "message": "Found 2 audio formats available",
+  "context_id": "ctx-formats-abc123",  // Use in subsequent requests
   "formats": [
     {
       "format_id": "audio_standard_30s",
@@ -133,6 +180,8 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 
 ### 2. create_media_buy
 
+**Operation Type**: Asynchronous
+
 **Task**: Create a media buy from selected packages. This task handles the complete workflow including validation, approval if needed, and campaign creation.
 
 **Request:**
@@ -179,6 +228,8 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 - **Triton**: Creates Campaign for audio delivery
 
 ### 3. add_creative_assets
+
+**Operation Type**: Asynchronous
 
 **Task**: Upload creative assets and assign them to packages. This task includes validation, policy review, and format adaptation suggestions.
 
@@ -256,6 +307,8 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 
 ### 4. get_media_buy_delivery
 
+**Operation Type**: Synchronous (Adaptive for large date ranges)
+
 **Task**: Retrieve comprehensive delivery metrics and performance data for reporting.
 
 **Request:**
@@ -314,6 +367,8 @@ The Media Buy Protocol defines the following tasks that agents can perform:
 ```
 
 ### 5. update_media_buy
+
+**Operation Type**: Asynchronous
 
 **Task**: Update campaign and package settings. This task supports partial updates and handles any required approvals.
 
@@ -645,6 +700,8 @@ Retrieves delivery data for all active media buys across all principals.
 **Response:** Same format as get_media_buy_delivery but includes all media buys.
 
 ### 15. get_products
+
+**Operation Type**: Synchronous
 
 **Task**: Discover available advertising products based on campaign requirements, using natural language briefs or structured filters.
 
@@ -1157,8 +1214,8 @@ Completes a human task with resolution. For manual approval tasks, approved oper
 
 Platforms use different status values. AdCP normalizes to:
 - `pending_activation` - Awaiting creative assets
-- `pending_approval` - Under review by ad server
-- `pending_manual` - Awaiting human approval (HITL)
+- `pending_approval` - Under review by ad server (typically minutes/hours)
+- `pending_manual` - Awaiting human approval (HITL - may take days/weeks)
 - `pending_permission` - Blocked by permissions
 - `scheduled` - Future start date
 - `active` - Currently delivering
@@ -1166,21 +1223,47 @@ Platforms use different status values. AdCP normalizes to:
 - `completed` - Finished delivering
 - `failed` - Error state
 
-**Important**: Pending states are normal operational states, not errors. Orchestrators must handle them gracefully.
+**Important**: 
+- Pending states are normal operational states, not errors
+- `pending_manual` (HITL) operations have no timeout - they persist until human action
+- Context for HITL operations remains active indefinitely
+- Orchestrators must handle long-running HITL operations gracefully
 
 ### Error Handling
 
-All tools return errors in consistent format:
+All operations return errors using standardized error codes:
+
 ```json
 {
   "error": {
-    "code": "INVALID_PARAMETER",
+    "code": "invalid_parameter",
     "message": "Start date must be in the future",
     "field": "start_date",
-    "suggestion": "Use a date after 2024-02-08"
+    "suggestion": "Use a date after 2024-02-08",
+    "details": {
+      "validation_errors": [
+        {
+          "field": "start_date",
+          "constraint": "future_date",
+          "message": "Must be in the future"
+        }
+      ]
+    }
   }
 }
 ```
+
+**Standard Error Codes:**
+- `invalid_parameter` - Request validation failed
+- `missing_required` - Required field missing
+- `authentication_failed` - Invalid credentials
+- `permission_denied` - Insufficient permissions
+- `not_found` - Resource not found
+- `insufficient_budget` - Budget too low for requirements
+- `inventory_unavailable` - No inventory available
+- `policy_violation` - Content policy violation
+- `internal_error` - Server error
+- `timeout` - Operation timed out
 
 ### Dry Run Mode
 
