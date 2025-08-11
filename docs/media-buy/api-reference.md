@@ -33,15 +33,9 @@ All requests must include authentication via one of:
 - **JWT Bearer Token**: `Authorization: Bearer <token>`
 - **API Key**: `X-API-Key: <key>`
 
-Optional tenant identification:
-- **Header**: `X-Tenant-ID: <tenant_id>`
-- **JWT Claim**: `adcp.tenant_id` in token
-- **Subdomain**: `<tenant>.adcp.com`
-
 ### Principal
-A Principal represents an authenticated entity (advertiser, agency, or brand) with:
+A Principal represents an authenticated entity (advertiser, agency, ad network, or ad tech company) with:
 - Unique identifier (`principal_id`)
-- Type: `user`, `service`, `agency`, or `advertiser`
 - Permissions for resources (`products`, `media_buys`, `creatives`, `reports`)
 - Optional quotas and spending limits
 
@@ -68,6 +62,7 @@ All operations support context for conversation continuity:
 - **Async context**: Persists until operation completes (no timeout for HITL operations)
 
 Context maintains:
+- Conversation flow (messages back and forth between user and system)
 - Current media buy, products, and creatives
 - Search results and preferences
 - Workflow state across operations
@@ -1262,23 +1257,9 @@ All operations return errors using standardized error codes:
 - `insufficient_budget` - Budget too low for requirements
 - `inventory_unavailable` - No inventory available
 - `policy_violation` - Content policy violation
-- `internal_error` - Server error
+- `internal_error` - System error
 - `timeout` - Operation timed out
 
-### Dry Run Mode
-
-Set environment variable `AdCP_DRY_RUN=true` to see platform API calls without execution:
-```
-[dry-run] Would call: POST https://api.kevel.co/v1/campaign
-[dry-run]   Campaign Payload: {
-[dry-run]     'AdvertiserId': 12345,
-[dry-run]     'Name': 'AdCP Campaign PO-2024-Q1-0123',
-[dry-run]     'StartDate': '2024-02-01T00:00:00',
-[dry-run]     'EndDate': '2024-02-14T23:59:59',
-[dry-run]     'DailyBudget': 3571.43,
-[dry-run]     'IsActive': true
-[dry-run]   }
-```
 
 ## Data Models
 

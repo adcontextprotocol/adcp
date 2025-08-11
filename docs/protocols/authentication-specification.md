@@ -5,7 +5,7 @@ title: Authentication
 
 # Authentication Specification
 
-AdCP supports multiple authentication methods with consistent principal identification across protocols.
+AdCP supports multiple authentication methods for secure access to the protocol.
 
 ## Authentication Methods
 
@@ -14,17 +14,17 @@ AdCP supports multiple authentication methods with consistent principal identifi
 Authorization: Bearer <jwt_token>
 ```
 
-JWT tokens must include AdCP claims:
+JWT tokens must include standard claims:
 ```json
 {
   "sub": "principal_123",
-  "adcp": {
-    "principal_type": "advertiser",
-    "tenant_id": "tenant_abc",
-    "permissions": {
-      "products": ["read"],
-      "media_buys": ["read", "write"]
-    }
+  "exp": 1706745600,
+  "iat": 1706742000,
+  "permissions": {
+    "products": ["read"],
+    "media_buys": ["read", "write"],
+    "creatives": ["read", "write"],
+    "reports": ["read"]
   }
 }
 ```
@@ -34,23 +34,13 @@ JWT tokens must include AdCP claims:
 X-API-Key: <api_key>
 ```
 
-API keys are mapped to principals server-side.
-
-## Tenant Identification
-
-Multi-tenant systems resolve tenant in priority order:
-
-1. **Header**: `X-Tenant-ID: <tenant_id>`
-2. **JWT Claim**: `adcp.tenant_id`
-3. **Subdomain**: `<tenant>.adcp.com`
-4. **Default**: Single-tenant mode
+API keys are mapped to principals and their associated permissions.
 
 ## Principal Model
 
 ```typescript
 interface Principal {
   principal_id: string;
-  principal_type: 'user' | 'service' | 'agency' | 'advertiser';
   permissions: {
     products: Permission[];
     media_buys: Permission[];
@@ -77,8 +67,7 @@ type Permission = 'read' | 'write' | 'delete' | 'approve';
 ```json
 {
   "headers": {
-    "Authorization": "Bearer <token>",
-    "X-Tenant-ID": "<tenant_id>"  // Optional
+    "Authorization": "Bearer <token>"
   }
 }
 ```
@@ -86,5 +75,6 @@ type Permission = 'read' | 'write' | 'delete' | 'approve';
 ### HTTP REST
 ```http
 Authorization: Bearer <token>
-X-Tenant-ID: <tenant_id>  // Optional
+# OR
+X-API-Key: <api_key>
 ```

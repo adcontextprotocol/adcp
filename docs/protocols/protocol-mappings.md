@@ -28,13 +28,12 @@ Long-running operations that return task/job IDs:
 - `update_media_buy`
 - `add_creative_assets`
 - `update_package`
-- `approve_adaptation`
 
 ### Adaptive Operations
 Can be either sync or async based on parameters:
 - `get_media_buy_delivery` - Async for large date ranges
 - `get_all_media_buy_delivery` - Async for many media buys
-- `search_products` - Async for complex queries
+- `get_products` - Async for complex natural language queries
 
 ## Protocol-Specific Mappings
 
