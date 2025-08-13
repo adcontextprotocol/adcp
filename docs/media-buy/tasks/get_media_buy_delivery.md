@@ -12,7 +12,8 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `context_id` | string | Yes | Context identifier for session persistence |
-| `media_buy_id` | string | Yes | ID of the media buy to get delivery data for |
+| `media_buy_ids` | array[string] | No | Array of media buy IDs to get delivery data for. If not provided, returns all media buys for the context |
+| `status_filter` | string \| array[string] | No | Filter by status. Can be a single status or array of statuses: `"active"`, `"pending"`, `"paused"`, `"completed"`, `"failed"`, `"all"`. Defaults to `["active"]` |
 | `start_date` | string | No | Start date for reporting period (YYYY-MM-DD) |
 | `end_date` | string | No | End date for reporting period (YYYY-MM-DD) |
 
@@ -22,36 +23,47 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 {
   "message": "string",
   "context_id": "string",
-  "media_buy_id": "string",
-  "status": "string",
   "reporting_period": {
     "start": "string",
     "end": "string"
   },
   "currency": "string",
-  "totals": {
+  "aggregated_totals": {
     "impressions": "number",
     "spend": "number",
     "clicks": "number",
-    "ctr": "number",
     "video_completions": "number",
-    "completion_rate": "number"
+    "media_buy_count": "number"
   },
-  "by_package": [
+  "deliveries": [
     {
-      "package_id": "string",
-      "impressions": "number",
-      "spend": "number",
-      "clicks": "number",
-      "video_completions": "number",
-      "pacing_index": "number"
-    }
-  ],
-  "daily_breakdown": [
-    {
-      "date": "string",
-      "impressions": "number",
-      "spend": "number"
+      "media_buy_id": "string",
+      "status": "string",
+      "totals": {
+        "impressions": "number",
+        "spend": "number",
+        "clicks": "number",
+        "ctr": "number",
+        "video_completions": "number",
+        "completion_rate": "number"
+      },
+      "by_package": [
+        {
+          "package_id": "string",
+          "impressions": "number",
+          "spend": "number",
+          "clicks": "number",
+          "video_completions": "number",
+          "pacing_index": "number"
+        }
+      ],
+      "daily_breakdown": [
+        {
+          "date": "string",
+          "impressions": "number",
+          "spend": "number"
+        }
+      ]
     }
   ]
 }
@@ -59,133 +71,220 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 
 ### Field Descriptions
 
-- **message**: Human-readable summary of campaign performance and key insights
+- **message**: Human-readable summary of campaign performance and key insights across all returned media buys
 - **context_id**: Context identifier for session persistence
-- **media_buy_id**: The media buy ID from the request
-- **status**: Current media buy status (`pending_activation`, `active`, `paused`, `completed`, `failed`)
 - **reporting_period**: Date range for the report
   - **start**: ISO 8601 start timestamp
   - **end**: ISO 8601 end timestamp
 - **currency**: Currency code (typically `"USD"`)
-- **totals**: Aggregate metrics across all packages
-  - **impressions**: Total impressions delivered
-  - **spend**: Total amount spent
-  - **clicks**: Total clicks (if applicable)
-  - **ctr**: Click-through rate (clicks/impressions)
-  - **video_completions**: Total video completions (if applicable)
-  - **completion_rate**: Video completion rate (completions/impressions)
-- **by_package**: Metrics broken down by package
-  - **package_id**: Package identifier
-  - **impressions**: Package impressions
-  - **spend**: Package spend
-  - **clicks**: Package clicks
-  - **video_completions**: Package video completions
-  - **pacing_index**: Delivery pace (1.0 = on track, &lt;1.0 = behind, &gt;1.0 = ahead)
-- **daily_breakdown**: Day-by-day delivery
-  - **date**: Date (YYYY-MM-DD)
-  - **impressions**: Daily impressions
-  - **spend**: Daily spend
+- **aggregated_totals**: Combined metrics across all returned media buys
+  - **impressions**: Total impressions delivered across all media buys
+  - **spend**: Total amount spent across all media buys
+  - **clicks**: Total clicks across all media buys (if applicable)
+  - **video_completions**: Total video completions across all media buys (if applicable)
+  - **media_buy_count**: Number of media buys included in the response
+- **deliveries**: Array of delivery data for each media buy
+  - **media_buy_id**: The media buy identifier
+  - **status**: Current media buy status (`pending`, `active`, `paused`, `completed`, `failed`)
+  - **totals**: Aggregate metrics for this media buy across all packages
+    - **impressions**: Total impressions delivered
+    - **spend**: Total amount spent
+    - **clicks**: Total clicks (if applicable)
+    - **ctr**: Click-through rate (clicks/impressions)
+    - **video_completions**: Total video completions (if applicable)
+    - **completion_rate**: Video completion rate (completions/impressions)
+  - **by_package**: Metrics broken down by package
+    - **package_id**: Package identifier
+    - **impressions**: Package impressions
+    - **spend**: Package spend
+    - **clicks**: Package clicks
+    - **video_completions**: Package video completions
+    - **pacing_index**: Delivery pace (1.0 = on track, &lt;1.0 = behind, &gt;1.0 = ahead)
+  - **daily_breakdown**: Day-by-day delivery
+    - **date**: Date (YYYY-MM-DD)
+    - **impressions**: Daily impressions
+    - **spend**: Daily spend
 
-## Example
+## Examples
 
-### Request
+### Example 1: Single Media Buy Query
+
+#### Request
 ```json
 {
   "context_id": "ctx-media-buy-abc123",  // From previous operations
-  "media_buy_id": "gam_1234567890",
+  "media_buy_ids": ["gam_1234567890"],
   "start_date": "2024-02-01",
   "end_date": "2024-02-07"
 }
 ```
 
-### Response - Strong Performance
+#### Response - Strong Performance
 ```json
 {
   "message": "Your campaign delivered 450,000 impressions this week with strong engagement. The 0.2% CTR exceeds industry benchmarks, and your video completion rate of 70% is excellent. You're currently pacing slightly behind (-9%) but should catch up with weekend delivery. Effective CPM is $37.50.",
   "context_id": "ctx-media-buy-abc123",
-  "media_buy_id": "gam_1234567890",
-  "status": "active",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
     "end": "2024-02-07T23:59:59Z"
   },
   "currency": "USD",
-  "totals": {
+  "aggregated_totals": {
     "impressions": 450000,
     "spend": 16875.00,
     "clicks": 900,
-    "ctr": 0.002,
     "video_completions": 315000,
-    "completion_rate": 0.70
+    "media_buy_count": 1
   },
-  "by_package": [
+  "deliveries": [
     {
-      "package_id": "pkg_ctv_prime_ca_ny",
-      "impressions": 250000,
-      "spend": 11250.00,
-      "clicks": 500,
-      "video_completions": 175000,
-      "pacing_index": 0.93
-    },
-    {
-      "package_id": "pkg_audio_drive_ca_ny",
-      "impressions": 200000,
-      "spend": 5625.00,
-      "clicks": 400,
-      "pacing_index": 0.88
-    }
-  ],
-  "daily_breakdown": [
-    {
-      "date": "2024-02-01",
-      "impressions": 64285,
-      "spend": 2410.71
+      "media_buy_id": "gam_1234567890",
+      "status": "active",
+      "totals": {
+        "impressions": 450000,
+        "spend": 16875.00,
+        "clicks": 900,
+        "ctr": 0.002,
+        "video_completions": 315000,
+        "completion_rate": 0.70
+      },
+      "by_package": [
+        {
+          "package_id": "pkg_ctv_prime_ca_ny",
+          "impressions": 250000,
+          "spend": 11250.00,
+          "clicks": 500,
+          "video_completions": 175000,
+          "pacing_index": 0.93
+        },
+        {
+          "package_id": "pkg_audio_drive_ca_ny",
+          "impressions": 200000,
+          "spend": 5625.00,
+          "clicks": 400,
+          "pacing_index": 0.88
+        }
+      ],
+      "daily_breakdown": [
+        {
+          "date": "2024-02-01",
+          "impressions": 64285,
+          "spend": 2410.71
+        }
+      ]
     }
   ]
 }
 ```
 
-### Response - Underperforming Campaign
+### Example 2: Multiple Media Buys with Status Filter
+
+#### Request - Single Status
 ```json
 {
-  "message": "Campaign performance needs attention. While you've delivered 125,000 impressions, the 0.08% CTR is below expectations and your 45% video completion rate suggests creative fatigue. Both packages are significantly behind pacing (-25%). Consider refreshing creatives or expanding targeting to improve delivery.",
   "context_id": "ctx-media-buy-abc123",
-  "media_buy_id": "gam_1234567890",
+  "status_filter": "active",  // Only return active media buys
+  "start_date": "2024-02-01",
+  "end_date": "2024-02-07"
+}
+```
+
+#### Request - Multiple Statuses
+```json
+{
+  "context_id": "ctx-media-buy-abc123",
+  "status_filter": ["active", "paused"],  // Return both active and paused media buys
+  "start_date": "2024-02-01",
+  "end_date": "2024-02-07"
+}
+```
+
+#### Response - Multiple Active Campaigns
+```json
+{
+  "message": "Your 3 active campaigns delivered 875,000 total impressions this week. Campaign performance varies: GAM campaign shows strong 0.2% CTR while Meta campaign needs attention with 0.08% CTR. Overall spend of $32,500 with average CPM of $37.14.",
+  "context_id": "ctx-media-buy-abc123",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
     "end": "2024-02-07T23:59:59Z"
   },
   "currency": "USD",
-  "totals": {
-    "impressions": 125000,
-    "spend": 5625.00,
-    "clicks": 100,
-    "ctr": 0.0008,
-    "video_completions": 56250,
-    "completion_rate": 0.45
+  "aggregated_totals": {
+    "impressions": 875000,
+    "spend": 32500.00,
+    "clicks": 1400,
+    "video_completions": 481250,
+    "media_buy_count": 3
   },
-  "by_package": [
+  "deliveries": [
     {
-      "package_id": "pkg_ctv_prime_ca_ny",
-      "impressions": 75000,
-      "spend": 3375.00,
-      "clicks": 60,
-      "video_completions": 33750,
-      "pacing_index": 0.75
+      "media_buy_id": "gam_1234567890",
+      "status": "active",
+      "totals": {
+        "impressions": 450000,
+        "spend": 16875.00,
+        "clicks": 900,
+        "ctr": 0.002,
+        "video_completions": 315000,
+        "completion_rate": 0.70
+      },
+      "by_package": [
+        {
+          "package_id": "pkg_ctv_prime_ca_ny",
+          "impressions": 250000,
+          "spend": 11250.00,
+          "clicks": 500,
+          "video_completions": 175000,
+          "pacing_index": 0.93
+        }
+      ],
+      "daily_breakdown": []
     },
     {
-      "package_id": "pkg_audio_drive_ca_ny",
-      "impressions": 50000,
-      "spend": 2250.00,
-      "clicks": 40,
-      "pacing_index": 0.75
-    }
-  ],
-  "daily_breakdown": [
+      "media_buy_id": "meta_9876543210",
+      "status": "active",
+      "totals": {
+        "impressions": 125000,
+        "spend": 5625.00,
+        "clicks": 100,
+        "ctr": 0.0008,
+        "video_completions": 56250,
+        "completion_rate": 0.45
+      },
+      "by_package": [
+        {
+          "package_id": "pkg_social_feed",
+          "impressions": 125000,
+          "spend": 5625.00,
+          "clicks": 100,
+          "video_completions": 56250,
+          "pacing_index": 0.75
+        }
+      ],
+      "daily_breakdown": []
+    },
     {
-      "date": "2024-02-01",
-      "impressions": 17857,
-      "spend": 803.57
+      "media_buy_id": "ttd_5555555555",
+      "status": "active",
+      "totals": {
+        "impressions": 300000,
+        "spend": 10000.00,
+        "clicks": 400,
+        "ctr": 0.00133,
+        "video_completions": 110000,
+        "completion_rate": 0.37
+      },
+      "by_package": [
+        {
+          "package_id": "pkg_open_exchange",
+          "impressions": 300000,
+          "spend": 10000.00,
+          "clicks": 400,
+          "video_completions": 110000,
+          "pacing_index": 1.05
+        }
+      ],
+      "daily_breakdown": []
     }
   ]
 }
@@ -203,11 +302,27 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 
 ## Usage Notes
 
+- If `media_buy_ids` is not provided, returns all media buys for the context
+- Use the `status_filter` parameter to control which media buys are returned:
+  - Can be a single status string or an array of statuses
+  - Use `"all"` to return media buys of any status
+  - Defaults to `["active"]` if not specified
 - If date range is not specified, returns lifetime delivery data
-- Daily breakdown may be truncated for long campaigns
+- Daily breakdown may be truncated for long campaigns or multiple media buys to reduce response size
 - Some metrics (clicks, completions) may not be available for all formats
 - Reporting data typically has a 2-4 hour delay
 - Currency is always specified to avoid ambiguity
+
+### Aggregated Fields for Multi-Buy Queries
+
+When querying multiple media buys, the response includes `aggregated_totals` with:
+- **impressions**: Sum of all impressions across returned media buys
+- **spend**: Total spend across all returned media buys  
+- **clicks**: Total clicks (where available)
+- **video_completions**: Total video completions (where available)
+- **media_buy_count**: Number of media buys included in the response
+
+These aggregated fields provide a quick overview of overall campaign performance, while the `deliveries` array contains detailed metrics for each individual media buy.
 
 ## Implementation Guide
 

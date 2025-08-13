@@ -304,12 +304,13 @@ All responses follow this structure:
 
 **Operation Type**: Synchronous (Adaptive for large date ranges)
 
-**Task**: Retrieve comprehensive delivery metrics and performance data for reporting.
+**Task**: Retrieve comprehensive delivery metrics and performance data for reporting. Returns aggregated totals across all queried media buys plus individual delivery details.
 
 **Request:**
 ```json
 {
-  "media_buy_id": "gam_1234567890",
+  "media_buy_ids": ["gam_1234567890"],  // Optional - array of IDs, if not provided returns all
+  "status_filter": ["active", "paused"],  // Optional - filter by status(es): "pending", "active", "paused", "completed", "failed", "all"
   "start_date": "2024-02-01",
   "end_date": "2024-02-07"
 }
@@ -319,43 +320,54 @@ All responses follow this structure:
 ```json
 {
   "message": "string",
-  "media_buy_id": "gam_1234567890",
-  "status": "active",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
     "end": "2024-02-07T23:59:59Z"
   },
   "currency": "USD",
-  "totals": {
+  "aggregated_totals": {
     "impressions": 450000,
     "spend": 16875.00,
     "clicks": 900,
-    "ctr": 0.002,
     "video_completions": 315000,
-    "completion_rate": 0.70
+    "media_buy_count": 1
   },
-  "by_package": [
+  "deliveries": [
     {
-      "package_id": "pkg_ctv_prime_ca_ny",
-      "impressions": 250000,
-      "spend": 11250.00,
-      "clicks": 500,
-      "video_completions": 175000,
-      "pacing_index": 0.93
-    },
-    {
-      "package_id": "pkg_audio_drive_ca_ny",
-      "impressions": 200000,
-      "spend": 5625.00,
-      "clicks": 400,
-      "pacing_index": 0.88
-    }
-  ],
-  "daily_breakdown": [
-    {
-      "date": "2024-02-01",
-      "impressions": 64285,
-      "spend": 2410.71
+      "media_buy_id": "gam_1234567890",
+      "status": "active",
+      "totals": {
+        "impressions": 450000,
+        "spend": 16875.00,
+        "clicks": 900,
+        "ctr": 0.002,
+        "video_completions": 315000,
+        "completion_rate": 0.70
+      },
+      "by_package": [
+        {
+          "package_id": "pkg_ctv_prime_ca_ny",
+          "impressions": 250000,
+          "spend": 11250.00,
+          "clicks": 500,
+          "video_completions": 175000,
+          "pacing_index": 0.93
+        },
+        {
+          "package_id": "pkg_audio_drive_ca_ny",
+          "impressions": 200000,
+          "spend": 5625.00,
+          "clicks": 400,
+          "pacing_index": 0.88
+        }
+      ],
+      "daily_breakdown": [
+        {
+          "date": "2024-02-01",
+          "impressions": 64285,
+          "spend": 2410.71
+        }
+      ]
     }
   ]
 }
@@ -482,50 +494,7 @@ Provides performance feedback for AI optimization.
 }
 ```
 
-### 8. get_all_media_buy_delivery
-
-Retrieves delivery metrics for all active media buys owned by the principal. This is optimized for performance by batching requests.
-
-**Request:**
-```json
-{
-  "today": "2024-02-08",
-  "media_buy_ids": ["gam_1234567890", "gam_9876543210"]  // Optional - omit to get all
-}
-```
-
-**Response:**
-```json
-{
-  "message": "string",
-  "deliveries": [
-    {
-      "media_buy_id": "gam_1234567890",
-      "status": "delivering",
-      "spend": 35000.50,
-      "impressions": 3500000,
-      "pacing": "on_track",
-      "days_elapsed": 7,
-      "total_days": 14
-    },
-    {
-      "media_buy_id": "gam_9876543210", 
-      "status": "completed",
-      "spend": 50000.00,
-      "impressions": 5000000,
-      "pacing": "on_track",
-      "days_elapsed": 30,
-      "total_days": 30
-    }
-  ],
-  "total_spend": 85000.50,
-  "total_impressions": 8500000,
-  "active_count": 1,
-  "summary_date": "2024-02-08"
-}
-```
-
-### 9. get_creatives
+### 8. get_creatives
 
 Lists creative assets for a principal or media buy.
 
@@ -560,7 +529,7 @@ Lists creative assets for a principal or media buy.
 }
 ```
 
-### 10. approve_adaptation
+### 9. approve_adaptation
 
 Approves or rejects a suggested creative adaptation.
 
@@ -594,7 +563,7 @@ Approves or rejects a suggested creative adaptation.
 }
 ```
 
-### 11. review_pending_creatives (Admin Only)
+### 10. review_pending_creatives (Admin Only)
 
 Reviews and approves/rejects pending creatives.
 
@@ -618,7 +587,7 @@ Reviews and approves/rejects pending creatives.
 }
 ```
 
-### 12. list_human_tasks (Admin Only)
+### 11. list_human_tasks (Admin Only)
 
 Lists pending human approval tasks.
 
@@ -652,7 +621,7 @@ Lists pending human approval tasks.
 }
 ```
 
-### 13. complete_human_task (Admin Only)
+### 12. complete_human_task (Admin Only)
 
 Completes a human approval task.
 
@@ -680,7 +649,7 @@ Completes a human approval task.
 }
 ```
 
-### 14. list_all_media_buys (Admin Only)
+### 13. list_all_media_buys (Admin Only)
 
 Retrieves delivery data for all active media buys across all principals.
 
@@ -692,9 +661,9 @@ Retrieves delivery data for all active media buys across all principals.
 }
 ```
 
-**Response:** Same format as get_media_buy_delivery but includes all media buys.
+**Response:** Same format as get_media_buy_delivery, returning all media buys across all principals in the `deliveries` array with aggregated totals.
 
-### 15. get_products
+### 14. get_products
 
 **Operation Type**: Synchronous
 
@@ -800,7 +769,7 @@ Policy compliance statuses:
 - `restricted`: Advertiser category requires manual approval before products can be shown (contact provided)
 - `blocked`: Advertiser category cannot be supported by this publisher
 
-### 16. get_targeting_capabilities
+### 15. get_targeting_capabilities
 
 Discover available targeting dimensions for specified channels.
 
@@ -852,7 +821,7 @@ Discover available targeting dimensions for specified channels.
 }
 ```
 
-### 17. check_aee_requirements
+### 16. check_aee_requirements
 
 Verify if required AEE dimensions are supported for a channel.
 
@@ -882,7 +851,7 @@ Verify if required AEE dimensions are supported for a channel.
 
 Use this before creating a media buy to ensure the publisher can provide required AEE signals.
 
-### 18. get_signals (Optional)
+### 17. get_signals (Optional)
 
 Publishers may optionally implement the `get_signals` endpoint from the [Signals Discovery Protocol](../signals/specification.md#get_signals) to advertise available signals for targeting.
 
