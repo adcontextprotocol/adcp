@@ -32,9 +32,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
     "impressions": "number",
     "spend": "number",
     "clicks": "number",
-    "ctr": "number",
     "video_completions": "number",
-    "completion_rate": "number",
     "media_buy_count": "number"
   },
   "deliveries": [
@@ -83,9 +81,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
   - **impressions**: Total impressions delivered across all media buys
   - **spend**: Total amount spent across all media buys
   - **clicks**: Total clicks across all media buys (if applicable)
-  - **ctr**: Overall click-through rate (clicks/impressions)
   - **video_completions**: Total video completions across all media buys (if applicable)
-  - **completion_rate**: Overall video completion rate (completions/impressions)
   - **media_buy_count**: Number of media buys included in the response
 - **deliveries**: Array of delivery data for each media buy
   - **media_buy_id**: The media buy identifier
@@ -137,9 +133,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
     "impressions": 450000,
     "spend": 16875.00,
     "clicks": 900,
-    "ctr": 0.002,
     "video_completions": 315000,
-    "completion_rate": 0.70,
     "media_buy_count": 1
   },
   "deliveries": [
@@ -209,9 +203,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
     "impressions": 875000,
     "spend": 32500.00,
     "clicks": 1400,
-    "ctr": 0.0016,
     "video_completions": 481250,
-    "completion_rate": 0.55,
     "media_buy_count": 3
   },
   "deliveries": [

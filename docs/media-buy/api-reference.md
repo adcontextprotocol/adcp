@@ -329,9 +329,7 @@ All responses follow this structure:
     "impressions": 450000,
     "spend": 16875.00,
     "clicks": 900,
-    "ctr": 0.002,
     "video_completions": 315000,
-    "completion_rate": 0.70,
     "media_buy_count": 1
   },
   "deliveries": [
