@@ -304,13 +304,13 @@ All responses follow this structure:
 
 **Operation Type**: Synchronous (Adaptive for large date ranges)
 
-**Task**: Retrieve comprehensive delivery metrics and performance data for reporting.
+**Task**: Retrieve comprehensive delivery metrics and performance data for reporting. Returns aggregated totals across all queried media buys plus individual delivery details.
 
 **Request:**
 ```json
 {
   "media_buy_ids": ["gam_1234567890"],  // Optional - array of IDs, if not provided returns all
-  "filter": "active",  // Optional - "active", "all", "completed", defaults to "active"
+  "status_filter": ["active", "paused"],  // Optional - filter by status(es): "pending", "active", "paused", "completed", "failed", "all"
   "start_date": "2024-02-01",
   "end_date": "2024-02-07"
 }

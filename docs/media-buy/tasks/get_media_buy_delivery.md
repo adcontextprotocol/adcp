@@ -13,7 +13,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 |-----------|------|----------|-------------|
 | `context_id` | string | Yes | Context identifier for session persistence |
 | `media_buy_ids` | array[string] | No | Array of media buy IDs to get delivery data for. If not provided, returns all media buys for the context |
-| `filter` | string | No | Filter for media buy status: `"active"`, `"all"`, `"completed"`. Defaults to `"active"` |
+| `status_filter` | string \| array[string] | No | Filter by status. Can be a single status or array of statuses: `"active"`, `"pending"`, `"paused"`, `"completed"`, `"failed"`, `"all"`. Defaults to `["active"]` |
 | `start_date` | string | No | Start date for reporting period (YYYY-MM-DD) |
 | `end_date` | string | No | End date for reporting period (YYYY-MM-DD) |
 
@@ -85,7 +85,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
   - **media_buy_count**: Number of media buys included in the response
 - **deliveries**: Array of delivery data for each media buy
   - **media_buy_id**: The media buy identifier
-  - **status**: Current media buy status (`pending_activation`, `active`, `paused`, `completed`, `failed`)
+  - **status**: Current media buy status (`pending`, `active`, `paused`, `completed`, `failed`)
   - **totals**: Aggregate metrics for this media buy across all packages
     - **impressions**: Total impressions delivered
     - **spend**: Total amount spent
@@ -177,13 +177,23 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 }
 ```
 
-### Example 2: Multiple Media Buys with Filter
+### Example 2: Multiple Media Buys with Status Filter
 
-#### Request
+#### Request - Single Status
 ```json
 {
   "context_id": "ctx-media-buy-abc123",
-  "filter": "active",  // Only return active media buys
+  "status_filter": "active",  // Only return active media buys
+  "start_date": "2024-02-01",
+  "end_date": "2024-02-07"
+}
+```
+
+#### Request - Multiple Statuses
+```json
+{
+  "context_id": "ctx-media-buy-abc123",
+  "status_filter": ["active", "paused"],  // Return both active and paused media buys
   "start_date": "2024-02-01",
   "end_date": "2024-02-07"
 }
@@ -293,14 +303,26 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 ## Usage Notes
 
 - If `media_buy_ids` is not provided, returns all media buys for the context
-- Use the `filter` parameter to control which media buys are returned based on status
+- Use the `status_filter` parameter to control which media buys are returned:
+  - Can be a single status string or an array of statuses
+  - Use `"all"` to return media buys of any status
+  - Defaults to `["active"]` if not specified
 - If date range is not specified, returns lifetime delivery data
 - Daily breakdown may be truncated for long campaigns or multiple media buys to reduce response size
 - Some metrics (clicks, completions) may not be available for all formats
 - Reporting data typically has a 2-4 hour delay
 - Currency is always specified to avoid ambiguity
-- The `aggregated_totals` provides a quick summary across all returned media buys
-- Individual media buy metrics are in the `deliveries` array for detailed analysis
+
+### Aggregated Fields for Multi-Buy Queries
+
+When querying multiple media buys, the response includes `aggregated_totals` with:
+- **impressions**: Sum of all impressions across returned media buys
+- **spend**: Total spend across all returned media buys  
+- **clicks**: Total clicks (where available)
+- **video_completions**: Total video completions (where available)
+- **media_buy_count**: Number of media buys included in the response
+
+These aggregated fields provide a quick overview of overall campaign performance, while the `deliveries` array contains detailed metrics for each individual media buy.
 
 ## Implementation Guide
 
