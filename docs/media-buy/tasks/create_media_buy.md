@@ -134,11 +134,39 @@ The media buy can have the following status values:
 
 ## Asynchronous Behavior
 
+This operation can be either synchronous or asynchronous depending on the publisher's implementation and the complexity of the request.
+
+### Synchronous Response
+When the operation can be completed immediately (rare), the response includes the created media buy details directly.
+
+### Asynchronous Response
+When the operation requires processing time, the response returns immediately with:
+- A `context_id` to track the operation
+- Status of `"processing"`
+- The buyer must then poll `create_media_buy_status` with the context_id
+
+### Checking Status
+Use the `create_media_buy_status` endpoint to check progress:
+
+```json
+// Request
+{
+  "context_id": "ctx-create-mb-456"
+}
+
+// Response shows current status
+{
+  "status": "processing" | "completed" | "failed" | "pending_manual",
+  // Additional fields based on status
+}
+```
+
+### Handling Pending States
 Orchestrators MUST handle pending states as normal operation flow. Publishers may require manual approval for all operations, resulting in `pending_manual` status with a task ID. The orchestrator should:
 
-1. Store the task ID for tracking
-2. Poll `get_pending_tasks` or receive webhook notifications
-3. Handle eventual completion or rejection
+1. Store the context_id for tracking
+2. Poll `create_media_buy_status` periodically
+3. Handle eventual completion, rejection, or manual approval requirements
 
 ### Example Pending Operation Flow
 
@@ -155,25 +183,32 @@ response = await mcp.call_tool("create_media_buy", {
     }
 })
 
-if response["status"] == "pending_manual":
-    task_id = extract_task_id(response["detail"])
+# Check if async processing is needed
+if response.get("status") == "processing":
+    context_id = response["context_id"]
     
-    # 2. Poll for completion (or use webhooks)
+    # 2. Poll for completion
     while True:
-        tasks = await mcp.call_tool("get_pending_tasks", {
-            "task_type": "manual_approval"
+        status_response = await mcp.call_tool("create_media_buy_status", {
+            "context_id": context_id
         })
         
-        task = find_task(tasks, task_id)
-        if task["status"] == "completed":
-            # Operation was approved and executed
+        if status_response["status"] == "completed":
+            # Operation completed successfully
+            media_buy_id = status_response["media_buy_id"]
             break
-        elif task["status"] == "failed":
-            # Operation was rejected
-            handle_rejection(task)
+        elif status_response["status"] == "failed":
+            # Operation failed
+            handle_error(status_response["error"])
             break
-            
-        await sleep(60)  # Poll every minute
+        elif status_response["status"] == "pending_manual":
+            # Requires human approval - may take hours/days
+            notify_user_of_pending_approval(status_response)
+            # Continue polling less frequently
+            await sleep(300)  # Check every 5 minutes
+        else:
+            # Still processing
+            await sleep(10)  # Poll every 10 seconds
 ```
 
 ## Platform Mapping

@@ -28,6 +28,104 @@ The Advertising Context Protocol (AdCP) Sales Agent specification defines a stan
 
 ## Core Concepts
 
+### Response Standards
+
+#### Error Response Format
+
+All error responses follow this consistent structure:
+
+**For operational errors (e.g., invalid context, authentication):**
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error description",
+    "suggestion": "Actionable suggestion to resolve the issue"
+  }
+}
+```
+
+**For failed async operations (embedded in status response):**
+```json
+{
+  "message": "Operation failed description",
+  "context_id": "ctx-123",
+  "status": "failed",
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Detailed error description",
+    "suggestion": "How to resolve or retry"
+  }
+}
+```
+
+#### Progress Reporting
+
+For async operations, progress is reported using a standardized structure:
+
+```typescript
+interface Progress {
+  // Current step or item being processed
+  current_step?: string;
+  current_item?: string;
+  
+  // Progress counters
+  completed: number;
+  total: number;
+  
+  // Unit type for clarity
+  unit_type: "steps" | "assets" | "packages" | "items";
+  
+  // Who is responsible for current action
+  responsible_party: "system" | "publisher" | "principal" | "advertiser" | "third_party";
+  
+  // Optional details about what party is doing
+  action_detail?: string;
+}
+```
+
+**Responsible Party Values:**
+- `system`: Automated processing by the ad platform
+- `publisher`: Publisher/seller side approval or processing
+- `principal`: Buyer/agency approval or input needed
+- `advertiser`: End advertiser approval required
+- `third_party`: External service (e.g., brand safety check, verification service)
+
+**Common Scenarios by Party:**
+- **System**: Inventory validation, line item creation, budget calculations
+- **Publisher**: Policy review, manual campaign approval, high-value deal review
+- **Principal**: Creative upload, targeting confirmation, campaign activation approval
+- **Advertiser**: Budget increase approval, brand guideline compliance sign-off
+- **Third Party**: Brand safety verification, viewability checks, fraud detection
+
+Example:
+```json
+{
+  "progress": {
+    "current_step": "policy_review",
+    "completed": 2,
+    "total": 5,
+    "unit_type": "steps",
+    "responsible_party": "publisher",
+    "action_detail": "Manual review of creative content"
+  }
+}
+```
+
+Example showing principal action needed:
+```json
+{
+  "progress": {
+    "current_step": "awaiting_creative_upload",
+    "completed": 3,
+    "total": 5,
+    "unit_type": "steps",
+    "responsible_party": "principal",
+    "action_detail": "Waiting for creative assets to be uploaded"
+  }
+}
+```
+
 ### Authentication
 All requests must include authentication via one of:
 - **JWT Bearer Token**: `Authorization: Bearer <token>`
@@ -182,6 +280,7 @@ All responses follow this structure:
 **Request:**
 ```json
 {
+  "context_id": "ctx-abc123",  // Optional - null for first request, or include for conversation continuity
   "packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"],
   "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs, promoting the new salmon and rice formula for sensitive skin and stomachs",  // Required - description of advertiser and what is being promoted
   "po_number": "PO-2024-Q1-0123",
@@ -201,10 +300,11 @@ All responses follow this structure:
 }
 ```
 
-**Response:**
+**Response (Synchronous):**
 ```json
 {
   "message": "string",
+  "context_id": "ctx-abc123",  // Use in subsequent requests
   "media_buy_id": "gam_1234567890",
   "status": "pending_activation",
   "creative_deadline": "2024-01-30T23:59:59Z",
@@ -217,10 +317,121 @@ All responses follow this structure:
 }
 ```
 
+**Response (Asynchronous - returns immediately):**
+```json
+{
+  "message": "Media buy creation in progress",
+  "context_id": "ctx-create-mb-456",  // Use to check status
+  "status": "processing"
+}
+```
+
 **Platform Behavior:**
 - **GAM**: Creates Order with LineItems, requires approval
 - **Kevel**: Creates Campaign with Flights, instant activation
 - **Triton**: Creates Campaign for audio delivery
+
+### 2.1. create_media_buy_status
+
+**Operation Type**: Synchronous
+
+**Task**: Check the status of an asynchronous media buy creation.
+
+**Request:**
+```json
+{
+  "context_id": "ctx-create-mb-456"  // Required - the context_id from create_media_buy response
+}
+```
+
+**Response (Still Processing):**
+```json
+{
+  "message": "Media buy creation in progress - validating inventory availability",
+  "context_id": "ctx-create-mb-456",
+  "status": "processing",
+  "progress": {
+    "current_step": "inventory_validation",
+    "completed": 2,
+    "total": 5,
+    "unit_type": "steps",
+    "responsible_party": "system",
+    "action_detail": "Checking availability across platforms"
+  }
+}
+```
+
+**Response (Completed):**
+```json
+{
+  "message": "Successfully created your $50,000 media buy",
+  "context_id": "ctx-create-mb-456",
+  "status": "completed",
+  "media_buy_id": "gam_1234567890",
+  "media_buy_status": "pending_activation",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "detail": "Media buy created in Google Ad Manager",
+  "next_steps": [
+    "Upload creative assets before deadline",
+    "Assets will be reviewed by ad server",
+    "Campaign will auto-activate after approval"
+  ]
+}
+```
+
+**Response (Failed):**
+```json
+{
+  "message": "Media buy creation failed due to insufficient inventory",
+  "context_id": "ctx-create-mb-456",
+  "status": "failed",
+  "error": {
+    "code": "INSUFFICIENT_INVENTORY",
+    "message": "Requested inventory not available for the specified dates",
+    "suggestion": "Try adjusting your flight dates or selecting different products"
+  }
+}
+```
+
+**Response (Pending Manual Approval):**
+```json
+{
+  "message": "Media buy requires manual approval",
+  "context_id": "ctx-create-mb-456",
+  "status": "pending_manual",
+  "task_id": "task_approval_12345",
+  "estimated_approval_time": "2-4 hours during business hours",
+  "reason": "Campaign budget exceeds automatic approval threshold",
+  "responsible_party": "publisher",
+  "action_detail": "Sales team reviewing high-value campaign"
+}
+```
+
+**Response (Waiting for Principal Action):**
+```json
+{
+  "message": "Awaiting additional information from buyer",
+  "context_id": "ctx-create-mb-456",
+  "status": "pending_input",
+  "responsible_party": "principal",
+  "action_detail": "Creative assets required before campaign activation",
+  "required_actions": [
+    "Upload video creative for CTV package",
+    "Upload audio creative for streaming package"
+  ]
+}
+```
+
+**Response (Invalid Context):**
+```json
+{
+  "error": {
+    "code": "INVALID_CONTEXT",
+    "message": "Context not found or expired",
+    "suggestion": "Start a new create_media_buy operation"
+  }
+}
+```
 
 ### 3. add_creative_assets
 
@@ -231,6 +442,7 @@ All responses follow this structure:
 **Request:**
 ```json
 {
+  "context_id": "ctx-abc123",  // Optional - null for first request
   "media_buy_id": "gam_1234567890",
   "assets": [
     {
@@ -257,10 +469,11 @@ All responses follow this structure:
 }
 ```
 
-**Response:**
+**Response (Synchronous):**
 ```json
 {
   "message": "string",
+  "context_id": "ctx-abc123",
   "asset_statuses": [
     {
       "creative_id": "pet_food_30s_v1",
@@ -294,11 +507,106 @@ All responses follow this structure:
 }
 ```
 
+**Response (Asynchronous - returns immediately):**
+```json
+{
+  "message": "Creative assets upload in progress",
+  "context_id": "ctx-creative-789",  // Use to check status
+  "status": "processing"
+}
+```
+
 **Platform Validation:**
 - Format compatibility (video for CTV, audio for radio)
 - Size and duration limits
 - Content policies
 - Technical specifications
+
+### 3.1. add_creative_assets_status
+
+**Operation Type**: Synchronous
+
+**Task**: Check the status of asynchronous creative asset upload and validation.
+
+**Request:**
+```json
+{
+  "context_id": "ctx-creative-789"  // Required - the context_id from add_creative_assets response
+}
+```
+
+**Response (Still Processing):**
+```json
+{
+  "message": "Creative validation in progress - checking policy compliance",
+  "context_id": "ctx-creative-789",
+  "status": "processing",
+  "progress": {
+    "current_item": "pet_food_audio_15s",
+    "completed": 1,
+    "total": 2,
+    "unit_type": "assets",
+    "responsible_party": "publisher",
+    "action_detail": "Policy compliance review"
+  }
+}
+```
+
+**Response (Completed):**
+```json
+{
+  "message": "Successfully uploaded 2 creative assets",
+  "context_id": "ctx-creative-789",
+  "status": "completed",
+  "asset_statuses": [
+    {
+      "creative_id": "pet_food_30s_v1",
+      "status": "approved",
+      "platform_id": "gam_creative_987654",
+      "review_feedback": null
+    },
+    {
+      "creative_id": "pet_food_audio_15s",
+      "status": "approved",
+      "platform_id": "gam_creative_987655",
+      "review_feedback": null
+    }
+  ]
+}
+```
+
+**Response (Partial Failure):**
+```json
+{
+  "message": "Creative upload completed with 1 rejection",
+  "context_id": "ctx-creative-789",
+  "status": "completed_with_errors",
+  "asset_statuses": [
+    {
+      "creative_id": "pet_food_30s_v1",
+      "status": "rejected",
+      "review_feedback": "Video contains misleading health claims",
+      "suggestion": "Remove or modify health benefit statements"
+    },
+    {
+      "creative_id": "pet_food_audio_15s",
+      "status": "approved",
+      "platform_id": "gam_creative_987655"
+    }
+  ]
+}
+```
+
+**Response (Invalid Context):**
+```json
+{
+  "error": {
+    "code": "INVALID_CONTEXT",
+    "message": "Context not found or expired",
+    "suggestion": "Start a new add_creative_assets operation"
+  }
+}
+```
 
 ### 4. get_media_buy_delivery
 
@@ -382,19 +690,30 @@ All responses follow this structure:
 **Request Example 1 - Campaign Pause:**
 ```json
 {
+  "context_id": "ctx-abc123",  // Optional - null for first request
   "media_buy_id": "gam_1234567890",
   "active": false
 }
 ```
 
-**Response:**
+**Response (Synchronous):**
 ```json
 {
   "message": "string",
+  "context_id": "ctx-abc123",
   "status": "accepted",
   "implementation_date": "2024-02-08T00:00:00Z",
   "detail": "Order paused in Google Ad Manager",
   "affected_packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"]
+}
+```
+
+**Response (Asynchronous - returns immediately):**
+```json
+{
+  "message": "Media buy update in progress",
+  "context_id": "ctx-update-mb-321",  // Use to check status
+  "status": "processing"
 }
 ```
 
@@ -422,6 +741,84 @@ All responses follow this structure:
 - Only included fields are modified
 - Omitted packages remain unchanged
 - Null values clear/reset fields (where applicable)
+
+### 5.1. update_media_buy_status
+
+**Operation Type**: Synchronous
+
+**Task**: Check the status of an asynchronous media buy update.
+
+**Request:**
+```json
+{
+  "context_id": "ctx-update-mb-321"  // Required - the context_id from update_media_buy response
+}
+```
+
+**Response (Still Processing):**
+```json
+{
+  "message": "Media buy update in progress - applying changes to packages",
+  "context_id": "ctx-update-mb-321",
+  "status": "processing",
+  "progress": {
+    "completed": 1,
+    "total": 2,
+    "unit_type": "packages",
+    "responsible_party": "system",
+    "action_detail": "Applying budget changes"
+  }
+}
+```
+
+**Response (Completed):**
+```json
+{
+  "message": "Successfully updated media buy gam_1234567890",
+  "context_id": "ctx-update-mb-321",
+  "status": "completed",
+  "implementation_date": "2024-02-08T00:00:00Z",
+  "detail": "Budget increased to $75,000, flight extended to Feb 28",
+  "affected_packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"]
+}
+```
+
+**Response (Pending Approval):**
+```json
+{
+  "message": "Media buy update requires approval",
+  "context_id": "ctx-update-mb-321",
+  "status": "pending_manual",
+  "task_id": "task_update_approval_678",
+  "reason": "Budget increase exceeds automatic approval threshold",
+  "estimated_approval_time": "1-2 hours during business hours"
+}
+```
+
+**Response (Failed):**
+```json
+{
+  "message": "Media buy update failed",
+  "context_id": "ctx-update-mb-321",
+  "status": "failed",
+  "error": {
+    "code": "BUDGET_EXCEEDED",
+    "message": "Requested budget exceeds available credit limit",
+    "suggestion": "Contact your account manager to increase credit limit"
+  }
+}
+```
+
+**Response (Invalid Context):**
+```json
+{
+  "error": {
+    "code": "INVALID_CONTEXT",
+    "message": "Context not found or expired",
+    "suggestion": "Start a new update_media_buy operation"
+  }
+}
+```
 
 ### 6. update_package
 
@@ -1177,9 +1574,11 @@ Completes a human task with resolution. For manual approval tasks, approved oper
 ### Status Normalization
 
 Platforms use different status values. AdCP normalizes to:
+- `processing` - Operation is being processed by the system
 - `pending_activation` - Awaiting creative assets
 - `pending_approval` - Under review by ad server (typically minutes/hours)
 - `pending_manual` - Awaiting human approval (HITL - may take days/weeks)
+- `pending_input` - Awaiting action from principal/buyer (e.g., creative upload)
 - `pending_permission` - Blocked by permissions
 - `scheduled` - Future start date
 - `active` - Currently delivering
