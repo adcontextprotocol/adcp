@@ -61,6 +61,34 @@ Default TTL:
 - **Interactive sessions**: 1 hour of inactivity
 - **Async operations**: No timeout - persists until operation completes
 - **HITL operations**: No timeout - may take days/weeks for approval
+- **Status checking**: Context from async operations remains valid for status checks
+
+### Timeout Handling Guidelines
+
+#### Context Expiration
+- **Processing operations**: Context remains valid until operation completes or fails
+- **Completed operations**: Context persists for 24 hours after completion for result retrieval
+- **Failed operations**: Context persists for 1 hour after failure for error details
+- **Abandoned operations**: Operations with no status checks for 7 days may be cleaned up
+
+#### Status Endpoint Behavior
+When checking status with an invalid or expired context:
+```json
+{
+  "error": {
+    "code": "INVALID_CONTEXT",
+    "message": "Context not found or expired",
+    "suggestion": "Start a new operation"
+  }
+}
+```
+
+#### Recommended Polling Intervals
+- **First 10 seconds**: Poll every 1-2 seconds
+- **Next minute**: Poll every 5-10 seconds
+- **After 1 minute**: Poll every 30-60 seconds
+- **HITL operations**: Poll every 5-15 minutes
+- **Maximum poll duration**: 7 days before considering abandoned
 
 ## How It Works
 
@@ -134,6 +162,45 @@ Default TTL:
   }
 }
 ```
+
+## Async Operations and Status Checking
+
+When operations return immediately with `status: "processing"`, the context_id is used to check status:
+
+### Async Operation Flow
+```json
+// 1. Initial request returns immediately
+{
+  "message": "Media buy creation in progress",
+  "context_id": "ctx-create-mb-456",
+  "status": "processing"
+}
+
+// 2. Check status using the context_id
+// Request to create_media_buy_status
+{
+  "context_id": "ctx-create-mb-456"
+}
+
+// 3. Status response shows progress
+{
+  "status": "processing",
+  "progress": { "steps_completed": 3, "total_steps": 5 }
+}
+
+// 4. Eventually completes
+{
+  "status": "completed",
+  "media_buy_id": "mb_123",
+  // ... full result data
+}
+```
+
+### Status Endpoint Naming Convention
+For any async operation `{operation}`, the status endpoint is `{operation}_status`:
+- `create_media_buy` → `create_media_buy_status`
+- `update_media_buy` → `update_media_buy_status`
+- `add_creative_assets` → `add_creative_assets_status`
 
 ## Working State Management
 

@@ -176,6 +176,58 @@ The `update_media_buy` tool provides a unified interface that supports both camp
 - Each package update is processed independently
 - Returns immediately on first error
 
+## Status Checking (MCP Only)
+
+### update_media_buy_status
+
+For MCP implementations, use this endpoint to check the status of an asynchronous media buy update.
+
+#### Request
+```json
+{
+  "context_id": "ctx-update-mb-321"  // Required - from update_media_buy response
+}
+```
+
+#### Response Examples
+
+**Processing:**
+```json
+{
+  "message": "Media buy update in progress - applying changes",
+  "context_id": "ctx-update-mb-321",
+  "status": "processing",
+  "progress": {
+    "completed": 1,
+    "total": 2,
+    "unit_type": "packages",
+    "responsible_party": "system"
+  }
+}
+```
+
+**Completed:**
+```json
+{
+  "message": "Successfully updated media buy gam_1234567890",
+  "context_id": "ctx-update-mb-321",
+  "status": "completed",
+  "implementation_date": "2024-02-08T00:00:00Z",
+  "affected_packages": ["pkg_ctv_prime_ca_ny"]
+}
+```
+
+**Pending Approval:**
+```json
+{
+  "message": "Media buy update requires approval",
+  "context_id": "ctx-update-mb-321",
+  "status": "pending_manual",
+  "responsible_party": "advertiser",
+  "action_detail": "Finance team must approve budget increase"
+}
+```
+
 ## Usage Notes
 
 - Updates typically take effect immediately unless approval is required
