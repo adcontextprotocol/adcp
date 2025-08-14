@@ -83,6 +83,21 @@ The technical infrastructure that:
 - **Delivery Method**: Direct campaigns or programmatic (RTB)
 - **Examples**: DSPs, SSPs, Ad Servers, Google Ad Manager, Kevel
 
+## AdCP Information Flows
+
+The AdCP ecosystem coordinates multiple flows of information between participants:
+
+![AdCP Flows](./adcp-flows.png)
+
+### Key Flows Explained
+
+- **Creative Flow**: Creative agents produce assets that flow through the ecosystem to reach consumers via properties
+- **Business Flow**: Advertisers work with principals who engage media sellers in the business layer
+- **Technical Flow**: Brand agents, media agents, and sales agents coordinate through the decisioning platform, with bidirectional communication enabling optimization
+- **Data Flow**: Signals flow between agents, with buyer signals and publisher signals enriching the decision-making process through the AEE (Agent Execution Environment)
+
+These flows illustrate how AdCP enables seamless coordination between business stakeholders, technical systems, and creative processes.
+
 ## How AdCP Protocols Work Together
 
 Each AdCP protocol operates within this ecosystem:
