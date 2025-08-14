@@ -145,28 +145,75 @@ When the operation requires processing time, the response returns immediately wi
 - Status of `"processing"`
 - The buyer must then poll `create_media_buy_status` with the context_id
 
-### Checking Status
-Use the `create_media_buy_status` endpoint to check progress:
+## Status Checking (MCP Only)
 
+### create_media_buy_status
+
+For MCP implementations, use this endpoint to check the status of an asynchronous media buy creation.
+
+#### Request
 ```json
-// Request
 {
-  "context_id": "ctx-create-mb-456"
-}
-
-// Response shows current status
-{
-  "status": "processing" | "completed" | "failed" | "pending_manual",
-  // Additional fields based on status
+  "context_id": "ctx-create-mb-456"  // Required - from create_media_buy response
 }
 ```
 
+#### Response Examples
+
+**Processing:**
+```json
+{
+  "message": "Media buy creation in progress - validating inventory",
+  "context_id": "ctx-create-mb-456",
+  "status": "processing",
+  "progress": {
+    "current_step": "inventory_validation",
+    "completed": 2,
+    "total": 5,
+    "unit_type": "steps",
+    "responsible_party": "system"
+  }
+}
+```
+
+**Completed:**
+```json
+{
+  "message": "Successfully created your $50,000 media buy",
+  "context_id": "ctx-create-mb-456",
+  "status": "completed",
+  "media_buy_id": "gam_1234567890",
+  "media_buy_status": "pending_activation",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "next_steps": [
+    "Upload creative assets before deadline"
+  ]
+}
+```
+
+**Pending Manual Approval:**
+```json
+{
+  "message": "Media buy requires manual approval",
+  "context_id": "ctx-create-mb-456",
+  "status": "pending_manual",
+  "responsible_party": "publisher",
+  "action_detail": "Sales team reviewing campaign"
+}
+```
+
+#### Polling Guidelines
+- First 10 seconds: Every 1-2 seconds
+- Next minute: Every 5-10 seconds
+- After 1 minute: Every 30-60 seconds
+- For `pending_manual`: Every 5 minutes
+
 ### Handling Pending States
-Orchestrators MUST handle pending states as normal operation flow. Publishers may require manual approval for all operations, resulting in `pending_manual` status with a task ID. The orchestrator should:
+Orchestrators MUST handle pending states as normal operation flow:
 
 1. Store the context_id for tracking
 2. Poll `create_media_buy_status` periodically
-3. Handle eventual completion, rejection, or manual approval requirements
+3. Handle eventual completion, rejection, or manual approval
 
 ### Example Pending Operation Flow
 

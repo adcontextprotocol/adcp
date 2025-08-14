@@ -260,6 +260,80 @@ Different platforms support different creative formats:
 - **Audio**: Supported by Triton Digital
 - **Custom**: Supported by Kevel (template-based)
 
+## Status Checking (MCP Only)
+
+### add_creative_assets_status
+
+For MCP implementations, use this endpoint to check the status of asynchronous creative asset upload and validation.
+
+#### Request
+```json
+{
+  "context_id": "ctx-creative-789"  // Required - from add_creative_assets response
+}
+```
+
+#### Response Examples
+
+**Processing:**
+```json
+{
+  "message": "Creative validation in progress",
+  "context_id": "ctx-creative-789",
+  "status": "processing",
+  "progress": {
+    "current_item": "pet_food_audio_15s",
+    "completed": 1,
+    "total": 2,
+    "unit_type": "assets",
+    "responsible_party": "publisher",
+    "action_detail": "Reviewing for policy compliance"
+  }
+}
+```
+
+**Completed:**
+```json
+{
+  "message": "Successfully uploaded 2 creative assets",
+  "context_id": "ctx-creative-789",
+  "status": "completed",
+  "asset_statuses": [
+    {
+      "creative_id": "pet_food_30s_v1",
+      "status": "approved",
+      "platform_id": "gam_creative_987654"
+    },
+    {
+      "creative_id": "pet_food_audio_15s",
+      "status": "approved",
+      "platform_id": "gam_creative_987655"
+    }
+  ]
+}
+```
+
+**Partial Failure:**
+```json
+{
+  "message": "Creative upload completed with 1 rejection",
+  "context_id": "ctx-creative-789",
+  "status": "completed_with_errors",
+  "asset_statuses": [
+    {
+      "creative_id": "pet_food_30s_v1",
+      "status": "rejected",
+      "review_feedback": "Video contains misleading claims"
+    },
+    {
+      "creative_id": "pet_food_audio_15s",
+      "status": "approved",
+      "platform_id": "gam_creative_987655"
+    }
+  ]
+}
+```
+
 ## Platform Validation
 
 Platforms validate creatives for:
