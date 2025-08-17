@@ -25,7 +25,7 @@ When signals become instantly discoverable and activatable:
 1. **Discovery increases 100x** → More signals get used
 2. **Activation friction drops to zero** → Long-tail signals become viable
 3. **Small providers can compete** → Innovation explodes
-4. **AI dynamically creates perfect segments** → Performance improves dramatically
+4. **AI orchestrates multiple signals** → Performance improves dramatically
 5. **Network effects kick in** → Every new signal makes all others more valuable
 
 ## From Static Catalogs to Dynamic Intelligence
@@ -34,21 +34,32 @@ When signals become instantly discoverable and activatable:
 - Fixed catalogs with 1,000s of segments
 - Only the top 50 ever get used
 - New segments take months to productize
-- Can't combine signals across providers
+- Manual effort to use signals from multiple providers
 - One-size-fits-all approach
 
-### The New World: AI-Composed Signals
+### The New World: AI-Orchestrated Signals
 ```
 Human: I need high-value customers who are both interested in luxury travel 
         AND actively researching electric vehicles, but only in California
 
-AI: Creating a custom signal by combining:
-- DataVault's "Luxury Travel Intenders" (RampID)
-- AutoSignals' "EV Researchers" (UID2) 
-- Geographic fence: California (lat/long polygons)
+AI: Found matching signals from multiple providers:
 
-This dynamic segment has 47,000 individuals. 
-Activating across all platforms now...
+DataVault's "Luxury Travel Intenders"
+- Available on: RampID, UID2, MAIDs
+- Size: 2.3M individuals nationwide
+- California subset: 340K individuals
+
+AutoSignals' "EV Researchers"
+- Available on: UID2, hashed emails, cookies
+- Size: 890K individuals nationwide  
+- California subset: 125K individuals
+
+For your campaign, I can:
+1. Activate both signals on The Trade Desk (using UID2)
+2. Layer California geo-fencing at campaign level
+3. Estimated overlapping audience: 47K individuals
+
+Deploy these signals together?
 ```
 
 ## Universal Signal Keys
@@ -102,20 +113,32 @@ AI: Creating dynamic weather signal:
 Signal is now live across all platforms.
 ```
 
-### 🎯 Cross-Provider Signal Fusion
+### 🎯 Multi-Signal Campaign Orchestration
 
 ```
-Human: Combine signals from multiple providers for crypto investors who 
-        also collect wine and live in high-income neighborhoods
+Human: I want to target crypto investors who also collect wine 
+        and live in high-income neighborhoods
 
-AI: Composing multi-provider signal:
-- FinanceSignals: "Active Crypto Traders" (UID2)
-- LuxuryData: "Wine Collectors" (RampID)
-- CensusPlus: "HHI > $250K" (Postal codes)
+AI: Found complementary signals for your campaign:
 
-Resolving identities across providers...
-Created unified segment: 127,000 individuals
-Price: $15 CPM (combined provider costs)
+FinanceSignals: "Active Crypto Traders"
+- Available on: UID2, RampID, MAIDs
+- Size: 1.8M individuals
+- Price: $5 CPM
+
+LuxuryData: "Wine Collectors" 
+- Available on: RampID, hashed emails
+- Size: 450K individuals
+- Price: $6 CPM
+
+CensusPlus: "HHI > $250K by Postal"
+- Geographic signal: ZIP+4 level
+- Coverage: All US metros
+- Price: $4 CPM
+
+Activating all three on DSP Platform X (using RampID).
+Platform will handle audience intersection.
+Total signal cost: $15 CPM combined
 ```
 
 ### 🔬 Real-Time Contextual Activation
@@ -134,24 +157,30 @@ Current inventory: 2.3M impressions/day
 Activating on all connected SSPs...
 ```
 
-### 📊 Custom Algorithm Deployment
+### 📊 Custom Signal Creation from Your Data
 
 ```
-Human: I have a Python model that predicts purchase intent. 
-        Can you turn it into a signal?
+Human: Can DataVault create a custom signal from our CRM data 
+        for high-value customers who haven't purchased recently?
 
-AI: I'll help you deploy your custom algorithm:
+AI: DataVault can create a custom signal using your data:
 
-1. Converting your model to AdCP signal format
-2. Setting up real-time scoring infrastructure
-3. Defining refresh frequency (hourly/daily/real-time)
-4. Configuring output keys (RampID, UID2, MAIDs)
+"Your Brand - Lapsed High-Value Customers"
+- Input: Your CRM list (hashed emails)
+- Match against DataVault's identity graph
+- Output formats: RampID, UID2, MAIDs
+- Expected match rate: 60-70%
 
-Your "Custom Purchase Intent Score" is now:
-- Available on all platforms
-- Refreshing every 4 hours
-- Priced at $8 CPM
-- Already discovered by 3 campaigns
+Signal characteristics:
+- Size: ~127K matched individuals
+- Refresh: Daily from your CRM
+- Exclusive to your account
+- Price: $8 CPM
+
+DataVault will score recency and value, making it
+available across all your connected platforms.
+
+Proceed with signal creation?
 ```
 
 ## Multi-Platform Intelligence
@@ -184,7 +213,7 @@ Generating $12K/day in signal revenue
 The Signals Activation Protocol supports two primary tasks:
 
 ### 1. [get_signals](./tasks/get_signals)
-Discover and compose signals across providers using natural language.
+Discover signals across providers using natural language, with visibility into available identity keys.
 
 ### 2. [activate_signal](./tasks/activate_signal)  
 Deploy signals to platforms with automatic identity resolution.
@@ -195,23 +224,23 @@ Deploy signals to platforms with automatic identity resolution.
 flowchart LR
     A[Natural Language Request] --> B[AI Understands Intent]
     B --> C[Search Across Providers]
-    C --> D{Existing Signal?}
-    D -->|No| E[Compose Custom Signal]
+    C --> D{Signal Exists?}
+    D -->|No| E[Provider Creates Custom]
     D -->|Yes| F[Use Catalog Signal]
-    E --> G[Resolve Identities]
+    E --> G[Match Identity Keys]
     F --> G
     G --> H[Activate on Platforms]
-    H --> I[Monitor Performance]
-    I --> J[Optimize Dynamically]
+    H --> I[Campaign Uses Signals]
+    I --> J[Monitor & Optimize]
 ```
 
 ## The Bottom Line Impact
 
 **For Signal Providers:**
-- 📈 **Revenue**: 10-15x increase through dynamic composition
-- ⚡ **Speed**: Real-time signal creation vs weeks of development
-- 🎯 **Precision**: Exact segments instead of "close enough"
-- 🌍 **Reach**: Every combination becomes possible
+- 📈 **Revenue**: 10-15x increase through better discovery
+- ⚡ **Speed**: Instant custom signals from your data
+- 🎯 **Precision**: Create exact segments on demand
+- 🌍 **Reach**: Available on every identity type
 
 **For Advertisers:**
 - 🎨 **Custom Audiences**: Build exactly what you need
