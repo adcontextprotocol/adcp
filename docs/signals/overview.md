@@ -5,34 +5,34 @@ title: Overview
 
 # Signals Activation Protocol Overview
 
-The Signals Activation Protocol enables AI assistants to discover, activate, and manage data signals through natural language—solving the impossible problem of navigating hundreds of thousands of opaque segments.
+The Signals Activation Protocol enables AI assistants to discover, activate, and manage data signals through natural language—making it practical to navigate and utilize the vast universe of available segments.
 
-## The Problem: 500,000 Segments, Zero Transparency
+## The Challenge: Navigating Hundreds of Thousands of Segments
 
-Today's data platforms offer hundreds of thousands of pre-built segments. But humans can't effectively navigate them:
-- **No provenance**: Where did this data come from? How fresh is it?
-- **No quality metrics**: Is this segment accurate? How does it perform?
-- **No comprehension**: What does "Luxury Auto Intenders v3_final_FINAL" actually mean?
-- **Arbitrary choices**: Decisions influenced by sales teams, not data quality
-- **Static catalogs**: Can't get exactly what you need, only "close enough"
+Modern data platforms offer incredible depth—often hundreds of thousands of pre-built segments. While this provides unprecedented targeting options, it also creates real challenges:
+- **Limited visibility**: Provenance and methodology vary across providers
+- **Inconsistent metrics**: Each platform reports quality and performance differently
+- **Naming conventions**: Segment names don't always clearly convey their contents
+- **Discovery friction**: Finding the right segment requires deep platform expertise
+- **Fixed catalogs**: Pre-built segments may not precisely match campaign needs
 
-## The Solution: AI That Understands Data
+## How AI Assistants Transform Signal Discovery
 
-### Traditional Model (Broken)
+### Current Approach
 ```
-Human → Browses 500K segments → Picks blindly → Hope it works
+Human → Navigate platform UIs → Select from available → Activate and test
 ```
-- **Result**: Poor performance, wasted spend, frustrated users
+- **Challenges**: Time-intensive, may miss better options, requires platform expertise
 
-### AdCP Model (Revolutionary)
+### With AdCP
 ```
-Human describes need → AI analyzes metadata → Provider creates perfect segment → Instant activation
+Human describes need → AI evaluates all options → Providers can create custom → Streamlined activation
 ```
-- **Result**: Exact audiences, transparent quality, optimal performance
+- **Benefits**: Comprehensive discovery, informed decisions, precise targeting
 
-## How AI Changes Everything
+## The Power of AI-Assisted Discovery
 
-### AI Can Analyze What Humans Can't
+### AI Can Process and Compare Metadata at Scale
 ```
 Human: I need people likely to buy luxury cars in the next 30 days
 
@@ -71,18 +71,18 @@ Created: "Your Brand - High-Frequency Flyers Without Hotel Bookings"
 - Refreshes daily from your CRM
 ```
 
-No more browsing catalogs. No more "close enough." Just exactly what you need, created on demand.
+This enables a shift from browsing pre-built catalogs to requesting exactly what you need.
 
-## From Static Catalogs to Dynamic Intelligence
+## From Static Catalogs to Dynamic Capabilities
 
-### The Old World: Pre-Built Everything
-- 500,000 segments gathering dust
-- No way to evaluate quality or relevance
-- Months to create new segments
-- "Close enough" is the best you can get
-- Black box decision making
+### Traditional Approach: Pre-Built Catalogs
+- Hundreds of thousands of pre-defined segments
+- Challenging to evaluate fit and quality across providers
+- Long lead times for new segment creation
+- Limited ability to customize for specific needs
+- Decision-making based on available documentation
 
-### The New World: AI-Powered Discovery & Creation
+### Enhanced with AdCP: AI-Powered Discovery & Creation
 ```
 Human: Find affluent parents interested in EVs but exclude Tesla owners
 
@@ -138,7 +138,7 @@ AdCP supports every major identity and targeting methodology:
 - **Recency**: "Visited site in last 24 hours"
 - **Predictive**: "Likely to purchase in next 7 days"
 
-## Revolutionary Use Cases
+## Key Use Cases
 
 ### 💡 Dynamic Weather-Based Activation
 
@@ -276,19 +276,19 @@ flowchart LR
     I --> J[Monitor & Optimize]
 ```
 
-## The Bottom Line Impact
+## The Value Proposition
 
 **For Signal Providers:**
-- 📈 **Revenue**: 10-15x increase through better discovery
-- ⚡ **Speed**: Create custom signals in hours, not months
-- 🎯 **Precision**: Build exactly what buyers need
-- 🌍 **Reach**: Available on every identity type
+- 📈 **Increased utilization**: Better discovery leads to more signal activation
+- ⚡ **Faster time-to-market**: Create custom signals more efficiently
+- 🎯 **Better matching**: Build signals that precisely match buyer needs
+- 🌍 **Broader compatibility**: Support multiple identity types and platforms
 
 **For Advertisers:**
-- 🔍 **Transparency**: See provenance, quality, and performance
-- 🎨 **Custom Audiences**: Get exactly what you need
-- 🤖 **AI Analysis**: Make data-driven segment choices
-- 🚀 **Instant Deployment**: Minutes not weeks
+- 🔍 **Better visibility**: Access to comprehensive metadata and performance data
+- 🎨 **Precise targeting**: Request and receive exactly what you need
+- 🤖 **Informed decisions**: AI helps evaluate and compare options
+- 🚀 **Faster activation**: Streamlined discovery and deployment process
 
 ## Next Steps
 
