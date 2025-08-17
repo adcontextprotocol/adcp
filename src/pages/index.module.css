@@ -4,15 +4,85 @@
  */
 
 .heroBanner {
-  padding: 4rem 0;
+  padding: 6rem 0;
   text-align: center;
   position: relative;
   overflow: hidden;
+  background: linear-gradient(135deg, var(--ifm-color-primary-darkest) 0%, var(--ifm-color-primary) 100%);
+  color: white;
+}
+
+.heroTitle {
+  font-size: 3.5rem;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 1.5rem;
+  color: white;
+}
+
+.heroSubtitle {
+  font-size: 1.4rem;
+  line-height: 1.6;
+  margin-bottom: 3rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.heroSubtitle strong {
+  color: white;
+  font-weight: 700;
+}
+
+.heroPoints {
+  display: flex;
+  justify-content: center;
+  gap: 3rem;
+  margin: 3rem 0;
+}
+
+.point {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  text-align: left;
+}
+
+.pointIcon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.pointText {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.pointText strong {
+  color: white;
+  display: block;
+  font-size: 1.05rem;
+  margin-bottom: 0.25rem;
 }
 
 @media screen and (max-width: 996px) {
   .heroBanner {
-    padding: 2rem;
+    padding: 4rem 1rem;
+  }
+  
+  .heroTitle {
+    font-size: 2rem;
+  }
+  
+  .heroSubtitle {
+    font-size: 1.1rem;
+  }
+  
+  .heroPoints {
+    flex-direction: column;
+    gap: 1.5rem;
+    align-items: flex-start;
+    max-width: 400px;
+    margin: 2rem auto;
   }
 }
 
@@ -20,4 +90,385 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+/* Problem Section */
+.problemSection {
+  padding: 5rem 0;
+  background: var(--ifm-background-color);
+}
+
+.sectionTitle {
+  font-size: 2.5rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 3rem;
+  line-height: 1.3;
+}
+
+.sectionSubtitle {
+  font-size: 1.2rem;
+  text-align: center;
+  margin-bottom: 3rem;
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.6;
+}
+
+.problemContent {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.problemGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  margin-bottom: 3rem;
+}
+
+.problemCard {
+  background: var(--ifm-card-background-color);
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s;
+}
+
+.problemCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.problemIntro {
+  font-size: 1.15rem;
+  text-align: center;
+  margin-bottom: 3rem;
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.6;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.problemCard h3 {
+  font-size: 1.3rem;
+  margin-bottom: 1rem;
+  color: var(--ifm-heading-color);
+}
+
+.problemCard p {
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.6;
+}
+
+.visionStatement {
+  background: var(--ifm-color-emphasis-100);
+  padding: 2rem;
+  border-radius: 8px;
+  margin-top: 3rem;
+  text-align: center;
+}
+
+.visionStatement p {
+  font-size: 1.15rem;
+  line-height: 1.7;
+  margin: 0;
+  color: var(--ifm-color-emphasis-800);
+}
+
+.visionStatement strong {
+  color: var(--ifm-color-primary);
+}
+
+/* Solution Section */
+.solutionSection {
+  padding: 5rem 0;
+  background: var(--ifm-color-emphasis-50);
+}
+
+.comparisonTable {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  margin: 3rem 0;
+}
+
+.comparisonColumn {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.comparisonColumn h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.comparisonList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.comparisonList li {
+  padding: 0.75rem 0;
+  padding-left: 2rem;
+  position: relative;
+  line-height: 1.6;
+}
+
+.comparisonList li::before {
+  position: absolute;
+  left: 0;
+  font-size: 1.2rem;
+}
+
+.comparisonList li.negative::before {
+  content: "✗";
+  color: #dc3545;
+}
+
+.comparisonList li.positive::before {
+  content: "✓";
+  color: #28a745;
+}
+
+.demoSection {
+  margin-top: 4rem;
+  padding-top: 3rem;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.demoSection h3 {
+  text-align: center;
+  font-size: 1.8rem;
+  margin-bottom: 2rem;
+}
+
+.demoComparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+.demoBox {
+  background: var(--ifm-background-color);
+  padding: 2rem;
+  border-radius: 8px;
+  border: 2px solid var(--ifm-color-emphasis-200);
+}
+
+.demoBox h4 {
+  margin-bottom: 1rem;
+  color: var(--ifm-heading-color);
+}
+
+.codeBlock {
+  display: block;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.9rem;
+  line-height: 1.8;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.success {
+  color: #28a745;
+  font-weight: bold;
+}
+
+/* How It Works Section */
+.howItWorksSection {
+  padding: 5rem 0;
+  background: var(--ifm-background-color);
+}
+
+.workflowSteps {
+  display: grid;
+  gap: 3rem;
+  margin-top: 3rem;
+}
+
+.step {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+}
+
+.stepNumber {
+  background: var(--ifm-color-primary);
+  color: white;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.stepContent {
+  flex: 1;
+}
+
+.stepContent h3 {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+  color: var(--ifm-heading-color);
+}
+
+.stepContent p {
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.exampleCode {
+  display: block;
+  background: var(--ifm-color-emphasis-100);
+  padding: 1rem;
+  border-radius: 6px;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.9rem;
+  color: var(--ifm-color-emphasis-800);
+  line-height: 1.6;
+}
+
+/* Get Started Section */
+.getStartedSection {
+  padding: 5rem 0;
+  background: linear-gradient(135deg, var(--ifm-color-primary-lighter) 0%, var(--ifm-color-primary-lightest) 100%);
+}
+
+.audienceCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 3rem;
+  margin-top: 3rem;
+}
+
+.audienceCard {
+  background: white;
+  padding: 2.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.audienceCard h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--ifm-heading-color);
+}
+
+.audienceDescription {
+  font-size: 1.05rem;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+.audienceList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 2rem 0;
+}
+
+.audienceList li {
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.audienceList li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: var(--ifm-color-primary);
+  font-weight: bold;
+}
+
+.audienceAction {
+  text-align: center;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.actionSubtext {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--ifm-color-emphasis-600);
+}
+
+/* Community Section */
+.communitySection {
+  padding: 5rem 0;
+  background: var(--ifm-background-color);
+}
+
+.communityDescription {
+  font-size: 1.1rem;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 3rem;
+  line-height: 1.6;
+}
+
+.communityFeatures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 2rem;
+  margin: 3rem 0;
+}
+
+.communityFeature {
+  text-align: center;
+}
+
+.communityFeature h3 {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: var(--ifm-heading-color);
+}
+
+.communityFeature p {
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.6;
+}
+
+.communityActions {
+  margin: 3rem 0;
+}
+
+
+/* Responsive adjustments */
+@media screen and (max-width: 768px) {
+  .comparisonTable {
+    grid-template-columns: 1fr;
+  }
+  
+  .demoComparison {
+    grid-template-columns: 1fr;
+  }
+  
+  .audienceCards {
+    grid-template-columns: 1fr;
+  }
+  
+  .logoGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .step {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .stepNumber {
+    margin: 0 auto;
+  }
 }
