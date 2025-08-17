@@ -192,73 +192,73 @@ Deploy now for tomorrow's heat wave?
 
 ### 🎯 The Hidden Segment Goldmine
 
-**LiveRamp's Long-Tail Discovery:**
+**Large Data Provider's Long-Tail Discovery:**
 
-LiveRamp had 5,000+ segments but most buyers only used the top 50 due to discovery friction.
+A major data provider had 5,000+ segments but most buyers only used the top 50 due to discovery friction.
 
 ```
 Human: Find me people who both invest in crypto AND collect vintage wines
 
-AI: Incredible match found in LiveRamp's catalog:
+AI: Incredible match found in DataVault's catalog:
 
 **"Digital Asset Sommeliers"**
 - 127,000 high-net-worth individuals
 - Verified crypto holdings + wine auction participation
 - Segment was created 2 years ago but had ZERO activations
 - Price: $12 CPM
-- Activation: ✅ Live on The Trade Desk, DV360, Amazon DSP
+- Activation: ✅ Live on major DSP platforms
 
 This segment has never been used before. You'd be the first campaign to activate it.
 ```
 
-**Result**: Niche segments that were previously undiscoverable now generate 40% of LiveRamp's revenue.
+**Result**: Niche segments that were previously undiscoverable now generate 40% of the provider's revenue.
 
 ### 🏢 Publisher First-Party Revolution
 
-**Financial Times' Premium Signals:**
+**Premium Business Publisher's Success:**
 
-FT knew their readers were C-suite executives but couldn't monetize this knowledge effectively.
+A leading business publication knew their readers were C-suite executives but couldn't monetize this knowledge effectively.
 
 ```
-Human: Show me FT's executive audience signals
+Human: Show me executive audience signals from business publishers
 
-AI: Financial Times offers exclusive first-party signals:
+AI: BusinessDaily offers exclusive first-party signals:
 
-**"FTSE 100 Decision Makers"**
-- Readers who access 10+ articles on FTSE companies monthly
-- Cross-referenced with LinkedIn: 89% are Director-level or above
+**"Fortune 500 Decision Makers"**
+- Readers who access 10+ articles on Fortune 500 companies monthly
+- Cross-referenced with professional data: 89% are Director-level or above
 - 42,000 individuals
-- Price: $25 CPM (5x standard FT inventory)
-- Exclusive to FT direct relationships
+- Price: $25 CPM (5x standard inventory)
+- Exclusive to direct relationships
 
-**"Tomorrow's Market Movers"**
-- Readers who check FT between 5-7 AM GMT
-- 78% correlation with same-day trading activity
+**"Early Morning Market Movers"**
+- Readers who check between 5-7 AM local time
+- 78% correlation with same-day business activity
 - Price: $18 CPM
 - Status: ✅ Ready on multiple SSPs
 
 These signals are only available through AdCP - not in traditional marketplaces.
 ```
 
-**Result**: FT's first-party signals now command premium CPMs and have created direct advertiser relationships worth millions.
+**Result**: The publisher's first-party signals now command premium CPMs and have created direct advertiser relationships worth millions.
 
 ### 🔬 The Contextual Intelligence Play
 
-**Peer39's Multi-Platform Orchestra:**
+**Contextual Provider's Multi-Platform Success:**
 
-Instead of separate integrations with each SSP, Peer39's signals work everywhere instantly:
+Instead of separate integrations with each SSP, a major contextual provider's signals work everywhere instantly:
 
 ```
-Human: Find Peer39's brand safety signals for luxury brands across all platforms
+Human: Find brand safety signals for luxury brands across all platforms
 
-AI: Peer39's "Luxury Brand Safe Environment" is available across:
+AI: ContextGuard's "Luxury Brand Safe Environment" is available across:
 
 **Live Everywhere (14 platforms):**
-✅ Index Exchange: ix_peer39_lux_safe_201
-✅ OpenX: ox_peer39_luxury_brand_safe
-✅ PubMatic: pm_p39_lux_safe_v2
-✅ Magnite: mag_peer39_luxury_context
-✅ The Trade Desk: ttd_peer39_lux_brand
+✅ Major SSP #1: ctx_lux_safe_201
+✅ Major SSP #2: ctx_luxury_brand_safe
+✅ Major SSP #3: ctx_lux_safe_v2
+✅ Major SSP #4: ctx_luxury_context
+✅ Major DSP: ctx_lux_brand
 [... 9 more platforms]
 
 **Signal Details:**
@@ -270,7 +270,7 @@ AI: Peer39's "Luxury Brand Safe Environment" is available across:
 One activation gives you access everywhere. Activate all?
 ```
 
-**Result**: Peer39 reduced integration costs by 90% while increasing signal usage by 15x.
+**Result**: The provider reduced integration costs by 90% while increasing signal usage by 15x.
 
 ## How It Works
 
@@ -290,7 +290,7 @@ flowchart LR
 
 The Signals Activation Protocol works within the broader [AdCP Ecosystem Layers](../intro#the-adcp-ecosystem-layers):
 
-1. **Discover** signals on data platforms (LiveRamp, Experian, Peer39, weather APIs, location providers)
+1. **Discover** signals on data platforms (audience providers, contextual providers, weather APIs, location providers)
 2. **Identify** where they're deployed (multiple SSPs, DSPs, DMPs)
 3. **Activate** signals for platforms where they're not yet live
 4. **Execute** campaigns on decisioning platforms using platform-specific IDs
@@ -313,19 +313,19 @@ AI: I found 3 relevant signals for The Trade Desk:
 ### Multi-Platform Discovery (New)
 
 ```
-Human: Show me where Peer39's sports content segments are available
+Human: Show me where sports content segments are available
 
-AI: Peer39's "Premium Sports Content" segment is deployed across:
+AI: SportContext's "Premium Sports Content" segment is deployed across:
 
 **Supply-Side Platforms (SSPs):**
-- Index Exchange: ✅ Live (ix_peer39_sports_478)
-- OpenX: ✅ Live (ox_peer39_sports_923)  
-- PubMatic: ✅ Live (pm_peer39_sports_115)
-- Magnite: ⏳ Not deployed (24hr activation available)
+- SSP Platform A: ✅ Live (sports_ctx_478)
+- SSP Platform B: ✅ Live (sports_ctx_923)  
+- SSP Platform C: ✅ Live (sports_ctx_115)
+- SSP Platform D: ⏳ Not deployed (24hr activation available)
 
 **Demand-Side Platforms (DSPs):**
-- The Trade Desk: ✅ Live (ttd_peer39_sports_pro)
-- Amazon DSP: ⏳ Not deployed (48hr activation available)
+- DSP Platform X: ✅ Live (sports_pro_ctx)
+- DSP Platform Y: ⏳ Not deployed (48hr activation available)
 
 All deployments are $2.00 CPM. Which platforms do you need?
 ```
