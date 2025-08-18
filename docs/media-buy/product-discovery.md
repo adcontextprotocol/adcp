@@ -20,6 +20,8 @@ Instead of requiring buyers to know specific product codes or navigate hierarchi
 - "Looking for premium sports inventory"
 - "Low budget display campaign for millennials"
 
+For comprehensive guidance on brief structure and requirements, see [Brief Expectations](./brief-expectations).
+
 ### Format-Aware Discovery
 
 Products are matched not just by audience and targeting, but also by creative format compatibility. This ensures advertisers only see inventory that matches their available creative assets.
@@ -58,13 +60,15 @@ The main discovery task that accepts natural language briefs and returns matchin
 
 ## Best Practices
 
-- **Be Specific**: More detailed briefs lead to better product matches
+- **Be Specific**: More detailed briefs lead to better product matches (see [Brief Expectations](./brief-expectations) for guidance)
 - **Consider Formats First**: Know your creative capabilities before searching
 - **Review Multiple Options**: The system may return several matching products
 - **Check Custom Options**: For unique needs, custom products may be available
+- **Include Required Information**: Always provide a clear `promoted_offering` description
 
 ## Related Documentation
 
+- [Brief Expectations](./brief-expectations) - Comprehensive guide to brief structure and requirements
 - [Media Products](./media-products) - Understanding product types and attributes
 - [Creative Formats](./creative-formats) - Detailed creative specifications
 - [`get_products` Task](./tasks/get_products) - Implementation guide and API reference
