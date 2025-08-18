@@ -1082,6 +1082,15 @@ Retrieves delivery data for all active media buys across all principals.
 }
 ```
 
+**Brief Requirements**: See [Brief Expectations](./brief-expectations) for comprehensive guidance on brief structure. Complete briefs should include:
+- Business objectives and success metrics
+- Flight dates and timing requirements
+- Target audience specifications
+- Budget parameters
+- Geographic markets
+- Creative constraints
+- Brand safety requirements
+
 **Note**: Format filtering ensures advertisers only see inventory that matches their creative capabilities.
 
 **Response:**

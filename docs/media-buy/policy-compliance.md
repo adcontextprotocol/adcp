@@ -23,6 +23,8 @@ All product discovery and media buy creation requests must include a clear `prom
 - What is being promoted (product, service, cause, candidate, program, etc.)
 - Key attributes or positioning of the offering
 
+For comprehensive guidance on brief structure and the role of `promoted_offering`, see [Brief Expectations](./brief-expectations).
+
 ### Examples
 
 Good promoted offering descriptions:

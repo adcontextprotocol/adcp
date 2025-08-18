@@ -269,7 +269,7 @@ How media buy creation maps to different platforms:
 ## Usage Notes
 
 - A media buy represents a complete advertising campaign with one or more packages
-- The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted
+- The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted (see [Brief Expectations](../brief-expectations) for guidance)
 - Publishers will validate the promoted offering against their policies before creating the media buy
 - Targeting overlay applies additional criteria on top of package-level targeting
 - The total budget is distributed across packages based on their individual settings

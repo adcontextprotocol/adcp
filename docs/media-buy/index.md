@@ -99,6 +99,7 @@ Core operations available in the Media Buy Protocol:
 Foundational elements of the Advertising Context Protocol:
 
 - **[Product Discovery](product-discovery.md)** - Learn how to discover advertising inventory using natural language
+- **[Brief Expectations](brief-expectations.md)** - Comprehensive guide to brief structure and requirements
 - **[Media Products](media-products.md)** - Understand the product model and structure
 - **[Media Buys](media-buys.md)** - Understand how campaigns are created and managed across platforms
 - **[Dimensions](dimensions.md)** - Explore the unified system for categorizing products, targeting, and reporting

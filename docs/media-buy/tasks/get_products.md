@@ -89,6 +89,20 @@ Discover available advertising products based on campaign requirements, using na
 }
 ```
 
+### Request for Run-of-Network (No Brief)
+```json
+{
+  "context_id": null,  // First request, no context yet
+  "promoted_offering": "Tesla Model 3 - electric vehicle with autopilot",
+  "brief": null,  // No brief = run-of-network request
+  "filters": {
+    "delivery_type": "non_guaranteed",  // Programmatic inventory
+    "format_types": ["video", "display"],
+    "standard_formats_only": true
+  }
+}
+```
+
 ### Request with Structured Filters
 ```json
 {
@@ -103,7 +117,39 @@ Discover available advertising products based on campaign requirements, using na
 }
 ```
 
-### Response - Products Found
+### Response - Run-of-Network (No Recommendations)
+```json
+{
+  "message": "Found 5 run-of-network products for maximum reach. These are our broadest inventory pools optimized for scale.",
+  "context_id": "ctx-media-buy-xyz789",
+  "products": [
+    {
+      "product_id": "open_exchange_video",
+      "name": "Open Exchange - Video",
+      "description": "Programmatic video inventory across all publishers",
+      "formats": [
+        {
+          "format_id": "video_standard",
+          "name": "Standard Video"
+        }
+      ],
+      "delivery_type": "non_guaranteed",
+      "is_fixed_price": false,
+      "cpm": 12.00,
+      "min_spend": 1000,
+      "is_custom": false
+      // Note: No brief_relevance field since no brief was provided
+    }
+    // ... more products
+  ],
+  "clarification_needed": false,
+  "policy_compliance": {
+    "status": "allowed"
+  }
+}
+```
+
+### Response - Products Found with Brief
 ```json
 {
   "message": "I found 3 premium sports-focused products that match your requirements. Connected TV Prime Time offers the best reach at $45 CPM with guaranteed delivery. All options support standard video formats and have availability for your Nike campaign.",
@@ -183,28 +229,29 @@ When the promoted offering is subject to policy restrictions, the response will 
 ## Usage Notes
 
 - The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted
+- The `brief` field is optional - omit it to signal a run-of-network request
+- **No brief = Run-of-network**: Publisher returns broad reach products, not the entire catalog
 - Format filtering ensures advertisers only see inventory that matches their creative capabilities
-- If no brief is provided, returns all available products for the principal
+- If no brief is provided, returns run-of-network products (high-volume, broad reach inventory)
 - The `brief_relevance` field is only included when a brief parameter is provided
 - Products represent available advertising inventory with specific targeting, format, and pricing characteristics
 - Policy compliance checks may filter out products based on the promoted offering
 - The `message` field provides a human-readable summary of the response
 - Publishers may request clarification when briefs are incomplete
 
-## Brief Expectations
+## Brief Requirements
 
-While briefs are natural language and can be as simple or detailed as needed, complete briefs typically include:
+For comprehensive guidance on brief structure and expectations, see the [Brief Expectations](../brief-expectations) documentation. Key points:
 
-- **Business Objectives**: What you're trying to achieve (awareness, conversions, app installs, etc.)
-- **Success Metrics**: How you'll measure success (CTR, CPA, ROAS, brand lift, etc.)
-- **Campaign Timing**: When the campaign should run (flight dates)
-- **Target Audience**: Who you want to reach (demographics, interests, behaviors)
-- **Budget**: Total spend or budget constraints
-- **Geographic Markets**: Where ads should appear
-- **Creative Constraints**: Any specific format requirements or limitations
-- **Brand Safety**: Content categories to avoid
+- **Required**: The `promoted_offering` field must clearly describe the advertiser and what is being promoted
+- **Optional**: The `brief` field - include for recommendations, omit for run-of-network
+- **Run-of-Network**: Omit brief to get broad reach products (not entire catalog)
+- **Recommendations**: Include brief when you want publisher help selecting products
+- **Clarification**: Publishers may request additional information when brief is provided but incomplete
 
-Publishers will do their best to recommend products even with incomplete briefs, but may request clarification to provide better recommendations. This creates a natural conversation between buyer and publisher agents.
+Two valid approaches:
+1. **No brief + filters** = Run-of-network products (broad reach inventory)
+2. **Brief + objectives** = Targeted recommendations based on campaign goals
 
 ## Discovery Workflow
 
@@ -333,12 +380,14 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
     # Get products filtered by policy
     all_products = get_products_for_category(policy_result.category)
     
-    # If no brief provided, return all policy-approved products
+    # If no brief provided, return run-of-network products
     if not req.brief:
+        # Filter for broad reach, high-volume products
+        ron_products = filter_run_of_network_products(all_products, req.filters)
         return GetProductsResponse(
-            message=f"Here are all {len(all_products)} available products for your {req.promoted_offering}. Provide a brief to see targeted recommendations.",
+            message=f"Found {len(ron_products)} run-of-network products for maximum reach.",
             context_id=context_id,
-            products=all_products,
+            products=ron_products,
             clarification_needed=False,
             policy_compliance={"status": "allowed"}
         )
@@ -370,7 +419,53 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
     )
 ```
 
-### Step 3: AI-Powered Filtering and Message Generation
+### Step 3: Run-of-Network Filtering
+
+When no brief is provided, filter for broad reach products:
+
+```python
+def filter_run_of_network_products(products: List[Product], filters: dict) -> List[Product]:
+    """Filter for run-of-network products (broad reach, high volume)"""
+    ron_products = []
+    
+    for product in products:
+        # Check format compatibility
+        if not matches_format_filters(product, filters):
+            continue
+            
+        # Check if it's a broad reach product (not niche/targeted)
+        if is_broad_reach_product(product):
+            ron_products.append(product)
+    
+    # Sort by reach/scale potential (e.g., lower CPM = broader reach)
+    return sorted(ron_products, key=lambda p: p.cpm)
+
+def is_broad_reach_product(product: Product) -> bool:
+    """Identify products suitable for run-of-network buying"""
+    # Examples of broad reach indicators:
+    # - Names like "Open Exchange", "Run of Network", "Broad Reach"
+    # - Lower CPMs indicating less targeting
+    # - Non-guaranteed/programmatic delivery
+    # - Large minimum impressions
+    
+    broad_keywords = ["open", "exchange", "network", "broad", "reach", "scale"]
+    
+    # Check product name/description for broad reach indicators
+    name_lower = product.name.lower()
+    desc_lower = product.description.lower()
+    
+    for keyword in broad_keywords:
+        if keyword in name_lower or keyword in desc_lower:
+            return True
+    
+    # Programmatic products are typically broader reach
+    if product.delivery_type == "non_guaranteed":
+        return True
+        
+    return False
+```
+
+### Step 4: AI-Powered Filtering and Message Generation
 
 Implement the AI logic to match briefs to products and generate helpful messages:
 
