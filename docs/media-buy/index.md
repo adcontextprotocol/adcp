@@ -126,6 +126,15 @@ Detailed implementation guidance:
 
 ## Getting Started
 
+### For Implementers
+If you're building an AdCP server implementation, start with our **[Agent Implementation Guide](agent-implementation-guide.md)** which provides:
+- Step-by-step implementation instructions
+- Code examples and patterns
+- Common pitfalls and solutions
+- Testing strategies
+- Validation checklists
+
+### For Users
 1. **Understand Discovery**: Start with [Product Discovery](product-discovery.md) to learn how to find inventory using natural language
 2. **Learn the Products**: Review [Media Products](media-products.md) to understand the product model
 3. **Follow the Workflow**: Study the [Media Buy Lifecycle](media-buy-lifecycle.md) for the complete process

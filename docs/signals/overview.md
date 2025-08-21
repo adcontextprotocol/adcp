@@ -290,8 +290,16 @@ flowchart LR
 - 🤖 **Informed decisions**: AI helps evaluate and compare options
 - 🚀 **Faster activation**: Streamlined discovery and deployment process
 
-## Next Steps
+## Getting Started
 
+### For Implementers
+If you're building Signals support for your AdCP server, start with our **[Agent Implementation Guide](agent-implementation-guide.md)** which provides:
+- Signal processing pipeline setup
+- Privacy-compliant implementation patterns  
+- Real-time optimization strategies
+- Testing and monitoring guidance
+
+### For Protocol Users
 - 📖 **Technical Teams**: Review the [Protocol Specification](./specification)
 - 💻 **Developers**: Explore the [Reference Implementation](https://github.com/adcontextprotocol/signals-agent)
 - 🏗️ **Platform Providers**: See [Integration Guide](./tasks/get_signals)
