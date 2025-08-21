@@ -391,28 +391,6 @@ async function handleGetSignals(context: Context, message: Message) {
 ```
 </details>
 
-// Signal aggregation logic
-function aggregateSignals(signals: Signal[]): AggregatedSignals {
-  return {
-    audience: {
-      total_users: countUniqueUsers(signals),
-      segments: groupBySegment(signals),
-      attributes: aggregateAttributes(signals)
-    },
-    context: {
-      locations: aggregateLocations(signals),
-      devices: aggregateDevices(signals),
-      time_patterns: analyzeTimePatterns(signals)
-    },
-    performance: {
-      metrics: aggregateMetrics(signals),
-      trends: calculateTrends(signals),
-      anomalies: detectAnomalies(signals)
-    }
-  };
-}
-```
-
 #### 5. Implement `activate_signal`
 
 **Purpose**: Enable specific signals for optimization
