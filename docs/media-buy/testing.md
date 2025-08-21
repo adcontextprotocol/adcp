@@ -31,14 +31,70 @@ Control simulated time to instantly progress through campaign events while maint
 ### 2. Dry Run Mode
 Execute all operations without affecting real platforms or spending money, while providing realistic responses and behaviors.
 
-## Technical Specification
+## Architecture Overview
+
+### Core Components
+
+The testing framework consists of four primary components:
+
+1. **Session Manager**: Handles test session lifecycle and isolation
+2. **State Engine**: Manages campaign state machines and transitions
+3. **Time Simulator**: Controls time progression and event scheduling
+4. **Data Generator**: Produces realistic metrics and performance data
+
+## Session Management
+
+### Creating Test Sessions
+
+All test operations require an explicit session for state management:
+
+```http
+POST /test_sessions
+```
+
+```json
+{
+  "session_config": {
+    "duration": "24h",
+    "isolation_level": "full",
+    "persistence": "memory",
+    "scenario": "standard_campaign",
+    "seed": 12345  // For deterministic behavior
+  },
+  "time_config": {
+    "start_time": "2025-01-01T00:00:00Z",
+    "progression_mode": "linear",
+    "step_size": "1h"
+  },
+  "resource_limits": {
+    "max_campaigns": 100,
+    "max_memory_mb": 512,
+    "timeout_hours": 24
+  }
+}
+```
+
+Response:
+```json
+{
+  "session_id": "test_session_abc123",
+  "expires_at": "2025-01-02T00:00:00Z",
+  "endpoints": {
+    "base_url": "https://api.example.com/test/abc123",
+    "websocket": "wss://api.example.com/test/abc123/events"
+  }
+}
+```
 
 ### Request Headers
 
+All subsequent requests include session context:
+
 ```http
+X-Test-Session-Id: <session_id>  # Required for all test operations
 X-Mock-Time: <ISO-8601>          # Set current simulated time
 X-Auto-Advance: <boolean>        # Auto-advance to next event
-X-Jump-To-Event: <event_name>    # Jump to specific event
+X-Jump-To-State: <state_name>    # Jump to specific state
 X-Dry-Run: <boolean>             # Enable dry run mode
 X-Test-Scenario: <scenario>      # Trigger test scenarios
 ```
@@ -46,16 +102,581 @@ X-Test-Scenario: <scenario>      # Trigger test scenarios
 ### Response Headers
 
 ```http
+X-Session-Id: <session_id>       # Confirms session context
 X-Current-Mock-Time: <ISO-8601>  # Current simulated time
+X-Current-State: <state_name>    # Current state machine position
 X-Next-Event: <event_name>       # Next scheduled event
 X-Next-Event-Time: <ISO-8601>    # When next event occurs
 X-Dry-Run-Mode: <boolean>        # Confirms dry run active
 X-Simulated-Cost: <decimal>      # Would-be cost (dry run)
 ```
 
-### Jumpable Events
+## State Machine Specification
 
-Standard events that can be jumped to via `X-Jump-To-Event`:
+### Campaign State Model
+
+Campaigns follow a directed graph of states with conditional transitions:
+
+```json
+{
+  "campaign_state_machine": {
+    "states": {
+      "created": {
+        "type": "initial",
+        "data_requirements": ["budget", "targeting", "schedule"],
+        "timeout": "1h"
+      },
+      "pending_review": {
+        "type": "intermediate",
+        "substates": ["creative_review", "policy_check", "inventory_validation"],
+        "min_duration": "2h",
+        "max_duration": "48h"
+      },
+      "active": {
+        "type": "intermediate",
+        "substates": ["learning", "optimizing", "delivering"],
+        "data_requirements": ["approved_creatives", "valid_budget"]
+      },
+      "learning": {
+        "type": "intermediate",
+        "entry_conditions": ["min_budget_100", "approved_creatives"],
+        "exit_conditions": {
+          "success": ["50_conversions", "3_days_elapsed"],
+          "failure": ["insufficient_data", "budget_exhausted"]
+        },
+        "metrics_threshold": {
+          "impressions": 10000,
+          "conversions": 10
+        }
+      },
+      "optimizing": {
+        "type": "intermediate",
+        "optimization_factors": ["cpa", "ctr", "viewability"],
+        "adjustment_frequency": "6h"
+      },
+      "paused": {
+        "type": "intermediate",
+        "reasons": ["manual", "budget_exhausted", "schedule", "error"],
+        "resumable": true
+      },
+      "completed": {
+        "type": "terminal",
+        "reasons": ["schedule_end", "budget_exhausted", "manual_stop"]
+      },
+      "failed": {
+        "type": "terminal",
+        "reasons": ["policy_violation", "payment_failed", "account_suspended"]
+      }
+    },
+    "transitions": {
+      "created": [
+        {"to": "pending_review", "condition": "all_required_fields"},
+        {"to": "failed", "condition": "invalid_configuration"}
+      ],
+      "pending_review": [
+        {"to": "active", "condition": "approved"},
+        {"to": "created", "condition": "needs_revision"},
+        {"to": "failed", "condition": "rejected"}
+      ],
+      "active": [
+        {"to": "learning", "condition": "new_campaign"},
+        {"to": "optimizing", "condition": "learning_complete"},
+        {"to": "paused", "condition": "pause_trigger"},
+        {"to": "completed", "condition": "end_condition"}
+      ],
+      "learning": [
+        {"to": "optimizing", "condition": "sufficient_data"},
+        {"to": "paused", "condition": "performance_issue"},
+        {"to": "failed", "condition": "learning_failed"}
+      ],
+      "paused": [
+        {"to": "active", "condition": "manual_resume"},
+        {"to": "completed", "condition": "schedule_end"},
+        {"to": "failed", "condition": "timeout"}
+      ]
+    },
+    "state_data": {
+      "learning": {
+        "min_duration": "3d",
+        "conversion_threshold": 10,
+        "impression_threshold": 10000,
+        "data_gathering_rate": "exponential_decay"
+      },
+      "optimizing": {
+        "adjustment_frequency": "6h",
+        "optimization_algorithm": "gradient_descent",
+        "performance_targets": {
+          "cpa": "target * 0.9",
+          "ctr": "vertical_benchmark * 1.1"
+        }
+      }
+    }
+  }
+}
+```
+
+### Event Model
+
+Events trigger state transitions and can be scheduled or immediate:
+
+```json
+{
+  "event_types": {
+    "scheduled": [
+      "budget_check",
+      "performance_evaluation",
+      "optimization_cycle",
+      "report_generation"
+    ],
+    "triggered": [
+      "creative_approved",
+      "budget_exhausted",
+      "policy_violation",
+      "manual_intervention"
+    ],
+    "conditional": [
+      "learning_complete",
+      "performance_threshold_met",
+      "anomaly_detected"
+    ]
+  },
+  "event_scheduling": {
+    "mode": "priority_queue",
+    "resolution": "1m",
+    "max_lookahead": "90d",
+    "dependency_resolution": "topological_sort"
+  }
+}
+```
+
+## Time Simulation Engine
+
+### Time Progression Mechanics
+
+The time simulation engine controls how simulated time advances:
+
+```json
+{
+  "time_engine": {
+    "clock_resolution": "1m",
+    "max_simulation_window": "90d",
+    "progression_modes": {
+      "linear": {
+        "step_size": "1h",
+        "speed_multiplier": 1
+      },
+      "exponential": {
+        "initial_step": "1h",
+        "growth_factor": 1.5,
+        "max_step": "1d"
+      },
+      "event_driven": {
+        "mode": "next_significant_event",
+        "look_ahead_window": "7d",
+        "event_priorities": ["state_change", "budget_milestone", "optimization"]
+      },
+      "realistic": {
+        "business_hours_weight": 2.0,
+        "weekend_weight": 0.5,
+        "holiday_calendar": "us_holidays"
+      }
+    },
+    "pause_conditions": [
+      {"type": "budget_threshold", "value": 0.9},
+      {"type": "performance_anomaly", "deviation": 3.0},
+      {"type": "manual_approval_required"},
+      {"type": "error_state"}
+    ],
+    "event_scheduling": {
+      "queue_type": "priority_heap",
+      "max_concurrent_events": 100,
+      "event_resolution": "deterministic",
+      "conflict_resolution": "priority_then_fifo"
+    }
+  }
+}
+```
+
+### Time Control API
+
+```http
+POST /test_sessions/{session_id}/time/advance
+```
+
+```json
+{
+  "advance_mode": "to_event|by_duration|to_time",
+  "target": "learning_complete|24h|2025-01-15T00:00:00Z",
+  "options": {
+    "generate_intermediate_events": true,
+    "respect_business_hours": true,
+    "apply_variance": true
+  }
+}
+```
+
+## Data Generation Framework
+
+### Synthetic Metrics Generation
+
+Realistic performance data based on industry patterns:
+
+```json
+{
+  "metric_generation": {
+    "baseline_models": {
+      "ctr": {
+        "vertical_benchmarks": {
+          "retail": 0.02,
+          "finance": 0.015,
+          "automotive": 0.025
+        },
+        "variance_model": "log_normal",
+        "variance_coefficient": 0.15
+      },
+      "cpm": {
+        "auction_dynamics": "second_price",
+        "competition_factor": "time_of_day",
+        "floor_price": 0.50,
+        "ceiling_price": 50.00
+      },
+      "conversion_rate": {
+        "funnel_model": "exponential_decay",
+        "attribution_window": "7d",
+        "view_through_weight": 0.1
+      }
+    },
+    "performance_curves": {
+      "learning_phase": {
+        "model": "sigmoid",
+        "parameters": {
+          "midpoint": "3d",
+          "steepness": 0.5,
+          "plateau_performance": 0.8
+        }
+      },
+      "daily_patterns": {
+        "peak_hours": [12, 20],
+        "valley_hours": [3, 4],
+        "amplitude": 0.3
+      },
+      "weekly_patterns": {
+        "monday": 0.9,
+        "tuesday": 0.95,
+        "wednesday": 1.0,
+        "thursday": 1.0,
+        "friday": 0.95,
+        "saturday": 0.8,
+        "sunday": 0.85
+      }
+    },
+    "correlation_matrix": {
+      "ctr_cpm": -0.3,
+      "ctr_conversion": 0.6,
+      "spend_impressions": 0.95
+    },
+    "anomaly_injection": {
+      "probability": 0.02,
+      "types": ["spike", "drop", "gradual_shift"],
+      "magnitude_range": [2, 5]
+    }
+  }
+}
+```
+
+### Data Generation API
+
+```python
+# Request specific metrics pattern
+POST /test_sessions/{session_id}/metrics/generate
+{
+  "campaign_id": "mb_123",
+  "time_range": {
+    "start": "2025-01-01T00:00:00Z",
+    "end": "2025-01-07T00:00:00Z"
+  },
+  "model": "realistic|synthetic|replay",
+  "parameters": {
+    "vertical": "retail",
+    "seasonality": "q4_holiday",
+    "competition_level": "high",
+    "budget_pacing": "aggressive"
+  }
+}
+```
+
+## Concurrency and Isolation
+
+### Isolation Models
+
+```json
+{
+  "isolation_configuration": {
+    "levels": {
+      "full": {
+        "description": "Complete isolation between test sessions",
+        "shared_resources": [],
+        "state_visibility": "none",
+        "use_case": "parallel_testing"
+      },
+      "campaign": {
+        "description": "Isolation at campaign level",
+        "shared_resources": ["account_settings", "creative_library"],
+        "state_visibility": "read_only",
+        "use_case": "multi_campaign_testing"
+      },
+      "shared": {
+        "description": "Shared state with conflict resolution",
+        "shared_resources": ["all"],
+        "state_visibility": "read_write",
+        "conflict_resolution": "last_write_wins",
+        "use_case": "integration_testing"
+      }
+    },
+    "resource_management": {
+      "locking_strategy": "optimistic",
+      "deadlock_detection": "timeout_based",
+      "resource_pools": {
+        "campaigns": {"max_per_session": 100},
+        "creatives": {"max_per_session": 1000},
+        "memory_mb": {"max_per_session": 512}
+      }
+    },
+    "concurrency_control": {
+      "max_concurrent_sessions": 1000,
+      "max_sessions_per_account": 10,
+      "session_timeout": "24h",
+      "cleanup_strategy": "lazy_deletion"
+    }
+  }
+}
+```
+
+### Session Coordination
+
+```http
+POST /test_sessions/{session_id}/coordinate
+```
+
+```json
+{
+  "coordination_type": "synchronized_start|checkpoint|barrier",
+  "participants": ["session_1", "session_2", "session_3"],
+  "synchronization_point": "all_campaigns_active",
+  "timeout": "5m"
+}
+```
+
+## Error Injection Framework
+
+### Granular Error Control
+
+```json
+{
+  "error_injection": {
+    "strategies": {
+      "deterministic": {
+        "trigger": "event_count|time_elapsed|state_entry",
+        "condition": "5th_request|30m|learning_phase"
+      },
+      "probabilistic": {
+        "probability": 0.1,
+        "distribution": "uniform|poisson|burst"
+      },
+      "scenario_based": {
+        "scenario": "payment_gateway_outage",
+        "affected_operations": ["create_media_buy", "update_budget"],
+        "duration": "2h"
+      }
+    },
+    "error_types": {
+      "transient": {
+        "retry_behavior": "exponential_backoff",
+        "max_retries": 3,
+        "examples": ["timeout", "rate_limit", "temporary_unavailable"]
+      },
+      "permanent": {
+        "recovery_required": true,
+        "examples": ["invalid_creative", "policy_violation", "insufficient_funds"]
+      },
+      "cascading": {
+        "propagation": "downstream|upstream|lateral",
+        "affected_entities": ["related_campaigns", "shared_budget"],
+        "examples": ["account_suspension", "platform_outage"]
+      }
+    },
+    "injection_points": {
+      "before_state_transition": ["validation_error", "precondition_failure"],
+      "during_processing": ["timeout", "resource_exhaustion"],
+      "after_completion": ["rollback", "partial_success"]
+    },
+    "recovery_paths": {
+      "automatic": ["retry", "fallback", "circuit_breaker"],
+      "manual": ["approval_required", "data_correction"],
+      "compensating": ["refund", "credit", "make_good"]
+    }
+  }
+}
+```
+
+### Error Injection API
+
+```http
+POST /test_sessions/{session_id}/errors/inject
+```
+
+```json
+{
+  "injection_plan": [
+    {
+      "timing": "at_event",
+      "event": "creative_review_complete",
+      "error_type": "policy_violation",
+      "details": {
+        "code": "MISLEADING_CLAIMS",
+        "affected_assets": ["headline_1"],
+        "remediation_required": true
+      }
+    },
+    {
+      "timing": "after_duration",
+      "duration": "2h",
+      "error_type": "budget_exhaustion",
+      "recovery": "pause_campaign"
+    }
+  ]
+}
+```
+
+## Resource Management
+
+### Memory and Performance Controls
+
+```json
+{
+  "resource_management": {
+    "memory": {
+      "allocation_strategy": "fixed_pool|dynamic",
+      "max_heap_size_mb": 512,
+      "gc_strategy": "generational",
+      "cache_policy": "lru",
+      "cache_size_mb": 64
+    },
+    "compute": {
+      "cpu_limit": 2.0,
+      "max_concurrent_operations": 50,
+      "operation_timeout_ms": 5000,
+      "priority_queuing": true
+    },
+    "storage": {
+      "persistence_mode": "memory|disk|hybrid",
+      "max_disk_usage_gb": 10,
+      "compression": "gzip",
+      "retention_policy": {
+        "active_sessions": "unlimited",
+        "completed_sessions": "7d",
+        "failed_sessions": "24h"
+      }
+    },
+    "network": {
+      "rate_limiting": {
+        "requests_per_second": 100,
+        "burst_size": 200
+      },
+      "bandwidth_simulation": {
+        "latency_ms": 50,
+        "jitter_ms": 10,
+        "packet_loss": 0.001
+      }
+    },
+    "cleanup": {
+      "strategy": "immediate|lazy|scheduled",
+      "trigger": "session_end|timeout|memory_pressure",
+      "grace_period": "1h"
+    }
+  }
+}
+```
+
+## Extensibility Framework
+
+### Plugin Architecture
+
+```json
+{
+  "extensibility": {
+    "plugin_interfaces": {
+      "state_machine": {
+        "custom_states": true,
+        "custom_transitions": true,
+        "validation_hooks": ["pre_transition", "post_transition"]
+      },
+      "time_engine": {
+        "custom_progression_modes": true,
+        "event_interceptors": true,
+        "time_manipulation_hooks": ["before_advance", "after_advance"]
+      },
+      "data_generator": {
+        "custom_models": true,
+        "metric_transformers": true,
+        "data_sources": ["synthetic", "replay", "external"]
+      },
+      "error_injector": {
+        "custom_error_types": true,
+        "injection_strategies": true,
+        "recovery_handlers": true
+      }
+    },
+    "implementation_hooks": {
+      "yahoo_extensions": {
+        "gam_simulation": "mock_line_item_creation",
+        "inventory_modeling": "realistic_availability",
+        "audience_simulation": "yahoo_1p_signals",
+        "reporting_pipeline": "simulated_dtf_generation"
+      },
+      "google_extensions": {
+        "dv360_integration": "mock_api_responses",
+        "cm360_tracking": "simulated_conversions",
+        "ga4_events": "synthetic_analytics"
+      },
+      "custom_platforms": {
+        "registration": "plugin_manifest.json",
+        "capabilities": ["state_extension", "metric_generation"],
+        "api_version": "1.0"
+      }
+    },
+    "configuration_override": {
+      "precedence": ["session", "plugin", "global"],
+      "validation": "schema_based",
+      "hot_reload": true
+    }
+  }
+}
+```
+
+### Custom Implementation Example
+
+```python
+class CustomTimeEngine(TimeEnginePlugin):
+    def __init__(self, config):
+        self.config = config
+        
+    def advance_time(self, current_time, target):
+        # Custom time progression logic
+        events = self.generate_intermediate_events(current_time, target)
+        return self.apply_business_rules(events)
+        
+    def register_hooks(self):
+        return {
+            "before_advance": self.validate_time_jump,
+            "after_advance": self.update_metrics,
+            "on_event": self.handle_custom_event
+        }
+```
+
+### Jumpable States
+
+States that can be jumped to via `X-Jump-To-State`:
 
 #### Creative Lifecycle
 - `creatives_uploaded` - Assets received by platform
@@ -119,13 +740,33 @@ Pre-defined scenarios accessible via `X-Test-Scenario`:
 
 ## API Examples
 
-### Example 1: Test Full Campaign Lifecycle
+### Example 1: Complete Campaign Lifecycle Test
 
 ```python
-# Create campaign in dry run mode
-POST /create_media_buy
+# Step 1: Create test session
+POST /test_sessions
+Body: {
+  "session_config": {
+    "duration": "4h",
+    "isolation_level": "full",
+    "scenario": "standard_campaign"
+  },
+  "time_config": {
+    "start_time": "2025-01-01T09:00:00Z",
+    "progression_mode": "event_driven"
+  }
+}
+
+Response: {
+  "session_id": "test_abc123",
+  "expires_at": "2025-01-01T13:00:00Z",
+  "base_url": "https://api.example.com/test/abc123"
+}
+
+# Step 2: Create campaign in test session
+POST /test/abc123/create_media_buy
 Headers: {
-  "X-Dry-Run": "true",
+  "X-Test-Session-Id": "test_abc123",
   "X-Mock-Time": "2025-01-01T09:00:00Z"
 }
 Body: {
@@ -140,139 +781,265 @@ Body: {
 
 Response: {
   "media_buy_id": "mb_test_123",
-  "status": "pending_approval",
-  "dry_run": true,
+  "status": "pending_review",
+  "current_state": "created",
+  "session_id": "test_abc123",
   "simulated_time": "2025-01-01T09:00:00Z",
-  "next_event": "campaign_approved",
-  "next_event_time": "2025-01-01T11:00:00Z"
+  "next_transition": {
+    "to_state": "pending_review",
+    "estimated_time": "2025-01-01T09:30:00Z"
+  }
 }
 
-# Jump to learning phase complete
-GET /get_media_buy_delivery?media_buy_id=mb_test_123
+# Step 3: Jump to learning complete state
+POST /test/abc123/time/advance
 Headers: {
-  "X-Dry-Run": "true",
-  "X-Jump-To-Event": "learning_phase_complete"
+  "X-Test-Session-Id": "test_abc123"
+}
+Body: {
+  "advance_mode": "to_state",
+  "target": "optimizing",
+  "campaign_id": "mb_test_123",
+  "options": {
+    "generate_intermediate_events": true
+  }
 }
 
 Response: {
-  "media_buy_id": "mb_test_123",
-  "status": "active",
-  "dry_run": true,
+  "campaign_id": "mb_test_123",
+  "current_state": "optimizing",
   "simulated_time": "2025-01-06T09:00:00Z",
-  "learning_phase": {
-    "status": "complete",
-    "duration_days": 5,
-    "conversions_gathered": 50
-  },
+  "events_generated": [
+    {"time": "2025-01-01T11:00:00Z", "event": "campaign_approved"},
+    {"time": "2025-01-02T00:00:00Z", "event": "campaign_started"},
+    {"time": "2025-01-02T00:00:00Z", "event": "learning_phase_started"},
+    {"time": "2025-01-06T00:00:00Z", "event": "learning_phase_complete"}
+  ],
   "metrics": {
     "impressions": 50000,
     "clicks": 500,
     "conversions": 50,
-    "simulated_spend": 500.00,
-    "cpa": 10.00
+    "spend": 500.00,
+    "cpa": 10.00,
+    "learning_confidence": 0.95
   }
 }
 ```
 
-### Example 2: Test Error Scenarios
+### Example 2: Error Injection Testing
 
 ```python
-# Trigger policy violation scenario
-POST /add_creative_assets
+# Configure error injection for policy violation
+POST /test/abc123/errors/inject
 Headers: {
-  "X-Dry-Run": "true",
-  "X-Test-Scenario": "policy_violation"
+  "X-Test-Session-Id": "test_abc123"
+}
+Body: {
+  "injection_plan": [{
+    "timing": "at_state",
+    "state": "pending_review",
+    "error_type": "policy_violation",
+    "details": {
+      "code": "MISLEADING_CLAIMS",
+      "affected_assets": ["headline_1", "description_2"],
+      "severity": "blocking"
+    }
+  }]
+}
+
+# Trigger the error by adding creatives
+POST /test/abc123/add_creative_assets
+Headers: {
+  "X-Test-Session-Id": "test_abc123"
 }
 Body: {
   "media_buy_id": "mb_test_123",
-  "assets": [...]
+  "assets": [{
+    "type": "headline",
+    "content": "Best Product Ever"
+  }]
 }
 
 Response: {
   "status": "rejected",
-  "dry_run": true,
+  "session_id": "test_abc123",
+  "current_state": "pending_review",
   "errors": [{
-    "code": "POLICY_VIOLATION",
-    "message": "Misleading claims detected (simulated)",
-    "field": "headline",
-    "policy_link": "https://platform.example/policies/claims"
+    "code": "MISLEADING_CLAIMS",
+    "message": "Headline contains misleading claims (injected error)",
+    "field": "headline_1",
+    "severity": "blocking",
+    "remediation": {
+      "action_required": "revise_content",
+      "suggestions": ["Remove superlative claims", "Add substantiation"]
+    }
   }],
-  "simulated_review_time": "2 hours"
+  "state_transition_blocked": true
 }
 ```
 
-### Example 3: Auto-Advance Through Timeline
+### Example 3: Concurrent Campaign Testing
 
 ```python
-# Create and auto-advance through events
-POST /create_media_buy
-Headers: {
-  "X-Dry-Run": "true",
-  "X-Mock-Time": "2025-01-01T09:00:00Z",
-  "X-Auto-Advance": "true"
+# Create session with multiple campaigns
+POST /test_sessions
+Body: {
+  "session_config": {
+    "isolation_level": "campaign",
+    "max_campaigns": 3
+  }
 }
 
-# Each subsequent request auto-advances time
-GET /get_media_buy_delivery?media_buy_id=mb_test_123
-Headers: {
-  "X-Dry-Run": "true",
-  "X-Auto-Advance": "true"
+Response: {"session_id": "test_multi_456"}
+
+# Launch three campaigns with different scenarios
+campaigns = [
+  {"id": "mb_1", "scenario": "high_performance"},
+  {"id": "mb_2", "scenario": "learning_failure"},
+  {"id": "mb_3", "scenario": "budget_exhaustion"}
+]
+
+# Coordinate synchronized time advancement
+POST /test/multi_456/coordinate
+Body: {
+  "coordination_type": "synchronized_start",
+  "participants": ["mb_1", "mb_2", "mb_3"],
+  "synchronization_point": "all_campaigns_active"
+}
+
+# Advance all campaigns to day 7
+POST /test/multi_456/time/advance
+Body: {
+  "advance_mode": "by_duration",
+  "target": "7d",
+  "apply_to_all": true
 }
 
 Response: {
-  "simulated_time": "2025-01-01T11:00:00Z",  # Advanced 2 hours
-  "event_occurred": "campaign_approved",
-  "next_event": "campaign_started",
-  "next_event_time": "2025-01-02T00:00:00Z"
+  "session_id": "test_multi_456",
+  "simulated_time": "2025-01-08T00:00:00Z",
+  "campaign_states": {
+    "mb_1": {
+      "state": "optimizing",
+      "performance": "exceeding_target",
+      "spend": 700.00,
+      "roas": 4.5
+    },
+    "mb_2": {
+      "state": "learning",
+      "performance": "below_threshold",
+      "spend": 450.00,
+      "conversions": 2,
+      "warning": "insufficient_data_for_optimization"
+    },
+    "mb_3": {
+      "state": "paused",
+      "reason": "budget_exhausted",
+      "spend": 1000.00,
+      "exhausted_at": "2025-01-05T14:23:00Z"
+    }
+  }
 }
 ```
 
-## Implementation Guidelines
+## Implementation Requirements
 
-### State Management
+### Minimum Requirements (Phase 1)
 
-Implementations should maintain separate state for test modes:
+All AdCP implementations MUST support:
 
-```python
-class MediaBuyState:
-    def __init__(self, dry_run=False):
-        self.dry_run = dry_run
-        self.simulated_time = None
-        self.events_timeline = []
-        self.metrics_curve = None
-        
-    def advance_to_event(self, event_name):
-        # Progress state to match event
-        # Update metrics realistically
-        # Maintain consistency
-```
+1. **Session Management**
+   - Create, retrieve, and delete test sessions
+   - Session isolation (at minimum "full" level)
+   - Session expiration and cleanup
+   - Unique session identifiers
 
-### Realistic Metrics
+2. **Basic Dry Run Mode**
+   - No side effects on production systems
+   - Clear indication of test mode in responses
+   - Simulated responses for all operations
 
-Simulated metrics should follow realistic patterns:
+3. **State Tracking**
+   - Campaign state machine with basic states
+   - State transition validation
+   - State persistence within session
 
-```python
-def generate_metrics(time_elapsed, budget, targeting):
-    # S-curve for learning phase
-    # Daily fluctuations for seasonality
-    # Competitive factors for CPM variations
-    # Conversion lag for attribution
-```
+4. **Error Handling**
+   - Deterministic error injection
+   - Standard error scenarios
+   - Recovery path simulation
 
-### Webhook Simulation
+### Recommended Features (Phase 2)
 
-In dry run mode, webhooks should be queued but not delivered:
+Implementations SHOULD support:
+
+1. **Time Simulation**
+   - Linear time progression
+   - Jump to specific states
+   - Event generation
+
+2. **Metrics Generation**
+   - Basic performance curves
+   - Industry-standard benchmarks
+   - Correlation between metrics
+
+3. **Concurrency**
+   - Multiple concurrent sessions
+   - Campaign-level isolation
+   - Basic resource limits
+
+### Advanced Features (Phase 3)
+
+Implementations MAY support:
+
+1. **Advanced Time Control**
+   - Multiple progression modes
+   - Business hour simulation
+   - Complex event scheduling
+
+2. **Sophisticated Data Generation**
+   - Machine learning models
+   - Historical replay
+   - Anomaly injection
+
+3. **Full Extensibility**
+   - Plugin architecture
+   - Custom state machines
+   - Platform-specific extensions
+
+### Compliance Validation
 
 ```json
 {
-  "webhook_queue": [
-    {
-      "event": "campaign.started",
-      "scheduled_time": "2025-01-02T00:00:00Z",
-      "payload": {...},
-      "would_deliver_to": "https://client.example/webhook"
+  "compliance_levels": {
+    "basic": {
+      "required_features": [
+        "session_management",
+        "dry_run_mode",
+        "state_tracking",
+        "error_injection"
+      ],
+      "test_suite": "adcp-test-basic"
+    },
+    "standard": {
+      "includes": "basic",
+      "additional_features": [
+        "time_simulation",
+        "metrics_generation",
+        "concurrent_sessions"
+      ],
+      "test_suite": "adcp-test-standard"
+    },
+    "advanced": {
+      "includes": "standard",
+      "additional_features": [
+        "advanced_time_control",
+        "ml_data_generation",
+        "plugin_architecture"
+      ],
+      "test_suite": "adcp-test-advanced"
     }
-  ]
+  }
 }
 ```
 
@@ -280,22 +1047,43 @@ In dry run mode, webhooks should be queued but not delivered:
 
 ### Isolation Requirements
 
-- Test modes MUST be completely isolated from production systems
-- No real platform API calls should be made in dry run mode
-- Test data should never mix with production data
-- Clear visual/API indicators must show test mode is active
+```json
+{
+  "security_requirements": {
+    "isolation": {
+      "production_separation": "mandatory",
+      "data_segregation": "complete",
+      "api_endpoints": "separate_or_flagged",
+      "database_access": "read_only_or_synthetic"
+    },
+    "authentication": {
+      "required": true,
+      "test_credentials": "separate_namespace",
+      "permissions": "test_specific_roles",
+      "audit_logging": "test_flagged"
+    },
+    "data_protection": {
+      "pii_handling": "synthetic_only",
+      "real_data_access": "prohibited",
+      "data_generation": "deterministic_synthetic",
+      "export_restrictions": "test_data_only"
+    },
+    "resource_protection": {
+      "rate_limiting": "enforced",
+      "resource_quotas": "per_session",
+      "dos_protection": "circuit_breakers",
+      "cost_controls": "zero_real_spend"
+    }
+  }
+}
+```
 
-### Authentication
+### Compliance Requirements
 
-- Same authentication requirements apply in test mode
-- Rate limits should be enforced (potentially with higher limits)
-- Audit logs should clearly mark test mode operations
-
-### Data Privacy
-
-- Test mode should not access real user data
-- Synthetic data should be used for all simulations
-- PII should never appear in test responses
+- **GDPR**: No real user data in test environments
+- **CCPA**: Synthetic data only for California residents
+- **SOC2**: Audit trails for all test operations
+- **PCI**: No real payment processing in test mode
 
 ## Best Practices
 
@@ -442,8 +1230,30 @@ Test campaign state can persist across sessions based on implementation needs, w
 - [AWS Time Injection](https://docs.aws.amazon.com/timestream/latest/developerguide/time-injection.html) - Time-series testing
 - [Facebook Marketing API Sandbox](https://developers.facebook.com/docs/marketing-api/sandbox) - Ad account simulation
 
+## Implementation Decision Matrix
+
+| Feature | Required | Recommended | Optional | Complexity |
+|---------|----------|-------------|----------|------------|
+| Session Management | ✓ | | | Low |
+| Basic Dry Run | ✓ | | | Low |
+| State Machine | ✓ | | | Medium |
+| Error Injection | ✓ | | | Low |
+| Time Simulation | | ✓ | | Medium |
+| Metrics Generation | | ✓ | | Medium |
+| Concurrency | | ✓ | | High |
+| Advanced Time Control | | | ✓ | High |
+| ML Data Generation | | | ✓ | Very High |
+| Plugin Architecture | | | ✓ | High |
+
 ## Summary
 
-Time simulation and dry run capabilities significantly improve the developer experience for AdCP implementations. By enabling rapid testing of full campaign lifecycles, comprehensive error scenario coverage, and safe experimentation, these features accelerate development and improve implementation quality.
+This testing framework provides a comprehensive architecture for AdCP implementations to enable robust testing without real-world consequences. The session-based approach with formal state machines addresses the complexity of advertising workflows while maintaining deterministic behavior.
 
-The approach balances simplicity with power, allowing basic implementations to start with simple dry run mode while advanced implementations can provide sophisticated time simulation and scenario testing.
+### Key Architectural Decisions
+
+1. **Session-Based State Management**: Explicit sessions provide isolation and resource control
+2. **State Machine Formalization**: Graph-based states enable complex workflow testing
+3. **Pluggable Components**: Extensibility allows platform-specific customization
+4. **Phased Implementation**: Progressive enhancement from basic to advanced features
+
+Implementations can start with basic dry run capabilities and progressively add sophisticated features based on their needs and resources.
