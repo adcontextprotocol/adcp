@@ -760,74 +760,567 @@ class SignalFeedbackLoop {
 
 ## Testing Your Implementation
 
+### Comprehensive Test Strategy
+
+**LESSON LEARNED**: Test not just functionality but also privacy compliance, performance at scale, and error recovery.
+
 ### 1. Signal Ingestion Tests
 
+<details>
+<summary><b>Core Ingestion Tests</b></summary>
+
 ```typescript
-describe("Signal Ingestion", () => {
-  it("should accept valid audience signals", async () => {
+describe("Signal Ingestion Pipeline", () => {
+  // Test valid signal processing
+  it("should accept and process valid audience signals", async () => {
     const signal: AudienceSignal = {
       id: "sig_123",
       type: "audience",
       source: "crm",
       timestamp: new Date().toISOString(),
       data: {
-        hashed_email: sha256("user@example.com"),
-        segment_ids: ["high_value", "repeat_customer"]
+        // CRITICAL: Always use hashed PII
+        hashed_email: sha256("user@example.com".toLowerCase().trim()),
+        hashed_phone: sha256("+14155551234"),
+        segment_ids: ["high_value", "repeat_customer"],
+        attributes: {
+          ltv_tier: "premium",
+          engagement_score: 0.85
+        }
       },
       consent: {
-        purposes: ["advertising", "analytics"],
-        timestamp: new Date().toISOString()
+        purposes: ["advertising", "analytics", "personalization"],
+        timestamp: new Date().toISOString(),
+        expiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
       }
     };
     
     const result = await ingestSignal(signal);
+    
     expect(result.status).toBe("accepted");
+    expect(result.signal_id).toBeDefined();
+    expect(result.processing_time_ms).toBeLessThan(100);
   });
   
-  it("should reject signals without consent", async () => {
-    const signal = createSignalWithoutConsent();
+  // Test consent validation
+  it("should reject signals without valid consent", async () => {
+    const testCases = [
+      { 
+        name: "missing consent",
+        signal: createSignalWithoutConsent() 
+      },
+      { 
+        name: "expired consent",
+        signal: createSignalWithExpiredConsent() 
+      },
+      { 
+        name: "insufficient purposes",
+        signal: createSignalWithInsufficientConsent() 
+      }
+    ];
     
-    await expect(ingestSignal(signal))
-      .rejects.toThrow("Signal lacks required consent");
+    for (const testCase of testCases) {
+      const result = await ingestSignal(testCase.signal);
+      expect(result.status).toBe("rejected");
+      expect(result.error.code).toBe("consent_invalid");
+      expect(result.error.message).toContain(testCase.name);
+    }
+  });
+  
+  // Test PII handling
+  it("should reject signals with unhashed PII", async () => {
+    const signal = {
+      ...validSignalBase,
+      data: {
+        email: "user@example.com", // RAW PII - should be rejected!
+        phone: "415-555-1234"       // RAW PII - should be rejected!
+      }
+    };
+    
+    const result = await ingestSignal(signal);
+    
+    expect(result.status).toBe("rejected");
+    expect(result.error.code).toBe("pii_not_hashed");
+    expect(result.error.fields).toContain("email", "phone");
+  });
+  
+  // Test identity resolution
+  it("should resolve multiple identity types", async () => {
+    const signal = {
+      ...validSignalBase,
+      identities: [
+        { type: "hashed_email", value: sha256("user@example.com") },
+        { type: "ramp_id", value: "XY123456789" },
+        { type: "uid2", value: "AGx9..." },
+        { type: "maid", value: "AEBE52E7-03EE-455A-B3C4-E57283966239" }
+      ]
+    };
+    
+    const result = await ingestSignal(signal);
+    
+    expect(result.status).toBe("accepted");
+    expect(result.resolved_identities).toHaveLength(4);
+    expect(result.match_rate).toBeGreaterThan(0.7);
   });
 });
 ```
+</details>
 
-### 2. Optimization Tests
+### 2. Signal Processing Performance Tests
+
+<details>
+<summary><b>Scale and Performance Tests</b></summary>
 
 ```typescript
-describe("Signal Optimization", () => {
-  it("should optimize based on performance signals", async () => {
-    // Setup: Create media buy and signals
-    const mediaBuy = await createTestMediaBuy();
-    const signals = generatePerformanceSignals(mediaBuy.id);
+describe("Signal Processing at Scale", () => {
+  // Test batch processing efficiency
+  it("should process large signal batches efficiently", async () => {
+    const batchSizes = [100, 1000, 10000];
+    const results = [];
     
-    // Execute optimization
-    const plan = await optimizer.optimizeDelivery(mediaBuy, signals);
+    for (const size of batchSizes) {
+      const signals = generateTestSignals(size);
+      const startTime = Date.now();
+      
+      const result = await processBatchSignals(signals);
+      
+      const duration = Date.now() - startTime;
+      const throughput = size / (duration / 1000); // signals per second
+      
+      results.push({
+        size,
+        duration,
+        throughput,
+        success_rate: result.successful / size
+      });
+      
+      // Performance assertions
+      expect(throughput).toBeGreaterThan(1000); // Min 1000 signals/sec
+      expect(result.successful).toBeGreaterThan(size * 0.99); // 99% success rate
+    }
     
-    // Verify optimization plan
-    expect(plan.adjustments).toHaveLength(greaterThan(0));
-    expect(plan.expected_impact.improvement).toBeGreaterThan(0);
+    // Verify linear scaling
+    const scalingFactor = results[2].duration / results[0].duration;
+    expect(scalingFactor).toBeLessThan(120); // Should scale sub-linearly
+  });
+  
+  // Test memory efficiency
+  it("should not leak memory during sustained load", async () => {
+    const initialMemory = process.memoryUsage().heapUsed;
+    const iterations = 100;
+    const batchSize = 1000;
+    
+    for (let i = 0; i < iterations; i++) {
+      const signals = generateTestSignals(batchSize);
+      await processBatchSignals(signals);
+      
+      // Force garbage collection if available
+      if (global.gc) global.gc();
+    }
+    
+    const finalMemory = process.memoryUsage().heapUsed;
+    const memoryGrowth = (finalMemory - initialMemory) / initialMemory;
+    
+    expect(memoryGrowth).toBeLessThan(0.1); // Less than 10% growth
+  });
+  
+  // Test concurrent processing
+  it("should handle concurrent signal streams", async () => {
+    const streams = 10;
+    const signalsPerStream = 100;
+    
+    const streamPromises = Array(streams).fill(null).map(async (_, streamId) => {
+      const signals = generateTestSignals(signalsPerStream, { streamId });
+      return processStreamSignals(signals);
+    });
+    
+    const results = await Promise.all(streamPromises);
+    
+    // All streams should complete successfully
+    results.forEach(result => {
+      expect(result.status).toBe("completed");
+      expect(result.processed).toBe(signalsPerStream);
+    });
+    
+    // Verify no signal mixing between streams
+    const processedSignals = await getProcessedSignals();
+    const streamGroups = groupBy(processedSignals, 'streamId');
+    
+    expect(Object.keys(streamGroups)).toHaveLength(streams);
   });
 });
 ```
+</details>
 
-### 3. Privacy Compliance Tests
+### 3. Optimization and Delivery Tests
+
+<details>
+<summary><b>Signal-Based Optimization Tests</b></summary>
 
 ```typescript
-describe("Privacy Compliance", () => {
-  it("should hash PII before storage", async () => {
-    const email = "user@example.com";
-    const signal = createAudienceSignalWithEmail(email);
+describe("Signal-Driven Optimization", () => {
+  let mediaBuyId: string;
+  let testSignals: Signal[];
+  
+  beforeEach(async () => {
+    // Setup test campaign
+    const mediaBuy = await createTestMediaBuy({
+      budget: 100000,
+      packages: [
+        { product_id: "prod_1", budget: 50000 },
+        { product_id: "prod_2", budget: 50000 }
+      ]
+    });
+    mediaBuyId = mediaBuy.id;
+    
+    // Generate diverse test signals
+    testSignals = [
+      ...generateAudienceSignals(1000),
+      ...generateContextSignals(500),
+      ...generatePerformanceSignals(mediaBuyId, 200),
+      ...generateIntentSignals(300)
+    ];
+  });
+  
+  it("should optimize delivery based on performance signals", async () => {
+    // Ingest performance signals showing package 1 outperforming
+    const perfSignals = [
+      createPerformanceSignal(mediaBuyId, "package_1", { ctr: 0.05, cvr: 0.02 }),
+      createPerformanceSignal(mediaBuyId, "package_2", { ctr: 0.02, cvr: 0.005 })
+    ];
+    
+    await ingestSignals(perfSignals);
+    
+    // Request optimization
+    const optimization = await optimizeDelivery(mediaBuyId);
+    
+    expect(optimization.recommendations).toContain(
+      expect.objectContaining({
+        action: "shift_budget",
+        from_package: "package_2",
+        to_package: "package_1",
+        amount: expect.any(Number),
+        reason: expect.stringContaining("performance")
+      })
+    );
+  });
+  
+  it("should identify high-value audience segments", async () => {
+    // Ingest audience signals with conversion data
+    const audienceSignals = generateAudienceSignalsWithOutcomes({
+      segment: "tech_professionals",
+      conversion_rate: 0.08
+    });
+    
+    await ingestSignals(audienceSignals);
+    
+    // Get segment recommendations
+    const segments = await getHighValueSegments(mediaBuyId);
+    
+    expect(segments[0]).toMatchObject({
+      segment_id: "tech_professionals",
+      predicted_value: expect.any(Number),
+      confidence: expect.any(Number),
+      recommended_action: "increase_targeting"
+    });
+  });
+  
+  it("should adapt to real-time context changes", async () => {
+    // Simulate weather context change
+    const contextSignal = createContextSignal({
+      type: "weather",
+      data: { condition: "heavy_rain", severity: "high" },
+      affected_regions: ["US-CA-SF", "US-CA-OAK"]
+    });
+    
+    await ingestSignal(contextSignal);
+    
+    // Check delivery adjustments
+    const adjustments = await getDeliveryAdjustments(mediaBuyId);
+    
+    expect(adjustments).toContain(
+      expect.objectContaining({
+        type: "creative_swap",
+        reason: "weather_context",
+        original_creative: expect.any(String),
+        replacement_creative: expect.stringContaining("rain")
+      })
+    );
+  });
+});
+```
+</details>
+
+### 4. Privacy and Compliance Tests
+
+<details>
+<summary><b>Privacy Compliance Test Suite</b></summary>
+
+```typescript
+describe("Privacy and Compliance", () => {
+  // Test PII hashing
+  it("should properly hash and normalize PII", async () => {
+    const testCases = [
+      { input: "John.Doe@EXAMPLE.com", expected: sha256("john.doe@example.com") },
+      { input: " user@test.com ", expected: sha256("user@test.com") },
+      { input: "+1 (415) 555-1234", expected: sha256("+14155551234") }
+    ];
+    
+    for (const test of testCases) {
+      const hashed = hashPII(test.input);
+      expect(hashed).toBe(test.expected);
+      
+      // Verify original is not stored
+      const stored = await getStoredValue(hashed);
+      expect(stored).not.toContain(test.input);
+    }
+  });
+  
+  // Test consent enforcement
+  it("should enforce consent for all signal operations", async () => {
+    const signal = createSignalWithLimitedConsent(["analytics"]); // No advertising consent
+    
+    // Should accept for analytics
+    const analyticsResult = await processForAnalytics(signal);
+    expect(analyticsResult.status).toBe("success");
+    
+    // Should reject for advertising
+    const adResult = await processForAdvertising(signal);
+    expect(adResult.status).toBe("rejected");
+    expect(adResult.error.code).toBe("insufficient_consent");
+  });
+  
+  // Test data retention
+  it("should respect data retention policies", async () => {
+    const signal = createSignalWithRetention(7); // 7 day retention
     
     await ingestSignal(signal);
     
-    // Verify raw email is never stored
-    const stored = await getStoredSignal(signal.id);
-    expect(stored.data.email).toBeUndefined();
-    expect(stored.data.hashed_email).toBe(sha256(email));
+    // Verify signal exists
+    let stored = await getSignal(signal.id);
+    expect(stored).toBeDefined();
+    
+    // Fast-forward time
+    await advanceTime(8 * 24 * 60 * 60 * 1000); // 8 days
+    
+    // Run retention cleanup
+    await runRetentionCleanup();
+    
+    // Verify signal is deleted
+    stored = await getSignal(signal.id);
+    expect(stored).toBeNull();
+  });
+  
+  // Test cross-border compliance
+  it("should apply region-specific privacy rules", async () => {
+    const regions = [
+      { region: "EU", signal: createEUSignal(), expectedRules: ["GDPR"] },
+      { region: "CA", signal: createCaliforniaSignal(), expectedRules: ["CCPA"] },
+      { region: "UK", signal: createUKSignal(), expectedRules: ["UK-GDPR"] }
+    ];
+    
+    for (const test of regions) {
+      const result = await processSignalWithCompliance(test.signal);
+      
+      expect(result.applied_rules).toEqual(expect.arrayContaining(test.expectedRules));
+      expect(result.compliance_checks).toMatchObject({
+        consent_verified: true,
+        lawful_basis: expect.any(String),
+        data_minimization: true,
+        purpose_limitation: true
+      });
+    }
   });
 });
+```
+</details>
+
+## Troubleshooting Common Issues
+
+### Issue: Signals Not Matching Expected Audience
+
+**Symptoms**: Low match rates, segments not activating, unexpected audience sizes.
+
+**Root Causes**:
+1. PII not normalized before hashing
+2. Inconsistent hashing algorithms
+3. Identity resolution failures
+
+**Solutions**:
+```typescript
+class SignalMatcher {
+  // CRITICAL: Consistent normalization
+  private normalizeEmail(email: string): string {
+    return email.toLowerCase().trim();
+  }
+  
+  private normalizePhone(phone: string): string {
+    // Remove all non-digits
+    const digits = phone.replace(/\D/g, '');
+    
+    // Add country code if missing
+    if (digits.length === 10) {
+      return `+1${digits}`; // US assumption
+    }
+    
+    return `+${digits}`;
+  }
+  
+  // Use consistent hashing
+  private hashValue(value: string): string {
+    return crypto
+      .createHash('sha256')
+      .update(value, 'utf8')
+      .digest('hex')
+      .toLowerCase();
+  }
+  
+  // Improve match rates with fuzzy matching
+  async matchSignal(signal: Signal): Promise<MatchResult> {
+    const matches = [];
+    
+    // Try exact match first
+    let result = await this.exactMatch(signal);
+    if (result) matches.push(result);
+    
+    // Try alternative identity types
+    for (const identity of signal.identities || []) {
+      result = await this.matchByIdentity(identity);
+      if (result) matches.push(result);
+    }
+    
+    // Try probabilistic matching if enabled
+    if (this.config.enableProbabilistic) {
+      result = await this.probabilisticMatch(signal);
+      if (result && result.confidence > 0.8) {
+        matches.push(result);
+      }
+    }
+    
+    return this.consolidateMatches(matches);
+  }
+}
+```
+
+### Issue: Signal Processing Latency
+
+**Symptoms**: Slow signal activation, timeouts, queue backlog.
+
+**Root Causes**:
+1. Synchronous processing blocking the pipeline
+2. Inefficient database queries
+3. No caching layer
+
+**Solutions**:
+```typescript
+class SignalProcessor {
+  private cache = new LRUCache({ max: 10000, ttl: 300000 }); // 5 min TTL
+  private queue = new PQueue({ concurrency: 10 });
+  
+  async processSignal(signal: Signal): Promise<ProcessedSignal> {
+    // Check cache first
+    const cacheKey = this.getCacheKey(signal);
+    const cached = this.cache.get(cacheKey);
+    if (cached) return cached;
+    
+    // Queue for async processing
+    return this.queue.add(async () => {
+      const startTime = Date.now();
+      
+      try {
+        // Process in parallel where possible
+        const [validation, matching, enrichment] = await Promise.all([
+          this.validateSignal(signal),
+          this.matchSignal(signal),
+          this.enrichSignal(signal)
+        ]);
+        
+        const processed = {
+          ...signal,
+          validation,
+          matching,
+          enrichment,
+          processing_time: Date.now() - startTime
+        };
+        
+        // Cache result
+        this.cache.set(cacheKey, processed);
+        
+        // Async persist (don't block)
+        this.persistAsync(processed);
+        
+        return processed;
+      } catch (error) {
+        console.error(`Signal processing failed:`, error);
+        throw error;
+      }
+    });
+  }
+  
+  private async persistAsync(signal: ProcessedSignal): Promise<void> {
+    // Fire and forget with error handling
+    setImmediate(async () => {
+      try {
+        await this.db.saveSignal(signal);
+      } catch (error) {
+        console.error(`Failed to persist signal:`, error);
+        // Add to retry queue
+        this.retryQueue.add(signal);
+      }
+    });
+  }
+}
+```
+
+### Issue: Memory Growth in Signal Aggregation
+
+**Symptoms**: Memory usage increases over time, OOM errors.
+
+**Root Causes**:
+1. Unbounded aggregation windows
+2. Not releasing old signals
+3. Memory leaks in event handlers
+
+**Solutions**:
+```typescript
+class SignalAggregator {
+  private windows = new Map<string, AggregationWindow>();
+  private maxWindowSize = 10000;
+  private windowTTL = 600000; // 10 minutes
+  
+  aggregate(signal: Signal): AggregateResult {
+    const windowKey = this.getWindowKey(signal);
+    let window = this.windows.get(windowKey);
+    
+    if (!window) {
+      window = this.createWindow(windowKey);
+    }
+    
+    // Add signal to window
+    window.add(signal);
+    
+    // Enforce size limit
+    if (window.size > this.maxWindowSize) {
+      window.evictOldest();
+    }
+    
+    // Clean up old windows periodically
+    this.cleanupOldWindows();
+    
+    return window.getAggregates();
+  }
+  
+  private cleanupOldWindows(): void {
+    const now = Date.now();
+    
+    for (const [key, window] of this.windows.entries()) {
+      if (now - window.lastAccessed > this.windowTTL) {
+        window.cleanup(); // Release resources
+        this.windows.delete(key);
+      }
+    }
+  }
+}
 ```
 
 ## Protocol-Specific Considerations
@@ -969,27 +1462,262 @@ class SignalCache {
 
 ## Monitoring and Health Checks
 
+### Comprehensive Signal Monitoring
+
+**LESSON LEARNED**: Monitor not just throughput but also signal quality, privacy compliance, and business impact.
+
 ```typescript
 class SignalHealthMonitor {
+  private metrics = new MetricsCollector();
+  private alerts = new AlertManager();
+  
   async checkHealth(): Promise<HealthStatus> {
+    const checks = {
+      ingestion: await this.checkIngestionHealth(),
+      processing: await this.checkProcessingHealth(),
+      privacy: await this.checkPrivacyCompliance(),
+      quality: await this.checkSignalQuality(),
+      infrastructure: await this.checkInfrastructure()
+    };
+    
+    // Determine overall health
+    const criticalFailures = Object.values(checks).filter(c => c.status === 'critical');
+    const warnings = Object.values(checks).filter(c => c.status === 'warning');
+    
     return {
-      ingestion_rate: await this.getIngestionRate(),
-      processing_latency: await this.getProcessingLatency(),
-      error_rate: await this.getErrorRate(),
-      signal_quality: await this.assessSignalQuality(),
-      privacy_compliance: await this.checkPrivacyCompliance()
+      status: criticalFailures.length > 0 ? 'unhealthy' : 
+              warnings.length > 2 ? 'degraded' : 'healthy',
+      checks,
+      timestamp: new Date().toISOString()
     };
   }
   
-  async getMetrics(): Promise<SignalMetrics> {
+  private async checkIngestionHealth(): Promise<ComponentHealth> {
+    const rate = await this.getIngestionRate();
+    const backlog = await this.getQueueBacklog();
+    const errorRate = await this.getIngestionErrorRate();
+    
+    // Define thresholds
+    const status = 
+      errorRate > 0.05 ? 'critical' :  // >5% errors
+      errorRate > 0.01 ? 'warning' :   // >1% errors
+      backlog > 100000 ? 'warning' :   // Large backlog
+      'healthy';
+    
     return {
-      total_signals_processed: await this.getTotalProcessed(),
-      signals_by_type: await this.getSignalsByType(),
-      optimization_impact: await this.measureOptimizationImpact(),
-      consent_rate: await this.getConsentRate()
+      status,
+      metrics: {
+        ingestion_rate_per_sec: rate,
+        queue_backlog: backlog,
+        error_rate: errorRate
+      },
+      message: status === 'healthy' ? 
+        `Processing ${rate} signals/sec` :
+        `High error rate: ${(errorRate * 100).toFixed(2)}%`
+    };
+  }
+  
+  private async checkSignalQuality(): Promise<ComponentHealth> {
+    const metrics = {
+      match_rate: await this.getIdentityMatchRate(),
+      consent_coverage: await this.getConsentCoverage(),
+      data_freshness: await this.getDataFreshness(),
+      signal_diversity: await this.getSignalDiversity()
+    };
+    
+    // Quality score (0-100)
+    const qualityScore = 
+      (metrics.match_rate * 30) +           // 30% weight
+      (metrics.consent_coverage * 30) +     // 30% weight
+      (metrics.data_freshness * 20) +       // 20% weight
+      (metrics.signal_diversity * 20);      // 20% weight
+    
+    return {
+      status: qualityScore > 80 ? 'healthy' : 
+              qualityScore > 60 ? 'warning' : 'critical',
+      metrics: {
+        ...metrics,
+        quality_score: qualityScore
+      },
+      message: `Signal quality score: ${qualityScore.toFixed(1)}/100`
+    };
+  }
+  
+  async getDetailedMetrics(): Promise<SignalMetrics> {
+    const now = Date.now();
+    const hourAgo = now - 3600000;
+    const dayAgo = now - 86400000;
+    
+    return {
+      // Volume metrics
+      volume: {
+        total_processed: await this.getTotalProcessed(),
+        last_hour: await this.getProcessedSince(hourAgo),
+        last_24h: await this.getProcessedSince(dayAgo),
+        by_type: await this.getSignalsByType(),
+        by_source: await this.getSignalsBySource()
+      },
+      
+      // Performance metrics
+      performance: {
+        avg_latency_ms: await this.getAverageLatency(),
+        p50_latency_ms: await this.getPercentileLatency(50),
+        p95_latency_ms: await this.getPercentileLatency(95),
+        p99_latency_ms: await this.getPercentileLatency(99),
+        throughput_per_sec: await this.getCurrentThroughput()
+      },
+      
+      // Quality metrics
+      quality: {
+        match_rate: await this.getIdentityMatchRate(),
+        enrichment_rate: await this.getEnrichmentRate(),
+        validation_pass_rate: await this.getValidationPassRate(),
+        duplicate_rate: await this.getDuplicateRate()
+      },
+      
+      // Privacy metrics
+      privacy: {
+        consent_rate: await this.getConsentRate(),
+        opt_out_rate: await this.getOptOutRate(),
+        retention_compliance: await this.getRetentionCompliance(),
+        regions_covered: await this.getRegionsWithConsent()
+      },
+      
+      // Business impact
+      impact: {
+        campaigns_optimized: await this.getCampaignsOptimized(),
+        optimization_lift: await this.getOptimizationLift(),
+        revenue_impact: await this.getRevenueImpact(),
+        audience_reach_expansion: await this.getReachExpansion()
+      }
     };
   }
 }
+
+// Real-time monitoring dashboard
+class SignalDashboard {
+  private monitor = new SignalHealthMonitor();
+  private updateInterval = 5000; // 5 seconds
+  
+  async start(): Promise<void> {
+    setInterval(async () => {
+      const metrics = await this.monitor.getDetailedMetrics();
+      const health = await this.monitor.checkHealth();
+      
+      // Update dashboard
+      this.updateDashboard(metrics, health);
+      
+      // Check for alerts
+      this.checkAlerts(metrics, health);
+    }, this.updateInterval);
+  }
+  
+  private checkAlerts(metrics: SignalMetrics, health: HealthStatus): void {
+    // High error rate alert
+    if (metrics.quality.validation_pass_rate < 0.95) {
+      this.sendAlert('HIGH_ERROR_RATE', {
+        current_rate: 1 - metrics.quality.validation_pass_rate,
+        threshold: 0.05,
+        severity: 'high'
+      });
+    }
+    
+    // Performance degradation alert
+    if (metrics.performance.p95_latency_ms > 1000) {
+      this.sendAlert('PERFORMANCE_DEGRADATION', {
+        p95_latency: metrics.performance.p95_latency_ms,
+        threshold: 1000,
+        severity: 'medium'
+      });
+    }
+    
+    // Privacy compliance alert
+    if (metrics.privacy.consent_rate < 0.90) {
+      this.sendAlert('LOW_CONSENT_RATE', {
+        current_rate: metrics.privacy.consent_rate,
+        threshold: 0.90,
+        severity: 'high',
+        action: 'Review consent collection process'
+      });
+    }
+  }
+}
+
+// Distributed tracing for signal flow
+class SignalTracer {
+  trace(signal: Signal): TraceContext {
+    const traceId = generateTraceId();
+    const spanId = generateSpanId();
+    
+    return {
+      traceId,
+      spanId,
+      startTime: Date.now(),
+      
+      // Track signal through pipeline
+      recordSpan(name: string, operation: () => Promise<any>): Promise<any> {
+        const span = {
+          traceId,
+          parentSpanId: spanId,
+          spanId: generateSpanId(),
+          name,
+          startTime: Date.now()
+        };
+        
+        return operation()
+          .then(result => {
+            span.endTime = Date.now();
+            span.status = 'success';
+            this.sendSpan(span);
+            return result;
+          })
+          .catch(error => {
+            span.endTime = Date.now();
+            span.status = 'error';
+            span.error = error.message;
+            this.sendSpan(span);
+            throw error;
+          });
+      }
+    };
+  }
+}
+```
+
+### Alert Configuration
+
+```typescript
+const alertConfig = {
+  // Critical alerts (immediate notification)
+  critical: [
+    {
+      name: 'PRIVACY_VIOLATION',
+      condition: (m) => m.privacy.unhashed_pii_detected > 0,
+      message: 'Unhashed PII detected in signals',
+      action: 'Stop processing immediately and investigate'
+    },
+    {
+      name: 'SYSTEM_DOWN',
+      condition: (m) => m.performance.throughput_per_sec === 0,
+      message: 'Signal processing has stopped',
+      action: 'Check system health and restart if needed'
+    }
+  ],
+  
+  // Warning alerts (batched notifications)
+  warning: [
+    {
+      name: 'HIGH_LATENCY',
+      condition: (m) => m.performance.p95_latency_ms > 2000,
+      message: 'Signal processing latency is high'
+    },
+    {
+      name: 'LOW_MATCH_RATE',
+      condition: (m) => m.quality.match_rate < 0.5,
+      message: 'Identity match rate below 50%'
+    }
+  ]
+};
 ```
 
 ## Validation Checklist
