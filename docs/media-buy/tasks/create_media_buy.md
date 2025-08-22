@@ -51,9 +51,9 @@ Create a media buy from selected packages. This task handles the complete workfl
 - **detail**: Human-readable description of what was created
 - **next_steps**: Array of recommended actions to complete the media buy
 
-## Example
+## Examples
 
-### Request
+### Standard Media Buy Request
 ```json
 {
   "context_id": "ctx-media-buy-abc123",  // From product discovery
@@ -76,6 +76,27 @@ Create a media buy from selected packages. This task handles the complete workfl
 }
 ```
 
+### Retail Media Buy Request
+```json
+{
+  "context_id": "ctx-media-buy-retail123",  // From retail product discovery
+  "packages": ["albertsons_custom_competitive_conquest"],
+  "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs",
+  "po_number": "PO-2024-RETAIL-0456",
+  "total_budget": 75000,  // Meets $50K minimum for custom audience
+  "targeting_overlay": {
+    "geo_country_any_of": ["US"],
+    "geo_region_any_of": ["CA", "AZ", "NV"],  // Albertsons strong markets
+    "frequency_cap": {
+      "suppress_minutes": 60,
+      "scope": "media_buy"
+    }
+  },
+  "pacing": "even",
+  "daily_budget": 2500
+}
+```
+
 ### Response - Success
 ```json
 {
@@ -89,6 +110,24 @@ Create a media buy from selected packages. This task handles the complete workfl
     "Upload creative assets before deadline",
     "Assets will be reviewed by ad server",
     "Campaign will auto-activate after approval"
+  ]
+}
+```
+
+### Response - Retail Media Success
+```json
+{
+  "message": "Successfully created your $75,000 retail media campaign targeting competitive dog food buyers. The campaign will reach 450K Albertsons shoppers with deterministic purchase data. Creative assets must include co-branding and drive to Albertsons.com. Upload by January 30 to activate.",
+  "context_id": "ctx-media-buy-retail123",
+  "media_buy_id": "albertsons_mb_789012",
+  "status": "pending_activation",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "detail": "Retail media buy created with incremental sales measurement included",
+  "next_steps": [
+    "Upload creative assets with Albertsons co-branding",
+    "Ensure landing page is Albertsons.com",
+    "Access measurement dashboard after first impressions",
+    "Sales lift report available after 30-day attribution window"
   ]
 }
 ```
