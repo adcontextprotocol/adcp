@@ -43,6 +43,17 @@ Discover available advertising products based on campaign requirements, using na
       "is_fixed_price": "boolean",
       "cpm": "number",
       "min_spend": "number",
+      "measurement": {
+        "type": "string",
+        "attribution": "string",
+        "window": "string",
+        "reporting": "string"
+      },
+      "creative_policy": {
+        "co_branding": "string",
+        "landing_page": "string",
+        "templates_available": "boolean"
+      },
       "is_custom": "boolean",
       "brief_relevance": "string"
     }
@@ -71,6 +82,15 @@ Discover available advertising products based on campaign requirements, using na
 - **is_fixed_price**: Whether this product has fixed pricing (true) or uses auction (false)
 - **cpm**: Cost per thousand impressions in USD
 - **min_spend**: Minimum budget requirement in USD
+- **measurement**: Included measurement capabilities (optional)
+  - **type**: Type of measurement (e.g., "incremental_sales_lift", "brand_lift", "foot_traffic")
+  - **attribution**: Attribution methodology (e.g., "deterministic_purchase", "probabilistic")
+  - **window**: Attribution window (e.g., "30_days", "7_days")
+  - **reporting**: Reporting frequency and format (e.g., "weekly_dashboard", "real_time_api")
+- **creative_policy**: Creative requirements and restrictions (optional)
+  - **co_branding**: Co-branding requirement ("required", "optional", "none")
+  - **landing_page**: Landing page requirements ("any", "retailer_site_only", "must_include_retailer")
+  - **templates_available**: Whether creative templates are provided
 - **is_custom**: Whether this is a custom product
 - **brief_relevance**: Explanation of why this product matches the brief (only included when brief is provided)
 - **policy_compliance**: Policy compliance information
@@ -114,6 +134,15 @@ Discover available advertising products based on campaign requirements, using na
     "is_fixed_price": true,
     "standard_formats_only": true
   }
+}
+```
+
+### Retail Media Request
+```json
+{
+  "context_id": null,  // First request, no context yet
+  "brief": "Target pet owners who shop at our stores using our first-party data",
+  "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs"
 }
 ```
 
@@ -171,6 +200,73 @@ Discover available advertising products based on campaign requirements, using na
       "min_spend": 10000,
       "is_custom": false,
       "brief_relevance": "Premium CTV inventory aligns with sports content request and prime time targeting"
+    }
+  ],
+  "clarification_needed": false,
+  "policy_compliance": {
+    "status": "allowed"
+  }
+}
+```
+
+### Response - Retail Media Products
+```json
+{
+  "message": "I found 3 products leveraging our pet shopper data. The syndicated Pet Category audience offers the best value at $13.50 CPM with a $10K minimum. For more precision, our Custom Competitive Conquesting audience targets shoppers buying competing brands at $18 CPM with a $50K minimum. All products include incremental sales measurement.",
+  "context_id": "ctx-media-buy-retail123",
+  "products": [
+    {
+      "product_id": "albertsons_pet_category_syndicated",
+      "name": "Pet Category Shoppers - Syndicated",
+      "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days across offsite display and video inventory.",
+      "formats": [
+        {"format_id": "display_300x250", "name": "Medium Rectangle"},
+        {"format_id": "video_15s_vast", "name": "15-second VAST"}
+      ],
+      "delivery_type": "guaranteed",
+      "is_fixed_price": true,
+      "cpm": 13.50,
+      "min_spend": 10000,
+      "measurement": {
+        "type": "incremental_sales_lift",
+        "attribution": "deterministic_purchase",
+        "window": "30_days",
+        "reporting": "weekly_dashboard"
+      },
+      "creative_policy": {
+        "co_branding": "optional",
+        "landing_page": "must_include_retailer",
+        "templates_available": true
+      },
+      "is_custom": false,
+      "brief_relevance": "Targets pet owners using our first-party purchase data as requested"
+    },
+    {
+      "product_id": "albertsons_custom_competitive_conquest",
+      "name": "Custom: Competitive Dog Food Buyers",
+      "description": "Custom audience of Albertsons shoppers who buy competitive dog food brands. Higher precision targeting for conquest campaigns.",
+      "formats": [
+        {"format_id": "display_300x250", "name": "Medium Rectangle"},
+        {"format_id": "display_728x90", "name": "Leaderboard"}
+      ],
+      "delivery_type": "guaranteed",
+      "is_fixed_price": true,
+      "cpm": 18.00,
+      "min_spend": 50000,
+      "measurement": {
+        "type": "incremental_sales_lift",
+        "attribution": "deterministic_purchase",
+        "window": "30_days",
+        "reporting": "weekly_dashboard"
+      },
+      "creative_policy": {
+        "co_branding": "required",
+        "landing_page": "retailer_site_only",
+        "templates_available": true
+      },
+      "is_custom": true,
+      "expires_at": "2024-02-15T00:00:00Z",
+      "brief_relevance": "Precision targeting of competitive brand buyers for maximum conversion potential"
     }
   ],
   "clarification_needed": false,

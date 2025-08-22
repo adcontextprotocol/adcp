@@ -38,6 +38,16 @@ Each principal (advertiser or agency) may have access to different products base
 
 For unique requirements that don't match existing inventory, the system can generate custom products with specific targeting, formats, and pricing tailored to the brief.
 
+### Retail Media Products
+
+Retail media networks offer products that bundle inventory with first-party shopper data and measurement. These products typically include:
+- Deterministic purchase-based audiences
+- Incremental sales lift measurement
+- Creative requirements (co-branding, landing pages)
+- Minimum spend thresholds
+
+The `promoted_offering` field naturally identifies whether an advertiser is endemic (sells at the retailer) or non-endemic, allowing retailers to offer appropriate products and pricing.
+
 ## Discovery Tasks
 
 AdCP provides two main tasks for product discovery:
