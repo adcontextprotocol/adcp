@@ -1767,6 +1767,19 @@ interface PackageUpdate {
 4. **bulk_operations**: Update multiple media buys
 5. **templates**: Save and reuse campaign structures
 
+## Testing and Development
+
+### Time Simulation and Dry Run Mode
+
+Testing advertising workflows presents unique challenges due to long campaign lifecycles and real money requirements. AdCP addresses these challenges through time simulation and dry run capabilities.
+
+See [Testing and Development](testing.md) for detailed documentation on:
+
+- **Instant time progression** through campaign lifecycles
+- **Dry run mode** for testing without real spend
+- **Deterministic test scenarios** for CI/CD pipelines
+- **Simulated error conditions** for comprehensive testing
+
 ## Conclusion
 
 AdCP:Buy provides a unified, AI-friendly interface for programmatic media buying. By abstracting platform complexity while preserving capabilities, it enables new levels of automation and optimization in digital advertising.
