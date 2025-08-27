@@ -105,6 +105,7 @@ const sidebars: SidebarsConfig = {
           type: 'category',
           label: 'Implementation',
           items: [
+            'media-buy/testing',
             'media-buy/orchestrator-design',
             'media-buy/design-decisions',
           ],

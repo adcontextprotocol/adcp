@@ -123,6 +123,7 @@ Detailed implementation guidance:
 
 - **[Task Reference](./tasks/get_products.md)** - Complete task documentation with examples
 - **[Design Decisions](design-decisions.md)** - Architectural choices and rationale
+- **[Testing and Development](testing.md)** - Time simulation and dry run capabilities for faster development
 
 ## Getting Started
 
