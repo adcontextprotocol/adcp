@@ -121,7 +121,7 @@ Running successful campaigns:
 ### Technical Reference
 Detailed implementation guidance:
 
-- **[API Reference](api-reference.md)** - Complete task documentation with examples
+- **[Task Reference](./tasks/get_products.md)** - Complete task documentation with examples
 - **[Design Decisions](design-decisions.md)** - Architectural choices and rationale
 
 ## Getting Started
@@ -129,5 +129,5 @@ Detailed implementation guidance:
 1. **Understand Discovery**: Start with [Product Discovery](product-discovery.md) to learn how to find inventory using natural language
 2. **Learn the Products**: Review [Media Products](media-products.md) to understand the product model
 3. **Follow the Workflow**: Study the [Media Buy Lifecycle](media-buy-lifecycle.md) for the complete process
-4. **Implement**: Use the [API Reference](api-reference.md) for technical details
+4. **Implement**: Use the [Task Reference](./tasks/get_products.md) for technical details
 5. **Optimize**: Apply [Reporting & Optimization](reporting-and-optimization.md) techniques

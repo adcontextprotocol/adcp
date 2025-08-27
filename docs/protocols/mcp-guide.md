@@ -331,11 +331,8 @@ async function createCampaign() {
 - Explore available [Media Buy Tasks](../media-buy/tasks/get_products.md)
 - Learn about [Signals](../signals/overview.md)
 - See [Error Codes](../reference/error-codes.md) reference
-- Review [Authentication](./reference/authentication.md) options
+- Review [Authentication](../reference/authentication.md) options
 
 ## Need More Detail?
 
-Most users only need this guide. For deep technical specifications, see:
-- [Response Specification](./reference/response-formats.md)
-- [Error Specification](./reference/error-handling.md)
-- [Context Management](./reference/context-management.md)
+Most users only need this guide. For deep technical specifications, see the [Reference](../reference/data-models.md) section.

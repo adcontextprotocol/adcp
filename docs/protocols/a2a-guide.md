@@ -461,12 +461,9 @@ function processArtifact(artifact) {
 
 - Explore [Media Buy Tasks](../media-buy/tasks/get_products.md)
 - Learn about [Signals](../signals/overview.md)  
-- Understand [Agent Capabilities](#)
-- See [Reference Documentation](./reference/artifacts-detail.md) (if needed)
+- Compare with [MCP](./mcp-guide.md) if curious
+- See [Protocol Comparison](./protocol-comparison.md) for differences
 
 ## Need More Detail?
 
-Most users only need this guide. For deep technical specifications, see:
-- [Artifacts Specification](./reference/artifacts-and-responses.md)
-- [Task Response Patterns](./reference/task-response-patterns.md)
-- [Protocol Mappings](./reference/protocol-mappings.md)
+Most users only need this guide. For deep technical specifications, see the [Reference](../reference/data-models.md) section.
