@@ -40,6 +40,7 @@ Time simulation headers:
 
 ```http
 X-Dry-Run: <boolean>             # Enable dry run mode
+X-Test-Session-ID: <string>      # Isolate parallel test sessions
 X-Mock-Time: <ISO-8601>          # Set current simulated time
 X-Auto-Advance: <boolean>        # Auto-advance to next event
 X-Jump-To-Event: <event_name>    # Jump to specific event (lifecycle or error)
@@ -51,6 +52,7 @@ Servers include these headers in test mode responses:
 
 ```http
 X-Dry-Run: true                  # Confirms dry run mode active
+X-Test-Session-ID: <string>      # Test session identifier
 X-Mock-Time: <ISO-8601>          # Current simulated time
 X-Next-Event: <event_name>       # Next scheduled event
 X-Next-Event-Time: <ISO-8601>    # When next event occurs
@@ -187,23 +189,27 @@ Each request advances to the next significant event.
 
 ### Pattern 4: Parallel Testing
 
-Test multiple campaigns with different events:
+Test multiple campaigns in isolated sessions:
 
 ```http
-// Campaign A - Normal flow
+// Test Session A - Normal flow
 POST /create_media_buy
 Headers: {
   "X-Dry-Run": "true",
+  "X-Test-Session-ID": "test-session-a",
   "X-Mock-Time": "2025-01-01T00:00:00Z"
 }
 
-// Campaign B - Force error
+// Test Session B - Force error (different session)
 POST /create_media_buy
 Headers: {
   "X-Dry-Run": "true",
+  "X-Test-Session-ID": "test-session-b",
   "X-Jump-To-Event": "budget_exceeded"
 }
 ```
+
+Each test session maintains its own isolated state, allowing parallel testing without interference.
 
 ## Implementation Requirements
 
@@ -216,7 +222,12 @@ All AdCP implementations MUST support:
    - No side effects on production systems
    - Clear indication of test mode in responses
 
-2. **Basic Time Control**
+2. **Test Session Isolation**
+   - `X-Test-Session-ID` for parallel test isolation
+   - Independent state per session
+   - No cross-session interference
+
+3. **Basic Time Control**
    - `X-Mock-Time` for setting simulated time
    - `X-Jump-To-Event` for event progression
    - Consistent state across time jumps
