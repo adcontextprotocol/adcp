@@ -6,17 +6,16 @@ AdCP supports strategy-based testing that enables comprehensive testing of adver
 
 ## Strategy-Based Testing Framework
 
-### Understanding Strategies
+### Understanding Strategies for Testing
 
-Strategies in AdCP represent complete campaign execution patterns, not just optimization parameters. Each strategy defines:
+Strategies in AdCP are campaign execution patterns identified by a `strategy_id`. For testing purposes:
 
-- **Business approach** (audience-driven, inventory-driven, creative-driven)
-- **Control relationships** (who controls what: principal vs publisher)
-- **Creative requirements** (formats, approval workflows, localization)
-- **Performance expectations** (KPIs, optimization goals, success metrics)
-- **Error handling patterns** (recovery paths, manual interventions)
+- **Production strategies** (e.g., `nike-berlin-marathon-q3-takeover`) represent real business scenarios
+- **Simulation strategies** (e.g., `sim_nike_marathon_test`) enable deterministic testing behavior
+- **Strategy IDs** link all related operations together, providing context continuity
+- **Publishers** treat strategy IDs as opaque identifiers - they just pass them through
 
-Strategies provide **context continuity** - all operations linked to the same strategy ID share state and behavior patterns. The `strategy_id` is an opaque identifier that publishers pass through without needing to understand its meaning.
+*For complete details on how strategies work in AdCP, see [Strategy-Linked Operations](api-reference.md#strategy-linked-operations).*
 
 ## Production Strategy Patterns
 
@@ -76,32 +75,7 @@ Test versions of production strategies enable deterministic testing without real
 - `sim_creative_policy_violation` - Creative requires revision
 - `sim_budget_exceeded_recovery` - Overspend triggers automatic pause
 
-### Strategy-Linked Operations
-
-All AdCP operations accept an optional `strategy_id` parameter that links operations together:
-
-```json
-{
-  "tool": "get_products",
-  "arguments": {
-    "brief": "Homepage takeover for Nike Berlin Marathon, targeting German running enthusiasts during marathon week September 15-22, 2024",
-    "strategy_id": "nike-berlin-marathon-q3-takeover",
-    "requirements": {
-      "placement_type": "homepage_takeover",
-      "geographic_targeting": "Berlin, Germany + 50km radius",
-      "language": "German"
-    }
-  }
-}
-```
-
-**For Publishers**: The `strategy_id` is an opaque identifier that should be passed through in responses and subsequent operations. Publishers do not need to interpret or understand strategy meaning - all business requirements are communicated through the brief.
-
-**For Orchestrators/Buyers**: Operations with the same `strategy_id` share:
-- **Test context** (simulated vs production behavior)
-- **Performance patterns** (success rates, timing, errors)
-- **State continuity** (campaign lifecycle, approval status)
-- **Data consistency** (metrics, reporting, optimization)
+*For details on how strategy IDs work across all AdCP operations, see [Strategy-Linked Operations](api-reference.md#strategy-linked-operations) in the API Reference.*
 
 ## Complete End-to-End Campaign Flow
 
