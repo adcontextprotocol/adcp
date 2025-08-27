@@ -179,21 +179,24 @@ try {
 
 ## Context Management
 
-MCP maintains conversation context automatically:
+MCP requires manual context management to maintain conversation state:
 
 ```javascript
 // First call - no context
 const result1 = await mcp.call('get_products', {
   brief: "Sports campaign"
 });
+// IMPORTANT: Save the context_id!
 
-// Follow-up - include context
+// Follow-up - MUST include context_id
 const result2 = await mcp.call('get_products', {
-  context_id: result1.context_id,
+  context_id: result1.context_id,  // Required for continuity
   brief: "Focus on CTV products"
 });
-// System remembers previous interaction
+// Without context_id, system won't remember previous interaction
 ```
+
+**Key Point**: Unlike A2A which handles context automatically, MCP requires you to manually pass context_id to maintain state.
 
 ## Async Operations
 

@@ -14,7 +14,7 @@ Both MCP and A2A provide full access to all AdCP capabilities. They differ only 
 | **Request Style** | Tool calls | Task messages |
 | **Response Style** | Direct JSON | Artifacts |
 | **Async Handling** | Polling | SSE streaming |
-| **Context** | Pass context_id | Automatic |
+| **Context** | Manual (pass context_id) | Automatic (protocol-managed) |
 | **Best For** | Claude, AI assistants | Agent workflows |
 
 ## Same Data, Different Structure

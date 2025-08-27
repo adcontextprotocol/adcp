@@ -213,12 +213,10 @@ class A2ATaskMonitor {
 
 ## Context Management
 
-A2A automatically maintains context across interactions:
+A2A handles context automatically at the protocol level:
 
 ```javascript
-let contextId = null;
-
-// First interaction
+// A2A maintains session state automatically
 const task1 = await a2a.send({
   message: {
     parts: [{
@@ -227,11 +225,11 @@ const task1 = await a2a.send({
     }]
   }
 });
-contextId = task1.contextId;
 
-// Follow-up in same context
+// The protocol tracks context - you can reference it if needed
+// but A2A manages the session for you
 const task2 = await a2a.send({
-  contextId,  // Remembers previous interaction
+  contextId: task1.contextId,  // Optional - A2A maintains this automatically
   message: {
     parts: [{
       kind: "text",
@@ -241,6 +239,8 @@ const task2 = await a2a.send({
 });
 // System understands this refers to the premium video inventory
 ```
+
+**Key Advantage**: Unlike MCP which requires manual context_id management, A2A handles session continuity automatically through the protocol. The contextId is available if you need explicit control, but the protocol maintains state for you.
 
 ## Human-in-the-Loop Workflows
 

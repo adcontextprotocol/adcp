@@ -5,48 +5,91 @@ title: Context Management
 
 # Context Management
 
-AdCP maintains conversation context across multiple interactions, enabling stateful workflows.
+How AdCP handles conversation state differs significantly between protocols.
 
-## How Context Works
+## Key Difference
 
-1. **First Request**: Omit context_id or set to null
-2. **Response**: Returns a new context_id
-3. **Follow-up**: Include context_id to maintain state
-4. **Expiration**: Contexts expire after 1 hour of inactivity
+- **A2A**: Context is handled automatically by the protocol
+- **MCP**: Requires manual context_id management
+
+## A2A Context (Automatic)
+
+A2A handles sessions natively - you don't need to manage context:
+
+```javascript
+// A2A maintains context automatically
+const task = await a2a.send({ message: {...} });
+// contextId is managed by A2A protocol
+
+// Follow-ups automatically use the same context
+const followUp = await a2a.send({ 
+  contextId: task.contextId,  // Optional - A2A tracks this
+  message: {...} 
+});
+```
+
+The A2A protocol maintains:
+- Session state
+- Conversation history
+- Task relationships
+- Context switching
+
+## MCP Context (Manual)
+
+MCP requires explicit context management to maintain state:
+
+```javascript
+// First call - no context
+const result1 = await mcp.call('get_products', {
+  brief: "Video ads"
+});
+const contextId = result1.context_id;  // Save this!
+
+// Follow-up - must include context_id
+const result2 = await mcp.call('get_products', {
+  context_id: contextId,  // Required for continuity
+  brief: "Focus on premium inventory"
+});
+```
+
+### MCP Context Management Pattern
+
+```javascript
+class MCPSession {
+  constructor(mcp) {
+    this.mcp = mcp;
+    this.contextId = null;
+  }
+  
+  async call(method, params) {
+    const result = await this.mcp.call(method, {
+      ...params,
+      context_id: this.contextId
+    });
+    this.contextId = result.context_id;  // Update for next call
+    return result;
+  }
+}
+```
 
 ## What Context Maintains
 
+Regardless of protocol:
 - Current media buy and products
 - Search results and filters
 - Conversation history
 - User preferences
 - Workflow state
 
-## Protocol Differences
-
-### MCP
-```json
-// First call
-{ "method": "get_products", "params": {...} }
-// Response: { "context_id": "ctx-123", ... }
-
-// Follow-up
-{ "method": "get_products", "params": { "context_id": "ctx-123", ... } }
-```
-
-### A2A
-```json
-// First call
-{ "message": {...} }
-// Response: { "contextId": "ctx-123", ... }
-
-// Follow-up automatically uses context
-{ "contextId": "ctx-123", "message": {...} }
-```
-
 ## Best Practices
 
-- **Always preserve context_id** for multi-turn conversations
-- **Don't rely on context** for critical data (it expires)
-- **Start fresh** when switching workflows
-- **Handle expiration** gracefully by starting new context
+### For A2A
+- Let the protocol handle context
+- Use contextId for explicit conversation threading
+- Trust the session management
+
+### For MCP
+- Always preserve context_id between calls
+- Implement a session wrapper (see pattern above)
+- Handle context expiration (1 hour timeout)
+- Start fresh context for new workflows
