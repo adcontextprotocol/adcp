@@ -177,12 +177,12 @@ AdCP's task-first architecture means you can access the same functionality throu
 - **Using A2A**: Perfect for complex workflows with approvals and multi-agent collaboration
 - **Protocol Agnostic**: Implementers write tasks once, support all protocols automatically
 
-Learn more in the [Protocols section](./protocols/overview).
+Learn more in the [Protocols section](./protocols/getting-started).
 
 ## Next Steps
 
 - **Platform Providers**: Start with the [Signals Protocol Specification](./signals/specification)
-- **Developers**: Review the [Protocol Support](./protocols/overview) options
+- **Developers**: Review the [Protocol Support](./protocols/getting-started) options
 - **Everyone**: Join the [community discussion](https://github.com/adcontextprotocol/adcp/discussions)
 
 ## Need Help?
