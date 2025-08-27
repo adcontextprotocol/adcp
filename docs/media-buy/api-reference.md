@@ -175,47 +175,6 @@ Context maintains:
 
 **For Industry Discussion**: Should we support multiple flights per package?
 
-### Strategy-Linked Operations
-
-All AdCP operations accept an optional `strategy_id` parameter that links related operations together:
-
-```json
-{
-  "tool": "get_products",
-  "arguments": {
-    "brief": "Homepage takeover for Nike Berlin Marathon, targeting German running enthusiasts during marathon week September 15-22, 2024",
-    "strategy_id": "nike-berlin-marathon-q3-takeover",
-    "requirements": {
-      "placement_type": "homepage_takeover",
-      "geographic_targeting": "Berlin, Germany + 50km radius",
-      "language": "German"
-    }
-  }
-}
-```
-
-**For Publishers**: The `strategy_id` is an opaque identifier that should be passed through in responses and subsequent operations. Publishers do not need to interpret or understand strategy meaning - all business requirements are communicated through the brief.
-
-**For Orchestrators/Buyers**: Operations with the same `strategy_id` share:
-- **Context continuity** (campaign lifecycle, approval status)
-- **Data consistency** (metrics, reporting, optimization)
-- **Test behavior** (simulation vs production when using `sim_` prefix)
-
-Example response including strategy context:
-```json
-{
-  "products": [...],
-  "strategy_context": {
-    "strategy_id": "nike-berlin-marathon-q3-takeover",
-    "estimated_timeline": {
-      "booking_to_approval": "48_hours",
-      "creative_to_live": "72_hours",
-      "total_lead_time": "14_days"
-    }
-  }
-}
-```
-
 ## Tasks
 
 The Media Buy Protocol defines the following tasks that agents can perform.
