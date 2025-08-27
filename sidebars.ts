@@ -19,16 +19,17 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Protocols',
       items: [
-        'protocols/overview',
-        'protocols/mcp',
-        'protocols/a2a',
-        'protocols/protocol-mappings',
-        'protocols/artifacts-and-responses',
-        'protocols/task-response-patterns',
+        'protocols/getting-started',
+        {
+          type: 'category',
+          label: 'Choose Your Protocol',
+          items: [
+            'protocols/mcp-guide',
+            'protocols/a2a-guide',
+          ],
+        },
+        'protocols/protocol-comparison',
         'protocols/context-management',
-        'protocols/authentication-specification',
-        'protocols/error-specification',
-        'protocols/response-specification',
       ],
     },
     {
@@ -102,9 +103,8 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
-          label: 'Technical Reference',
+          label: 'Implementation',
           items: [
-            'media-buy/api-reference',
             'media-buy/orchestrator-design',
             'media-buy/design-decisions',
           ],
@@ -123,8 +123,10 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Reference',
       items: [
-        'reference/glossary',
         'reference/error-codes',
+        'reference/data-models',
+        'reference/authentication',
+        'reference/glossary',
       ],
     },
   ],
