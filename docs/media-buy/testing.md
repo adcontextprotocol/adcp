@@ -16,7 +16,7 @@ Strategies in AdCP represent complete campaign execution patterns, not just opti
 - **Performance expectations** (KPIs, optimization goals, success metrics)
 - **Error handling patterns** (recovery paths, manual interventions)
 
-Strategies provide **test context continuity** - all operations linked to the same strategy ID share state and behavior patterns.
+Strategies provide **context continuity** - all operations linked to the same strategy ID share state and behavior patterns. The `strategy_id` is an opaque identifier that publishers pass through without needing to understand its meaning.
 
 ## Production Strategy Patterns
 
@@ -29,18 +29,7 @@ Strategies provide **test context continuity** - all operations linked to the sa
 - **Focus**: Precision targeting within known audience segments
 - **Challenges**: Data integration, privacy compliance, audience overlap
 
-```json
-{
-  "strategy_characteristics": {
-    "data_source": "principal_first_party",
-    "targeting_control": "principal",
-    "inventory_control": "publisher",
-    "optimization_goal": "audience_reach",
-    "typical_cpm": "moderate",
-    "approval_complexity": "low"
-  }
-}
-```
+*The strategy ID is opaque to publishers - all requirements are communicated through the brief in `get_products`.*
 
 ### Premium Inventory Takeovers
 
@@ -51,18 +40,7 @@ Strategies provide **test context continuity** - all operations linked to the sa
 - **Focus**: Brand impact, guaranteed delivery, premium placement
 - **Challenges**: Creative complexity, manual approvals, scheduling conflicts
 
-```json
-{
-  "strategy_characteristics": {
-    "inventory_type": "premium_guaranteed",
-    "creative_complexity": "high",
-    "approval_workflow": "manual_required",
-    "delivery_priority": "guaranteed",
-    "typical_cpm": "premium",
-    "lead_time": "2_weeks"
-  }
-}
-```
+*The strategy ID is opaque to publishers - all requirements are communicated through the brief in `get_products`.*
 
 ### Agentic Creative Campaigns
 
@@ -73,18 +51,7 @@ Strategies provide **test context continuity** - all operations linked to the sa
 - **Focus**: Personalization at scale, continuous optimization
 - **Challenges**: Brand compliance, creative quality control, performance attribution
 
-```json
-{
-  "strategy_characteristics": {
-    "creative_generation": "ai_powered",
-    "personalization": "individual_level",
-    "optimization_cycle": "real_time",
-    "quality_control": "automated_with_fallbacks",
-    "typical_cpm": "variable",
-    "testing_complexity": "high"
-  }
-}
-```
+*The strategy ID is opaque to publishers - all requirements are communicated through the brief in `get_products`.*
 
 ### Event-Driven Campaigns
 
@@ -95,18 +62,7 @@ Strategies provide **test context continuity** - all operations linked to the sa
 - **Focus**: Moment marketing, geographic targeting, time-sensitive delivery
 - **Challenges**: Inventory availability, localization, real-time adjustments
 
-```json
-{
-  "strategy_characteristics": {
-    "timing_sensitivity": "critical",
-    "geographic_focus": "event_location",
-    "inventory_competition": "high",
-    "localization_required": true,
-    "delivery_window": "narrow",
-    "performance_tracking": "real_time"
-  }
-}
-```
+*The strategy ID is opaque to publishers - all requirements are communicated through the brief in `get_products`.*
 
 ## Testing with Strategies
 
@@ -122,23 +78,26 @@ Test versions of production strategies enable deterministic testing without real
 
 ### Strategy-Linked Operations
 
-All AdCP operations accept an optional `strategy_id` parameter that links operations together and determines behavior:
+All AdCP operations accept an optional `strategy_id` parameter that links operations together:
 
 ```json
 {
   "tool": "get_products",
   "arguments": {
-    "brief": "Homepage takeover for Berlin Marathon week",
-    "strategy_id": "sim_nike_marathon_test",
+    "brief": "Homepage takeover for Nike Berlin Marathon, targeting German running enthusiasts during marathon week September 15-22, 2024",
+    "strategy_id": "nike-berlin-marathon-q3-takeover",
     "requirements": {
-      "placement": "homepage",
-      "geo": "Berlin, Germany"
+      "placement_type": "homepage_takeover",
+      "geographic_targeting": "Berlin, Germany + 50km radius",
+      "language": "German"
     }
   }
 }
 ```
 
-Operations with the same `strategy_id` share:
+**For Publishers**: The `strategy_id` is an opaque identifier that should be passed through in responses and subsequent operations. Publishers do not need to interpret or understand strategy meaning - all business requirements are communicated through the brief.
+
+**For Orchestrators/Buyers**: Operations with the same `strategy_id` share:
 - **Test context** (simulated vs production behavior)
 - **Performance patterns** (success rates, timing, errors)
 - **State continuity** (campaign lifecycle, approval status)
@@ -893,53 +852,40 @@ Reset campaign to initial state for repeated testing:
 
 ## Strategy Configuration
 
-### Strategy Metadata
+### Strategy Management (Orchestrator/Buyer Side)
 
-Each strategy should define its characteristics:
+Strategies are defined and managed by orchestrators/buyers, not publishers. Publishers treat `strategy_id` as an opaque identifier.
 
+**Production Strategy Example** (internal to orchestrator):
 ```json
 {
   "strategy_id": "nike-berlin-marathon-q3-takeover",
-  "strategy_type": "production",
-  "category": "event_driven_premium",
-  "characteristics": {
-    "inventory_type": "premium_guaranteed",
-    "approval_complexity": "manual_required",
-    "creative_complexity": "high",
+  "internal_config": {
+    "campaign_type": "event_driven_premium",
+    "expected_approval_time": "48_hours",
     "localization_required": true,
-    "timing_sensitivity": "critical",
-    "budget_range": "premium"
-  },
-  "expected_patterns": {
-    "approval_time": "48_hours",
-    "creative_revisions": 1.2,
-    "performance_ramp": "fast",
-    "success_probability": 0.92
+    "typical_budget_range": "75000-150000_EUR"
   }
 }
 ```
 
-### Simulation Strategy Configuration
-
-Test strategies inherit from production patterns but add simulation controls:
-
+**Simulation Strategy Example** (internal to orchestrator):
 ```json
 {
   "strategy_id": "sim_nike_marathon_test",
-  "inherits_from": "nike-berlin-marathon-q3-takeover", 
-  "simulation_overrides": {
+  "test_overrides": {
     "approval_time": "immediate",
-    "error_injection": {
-      "creative_policy_violation": {
-        "probability": 1.0,
-        "timing": "first_submission"
-      }
-    },
-    "performance_acceleration": 100,
-    "deterministic_seed": 12345
+    "creative_review_result": "policy_violation_localization",
+    "performance_acceleration": 100
   }
 }
 ```
+
+**Publisher Integration**: Publishers simply:
+1. Accept `strategy_id` in requests
+2. Include `strategy_id` in responses
+3. Use `strategy_id` for test behavior (if `sim_` prefix)
+4. All business context comes from the brief, not strategy metadata
 
 ## Summary
 
