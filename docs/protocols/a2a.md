@@ -159,17 +159,44 @@ await a2a.send({
 // Note: Adding creatives would be a separate task with its own context
 ```
 
-## Artifacts
+## Artifacts vs Messages in A2A
+
+### Messages
+Used for communication during task execution:
+- Status updates and progress reports
+- Clarification requests and questions
+- Interim feedback and notifications
+- Human-in-the-loop interactions
+
+### Artifacts
+Used for tangible outputs from completed work:
+- Query results (product catalogs, delivery reports)
+- Created entities (media buy confirmations, creative assignments)
+- Processed files (validated creatives, generated contracts)
+- Final deliverables and work products
+
+### AdCP Implementation Strategy
+
+AdCP uses artifacts for all task results to ensure:
+- **Structured Data Delivery**: Consistent format across all tasks
+- **Multi-Part Support**: Combine JSON data with files (contracts, reports)
+- **Protocol Consistency**: Same data structure as MCP responses
+
+### Artifact Structure
 
 A2A returns structured results as artifacts:
 
 ```json
 {
-  "status": { "state": "completed" },
+  "task": {
+    "task_id": "task-mb-123",
+    "status": "completed"
+  },
+  "contextId": "ctx-campaign-456", 
   "artifacts": [{
     "name": "media_buy_confirmation",
     "parts": [{
-      "kind": "application/json",
+      "kind": "data",
       "data": {
         "media_buy_id": "mb_123",
         "status": "active",
@@ -177,10 +204,15 @@ A2A returns structured results as artifacts:
         "line_items": [...],
         "total_budget": 100000
       }
+    }, {
+      "kind": "file",
+      "uri": "https://contracts.example.com/mb_123.pdf"
     }]
   }]
 }
 ```
+
+See [Artifacts and Responses](./artifacts-and-responses.md) for detailed implementation guidance and [Task Response Patterns](./task-response-patterns.md) for specific examples by task type.
 
 ## Best Practices
 

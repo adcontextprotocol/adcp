@@ -22,6 +22,13 @@ const sidebars: SidebarsConfig = {
         'protocols/overview',
         'protocols/mcp',
         'protocols/a2a',
+        'protocols/protocol-mappings',
+        'protocols/artifacts-and-responses',
+        'protocols/task-response-patterns',
+        'protocols/context-management',
+        'protocols/authentication-specification',
+        'protocols/error-specification',
+        'protocols/response-specification',
       ],
     },
     {

@@ -198,6 +198,109 @@ All protocols use the same error codes, mapped appropriately:
 | `not_found` | -32601 | failed | 404 |
 | `internal_error` | -32603 | failed | 500 |
 
+## Unified Data Model
+
+AdCP maintains consistent data structures across protocols to ensure client compatibility and implementation simplicity.
+
+### Core Response Fields
+
+| Field | MCP Location | A2A Location | Purpose |
+|-------|--------------|--------------|---------|
+| message | Root level | artifact.parts[text] | Human-readable summary |
+| data | Root level | artifact.parts[data] | Structured response |
+| context_id | Root level | Task contextId | Session continuity |
+| errors | Root level | artifact.parts[data].errors | Non-fatal warnings |
+
+### Ensuring Compatibility
+
+Implementations should:
+1. Use the same JSON schema for `data` field across protocols
+2. Generate consistent `message` content
+3. Maintain context_id format compatibility
+4. Apply identical validation rules and error codes
+
+### Example: Same Data, Both Protocols
+
+```javascript
+// Underlying data structure (protocol-agnostic)
+const responseData = {
+  products: [
+    {
+      product_id: "ctv_premium",
+      name: "Premium CTV",
+      cpm: 35,
+      formats: ["video_16x9"]
+    }
+  ],
+  total: 5,
+  filters_applied: {
+    format_types: ["video"]
+  }
+};
+
+const message = "Found 5 video products with CPMs from $15-45";
+const contextId = "ctx-123";
+
+// MCP formatting
+const mcpResponse = {
+  message,
+  context_id: contextId,
+  data: responseData
+};
+
+// A2A formatting  
+const a2aResponse = {
+  task: { 
+    task_id: "task-789", 
+    status: "completed" 
+  },
+  contextId,
+  artifacts: [{
+    name: "product_catalog",
+    parts: [
+      { kind: "text", text: message },
+      { kind: "data", data: responseData }
+    ]
+  }]
+};
+```
+
+### Response Format Mapping
+
+For each AdCP task, the response maps between protocols as follows:
+
+```json
+// MCP Task Response
+{
+  "message": "Human summary",
+  "context_id": "ctx-abc",
+  "data": { /* Structured data */ },
+  "errors": [ /* Warnings */ ]
+}
+
+// A2A Task Response
+{
+  "task": {
+    "task_id": "task-123",
+    "status": "completed"
+  },
+  "contextId": "ctx-abc",
+  "artifacts": [{
+    "name": "task_result",
+    "parts": [
+      { "kind": "text", "text": "Human summary" },
+      { 
+        "kind": "data", 
+        "data": { 
+          /* Structured data */,
+          "errors": [ /* Warnings */ ]
+        } 
+      }
+    ]
+  }]
+}
+```
+
 ## Best Practices
 
 1. **Default to synchronous** unless operation genuinely needs async
@@ -205,3 +308,4 @@ All protocols use the same error codes, mapped appropriately:
 3. **Include estimated duration** for async operations
 4. **Cache sync results** when appropriate
 5. **Document operation type** clearly in API reference
+6. **Maintain data consistency** across protocols using shared schemas
