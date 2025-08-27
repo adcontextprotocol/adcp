@@ -98,6 +98,7 @@ const sidebars: SidebarsConfig = {
           label: 'Technical Reference',
           items: [
             'media-buy/api-reference',
+            'media-buy/testing',
             'media-buy/orchestrator-design',
             'media-buy/design-decisions',
           ],
