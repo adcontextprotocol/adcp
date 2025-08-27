@@ -42,9 +42,7 @@ Time simulation headers:
 X-Dry-Run: <boolean>             # Enable dry run mode
 X-Mock-Time: <ISO-8601>          # Set current simulated time
 X-Auto-Advance: <boolean>        # Auto-advance to next event
-X-Jump-To-Event: <event_name>    # Jump to specific event
-X-Test-Scenario: <scenario>      # Trigger test scenarios
-X-Strategy-Id: <string>          # Optional: Link related operations
+X-Jump-To-Event: <event_name>    # Jump to specific event (lifecycle or error)
 ```
 
 ### Response Headers
@@ -52,11 +50,11 @@ X-Strategy-Id: <string>          # Optional: Link related operations
 Servers include these headers in test mode responses:
 
 ```http
-X-Dry-Run-Mode: true             # Confirms dry run active
-X-Current-Mock-Time: <ISO-8601>  # Current simulated time
+X-Dry-Run: true                  # Confirms dry run mode active
+X-Mock-Time: <ISO-8601>          # Current simulated time
 X-Next-Event: <event_name>       # Next scheduled event
 X-Next-Event-Time: <ISO-8601>    # When next event occurs
-X-Simulated-Cost: <decimal>      # Would-be cost (dry run)
+X-Simulated-Spend: <decimal>     # Simulated advertising spend so far
 ```
 
 ## Event Progression
@@ -65,7 +63,7 @@ X-Simulated-Cost: <decimal>      # Would-be cost (dry run)
 
 Use `X-Jump-To-Event` to jump to specific campaign lifecycle events:
 
-**Campaign Events**:
+**Lifecycle Events**:
 - `campaign_created` - Initial setup complete
 - `campaign_approved` - Ready for creative submission
 - `creative_approved` - Ready for launch
@@ -74,9 +72,10 @@ Use `X-Jump-To-Event` to jump to specific campaign lifecycle events:
 - `campaign_completed` - Natural end reached
 
 **Error Events**:
-- `creative_policy_violation` - Creative needs revision
-- `budget_exceeded` - Overspend occurred
-- `inventory_unavailable` - Inventory shortage
+- `creative_policy_violation` - Force creative rejection
+- `budget_exceeded` - Simulate overspend
+- `inventory_unavailable` - Simulate inventory shortage
+- `manual_approval_delay` - Add HITL approval delay
 
 ### Time Advancement
 
@@ -92,17 +91,7 @@ Or advance to next significant event:
 X-Auto-Advance: true
 ```
 
-## Test Scenarios
-
-### Predefined Scenarios
-
-Use `X-Test-Scenario` to trigger specific test behaviors:
-
-- `happy_path` - Everything works perfectly
-- `creative_rejection` - Creative policy violation
-- `budget_exceeded` - Overspend scenario
-- `manual_approval_delay` - HITL approval takes 48 hours
-- `inventory_shortage` - Limited inventory available
+## Testing Examples
 
 ### Example: Testing Creative Rejection
 
@@ -110,7 +99,7 @@ Use `X-Test-Scenario` to trigger specific test behaviors:
 POST /add_creative_assets
 Headers: {
   "X-Dry-Run": "true",
-  "X-Test-Scenario": "creative_rejection"
+  "X-Jump-To-Event": "creative_policy_violation"
 }
 
 Response: {
@@ -118,7 +107,7 @@ Response: {
   "dry_run": true,
   "errors": [{
     "code": "POLICY_VIOLATION",
-    "message": "Creative violates policy (test scenario)"
+    "message": "Creative violates policy (test event)"
   }]
 }
 ```
@@ -161,20 +150,20 @@ Response: {
 
 ### Pattern 1: Happy Path Testing
 
-Test successful campaign flows:
+Test successful campaign flows without forcing errors:
 
 ```http
 X-Dry-Run: true
-X-Test-Scenario: happy_path
+X-Mock-Time: 2025-01-01T00:00:00Z
 ```
 
 ### Pattern 2: Error Recovery Testing
 
-Test error handling:
+Test error handling by jumping to error events:
 
 ```http
 X-Dry-Run: true
-X-Test-Scenario: creative_rejection
+X-Jump-To-Event: creative_policy_violation
 ```
 
 Then test recovery:
@@ -198,25 +187,21 @@ Each request advances to the next significant event.
 
 ### Pattern 4: Parallel Testing
 
-Test multiple campaigns with different scenarios by using different strategy IDs:
+Test multiple campaigns with different events:
 
-```json
-// Campaign A
-{
-  "strategy_id": "test_campaign_a",
-  "headers": {
-    "X-Dry-Run": "true",
-    "X-Test-Scenario": "happy_path"
-  }
+```http
+// Campaign A - Normal flow
+POST /create_media_buy
+Headers: {
+  "X-Dry-Run": "true",
+  "X-Mock-Time": "2025-01-01T00:00:00Z"
 }
 
-// Campaign B
-{
-  "strategy_id": "test_campaign_b",
-  "headers": {
-    "X-Dry-Run": "true",
-    "X-Test-Scenario": "budget_exceeded"
-  }
+// Campaign B - Force error
+POST /create_media_buy
+Headers: {
+  "X-Dry-Run": "true",
+  "X-Jump-To-Event": "budget_exceeded"
 }
 ```
 
@@ -240,21 +225,21 @@ All AdCP implementations MUST support:
 
 Implementations SHOULD support:
 
-1. **Test Scenarios**
-   - `X-Test-Scenario` for predefined behaviors
-   - Common error scenarios
-   - Recovery testing
-
-2. **Auto-Advancement**
+1. **Auto-Advancement**
    - `X-Auto-Advance` for automatic progression
    - `X-Advance-Time` for duration-based jumps
+
+2. **Error Events**
+   - Jump to error states via `X-Jump-To-Event`
+   - Common error events (policy violations, budget issues)
+   - Recovery testing
 
 ### Optional Features
 
 Implementations MAY support:
 
-1. **Advanced Scenarios**
-   - Custom test scenario definitions
+1. **Advanced Testing**
+   - Custom event definitions
    - Complex error injection
    - Performance simulation
 
