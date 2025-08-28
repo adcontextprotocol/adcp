@@ -70,7 +70,7 @@ MCP servers that provide:
 
 ### Bottom Layer: Technical Execution
 
-#### Agent Execution Environment (Left)
+#### Agentic eXecution Engine (Left)
 Real-time systems for:
 - **Brand Safety**: Ensuring appropriate ad placement
 - **Frequency Capping**: Managing exposure limits
@@ -94,7 +94,7 @@ The AdCP ecosystem coordinates multiple flows of information between participant
 - **Creative Flow**: Creative agents produce assets that flow through the ecosystem to reach consumers via properties
 - **Business Flow**: Advertisers work with principals who engage media sellers in the business layer
 - **Technical Flow**: Brand agents, media agents, and sales agents coordinate through the decisioning platform, with bidirectional communication enabling optimization
-- **Data Flow**: Signals flow between agents, with buyer signals and publisher signals enriching the decision-making process through the AEE (Agent Execution Environment)
+- **Data Flow**: Signals flow between agents, with buyer signals and publisher signals enriching the decision-making process through the AXE (Agentic eXecution Engine)
 
 These flows illustrate how AdCP enables seamless coordination between business stakeholders, technical systems, and creative processes.
 

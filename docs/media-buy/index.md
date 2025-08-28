@@ -62,7 +62,7 @@ The orchestrator handles the technical mechanics, similar to a DSP in programmat
 - Information synchronization between parties
 - Creative asset management
 - Frequency capping enforcement
-- Real-time signal processing (AEE)
+- Real-time signal processing (AXE)
 - Campaign state management
 
 The orchestrator enables principals to stay focused on strategy rather than implementation details.

@@ -4,12 +4,12 @@ title: Targeting Dimensions by Channel
 
 # Targeting Dimensions by Channel
 
-This document specifies which targeting dimensions are available by channel for both targeting overlays (buyer-specified) and AEE signals (publisher-provided context).
+This document specifies which targeting dimensions are available by channel for both targeting overlays (buyer-specified) and AXE signals (publisher-provided context).
 
 ## Design Principles
 
 1. **Overlay Targeting**: Limited set of dimensions that buyers can specify in targeting overlays
-2. **AEE Signals**: Comprehensive context passed to AEE for advanced decisioning
+2. **AXE Signals**: Comprehensive context passed to AXE for advanced decisioning
 3. **Channel-Specific**: Each channel has relevant dimensions for its medium
 
 ## Common Dimensions (All Channels)
@@ -28,8 +28,8 @@ These dimensions are available for buyer targeting across all channels:
 - **city**: City-level targeting
 - **user_ids**: Available identity providers
 
-### Additional AEE Dimensions
-These are provided to AEE but not available for overlay targeting:
+### Additional AXE Dimensions
+These are provided to AXE but not available for overlay targeting:
 
 - **timezone**: User's timezone (required for dayparting calculations)
 - **postal_code**: Full postal/ZIP code
@@ -44,7 +44,7 @@ These are provided to AEE but not available for overlay targeting:
 - **content_duration**: Length of content in seconds
 - **station_channel**: Radio station or podcast channel
 
-### AEE Dimensions (Audio-Specific)
+### AXE Dimensions (Audio-Specific)
 - **podcast_episode_id**: Unique episode GUID
 - **podcast_show_name**: Name of the podcast show
 
@@ -54,7 +54,7 @@ These are provided to AEE but not available for overlay targeting:
 - **content_categories**: IAB content categories
 - **keywords**: Page keywords for contextual targeting
 
-### AEE Dimensions (Web-Specific)
+### AXE Dimensions (Web-Specific)
 - **page_url**: Current page URL (required)
 - **referrer_url**: Referring page URL
 - **ad_slot_id**: Specific ad slot identifier
@@ -67,7 +67,7 @@ These are provided to AEE but not available for overlay targeting:
 - **app_bundle**: Mobile app bundle identifier
 - **app_categories**: App store categories
 
-### AEE Dimensions (Mobile-Specific)
+### AXE Dimensions (Mobile-Specific)
 - **app_bundle_id**: Current app's bundle identifier (required)
 - **app_version**: Current app version
 - **content_url**: URL for web-available content within app
@@ -82,7 +82,7 @@ These are provided to AEE but not available for overlay targeting:
 - **content_duration**: Length of content in seconds
 - **channel_network**: TV channel or streaming service
 
-### AEE Dimensions (CTV-Specific)
+### AXE Dimensions (CTV-Specific)
 - **show_name**: Name of the TV show or movie
 - **show_metadata**: Additional show information (season, episode, etc.)
 - **content_ids**: Industry-standard content identifiers
@@ -95,7 +95,7 @@ These are provided to AEE but not available for overlay targeting:
 - **venue_type**: Type of venue (transit, retail, office, gym, restaurant, gas_station, airport, mall)
 - **screen_size**: Physical screen dimensions
 
-### AEE Dimensions (DOOH-Specific)
+### AXE Dimensions (DOOH-Specific)
 - **venue_id**: Unique venue identifier
 - **screen_id**: Unique screen identifier
 - **venue_metadata**: Additional venue information
@@ -108,13 +108,13 @@ Publishers can expose their supported dimensions through the `get_targeting_capa
 ```json
 {
   "channels": ["web", "mobile_app"],
-  "include_aee_dimensions": true
+  "include_axe_dimensions": true
 }
 ```
 
-## AEE Requirements Checking
+## AXE Requirements Checking
 
-Buyers can verify if required AEE dimensions are available before creating a media buy:
+Buyers can verify if required AXE dimensions are available before creating a media buy:
 
 ```json
 {

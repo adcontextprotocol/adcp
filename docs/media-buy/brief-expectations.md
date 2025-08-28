@@ -36,7 +36,7 @@ The `brief` field is **optional** because there are valid scenarios where buyers
 
 ### Run-of-Network Scenarios
 When buyers want broad reach with their own targeting:
-- Buyers bring their own audience segments via AEE
+- Buyers bring their own audience segments via AXE
 - They want **run-of-network inventory** (broadest reach products)
 - Targeting will be handled through real-time decisioning
 - Publisher should return high-volume, broad-reach products
@@ -65,7 +65,7 @@ In this case:
 1. Publisher returns **run-of-network products** (broad reach inventory)
 2. Not niche or highly targeted products
 3. Products optimized for scale and reach
-4. Buyer applies their own targeting through AEE
+4. Buyer applies their own targeting through AXE
 5. Focus is on volume and efficiency, not audience matching
 
 ## Core Brief Components
@@ -334,7 +334,7 @@ Publishers should implement NLP to extract:
   }
 }
 ```
-**Use Case**: Buyer has sophisticated audience segments in their DMP/CDP and will apply targeting through AEE. They just need broad inventory access.
+**Use Case**: Buyer has sophisticated audience segments in their DMP/CDP and will apply targeting through AXE. They just need broad inventory access.
 
 ### E-commerce Brief
 ```

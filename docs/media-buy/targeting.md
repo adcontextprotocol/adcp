@@ -11,7 +11,7 @@ Targeting in AdCP builds upon the [Dimensions](dimensions.md) system to specify 
 AdCP provides two levels of targeting access:
 
 1. **Overlay Targeting**: Available to principals via API for campaign customization
-2. **Managed-Only Targeting**: Reserved for internal use (AEE signals, optimization)
+2. **Managed-Only Targeting**: Reserved for internal use (AXE signals, optimization)
 
 ## Targeting Model
 
@@ -87,7 +87,7 @@ Basic time-based impression suppression:
 }
 ```
 
-**Note**: This provides simple suppression. More sophisticated frequency management (cross-device, complex attribution windows, household-level) is handled by the AEE layer.
+**Note**: This provides simple suppression. More sophisticated frequency management (cross-device, complex attribution windows, household-level) is handled by the AXE layer.
 
 ### Custom Platform Targeting
 
@@ -110,20 +110,20 @@ These targeting dimensions are reserved for internal use and cannot be set via t
 
 ### Key-Value Pairs
 
-Used primarily for AEE (Ad Effectiveness Engine) signal integration:
+Used primarily for AXE (Agentic eXecution Engine) signal integration:
 
 ```json
 {
   "key_value_pairs": {
-    "aee_segment": "high_value_pet_owner",
-    "aee_score": "0.85",
-    "aee_recency": "7d",
-    "aee_context": "shopping_intent"
+    "axe_segment": "high_value_pet_owner",
+    "axe_score": "0.85",
+    "axe_recency": "7d",
+    "axe_context": "shopping_intent"
   }
 }
 ```
 
-**Important**: The `key_value_pairs` field is set internally by the orchestrator or AEE system. Principals cannot include this in their targeting overlay.
+**Important**: The `key_value_pairs` field is set internally by the orchestrator or AXE system. Principals cannot include this in their targeting overlay.
 
 ### Platform Internal Targeting
 

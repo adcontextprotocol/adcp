@@ -16,6 +16,9 @@ The process of making a signal available for targeting on a specific platform an
 **Ad Context Protocol (AdCP)**  
 An open standard based on Model Context Protocol (MCP) that enables AI-powered advertising workflows through natural language interfaces.
 
+**Agentic eXecution Engine (AXE)**  
+Real-time systems that handle brand safety, frequency capping, first-party data activation, and advanced signal processing for advertising campaigns.
+
 **Signal Discovery**  
 The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions.
 
@@ -178,6 +181,7 @@ Advertising inventory available for purchase, discovered through natural languag
 
 - **AdCP**: Ad Context Protocol
 - **API**: Application Programming Interface
+- **AXE**: Agentic eXecution Engine
 - **CPM**: Cost Per Mille (thousand)
 - **DSP**: Demand-Side Platform
 - **DMP**: Data Management Platform
