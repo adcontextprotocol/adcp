@@ -11,16 +11,24 @@ Discover all supported creative formats in the system.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `context_id` | string | No | Context identifier for session persistence |
 | `type` | string | No | Filter by format type (e.g., `"audio"`, `"video"`, `"display"`) |
 | `standard_only` | boolean | No | Only return IAB standard formats |
 
-## Response Format
+## Response (Message)
+
+The response includes a human-readable message that:
+- Summarizes available formats (e.g., "Found 47 creative formats across video, audio, and display")
+- Provides recommendations for format selection
+- Highlights standard vs custom format trade-offs
+
+The message is returned differently in each protocol:
+- **MCP**: Returned as a `message` field in the JSON response
+- **A2A**: Returned as a text part in the artifact
+
+## Response (Payload)
 
 ```json
 {
-  "message": "string",
-  "context_id": "string",
   "formats": [
     {
       "format_id": "string",
@@ -37,8 +45,6 @@ Discover all supported creative formats in the system.
 
 ### Field Descriptions
 
-- **message**: Human-readable summary of available formats and recommendations
-- **context_id**: Context identifier for session persistence
 - **format_id**: Unique identifier for the format
 - **name**: Human-readable format name
 - **type**: Format type (e.g., `"audio"`, `"video"`, `"display"`)
@@ -47,22 +53,31 @@ Discover all supported creative formats in the system.
 - **requirements**: Format-specific requirements (varies by format type)
 - **assets_required**: Array of required assets for composite formats
 
-## Example
+## Protocol-Specific Examples
 
-### Request
+The AdCP payload is identical across protocols. Only the request/response wrapper differs.
+
+### MCP Request
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // From previous discovery
-  "type": "audio",
-  "standard_only": true
+  "tool": "list_creative_formats",
+  "arguments": {
+    "type": "audio",
+    "standard_only": true
+  }
 }
 ```
 
-### Response - Audio Formats
+### MCP Response
+
+**Message:**
+```
+I found 2 audio formats available. The standard 30-second format is recommended for maximum reach across all audio inventory.
+```
+
+**Payload:**
 ```json
 {
-  "message": "I found 2 audio formats available. The standard 30-second format is recommended for maximum reach across all audio inventory. The product carousel is an innovative display format that can showcase multiple products - perfect for e-commerce campaigns.",
-  "context_id": "ctx-media-buy-abc123",
   "formats": [
     {
       "format_id": "audio_standard_30s",
@@ -116,11 +131,73 @@ Discover all supported creative formats in the system.
 }
 ```
 
-### Response - All Formats
+### A2A Request
 ```json
 {
-  "message": "We support 47 creative formats across video, audio, and display. Video formats dominate with 23 options including standard pre-roll and innovative interactive formats. For maximum compatibility, I recommend using IAB standard formats which are accepted by 95% of our inventory.",
-  "context_id": "ctx-media-buy-abc123",
+  "skill": "list_creative_formats",
+  "input": {
+    "standard_only": false
+  }
+}
+```
+
+### A2A Response
+
+**Message:**
+```
+We support 47 creative formats across video, audio, and display. Video formats dominate with 23 options including standard pre-roll and innovative interactive formats. For maximum compatibility, I recommend using IAB standard formats which are accepted by 95% of our inventory.
+```
+
+**Artifacts:**
+```json
+[
+  {
+    "type": "application/json",
+    "data": {
+      "formats": [
+        {
+          "format_id": "video_standard_30s",
+          "name": "Standard Video - 30 seconds",
+          "type": "video",
+          "is_standard": true,
+          "iab_specification": "VAST 4.2",
+          "requirements": {
+            "duration": 30,
+            "width": 1920,
+            "height": 1080,
+            "file_types": ["mp4", "webm"],
+            "max_file_size": 50000000,
+            "min_bitrate": 2500,
+            "max_bitrate": 8000
+          }
+        }
+        // ... 46 more formats
+      ]
+    }
+  }
+]
+```
+
+## Scenarios
+
+### Discovering Standard Video Formats
+
+**Request:**
+```json
+{
+  "type": "video",
+  "standard_only": true
+}
+```
+
+**Message:**
+```
+Found 8 standard video formats following IAB VAST specifications. The 30-second and 15-second pre-roll formats have the broadest inventory coverage.
+```
+
+**Payload:**
+```json
+{
   "formats": [
     {
       "format_id": "video_standard_30s",
@@ -133,12 +210,64 @@ Discover all supported creative formats in the system.
         "width": 1920,
         "height": 1080,
         "file_types": ["mp4", "webm"],
-        "max_file_size": 50000000,
-        "min_bitrate": 2500,
-        "max_bitrate": 8000
+        "max_file_size": 50000000
+      }
+    },
+    {
+      "format_id": "video_standard_15s",
+      "name": "Standard Video - 15 seconds",
+      "type": "video",
+      "is_standard": true,
+      "iab_specification": "VAST 4.2",
+      "requirements": {
+        "duration": 15,
+        "width": 1920,
+        "height": 1080,
+        "file_types": ["mp4", "webm"],
+        "max_file_size": 25000000
       }
     }
-    // ... 46 more formats
+    // ... 6 more standard video formats
+  ]
+}
+```
+
+### Finding Display Carousel Formats
+
+**Request:**
+```json
+{
+  "type": "display"
+}
+```
+
+**Message:**
+```
+I found 15 display formats including standard IAB sizes and innovative formats like product carousels. Standard sizes (300x250, 728x90) have the broadest reach, while carousel formats offer higher engagement for e-commerce campaigns.
+```
+
+**Payload:**
+```json
+{
+  "formats": [
+    {
+      "format_id": "display_carousel_5",
+      "name": "Product Carousel - 5 Items",
+      "type": "display",
+      "is_standard": false,
+      "assets_required": [
+        {
+          "asset_type": "product_image",
+          "quantity": 5,
+          "requirements": {
+            "width": 300,
+            "height": 300,
+            "file_types": ["jpg", "png"]
+          }
+        }
+      ]
+    }
+    // ... additional display formats
   ]
 }
 ```

@@ -11,141 +11,620 @@ Create a media buy from selected packages. This task handles the complete workfl
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `context_id` | string | No | Context identifier for session persistence |
-| `packages` | string[] | Yes | Array of package IDs to include in the media buy |
+| `buyer_ref` | string | Yes | Buyer's reference identifier for this media buy |
+| `packages` | Package[] | Yes | Array of package configurations (see Package Object below) |
 | `promoted_offering` | string | Yes | Description of advertiser and what is being promoted |
 | `po_number` | string | Yes | Purchase order number for tracking |
-| `total_budget` | number | Yes | Total budget in USD |
-| `targeting_overlay` | object | No | Additional targeting criteria to apply across all packages |
-| `targeting_overlay.geo_country_any_of` | string[] | No | Target specific countries (ISO codes) |
-| `targeting_overlay.geo_region_any_of` | string[] | No | Target specific regions/states |
-| `targeting_overlay.audience_segment_any_of` | string[] | No | Target specific audience segments |
-| `targeting_overlay.signals` | string[] | No | Signal IDs from get_signals |
-| `targeting_overlay.frequency_cap` | object | No | Frequency capping settings |
-| `targeting_overlay.frequency_cap.suppress_minutes` | number | No | Minutes to suppress after impression |
-| `targeting_overlay.frequency_cap.scope` | string | No | Apply at `"media_buy"` or `"package"` level |
-| `pacing` | string | No | Pacing strategy: `"even"`, `"asap"`, or `"front_loaded"` |
-| `daily_budget` | number | No | Daily budget cap in USD (null for no limit) |
+| `start_time` | string | Yes | Campaign start date/time in ISO 8601 format (UTC unless timezone specified) |
+| `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
+| `budget` | Budget | Yes | Budget configuration for the media buy (see Budget Object below) |
 
-## Response Format
+### Package Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `buyer_ref` | string | Yes | Buyer's reference identifier for this package |
+| `products` | string[] | Yes | Array of product IDs to include in this package |
+| `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
+| `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
+
+### Targeting Overlay Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `geo_country_any_of` | string[] | No | Target specific countries (ISO codes) |
+| `geo_region_any_of` | string[] | No | Target specific regions/states |
+| `axe_include_segment` | string | No | AXE segment ID to include for targeting |
+| `axe_exclude_segment` | string | No | AXE segment ID to exclude from targeting |
+| `signals` | string[] | No | Signal IDs from get_signals |
+| `frequency_cap` | FrequencyCap | No | Frequency capping settings (see Frequency Cap Object below) |
+
+### Budget Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `total` | number | Yes | Total budget amount |
+| `currency` | string | Yes | ISO 4217 currency code (e.g., "USD", "EUR", "GBP") |
+| `daily_cap` | number | No | Daily budget cap (null for no limit) |
+| `pacing` | string | No | Pacing strategy: `"even"`, `"asap"`, or `"front_loaded"` (default: `"even"`) |
+
+### Frequency Cap Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `suppress_minutes` | number | Yes | Minutes to suppress after impression |
+| `scope` | string | No | Apply at `"media_buy"` or `"package"` level |
+
+## Response (Message)
+
+The response includes a human-readable message that:
+- Confirms the media buy was created with budget and targeting details
+- Explains next steps and deadlines
+- Describes any approval requirements
+- Provides implementation details and status updates
+
+The message is returned differently in each protocol:
+- **MCP**: Returned as a `message` field in the JSON response
+- **A2A**: Returned as a text part in the artifact
+
+## Response (Payload)
 
 ```json
 {
-  "message": "string",
-  "context_id": "string",
   "media_buy_id": "string",
-  "status": "string",
+  "buyer_ref": "string",
   "creative_deadline": "string",
-  "detail": "string",
-  "next_steps": ["string"]
+  "packages": [
+    {
+      "package_id": "string",
+      "buyer_ref": "string"
+    }
+  ]
 }
 ```
 
 ### Field Descriptions
 
-- **message**: Human-readable summary of the media buy creation result
-- **context_id**: Context identifier for session persistence
-- **media_buy_id**: Unique identifier for the created media buy
-- **status**: Current status (e.g., `"pending_activation"`, `"active"`)
+- **media_buy_id**: Publisher's unique identifier for the created media buy
+- **buyer_ref**: Buyer's reference identifier for this media buy
 - **creative_deadline**: ISO 8601 timestamp for creative upload deadline
-- **detail**: Human-readable description of what was created
-- **next_steps**: Array of recommended actions to complete the media buy
+- **packages**: Array of created packages
+  - **package_id**: Publisher's unique identifier for the package
+  - **buyer_ref**: Buyer's reference identifier for the package
 
-## Examples
+## Protocol-Specific Examples
+
+The AdCP payload is identical across protocols. Only the request/response wrapper differs.
+
+### MCP Request
+```json
+{
+  "tool": "create_media_buy",
+  "arguments": {
+    "buyer_ref": "nike_q1_campaign_2024",
+    "packages": [
+      {
+        "buyer_ref": "nike_ctv_sports_package",
+        "products": ["ctv_sports_premium", "ctv_prime_time"],
+        "budget": {
+          "total": 60000,
+          "currency": "USD",
+          "pacing": "even"
+        },
+        "targeting_overlay": {
+          "geo_country_any_of": ["US"],
+          "geo_region_any_of": ["CA", "NY"],
+          "axe_include_segment": "x8dj3k"
+        }
+      },
+      {
+        "buyer_ref": "nike_audio_drive_package",
+        "products": ["audio_drive_time"],
+        "budget": {
+          "total": 40000,
+          "currency": "USD",
+          "pacing": "front_loaded"
+        },
+        "targeting_overlay": {
+          "geo_country_any_of": ["US"],
+          "geo_region_any_of": ["CA"],
+          "axe_exclude_segment": "x9m2p"
+        }
+      }
+    ],
+    "promoted_offering": "Nike Air Max 2024 - premium running shoes",
+    "po_number": "PO-2024-Q1-001",
+    "start_time": "2024-02-01T00:00:00Z",
+    "end_time": "2024-03-31T23:59:59Z",
+    "budget": {
+      "total": 100000,
+      "currency": "USD",
+      "daily_cap": 5000,
+      "pacing": "even"
+    }
+  }
+}
+```
+
+### MCP Response (Synchronous)
+```json
+{
+  "message": "Successfully created $100,000 media buy. Upload creatives by Jan 30. Campaign will run from Feb 1 to Mar 31.",
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_12345_001",
+      "buyer_ref": "nike_ctv_sports_package"
+    },
+    {
+      "package_id": "pkg_12345_002",
+      "buyer_ref": "nike_audio_drive_package"
+    }
+  ]
+}
+```
+
+### MCP Response (Asynchronous)
+```json
+{
+  "task_id": "task_456",
+  "status": "working",
+  "message": "Creating media buy...",
+  "poll_url": "/tasks/task_456"
+}
+```
+
+### A2A Request
+For A2A, the skill and input are sent as:
+```json
+{
+  "skill": "create_media_buy",
+  "input": {
+    "buyer_ref": "nike_q1_campaign_2024",
+    "packages": [
+      {
+        "buyer_ref": "nike_ctv_sports_package",
+        "products": ["ctv_sports_premium", "ctv_prime_time"],
+        "budget": {
+          "total": 60000,
+          "currency": "USD",
+          "pacing": "even"
+        },
+        "targeting_overlay": {
+          "geo_country_any_of": ["US"],
+          "geo_region_any_of": ["CA", "NY"],
+          "axe_include_segment": "x8dj3k"
+        }
+      },
+      {
+        "buyer_ref": "nike_audio_drive_package",
+        "products": ["audio_drive_time"],
+        "budget": {
+          "total": 40000,
+          "currency": "USD",
+          "pacing": "front_loaded"
+        },
+        "targeting_overlay": {
+          "geo_country_any_of": ["US"],
+          "geo_region_any_of": ["CA"],
+          "axe_exclude_segment": "x9m2p"
+        }
+      }
+    ],
+    "promoted_offering": "Nike Air Max 2024 - premium running shoes",
+    "po_number": "PO-2024-Q1-001",
+    "start_time": "2024-02-01T00:00:00Z",
+    "end_time": "2024-03-31T23:59:59Z",
+    "budget": {
+      "total": 100000,
+      "currency": "USD",
+      "daily_cap": 5000,
+      "pacing": "even"
+    }
+  }
+}
+```
+
+### A2A Response (with streaming)
+Initial response:
+```json
+{
+  "taskId": "task-mb-001",
+  "status": { "state": "working" }
+}
+```
+
+Then via Server-Sent Events:
+```
+data: {"message": "Validating packages..."}
+data: {"message": "Checking inventory availability..."}
+data: {"message": "Creating campaign in ad server..."}
+data: {"status": {"state": "completed"}, "artifacts": [{
+  "name": "media_buy_confirmation",
+  "parts": [
+    {"kind": "text", "text": "Successfully created $100,000 media buy. Upload creatives by Jan 30."},
+    {"kind": "data", "data": {
+      "media_buy_id": "mb_12345",
+      "buyer_ref": "nike_q1_campaign_2024",
+      "creative_deadline": "2024-01-30T23:59:59Z",
+      "packages": [
+        {"package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package"},
+        {"package_id": "pkg_12345_002", "buyer_ref": "nike_audio_drive_package"}
+      ]
+    }}
+  ]
+}]}
+```
+
+### Key Differences
+- **MCP**: May return synchronously or asynchronously with updates via:
+  - Polling (calling status endpoints)
+  - Webhooks (push notifications to callback URLs)
+  - Streaming (WebSockets or SSE)
+- **A2A**: Always returns task with updates via:
+  - Server-Sent Events (SSE) for real-time streaming
+  - Webhooks (push notifications) for long-running tasks
+- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
+
+## Human-in-the-Loop Examples
+
+### MCP with Manual Approval (Polling Example)
+
+This example shows polling, but MCP implementations may also support webhooks or streaming for real-time updates.
+
+**Initial Request:**
+```json
+{
+  "tool": "create_media_buy",
+  "arguments": {
+    "buyer_ref": "large_campaign_2024",
+    "packages": [...],
+    "promoted_offering": "High-value campaign requiring approval",
+    "po_number": "PO-2024-LARGE-001",
+    "start_time": "2024-02-01T00:00:00Z",
+    "end_time": "2024-06-30T23:59:59Z",
+    "budget": {
+      "total": 500000,
+      "currency": "USD"
+    }
+  }
+}
+```
+
+**Response (Asynchronous):**
+```json
+{
+  "task_id": "task_456",
+  "status": "working",
+  "message": "Large budget requires sales team approval. Expected review time: 2-4 hours.",
+  "context_id": "ctx-mb-456"
+}
+```
+
+**Client checks status (via polling in this example):**
+```json
+{
+  "tool": "create_media_buy_status",
+  "arguments": {
+    "context_id": "ctx-mb-456"
+  }
+}
+```
+
+**Status Response (Still pending):**
+```json
+{
+  "status": "working",
+  "message": "Awaiting manual approval. Sales team reviewing. 1 of 2 approvals received.",
+  "context_id": "ctx-mb-456",
+  "responsible_party": "publisher",
+  "estimated_completion": "2024-01-15T16:00:00Z"
+}
+```
+
+**Status Response (Approved):**
+```json
+{
+  "status": "completed",
+  "message": "Media buy approved and created. Upload creatives by Jan 30.",
+  "media_buy_id": "mb_789456",
+  "buyer_ref": "large_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [...]
+}
+```
+
+### A2A with Manual Approval (SSE Example)
+
+A2A can use Server-Sent Events for real-time streaming or webhooks for push notifications.
+
+**Initial Request with SSE:**
+```json
+{
+  "skill": "create_media_buy",
+  "input": {
+    "buyer_ref": "large_campaign_2024",
+    "packages": [...],
+    "promoted_offering": "High-value campaign requiring approval",
+    "po_number": "PO-2024-LARGE-001",
+    "start_time": "2024-02-01T00:00:00Z",
+    "end_time": "2024-06-30T23:59:59Z",
+    "budget": {
+      "total": 500000,
+      "currency": "USD"
+    }
+  }
+}
+```
+
+**Initial Response:**
+```json
+{
+  "taskId": "task-mb-large-001",
+  "contextId": "ctx-conversation-xyz",
+  "status": { 
+    "state": "working",
+    "message": "Large budget requires sales team approval"
+  }
+}
+```
+
+**SSE Updates (Human approval process):**
+```
+data: {"message": "Validating campaign requirements..."}
+data: {"message": "Budget exceeds auto-approval threshold. Routing to sales team..."}
+data: {"message": "Sales team notified. Expected review time: 2-4 hours"}
+data: {"message": "First approval received from regional manager"}
+data: {"message": "Second approval received from finance team"}
+data: {"status": {"state": "completed"}, "artifacts": [{
+  "artifactId": "artifact-mb-large-xyz",
+  "name": "media_buy_confirmation",
+  "parts": [
+    {"kind": "text", "text": "Media buy approved and created successfully. $500,000 campaign scheduled Feb 1 - Jun 30. Upload creatives by Jan 30."},
+    {"kind": "data", "data": {
+      "media_buy_id": "mb_789456",
+      "buyer_ref": "large_campaign_2024",
+      "creative_deadline": "2024-01-30T23:59:59Z",
+      "packages": [...]
+    }}
+  ]
+}]}
+```
+
+### A2A with Webhooks (Long-Running Task)
+
+**Initial Request with Webhook Configuration:**
+```json
+{
+  "skill": "create_media_buy",
+  "input": {
+    "buyer_ref": "large_campaign_2024",
+    "packages": [...],
+    "promoted_offering": "High-value campaign requiring approval",
+    "po_number": "PO-2024-LARGE-001",
+    "start_time": "2024-02-01T00:00:00Z",
+    "end_time": "2024-06-30T23:59:59Z",
+    "budget": {
+      "total": 500000,
+      "currency": "USD"
+    }
+  },
+  "pushNotificationConfig": {
+    "url": "https://buyer.example.com/webhooks/adcp",
+    "authType": "bearer",
+    "authToken": "secret-token-xyz"
+  }
+}
+```
+
+**Initial Response:**
+```json
+{
+  "taskId": "task-mb-webhook-001",
+  "contextId": "ctx-conversation-xyz",
+  "status": { 
+    "state": "working",
+    "message": "Task processing. Updates will be sent to webhook."
+  }
+}
+```
+
+**Webhook Notifications (sent to buyer's endpoint):**
+```json
+// First webhook
+{
+  "taskId": "task-mb-webhook-001",
+  "contextId": "ctx-conversation-xyz",
+  "status": {"state": "working"},
+  "message": "Budget exceeds threshold. Awaiting sales approval."
+}
+
+// Final webhook when complete
+{
+  "taskId": "task-mb-webhook-001",
+  "contextId": "ctx-conversation-xyz",
+  "status": {"state": "completed"},
+  "artifacts": [{
+    "artifactId": "artifact-mb-webhook-xyz",
+    "name": "media_buy_confirmation",
+    "parts": [
+      {"kind": "data", "data": {
+        "media_buy_id": "mb_789456",
+        "buyer_ref": "large_campaign_2024",
+        "creative_deadline": "2024-01-30T23:59:59Z",
+        "packages": [...]
+      }}
+    ]
+  }]
+}
+```
+
+### A2A with Input Required
+
+If the system needs clarification (e.g., ambiguous targeting):
+
+**SSE Update requesting input:**
+```
+data: {"status": {"state": "input-required", "message": "Multiple interpretations found for 'sports fans'. Please specify: 1) All sports enthusiasts, 2) NFL fans specifically, 3) Live sports event viewers"}}
+```
+
+**Client provides clarification:**
+```json
+{
+  "referenceTaskIds": ["task-mb-large-001"],
+  "message": "Target all sports enthusiasts including NFL, NBA, and soccer fans"
+}
+```
+
+**Task resumes with clarification:**
+```
+data: {"status": {"state": "working", "message": "Applying targeting for all sports enthusiasts..."}}
+data: {"status": {"state": "completed"}, "artifacts": [...]}
+```
+
+## Scenarios
 
 ### Standard Media Buy Request
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // From product discovery
-  "packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"],
+  "buyer_ref": "purina_pet_campaign_q1",
+  "packages": [
+    {
+      "buyer_ref": "purina_ctv_package",
+      "products": ["ctv_prime_time", "ctv_late_night"],
+      "budget": {
+        "total": 30000,
+        "currency": "USD",
+        "pacing": "even"
+      },
+      "targeting_overlay": {
+        "geo_country_any_of": ["US"],
+        "geo_region_any_of": ["CA", "NY"],
+        "axe_include_segment": "x7h4n",
+        "signals": ["auto_intenders_q1_2025"],
+        "frequency_cap": {
+          "suppress_minutes": 30,
+          "scope": "package"
+        }
+      }
+    },
+    {
+      "buyer_ref": "purina_audio_package",
+      "products": ["audio_drive_time"],
+      "budget": {
+        "total": 20000,
+        "currency": "USD"
+      },
+      "targeting_overlay": {
+        "geo_country_any_of": ["US"],
+        "geo_region_any_of": ["CA", "NY"]
+      }
+    }
+  ],
   "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs, promoting the new salmon and rice formula for sensitive skin and stomachs",
   "po_number": "PO-2024-Q1-0123",
-  "total_budget": 50000,
-  "targeting_overlay": {
-    "geo_country_any_of": ["US"],
-    "geo_region_any_of": ["CA", "NY"],
-    "audience_segment_any_of": ["3p:pet_owners"],
-    "signals": ["auto_intenders_q1_2025"],
-    "frequency_cap": {
-      "suppress_minutes": 30,
-      "scope": "media_buy"
-    }
-  },
-  "pacing": "even",
-  "daily_budget": null
+  "start_time": "2024-02-01T00:00:00Z",
+  "end_time": "2024-02-29T23:59:59Z",
+  "budget": {
+    "total": 50000,
+    "currency": "USD",
+    "pacing": "even"
+  }
 }
 ```
 
 ### Retail Media Buy Request
 ```json
 {
-  "context_id": "ctx-media-buy-retail123",  // From retail product discovery
-  "packages": ["albertsons_custom_competitive_conquest"],
+  "buyer_ref": "purina_albertsons_retail_q1",
+  "packages": [
+    {
+      "buyer_ref": "purina_albertsons_conquest",
+      "products": ["albertsons_competitive_conquest", "albertsons_onsite_display"],
+      "budget": {
+        "total": 75000,
+        "currency": "USD",
+        "daily_cap": 2500,
+        "pacing": "even"
+      },
+      "targeting_overlay": {
+        "geo_country_any_of": ["US"],
+        "geo_region_any_of": ["CA", "AZ", "NV"],
+        "axe_include_segment": "x3f9q",
+        "axe_exclude_segment": "x2v8r",
+        "frequency_cap": {
+          "suppress_minutes": 60,
+          "scope": "package"
+        }
+      }
+    }
+  ],
   "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs",
   "po_number": "PO-2024-RETAIL-0456",
-  "total_budget": 75000,  // Meets $50K minimum for custom audience
-  "targeting_overlay": {
-    "geo_country_any_of": ["US"],
-    "geo_region_any_of": ["CA", "AZ", "NV"],  // Albertsons strong markets
-    "frequency_cap": {
-      "suppress_minutes": 60,
-      "scope": "media_buy"
-    }
-  },
-  "pacing": "even",
-  "daily_budget": 2500
+  "start_time": "2024-02-01T00:00:00Z",
+  "end_time": "2024-03-31T23:59:59Z",
+  "budget": {
+    "total": 75000,
+    "currency": "USD",
+    "daily_cap": 2500,
+    "pacing": "even"
+  }
 }
 ```
 
 ### Response - Success
+**Message**: "Successfully created your $50,000 media buy targeting pet owners in CA and NY. The campaign will reach 2.5M users through Connected TV and Audio channels. Please upload creative assets by January 30 to activate the campaign. Campaign scheduled to run Feb 1-29."
+
+**Payload**:
 ```json
 {
-  "message": "Successfully created your $50,000 media buy targeting pet owners in CA and NY. The campaign will reach 2.5M users through Connected TV and Audio channels. Please upload creative assets by January 30 to activate the campaign.",
-  "context_id": "ctx-media-buy-abc123",
   "media_buy_id": "gam_1234567890",
-  "status": "pending_activation",
+  "buyer_ref": "purina_pet_campaign_q1",
   "creative_deadline": "2024-01-30T23:59:59Z",
-  "detail": "Media buy created in Google Ad Manager",
-  "next_steps": [
-    "Upload creative assets before deadline",
-    "Assets will be reviewed by ad server",
-    "Campaign will auto-activate after approval"
+  "packages": [
+    {
+      "package_id": "gam_pkg_001",
+      "buyer_ref": "purina_ctv_package"
+    },
+    {
+      "package_id": "gam_pkg_002",
+      "buyer_ref": "purina_audio_package"
+    }
   ]
 }
 ```
 
 ### Response - Retail Media Success
+**Message**: "Successfully created your $75,000 retail media campaign targeting competitive dog food buyers. The campaign will reach 450K Albertsons shoppers with deterministic purchase data. Creative assets must include co-branding and drive to Albertsons.com. Upload by January 30 to activate. Campaign runs Feb 1 - Mar 31."
+
+**Payload**:
 ```json
 {
-  "message": "Successfully created your $75,000 retail media campaign targeting competitive dog food buyers. The campaign will reach 450K Albertsons shoppers with deterministic purchase data. Creative assets must include co-branding and drive to Albertsons.com. Upload by January 30 to activate.",
-  "context_id": "ctx-media-buy-retail123",
   "media_buy_id": "albertsons_mb_789012",
-  "status": "pending_activation",
+  "buyer_ref": "purina_albertsons_retail_q1",
   "creative_deadline": "2024-01-30T23:59:59Z",
-  "detail": "Retail media buy created with incremental sales measurement included",
-  "next_steps": [
-    "Upload creative assets with Albertsons co-branding",
-    "Ensure landing page is Albertsons.com",
-    "Access measurement dashboard after first impressions",
-    "Sales lift report available after 30-day attribution window"
+  "packages": [
+    {
+      "package_id": "albertsons_pkg_001",
+      "buyer_ref": "purina_albertsons_conquest"
+    }
   ]
 }
 ```
 
 ### Response - Pending Manual Approval
+**Message**: "Your $50,000 media buy has been submitted for approval. Due to the campaign size, it requires manual review by our sales team. Expected approval time is 2-4 hours during business hours. You'll receive a notification once approved. Campaign scheduled for Feb 1 - Mar 31."
+
+**Payload**:
 ```json
 {
-  "message": "Your $50,000 media buy has been submitted for approval. Due to the campaign size, it requires manual review by our sales team. Expected approval time is 2-4 hours during business hours. You'll receive a notification once approved.",
-  "context_id": "ctx-media-buy-abc123",
-  "media_buy_id": "pending_mb_789",
-  "status": "pending_manual",
+  "media_buy_id": "mb_789",
+  "buyer_ref": "nike_q1_campaign_2024",
   "creative_deadline": null,
-  "detail": "Media buy requires manual approval (task_id: approval_12345)",
-  "next_steps": [
-    "Wait for approval notification",
-    "Upload creatives after approval",
-    "Campaign will activate once creatives are approved"
-  ]
+  "packages": []
 }
 ```
 
@@ -159,17 +638,16 @@ Different advertising platforms handle media buy creation differently:
 
 ## Status Values
 
-The media buy can have the following status values:
+Both protocols use standard task states:
 
-- `pending_activation`: Awaiting creative assets
-- `pending_approval`: Under platform review
-- `pending_manual`: Awaiting human approval (HITL)
-- `pending_permission`: Blocked by permissions
-- `scheduled`: Future start date
-- `active`: Currently delivering
-- `paused`: Temporarily stopped
-- `completed`: Finished delivering
-- `failed`: Error state
+- `working`: Task is in progress (includes waiting for approvals, processing, etc.)
+- `input-required`: Needs clarification or additional information from client
+- `completed`: Task finished successfully
+- `failed`: Task encountered an error
+- `cancelled`: Task was cancelled
+- `rejected`: Task was rejected (e.g., policy violation)
+
+**Note**: Specific business states (like "awaiting manual approval", "pending creative assets", etc.) are conveyed through the message field, not custom status values. This ensures consistency across protocols.
 
 ## Asynchronous Behavior
 
@@ -180,15 +658,20 @@ When the operation can be completed immediately (rare), the response includes th
 
 ### Asynchronous Response
 When the operation requires processing time, the response returns immediately with:
-- A `context_id` to track the operation
-- Status of `"processing"`
-- The buyer must then poll `create_media_buy_status` with the context_id
+- A tracking identifier (`context_id` for MCP, `taskId` for A2A)
+- Initial status (`"working"` for both MCP and A2A)
+- Updates can be received via:
+  - **Polling**: Call status endpoints periodically (MCP and A2A)
+  - **Webhooks**: Register callback URLs for push notifications (MCP and A2A)
+  - **Streaming**: Use SSE or WebSockets for real-time updates (MCP and A2A)
 
-## Status Checking (MCP Only)
+## Status Checking
 
-### create_media_buy_status
+### MCP Status Checking
 
-For MCP implementations, use this endpoint to check the status of an asynchronous media buy creation.
+#### Option 1: Polling (create_media_buy_status)
+
+For MCP implementations using polling, use this endpoint to check the status of an asynchronous media buy creation.
 
 #### Request
 ```json
@@ -204,7 +687,7 @@ For MCP implementations, use this endpoint to check the status of an asynchronou
 {
   "message": "Media buy creation in progress - validating inventory",
   "context_id": "ctx-create-mb-456",
-  "status": "processing",
+  "status": "working",
   "progress": {
     "current_step": "inventory_validation",
     "completed": 2,
@@ -218,14 +701,15 @@ For MCP implementations, use this endpoint to check the status of an asynchronou
 **Completed:**
 ```json
 {
-  "message": "Successfully created your $50,000 media buy",
+  "message": "Successfully created your $50,000 media buy. Upload creative assets by Jan 30.",
   "context_id": "ctx-create-mb-456",
   "status": "completed",
   "media_buy_id": "gam_1234567890",
-  "media_buy_status": "pending_activation",
+  "buyer_ref": "espn_sports_q1_2024",
   "creative_deadline": "2024-01-30T23:59:59Z",
-  "next_steps": [
-    "Upload creative assets before deadline"
+  "packages": [
+    {"package_id": "gam_pkg_001", "buyer_ref": "espn_ctv_sports"},
+    {"package_id": "gam_pkg_002", "buyer_ref": "espn_audio_sports"}
   ]
 }
 ```
@@ -233,25 +717,46 @@ For MCP implementations, use this endpoint to check the status of an asynchronou
 **Pending Manual Approval:**
 ```json
 {
-  "message": "Media buy requires manual approval",
+  "message": "Media buy requires manual approval. Sales team reviewing campaign.",
   "context_id": "ctx-create-mb-456",
-  "status": "pending_manual",
+  "status": "working",
   "responsible_party": "publisher",
   "action_detail": "Sales team reviewing campaign"
 }
 ```
 
-#### Polling Guidelines
+#### Option 2: Webhooks (MCP)
+
+Register a callback URL to receive push notifications:
+```json
+{
+  "tool": "create_media_buy",
+  "arguments": {
+    "buyer_ref": "campaign_2024",
+    "packages": [...],
+    "webhook_url": "https://buyer.example.com/mcp/webhooks",
+    "webhook_auth_token": "bearer-token-xyz"
+  }
+}
+```
+
+### A2A Status Checking
+
+A2A supports both SSE streaming and webhooks as shown in the examples above. Choose based on your needs:
+- **SSE**: Best for real-time updates with persistent connection
+- **Webhooks**: Best for long-running tasks or when client may disconnect
+
+### Polling Guidelines (when using polling):
 - First 10 seconds: Every 1-2 seconds
 - Next minute: Every 5-10 seconds
 - After 1 minute: Every 30-60 seconds
-- For `pending_manual`: Every 5 minutes
+- For manual approval (when message indicates approval needed): Every 5 minutes
 
 ### Handling Pending States
 Orchestrators MUST handle pending states as normal operation flow:
 
 1. Store the context_id for tracking
-2. Poll `create_media_buy_status` periodically
+2. Monitor for updates via configured method (polling, webhooks, or streaming)
 3. Handle eventual completion, rejection, or manual approval
 
 ### Example Pending Operation Flow
@@ -259,21 +764,50 @@ Orchestrators MUST handle pending states as normal operation flow:
 ```python
 # 1. Create media buy
 response = await mcp.call_tool("create_media_buy", {
-    "packages": ["premium_sports", "drive_time_audio"],
+    "buyer_ref": "espn_sports_q1_2024",
+    "packages": [
+        {
+            "buyer_ref": "espn_ctv_sports",
+            "products": ["sports_ctv_premium", "sports_online_video"],
+            "budget": {
+                "total": 30000,
+                "currency": "USD",
+                "pacing": "even"
+            },
+            "targeting_overlay": {
+                "geo_country_any_of": ["US"],
+                "geo_region_any_of": ["CA", "NY"],
+                "axe_include_segment": "x5j7w"
+            }
+        },
+        {
+            "buyer_ref": "espn_audio_sports",
+            "products": ["audio_sports_talk"],
+            "budget": {
+                "total": 20000,
+                "currency": "USD"
+            },
+            "targeting_overlay": {
+                "geo_country_any_of": ["US"]
+            }
+        }
+    ],
     "promoted_offering": "ESPN+ streaming service - exclusive UFC fights and soccer leagues, promoting annual subscription",
     "po_number": "PO-2024-001",
-    "total_budget": 50000,
-    "targeting_overlay": {
-        "geography": ["US-CA", "US-NY"],
-        "device_types": ["mobile", "desktop"]
+    "start_time": "2024-02-01T00:00:00Z",
+    "end_time": "2024-03-31T23:59:59Z",
+    "budget": {
+        "total": 50000,
+        "currency": "USD",
+        "pacing": "even"
     }
 })
 
 # Check if async processing is needed
-if response.get("status") == "processing":
+if response.get("status") == "working":
     context_id = response["context_id"]
     
-    # 2. Poll for completion
+    # 2. Monitor for completion (polling example shown, but webhooks/streaming may be available)
     while True:
         status_response = await mcp.call_tool("create_media_buy_status", {
             "context_id": context_id
@@ -287,7 +821,7 @@ if response.get("status") == "processing":
             # Operation failed
             handle_error(status_response["error"])
             break
-        elif status_response["status"] == "pending_manual":
+        elif status_response["status"] == "working" and "approval" in status_response.get("message", "").lower():
             # Requires human approval - may take hours/days
             notify_user_of_pending_approval(status_response)
             # Continue polling less frequently
@@ -308,10 +842,14 @@ How media buy creation maps to different platforms:
 ## Usage Notes
 
 - A media buy represents a complete advertising campaign with one or more packages
+- Each package contains an array of products that share the same targeting and budget allocation
+- Both media buys and packages have `buyer_ref` fields for the buyer's reference tracking
 - The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted (see [Brief Expectations](../brief-expectations) for guidance)
 - Publishers will validate the promoted offering against their policies before creating the media buy
-- Targeting overlay applies additional criteria on top of package-level targeting
-- The total budget is distributed across packages based on their individual settings
+- Package-level targeting overlay applies additional criteria on top of product-level targeting
+- The total budget is distributed across packages based on their individual `budget` settings (or proportionally if not specified)
+- Budget supports multiple currencies via ISO 4217 currency codes
+- AXE segments (`axe_include_segment` and `axe_exclude_segment`) enable advanced audience targeting within the targeting overlay
 - Creative assets must be uploaded before the deadline for the campaign to activate
 - Pending states are normal operational states, not errors
 - Orchestrators MUST NOT treat pending states as errors - they are part of normal workflow
@@ -348,10 +886,12 @@ The `message` field should provide a concise summary that includes:
 
 ```python
 def generate_media_buy_message(media_buy, request):
-    if media_buy.status == "pending_activation":
+    if media_buy.status == "completed" and media_buy.creative_deadline:
         return f"Successfully created your ${request.total_budget:,} media buy targeting {format_targeting(request.targeting_overlay)}. The campaign will reach {media_buy.estimated_reach:,} users. Please upload creative assets by {format_date(media_buy.creative_deadline)} to activate the campaign."
-    elif media_buy.status == "pending_manual":
+    elif media_buy.status == "working" and media_buy.requires_approval:
         return f"Your ${request.total_budget:,} media buy has been submitted for approval. {media_buy.approval_reason}. Expected approval time is {media_buy.estimated_approval_time}. You'll receive a notification once approved."
-    elif media_buy.status == "active":
+    elif media_buy.status == "completed" and media_buy.is_live:
         return f"Great news! Your ${request.total_budget:,} campaign is now live and delivering to your target audience. Monitor performance using check_media_buy_status."
+    elif media_buy.status == "rejected":
+        return f"Media buy was rejected: {media_buy.rejection_reason}. Please review the requirements and resubmit."
 ```
