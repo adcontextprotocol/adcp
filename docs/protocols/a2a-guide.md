@@ -305,6 +305,98 @@ await a2a.send({
 });
 ```
 
+## Agent Cards for AdCP
+
+A2A agents advertise their capabilities via Agent Cards served at `.well-known/agent.json`. Here are sample agent cards for AdCP implementations:
+
+### Media Buy Agent Card
+
+```json
+{
+  "name": "AdCP Media Buy Agent",
+  "description": "AI-powered media buying agent for programmatic advertising",
+  "skills": [
+    {
+      "name": "get_products",
+      "description": "Discover available advertising products",
+      "examples": [
+        "Find premium CTV inventory for sports fans",
+        "Show me video products under $50 CPM",
+        "Get retail media products for pet owners"
+      ]
+    },
+    {
+      "name": "list_creative_formats",
+      "description": "List supported creative formats",
+      "examples": [
+        "What video formats do you support?",
+        "Show me IAB standard display formats"
+      ]
+    },
+    {
+      "name": "create_media_buy",
+      "description": "Create a media buy campaign",
+      "examples": [
+        "Create a $100K campaign with these products",
+        "Book premium CTV package for Q1"
+      ]
+    },
+    {
+      "name": "update_media_buy",
+      "description": "Update an existing media buy",
+      "examples": [
+        "Increase budget to $150K",
+        "Change pacing to front-loaded"
+      ]
+    },
+    {
+      "name": "add_creative_assets",
+      "description": "Upload creative assets",
+      "examples": [
+        "Add this video creative to the campaign",
+        "Upload display banners"
+      ]
+    },
+    {
+      "name": "get_media_buy_delivery",
+      "description": "Get campaign performance metrics",
+      "examples": [
+        "Show delivery stats for my campaign",
+        "How is the campaign performing?"
+      ]
+    }
+  ]
+}
+```
+
+### Signals Agent Card
+
+```json
+{
+  "name": "AdCP Signals Agent",
+  "description": "Signal discovery and activation for audience targeting",
+  "skills": [
+    {
+      "name": "get_signals",
+      "description": "Discover signals based on requirements",
+      "examples": [
+        "Find signals for luxury car buyers",
+        "Get weather-based signals for beverages",
+        "Show signals available on The Trade Desk"
+      ]
+    },
+    {
+      "name": "activate_signal",
+      "description": "Activate signals on platforms",
+      "examples": [
+        "Activate this signal on The Trade Desk",
+        "Deploy the luxury segment to Amazon DSP"
+      ]
+    }
+  ]
+}
+```
+
 ## Complete Example
 
 Here's a full campaign creation workflow using A2A:

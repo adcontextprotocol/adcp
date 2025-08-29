@@ -11,30 +11,52 @@ Upload creative assets and assign them to packages. This task includes validatio
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `context_id` | string | Yes | Context identifier for session persistence |
-| `media_buy_id` | string | Yes | ID of the media buy to add creatives to |
-| `assets` | array | Yes | Array of creative assets to upload |
-| `assets[].creative_id` | string | Yes | Unique identifier for the creative |
-| `assets[].name` | string | Yes | Human-readable creative name |
-| `assets[].format` | string | Yes | Creative format type (e.g., `"video"`, `"audio"`, `"display"`) |
-| `assets[].media_url` | string | Yes | URL of the creative file |
-| `assets[].click_url` | string | No | Landing page URL for the creative |
-| `assets[].duration` | number | No | Duration in milliseconds (for video/audio) |
-| `assets[].width` | number | No | Width in pixels (for video/display) |
-| `assets[].height` | number | No | Height in pixels (for video/display) |
-| `assets[].package_assignments` | string[] | Yes | Package IDs to assign this creative to |
-| `assets[].assets` | array | No | For multi-asset formats (carousels, sliders) |
-| `assets[].assets[].asset_type` | string | Yes | Type of asset (e.g., `"product_image"`, `"logo"`) |
-| `assets[].assets[].asset_id` | string | Yes | Unique identifier for the asset |
-| `assets[].assets[].content_uri` | string | No | URL for media assets |
+| `media_buy_id` | string | No* | Publisher's ID of the media buy to add creatives to |
+| `buyer_ref` | string | No* | Buyer's reference for the media buy |
+| `assets` | Asset[] | Yes | Array of creative assets to upload (see Asset Object below) |
+
+*Either `media_buy_id` or `buyer_ref` must be provided
+
+### Asset Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `creative_id` | string | Yes | Unique identifier for the creative |
+| `name` | string | Yes | Human-readable creative name |
+| `format` | string | Yes | Creative format type (e.g., `"video"`, `"audio"`, `"display"`) |
+| `media_url` | string | Yes | URL of the creative file |
+| `click_url` | string | No | Landing page URL for the creative |
+| `duration` | number | No | Duration in milliseconds (for video/audio) |
+| `width` | number | No | Width in pixels (for video/display) |
+| `height` | number | No | Height in pixels (for video/display) |
+| `package_assignments` | string[] | Yes | Package IDs or buyer_refs to assign this creative to |
+| `assets` | SubAsset[] | No | For multi-asset formats like carousels (see Sub-Asset Object below) |
+
+### Sub-Asset Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `asset_type` | string | Yes | Type of asset (e.g., `"product_image"`, `"logo"`, `"headline"`) |
+| `asset_id` | string | Yes | Unique identifier for the asset |
+| `content_uri` | string | No | URL for media assets |
 | `assets[].assets[].content` | array | No | Text content for text assets |
 
-## Response Format
+## Response (Message)
+
+The response includes a human-readable message that:
+- Confirms which creatives were uploaded and their status
+- Explains any policy issues or rejections
+- Suggests format adaptations for better performance
+- Provides next steps if review is pending
+
+The message is returned differently in each protocol:
+- **MCP**: Returned as a `message` field in the JSON response
+- **A2A**: Returned as a text part in the artifact
+
+## Response (Payload)
 
 ```json
 {
-  "message": "string",
-  "context_id": "string",
   "asset_statuses": [
     {
       "creative_id": "string",
@@ -59,8 +81,6 @@ Upload creative assets and assign them to packages. This task includes validatio
 
 ### Field Descriptions
 
-- **message**: Human-readable summary of the creative upload results
-- **context_id**: Context identifier for session persistence
 - **asset_statuses**: Array of status information for each uploaded asset
   - **creative_id**: The creative ID from the request
   - **status**: Upload/review status (e.g., `"approved"`, `"pending_review"`, `"rejected"`)
@@ -75,7 +95,127 @@ Upload creative assets and assign them to packages. This task includes validatio
     - **rationale**: Why this adaptation is recommended
     - **estimated_performance_lift**: Expected performance improvement (percentage)
 
-## Examples
+## Protocol-Specific Examples
+
+The AdCP payload is identical across protocols. Only the request/response wrapper differs.
+
+### MCP Request
+```json
+{
+  "tool": "add_creative_assets",
+  "arguments": {
+    
+    "media_buy_id": "mb_12345",
+    "assets": [
+      {
+        "creative_id": "hero_video_30s",
+        "name": "Nike Air Max Hero 30s",
+        "format": "video",
+        "media_url": "https://cdn.example.com/nike-hero-30s.mp4",
+        "click_url": "https://nike.com/airmax",
+        "duration": 30000,
+        "width": 1920,
+        "height": 1080,
+        "package_assignments": ["pkg_ctv_001"]
+      }
+    ]
+  }
+}
+```
+
+### MCP Response
+```json
+{
+  "message": "Successfully uploaded 1 creative. All assets approved and ready for delivery.",
+  "context_id": "ctx-media-buy-123",
+  "asset_statuses": [
+    {
+      "creative_id": "hero_video_30s",
+      "status": "approved",
+      "platform_id": "gam_creative_789",
+      "review_feedback": "Passed all policy checks",
+      "suggested_adaptations": [
+        {
+          "adaptation_id": "adapt_15s",
+          "format_id": "video_16x9_15s",
+          "name": "Nike Air Max Hero 15s",
+          "description": "15-second version for mid-roll placements",
+          "changes_summary": ["Trim to 15 seconds", "Adjust pacing"],
+          "rationale": "15s versions typically have 20% higher completion rates",
+          "estimated_performance_lift": 20
+        }
+      ]
+    }
+  ]
+}
+```
+
+### A2A Request
+For A2A, the skill and input are sent as:
+```json
+{
+  "skill": "add_creative_assets",
+  "input": {
+    
+    "media_buy_id": "mb_12345",
+    "assets": [
+      {
+        "creative_id": "hero_video_30s",
+        "name": "Nike Air Max Hero 30s",
+        "format": "video",
+        "media_url": "https://cdn.example.com/nike-hero-30s.mp4",
+        "click_url": "https://nike.com/airmax",
+        "duration": 30000,
+        "width": 1920,
+        "height": 1080,
+        "package_assignments": ["pkg_ctv_001"]
+      }
+    ]
+  }
+}
+```
+
+### A2A Response (with streaming)
+Initial response:
+```json
+{
+  "taskId": "task-creative-001",
+  "status": { "state": "working" }
+}
+```
+
+Then via Server-Sent Events:
+```
+data: {"message": "Downloading creative from CDN..."}
+data: {"message": "Validating video format..."}
+data: {"message": "Running policy checks..."}
+data: {"status": {"state": "completed"}, "artifacts": [{
+  "name": "creative_upload_result",
+  "parts": [
+    {"kind": "text", "text": "Successfully uploaded 1 creative. All assets approved."},
+    {"kind": "data", "data": {
+      "asset_statuses": [{
+        "creative_id": "hero_video_30s",
+        "status": "approved",
+        "platform_id": "gam_creative_789",
+        "suggested_adaptations": [{
+          "adaptation_id": "adapt_15s",
+          "format_id": "video_16x9_15s",
+          "name": "Nike Air Max Hero 15s",
+          "estimated_performance_lift": 20
+        }]
+      }]
+    }}
+  ]
+}]}
+```
+
+### Key Differences
+- **MCP**: Returns immediate or async response with task_id
+- **A2A**: Always async with real-time progress updates via SSE
+- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
+
+## Scenarios
 
 ### Example 1: Single Asset Creatives
 
@@ -166,10 +306,11 @@ Upload creative assets and assign them to packages. This task includes validatio
 ```
 
 ### Response - All Approved
+**Message**: "Great news! Both creatives have been approved and are now live. Your video is serving on Connected TV and your audio spot is running during drive time. I've identified an opportunity to improve mobile performance by creating a vertical version of your video - this could increase conversions by 35%."
+
+**Payload**:
 ```json
 {
-  "message": "Great news! Both creatives have been approved and are now live. Your video is serving on Connected TV and your audio spot is running during drive time. I've identified an opportunity to improve mobile performance by creating a vertical version of your video - this could increase conversions by 35%.",
-  "context_id": "ctx-media-buy-abc123",
   "asset_statuses": [
     {
       "creative_id": "pet_food_30s_v1",
@@ -204,10 +345,11 @@ Upload creative assets and assign them to packages. This task includes validatio
 ```
 
 ### Response - Pending Review
+**Message**: "Your creatives have been uploaded successfully and are in review. The video creative typically takes 2-4 hours for approval, while audio creatives are usually approved within 1 hour. I'll notify you once they're live."
+
+**Payload**:
 ```json
 {
-  "message": "Your creatives have been uploaded successfully and are in review. The video creative typically takes 2-4 hours for approval, while audio creatives are usually approved within 1 hour. I'll notify you once they're live.",
-  "context_id": "ctx-media-buy-abc123",
   "asset_statuses": [
     {
       "creative_id": "pet_food_30s_v1",
@@ -228,10 +370,11 @@ Upload creative assets and assign them to packages. This task includes validatio
 ```
 
 ### Response - Mixed Status with Rejection
+**Message**: "I've processed your creatives with mixed results. The audio spot was approved and is now live. However, the video was rejected due to missing advertiser disclosure. Please add 'Advertisement' text in the first 3 seconds and resubmit. This is a common requirement that ensures transparency."
+
+**Payload**:
 ```json
 {
-  "message": "I've processed your creatives with mixed results. The audio spot was approved and is now live. However, the video was rejected due to missing advertiser disclosure. Please add 'Advertisement' text in the first 3 seconds and resubmit. This is a common requirement that ensures transparency.",
-  "context_id": "ctx-media-buy-abc123",
   "asset_statuses": [
     {
       "creative_id": "pet_food_30s_v1",

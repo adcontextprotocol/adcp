@@ -9,45 +9,242 @@ title: get_signals
 
 The `get_signals` task returns both signal metadata and real-time deployment status across platforms, allowing agents to understand availability and guide the activation process.
 
-## Request
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `signal_spec` | string | Yes | Natural language description of the desired signals |
+| `deliver_to` | DeliverTo | Yes | Where the signals need to be delivered (see Deliver To Object below) |
+| `filters` | Filters | No | Filters to refine results (see Filters Object below) |
+| `max_results` | number | No | Maximum number of results to return |
+
+### Deliver To Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `platforms` | string[] \| "all" | Yes | Target platforms for signal deployment |
+| `accounts` | Account[] | No | Specific platform-account combinations (see Account Object below) |
+| `countries` | string[] | Yes | Countries where signals will be used (ISO codes) |
+
+### Account Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `platform` | string | Yes | Platform identifier |
+| `account` | string | Yes | Account identifier on that platform |
+
+### Filters Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `catalog_types` | string[] | No | Filter by catalog type ("marketplace", "custom", "owned") |
+| `data_providers` | string[] | No | Filter by specific data providers |
+| `max_cpm` | number | No | Maximum CPM price filter |
+| `min_coverage_percentage` | number | No | Minimum coverage requirement |
+
+## Response (Message)
+
+The response includes a human-readable message that:
+- Summarizes the signals found matching the criteria
+- Explains deployment status across platforms
+- Highlights activation requirements or timing
+- Provides recommendations for signal selection
+
+The message is returned differently in each protocol:
+- **MCP**: Returned as a `message` field in the JSON response
+- **A2A**: Returned as a text part in the artifact
+
+## Response (Payload)
 
 ```json
 {
-  "context_id": null,  // First request, no context yet
-  "signal_spec": "High-income households interested in luxury goods",
-  "deliver_to": {
-    "platforms": ["index-exchange", "openx"],
-    "accounts": [
-      { "platform": "index-exchange", "account": "agency-123-ix" },
-      { "platform": "openx", "account": "agency-123-ox" }
-    ],
-    "countries": ["US", "CA"]
-  },
-  "filters": {
-    "catalog_types": ["marketplace"],
-    "max_cpm": 5.0,
-    "min_coverage_percentage": 10
-  },
-  "max_results": 5
+  "signals": [
+    {
+      "signal_agent_segment_id": "string",
+      "name": "string",
+      "description": "string",
+      "signal_type": "string",
+      "data_provider": "string",
+      "coverage_percentage": "number",
+      "deployments": [
+        {
+          "platform": "string",
+          "account": "string",
+          "is_live": "boolean",
+          "scope": "string",
+          "decisioning_platform_segment_id": "string",
+          "estimated_activation_duration_minutes": "number"
+        }
+      ],
+      "pricing": {
+        "cpm": "number",
+        "currency": "string"
+      }
+    }
+  ]
 }
 ```
 
-### Parameters
+### Field Descriptions
 
-- **context_id** (string, nullable): Context identifier for session persistence (null on first request)
-- **signal_spec** (string, required): Natural language description of the desired signals
-- **deliver_to** (object, required): Where the signals need to be delivered
-  - **platforms** (array or "all"): Target platforms for signal deployment
-  - **accounts** (array, optional): Specific platform-account combinations
-  - **countries** (array, required): Countries where signals will be used
-- **filters** (object, optional): Filters to refine results
-  - **catalog_types** (array): Filter by catalog type (marketplace, custom, owned)
-  - **data_providers** (array): Filter by specific data providers
-  - **max_cpm** (number): Maximum CPM price filter
-  - **min_coverage_percentage** (number): Minimum coverage requirement
-- **max_results** (number, optional): Maximum number of results to return
+- **signals**: Array of matching signals
+  - **signal_agent_segment_id**: Unique identifier for the signal
+  - **name**: Human-readable signal name
+  - **description**: Detailed signal description
+  - **signal_type**: Type of signal (marketplace, custom, owned)
+  - **data_provider**: Name of the data provider
+  - **coverage_percentage**: Percentage of audience coverage
+  - **deployments**: Array of platform deployments
+    - **platform**: Platform name
+    - **account**: Specific account if applicable
+    - **is_live**: Whether signal is currently active
+    - **scope**: Deployment scope (platform-wide or account-specific)
+    - **decisioning_platform_segment_id**: Platform-specific segment ID
+    - **estimated_activation_duration_minutes**: Time to activate if not live
+  - **pricing**: Pricing information
+    - **cpm**: Cost per thousand impressions
+    - **currency**: Currency code
 
-## Examples
+## Protocol-Specific Examples
+
+The AdCP payload is identical across protocols. Only the request/response wrapper differs.
+
+### MCP Request
+```json
+{
+  "tool": "get_signals",
+  "arguments": {
+    
+    "signal_spec": "High-income households interested in luxury goods",
+    "deliver_to": {
+      "platforms": ["the-trade-desk", "amazon-dsp"],
+      "countries": ["US"]
+    },
+    "filters": {
+      "max_cpm": 5.0,
+      "catalog_types": ["marketplace"]
+    },
+    "max_results": 5
+  }
+}
+```
+
+### MCP Response
+```json
+{
+  "message": "Found 1 luxury segment matching your criteria. Available on The Trade Desk, pending activation on Amazon DSP.",
+  "context_id": "ctx-signals-123",
+  "signals": [
+    {
+      "signal_agent_segment_id": "luxury_auto_intenders",
+      "name": "Luxury Automotive Intenders",
+      "description": "High-income individuals researching luxury vehicles",
+      "signal_type": "marketplace",
+      "data_provider": "Experian",
+      "coverage_percentage": 12,
+      "deployments": [
+        {
+          "platform": "the-trade-desk",
+          "account": null,
+          "is_live": true,
+          "scope": "platform-wide",
+          "decisioning_platform_segment_id": "ttd_exp_lux_auto_123"
+        },
+        {
+          "platform": "amazon-dsp",
+          "account": null,
+          "is_live": false,
+          "scope": "platform-wide",
+          "estimated_activation_duration_minutes": 60
+        }
+      ],
+      "pricing": {
+        "cpm": 3.50,
+        "currency": "USD"
+      }
+    }
+  ]
+}
+```
+
+### A2A Request
+For A2A, the skill and input are sent as:
+```json
+{
+  "skill": "get_signals",
+  "input": {
+    
+    "signal_spec": "High-income households interested in luxury goods",
+    "deliver_to": {
+      "platforms": ["the-trade-desk", "amazon-dsp"],
+      "countries": ["US"]
+    },
+    "filters": {
+      "max_cpm": 5.0,
+      "catalog_types": ["marketplace"]
+    },
+    "max_results": 5
+  }
+}
+```
+
+### A2A Response
+A2A returns results as artifacts:
+```json
+{
+  "artifacts": [{
+      "name": "signal_discovery_result",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Found 1 luxury segment matching your criteria. Available on The Trade Desk, pending activation on Amazon DSP."
+        },
+        {
+          "kind": "data",
+          "data": {
+            "signals": [
+              {
+                "signal_agent_segment_id": "luxury_auto_intenders",
+                "name": "Luxury Automotive Intenders",
+                "description": "High-income individuals researching luxury vehicles",
+                "signal_type": "marketplace",
+                "data_provider": "Experian",
+                "coverage_percentage": 12,
+                "deployments": [
+                  {
+                    "platform": "the-trade-desk",
+                    "account": null,
+                    "is_live": true,
+                    "scope": "platform-wide",
+                    "decisioning_platform_segment_id": "ttd_exp_lux_auto_123"
+                  },
+                  {
+                    "platform": "amazon-dsp",
+                    "account": null,
+                    "is_live": false,
+                    "scope": "platform-wide",
+                    "estimated_activation_duration_minutes": 60
+                  }
+                ],
+                "pricing": {
+                  "cpm": 3.50,
+                  "currency": "USD"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }]
+}
+```
+
+### Key Differences
+- **MCP**: Direct tool call with arguments, returns flat JSON response
+- **A2A**: Skill invocation with input, returns artifacts with text and data parts
+- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
+
+## Scenarios
 
 ### All Platforms Discovery
 
@@ -55,7 +252,7 @@ Discover all available deployments across platforms:
 
 ```json
 {
-  "context_id": null,
+  
   "signal_spec": "Contextual segments for luxury automotive content",
   "deliver_to": {
     "platforms": "all",
@@ -68,11 +265,13 @@ Discover all available deployments across platforms:
 }
 ```
 
-## Response
+### Response
 
+**Message**: "Found luxury automotive contextual segment from Peer39 with 15% coverage. Live on Index Exchange and OpenX, pending activation on Pubmatic."
+
+**Payload**:
 ```json
 {
-  "context_id": "ctx-signals-abc123",  // Server creates context
   "signals": [{
     "signal_agent_segment_id": "peer39_luxury_auto",
     "name": "Luxury Automotive Context",

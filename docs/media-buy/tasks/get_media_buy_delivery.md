@@ -11,18 +11,30 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `context_id` | string | Yes | Context identifier for session persistence |
-| `media_buy_ids` | array[string] | No | Array of media buy IDs to get delivery data for. If not provided, returns all media buys for the context |
-| `status_filter` | string \| array[string] | No | Filter by status. Can be a single status or array of statuses: `"active"`, `"pending"`, `"paused"`, `"completed"`, `"failed"`, `"all"`. Defaults to `["active"]` |
+| `media_buy_ids` | string[] | No* | Array of publisher media buy IDs to get delivery data for |
+| `buyer_refs` | string[] | No* | Array of buyer reference IDs to get delivery data for |
+| `status_filter` | string \| string[] | No | Filter by status. Can be a single status or array of statuses: `"active"`, `"pending"`, `"paused"`, `"completed"`, `"failed"`, `"all"`. Defaults to `["active"]` |
 | `start_date` | string | No | Start date for reporting period (YYYY-MM-DD) |
 | `end_date` | string | No | End date for reporting period (YYYY-MM-DD) |
 
-## Response Format
+*Either `media_buy_ids` or `buyer_refs` can be provided. If neither is provided, returns all media buys in the current session context.
+
+## Response (Message)
+
+The response includes a human-readable message that:
+- Summarizes campaign performance and key insights
+- Highlights pacing and completion rates
+- Provides recommendations based on performance
+- Explains any delivery issues or optimizations
+
+The message is returned differently in each protocol:
+- **MCP**: Returned as a `message` field in the JSON response
+- **A2A**: Returned as a text part in the artifact
+
+## Response (Payload)
 
 ```json
 {
-  "message": "string",
-  "context_id": "string",
   "reporting_period": {
     "start": "string",
     "end": "string"
@@ -38,6 +50,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
   "deliveries": [
     {
       "media_buy_id": "string",
+      "buyer_ref": "string",
       "status": "string",
       "totals": {
         "impressions": "number",
@@ -50,6 +63,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
       "by_package": [
         {
           "package_id": "string",
+          "buyer_ref": "string",
           "impressions": "number",
           "spend": "number",
           "clicks": "number",
@@ -71,12 +85,10 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 
 ### Field Descriptions
 
-- **message**: Human-readable summary of campaign performance and key insights across all returned media buys
-- **context_id**: Context identifier for session persistence
 - **reporting_period**: Date range for the report
   - **start**: ISO 8601 start timestamp
   - **end**: ISO 8601 end timestamp
-- **currency**: Currency code (typically `"USD"`)
+- **currency**: ISO 4217 currency code (e.g., `"USD"`, `"EUR"`, `"GBP"`)
 - **aggregated_totals**: Combined metrics across all returned media buys
   - **impressions**: Total impressions delivered across all media buys
   - **spend**: Total amount spent across all media buys
@@ -84,7 +96,8 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
   - **video_completions**: Total video completions across all media buys (if applicable)
   - **media_buy_count**: Number of media buys included in the response
 - **deliveries**: Array of delivery data for each media buy
-  - **media_buy_id**: The media buy identifier
+  - **media_buy_id**: Publisher's media buy identifier
+  - **buyer_ref**: Buyer's reference identifier for this media buy
   - **status**: Current media buy status (`pending`, `active`, `paused`, `completed`, `failed`)
   - **totals**: Aggregate metrics for this media buy across all packages
     - **impressions**: Total impressions delivered
@@ -94,7 +107,8 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
     - **video_completions**: Total video completions (if applicable)
     - **completion_rate**: Video completion rate (completions/impressions)
   - **by_package**: Metrics broken down by package
-    - **package_id**: Package identifier
+    - **package_id**: Publisher's package identifier
+    - **buyer_ref**: Buyer's reference identifier for this package
     - **impressions**: Package impressions
     - **spend**: Package spend
     - **clicks**: Package clicks
@@ -105,7 +119,142 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
     - **impressions**: Daily impressions
     - **spend**: Daily spend
 
-## Examples
+## Protocol-Specific Examples
+
+The AdCP payload is identical across protocols. Only the request/response wrapper differs.
+
+### MCP Request
+```json
+{
+  "tool": "get_media_buy_delivery",
+  "arguments": {
+    "buyer_refs": ["nike_q1_campaign_2024"],
+    "start_date": "2024-01-01",
+    "end_date": "2024-01-31"
+  }
+}
+```
+
+### MCP Response
+```json
+{
+  "message": "Campaign is 65% delivered with strong performance. CTR of 2.3% exceeds benchmark.",
+  "reporting_period": {
+    "start": "2024-01-01T00:00:00Z",
+    "end": "2024-01-31T23:59:59Z"
+  },
+  "currency": "USD",
+  "aggregated_totals": {
+    "impressions": 1250000,
+    "spend": 32500,
+    "clicks": 28750,
+    "video_completions": 875000,
+    "media_buy_count": 1
+  },
+  "deliveries": [
+    {
+      "media_buy_id": "mb_12345",
+      "status": "active",
+      "totals": {
+        "impressions": 1250000,
+        "spend": 32500,
+        "clicks": 28750,
+        "ctr": 2.3,
+        "video_completions": 875000,
+        "completion_rate": 70
+      },
+      "by_package": [
+        {
+          "package_id": "pkg_ctv_001",
+          "impressions": 750000,
+          "spend": 22500,
+          "clicks": 0,
+          "video_completions": 525000,
+          "pacing_index": 0.95
+        }
+      ]
+    }
+  ]
+}
+```
+
+### A2A Request
+For A2A, the skill and input are sent as:
+```json
+{
+  "skill": "get_media_buy_delivery",
+  "input": {
+    
+    "media_buy_ids": ["mb_12345"],
+    "start_date": "2024-01-01",
+    "end_date": "2024-01-31"
+  }
+}
+```
+
+### A2A Response
+A2A returns results as artifacts:
+```json
+{
+  "artifacts": [{
+      "name": "delivery_report",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Campaign is 65% delivered with strong performance. CTR of 2.3% exceeds benchmark."
+        },
+        {
+          "kind": "data",
+          "data": {
+            "reporting_period": {
+              "start": "2024-01-01T00:00:00Z",
+              "end": "2024-01-31T23:59:59Z"
+            },
+            "currency": "USD",
+            "aggregated_totals": {
+              "impressions": 1250000,
+              "spend": 32500,
+              "clicks": 28750,
+              "video_completions": 875000,
+              "media_buy_count": 1
+            },
+            "deliveries": [
+              {
+                "media_buy_id": "mb_12345",
+                "status": "active",
+                "totals": {
+                  "impressions": 1250000,
+                  "spend": 32500,
+                  "clicks": 28750,
+                  "ctr": 2.3,
+                  "video_completions": 875000,
+                  "completion_rate": 70
+                },
+                "by_package": [
+                  {
+                    "package_id": "pkg_ctv_001",
+                    "impressions": 750000,
+                    "spend": 22500,
+                    "clicks": 0,
+                    "video_completions": 525000,
+                    "pacing_index": 0.95
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }]
+}
+```
+
+### Key Differences
+- **MCP**: Direct tool call with arguments, returns flat JSON response
+- **A2A**: Skill invocation with input, returns artifacts with text and data parts
+- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
+
+## Scenarios
 
 ### Example 1: Single Media Buy Query
 
@@ -120,10 +269,11 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 ```
 
 #### Response - Strong Performance
+**Message**: "Your campaign delivered 450,000 impressions this week with strong engagement. The 0.2% CTR exceeds industry benchmarks, and your video completion rate of 70% is excellent. You're currently pacing slightly behind (-9%) but should catch up with weekend delivery. Effective CPM is $37.50."
+
+**Payload**:
 ```json
 {
-  "message": "Your campaign delivered 450,000 impressions this week with strong engagement. The 0.2% CTR exceeds industry benchmarks, and your video completion rate of 70% is excellent. You're currently pacing slightly behind (-9%) but should catch up with weekend delivery. Effective CPM is $37.50.",
-  "context_id": "ctx-media-buy-abc123",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
     "end": "2024-02-07T23:59:59Z"

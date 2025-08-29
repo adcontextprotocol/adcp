@@ -12,34 +12,151 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 - Monitoring activation progress
 - Returning the final deployment status
 
-## Request
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `signal_agent_segment_id` | string | Yes | The universal identifier for the signal to activate |
+| `platform` | string | Yes | The target platform for activation |
+| `account` | string | No* | Account identifier (required for account-specific activation) |
+
+*Required when activating at account level
+
+## Response (Message)
+
+The response includes a human-readable message that:
+- Confirms activation was initiated with estimated timing
+- Provides progress updates during processing
+- Explains successful deployment with segment ID
+- Describes any errors and remediation steps
+
+The message is returned differently in each protocol:
+- **MCP**: Returned as a `message` field in the JSON response
+- **A2A**: Returned as a text part in the artifact
+
+## Response (Payload)
 
 ```json
 {
-  "context_id": "ctx-signals-abc123",  // From previous get_signals call
-  "signal_agent_segment_id": "peer39_luxury_auto",
-  "platform": "pubmatic",
-  "account": "brand-456-pm"
+  "task_id": "string",
+  "status": "string",
+  "decisioning_platform_segment_id": "string",
+  "estimated_activation_duration_minutes": "number",
+  "deployed_at": "string",
+  "error": {
+    "code": "string",
+    "message": "string"
+  }
 }
 ```
 
-### Parameters
+### Field Descriptions
 
-- **context_id** (string, required): Context identifier from previous get_signals call
-- **signal_agent_segment_id** (string, required): The universal identifier for the signal to activate
-- **platform** (string, required): The target platform for activation
-- **account** (string, optional): Required for account-specific activation
+- **task_id**: Unique identifier for tracking the activation
+- **status**: Current status (pending, processing, deployed, failed)
+- **decisioning_platform_segment_id**: The platform-specific ID to use once activated
+- **estimated_activation_duration_minutes**: Estimated time to complete (optional)
+- **deployed_at**: Timestamp when activation completed (optional)
+- **error**: Error details if activation failed (optional)
+  - **code**: Error code for programmatic handling
+  - **message**: Detailed error message
 
-## Response
+## Protocol-Specific Examples
 
-The task provides status updates as the activation progresses:
+The AdCP payload is identical across protocols. Only the request/response wrapper differs.
 
-### Initial Response (immediate)
-
+### MCP Request
 ```json
 {
-  "message": "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use.",
-  "context_id": "ctx-signals-abc123",
+  "tool": "activate_signal",
+  "arguments": {
+    
+    "signal_agent_segment_id": "luxury_auto_intenders",
+    "platform": "the-trade-desk",
+    "account": "agency-123-ttd"
+  }
+}
+```
+
+### MCP Response (Asynchronous)
+Initial response:
+```json
+{
+  "message": "Initiating activation of 'Luxury Auto Intenders' on The Trade Desk",
+  "context_id": "ctx-signals-123",
+  "task_id": "activation_789",
+  "status": "pending",
+  "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
+  "estimated_activation_duration_minutes": 30
+}
+```
+
+After polling for completion:
+```json
+{
+  "message": "Signal successfully activated on The Trade Desk",
+  "context_id": "ctx-signals-123",
+  "task_id": "activation_789",
+  "status": "deployed",
+  "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
+  "deployed_at": "2024-01-15T14:30:00Z"
+}
+```
+
+### A2A Request
+For A2A, the skill and input are sent as:
+```json
+{
+  "skill": "activate_signal",
+  "input": {
+    
+    "signal_agent_segment_id": "luxury_auto_intenders",
+    "platform": "the-trade-desk",
+    "account": "agency-123-ttd"
+  }
+}
+```
+
+### A2A Response (with streaming)
+Initial response:
+```json
+{
+  "taskId": "task-signal-001",
+  "status": { "state": "working" }
+}
+```
+
+Then via Server-Sent Events:
+```
+data: {"message": "Validating signal access permissions..."}
+data: {"message": "Configuring deployment on The Trade Desk..."}
+data: {"message": "Finalizing activation..."}
+data: {"status": {"state": "completed"}, "artifacts": [{
+  "name": "signal_activation_result",
+  "parts": [
+    {"kind": "text", "text": "Signal successfully activated on The Trade Desk"},
+    {"kind": "data", "data": {
+      "status": "deployed",
+      "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
+      "deployed_at": "2024-01-15T14:30:00Z"
+    }}
+  ]
+}]}
+```
+
+### Key Differences
+- **MCP**: Returns task_id for polling asynchronous operations
+- **A2A**: Always async with real-time progress updates via SSE
+- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
+
+## Scenarios
+
+### Initial Response (Pending)
+**Message**: "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use."
+
+**Payload**:
+```json
+{
   "task_id": "activation_12345",
   "status": "pending",
   "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
@@ -47,23 +164,23 @@ The task provides status updates as the activation progresses:
 }
 ```
 
-### Status Updates (streamed or polled)
+### Status Update (Processing)
+**Message**: "Good progress on the activation. Access permissions validated successfully. Now configuring the signal deployment on PubMatic's platform. About 45 minutes remaining."
 
+**Payload**:
 ```json
 {
-  "message": "Good progress on the activation. Access permissions validated successfully. Now configuring the signal deployment on PubMatic's platform. About 45 minutes remaining.",
-  "context_id": "ctx-signals-abc123",
   "task_id": "activation_12345",
   "status": "processing"
 }
 ```
 
-### Final Response (when complete)
+### Final Response (Deployed)
+**Message**: "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately in your campaigns with the ID 'pm_brand456_peer39_lux_auto'. The activation completed faster than expected - just 52 minutes."
 
+**Payload**:
 ```json
 {
-  "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately in your campaigns with the ID 'pm_brand456_peer39_lux_auto'. The activation completed faster than expected - just 52 minutes.",
-  "context_id": "ctx-signals-abc123",
   "task_id": "activation_12345",
   "status": "deployed",
   "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
@@ -71,12 +188,12 @@ The task provides status updates as the activation progresses:
 }
 ```
 
-### Error Response
+### Error Response (Failed)
+**Message**: "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again."
 
+**Payload**:
 ```json
 {
-  "message": "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again.",
-  "context_id": "ctx-signals-abc123",
   "task_id": "activation_12345",
   "status": "failed",
   "error": {
@@ -85,17 +202,6 @@ The task provides status updates as the activation progresses:
   }
 }
 ```
-
-### Response Fields
-
-- **message** (string): Human-readable explanation of the activation status and next steps
-- **context_id** (string): Context identifier for session persistence
-- **task_id** (string): Unique identifier for tracking the activation
-- **status** (string): Current status (pending, processing, deployed, failed)
-- **decisioning_platform_segment_id** (string): The platform-specific ID to use once activated
-- **estimated_activation_duration_minutes** (number, optional): Estimated time to complete
-- **deployed_at** (string, optional): Timestamp when activation completed
-- **error** (object, optional): Error details if activation failed
 
 ## Status Values
 
