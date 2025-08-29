@@ -27,10 +27,9 @@ Update campaign and package settings. This task supports partial updates and han
 |-----------|------|----------|-------------|
 | `package_id` | string | No* | Publisher's ID of package to update |
 | `buyer_ref` | string | No* | Buyer's reference for the package to update |
-| `budget` | Budget | No | New budget configuration for this package |
+| `budget` | Budget | No | New budget configuration for this package (see Budget Object in create_media_buy) |
 | `active` | boolean | No | Pause/resume specific package |
-| `impressions` | number | No | Direct impression goal |
-| `daily_impressions` | number | No | Daily impression cap |
+| `targeting_overlay` | TargetingOverlay | No | Update targeting for this package (see Targeting Overlay Object in create_media_buy) |
 | `creative_ids` | string[] | No | Update creative assignments |
 
 *Either `package_id` or `buyer_ref` must be provided
@@ -51,19 +50,26 @@ The message is returned differently in each protocol:
 
 ```json
 {
-  "status": "string",
+  "media_buy_id": "string",
+  "buyer_ref": "string",
   "implementation_date": "string",
-  "detail": "string",
-  "affected_packages": ["string"]
+  "affected_packages": [
+    {
+      "package_id": "string",
+      "buyer_ref": "string"
+    }
+  ]
 }
 ```
 
 ### Field Descriptions
 
-- **status**: Update status (e.g., `"completed"`, `"working"`)
+- **media_buy_id**: Publisher's identifier for the media buy
+- **buyer_ref**: Buyer's reference identifier for the media buy
 - **implementation_date**: ISO 8601 timestamp when changes take effect
-- **detail**: Human-readable description of changes made
-- **affected_packages**: Array of package IDs that were modified
+- **affected_packages**: Array of packages that were modified
+  - **package_id**: Publisher's package identifier
+  - **buyer_ref**: Buyer's reference for the package
 
 ## Protocol-Specific Examples
 
@@ -93,14 +99,29 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 }
 ```
 
-### MCP Response
+### MCP Response (Synchronous)
 ```json
 {
   "message": "Successfully updated media buy. Budget increased to $150,000 with front-loaded pacing.",
   "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "nike_q1_campaign_2024",
   "implementation_date": "2024-02-01T00:00:00Z",
-  "detail": "Budget and pacing updated in ad server",
-  "affected_packages": ["pkg_ctv_001"]
+  "affected_packages": [
+    {
+      "package_id": "pkg_12345_001",
+      "buyer_ref": "nike_ctv_sports_package"
+    }
+  ]
+}
+```
+
+### MCP Response (Asynchronous)
+```json
+{
+  "task_id": "task_update_456",
+  "status": "working",
+  "message": "Processing media buy update..."
 }
 ```
 
@@ -111,19 +132,25 @@ For A2A, the skill and input are sent as:
   "skill": "update_media_buy",
   "input": {
     "buyer_ref": "nike_q1_campaign_2024",
-    "total_budget": 150000,
-    "pacing": "front_loaded",
+    "budget": {
+      "total": 150000,
+      "currency": "USD",
+      "pacing": "front_loaded"
+    },
     "packages": [
       {
-        "package_id": "pkg_ctv_001",
-        "budget": 100000
+        "buyer_ref": "nike_ctv_sports_package",
+        "budget": {
+          "total": 100000,
+          "currency": "USD"
+        }
       }
     ]
   }
 }
 ```
 
-### A2A Response
+### A2A Response (Synchronous)
 A2A returns results as artifacts:
 ```json
 {
@@ -137,15 +164,38 @@ A2A returns results as artifacts:
       {
         "kind": "data",
         "data": {
-          "status": "completed",
+          "media_buy_id": "mb_12345",
+          "buyer_ref": "nike_q1_campaign_2024",
           "implementation_date": "2024-02-01T00:00:00Z",
-          "detail": "Budget and pacing updated in ad server",
-          "affected_packages": ["pkg_ctv_001"]
+          "affected_packages": [
+            {"package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package"}
+          ]
         }
       }
     ]
   }]
 }
+```
+
+### A2A Response (Asynchronous with SSE)
+```json
+{
+  "task_id": "task_update_456",
+  "status": "working",
+  "updates": "https://ad-server.example.com/sse/task_update_456"
+}
+```
+
+SSE Updates:
+```
+event: status
+data: {"status": "working", "message": "Validating update parameters..."}
+
+event: status
+data: {"status": "working", "message": "Applying budget changes to packages..."}
+
+event: completed
+data: {"artifacts": [{"name": "update_confirmation", "parts": [{"kind": "text", "text": "Successfully updated media buy."}, {"kind": "data", "data": {"media_buy_id": "mb_12345", "buyer_ref": "nike_q1_campaign_2024", "implementation_date": "2024-02-01T00:00:00Z", "affected_packages": [{"package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package"}]}}]}]}
 ```
 
 ### Key Differences
@@ -160,8 +210,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // From previous operations
-  "media_buy_id": "gam_1234567890",
+  "buyer_ref": "purina_pet_campaign_q1",
   "active": false
 }
 ```
@@ -172,10 +221,13 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
-  "status": "completed",
+  "media_buy_id": "gam_1234567890",
+  "buyer_ref": "purina_pet_campaign_q1",
   "implementation_date": "2024-02-08T00:00:00Z",
-  "detail": "Order paused in Google Ad Manager",
-  "affected_packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"]
+  "affected_packages": [
+    {"package_id": "gam_pkg_001", "buyer_ref": "purina_ctv_package"},
+    {"package_id": "gam_pkg_002", "buyer_ref": "purina_audio_package"}
+  ]
 }
 ```
 
@@ -184,18 +236,23 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",  // From previous operations
-  "media_buy_id": "gam_1234567890",
-  "flight_end_date": "2024-02-28",
-  "total_budget": 75000,
+  "buyer_ref": "purina_pet_campaign_q1",
+  "end_time": "2024-02-28T23:59:59Z",
+  "budget": {
+    "total": 75000,
+    "currency": "USD"
+  },
   "packages": [
     {
-      "package_id": "pkg_ctv_prime_ca_ny",
-      "budget": 45000,
-      "pacing": "front_loaded"
+      "buyer_ref": "purina_ctv_package",
+      "budget": {
+        "total": 45000,
+        "currency": "USD",
+        "pacing": "front_loaded"
+      }
     },
     {
-      "package_id": "pkg_audio_drive_ca_ny",
+      "buyer_ref": "purina_audio_package",
       "active": false
     }
   ]
@@ -208,10 +265,13 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
-  "status": "completed",
+  "media_buy_id": "gam_1234567890",
+  "buyer_ref": "purina_pet_campaign_q1",
   "implementation_date": "2024-02-08T00:00:00Z",
-  "detail": "Updated budget to $75,000, extended end date, modified 2 packages",
-  "affected_packages": ["pkg_ctv_prime_ca_ny", "pkg_audio_drive_ca_ny"]
+  "affected_packages": [
+    {"package_id": "gam_pkg_001", "buyer_ref": "purina_ctv_package"},
+    {"package_id": "gam_pkg_002", "buyer_ref": "purina_audio_package"}
+  ]
 }
 ```
 
@@ -220,9 +280,11 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
-  "context_id": "ctx-media-buy-abc123",
-  "media_buy_id": "gam_1234567890",
-  "total_budget": 150000
+  "buyer_ref": "purina_pet_campaign_q1",
+  "budget": {
+    "total": 150000,
+    "currency": "USD"
+  }
 }
 ```
 
@@ -232,9 +294,9 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
-  "status": "working",
+  "media_buy_id": "gam_1234567890",
+  "buyer_ref": "purina_pet_campaign_q1",
   "implementation_date": null,
-  "detail": "Budget increase requires approval (task_id: approval_98765)",
   "affected_packages": []
 }
 ```
@@ -247,24 +309,41 @@ This tool follows PATCH update semantics:
 - **Null values clear/reset fields** - Where applicable
 - **Packages not mentioned remain unchanged** - Only listed packages are updated
 
-## Package Update Schema
 
-When updating packages within a media buy:
+## Asynchronous Updates
 
-```typescript
-interface PackageUpdate {
-  package_id: string;              // Required: which package to update
-  active?: boolean;                // Pause/resume package
-  budget?: number;                 // New budget in dollars
-  impressions?: number;            // Direct impression goal
-  cpm?: number;                    // Update CPM rate
-  daily_budget?: number;           // Daily spend cap
-  daily_impressions?: number;      // Daily impression cap
-  pacing?: "even" | "asap" | "front_loaded";
-  creative_ids?: string[];         // Update creative assignments
-  targeting_overlay?: Targeting;   // Package-specific targeting
+Both MCP and A2A support asynchronous updates for operations that may take time or require approval:
+
+### MCP Asynchronous Flow
+
+1. Initial request returns immediately with task_id and status "working"
+2. Client polls using update_media_buy_status with the task_id
+3. Final status includes the complete update results
+
+### A2A Asynchronous Flow
+
+1. Initial request returns task_id with SSE URL or webhook configuration
+2. Updates stream via SSE or push to webhooks
+3. Final event includes complete artifacts with update results
+
+### Human-in-the-Loop Scenarios
+
+When updates require approval:
+
+```json
+{
+  "status": "input-required",
+  "message": "Budget increase requires advertiser approval",
+  "responsible_party": "advertiser",
+  "estimated_time": "2-4 hours"
 }
 ```
+
+The system will:
+1. Notify the responsible party
+2. Maintain current campaign settings
+3. Apply changes only after approval
+4. Send status updates throughout the process
 
 ## Campaign-Level vs Package-Level Updates
 
@@ -272,11 +351,11 @@ The `update_media_buy` tool provides a unified interface that supports both camp
 
 ### Campaign-Level Updates
 - `active`: Pause/resume entire campaign
-- `total_budget`: Adjust overall budget
-- `flight_end_date`: Extend or shorten campaign
+- `budget`: Adjust overall budget configuration
+- `start_time`: Change campaign start date/time
+- `end_time`: Extend or shorten campaign
 - `targeting_overlay`: Update global targeting
 - `pacing`: Change delivery strategy
-- `daily_budget`: Set daily spend caps
 
 ### Package-Level Updates
 - Apply different changes to multiple packages in one call
@@ -285,16 +364,16 @@ The `update_media_buy` tool provides a unified interface that supports both camp
 - Each package update is processed independently
 - Returns immediately on first error
 
-## Status Checking (MCP Only)
+## Status Checking
 
-### update_media_buy_status
+### MCP Status Checking
 
-For MCP implementations, use this endpoint to check the status of an asynchronous media buy update.
+For MCP implementations, use the `update_media_buy_status` endpoint to check the status of an asynchronous media buy update.
 
 #### Request
 ```json
 {
-  "context_id": "ctx-update-mb-321"  // Required - from update_media_buy response
+  "task_id": "task_update_456"  // Required - from update_media_buy response
 }
 ```
 
@@ -304,8 +383,8 @@ For MCP implementations, use this endpoint to check the status of an asynchronou
 ```json
 {
   "message": "Media buy update in progress - applying changes",
-  "context_id": "ctx-update-mb-321",
-  "status": "processing",
+  "task_id": "task_update_456",
+  "status": "working",
   "progress": {
     "completed": 1,
     "total": 2,
@@ -318,24 +397,34 @@ For MCP implementations, use this endpoint to check the status of an asynchronou
 **Completed:**
 ```json
 {
-  "message": "Successfully updated media buy gam_1234567890",
-  "context_id": "ctx-update-mb-321",
+  "message": "Successfully updated media buy",
+  "task_id": "task_update_456",
   "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "nike_q1_campaign_2024",
   "implementation_date": "2024-02-08T00:00:00Z",
-  "affected_packages": ["pkg_ctv_prime_ca_ny"]
+  "affected_packages": [
+    {"package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package"}
+  ]
 }
 ```
 
 **Pending Approval:**
 ```json
 {
-  "message": "Media buy update requires approval",
-  "context_id": "ctx-update-mb-321",
-  "status": "working",
-  "responsible_party": "advertiser",
-  "action_detail": "Finance team must approve budget increase"
+  "message": "Media buy update requires approval. Finance team must approve budget increase.",
+  "task_id": "task_update_456",
+  "status": "input-required",
+  "responsible_party": "advertiser"
 }
 ```
+
+### A2A Status Checking
+
+For A2A implementations, task status is delivered via:
+1. **Polling**: Client can poll using the task_id
+2. **Server-Sent Events (SSE)**: Real-time updates via the `updates` URL
+3. **Webhooks**: Push notifications to registered endpoints
 
 ## Usage Notes
 
@@ -344,43 +433,6 @@ For MCP implementations, use this endpoint to check the status of an asynchronou
 - Pausing a campaign preserves all settings and can be resumed anytime
 - Package-level updates override campaign-level settings
 - Some updates may affect pacing calculations and delivery patterns
-
-## Implementation Guide
-
-### Generating Update Messages
-
-The `message` field should clearly explain what changed and the impact:
-
-```python
-def generate_update_message(request, response, current_state):
-    changes = []
-    
-    # Budget changes
-    if request.total_budget:
-        old_budget = current_state.total_budget
-        change_pct = ((request.total_budget - old_budget) / old_budget) * 100
-        changes.append(f"Budget {'increased' if change_pct > 0 else 'decreased'} from ${old_budget:,} to ${request.total_budget:,} ({change_pct:+.0f}%)")
-    
-    # Campaign pause/resume
-    if request.active is not None:
-        if request.active:
-            changes.append("Campaign resumed")
-        else:
-            spent_pct = (current_state.spent / current_state.total_budget) * 100
-            changes.append(f"Campaign paused. You've spent ${current_state.spent:,} of your ${current_state.total_budget:,} budget ({spent_pct:.1f}%)")
-    
-    # Package updates
-    if request.packages:
-        package_changes = summarize_package_changes(request.packages)
-        changes.extend(package_changes)
-    
-    # Build message based on status
-    if response.status == "completed":
-        return f"Campaign updated successfully. {'. '.join(changes)}. Changes take effect immediately."
-    elif response.status == "working":
-        return f"{changes[0]} requires manual approval due to {get_approval_reason(request)}. This typically takes 2-4 hours during business hours. Your campaign continues with current settings until approved."
-```
-- Supports both budget and direct impression updates
 
 ## Platform Implementation
 
@@ -403,21 +455,19 @@ All update operations return a standardized response:
 }
 ```
 
-### Pending States vs Errors
+### Task States
 
-**Working State (Normal Flow):**
-When status is `working`, the message field will indicate the specific situation:
-- "Awaiting manual approval" - Operation requires human approval
-- "Permission required" - Operation blocked by permissions
-- "Under review" - Awaiting ad server approval
+Updates follow standard A2A task states:
 
-The `working` state is NOT an error and should be handled as part of normal operation flow.
+**Normal Flow States:**
+- `working`: Update is being processed
+- `input-required`: Awaiting approval or additional information
+- `completed`: Update successfully applied
 
-**Error States (Exceptional):**
-- `failed`: Operation cannot be completed
-- `AUTHENTICATION_REQUIRED`: Missing or invalid auth
-- `INVALID_PARAMETER`: Bad request data
-- `NOT_FOUND`: Resource doesn't exist
+**Error States:**
+- `failed`: Update could not be completed
+- `rejected`: Update was rejected by approver
+- `cancelled`: Update was cancelled before completion
 
 ## Usage Notes
 
@@ -425,7 +475,7 @@ The `working` state is NOT an error and should be handled as part of normal oper
 - Budget increases typically process immediately
 - Budget decreases may have restrictions based on delivered spend
 - Pausing takes effect at the next delivery opportunity
-- Date extensions require sufficient remaining budget
+- Campaign extensions require sufficient remaining budget
 - Creative updates only affect future impressions
 - Some platforms may limit which fields can be updated after activation
 - When updating budgets, the system automatically recalculates impression goals based on the package's CPM rate
