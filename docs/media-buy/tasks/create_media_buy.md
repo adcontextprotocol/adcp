@@ -18,7 +18,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this media buy |
 | `packages` | Package[] | Yes | Array of package configurations (see Package Object below) |
 | `promoted_offering` | string | Yes | Description of advertiser and what is being promoted |
-| `po_number` | string | Yes | Purchase order number for tracking |
+| `po_number` | string | No | Purchase order number for tracking |
 | `start_time` | string | Yes | Campaign start date/time in ISO 8601 format (UTC unless timezone specified) |
 | `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
 | `budget` | Budget | Yes | Budget configuration for the media buy (see Budget Object below) |
@@ -38,6 +38,12 @@ Create a media buy from selected packages. This task handles the complete workfl
 |-----------|------|----------|-------------|
 | `geo_country_any_of` | string[] | No | Target specific countries (ISO codes) |
 | `geo_region_any_of` | string[] | No | Target specific regions/states |
+| `geo_metro_any_of` | string[] | No | Target specific metro areas (DMA codes) |
+| `geo_postal_code_any_of` | string[] | No | Target specific postal/ZIP codes |
+| `geo_lat_long_radius` | object | No | Target by geographic coordinates and radius |
+| `device_type_any_of` | string[] | No | Target specific device types (desktop, mobile, tablet, connected_tv, smart_speaker) |
+| `os_any_of` | string[] | No | Target specific operating systems (windows, macos, ios, android, linux, roku, tvos, other) |
+| `browser_any_of` | string[] | No | Target specific browsers (chrome, firefox, safari, edge, other) |
 | `axe_include_segment` | string | No | AXE segment ID to include for targeting |
 | `axe_exclude_segment` | string | No | AXE segment ID to exclude from targeting |
 | `signals` | string[] | No | Signal IDs from get_signals |

@@ -59,6 +59,6 @@
       "$ref": "/schemas/v1/core/budget.json"
     }
   },
-  "required": ["buyer_ref", "packages", "promoted_offering", "po_number", "start_time", "end_time", "budget"],
+  "required": ["buyer_ref", "packages", "promoted_offering", "start_time", "end_time", "budget"],
   "additionalProperties": false
 }
