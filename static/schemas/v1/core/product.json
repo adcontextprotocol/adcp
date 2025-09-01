@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/product.json",
+  "title": "Product",
+  "description": "Represents available advertising inventory",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "Unique identifier for the product"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable product name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the product and its inventory"
+    },
+    "formats": {
+      "type": "array",
+      "description": "Array of supported creative formats",
+      "items": {
+        "$ref": "/schemas/v1/core/format.json"
+      }
+    },
+    "delivery_type": {
+      "$ref": "/schemas/v1/enums/delivery-type.json"
+    },
+    "is_fixed_price": {
+      "type": "boolean",
+      "description": "Whether this product has fixed pricing (true) or uses auction (false)"
+    },
+    "cpm": {
+      "type": "number",
+      "description": "Cost per thousand impressions in USD",
+      "minimum": 0
+    },
+    "min_spend": {
+      "type": "number",
+      "description": "Minimum budget requirement in USD",
+      "minimum": 0
+    },
+    "measurement": {
+      "$ref": "/schemas/v1/core/measurement.json"
+    },
+    "creative_policy": {
+      "$ref": "/schemas/v1/core/creative-policy.json"
+    },
+    "is_custom": {
+      "type": "boolean",
+      "description": "Whether this is a custom product"
+    },
+    "brief_relevance": {
+      "type": "string",
+      "description": "Explanation of why this product matches the brief (only included when brief is provided)"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Expiration timestamp for custom products"
+    }
+  },
+  "required": [
+    "product_id",
+    "name",
+    "description",
+    "formats",
+    "delivery_type",
+    "is_fixed_price"
+  ],
+  "additionalProperties": false
+}

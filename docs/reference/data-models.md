@@ -11,6 +11,8 @@ Core data structures used throughout AdCP.
 
 Represents available advertising inventory.
 
+**JSON Schema**: [`/schemas/v1/core/product.json`](/schemas/v1/core/product.json)
+
 ```typescript
 interface Product {
   product_id: string;
@@ -34,6 +36,8 @@ interface Product {
 
 Represents a purchased advertising campaign.
 
+**JSON Schema**: [`/schemas/v1/core/media-buy.json`](/schemas/v1/core/media-buy.json)
+
 ```typescript
 interface MediaBuy {
   media_buy_id: string;
@@ -51,6 +55,8 @@ interface MediaBuy {
 
 A specific product within a media buy (line item).
 
+**JSON Schema**: [`/schemas/v1/core/package.json`](/schemas/v1/core/package.json)
+
 ```typescript
 interface Package {
   package_id: string;
@@ -66,6 +72,8 @@ interface Package {
 ## Creative Asset
 
 Uploaded creative content.
+
+**JSON Schema**: [`/schemas/v1/core/creative-asset.json`](/schemas/v1/core/creative-asset.json)
 
 ```typescript
 interface CreativeAsset {
@@ -85,6 +93,8 @@ interface CreativeAsset {
 
 Audience targeting criteria.
 
+**JSON Schema**: [`/schemas/v1/core/targeting.json`](/schemas/v1/core/targeting.json)
+
 ```typescript
 interface Targeting {
   geo_country_any_of?: string[];
@@ -102,6 +112,8 @@ interface Targeting {
 
 Standard response structure (MCP).
 
+**JSON Schema**: [`/schemas/v1/core/response.json`](/schemas/v1/core/response.json)
+
 ```typescript
 interface Response {
   message: string;           // Human-readable summary
@@ -116,6 +128,8 @@ interface Response {
 
 Standard error structure.
 
+**JSON Schema**: [`/schemas/v1/core/error.json`](/schemas/v1/core/error.json)
+
 ```typescript
 interface Error {
   code: string;
@@ -129,15 +143,27 @@ interface Error {
 ## Common Enums
 
 ```typescript
-// Delivery Types
+// Delivery Types - Schema: /schemas/v1/enums/delivery-type.json
 type DeliveryType = 'guaranteed' | 'non_guaranteed';
 
-// Media Buy Status
+// Media Buy Status - Schema: /schemas/v1/enums/media-buy-status.json
 type MediaBuyStatus = 'pending_activation' | 'active' | 'paused' | 'completed';
 
-// Creative Status  
+// Creative Status - Schema: /schemas/v1/enums/creative-status.json
 type CreativeStatus = 'processing' | 'approved' | 'rejected' | 'pending_review';
 
-// Pacing
+// Pacing - Schema: /schemas/v1/enums/pacing.json
 type Pacing = 'even' | 'asap' | 'front_loaded';
 ```
+
+**Additional Enum Schemas**:
+- [`delivery-type.json`](/schemas/v1/enums/delivery-type.json) - guaranteed vs non_guaranteed
+- [`media-buy-status.json`](/schemas/v1/enums/media-buy-status.json) - Media buy lifecycle status
+- [`package-status.json`](/schemas/v1/enums/package-status.json) - Package lifecycle status
+- [`creative-status.json`](/schemas/v1/enums/creative-status.json) - Creative review status
+- [`pacing.json`](/schemas/v1/enums/pacing.json) - Budget pacing strategies
+- [`frequency-cap-scope.json`](/schemas/v1/enums/frequency-cap-scope.json) - Frequency cap scope
+
+## JSON Schema Registry
+
+View all available schemas: [`/schemas/v1/index.json`](/schemas/v1/index.json)

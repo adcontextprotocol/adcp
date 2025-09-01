@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/index.json",
+  "title": "AdCP Schema Registry v1",
+  "version": "1.0.0",
+  "description": "Registry of all AdCP JSON schemas for validation and discovery",
+  "lastUpdated": "2025-09-01",
+  "baseUrl": "/schemas/v1",
+  "schemas": {
+    "core": {
+      "description": "Core data models used throughout AdCP",
+      "schemas": {
+        "product": {
+          "$ref": "/schemas/v1/core/product.json",
+          "description": "Represents available advertising inventory"
+        },
+        "media-buy": {
+          "$ref": "/schemas/v1/core/media-buy.json",
+          "description": "Represents a purchased advertising campaign"
+        },
+        "package": {
+          "$ref": "/schemas/v1/core/package.json",
+          "description": "A specific product within a media buy (line item)"
+        },
+        "creative-asset": {
+          "$ref": "/schemas/v1/core/creative-asset.json",
+          "description": "Uploaded creative content"
+        },
+        "targeting": {
+          "$ref": "/schemas/v1/core/targeting.json",
+          "description": "Audience targeting criteria"
+        },
+        "budget": {
+          "$ref": "/schemas/v1/core/budget.json",
+          "description": "Budget configuration for a media buy or package"
+        },
+        "frequency-cap": {
+          "$ref": "/schemas/v1/core/frequency-cap.json",
+          "description": "Frequency capping settings"
+        },
+        "format": {
+          "$ref": "/schemas/v1/core/format.json",
+          "description": "Represents a creative format with its requirements"
+        },
+        "measurement": {
+          "$ref": "/schemas/v1/core/measurement.json",
+          "description": "Measurement capabilities included with a product"
+        },
+        "creative-policy": {
+          "$ref": "/schemas/v1/core/creative-policy.json",
+          "description": "Creative requirements and restrictions for a product"
+        },
+        "response": {
+          "$ref": "/schemas/v1/core/response.json",
+          "description": "Standard response structure (MCP)"
+        },
+        "error": {
+          "$ref": "/schemas/v1/core/error.json",
+          "description": "Standard error structure"
+        },
+        "sub-asset": {
+          "$ref": "/schemas/v1/core/sub-asset.json",
+          "description": "Sub-asset for multi-asset creative formats"
+        },
+        "creative-assignment": {
+          "$ref": "/schemas/v1/core/creative-assignment.json",
+          "description": "Assignment of a creative asset to a package"
+        }
+      }
+    },
+    "enums": {
+      "description": "Enumerated types and constants",
+      "schemas": {
+        "delivery-type": {
+          "$ref": "/schemas/v1/enums/delivery-type.json",
+          "description": "Type of inventory delivery"
+        },
+        "media-buy-status": {
+          "$ref": "/schemas/v1/enums/media-buy-status.json",
+          "description": "Status of a media buy"
+        },
+        "package-status": {
+          "$ref": "/schemas/v1/enums/package-status.json",
+          "description": "Status of a package"
+        },
+        "creative-status": {
+          "$ref": "/schemas/v1/enums/creative-status.json",
+          "description": "Status of a creative asset"
+        },
+        "pacing": {
+          "$ref": "/schemas/v1/enums/pacing.json",
+          "description": "Budget pacing strategy"
+        },
+        "frequency-cap-scope": {
+          "$ref": "/schemas/v1/enums/frequency-cap-scope.json",
+          "description": "Scope for frequency cap application"
+        }
+      }
+    },
+    "media-buy": {
+      "description": "Media buy task request/response schemas",
+      "tasks": {
+        "get-products": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/get-products-request.json",
+            "description": "Request parameters for discovering available advertising products"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/get-products-response.json",
+            "description": "Response payload for get_products task"
+          }
+        },
+        "list-creative-formats": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/list-creative-formats-request.json",
+            "description": "Request parameters for discovering supported creative formats"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/list-creative-formats-response.json",
+            "description": "Response payload for list_creative_formats task"
+          }
+        },
+        "create-media-buy": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/create-media-buy-request.json",
+            "description": "Request parameters for creating a media buy"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/create-media-buy-response.json",
+            "description": "Response payload for create_media_buy task"
+          }
+        },
+        "add-creative-assets": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/add-creative-assets-request.json",
+            "description": "Request parameters for uploading creative assets"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/add-creative-assets-response.json",
+            "description": "Response payload for add_creative_assets task"
+          }
+        },
+        "update-media-buy": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/update-media-buy-request.json",
+            "description": "Request parameters for updating campaign and package settings"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/update-media-buy-response.json",
+            "description": "Response payload for update_media_buy task"
+          }
+        },
+        "get-media-buy-delivery": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/get-media-buy-delivery-request.json",
+            "description": "Request parameters for retrieving comprehensive delivery metrics"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/get-media-buy-delivery-response.json",
+            "description": "Response payload for get_media_buy_delivery task"
+          }
+        }
+      }
+    },
+    "signals": {
+      "description": "Signals protocol task request/response schemas",
+      "tasks": {
+        "get-signals": {
+          "request": {
+            "$ref": "/schemas/v1/signals/get-signals-request.json",
+            "description": "Request parameters for discovering signals based on description"
+          },
+          "response": {
+            "$ref": "/schemas/v1/signals/get-signals-response.json",
+            "description": "Response payload for get_signals task"
+          }
+        },
+        "activate-signal": {
+          "request": {
+            "$ref": "/schemas/v1/signals/activate-signal-request.json",
+            "description": "Request parameters for activating a signal on a specific platform/account"
+          },
+          "response": {
+            "$ref": "/schemas/v1/signals/activate-signal-response.json",
+            "description": "Response payload for activate_signal task"
+          }
+        }
+      }
+    }
+  },
+  "usage": {
+    "validation": "Use these schemas to validate AdCP requests and responses",
+    "codeGeneration": "Generate client SDKs using these schemas",
+    "documentation": "Reference schemas for API documentation",
+    "testing": "Validate test fixtures and examples"
+  },
+  "examples": {
+    "javascriptValidation": "const Ajv = require('ajv'); const ajv = new Ajv(); const schema = require('./schemas/v1/core/product.json'); const validate = ajv.compile(schema);",
+    "pythonValidation": "import jsonschema; schema = {...}; jsonschema.validate(data, schema)",
+    "javaValidation": "// Use everit-org/json-schema or similar library"
+  }
+}

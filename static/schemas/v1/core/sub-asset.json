@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/sub-asset.json",
+  "title": "Sub-Asset",
+  "description": "Sub-asset for multi-asset creative formats",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "description": "Type of asset (e.g., product_image, logo, headline)"
+    },
+    "asset_id": {
+      "type": "string",
+      "description": "Unique identifier for the asset"
+    },
+    "content_uri": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL for media assets"
+    },
+    "content": {
+      "type": "array",
+      "description": "Text content for text assets",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["asset_type", "asset_id"],
+  "additionalProperties": false
+}

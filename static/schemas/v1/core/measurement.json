@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/measurement.json",
+  "title": "Measurement",
+  "description": "Measurement capabilities included with a product",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "Type of measurement",
+      "examples": ["incremental_sales_lift", "brand_lift", "foot_traffic"]
+    },
+    "attribution": {
+      "type": "string",
+      "description": "Attribution methodology",
+      "examples": ["deterministic_purchase", "probabilistic"]
+    },
+    "window": {
+      "type": "string",
+      "description": "Attribution window",
+      "examples": ["30_days", "7_days"]
+    },
+    "reporting": {
+      "type": "string",
+      "description": "Reporting frequency and format",
+      "examples": ["weekly_dashboard", "real_time_api"]
+    }
+  },
+  "required": ["type", "attribution", "reporting"],
+  "additionalProperties": false
+}

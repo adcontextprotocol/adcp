@@ -7,6 +7,9 @@ title: activate_signal
 
 **Task**: Activate a signal for use on a specific platform/account.
 
+**Request Schema**: [`/schemas/v1/signals/activate-signal-request.json`](/schemas/v1/signals/activate-signal-request.json)  
+**Response Schema**: [`/schemas/v1/signals/activate-signal-response.json`](/schemas/v1/signals/activate-signal-response.json)
+
 The `activate_signal` task handles the entire activation lifecycle, including:
 - Initiating the activation request
 - Monitoring activation progress

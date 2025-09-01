@@ -7,6 +7,10 @@ sidebar_position: 3
 
 Create a media buy from selected packages. This task handles the complete workflow including validation, approval if needed, and campaign creation.
 
+
+**Request Schema**: [`/schemas/v1/media-buy/create-media-buy-request.json`](/schemas/v1/media-buy/create-media-buy-request.json)  
+**Response Schema**: [`/schemas/v1/media-buy/create-media-buy-response.json`](/schemas/v1/media-buy/create-media-buy-response.json)
+
 ## Request Parameters
 
 | Parameter | Type | Required | Description |

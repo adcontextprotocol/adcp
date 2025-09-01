@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/format.json",
+  "title": "Format",
+  "description": "Represents a creative format with its requirements",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "type": "string",
+      "description": "Unique identifier for the format"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable format name"
+    },
+    "type": {
+      "type": "string",
+      "description": "Format type (e.g., audio, video, display)",
+      "enum": ["audio", "video", "display"]
+    },
+    "is_standard": {
+      "type": "boolean",
+      "description": "Whether this follows IAB standards"
+    },
+    "iab_specification": {
+      "type": "string",
+      "description": "Name of the IAB specification (if applicable)"
+    },
+    "requirements": {
+      "type": "object",
+      "description": "Format-specific requirements (varies by format type)",
+      "additionalProperties": true
+    },
+    "assets_required": {
+      "type": "array",
+      "description": "Array of required assets for composite formats",
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_type": {
+            "type": "string",
+            "description": "Type of asset required"
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "Number of assets of this type required",
+            "minimum": 1
+          },
+          "requirements": {
+            "type": "object",
+            "description": "Specific requirements for this asset type",
+            "additionalProperties": true
+          }
+        },
+        "required": ["asset_type", "quantity"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["format_id", "name"],
+  "additionalProperties": false
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/package.json",
+  "title": "Package",
+  "description": "A specific product within a media buy (line item)",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Publisher's unique identifier for the package"
+    },
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for this package"
+    },
+    "product_id": {
+      "type": "string",
+      "description": "ID of the product this package is based on"
+    },
+    "products": {
+      "type": "array",
+      "description": "Array of product IDs to include in this package",
+      "items": {
+        "type": "string"
+      }
+    },
+    "budget": {
+      "$ref": "/schemas/v1/core/budget.json"
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/v1/core/targeting.json"
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Creative assets assigned to this package",
+      "items": {
+        "$ref": "/schemas/v1/core/creative-assignment.json"
+      }
+    },
+    "status": {
+      "$ref": "/schemas/v1/enums/package-status.json"
+    }
+  },
+  "required": ["package_id", "status"],
+  "additionalProperties": false
+}

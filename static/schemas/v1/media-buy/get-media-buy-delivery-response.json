@@ -1,0 +1,209 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/get-media-buy-delivery-response.json",
+  "title": "Get Media Buy Delivery Response",
+  "description": "Response payload for get_media_buy_delivery task",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary of campaign performance"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Session continuity identifier"
+    },
+    "reporting_period": {
+      "type": "object",
+      "description": "Date range for the report",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 start timestamp"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 end timestamp"
+        }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "aggregated_totals": {
+      "type": "object",
+      "description": "Combined metrics across all returned media buys",
+      "properties": {
+        "impressions": {
+          "type": "number",
+          "description": "Total impressions delivered across all media buys",
+          "minimum": 0
+        },
+        "spend": {
+          "type": "number",
+          "description": "Total amount spent across all media buys",
+          "minimum": 0
+        },
+        "clicks": {
+          "type": "number",
+          "description": "Total clicks across all media buys (if applicable)",
+          "minimum": 0
+        },
+        "video_completions": {
+          "type": "number",
+          "description": "Total video completions across all media buys (if applicable)",
+          "minimum": 0
+        },
+        "media_buy_count": {
+          "type": "integer",
+          "description": "Number of media buys included in the response",
+          "minimum": 0
+        }
+      },
+      "required": ["impressions", "spend", "media_buy_count"],
+      "additionalProperties": false
+    },
+    "deliveries": {
+      "type": "array",
+      "description": "Array of delivery data for each media buy",
+      "items": {
+        "type": "object",
+        "properties": {
+          "media_buy_id": {
+            "type": "string",
+            "description": "Publisher's media buy identifier"
+          },
+          "buyer_ref": {
+            "type": "string",
+            "description": "Buyer's reference identifier for this media buy"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current media buy status",
+            "enum": ["pending", "active", "paused", "completed", "failed"]
+          },
+          "totals": {
+            "type": "object",
+            "description": "Aggregate metrics for this media buy across all packages",
+            "properties": {
+              "impressions": {
+                "type": "number",
+                "description": "Total impressions delivered",
+                "minimum": 0
+              },
+              "spend": {
+                "type": "number",
+                "description": "Total amount spent",
+                "minimum": 0
+              },
+              "clicks": {
+                "type": "number",
+                "description": "Total clicks (if applicable)",
+                "minimum": 0
+              },
+              "ctr": {
+                "type": "number",
+                "description": "Click-through rate (clicks/impressions)",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "video_completions": {
+                "type": "number",
+                "description": "Total video completions (if applicable)",
+                "minimum": 0
+              },
+              "completion_rate": {
+                "type": "number",
+                "description": "Video completion rate (completions/impressions)",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": ["impressions", "spend"],
+            "additionalProperties": false
+          },
+          "by_package": {
+            "type": "array",
+            "description": "Metrics broken down by package",
+            "items": {
+              "type": "object",
+              "properties": {
+                "package_id": {
+                  "type": "string",
+                  "description": "Publisher's package identifier"
+                },
+                "buyer_ref": {
+                  "type": "string",
+                  "description": "Buyer's reference identifier for this package"
+                },
+                "impressions": {
+                  "type": "number",
+                  "description": "Package impressions",
+                  "minimum": 0
+                },
+                "spend": {
+                  "type": "number",
+                  "description": "Package spend",
+                  "minimum": 0
+                },
+                "clicks": {
+                  "type": "number",
+                  "description": "Package clicks",
+                  "minimum": 0
+                },
+                "video_completions": {
+                  "type": "number",
+                  "description": "Package video completions",
+                  "minimum": 0
+                },
+                "pacing_index": {
+                  "type": "number",
+                  "description": "Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)",
+                  "minimum": 0
+                }
+              },
+              "required": ["package_id", "impressions", "spend"],
+              "additionalProperties": false
+            }
+          },
+          "daily_breakdown": {
+            "type": "array",
+            "description": "Day-by-day delivery",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "description": "Date (YYYY-MM-DD)"
+                },
+                "impressions": {
+                  "type": "number",
+                  "description": "Daily impressions",
+                  "minimum": 0
+                },
+                "spend": {
+                  "type": "number",
+                  "description": "Daily spend",
+                  "minimum": 0
+                }
+              },
+              "required": ["date", "impressions", "spend"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["media_buy_id", "status", "totals", "by_package"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["reporting_period", "currency", "aggregated_totals", "deliveries"],
+  "additionalProperties": false
+}

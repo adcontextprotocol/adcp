@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/enums/media-buy-status.json",
+  "title": "Media Buy Status",
+  "description": "Status of a media buy",
+  "type": "string",
+  "enum": ["pending_activation", "active", "paused", "completed"],
+  "enumDescriptions": {
+    "pending_activation": "Media buy created but not yet activated",
+    "active": "Media buy is currently running",
+    "paused": "Media buy is temporarily paused",
+    "completed": "Media buy has finished running"
+  }
+}

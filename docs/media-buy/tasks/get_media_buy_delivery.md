@@ -7,6 +7,10 @@ sidebar_position: 6
 
 Retrieve comprehensive delivery metrics and performance data for reporting.
 
+
+**Request Schema**: [`/schemas/v1/media-buy/get-media-buy-delivery-request.json`](/schemas/v1/media-buy/get-media-buy-delivery-request.json)  
+**Response Schema**: [`/schemas/v1/media-buy/get-media-buy-delivery-response.json`](/schemas/v1/media-buy/get-media-buy-delivery-response.json)
+
 ## Request Parameters
 
 | Parameter | Type | Required | Description |
