@@ -7,6 +7,10 @@ sidebar_position: 4
 
 Upload creative assets and assign them to packages. This task includes validation, policy review, and format adaptation suggestions.
 
+
+**Request Schema**: [`/schemas/v1/media-buy/add-creative-assets-request.json`](/schemas/v1/media-buy/add-creative-assets-request.json)  
+**Response Schema**: [`/schemas/v1/media-buy/add-creative-assets-response.json`](/schemas/v1/media-buy/add-creative-assets-response.json)
+
 ## Request Parameters
 
 | Parameter | Type | Required | Description |

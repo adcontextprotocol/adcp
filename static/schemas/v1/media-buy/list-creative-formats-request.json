@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/list-creative-formats-request.json",
+  "title": "List Creative Formats Request",
+  "description": "Request parameters for discovering supported creative formats",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "Filter by format type",
+      "enum": ["audio", "video", "display"]
+    },
+    "standard_only": {
+      "type": "boolean",
+      "description": "Only return IAB standard formats"
+    }
+  },
+  "additionalProperties": false
+}

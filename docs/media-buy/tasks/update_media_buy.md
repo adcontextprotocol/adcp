@@ -7,6 +7,10 @@ sidebar_position: 7
 
 Update campaign and package settings. This task supports partial updates and handles any required approvals.
 
+
+**Request Schema**: [`/schemas/v1/media-buy/update-media-buy-request.json`](/schemas/v1/media-buy/update-media-buy-request.json)  
+**Response Schema**: [`/schemas/v1/media-buy/update-media-buy-response.json`](/schemas/v1/media-buy/update-media-buy-response.json)
+
 ## Request Parameters
 
 | Parameter | Type | Required | Description |

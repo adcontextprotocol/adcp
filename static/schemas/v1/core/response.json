@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/response.json",
+  "title": "Response",
+  "description": "Standard response structure (MCP)",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Session continuity identifier"
+    },
+    "data": {
+      "description": "Operation-specific data"
+    },
+    "errors": {
+      "type": "array",
+      "description": "Non-fatal warnings",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
+    },
+    "clarification_needed": {
+      "type": "boolean",
+      "description": "Whether clarification is needed"
+    }
+  },
+  "required": ["message"],
+  "additionalProperties": false
+}

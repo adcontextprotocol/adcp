@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/list-creative-formats-response.json",
+  "title": "List Creative Formats Response",
+  "description": "Response payload for list_creative_formats task",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary of available formats"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Session continuity identifier"
+    },
+    "formats": {
+      "type": "array",
+      "description": "Array of available creative formats",
+      "items": {
+        "$ref": "/schemas/v1/core/format.json"
+      }
+    }
+  },
+  "required": ["formats"],
+  "additionalProperties": false
+}

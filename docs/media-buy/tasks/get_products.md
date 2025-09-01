@@ -4,6 +4,10 @@ sidebar_position: 1
 ---
 # get_products
 Discover available advertising products based on campaign requirements, using natural language briefs or structured filters.
+
+**Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](/schemas/v1/media-buy/get-products-request.json)  
+**Response Schema**: [`/schemas/v1/media-buy/get-products-response.json`](/schemas/v1/media-buy/get-products-response.json)
+
 ## Request Parameters
 
 | Parameter | Type | Required | Description |

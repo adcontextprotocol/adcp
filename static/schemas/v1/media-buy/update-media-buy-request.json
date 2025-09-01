@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/update-media-buy-request.json",
+  "title": "Update Media Buy Request",
+  "description": "Request parameters for updating campaign and package settings",
+  "type": "object",
+  "properties": {
+    "media_buy_id": {
+      "type": "string",
+      "description": "Publisher's ID of the media buy to update"
+    },
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference for the media buy to update"
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Pause/resume the entire media buy"
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "New start date/time in ISO 8601 format"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "New end date/time in ISO 8601 format"
+    },
+    "budget": {
+      "$ref": "/schemas/v1/core/budget.json"
+    },
+    "packages": {
+      "type": "array",
+      "description": "Package-specific updates",
+      "items": {
+        "type": "object",
+        "properties": {
+          "package_id": {
+            "type": "string",
+            "description": "Publisher's ID of package to update"
+          },
+          "buyer_ref": {
+            "type": "string",
+            "description": "Buyer's reference for the package to update"
+          },
+          "budget": {
+            "$ref": "/schemas/v1/core/budget.json"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Pause/resume specific package"
+          },
+          "targeting_overlay": {
+            "$ref": "/schemas/v1/core/targeting.json"
+          },
+          "creative_ids": {
+            "type": "array",
+            "description": "Update creative assignments",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "oneOf": [
+          {
+            "required": ["package_id"]
+          },
+          {
+            "required": ["buyer_ref"]
+          }
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["media_buy_id"]
+    },
+    {
+      "required": ["buyer_ref"]
+    }
+  ],
+  "additionalProperties": false
+}

@@ -21,6 +21,8 @@ AdCP uses a task-first architecture where core advertising tasks (like creating 
 - **A2A (Agent2Agent Protocol)**: For complex workflows and agent collaboration
 - **REST API**: Coming soon for traditional integrations
 
+All tasks and data models are defined with [JSON schemas](/schemas/v1/) for validation and client code generation.
+
 ## Protocol Architecture
 
 AdCP operates at multiple layers, providing a clean separation between the business roles, orchestration layer, and technical execution:

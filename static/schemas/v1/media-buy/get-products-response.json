@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/get-products-response.json",
+  "title": "Get Products Response",
+  "description": "Response payload for get_products task",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary of the response"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Session continuity identifier"
+    },
+    "products": {
+      "type": "array",
+      "description": "Array of matching products",
+      "items": {
+        "$ref": "/schemas/v1/core/product.json"
+      }
+    },
+    "clarification_needed": {
+      "type": "boolean",
+      "description": "Whether clarification is needed"
+    },
+    "errors": {
+      "type": "array",
+      "description": "Non-fatal warnings",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
+    }
+  },
+  "required": ["products"],
+  "additionalProperties": false
+}

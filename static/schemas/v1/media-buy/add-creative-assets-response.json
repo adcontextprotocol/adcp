@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/add-creative-assets-response.json",
+  "title": "Add Creative Assets Response",
+  "description": "Response payload for add_creative_assets task",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Human-readable status message"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Session continuity identifier"
+    },
+    "asset_statuses": {
+      "type": "array",
+      "description": "Array of status information for each uploaded asset",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "The creative ID from the request"
+          },
+          "status": {
+            "$ref": "/schemas/v1/enums/creative-status.json"
+          },
+          "platform_id": {
+            "type": "string",
+            "description": "Platform-specific ID assigned to the creative"
+          },
+          "review_feedback": {
+            "type": "string",
+            "description": "Feedback from platform review (if any)"
+          },
+          "suggested_adaptations": {
+            "type": "array",
+            "description": "Array of recommended format adaptations",
+            "items": {
+              "type": "object",
+              "properties": {
+                "adaptation_id": {
+                  "type": "string",
+                  "description": "Unique identifier for this adaptation"
+                },
+                "format_id": {
+                  "type": "string",
+                  "description": "Target format ID for the adaptation"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Suggested name for the adapted creative"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "What this adaptation does"
+                },
+                "changes_summary": {
+                  "type": "array",
+                  "description": "List of changes that will be made",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "rationale": {
+                  "type": "string",
+                  "description": "Why this adaptation is recommended"
+                },
+                "estimated_performance_lift": {
+                  "type": "number",
+                  "description": "Expected performance improvement (percentage)",
+                  "minimum": 0
+                }
+              },
+              "required": ["adaptation_id", "format_id", "name", "description", "changes_summary", "rationale"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["creative_id", "status"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["asset_statuses"],
+  "additionalProperties": false
+}

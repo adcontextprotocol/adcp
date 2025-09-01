@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/frequency-cap.json",
+  "title": "Frequency Cap",
+  "description": "Frequency capping settings",
+  "type": "object",
+  "properties": {
+    "suppress_minutes": {
+      "type": "number",
+      "description": "Minutes to suppress after impression",
+      "minimum": 0
+    },
+    "scope": {
+      "$ref": "/schemas/v1/enums/frequency-cap-scope.json"
+    }
+  },
+  "required": ["suppress_minutes"],
+  "additionalProperties": false
+}

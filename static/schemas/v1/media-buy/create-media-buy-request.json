@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/create-media-buy-request.json",
+  "title": "Create Media Buy Request",
+  "description": "Request parameters for creating a media buy",
+  "type": "object",
+  "properties": {
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for this media buy"
+    },
+    "packages": {
+      "type": "array",
+      "description": "Array of package configurations",
+      "items": {
+        "type": "object",
+        "properties": {
+          "buyer_ref": {
+            "type": "string",
+            "description": "Buyer's reference identifier for this package"
+          },
+          "products": {
+            "type": "array",
+            "description": "Array of product IDs to include in this package",
+            "items": {
+              "type": "string"
+            }
+          },
+          "budget": {
+            "$ref": "/schemas/v1/core/budget.json"
+          },
+          "targeting_overlay": {
+            "$ref": "/schemas/v1/core/targeting.json"
+          }
+        },
+        "required": ["buyer_ref", "products"],
+        "additionalProperties": false
+      }
+    },
+    "promoted_offering": {
+      "type": "string",
+      "description": "Description of advertiser and what is being promoted"
+    },
+    "po_number": {
+      "type": "string",
+      "description": "Purchase order number for tracking"
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Campaign start date/time in ISO 8601 format"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Campaign end date/time in ISO 8601 format"
+    },
+    "budget": {
+      "$ref": "/schemas/v1/core/budget.json"
+    }
+  },
+  "required": ["buyer_ref", "packages", "promoted_offering", "po_number", "start_time", "end_time", "budget"],
+  "additionalProperties": false
+}

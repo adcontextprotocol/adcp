@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/signals/activate-signal-response.json",
+  "title": "Activate Signal Response",
+  "description": "Response payload for activate_signal task",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Human-readable status message"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Session continuity identifier"
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for tracking the activation"
+    },
+    "status": {
+      "type": "string",
+      "description": "Current status",
+      "enum": ["pending", "processing", "deployed", "failed"]
+    },
+    "decisioning_platform_segment_id": {
+      "type": "string",
+      "description": "The platform-specific ID to use once activated"
+    },
+    "estimated_activation_duration_minutes": {
+      "type": "number",
+      "description": "Estimated time to complete (optional)",
+      "minimum": 0
+    },
+    "deployed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when activation completed (optional)"
+    },
+    "error": {
+      "type": "object",
+      "description": "Error details if activation failed (optional)",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Error code for programmatic handling"
+        },
+        "message": {
+          "type": "string",
+          "description": "Detailed error message"
+        }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["task_id", "status"],
+  "additionalProperties": false
+}

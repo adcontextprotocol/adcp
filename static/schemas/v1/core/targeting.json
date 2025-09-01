@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/targeting.json",
+  "title": "Targeting",
+  "description": "Audience targeting criteria",
+  "type": "object",
+  "properties": {
+    "geo_country_any_of": {
+      "type": "array",
+      "description": "Target specific countries (ISO codes)",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "geo_region_any_of": {
+      "type": "array",
+      "description": "Target specific regions/states",
+      "items": {
+        "type": "string"
+      }
+    },
+    "audience_segment_any_of": {
+      "type": "array",
+      "description": "Audience segment IDs to target",
+      "items": {
+        "type": "string"
+      }
+    },
+    "axe_include_segment": {
+      "type": "string",
+      "description": "AXE segment ID to include for targeting"
+    },
+    "axe_exclude_segment": {
+      "type": "string",
+      "description": "AXE segment ID to exclude from targeting"
+    },
+    "signals": {
+      "type": "array",
+      "description": "Signal IDs from get_signals",
+      "items": {
+        "type": "string"
+      }
+    },
+    "frequency_cap": {
+      "$ref": "/schemas/v1/core/frequency-cap.json"
+    }
+  },
+  "additionalProperties": false
+}

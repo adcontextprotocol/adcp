@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/media-buy.json",
+  "title": "Media Buy",
+  "description": "Represents a purchased advertising campaign",
+  "type": "object",
+  "properties": {
+    "media_buy_id": {
+      "type": "string",
+      "description": "Publisher's unique identifier for the media buy"
+    },
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for this media buy"
+    },
+    "status": {
+      "$ref": "/schemas/v1/enums/media-buy-status.json"
+    },
+    "promoted_offering": {
+      "type": "string",
+      "description": "Description of advertiser and what is being promoted"
+    },
+    "total_budget": {
+      "type": "number",
+      "description": "Total budget amount",
+      "minimum": 0
+    },
+    "packages": {
+      "type": "array",
+      "description": "Array of packages within this media buy",
+      "items": {
+        "$ref": "/schemas/v1/core/package.json"
+      }
+    },
+    "creative_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for creative upload deadline"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Creation timestamp"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last update timestamp"
+    }
+  },
+  "required": [
+    "media_buy_id",
+    "status",
+    "promoted_offering",
+    "total_budget",
+    "packages"
+  ],
+  "additionalProperties": false
+}

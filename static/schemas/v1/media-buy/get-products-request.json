@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/get-products-request.json",
+  "title": "Get Products Request",
+  "description": "Request parameters for discovering available advertising products",
+  "type": "object",
+  "properties": {
+    "brief": {
+      "type": "string",
+      "description": "Natural language description of campaign requirements"
+    },
+    "promoted_offering": {
+      "type": "string",
+      "description": "Description of advertiser and what is being promoted"
+    },
+    "filters": {
+      "type": "object",
+      "description": "Structured filters for product discovery",
+      "properties": {
+        "delivery_type": {
+          "$ref": "/schemas/v1/enums/delivery-type.json"
+        },
+        "formats": {
+          "type": "array",
+          "description": "Filter by specific formats",
+          "items": {
+            "type": "string"
+          }
+        },
+        "is_fixed_price": {
+          "type": "boolean",
+          "description": "Filter for fixed price vs auction products"
+        },
+        "format_types": {
+          "type": "array",
+          "description": "Filter by format types",
+          "items": {
+            "type": "string",
+            "enum": ["video", "display", "audio"]
+          }
+        },
+        "format_ids": {
+          "type": "array",
+          "description": "Filter by specific format IDs",
+          "items": {
+            "type": "string"
+          }
+        },
+        "standard_formats_only": {
+          "type": "boolean",
+          "description": "Only return products accepting IAB standard formats"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["promoted_offering"],
+  "additionalProperties": false
+}

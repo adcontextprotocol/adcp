@@ -12,7 +12,12 @@
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test:schemas": "node tests/schema-validation.test.js",
+    "test:examples": "node tests/example-validation-simple.test.js",
+    "test": "npm run test:schemas && npm run test:examples && npm run typecheck",
+    "precommit": "npm test",
+    "prepare": "husky"
   },
   "dependencies": {
     "@docusaurus/core": "3.8.1",
@@ -29,7 +34,10 @@
     "@docusaurus/module-type-aliases": "3.8.1",
     "@docusaurus/tsconfig": "3.8.1",
     "@docusaurus/types": "3.8.1",
-    "typescript": "~5.6.2"
+    "typescript": "~5.6.2",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "husky": "^9.0.11"
   },
   "browserslist": {
     "production": [

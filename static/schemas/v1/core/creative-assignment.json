@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/creative-assignment.json",
+  "title": "Creative Assignment",
+  "description": "Assignment of a creative asset to a package",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Delivery weight for this creative",
+      "minimum": 0,
+      "maximum": 100
+    }
+  },
+  "required": ["creative_id"],
+  "additionalProperties": false
+}
