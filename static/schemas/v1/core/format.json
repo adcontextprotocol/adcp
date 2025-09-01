@@ -15,8 +15,8 @@
     },
     "type": {
       "type": "string",
-      "description": "Format type (e.g., audio, video, display)",
-      "enum": ["audio", "video", "display"]
+      "description": "Format type (e.g., audio, video, display, native, dooh)",
+      "enum": ["audio", "video", "display", "native", "dooh"]
     },
     "is_standard": {
       "type": "boolean",

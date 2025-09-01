@@ -20,6 +20,45 @@
         "type": "string"
       }
     },
+    "geo_metro_any_of": {
+      "type": "array",
+      "description": "Target specific metro areas (DMA codes)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "geo_postal_code_any_of": {
+      "type": "array",
+      "description": "Target specific postal/ZIP codes",
+      "items": {
+        "type": "string"
+      }
+    },
+    "geo_lat_long_radius": {
+      "type": "object",
+      "description": "Target by geographic coordinates and radius",
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude coordinate"
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude coordinate"
+        },
+        "radius_km": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "Radius in kilometers"
+        }
+      },
+      "required": ["latitude", "longitude", "radius_km"],
+      "additionalProperties": false
+    },
     "audience_segment_any_of": {
       "type": "array",
       "description": "Audience segment IDs to target",
@@ -40,6 +79,30 @@
       "description": "Signal IDs from get_signals",
       "items": {
         "type": "string"
+      }
+    },
+    "device_type_any_of": {
+      "type": "array",
+      "description": "Target specific device types",
+      "items": {
+        "type": "string",
+        "enum": ["desktop", "mobile", "tablet", "connected_tv", "smart_speaker"]
+      }
+    },
+    "os_any_of": {
+      "type": "array",
+      "description": "Target specific operating systems",
+      "items": {
+        "type": "string",
+        "enum": ["windows", "macos", "ios", "android", "linux", "roku", "tvos", "other"]
+      }
+    },
+    "browser_any_of": {
+      "type": "array",
+      "description": "Target specific browsers",
+      "items": {
+        "type": "string",
+        "enum": ["chrome", "firefox", "safari", "edge", "other"]
       }
     },
     "frequency_cap": {
