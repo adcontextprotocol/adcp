@@ -5,6 +5,12 @@
   "description": "Request parameters for discovering available advertising products",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
     "brief": {
       "type": "string",
       "description": "Natural language description of campaign requirements"

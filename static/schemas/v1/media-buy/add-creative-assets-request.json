@@ -5,6 +5,12 @@
   "description": "Request parameters for uploading creative assets",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
     "media_buy_id": {
       "type": "string",
       "description": "Publisher's ID of the media buy to add creatives to"

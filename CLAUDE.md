@@ -94,6 +94,138 @@ When running `npm run start`, all JSON schemas are accessible at:
 - Signal schemas: `http://localhost:3000/schemas/v1/signals/{task}-{request|response}.json`
 - Enum schemas: `http://localhost:3000/schemas/v1/enums/{name}.json`
 
+## Schema Versioning Workflow
+
+### When to Version Schemas
+
+AdCP uses semantic versioning for schemas. Increment the version when:
+
+**PATCH (1.0.0 → 1.0.1)**: Schema fixes that don't change behavior
+- Fix typos in descriptions
+- Correct validation patterns
+- Clarify existing field meanings
+- Fix broken `$ref` links
+
+**MINOR (1.0.0 → 1.1.0)**: Backward-compatible additions
+- Add new optional fields to requests/responses
+- Add new enum values (append-only)
+- Add new optional core object properties
+- Add new tasks (new request/response pairs)
+
+**MAJOR (1.0.0 → 2.0.0)**: Breaking changes
+- Remove or rename existing fields
+- Change field types or constraints
+- Make optional fields required
+- Remove enum values
+- Change existing field meanings
+
+### Schema Versioning Checklist
+
+When making **ANY** schema change:
+
+1. **✅ Determine Version Impact**
+   - Review changes against patch/minor/major criteria above
+   - If breaking change, consider if really necessary
+   - Document the rationale for the change
+
+2. **✅ Update Schema Version References**
+   - Update `adcp_version` default in ALL affected request schemas
+   - Update schema registry `adcp_version` in `static/schemas/v1/index.json`
+   - Update `lastUpdated` field in schema registry
+
+3. **✅ Update All Related Schemas** 
+   - If changing core objects, update all schemas that reference them
+   - If adding enum values, ensure all using schemas are compatible
+   - Verify `$ref` links still resolve correctly
+
+4. **✅ Test Schema Changes**
+   - Validate all modified schemas with JSON Schema validator
+   - Test with real request/response examples
+   - Ensure existing examples still validate
+
+5. **✅ Update Documentation**
+   - Update all affected task documentation in `docs/`
+   - Update API examples to show new version
+   - If major version, create migration guide in `docs/reference/versioning.md`
+
+### Example Schema Version Update
+
+When adding a new optional field to `create-media-buy-request.json`:
+
+```json
+// Before (1.0.0)
+{
+  "adcp_version": {
+    "default": "1.0.0"
+  }
+}
+
+// After (1.1.0) 
+{
+  "adcp_version": {
+    "default": "1.1.0"  // ← Update default version
+  },
+  "new_optional_field": {
+    "type": "string",
+    "description": "New feature description"
+  }
+}
+```
+
+Then update schema registry:
+```json
+{
+  "adcp_version": "1.1.0",  // ← Update current version
+  "lastUpdated": "2025-09-02"  // ← Update date
+}
+```
+
+### Breaking Changes (Major Versions)
+
+For major version changes:
+
+1. **Create new version directory**: `static/schemas/v2/`
+2. **Implement breaking changes** in v2 schemas
+3. **Update schema registry** to include v2 paths
+4. **Create migration documentation** with:
+   - What changed and why
+   - Step-by-step migration guide
+   - Code examples for before/after
+5. **Maintain v1 support** during transition period
+6. **Deprecation timeline** for removing v1 support
+
+### Version Field Maintenance
+
+**CRITICAL**: Every request/response schema MUST have `adcp_version` field:
+
+**Request schemas** (optional with default):
+```json
+{
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"  // ← Keep current
+    }
+  }
+}
+```
+
+**Response schemas** (required, no default):
+```json
+{
+  "properties": {
+    "adcp_version": {
+      "type": "string", 
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    }
+  },
+  "required": ["adcp_version", /* other fields */]
+}
+```
+
 ## Code Standards
 
 ### TypeScript/JavaScript

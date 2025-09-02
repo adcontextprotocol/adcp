@@ -302,6 +302,29 @@ Requested pricing model is not available for this signal.
 
 **Resolution**: Use available pricing model or choose different signal.
 
+## Schema Version Errors
+
+### UNSUPPORTED_VERSION
+Requested AdCP schema version is not supported by the server.
+
+**Example**:
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNSUPPORTED_VERSION",
+    "message": "AdCP version '2.1.0' is not supported. Server supports versions compatible with 1.0.0 per semantic versioning.",
+    "details": {
+      "requested_version": "2.1.0",
+      "current_server_version": "1.0.0",
+      "compatibility_info": "Use versions 1.x.x for backward compatibility"
+    }
+  }
+}
+```
+
+**Resolution**: Use a compatible schema version or upgrade to a server that supports the requested version.
+
 ## Rate Limiting Errors
 
 ### RATE_LIMIT_EXCEEDED
@@ -473,7 +496,8 @@ const PERMANENT_ERRORS = [
   'INVALID_CREDENTIALS',
   'INSUFFICIENT_PERMISSIONS',
   'SEGMENT_NOT_FOUND',
-  'PLATFORM_UNAUTHORIZED'
+  'PLATFORM_UNAUTHORIZED',
+  'UNSUPPORTED_VERSION'
 ];
 
 function isRetryable(errorCode: string): boolean {
@@ -490,6 +514,7 @@ const USER_MESSAGES = {
   'SEGMENT_NOT_FOUND': 'This signal is no longer available. Please search for signals again.',
   'RATE_LIMIT_EXCEEDED': 'Too many requests. Please wait a moment and try again.',
   'INSUFFICIENT_PERMISSIONS': 'Your account does not have permission for this action. Contact your administrator.',
+  'UNSUPPORTED_VERSION': 'The requested schema version is not supported. Please use a compatible version.',
   // ... more mappings
 };
 

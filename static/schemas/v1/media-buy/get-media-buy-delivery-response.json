@@ -5,6 +5,11 @@
   "description": "Response payload for get_media_buy_delivery task",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
     "reporting_period": {
       "type": "object",
       "description": "Date range for the report",
@@ -196,6 +201,6 @@
       }
     }
   },
-  "required": ["reporting_period", "currency", "aggregated_totals", "deliveries"],
+  "required": ["adcp_version", "reporting_period", "currency", "aggregated_totals", "deliveries"],
   "additionalProperties": false
 }
