@@ -7,6 +7,8 @@ sidebar_position: 3
 
 Create a media buy from selected packages. This task handles the complete workflow including validation, approval if needed, and campaign creation.
 
+**Format Specification Required**: Each package must specify the creative formats that will be used. This enables placeholder creation in ad servers and ensures both parties have clear expectations for creative asset requirements.
+
 
 **Request Schema**: [`/schemas/v1/media-buy/create-media-buy-request.json`](/schemas/v1/media-buy/create-media-buy-request.json)  
 **Response Schema**: [`/schemas/v1/media-buy/create-media-buy-response.json`](/schemas/v1/media-buy/create-media-buy-response.json)
@@ -29,6 +31,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this package |
 | `products` | string[] | Yes | Array of product IDs to include in this package |
+| `formats` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by all products |
 | `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
 
@@ -116,6 +119,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       {
         "buyer_ref": "nike_ctv_sports_package",
         "products": ["ctv_sports_premium", "ctv_prime_time"],
+        "formats": ["video_standard_30s", "video_standard_15s"],
         "budget": {
           "total": 60000,
           "currency": "USD",
@@ -130,6 +134,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       {
         "buyer_ref": "nike_audio_drive_package",
         "products": ["audio_drive_time"],
+        "formats": ["audio_standard_30s"],
         "budget": {
           "total": 40000,
           "currency": "USD",
@@ -198,6 +203,7 @@ For A2A, the skill and input are sent as:
       {
         "buyer_ref": "nike_ctv_sports_package",
         "products": ["ctv_sports_premium", "ctv_prime_time"],
+        "formats": ["video_standard_30s", "video_standard_15s"],
         "budget": {
           "total": 60000,
           "currency": "USD",
@@ -212,6 +218,7 @@ For A2A, the skill and input are sent as:
       {
         "buyer_ref": "nike_audio_drive_package",
         "products": ["audio_drive_time"],
+        "formats": ["audio_standard_30s"],
         "budget": {
           "total": 40000,
           "currency": "USD",
@@ -505,6 +512,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
     {
       "buyer_ref": "purina_ctv_package",
       "products": ["ctv_prime_time", "ctv_late_night"],
+      "formats": ["video_standard_30s"],
       "budget": {
         "total": 30000,
         "currency": "USD",
@@ -524,6 +532,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
     {
       "buyer_ref": "purina_audio_package",
       "products": ["audio_drive_time"],
+      "formats": ["audio_standard_30s"],
       "budget": {
         "total": 20000,
         "currency": "USD"
@@ -554,6 +563,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
     {
       "buyer_ref": "purina_albertsons_conquest",
       "products": ["albertsons_competitive_conquest", "albertsons_onsite_display"],
+      "formats": ["display_300x250", "display_728x90"],
       "budget": {
         "total": 75000,
         "currency": "USD",
@@ -849,10 +859,57 @@ How media buy creation maps to different platforms:
 - **Kevel**: Creates a Campaign with Flights
 - **Triton Digital**: Creates a Campaign with Flights
 
+## Format Workflow and Placeholder Creatives
+
+### Why Format Specification is Required
+
+When creating a media buy, format specification serves critical purposes:
+
+1. **Placeholder Creation**: Publisher creates placeholder creatives in ad server with correct format specifications
+2. **Validation**: System validates that selected products actually support the requested formats  
+3. **Clear Expectations**: Both parties know exactly what creative formats are needed
+4. **Progress Tracking**: Track which creative assets are missing vs. required
+5. **Technical Setup**: Ad server configuration completed before actual creatives arrive
+
+### Workflow Integration
+
+The complete media buy workflow with format awareness:
+
+```
+1. list_creative_formats -> Get available format specifications
+2. get_products -> Find products (returns format IDs they support)
+3. Validate format compatibility -> Ensure products support desired formats  
+4. create_media_buy -> Specify formats for each package (REQUIRED)
+   └── Publisher creates placeholders in ad server
+   └── Both sides have clear creative requirements
+5. add_creative_assets -> Upload actual files matching the specified formats
+6. Campaign activation -> Replace placeholders with real creatives
+```
+
+### Format Validation
+
+Publishers MUST validate that:
+- All specified formats are supported by ALL products in each package
+- Format specifications match those returned by `list_creative_formats`
+- Creative requirements can be fulfilled within campaign timeline
+
+If validation fails, return an error:
+```json
+{
+  "error": {
+    "code": "FORMAT_INCOMPATIBLE",
+    "message": "Product 'ctv_sports_premium' does not support format 'audio_standard_30s'",
+    "field": "packages[0].formats",
+    "supported_formats": ["video_standard_30s", "video_standard_15s"]
+  }
+}
+```
+
 ## Usage Notes
 
 - A media buy represents a complete advertising campaign with one or more packages
-- Each package contains an array of products that share the same targeting and budget allocation
+- Each package contains an array of products that share the same targeting, budget allocation, and format requirements
+- **Format specification is required** for each package - this enables placeholder creation and validation
 - Both media buys and packages have `buyer_ref` fields for the buyer's reference tracking
 - The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted (see [Brief Expectations](../brief-expectations) for guidance)
 - Publishers will validate the promoted offering against their policies before creating the media buy
