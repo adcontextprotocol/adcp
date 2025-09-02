@@ -9,7 +9,7 @@
       "type": "string",
       "description": "AdCP schema version for this request",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.0.0"
+      "default": "1.1.0"
     },
     "buyer_ref": {
       "type": "string",
@@ -32,6 +32,14 @@
               "type": "string"
             }
           },
+          "formats": {
+            "type": "array",
+            "description": "Array of format IDs that will be used for this package - must be supported by all products",
+            "items": {
+              "type": "string",
+              "description": "Format ID referencing a format from list_creative_formats"
+            }
+          },
           "budget": {
             "$ref": "/schemas/v1/core/budget.json"
           },
@@ -39,7 +47,7 @@
             "$ref": "/schemas/v1/core/targeting.json"
           }
         },
-        "required": ["buyer_ref", "products"],
+        "required": ["buyer_ref", "products", "formats"],
         "additionalProperties": false
       }
     },

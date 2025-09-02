@@ -5,6 +5,8 @@ sidebar_position: 1
 # get_products
 Discover available advertising products based on campaign requirements, using natural language briefs or structured filters.
 
+**Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications including requirements, file types, and dimensions.
+
 **Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](/schemas/v1/media-buy/get-products-request.json)  
 **Response Schema**: [`/schemas/v1/media-buy/get-products-response.json`](/schemas/v1/media-buy/get-products-response.json)
 
@@ -46,10 +48,7 @@ The message is returned differently in each protocol:
       "name": "string",
       "description": "string",
       "formats": [
-        {
-          "format_id": "string",
-          "name": "string"
-        }
+        "format_id_string"
       ],
       "delivery_type": "string",
       "is_fixed_price": "boolean",
@@ -76,9 +75,7 @@ The message is returned differently in each protocol:
 - **product_id**: Unique identifier for the product
 - **name**: Human-readable product name
 - **description**: Detailed description of the product and its inventory
-- **formats**: Array of supported creative formats
-  - **format_id**: Unique identifier for the format
-  - **name**: Human-readable format name
+- **formats**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
 - **is_fixed_price**: Whether this product has fixed pricing (true) or uses auction (false)
 - **cpm**: Cost per thousand impressions in USD
@@ -120,7 +117,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "product_id": "ctv_sports_premium",
       "name": "CTV Sports Premium",
       "description": "Premium CTV inventory on sports content",
-      "formats": [{"format_id": "video_16x9_30s", "name": "30-second video"}],
+      "formats": ["video_16x9_30s"],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
@@ -165,7 +162,7 @@ A2A returns results as artifacts with text and data parts:
               "product_id": "ctv_sports_premium",
               "name": "CTV Sports Premium",
               "description": "Premium CTV inventory on sports content",
-              "formats": [{"format_id": "video_16x9_30s", "name": "30-second video"}],
+              "formats": ["video_16x9_30s"],
               "delivery_type": "guaranteed",
               "is_fixed_price": true,
               "cpm": 45.00,
@@ -238,12 +235,7 @@ A2A returns results as artifacts with text and data parts:
       "product_id": "open_exchange_video",
       "name": "Open Exchange - Video",
       "description": "Programmatic video inventory across all publishers",
-      "formats": [
-        {
-          "format_id": "video_standard",
-          "name": "Standard Video"
-        }
-      ],
+      "formats": ["video_standard"],
       "delivery_type": "non_guaranteed",
       "is_fixed_price": false,
       "cpm": 12.00,
@@ -266,12 +258,7 @@ A2A returns results as artifacts with text and data parts:
       "product_id": "connected_tv_prime",
       "name": "Connected TV - Prime Time",
       "description": "Premium CTV inventory 8PM-11PM",
-      "formats": [
-        {
-          "format_id": "video_standard",
-          "name": "Standard Video"
-        }
-      ],
+      "formats": ["video_standard"],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
@@ -294,8 +281,8 @@ A2A returns results as artifacts with text and data parts:
       "name": "Pet Category Shoppers - Syndicated",
       "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days across offsite display and video inventory.",
       "formats": [
-        {"format_id": "display_300x250", "name": "Medium Rectangle"},
-        {"format_id": "video_15s_vast", "name": "15-second VAST"}
+        "display_300x250",
+        "video_15s_vast"
       ],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
@@ -320,8 +307,8 @@ A2A returns results as artifacts with text and data parts:
       "name": "Custom: Competitive Dog Food Buyers",
       "description": "Custom audience of Albertsons shoppers who buy competitive dog food brands. Higher precision targeting for conquest campaigns.",
       "formats": [
-        {"format_id": "display_300x250", "name": "Medium Rectangle"},
-        {"format_id": "display_728x90", "name": "Leaderboard"}
+        "display_300x250",
+        "display_728x90"
       ],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
@@ -396,16 +383,18 @@ Two valid approaches:
 1. **No brief + filters** = Run-of-network products (broad reach inventory)
 2. **Brief + objectives** = Targeted recommendations based on campaign goals
 ## Discovery Workflow
-The complete discovery workflow with format awareness:
+
+**Two-Step Format Discovery**: `get_products` returns format references (IDs only), requiring `list_creative_formats` to get full specifications.
+
 ```mermaid
 graph TD
-    A[list_creative_formats] --> B[Identify available formats]
-    B --> C[User provides brief + format filters]
-    C --> D[get_products]
+    A[list_creative_formats] --> B[Get full format specifications]
+    B --> C[Filter products by format capabilities]
+    C --> D[get_products - returns format IDs only]
     D --> E{Products found?}
-    E -->|Yes| F[Review products]
+    E -->|Yes| F[Cross-reference format IDs with format specs]
     E -->|No| G[Generate custom products]
-    F --> H[Check pricing and availability]
+    F --> H[Verify creative requirements match]
     G --> H
     H --> I[create_media_buy]
 ```
@@ -431,6 +420,7 @@ const products = await client.call_tool("get_products", {
     standard_formats_only: true
   }
 });
+// Products return format IDs only: ["audio_standard_30s"]
 ```
 This prevents audio advertisers from seeing video inventory they can't use.
 ### 3. Product Review
@@ -438,7 +428,7 @@ The system returns matching products with all details needed for decision-making
 - Product specifications
 - Pricing information  
 - Available targeting
-- Creative requirements
+- Format references (use `list_creative_formats` for full creative requirements)
 ### 4. Custom Product Generation
 For unique requirements, systems can implement custom product generation, returning products with `is_custom: true`.
 ## Implementation Guide
@@ -451,7 +441,7 @@ def get_product_catalog():
             product_id="connected_tv_prime",
             name="Connected TV - Prime Time",
             description="Premium CTV inventory 8PM-11PM",
-            formats=[Format(format_id="video_standard", name="Standard Video")],
+            formats=["video_standard"],  # Format IDs only
             delivery_type="guaranteed",
             is_fixed_price=True,
             cpm=45.00

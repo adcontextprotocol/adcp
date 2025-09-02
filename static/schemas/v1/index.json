@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry v1",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "1.0.0",
+  "adcp_version": "1.1.0",
   "versioning": {
     "note": "All request/response schemas include adcp_version field. Compatibility follows semantic versioning rules."
   },
