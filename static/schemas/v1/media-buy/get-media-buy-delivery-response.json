@@ -199,6 +199,13 @@
         "required": ["media_buy_id", "status", "totals", "by_package"],
         "additionalProperties": false
       }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., missing delivery data, reporting platform issues)",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
     }
   },
   "required": ["adcp_version", "reporting_period", "currency", "aggregated_totals", "deliveries"],

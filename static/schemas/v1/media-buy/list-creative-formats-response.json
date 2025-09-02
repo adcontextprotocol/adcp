@@ -16,6 +16,13 @@
       "items": {
         "$ref": "/schemas/v1/core/format.json"
       }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., format availability issues)",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
     }
   },
   "required": ["adcp_version", "formats"],

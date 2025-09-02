@@ -15,13 +15,6 @@
     },
     "data": {
       "description": "AdCP task-specific response data (see individual task response schemas)"
-    },
-    "errors": {
-      "type": "array",
-      "description": "Non-fatal warnings",
-      "items": {
-        "$ref": "/schemas/v1/core/error.json"
-      }
     }
   },
   "required": ["message"],

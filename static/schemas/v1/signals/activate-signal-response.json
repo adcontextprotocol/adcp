@@ -33,21 +33,12 @@
       "format": "date-time",
       "description": "Timestamp when activation completed (optional)"
     },
-    "error": {
-      "type": "object",
-      "description": "Error details if activation failed (optional)",
-      "properties": {
-        "code": {
-          "type": "string",
-          "description": "Error code for programmatic handling"
-        },
-        "message": {
-          "type": "string",
-          "description": "Detailed error message"
-        }
-      },
-      "required": ["code", "message"],
-      "additionalProperties": false
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., activation failures, platform issues)",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
     }
   },
   "required": ["adcp_version", "task_id", "status"],
