@@ -119,27 +119,29 @@ interface ProtocolResponse {
   message: string;              // Human-readable summary (protocol level)
   context_id?: string;          // Session continuity (protocol level)
   data: any;                   // AdCP task-specific response data
-  errors?: Error[];            // Non-fatal warnings (protocol level)
 }
 ```
 
-**Note**: Individual AdCP task schemas contain only the application-level data that goes in the `data` field of the protocol response.
+**Note**: Individual AdCP task schemas contain only the application-level data that goes in the `data` field of the protocol response. Task-specific errors are included within each task's response schema, not at the protocol level.
 
 ## Error
 
-Standard error structure.
+Standard error structure for task-specific errors and warnings.
 
 **JSON Schema**: [`/schemas/v1/core/error.json`](/schemas/v1/core/error.json)
 
 ```typescript
 interface Error {
-  code: string;
-  message: string;
-  field?: string;
-  suggestion?: string;
-  details?: any;
+  code: string;              // Error code for programmatic handling
+  message: string;           // Human-readable error message
+  field?: string;            // Field path (e.g., 'packages[0].targeting')
+  suggestion?: string;       // Suggested fix for the error
+  retry_after?: number;      // Seconds to wait before retrying
+  details?: any;             // Additional task-specific error details
 }
 ```
+
+**Usage**: Errors are included as optional arrays in individual task response schemas to handle partial success scenarios, validation failures, and operational warnings specific to each AdCP operation.
 
 ## Common Enums
 

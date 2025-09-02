@@ -78,6 +78,13 @@
         "required": ["creative_id", "status"],
         "additionalProperties": false
       }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., asset upload or processing failures)",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
     }
   },
   "required": ["adcp_version", "asset_statuses"],

@@ -182,6 +182,36 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 }
 ```
 
+### MCP Response (Partial Success with Errors)
+```json
+{
+  "message": "Media buy created but some packages had issues. Review targeting for best performance.",
+  "adcp_version": "1.0.0",
+  "media_buy_id": "mb_12346",
+  "buyer_ref": "nike_q1_campaign_2024", 
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_12346_001",
+      "buyer_ref": "nike_ctv_sports_package"
+    }
+  ],
+  "errors": [
+    {
+      "code": "TARGETING_TOO_NARROW",
+      "message": "Package targeting yielded 0 available impressions",
+      "field": "packages[1].targeting_overlay",
+      "suggestion": "Broaden geographic targeting or remove segment exclusions",
+      "details": {
+        "requested_budget": 40000,
+        "available_impressions": 0,
+        "affected_package": "nike_audio_drive_package"
+      }
+    }
+  ]
+}
+```
+
 ### MCP Response (Asynchronous)
 ```json
 {

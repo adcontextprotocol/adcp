@@ -41,6 +41,13 @@
         "required": ["package_id", "buyer_ref"],
         "additionalProperties": false
       }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., partial update failures)",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
     }
   },
   "required": ["adcp_version", "media_buy_id", "buyer_ref", "affected_packages"],

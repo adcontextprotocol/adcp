@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/error.json",
   "title": "Error",
-  "description": "Standard error structure",
+  "description": "Standard error structure for task-specific errors and warnings",
   "type": "object",
   "properties": {
     "code": {
@@ -15,14 +15,19 @@
     },
     "field": {
       "type": "string",
-      "description": "Field associated with the error"
+      "description": "Field path associated with the error (e.g., 'packages[0].targeting')"
     },
     "suggestion": {
       "type": "string",
       "description": "Suggested fix for the error"
     },
+    "retry_after": {
+      "type": "number",
+      "description": "Seconds to wait before retrying the operation",
+      "minimum": 0
+    },
     "details": {
-      "description": "Additional error details"
+      "description": "Additional task-specific error details"
     }
   },
   "required": ["code", "message"],

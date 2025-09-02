@@ -61,8 +61,8 @@ All MCP responses follow this structure:
   "context_id": "ctx-abc123",
   "data": {
     // Structured response data
-  },
-  "errors": []  // Non-fatal warnings
+    // Task-specific errors are included within the task response data, not at protocol level
+  }
 }
 ```
 
