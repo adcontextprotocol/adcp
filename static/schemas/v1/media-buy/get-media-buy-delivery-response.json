@@ -5,14 +5,6 @@
   "description": "Response payload for get_media_buy_delivery task",
   "type": "object",
   "properties": {
-    "message": {
-      "type": "string",
-      "description": "Human-readable summary of campaign performance"
-    },
-    "context_id": {
-      "type": "string",
-      "description": "Session continuity identifier"
-    },
     "reporting_period": {
       "type": "object",
       "description": "Date range for the report",

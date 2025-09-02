@@ -5,14 +5,6 @@
   "description": "Response payload for add_creative_assets task",
   "type": "object",
   "properties": {
-    "message": {
-      "type": "string",
-      "description": "Human-readable status message"
-    },
-    "context_id": {
-      "type": "string",
-      "description": "Session continuity identifier"
-    },
     "asset_statuses": {
       "type": "array",
       "description": "Array of status information for each uploaded asset",

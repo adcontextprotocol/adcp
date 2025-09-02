@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/response.json",
-  "title": "Response",
-  "description": "Standard response structure (MCP)",
+  "title": "Protocol Response",
+  "description": "Protocol-level response wrapper (MCP/A2A) - contains AdCP task data plus protocol fields",
   "type": "object",
   "properties": {
     "message": {
@@ -14,7 +14,7 @@
       "description": "Session continuity identifier"
     },
     "data": {
-      "description": "Operation-specific data"
+      "description": "AdCP task-specific response data (see individual task response schemas)"
     },
     "errors": {
       "type": "array",
@@ -22,10 +22,6 @@
       "items": {
         "$ref": "/schemas/v1/core/error.json"
       }
-    },
-    "clarification_needed": {
-      "type": "boolean",
-      "description": "Whether clarification is needed"
     }
   },
   "required": ["message"],
