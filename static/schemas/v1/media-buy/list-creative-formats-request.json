@@ -5,6 +5,12 @@
   "description": "Request parameters for discovering supported creative formats",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
     "type": {
       "type": "string",
       "description": "Filter by format type",

@@ -5,6 +5,11 @@
   "description": "Response payload for get_signals task",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
     "signals": {
       "type": "array",
       "description": "Array of matching signals",
@@ -99,6 +104,6 @@
       }
     }
   },
-  "required": ["signals"],
+  "required": ["adcp_version", "signals"],
   "additionalProperties": false
 }

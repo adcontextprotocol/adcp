@@ -5,6 +5,12 @@
   "description": "Request parameters for creating a media buy",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
     "buyer_ref": {
       "type": "string",
       "description": "Buyer's reference identifier for this media buy"

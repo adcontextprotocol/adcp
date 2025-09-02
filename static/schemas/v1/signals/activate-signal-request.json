@@ -5,6 +5,12 @@
   "description": "Request parameters for activating a signal on a specific platform/account",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
     "signal_agent_segment_id": {
       "type": "string",
       "description": "The universal identifier for the signal to activate"

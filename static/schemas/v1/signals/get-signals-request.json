@@ -5,6 +5,12 @@
   "description": "Request parameters for discovering signals based on description",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
     "signal_spec": {
       "type": "string",
       "description": "Natural language description of the desired signals"

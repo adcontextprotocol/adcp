@@ -5,6 +5,11 @@
   "description": "Response payload for add_creative_assets task",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
     "asset_statuses": {
       "type": "array",
       "description": "Array of status information for each uploaded asset",
@@ -75,6 +80,6 @@
       }
     }
   },
-  "required": ["asset_statuses"],
+  "required": ["adcp_version", "asset_statuses"],
   "additionalProperties": false
 }

@@ -5,6 +5,11 @@
   "description": "Response payload for update_media_buy task",
   "type": "object",
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
     "media_buy_id": {
       "type": "string",
       "description": "Publisher's identifier for the media buy"
@@ -38,6 +43,6 @@
       }
     }
   },
-  "required": ["media_buy_id", "buyer_ref", "affected_packages"],
+  "required": ["adcp_version", "media_buy_id", "buyer_ref", "affected_packages"],
   "additionalProperties": false
 }
