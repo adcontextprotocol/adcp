@@ -108,21 +108,22 @@ interface Targeting {
 }
 ```
 
-## Response Format
+## Protocol Response Format
 
-Standard response structure (MCP).
+Protocol-level response wrapper (MCP/A2A).
 
 **JSON Schema**: [`/schemas/v1/core/response.json`](/schemas/v1/core/response.json)
 
 ```typescript
-interface Response {
-  message: string;           // Human-readable summary
-  context_id?: string;        // Session continuity
-  data?: any;                // Operation-specific data
-  errors?: Error[];          // Non-fatal warnings
-  clarification_needed?: boolean;
+interface ProtocolResponse {
+  message: string;              // Human-readable summary (protocol level)
+  context_id?: string;          // Session continuity (protocol level)
+  data: any;                   // AdCP task-specific response data
+  errors?: Error[];            // Non-fatal warnings (protocol level)
 }
 ```
+
+**Note**: Individual AdCP task schemas contain only the application-level data that goes in the `data` field of the protocol response.
 
 ## Error
 

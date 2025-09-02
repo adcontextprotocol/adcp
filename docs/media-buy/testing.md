@@ -4,6 +4,10 @@
 
 AdCP servers support time simulation and dry run capabilities to enable comprehensive testing of advertising workflows without waiting for real-time events or spending actual budgets.
 
+## Protocol Compliance Testing
+
+Use the [AdCP Protocol Test Harness](https://storylab.scope3.com/sales-agents) to validate your implementation's compliance with the AdCP specification. This interactive tool allows you to test all AdCP tasks and verify correct behavior across different scenarios.
+
 ## Testing Modes
 
 ### Dry Run Mode
