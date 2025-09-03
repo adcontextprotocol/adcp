@@ -16,7 +16,8 @@ Discover all supported creative formats in the system.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `type` | string | No | Filter by format type (e.g., `"audio"`, `"video"`, `"display"`) |
-| `standard_only` | boolean | No | Only return IAB standard formats |
+| `category` | string | No | Filter by category (`"standard"` or `"custom"`) |
+| `standard_only` | boolean | No | Only return standard formats (deprecated, use `category: "standard"`) |
 
 ## Response (Message)
 
@@ -52,16 +53,80 @@ The message is returned differently in each protocol:
 - **format_id**: Unique identifier for the format
 - **name**: Human-readable format name
 - **type**: Format type (e.g., `"audio"`, `"video"`, `"display"`)
-- **is_standard**: Whether this follows IAB standards
-- **iab_specification**: Name of the IAB specification (if applicable)
+- **category**: Format category (`"standard"` or `"custom"`)
+- **is_standard**: Whether this follows IAB or AdCP standards
+- **accepts_3p_tags**: Whether format can accept third-party tags
 - **requirements**: Format-specific requirements (varies by format type)
-- **assets_required**: Array of required assets for composite formats
+- **assets_required**: Array of required assets with `asset_role` identifiers
 
 ## Protocol-Specific Examples
 
 The AdCP payload is identical across protocols. Only the request/response wrapper differs.
 
-### MCP Request
+### Example 1: Standard Formats Only
+
+#### MCP Request
+```json
+{
+  "tool": "list_creative_formats",
+  "arguments": {
+    "category": "standard"
+  }
+}
+```
+
+#### Response
+```json
+{
+  "formats": [
+    {
+      "format_id": "display_300x250",
+      "name": "Medium Rectangle",
+      "type": "display",
+      "category": "standard",
+      "is_standard": true,
+      "dimensions": "300x250",
+      "accepts_3p_tags": false,
+      "assets_required": [
+        {
+          "asset_id": "banner_image",
+          "asset_type": "image",
+          "asset_role": "hero_image",
+          "required": true,
+          "width": 300,
+          "height": 250,
+          "acceptable_formats": ["jpg", "png", "gif"],
+          "max_file_size_kb": 200
+        },
+        {
+          "asset_id": "clickthrough_url",
+          "asset_type": "url",
+          "asset_role": "clickthrough_url",
+          "required": true
+        }
+      ]
+    },
+    {
+      "format_id": "video_skippable_15s",
+      "name": "15-Second Skippable Video",
+      "type": "video",
+      "category": "standard",
+      "is_standard": true,
+      "duration": "15s",
+      "accepts_3p_tags": true,
+      "requirements": {
+        "aspect_ratios": ["16:9", "9:16", "1:1"],
+        "max_file_size_mb": 30,
+        "codec": "H.264"
+      }
+    }
+  ]
+}
+```
+
+### Example 2: Filter by Type
+
+#### MCP Request
 ```json
 {
   "tool": "list_creative_formats",

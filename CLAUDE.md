@@ -313,3 +313,89 @@ git push            # Push to remote
 3. Focus on protocol capabilities, not implementation
 4. Ask for clarification on design decisions
 5. Refer to the [API Reference](docs/media-buy/api-reference.md) for tool signatures
+
+## Standard Formats: Lessons Learned
+
+### Schema Simplification Best Practices
+
+Through the standard formats implementation, we've learned key principles for schema design:
+
+1. **Remove Platform-Specific Complexity**
+   - Formats should be platform-agnostic
+   - No `platform` or `placement_type` fields in format definitions
+   - Publishers adapt formats through placement, not specification changes
+
+2. **Simplify Selection Logic**
+   - Removed complex `format-selection.json` schema
+   - No placement types or format preferences in products
+   - Buyers directly specify formats they want to provide
+
+3. **Clear Asset Identification**
+   - Added `asset_role` field to identify asset purposes (e.g., 'hero_image', 'logo')
+   - Assets are self-describing with clear roles
+   - Enables better creative assembly and validation
+
+4. **Better Field Naming**
+   - `accepts_3p_tags` instead of `is_3p_served` (indicates optionality)
+   - `formats_to_provide` instead of `selected_formats` (clearer intent)
+   - Field names should indicate purpose, not state
+
+### Testing Considerations
+
+1. **Schema Registry Tests**
+   - Not all schemas need to be in the registry
+   - Registry only needs to reference core and enum schemas
+   - Standard format schemas are discovered through directory structure
+   - Test should validate registry references exist, not that all schemas are registered
+
+2. **Schema Validation Patterns**
+   - Include `index.json` files in schema discovery
+   - Validate examples match schema structure
+   - Ensure all `$ref` links resolve correctly
+   - Test both request and response schemas
+
+### Code Review Integration
+
+When addressing code review feedback:
+
+1. **Use Todo Lists**
+   - Create a todo for each review comment
+   - Track progress systematically
+   - Mark items complete as you address them
+
+2. **Batch Related Changes**
+   - Group similar schema updates together
+   - Use MultiEdit for multiple changes to same file
+   - Test after each batch of changes
+
+3. **Documentation Sync**
+   - Update documentation when changing schemas
+   - Keep examples consistent with schema changes
+   - Update both spec docs and CLAUDE.md as needed
+
+### Standard Formats Architecture
+
+The simplified standard formats structure:
+
+```
+static/schemas/v1/standard-formats/
+├── index.json                 # Registry of all standard formats
+├── asset-types/              # Reusable asset type definitions
+│   ├── image.json
+│   ├── video.json
+│   └── text.json
+├── display/                  # Display format definitions
+│   ├── display_300x250.json
+│   └── mobile_interstitial_320x480.json
+├── video/                    # Video format definitions
+│   ├── video_skippable_15s.json
+│   └── video_story_vertical.json
+└── native/                   # Native format definitions
+    └── native_responsive.json
+```
+
+Key principles:
+- Each format is self-contained with all requirements
+- No cross-references to placement or selection schemas
+- Assets are defined inline with clear specifications
+- Format categories match industry standards (display, video, native, etc.)
