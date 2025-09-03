@@ -86,7 +86,7 @@ function findAllSchemas(dir) {
       
       if (stat.isDirectory()) {
         traverse(itemPath);
-      } else if (item.endsWith('.json') && item !== 'index.json') {
+      } else if (item.endsWith('.json')) {
         schemas.push(itemPath);
       }
     }

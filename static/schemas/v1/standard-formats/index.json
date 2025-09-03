@@ -56,7 +56,6 @@
           "schema": "/schemas/v1/standard-formats/display/display_interstitial_320x480.json",
           "name": "Mobile Interstitial",
           "dimensions": "320x480",
-          "platform": "mobile",
           "is_foundational": false
         },
         "display_dynamic_300x250": {
@@ -69,7 +68,7 @@
       }
     },
     "video": {
-      "description": "Video creative formats for various platforms",
+      "description": "Video creative formats",
       "formats": {
         "video_15s_hosted": {
           "schema": "/schemas/v1/standard-formats/video/video_15s_hosted.json",
@@ -106,7 +105,6 @@
           "schema": "/schemas/v1/standard-formats/video/video_ctv_30s_hosted.json",
           "name": "30-second Connected TV Video", 
           "duration": "30s",
-          "platform": "ctv",
           "is_foundational": false
         },
         "video_outstream_native": {
@@ -121,7 +119,6 @@
           "name": "Vertical Story Video",
           "duration": "5-15s",
           "aspect_ratio": "9:16",
-          "platform": "mobile",
           "is_foundational": false
         }
       }

@@ -70,14 +70,6 @@
         "creative-assignment": {
           "$ref": "/schemas/v1/core/creative-assignment.json",
           "description": "Assignment of a creative asset to a package"
-        },
-        "placement-type": {
-          "$ref": "/schemas/v1/core/placement-type.json",
-          "description": "Logical grouping of related formats for multi-size placements"
-        },
-        "format-selection": {
-          "$ref": "/schemas/v1/core/format-selection.json",
-          "description": "Specification for how formats should be selected from multi-format products"
         }
       }
     },
@@ -111,10 +103,6 @@
         "standard-format-ids": {
           "$ref": "/schemas/v1/enums/standard-format-ids.json",
           "description": "Enumeration of all standard creative format identifiers"
-        },
-        "standard-placement-types": {
-          "$ref": "/schemas/v1/enums/standard-placement-types.json",
-          "description": "Enumeration of standard placement type IDs for multi-size handling"
         }
       }
     },
@@ -223,9 +211,21 @@
     "documentation": "Reference schemas for API documentation",
     "testing": "Validate test fixtures and examples"
   },
-  "examples": {
-    "javascriptValidation": "const Ajv = require('ajv'); const ajv = new Ajv(); const schema = require('./schemas/v1/core/product.json'); const validate = ajv.compile(schema);",
-    "pythonValidation": "import jsonschema; schema = {...}; jsonschema.validate(data, schema)",
-    "javaValidation": "// Use everit-org/json-schema or similar library"
-  }
+  "examples": [
+    {
+      "language": "javascript",
+      "description": "JavaScript validation example",
+      "code": "const Ajv = require('ajv'); const ajv = new Ajv(); const schema = require('./schemas/v1/core/product.json'); const validate = ajv.compile(schema);"
+    },
+    {
+      "language": "python", 
+      "description": "Python validation example",
+      "code": "import jsonschema; schema = {...}; jsonschema.validate(data, schema)"
+    },
+    {
+      "language": "java",
+      "description": "Java validation example",
+      "code": "// Use everit-org/json-schema or similar library"
+    }
+  ]
 }

@@ -25,14 +25,6 @@
       "type": "string",
       "const": "320x480"
     },
-    "platform": {
-      "type": "string",
-      "const": "mobile"
-    },
-    "placement_type": {
-      "type": "string",
-      "const": "interstitial"
-    },
     "is_standard": {
       "type": "boolean",
       "const": true
@@ -173,6 +165,6 @@
       }
     }
   },
-  "required": ["format_id", "type", "category", "dimensions", "platform", "is_3p_served", "assets_required"],
+  "required": ["format_id", "type", "category", "dimensions", "is_3p_served", "assets_required"],
   "additionalProperties": false
 }

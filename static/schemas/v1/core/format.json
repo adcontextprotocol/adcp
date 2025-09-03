@@ -15,42 +15,17 @@
     },
     "type": {
       "type": "string",
-      "description": "Format type (e.g., audio, video, display, native, dooh, rich_media)",
-      "enum": ["audio", "video", "display", "native", "dooh", "rich_media"]
+      "description": "Format type",
+      "enum": ["audio", "video", "display", "native", "dooh", "rich_media", "universal"]
     },
     "category": {
       "type": "string",
-      "description": "Format category (standard, foundational, or custom)",
-      "enum": ["standard", "foundational", "custom"]
+      "description": "Format category",
+      "enum": ["standard", "custom"]
     },
     "is_standard": {
       "type": "boolean",
       "description": "Whether this follows IAB or AdCP standards"
-    },
-    "is_foundational": {
-      "type": "boolean", 
-      "description": "Whether this is a foundational format that works across multiple publishers"
-    },
-    "standard_format_ref": {
-      "type": "string",
-      "format": "uri",
-      "description": "Reference to the standard format schema (if this implements a standard format)"
-    },
-    "extends": {
-      "type": "string",
-      "description": "Standard format ID that this format extends (for publisher customizations)"
-    },
-    "publisher": {
-      "type": "string",
-      "description": "Publisher name (for publisher-specific format extensions)"
-    },
-    "publisher_coverage": {
-      "type": "string",
-      "description": "Description of publisher coverage (e.g., '8+ major publishers')"
-    },
-    "iab_specification": {
-      "type": "string",
-      "description": "Name of the IAB specification (if applicable)"
     },
     "requirements": {
       "type": "object",
@@ -59,7 +34,7 @@
     },
     "assets_required": {
       "type": "array",
-      "description": "Array of required assets for composite formats",
+      "description": "Array of required assets for this format",
       "items": {
         "$ref": "/schemas/v1/core/creative-asset.json"
       }
@@ -71,38 +46,8 @@
         "$ref": "/schemas/v1/core/creative-asset.json"
       }
     },
-    "modifications": {
-      "type": "object",
-      "description": "Publisher-specific modifications when extending a standard format",
-      "properties": {
-        "additional_assets": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/v1/core/creative-asset.json"
-          }
-        },
-        "additional_placements": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "custom_requirements": {
-          "type": "object",
-          "additionalProperties": true
-        }
-      },
-      "additionalProperties": false
-    },
-    "extension_points": {
-      "type": "object",
-      "description": "Documentation of how this format can be extended by publishers",
-      "additionalProperties": {
-        "type": "string"
-      }
-    },
     "delivery": {
-      "type": "object", 
+      "type": "object",
       "description": "Delivery method specifications (e.g., hosted, VAST, third-party tags)",
       "additionalProperties": true
     },
@@ -111,38 +56,6 @@
       "description": "Whether this format accepts third-party served creative tags"
     }
   },
-  "required": ["format_id", "name"],
-  "additionalProperties": false,
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "extends": {
-            "type": "string"
-          }
-        },
-        "required": ["extends"]
-      },
-      "then": {
-        "required": ["publisher"]
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "category": {
-            "const": "foundational"
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "is_foundational": {
-            "const": true
-          }
-        },
-        "required": ["publisher_coverage", "extension_points"]
-      }
-    }
-  ]
+  "required": ["format_id", "name", "type"],
+  "additionalProperties": false
 }

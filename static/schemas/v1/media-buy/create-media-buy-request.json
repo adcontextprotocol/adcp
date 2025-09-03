@@ -40,10 +40,6 @@
               "description": "Format ID referencing a format from list_creative_formats"
             }
           },
-          "format_selection": {
-            "$ref": "/schemas/v1/core/format-selection.json",
-            "description": "Format selection strategy (alternative to specifying exact formats)"
-          },
           "budget": {
             "$ref": "/schemas/v1/core/budget.json"
           },

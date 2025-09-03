@@ -21,15 +21,6 @@
       "type": "string",
       "default": "Vertical Story Video"
     },
-    "platform": {
-      "type": "string",
-      "const": "mobile"
-    },
-    "placement_type": {
-      "type": "string",
-      "const": "story",
-      "description": "Full-screen story format"
-    },
     "is_standard": {
       "type": "boolean",
       "const": true
@@ -209,6 +200,6 @@
       }
     }
   },
-  "required": ["format_id", "type", "category", "platform", "placement_type", "aspect_ratio", "is_3p_served", "assets_required"],
+  "required": ["format_id", "type", "category", "aspect_ratio", "is_3p_served", "assets_required"],
   "additionalProperties": false
 }

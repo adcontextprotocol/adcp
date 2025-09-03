@@ -42,13 +42,9 @@
         "$ref": "/schemas/v1/core/creative-assignment.json"
       }
     },
-    "format_selection": {
-      "$ref": "/schemas/v1/core/format-selection.json",
-      "description": "Format selection strategy used for this package"
-    },
     "selected_formats": {
       "type": "array",
-      "description": "Final format IDs selected for this package (resolved from format_selection)",
+      "description": "Format IDs selected for this package",
       "items": {"type": "string"}
     },
     "status": {
