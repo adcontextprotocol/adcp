@@ -171,24 +171,43 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 ```
 
 ### A2A Request
-For A2A, the skill and input are sent as:
-```json
-{
-  "skill": "get_signals",
-  "input": {
-    
-    "signal_spec": "High-income households interested in luxury goods",
-    "deliver_to": {
-      "platforms": ["the-trade-desk", "amazon-dsp"],
-      "countries": ["US"]
-    },
-    "filters": {
-      "max_cpm": 5.0,
-      "catalog_types": ["marketplace"]
-    },
-    "max_results": 5
+
+#### Natural Language Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Find me signals for high-income households interested in luxury goods that can be deployed on The Trade Desk and Amazon DSP in the US, with a maximum CPM of $5.00."
+    }]
   }
-}
+});
+```
+
+#### Explicit Skill Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "get_signals",
+        parameters: {
+          signal_spec: "High-income households interested in luxury goods",
+          deliver_to: {
+            platforms: ["the-trade-desk", "amazon-dsp"],
+            countries: ["US"]
+          },
+          filters: {
+            max_cpm: 5.0,
+            catalog_types: ["marketplace"]
+          },
+          max_results: 5
+        }
+      }
+    }]
+  }
+});
 ```
 
 ### A2A Response

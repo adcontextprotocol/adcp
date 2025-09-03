@@ -107,17 +107,36 @@ After polling for completion:
 ```
 
 ### A2A Request
-For A2A, the skill and input are sent as:
-```json
-{
-  "skill": "activate_signal",
-  "input": {
-    
-    "signal_agent_segment_id": "luxury_auto_intenders",
-    "platform": "the-trade-desk",
-    "account": "agency-123-ttd"
+
+#### Natural Language Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Please activate the luxury_auto_intenders signal on The Trade Desk for account agency-123-ttd."
+    }]
   }
-}
+});
+```
+
+#### Explicit Skill Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "activate_signal",
+        parameters: {
+          signal_agent_segment_id: "luxury_auto_intenders",
+          platform: "the-trade-desk",
+          account: "agency-123-ttd"
+        }
+      }
+    }]
+  }
+});
 ```
 
 ### A2A Response (with streaming)

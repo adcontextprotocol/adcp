@@ -223,56 +223,82 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 ```
 
 ### A2A Request
-For A2A, the skill and input are sent as:
-```json
-{
-  "skill": "create_media_buy",
-  "input": {
-    "buyer_ref": "nike_q1_campaign_2024",
-    "packages": [
+
+#### Natural Language Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Create a $100K Nike campaign from Feb 1 to Mar 31. Use the CTV sports and audio drive time products we discussed. Split budget 60/40."
+    }]
+  }
+});
+```
+
+#### Explicit Skill Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [
       {
-        "buyer_ref": "nike_ctv_sports_package",
-        "products": ["ctv_sports_premium", "ctv_prime_time"],
-        "formats": ["video_standard_30s", "video_standard_15s"],
-        "budget": {
-          "total": 60000,
-          "currency": "USD",
-          "pacing": "even"
-        },
-        "targeting_overlay": {
-          "geo_country_any_of": ["US"],
-          "geo_region_any_of": ["CA", "NY"],
-          "axe_include_segment": "x8dj3k"
-        }
+        kind: "text",
+        text: "Creating Nike Q1 campaign"  // Optional context
       },
       {
-        "buyer_ref": "nike_audio_drive_package",
-        "products": ["audio_drive_time"],
-        "formats": ["audio_standard_30s"],
-        "budget": {
-          "total": 40000,
-          "currency": "USD",
-          "pacing": "front_loaded"
-        },
-        "targeting_overlay": {
-          "geo_country_any_of": ["US"],
-          "geo_region_any_of": ["CA"],
-          "axe_exclude_segment": "x9m2p"
+        kind: "data",
+        data: {
+          skill: "create_media_buy",  // Must match skill name in Agent Card
+          parameters: {
+            "buyer_ref": "nike_q1_campaign_2024",
+            "packages": [
+              {
+                "buyer_ref": "nike_ctv_sports_package",
+                "products": ["ctv_sports_premium", "ctv_prime_time"],
+                "formats": ["video_standard_30s", "video_standard_15s"],
+                "budget": {
+                  "total": 60000,
+                  "currency": "USD",
+                  "pacing": "even"
+                },
+                "targeting_overlay": {
+                  "geo_country_any_of": ["US"],
+                  "geo_region_any_of": ["CA", "NY"],
+                  "axe_include_segment": "x8dj3k"
+                }
+              },
+              {
+                "buyer_ref": "nike_audio_drive_package",
+                "products": ["audio_drive_time"],
+                "formats": ["audio_standard_30s"],
+                "budget": {
+                  "total": 40000,
+                  "currency": "USD",
+                  "pacing": "front_loaded"
+                },
+                "targeting_overlay": {
+                  "geo_country_any_of": ["US"],
+                  "geo_region_any_of": ["CA"],
+                  "axe_exclude_segment": "x9m2p"
+                }
+              }
+            ],
+            "promoted_offering": "Nike Air Max 2024 - premium running shoes",
+            "po_number": "PO-2024-Q1-001",
+            "start_time": "2024-02-01T00:00:00Z",
+            "end_time": "2024-03-31T23:59:59Z",
+            "budget": {
+              "total": 100000,
+              "currency": "USD",
+              "daily_cap": 5000,
+              "pacing": "even"
+            }
+          }
         }
       }
-    ],
-    "promoted_offering": "Nike Air Max 2024 - premium running shoes",
-    "po_number": "PO-2024-Q1-001",
-    "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-03-31T23:59:59Z",
-    "budget": {
-      "total": 100000,
-      "currency": "USD",
-      "daily_cap": 5000,
-      "pacing": "even"
-    }
+    ]
   }
-}
+});
 ```
 
 ### A2A Response (with streaming)

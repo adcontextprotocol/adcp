@@ -183,17 +183,36 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 ```
 
 ### A2A Request
-For A2A, the skill and input are sent as:
-```json
-{
-  "skill": "get_media_buy_delivery",
-  "input": {
-    
-    "media_buy_ids": ["mb_12345"],
-    "start_date": "2024-01-01",
-    "end_date": "2024-01-31"
+
+#### Natural Language Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Show me the delivery metrics for media buy mb_12345 from January 1st through January 31st, 2024."
+    }]
   }
-}
+});
+```
+
+#### Explicit Skill Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "get_media_buy_delivery",
+        parameters: {
+          media_buy_ids: ["mb_12345"],
+          start_date: "2024-01-01",
+          end_date: "2024-01-31"
+        }
+      }
+    }]
+  }
+});
 ```
 
 ### A2A Response

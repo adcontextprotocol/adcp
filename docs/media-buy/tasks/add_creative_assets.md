@@ -155,28 +155,47 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 ```
 
 ### A2A Request
-For A2A, the skill and input are sent as:
-```json
-{
-  "skill": "add_creative_assets",
-  "input": {
-    
-    "media_buy_id": "mb_12345",
-    "assets": [
-      {
-        "creative_id": "hero_video_30s",
-        "name": "Nike Air Max Hero 30s",
-        "format": "video",
-        "media_url": "https://cdn.example.com/nike-hero-30s.mp4",
-        "click_url": "https://nike.com/airmax",
-        "duration": 30000,
-        "width": 1920,
-        "height": 1080,
-        "package_assignments": ["pkg_ctv_001"]
-      }
-    ]
+
+#### Natural Language Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Please upload my Nike Air Max hero video creative to the media buy mb_12345. It's a 30-second video at https://cdn.example.com/nike-hero-30s.mp4 that should direct to nike.com/airmax and be assigned to package pkg_ctv_001."
+    }]
   }
-}
+});
+```
+
+#### Explicit Skill Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "add_creative_assets",
+        parameters: {
+          media_buy_id: "mb_12345",
+          assets: [
+            {
+              creative_id: "hero_video_30s",
+              name: "Nike Air Max Hero 30s",
+              format: "video",
+              media_url: "https://cdn.example.com/nike-hero-30s.mp4",
+              click_url: "https://nike.com/airmax",
+              duration: 30000,
+              width: 1920,
+              height: 1080,
+              package_assignments: ["pkg_ctv_001"]
+            }
+          ]
+        }
+      }
+    }]
+  }
+});
 ```
 
 ### A2A Response (with streaming)
