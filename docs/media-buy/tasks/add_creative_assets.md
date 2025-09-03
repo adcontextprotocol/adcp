@@ -28,6 +28,7 @@ Upload creative assets and assign them to packages. This task includes validatio
 | `creative_id` | string | Yes | Unique identifier for the creative |
 | `name` | string | Yes | Human-readable creative name |
 | `format` | string | Yes | Creative format type (e.g., `"video"`, `"audio"`, `"display"`) |
+| `asset_role` | string | No | Role/purpose of this asset (e.g., `"hero_image"`, `"logo"`, `"cta_button"`) |
 | `media_url` | string | Yes | URL of the creative file |
 | `click_url` | string | No | Landing page URL for the creative |
 | `duration` | number | No | Duration in milliseconds (for video/audio) |
@@ -42,6 +43,7 @@ Upload creative assets and assign them to packages. This task includes validatio
 |-----------|------|----------|-------------|
 | `asset_type` | string | Yes | Type of asset (e.g., `"product_image"`, `"logo"`, `"headline"`) |
 | `asset_id` | string | Yes | Unique identifier for the asset |
+| `asset_role` | string | Yes | Role identifier matching format specification (e.g., `"hero_image"`, `"background_video"`) |
 | `content_uri` | string | No | URL for media assets |
 | `assets[].assets[].content` | array | No | Text content for text assets |
 
@@ -102,6 +104,99 @@ The message is returned differently in each protocol:
 ## Protocol-Specific Examples
 
 The AdCP payload is identical across protocols. Only the request/response wrapper differs.
+
+### Example 1: Standard Format with Asset Roles
+
+Using a standard format (display_300x250) with properly identified asset roles:
+
+#### MCP Request
+```json
+{
+  "tool": "add_creative_assets",
+  "arguments": {
+    "media_buy_id": "mb_12345",
+    "assets": [
+      {
+        "creative_id": "spring_banner_001",
+        "name": "Spring Collection Banner",
+        "format": "display_300x250",
+        "asset_role": "hero_image",
+        "media_url": "https://cdn.example.com/spring-banner-300x250.jpg",
+        "click_url": "https://example.com/spring-collection",
+        "width": 300,
+        "height": 250,
+        "package_assignments": ["pkg_display_001"]
+      }
+    ]
+  }
+}
+```
+
+#### Response
+```json
+{
+  "asset_statuses": [
+    {
+      "creative_id": "spring_banner_001",
+      "status": "approved",
+      "platform_id": "platform_creative_123",
+      "review_feedback": "Standard format validated successfully"
+    }
+  ]
+}
+```
+
+### Example 2: Multi-Asset Format with Roles
+
+Product carousel with multiple assets, each with specific roles:
+
+#### MCP Request
+```json
+{
+  "tool": "add_creative_assets",
+  "arguments": {
+    "media_buy_id": "mb_12345",
+    "assets": [
+      {
+        "creative_id": "product_carousel_001",
+        "name": "Summer Products Carousel",
+        "format": "retail_product_carousel",
+        "package_assignments": ["pkg_native_001"],
+        "assets": [
+          {
+            "asset_id": "prod_001",
+            "asset_type": "image",
+            "asset_role": "product_image_1",
+            "content_uri": "https://cdn.example.com/product1.jpg"
+          },
+          {
+            "asset_id": "prod_002",
+            "asset_type": "image",
+            "asset_role": "product_image_2",
+            "content_uri": "https://cdn.example.com/product2.jpg"
+          },
+          {
+            "asset_id": "logo_001",
+            "asset_type": "image",
+            "asset_role": "brand_logo",
+            "content_uri": "https://cdn.example.com/logo.png"
+          },
+          {
+            "asset_id": "cta_001",
+            "asset_type": "text",
+            "asset_role": "cta_button",
+            "content": ["Shop Now"]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Example 3: Video Format
+
+Standard video format upload:
 
 ### MCP Request
 ```json

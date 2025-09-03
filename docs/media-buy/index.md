@@ -22,6 +22,7 @@ The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-fi
 
 - **Natural Language Discovery**: Find advertising inventory using plain English briefs
 - **Unified Targeting**: Consistent targeting dimensions across all platforms
+- **Standard Formats**: Pre-defined creative specifications that work everywhere
 - **Creative Flexibility**: Support for standard IAB and custom publisher formats
 - **Real-time Optimization**: Continuous performance monitoring and adjustment
 - **Human-in-the-Loop**: Optional manual approval workflows where needed
@@ -110,6 +111,8 @@ Managing creative assets throughout their lifecycle:
 
 - **[Creative Lifecycle](creative-lifecycle.md)** - Submit, track, and adapt creative assets
 - **[Creative Formats](creative-formats.md)** - Detailed specifications for supported creative types
+- **[Standard Formats Guide](standard-formats-guide.md)** - Pre-defined formats that work across all publishers
+- **[Asset Types](asset-types.md)** - Understanding asset roles and specifications
 
 ### Operations
 Running successful campaigns:

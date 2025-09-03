@@ -6,6 +6,26 @@ title: Creative Formats
 
 All creative formats have a unique identifier and specify delivery methods. Formats can require either a single asset or multiple assets for rich media experiences.
 
+## Standard vs Custom Formats
+
+AdCP defines two categories of formats:
+
+### Standard Formats
+Pre-defined, industry-standard specifications that work consistently across publishers:
+- **Simplified**: No platform-specific complexity
+- **Portable**: One creative works everywhere  
+- **Validated**: Pre-tested specifications
+- **Discoverable**: Available via `list_creative_formats`
+
+See the [Standard Formats Guide](./standard-formats-guide.md) for complete documentation.
+
+### Custom Formats
+Publisher-specific formats for unique inventory:
+- **Unique**: Truly differentiated experiences
+- **Specialized**: Platform-specific capabilities
+- **Extended**: Often based on standard formats
+- **Documented**: Clear specifications required
+
 ## Authoritative Source
 
 The official JSON schema for standard creative formats is available at:
@@ -34,7 +54,8 @@ The JSON schema includes:
   - **required**: Boolean indicating if the asset is mandatory
   - **requirements**: Specific technical requirements for the asset
 - **delivery**: For VAST/third-party formats, delivery method and supported versions
-- **is_3p_served**: Boolean indicating if format accepts third-party tags
+- **accepts_3p_tags**: Boolean indicating if format can accept third-party tags as an alternative
+- **asset_role**: Identifies the purpose of each asset (e.g., 'hero_image', 'logo', 'cta_button')
 
 ### Version Management
 
