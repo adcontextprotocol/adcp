@@ -1,0 +1,254 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/standard-formats/index.json",
+  "title": "AdCP Standard Creative Formats Registry",
+  "description": "Authoritative registry of standard creative formats for Ad Context Protocol",
+  "version": "1.0.0",
+  "adcp_compatibility": ["1.0.0", "1.1.0"],
+  "lastUpdated": "2025-09-02",
+  "categories": {
+    "display": {
+      "description": "Standard display banner formats",
+      "formats": {
+        "display_300x250": {
+          "schema": "/schemas/v1/standard-formats/display/display_300x250.json",
+          "name": "Medium Rectangle Banner",
+          "dimensions": "300x250",
+          "is_foundational": false
+        },
+        "display_728x90": {
+          "schema": "/schemas/v1/standard-formats/display/display_728x90.json",
+          "name": "Leaderboard Banner",
+          "dimensions": "728x90", 
+          "is_foundational": false
+        },
+        "display_320x50": {
+          "schema": "/schemas/v1/standard-formats/display/display_320x50.json",
+          "name": "Mobile Banner",
+          "dimensions": "320x50",
+          "is_foundational": false
+        },
+        "display_native": {
+          "schema": "/schemas/v1/standard-formats/display/display_native.json", 
+          "name": "Native Ad",
+          "dimensions": "responsive",
+          "is_foundational": false
+        },
+        "display_160x600": {
+          "schema": "/schemas/v1/standard-formats/display/display_160x600.json",
+          "name": "Wide Skyscraper",
+          "dimensions": "160x600",
+          "is_foundational": false
+        },
+        "display_970x250": {
+          "schema": "/schemas/v1/standard-formats/display/display_970x250.json",
+          "name": "Billboard",
+          "dimensions": "970x250",
+          "is_foundational": false
+        },
+        "display_336x280": {
+          "schema": "/schemas/v1/standard-formats/display/display_336x280.json",
+          "name": "Large Rectangle",
+          "dimensions": "336x280",
+          "is_foundational": false
+        },
+        "display_interstitial_320x480": {
+          "schema": "/schemas/v1/standard-formats/display/display_interstitial_320x480.json",
+          "name": "Mobile Interstitial",
+          "dimensions": "320x480",
+          "is_foundational": false
+        },
+        "display_dynamic_300x250": {
+          "schema": "/schemas/v1/standard-formats/display/display_dynamic_300x250.json",
+          "name": "Dynamic Creative Banner 300x250",
+          "dimensions": "300x250",
+          "is_dynamic": true,
+          "is_foundational": false
+        }
+      }
+    },
+    "video": {
+      "description": "Video creative formats",
+      "formats": {
+        "video_15s_hosted": {
+          "schema": "/schemas/v1/standard-formats/video/video_15s_hosted.json",
+          "name": "15-second Hosted Video",
+          "duration": "15s",
+          "is_foundational": false
+        },
+        "video_30s_hosted": {
+          "schema": "/schemas/v1/standard-formats/video/video_30s_hosted.json", 
+          "name": "30-second Hosted Video",
+          "duration": "30s",
+          "is_foundational": false
+        },
+        "video_15s_vast": {
+          "schema": "/schemas/v1/standard-formats/video/video_15s_vast.json",
+          "name": "15-second Video via VAST",
+          "duration": "15s",
+          "is_foundational": false
+        },
+        "video_30s_vast": {
+          "schema": "/schemas/v1/standard-formats/video/video_30s_vast.json",
+          "name": "30-second Video via VAST", 
+          "duration": "30s",
+          "is_foundational": false
+        },
+        "video_vertical_15s_hosted": {
+          "schema": "/schemas/v1/standard-formats/video/video_vertical_15s_hosted.json",
+          "name": "15-second Vertical Video",
+          "duration": "15s",
+          "aspect_ratio": "9:16",
+          "is_foundational": false
+        },
+        "video_ctv_30s_hosted": {
+          "schema": "/schemas/v1/standard-formats/video/video_ctv_30s_hosted.json",
+          "name": "30-second Connected TV Video", 
+          "duration": "30s",
+          "is_foundational": false
+        },
+        "video_outstream_native": {
+          "schema": "/schemas/v1/standard-formats/video/video_outstream_native.json",
+          "name": "Outstream Native Video",
+          "duration": "6-30s",
+          "placement": "in-feed",
+          "is_foundational": false
+        },
+        "video_story_vertical": {
+          "schema": "/schemas/v1/standard-formats/video/video_story_vertical.json",
+          "name": "Vertical Story Video",
+          "duration": "5-15s",
+          "aspect_ratio": "9:16",
+          "is_foundational": false
+        }
+      }
+    },
+    "audio": {
+      "description": "Audio creative formats",
+      "formats": {
+        "audio_standard": {
+          "schema": "/schemas/v1/standard-formats/audio/audio_standard.json",
+          "name": "Standard Audio Ad",
+          "duration": "variable",
+          "is_foundational": false
+        },
+        "audio_podcast": {
+          "schema": "/schemas/v1/standard-formats/audio/audio_podcast.json",
+          "name": "Podcast Audio Ad",
+          "duration": "variable", 
+          "is_foundational": false
+        }
+      }
+    },
+    "rich_media": {
+      "description": "Interactive and rich media formats",
+      "formats": {
+        "rich_interstitial": {
+          "schema": "/schemas/v1/standard-formats/rich_media/rich_interstitial.json",
+          "name": "Full-screen Interactive Ad",
+          "is_foundational": false
+        }
+      }
+    },
+    "dooh": {
+      "description": "Digital out-of-home formats",
+      "formats": {
+        "dooh_standard": {
+          "schema": "/schemas/v1/standard-formats/dooh/dooh_standard.json",
+          "name": "Digital Out-of-Home Display",
+          "is_foundational": false
+        }
+      }
+    },
+    "native": {
+      "description": "Native advertising formats",
+      "formats": {
+        "native_responsive": {
+          "schema": "/schemas/v1/standard-formats/native/native_responsive.json",
+          "name": "Responsive Native Ad",
+          "is_foundational": false,
+          "openrtb_native": "1.2"
+        }
+      }
+    },
+    "retail": {
+      "description": "Retail media and e-commerce formats",
+      "formats": {
+        "retail_product_carousel": {
+          "schema": "/schemas/v1/standard-formats/retail/retail_product_carousel.json",
+          "name": "Product Carousel",
+          "is_foundational": false,
+          "products": "3-10"
+        }
+      }
+    },
+    "foundational": {
+      "description": "Publisher-agnostic foundational formats that work across multiple publishers",
+      "formats": {
+        "foundational_immersive_canvas": {
+          "schema": "/schemas/v1/standard-formats/foundational/foundational_immersive_canvas.json",
+          "name": "Premium Immersive Canvas",
+          "publisher_coverage": "8+ major publishers",
+          "is_foundational": true
+        },
+        "foundational_product_carousel": {
+          "schema": "/schemas/v1/standard-formats/foundational/foundational_product_carousel.json",
+          "name": "Multi-product Interactive Carousel", 
+          "publisher_coverage": "7+ major publishers",
+          "is_foundational": true
+        },
+        "foundational_expandable": {
+          "schema": "/schemas/v1/standard-formats/foundational/foundational_expandable.json",
+          "name": "Banner with Expandable Canvas",
+          "publisher_coverage": "10+ major publishers", 
+          "is_foundational": true
+        },
+        "foundational_scroll_reveal": {
+          "schema": "/schemas/v1/standard-formats/foundational/foundational_scroll_reveal.json",
+          "name": "Scroll-triggered Mobile Experience",
+          "publisher_coverage": "6+ major publishers",
+          "is_foundational": true
+        },
+        "foundational_video_15s": {
+          "schema": "/schemas/v1/standard-formats/video/foundational_video_15s.json",
+          "name": "Universal 15-second Video",
+          "duration": "15s",
+          "publisher_coverage": "All publishers",
+          "is_foundational": true
+        },
+        "foundational_video_30s": {
+          "schema": "/schemas/v1/standard-formats/video/foundational_video_30s.json",
+          "name": "Universal 30-second Video",
+          "duration": "30s", 
+          "publisher_coverage": "All publishers",
+          "is_foundational": true
+        }
+      }
+    }
+  },
+  "asset_types": {
+    "schema": "/schemas/v1/standard-formats/asset-types/index.json",
+    "description": "Standardized asset type definitions used across all formats"
+  },
+  "total_formats": 28,
+  "foundational_formats": 6,
+  "format_extension_guide": {
+    "description": "Publishers can extend standard formats using the 'extends' field",
+    "example_extension": {
+      "format_id": "publisher_premium_canvas",
+      "extends": "foundational_immersive_canvas", 
+      "publisher": "example_publisher",
+      "modifications": {
+        "additional_placements": ["hero", "mid_article"],
+        "custom_requirements": {
+          "brand_safety_disclaimer": "required"
+        }
+      }
+    }
+  },
+  "versioning": {
+    "current_version": "1.0.0",
+    "changelog_url": "/schemas/v1/standard-formats/CHANGELOG.md",
+    "migration_guide_url": "/schemas/v1/standard-formats/MIGRATION.md"
+  }
+}

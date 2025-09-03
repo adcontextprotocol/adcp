@@ -13,6 +13,10 @@
       "type": "string",
       "description": "Human-readable creative name"
     },
+    "asset_role": {
+      "type": "string",
+      "description": "Role or purpose of this asset within the format (e.g., 'hero_image', 'logo', 'background_video', 'cta_button')"
+    },
     "format": {
       "type": "string",
       "description": "Creative format type (e.g., video, audio, display)"

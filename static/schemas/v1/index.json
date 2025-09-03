@@ -4,11 +4,12 @@
   "title": "AdCP Schema Registry v1",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "1.1.0",
+  "adcp_version": "1.2.0",
+  "standard_formats_version": "1.0.0",
   "versioning": {
     "note": "All request/response schemas include adcp_version field. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2025-09-02",
+  "lastUpdated": "2025-09-03",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
@@ -98,6 +99,10 @@
         "frequency-cap-scope": {
           "$ref": "/schemas/v1/enums/frequency-cap-scope.json",
           "description": "Scope for frequency cap application"
+        },
+        "standard-format-ids": {
+          "$ref": "/schemas/v1/enums/standard-format-ids.json",
+          "description": "Enumeration of all standard creative format identifiers"
         }
       }
     },
@@ -190,6 +195,14 @@
           }
         }
       }
+    },
+    "standard-formats": {
+      "description": "Standard creative formats registry and schemas",
+      "$ref": "/schemas/v1/standard-formats/index.json",
+      "asset_types": {
+        "$ref": "/schemas/v1/standard-formats/asset-types/index.json",
+        "description": "Standardized asset type definitions"
+      }
     }
   },
   "usage": {
@@ -198,9 +211,21 @@
     "documentation": "Reference schemas for API documentation",
     "testing": "Validate test fixtures and examples"
   },
-  "examples": {
-    "javascriptValidation": "const Ajv = require('ajv'); const ajv = new Ajv(); const schema = require('./schemas/v1/core/product.json'); const validate = ajv.compile(schema);",
-    "pythonValidation": "import jsonschema; schema = {...}; jsonschema.validate(data, schema)",
-    "javaValidation": "// Use everit-org/json-schema or similar library"
-  }
+  "examples": [
+    {
+      "language": "javascript",
+      "description": "JavaScript validation example",
+      "code": "const Ajv = require('ajv'); const ajv = new Ajv(); const schema = require('./schemas/v1/core/product.json'); const validate = ajv.compile(schema);"
+    },
+    {
+      "language": "python", 
+      "description": "Python validation example",
+      "code": "import jsonschema; schema = {...}; jsonschema.validate(data, schema)"
+    },
+    {
+      "language": "java",
+      "description": "Java validation example",
+      "code": "// Use everit-org/json-schema or similar library"
+    }
+  ]
 }

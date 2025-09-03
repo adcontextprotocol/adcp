@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/standard-formats/asset-types/index.json",
+  "title": "AdCP Asset Type Definitions Registry",
+  "description": "Standardized definitions for all asset types used in AdCP creative formats",
+  "version": "2.0.0",
+  "lastUpdated": "2025-09-03",
+  "asset_types": {
+    "video": {
+      "description": "Video file asset",
+      "schema": "/schemas/v1/standard-formats/asset-types/video.json"
+    },
+    "image": {
+      "description": "Static image asset", 
+      "schema": "/schemas/v1/standard-formats/asset-types/image.json"
+    },
+    "text": {
+      "description": "Text content asset",
+      "schema": "/schemas/v1/standard-formats/asset-types/text.json"
+    },
+    "url": {
+      "description": "URL/link asset",
+      "schema": "/schemas/v1/standard-formats/asset-types/url.json"
+    },
+    "audio": {
+      "description": "Audio file asset",
+      "schema": "/schemas/v1/standard-formats/asset-types/audio.json"
+    },
+    "html": {
+      "description": "HTML5 creative asset",
+      "schema": "/schemas/v1/standard-formats/asset-types/html.json"
+    },
+    "dynamic_endpoint": {
+      "description": "Dynamic creative endpoint (DCO webhook)",
+      "schema": "/schemas/v1/standard-formats/asset-types/dynamic_endpoint.json"
+    },
+    "javascript": {
+      "description": "JavaScript-based dynamic creative",
+      "schema": "/schemas/v1/standard-formats/asset-types/javascript.json"
+    },
+    "template": {
+      "description": "Template-based dynamic creative with data binding",
+      "schema": "/schemas/v1/standard-formats/asset-types/template.json"
+    }
+  },
+  "common_properties": {
+    "asset_id": {
+      "description": "Unique identifier for this asset within the format, used by orchestrators to map uploaded assets",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "asset_type": {
+      "description": "The type of asset",
+      "type": "string", 
+      "enum": ["video", "image", "text", "url", "audio", "html", "dynamic_endpoint", "javascript", "template"]
+    },
+    "required": {
+      "description": "Whether this asset is mandatory for the creative format",
+      "type": "boolean"
+    }
+  }
+}

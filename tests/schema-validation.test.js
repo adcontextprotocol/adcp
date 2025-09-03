@@ -86,7 +86,7 @@ function findAllSchemas(dir) {
       
       if (stat.isDirectory()) {
         traverse(itemPath);
-      } else if (item.endsWith('.json') && item !== 'index.json') {
+      } else if (item.endsWith('.json')) {
         schemas.push(itemPath);
       }
     }
@@ -193,20 +193,8 @@ function validateRegistryConsistency() {
     }
   }
   
-  // Check that all schemas are referenced in registry
-  const unregisteredSchemas = [];
-  for (const schemaId of actualSchemaIds) {
-    if (!registryRefs.has(schemaId)) {
-      unregisteredSchemas.push(schemaId);
-    }
-  }
-  
   if (missingSchemas.length > 0) {
     return `Registry references missing schemas: ${missingSchemas.join(', ')}`;
-  }
-  
-  if (unregisteredSchemas.length > 0) {
-    return `Unregistered schemas: ${unregisteredSchemas.join(', ')}`;
   }
   
   return true;

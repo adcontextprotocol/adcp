@@ -9,7 +9,7 @@
       "type": "string",
       "description": "AdCP schema version for this request",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.1.0"
+      "default": "1.2.0"
     },
     "buyer_ref": {
       "type": "string",
@@ -47,7 +47,10 @@
             "$ref": "/schemas/v1/core/targeting.json"
           }
         },
-        "required": ["buyer_ref", "products", "formats"],
+        "anyOf": [
+          {"required": ["buyer_ref", "products", "formats"]},
+          {"required": ["buyer_ref", "products", "format_selection"]}
+        ],
         "additionalProperties": false
       }
     },

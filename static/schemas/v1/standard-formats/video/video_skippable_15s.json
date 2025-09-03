@@ -1,0 +1,192 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/standard-formats/video/video_skippable_15s.json",
+  "title": "Video Skippable 15s",
+  "description": "15-second skippable video ad (skip after 5 seconds)",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "type": "string",
+      "const": "video_skippable_15s"
+    },
+    "type": {
+      "type": "string",
+      "const": "video"
+    },
+    "category": {
+      "type": "string",
+      "const": "standard"
+    },
+    "name": {
+      "type": "string",
+      "default": "15-second Skippable Video"
+    },
+    "duration_seconds": {
+      "type": "integer",
+      "const": 15
+    },
+    "skippable": {
+      "type": "boolean",
+      "const": true,
+      "description": "User can skip after delay"
+    },
+    "skip_delay_seconds": {
+      "type": "integer",
+      "const": 5,
+      "description": "Seconds before skip button appears"
+    },
+    "is_3p_served": {
+      "type": "boolean",
+      "const": false
+    },
+    "placement_contexts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["pre_roll", "mid_roll", "post_roll"]
+      },
+      "default": ["pre_roll", "mid_roll"]
+    },
+    "assets_required": {
+      "type": "array",
+      "minItems": 2,
+      "items": [
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "video_file"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "video"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "duration_seconds": {
+              "type": "number",
+              "const": 15
+            },
+            "acceptable_formats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["mp4", "webm"]
+              },
+              "const": ["mp4", "webm"]
+            },
+            "acceptable_codecs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["h264", "h265", "vp8", "vp9"]
+              },
+              "default": ["h264", "vp9"]
+            },
+            "aspect_ratios": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["16:9", "9:16", "1:1", "4:3"]
+              },
+              "default": ["16:9"]
+            },
+            "min_resolution": {
+              "type": "string",
+              "const": "720p"
+            },
+            "max_file_size_mb": {
+              "type": "number",
+              "const": 30
+            }
+          },
+          "required": ["asset_id", "asset_type", "required", "duration_seconds", "acceptable_formats", "min_resolution", "max_file_size_mb"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "clickthrough_url"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "url"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "url_type": {
+              "type": "string",
+              "const": "clickthrough"
+            },
+            "must_be_https": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": ["asset_id", "asset_type", "required", "url_type", "must_be_https"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "optional_assets": {
+      "type": "array",
+      "items": [
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "companion_banner"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "image"
+            },
+            "required": {
+              "type": "boolean",
+              "const": false
+            },
+            "width": {
+              "type": "integer",
+              "const": 300
+            },
+            "height": {
+              "type": "integer",
+              "const": 250
+            }
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "captions_file"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "captions"
+            },
+            "required": {
+              "type": "boolean",
+              "const": false
+            },
+            "format": {
+              "type": "string",
+              "enum": ["vtt", "srt"]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "required": ["format_id", "type", "category", "duration_seconds", "skippable", "skip_delay_seconds", "is_3p_served", "assets_required"],
+  "additionalProperties": false
+}

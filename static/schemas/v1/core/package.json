@@ -42,6 +42,11 @@
         "$ref": "/schemas/v1/core/creative-assignment.json"
       }
     },
+    "formats_to_provide": {
+      "type": "array",
+      "description": "Format IDs that creative assets will be provided for this package",
+      "items": {"type": "string"}
+    },
     "status": {
       "$ref": "/schemas/v1/enums/package-status.json"
     }

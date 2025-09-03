@@ -92,7 +92,7 @@ async function runTests() {
       description: 'Response example'
     },
     {
-      data: { "format_id": "video_standard_30s", "name": "Standard Video - 30 seconds" },
+      data: { "format_id": "video_standard_30s", "name": "Standard Video - 30 seconds", "type": "video" },
       schema: '/schemas/v1/core/format.json',
       description: 'Format example'
     },
