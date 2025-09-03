@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/standard-formats/asset-types/template.json",
+  "title": "Template Asset Type Schema",
+  "description": "Schema for template-based dynamic creative with data binding",
+  "type": "object",
+  "properties": {
+    "asset_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Unique identifier for this asset within the format"
+    },
+    "asset_type": {
+      "type": "string",
+      "const": "template"
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether this asset is mandatory for the format"
+    },
+    "template_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to template definition"
+    },
+    "template_inline": {
+      "type": "string",
+      "description": "Inline template markup (alternative to template_url)"
+    },
+    "template_engine": {
+      "type": "string",
+      "enum": ["mustache", "handlebars", "liquid", "custom"],
+      "default": "mustache",
+      "description": "Template engine to use for rendering"
+    },
+    "data_source": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["static", "endpoint", "inline"],
+          "description": "How template data is provided"
+        },
+        "endpoint_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to fetch template data (if type is endpoint)"
+        },
+        "static_data": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Static data for template (if type is static)"
+        },
+        "refresh_interval_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "How often to refresh data (0 = no refresh)"
+        }
+      },
+      "required": ["type"]
+    },
+    "data_schema": {
+      "type": "object",
+      "description": "JSON Schema for validating template data",
+      "additionalProperties": true
+    },
+    "variable_mapping": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Data source field"
+          },
+          "transform": {
+            "type": "string",
+            "enum": ["none", "uppercase", "lowercase", "truncate", "currency", "date"],
+            "default": "none"
+          },
+          "default": {
+            "description": "Default value if source is missing"
+          }
+        }
+      },
+      "description": "Maps template variables to data sources"
+    },
+    "render_config": {
+      "type": "object",
+      "properties": {
+        "timing": {
+          "type": "string",
+          "enum": ["server_side", "client_side", "edge"],
+          "default": "client_side"
+        },
+        "cache_rendered": {
+          "type": "boolean",
+          "default": false
+        },
+        "personalization_level": {
+          "type": "string",
+          "enum": ["none", "segment", "individual"],
+          "default": "segment"
+        }
+      }
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "variant_id": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "object",
+            "description": "Conditions for using this variant"
+          },
+          "template_overrides": {
+            "type": "object",
+            "description": "Template modifications for this variant"
+          },
+          "data_overrides": {
+            "type": "object",
+            "description": "Data modifications for this variant"
+          }
+        }
+      },
+      "description": "A/B test variants or conditional templates"
+    },
+    "fallback": {
+      "type": "object",
+      "properties": {
+        "static_html": {
+          "type": "string",
+          "description": "Fallback HTML if template rendering fails"
+        },
+        "image_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Fallback image URL"
+        }
+      }
+    }
+  },
+  "required": ["asset_id", "asset_type", "required", "template_engine", "data_source"],
+  "oneOf": [
+    {"required": ["template_url"]},
+    {"required": ["template_inline"]}
+  ],
+  "additionalProperties": false
+}

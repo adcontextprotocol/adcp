@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/standard-formats/asset-types/text.json",
+  "title": "Text Asset Type Schema",
+  "description": "Schema for text content assets in AdCP creative formats",
+  "type": "object",
+  "properties": {
+    "asset_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Unique identifier for this asset within the format"
+    },
+    "asset_type": {
+      "type": "string",
+      "const": "text"
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether this asset is mandatory for the format"
+    },
+    "text_type": {
+      "type": "string",
+      "enum": ["title", "headline", "description", "body", "cta", "advertiser_name", "disclaimer", "price", "tagline", "button_text"],
+      "description": "The specific type of text content"
+    },
+    "max_length": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5000,
+      "description": "Maximum character count"
+    },
+    "min_length": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Minimum character count"
+    },
+    "default": {
+      "type": "string",
+      "description": "Default value if not provided"
+    },
+    "allowed_characters": {
+      "type": "string",
+      "format": "regex",
+      "description": "Regex pattern for allowed characters"
+    },
+    "forbidden_words": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "description": "List of words that are not allowed in the text"
+    },
+    "format": {
+      "type": "string",
+      "enum": ["plain", "currency", "percentage", "html", "markdown"],
+      "description": "Expected text format"
+    },
+    "currency": {
+      "type": "string",
+      "enum": ["USD", "EUR", "GBP", "JPY", "CAD", "AUD"],
+      "description": "Currency type (when format is 'currency')"
+    },
+    "locale": {
+      "type": "string",
+      "pattern": "^[a-z]{2}-[A-Z]{2}$",
+      "description": "Locale for formatting (e.g., 'en-US', 'fr-FR')"
+    },
+    "line_breaks_allowed": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether line breaks are allowed in the text"
+    },
+    "case_requirement": {
+      "type": "string",
+      "enum": ["uppercase", "lowercase", "title_case", "sentence_case"],
+      "description": "Required text case formatting"
+    },
+    "validation_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule_type": {
+            "type": "string",
+            "enum": ["regex", "length", "word_count", "profanity_check", "brand_safety"]
+          },
+          "rule_value": {
+            "type": ["string", "number", "boolean"]
+          },
+          "error_message": {
+            "type": "string"
+          }
+        },
+        "required": ["rule_type", "rule_value"]
+      },
+      "description": "Additional validation rules for the text content"
+    }
+  },
+  "required": ["asset_id", "asset_type", "required", "text_type"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "format": { "const": "currency" }
+        }
+      },
+      "then": {
+        "required": ["currency"]
+      }
+    }
+  ]
+}

@@ -15,12 +15,38 @@
     },
     "type": {
       "type": "string",
-      "description": "Format type (e.g., audio, video, display, native, dooh)",
-      "enum": ["audio", "video", "display", "native", "dooh"]
+      "description": "Format type (e.g., audio, video, display, native, dooh, rich_media)",
+      "enum": ["audio", "video", "display", "native", "dooh", "rich_media"]
+    },
+    "category": {
+      "type": "string",
+      "description": "Format category (standard, foundational, or custom)",
+      "enum": ["standard", "foundational", "custom"]
     },
     "is_standard": {
       "type": "boolean",
-      "description": "Whether this follows IAB standards"
+      "description": "Whether this follows IAB or AdCP standards"
+    },
+    "is_foundational": {
+      "type": "boolean", 
+      "description": "Whether this is a foundational format that works across multiple publishers"
+    },
+    "standard_format_ref": {
+      "type": "string",
+      "format": "uri",
+      "description": "Reference to the standard format schema (if this implements a standard format)"
+    },
+    "extends": {
+      "type": "string",
+      "description": "Standard format ID that this format extends (for publisher customizations)"
+    },
+    "publisher": {
+      "type": "string",
+      "description": "Publisher name (for publisher-specific format extensions)"
+    },
+    "publisher_coverage": {
+      "type": "string",
+      "description": "Description of publisher coverage (e.g., '8+ major publishers')"
     },
     "iab_specification": {
       "type": "string",
@@ -35,28 +61,88 @@
       "type": "array",
       "description": "Array of required assets for composite formats",
       "items": {
-        "type": "object",
-        "properties": {
-          "asset_type": {
-            "type": "string",
-            "description": "Type of asset required"
-          },
-          "quantity": {
-            "type": "integer",
-            "description": "Number of assets of this type required",
-            "minimum": 1
-          },
-          "requirements": {
-            "type": "object",
-            "description": "Specific requirements for this asset type",
-            "additionalProperties": true
+        "$ref": "/schemas/v1/core/creative-asset.json"
+      }
+    },
+    "optional_assets": {
+      "type": "array",
+      "description": "Array of optional assets that may be included",
+      "items": {
+        "$ref": "/schemas/v1/core/creative-asset.json"
+      }
+    },
+    "modifications": {
+      "type": "object",
+      "description": "Publisher-specific modifications when extending a standard format",
+      "properties": {
+        "additional_assets": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/v1/core/creative-asset.json"
           }
         },
-        "required": ["asset_type", "quantity"],
-        "additionalProperties": false
+        "additional_placements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "custom_requirements": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "extension_points": {
+      "type": "object",
+      "description": "Documentation of how this format can be extended by publishers",
+      "additionalProperties": {
+        "type": "string"
       }
+    },
+    "delivery": {
+      "type": "object", 
+      "description": "Delivery method specifications (e.g., hosted, VAST, third-party tags)",
+      "additionalProperties": true
+    },
+    "is_3p_served": {
+      "type": "boolean",
+      "description": "Whether this format accepts third-party served creative tags"
     }
   },
   "required": ["format_id", "name"],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "extends": {
+            "type": "string"
+          }
+        },
+        "required": ["extends"]
+      },
+      "then": {
+        "required": ["publisher"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "category": {
+            "const": "foundational"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "is_foundational": {
+            "const": true
+          }
+        },
+        "required": ["publisher_coverage", "extension_points"]
+      }
+    }
+  ]
 }

@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/standard-formats/display/display_728x90.json",
+  "title": "Display 728x90 (Leaderboard)",
+  "description": "Standard leaderboard banner format",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "type": "string",
+      "const": "display_728x90"
+    },
+    "type": {
+      "type": "string", 
+      "const": "display"
+    },
+    "category": {
+      "type": "string",
+      "const": "standard"
+    },
+    "name": {
+      "type": "string",
+      "default": "Leaderboard Banner"
+    },
+    "dimensions": {
+      "type": "string",
+      "const": "728x90"
+    },
+    "is_3p_served": {
+      "type": "boolean",
+      "const": false
+    },
+    "assets_required": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": [
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "banner_image"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "image"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "width": {
+              "type": "integer",
+              "const": 728
+            },
+            "height": {
+              "type": "integer", 
+              "const": 90
+            },
+            "acceptable_formats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["jpg", "png", "gif"]
+              },
+              "const": ["jpg", "png", "gif"]
+            },
+            "max_file_size_kb": {
+              "type": "number",
+              "const": 200
+            }
+          },
+          "required": ["asset_id", "asset_type", "required", "width", "height", "acceptable_formats", "max_file_size_kb"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object", 
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "clickthrough_url"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "url"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "url_type": {
+              "type": "string",
+              "const": "clickthrough"
+            },
+            "must_be_https": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": ["asset_id", "asset_type", "required", "url_type", "must_be_https"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": ["format_id", "type", "category", "dimensions", "is_3p_served", "assets_required"],
+  "additionalProperties": false
+}

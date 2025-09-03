@@ -25,6 +25,59 @@
         "description": "Format ID referencing a format from list_creative_formats"
       }
     },
+    "placement_types": {
+      "type": "array",
+      "description": "Array of placement type IDs that this product supports for multi-size handling",
+      "items": {
+        "type": "string",
+        "description": "Placement type ID referencing a placement type definition"
+      }
+    },
+    "format_preferences": {
+      "type": "object",
+      "description": "Publisher preferences for format selection and priority",
+      "properties": {
+        "primary": {
+          "type": "array",
+          "description": "Primary format preferences (highest CPM/priority)",
+          "items": {"type": "string"}
+        },
+        "secondary": {
+          "type": "array",
+          "description": "Secondary format preferences (fallback options)",
+          "items": {"type": "string"}
+        },
+        "viewport_optimized": {
+          "type": "object",
+          "description": "Format preferences by viewport/device type",
+          "properties": {
+            "desktop": {"type": "array", "items": {"type": "string"}},
+            "tablet": {"type": "array", "items": {"type": "string"}},
+            "mobile": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "responsive_behavior": {
+      "type": "object", 
+      "description": "How this placement handles responsive/multi-size scenarios",
+      "properties": {
+        "supports_responsive": {
+          "type": "boolean",
+          "description": "Whether this placement can adapt to different viewport sizes"
+        },
+        "selection_strategy": {
+          "type": "string",
+          "enum": ["highest_priority", "best_fit", "optimal_fill_rate", "buyer_choice"],
+          "description": "How formats are selected when multiple are available"
+        },
+        "max_concurrent_formats": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of formats that can be active simultaneously"
+        }
+      }
+    },
     "delivery_type": {
       "$ref": "/schemas/v1/enums/delivery-type.json"
     },
