@@ -42,9 +42,9 @@
         "$ref": "/schemas/v1/core/creative-assignment.json"
       }
     },
-    "selected_formats": {
+    "formats_to_provide": {
       "type": "array",
-      "description": "Format IDs selected for this package",
+      "description": "Format IDs that creative assets will be provided for this package",
       "items": {"type": "string"}
     },
     "status": {
