@@ -201,50 +201,74 @@ I found 2 audio formats available. The standard 30-second format is recommended 
 ```
 
 ### A2A Request
-```json
-{
-  "skill": "list_creative_formats",
-  "input": {
-    "standard_only": false
+
+#### Natural Language Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Show me all your supported creative formats"
+    }]
   }
-}
+});
+```
+
+#### Explicit Skill Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "list_creative_formats",
+        parameters: {
+          standard_only: false
+        }
+      }
+    }]
+  }
+});
 ```
 
 ### A2A Response
 
-**Message:**
-```
-We support 47 creative formats across video, audio, and display. Video formats dominate with 23 options including standard pre-roll and innovative interactive formats. For maximum compatibility, I recommend using IAB standard formats which are accepted by 95% of our inventory.
-```
-
-**Artifacts:**
 ```json
-[
-  {
-    "type": "application/json",
-    "data": {
-      "formats": [
-        {
-          "format_id": "video_standard_30s",
-          "name": "Standard Video - 30 seconds",
-          "type": "video",
-          "is_standard": true,
-          "iab_specification": "VAST 4.2",
-          "requirements": {
-            "duration": 30,
-            "width": 1920,
-            "height": 1080,
-            "file_types": ["mp4", "webm"],
-            "max_file_size": 50000000,
-            "min_bitrate": 2500,
-            "max_bitrate": 8000
-          }
+{
+  "artifacts": [{
+    "name": "creative_formats",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "We support 47 creative formats across video, audio, and display. Video formats dominate with 23 options including standard pre-roll and innovative interactive formats. For maximum compatibility, I recommend using IAB standard formats which are accepted by 95% of our inventory."
+      },
+      {
+        "kind": "data",
+        "data": {
+          "formats": [
+            {
+              "format_id": "video_standard_30s",
+              "name": "Standard Video - 30 seconds",
+              "type": "video",
+              "is_standard": true,
+              "iab_specification": "VAST 4.2",
+              "requirements": {
+                "duration": 30,
+                "width": 1920,
+                "height": 1080,
+                "file_types": ["mp4", "webm"],
+                "max_file_size": 50000000,
+                "min_bitrate": 2500,
+                "max_bitrate": 8000
+              }
+            }
+            // ... 46 more formats
+          ]
         }
-        // ... 46 more formats
-      ]
-    }
-  }
-]
+      }
+    ]
+  }]
+}
 ```
 
 ## Scenarios

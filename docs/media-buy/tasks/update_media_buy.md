@@ -130,28 +130,48 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 ```
 
 ### A2A Request
-For A2A, the skill and input are sent as:
-```json
-{
-  "skill": "update_media_buy",
-  "input": {
-    "buyer_ref": "nike_q1_campaign_2024",
-    "budget": {
-      "total": 150000,
-      "currency": "USD",
-      "pacing": "front_loaded"
-    },
-    "packages": [
-      {
-        "buyer_ref": "nike_ctv_sports_package",
-        "budget": {
-          "total": 100000,
-          "currency": "USD"
+
+#### Natural Language Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Please update my Nike Q1 campaign budget to $150,000 with front-loaded pacing. Also increase the CTV sports package budget to $100,000."
+    }]
+  }
+});
+```
+
+#### Explicit Skill Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "update_media_buy",
+        parameters: {
+          buyer_ref: "nike_q1_campaign_2024",
+          budget: {
+            total: 150000,
+            currency: "USD",
+            pacing: "front_loaded"
+          },
+          packages: [
+            {
+              buyer_ref: "nike_ctv_sports_package",
+              budget: {
+                total: 100000,
+                currency: "USD"
+              }
+            }
+          ]
         }
       }
-    ]
+    }]
   }
-}
+});
 ```
 
 ### A2A Response (Synchronous)

@@ -129,19 +129,46 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 }
 ```
 ### A2A Request
-For A2A, the skill and input are sent as:
-```json
-{
-  "skill": "get_products",
-  "input": {
-    "brief": "Premium video inventory for sports fans",
-    "promoted_offering": "Nike Air Max 2024 - latest innovation in cushioning",
-    "filters": {
-      "format_types": ["video"],
-      "delivery_type": "guaranteed"
-    }
+A2A supports both natural language and explicit skill invocation:
+
+#### Natural Language Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Find premium video inventory for sports fans. We're promoting Nike Air Max 2024 - latest innovation in cushioning. Looking for guaranteed delivery."
+    }]
   }
-}
+});
+```
+
+#### Explicit Skill Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "text",
+        text: "Looking for sports inventory for Nike campaign"  // Optional context
+      },
+      {
+        kind: "data",
+        data: {
+          skill: "get_products",  // Must match skill name in Agent Card
+          parameters: {
+            brief: "Premium video inventory for sports fans",
+            promoted_offering: "Nike Air Max 2024 - latest innovation in cushioning",
+            filters: {
+              format_types: ["video"],
+              delivery_type: "guaranteed"
+            }
+          }
+        }
+      }
+    ]
+  }
+});
 ```
 ### A2A Response
 A2A returns results as artifacts with text and data parts:
@@ -179,8 +206,8 @@ A2A returns results as artifacts with text and data parts:
 ```
 ### Key Differences
 - **MCP**: Direct tool call with arguments, returns flat JSON response
-- **A2A**: Skill invocation with input, returns artifacts with text and data parts
-- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
+- **A2A**: Message-based invocation (natural language or explicit skill with parameters), returns artifacts with text and data parts
+- **Payload**: The `parameters` field in A2A explicit invocation contains the exact same structure as MCP's `arguments`
 ## Scenarios
 ### Request with Natural Language Brief
 ```json

@@ -41,6 +41,89 @@ const result = await task.complete();
 console.log(result.artifacts);
 ```
 
+## Skill Invocation
+
+A2A supports two methods for invoking skills:
+
+### Natural Language Invocation
+The agent interprets natural language to determine which skill to execute:
+
+```javascript
+// Agent infers this should use the get_products skill
+const task = await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Find premium CTV inventory for sports fans"
+    }]
+  }
+});
+```
+
+### Explicit Skill Invocation
+For deterministic execution, explicitly specify the skill name and parameters:
+
+```javascript
+// Explicitly invoke the get_products skill
+const task = await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "text",
+        text: "Looking for video products"  // Optional human context
+      },
+      {
+        kind: "data",
+        data: {
+          skill: "get_products",  // Exact skill name from Agent Card
+          parameters: {
+            audience: "sports fans",
+            format: "video",
+            max_cpm: 50,
+            platforms: ["ctv", "online_video"]
+          }
+        }
+      }
+    ]
+  }
+});
+```
+
+**Important**: When using explicit invocation, the `skill` field must exactly match the skill name advertised in the Agent Card.
+
+### Combining Natural Language with Explicit Skills
+You can include both natural language context and explicit skill invocation:
+
+```javascript
+// Hybrid approach - provides context AND explicit execution
+const task = await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "text",
+        text: "I'm looking for inventory for our spring campaign targeting millennials"
+      },
+      {
+        kind: "data", 
+        data: {
+          skill: "get_products",
+          parameters: {
+            audience: "millennials",
+            season: "Q2_2024",
+            categories: ["lifestyle", "entertainment"]
+          }
+        }
+      }
+    ]
+  }
+});
+```
+
+This hybrid approach:
+- Provides human context for logging and understanding
+- Ensures deterministic skill execution
+- Allows the agent to use context for clarifications if needed
+
 ## Understanding A2A Responses
 
 A2A uses two types of responses:
@@ -305,6 +388,276 @@ await a2a.send({
 });
 ```
 
+## AdCP Skill Examples
+
+Here are explicit invocation examples for each AdCP skill:
+
+### Media Buy Skills
+
+#### get_products
+```javascript
+// Explicit skill invocation
+await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "data",
+        data: {
+          skill: "get_products",
+          parameters: {
+            audience: "pet owners",
+            geo: ["US-CA", "US-NY"],
+            format: "video",
+            max_cpm: 75,
+            min_impressions: 1000000
+          }
+        }
+      }
+    ]
+  }
+});
+```
+
+#### list_creative_formats
+```javascript
+// List all supported formats
+await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "data",
+        data: {
+          skill: "list_creative_formats",
+          parameters: {
+            category: "video"  // Optional: filter by category
+          }
+        }
+      }
+    ]
+  }
+});
+```
+
+#### create_media_buy
+```javascript
+// Create campaign with selected products
+await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "data",
+        data: {
+          skill: "create_media_buy",
+          parameters: {
+            package_selections: [
+              {
+                package_id: "pkg_12345",
+                budget_amount: 50000,
+                impressions: 2000000
+              },
+              {
+                package_id: "pkg_67890",
+                budget_amount: 25000,
+                impressions: 1000000
+              }
+            ],
+            buyer_ref: "Q1_2024_campaign",
+            start_date: "2024-01-01",
+            end_date: "2024-03-31",
+            pacing: "even"
+          }
+        }
+      }
+    ]
+  }
+});
+```
+
+#### add_creative_assets
+```javascript
+// Upload and assign creative assets
+await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "data",
+        data: {
+          skill: "add_creative_assets",
+          parameters: {
+            media_buy_id: "mb_12345",
+            assignments: [
+              {
+                package_id: "pkg_12345",
+                format_id: "video_30s"
+              }
+            ]
+          }
+        }
+      },
+      {
+        kind: "file",
+        uri: "https://cdn.example.com/video-30s.mp4",
+        name: "hero_video_30s.mp4"
+      }
+    ]
+  }
+});
+```
+
+#### get_media_buy_delivery
+```javascript
+// Get campaign performance metrics
+await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "data",
+        data: {
+          skill: "get_media_buy_delivery",
+          parameters: {
+            media_buy_id: "mb_12345",
+            date_range: {
+              start: "2024-01-01",
+              end: "2024-01-31"
+            },
+            metrics: ["impressions", "clicks", "video_completions"]
+          }
+        }
+      }
+    ]
+  }
+});
+```
+
+#### update_media_buy
+```javascript
+// Update campaign settings
+await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "data",
+        data: {
+          skill: "update_media_buy",
+          parameters: {
+            media_buy_id: "mb_12345",
+            updates: {
+              budget_amount: 150000,
+              pacing: "front_loaded",
+              end_date: "2024-04-30"
+            }
+          }
+        }
+      }
+    ]
+  }
+});
+```
+
+### Signals Skills
+
+#### get_signals
+```javascript
+// Discover relevant signals
+await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "data",
+        data: {
+          skill: "get_signals",
+          parameters: {
+            requirements: {
+              audience: "luxury car intenders",
+              categories: ["automotive", "lifestyle"],
+              platforms: ["ttd", "amazon_dsp"]
+            },
+            limit: 10
+          }
+        }
+      }
+    ]
+  }
+});
+```
+
+#### activate_signal
+```javascript
+// Activate signal on platform
+await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "data",
+        data: {
+          skill: "activate_signal",
+          parameters: {
+            signal_id: "sig_luxury_auto_123",
+            platform: "ttd",
+            account_id: "account_456",
+            activation_name: "Q1_luxury_segment"
+          }
+        }
+      }
+    ]
+  }
+});
+```
+
+## Skill Response Formats
+
+All skill invocations return results as artifacts with structured data:
+
+### Successful Skill Response
+```json
+{
+  "taskId": "task_123",
+  "contextId": "ctx_456",
+  "status": "completed",
+  "artifacts": [
+    {
+      "name": "skill_result",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "Human-readable summary of the result"
+        },
+        {
+          "kind": "data",
+          "data": {
+            // Structured data specific to the skill
+            // e.g., for get_products: { products: [...], total: 5 }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Asynchronous Skills
+Some skills (like `create_media_buy` or `activate_signal`) may require time to complete:
+
+1. **Initial Response**: Returns task ID with status "working"
+2. **Status Updates**: Available via SSE at `/a2a/tasks/{taskId}/events`
+3. **Final Result**: Contains artifacts with the completed data
+
+### Error Responses
+When a skill fails, the response includes an error message:
+
+```json
+{
+  "taskId": "task_123",
+  "status": "failed",
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "Unable to find products matching criteria: No inventory available for the specified audience"
+    }]
+  }
+}
+```
+
 ## Agent Cards for AdCP
 
 A2A agents advertise their capabilities via Agent Cards served at `.well-known/agent.json`. Here are sample agent cards for AdCP implementations:
@@ -405,15 +758,28 @@ Here's a full campaign creation workflow using A2A:
 async function createCampaignWithA2A() {
   const a2a = new A2AClient({ /* config */ });
   
-  // 1. Natural language product discovery
+  // 1. Product discovery using explicit skill invocation
   const discovery = await a2a.send({
     message: {
-      parts: [{
-        kind: "text",
-        text: `I need to create a Q1 campaign for BMW Series 5.
-               Budget is $200K, targeting luxury car intenders.
-               Looking for premium CTV and audio inventory.`
-      }]
+      parts: [
+        {
+          kind: "text",
+          text: "Finding inventory for BMW Q1 campaign"
+        },
+        {
+          kind: "data",
+          data: {
+            skill: "get_products",
+            parameters: {
+              audience: "luxury car intenders",
+              format: ["ctv", "audio"],
+              tier: "premium",
+              min_impressions: 5000000,
+              max_cpm: 100
+            }
+          }
+        }
+      ]
     }
   });
   
@@ -480,7 +846,34 @@ async function createCampaignWithA2A() {
 
 ## Best Practices
 
-### 1. Distinguish Messages from Artifacts
+### 1. Choose the Right Invocation Method
+```javascript
+// Use natural language for flexible, human-like interaction
+if (userProvidedNaturalLanguageQuery) {
+  await a2a.send({
+    message: {
+      parts: [{ kind: "text", text: userQuery }]
+    }
+  });
+}
+
+// Use explicit skills for programmatic, deterministic execution
+if (needPredictableExecution) {
+  await a2a.send({
+    message: {
+      parts: [{
+        kind: "data",
+        data: {
+          skill: "get_products",
+          parameters: structuredParams
+        }
+      }]
+    }
+  });
+}
+```
+
+### 2. Distinguish Messages from Artifacts
 ```javascript
 // Check what type of response
 if (response.artifacts && response.artifacts.length > 0) {
@@ -492,7 +885,7 @@ if (response.artifacts && response.artifacts.length > 0) {
 }
 ```
 
-### 2. Use Context for Conversations
+### 3. Use Context for Conversations
 ```javascript
 class A2AConversation {
   constructor(client) {
@@ -514,7 +907,7 @@ class A2AConversation {
 }
 ```
 
-### 3. Handle Multi-Part Artifacts
+### 4. Handle Multi-Part Artifacts
 ```javascript
 function processArtifact(artifact) {
   artifact.parts.forEach(part => {
