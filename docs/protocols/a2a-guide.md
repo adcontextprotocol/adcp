@@ -703,11 +703,13 @@ A2A agents advertise their capabilities via Agent Cards served at `.well-known/a
       ]
     },
     {
-      "name": "add_creative_assets",
-      "description": "Upload creative assets",
+      "name": "manage_creative_assets",
+      "description": "Centralized creative library management",
       "examples": [
-        "Add this video creative to the campaign",
-        "Upload display banners"
+        "Upload this video to my creative library",
+        "Assign banner creatives to the campaign",
+        "List my approved video creatives",
+        "Update the click URL for my hero video"
       ]
     },
     {
