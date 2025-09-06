@@ -1,0 +1,24 @@
+User-agent: *
+Allow: /
+
+# SEO-friendly paths for advertising automation content
+Allow: /advertising-automation-api
+Allow: /mcp-advertising-integration  
+Allow: /programmatic-advertising-protocol
+
+# Allow documentation crawling
+Allow: /docs/
+Allow: /docs/intro
+Allow: /docs/media-buy/
+Allow: /docs/protocols/
+Allow: /docs/signals/
+
+# Standard files
+Allow: /sitemap.xml
+Allow: /llms.txt
+
+# Sitemap location
+Sitemap: https://adcontextprotocol.org/sitemap.xml
+
+# For AI crawlers and LLMs
+Allow: /llms.txt

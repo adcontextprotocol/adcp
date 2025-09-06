@@ -4,6 +4,7 @@ import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
+import SEO from '@site/src/components/SEO';
 
 import styles from './index.module.css';
 
@@ -15,36 +16,36 @@ function HomepageHeader() {
         <div className="row">
           <div className="col col--8 col--offset-2">
             <Heading as="h1" className={styles.heroTitle}>
-              One protocol for every advertising platform
+              Open Standard for Advertising Automation
             </Heading>
             <p className={styles.heroSubtitle}>
-              Stop jumping between dozens of different interfaces.
+              Stop jumping between dozens of different advertising platform APIs.
               <br />
-              <strong>AdCP unifies advertising workflows with a single, open standard.</strong>
+              <strong>AdCP unifies programmatic advertising workflows with a single, AI-powered protocol.</strong>
             </p>
             <div className={styles.heroPoints}>
               <div className={styles.point}>
                 <div className={styles.pointIcon}>🔌</div>
                 <div className={styles.pointText}>
-                  <strong>Universal Interface</strong>
+                  <strong>Unified Advertising API</strong>
                   <br />
-                  Connect once, work everywhere
+                  Connect once, automate everywhere
                 </div>
               </div>
               <div className={styles.point}>
                 <div className={styles.pointIcon}>💬</div>
                 <div className={styles.pointText}>
-                  <strong>Natural Language</strong>
+                  <strong>AI-Powered Workflows</strong>
                   <br />
-                  Describe what you want in plain English
+                  Built on Model Context Protocol (MCP)
                 </div>
               </div>
               <div className={styles.point}>
                 <div className={styles.pointIcon}>🔓</div>
                 <div className={styles.pointText}>
-                  <strong>Open Standard</strong>
+                  <strong>Open Advertising Standard</strong>
                   <br />
-                  No vendor lock-in, total flexibility
+                  No vendor lock-in, complete flexibility
                 </div>
               </div>
             </div>
@@ -393,18 +394,80 @@ function CommunityAndSupport() {
 
 export default function Home(): ReactNode {
   const {siteConfig} = useDocusaurusContext();
+  
+  // Structured data for homepage
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': 'https://adcontextprotocol.org/#organization',
+        name: 'Ad Context Protocol',
+        alternateName: 'AdCP',
+        url: 'https://adcontextprotocol.org',
+        logo: 'https://adcontextprotocol.org/img/logo.svg',
+        sameAs: [
+          'https://github.com/adcontextprotocol/adcp'
+        ],
+        description: 'Open standard for advertising automation and AI-powered workflows'
+      },
+      {
+        '@type': 'SoftwareApplication',
+        '@id': 'https://adcontextprotocol.org/#software',
+        name: 'Ad Context Protocol',
+        alternateName: 'AdCP',
+        description: 'Unified advertising automation protocol built on Model Context Protocol (MCP). Enables AI-powered workflows across advertising platforms.',
+        applicationCategory: 'DeveloperApplication',
+        operatingSystem: 'Any',
+        offers: {
+          '@type': 'Offer',
+          price: '0',
+          priceCurrency: 'USD'
+        },
+        creator: {
+          '@type': 'Organization',
+          '@id': 'https://adcontextprotocol.org/#organization'
+        },
+        keywords: 'advertising automation, programmatic advertising, MCP protocol, AI advertising workflows, unified advertising API',
+        url: 'https://adcontextprotocol.org',
+        downloadUrl: 'https://github.com/adcontextprotocol/adcp',
+        codeRepository: 'https://github.com/adcontextprotocol/adcp'
+      },
+      {
+        '@type': 'WebSite',
+        '@id': 'https://adcontextprotocol.org/#website',
+        url: 'https://adcontextprotocol.org',
+        name: 'AdCP - Open Standard for Advertising Workflows',
+        description: 'AdCP unifies advertising workflows with a single, open standard. One protocol for every advertising platform.',
+        publisher: {
+          '@type': 'Organization',
+          '@id': 'https://adcontextprotocol.org/#organization'
+        },
+        inLanguage: 'en-US'
+      }
+    ]
+  };
+
   return (
-    <Layout
-      title="AdCP - Open Standard for Advertising Workflows"
-      description="AdCP is an open protocol that unifies advertising platforms through a single interface, enabling natural language interactions and automated workflows.">
-      <HomepageHeader />
-      <main>
-        <TheProblem />
-        <TheSolution />
-        <HowItWorks />
-        <GetStarted />
-        <CommunityAndSupport />
-      </main>
-    </Layout>
+    <>
+      <SEO 
+        title="AdCP - Open Standard for Advertising Workflows"
+        description="AdCP unifies advertising workflows with a single, open standard. Built on Model Context Protocol (MCP) for AI-powered advertising automation across all platforms."
+        keywords="advertising automation protocol, programmatic advertising API, MCP advertising integration, AI advertising workflows, unified advertising platform API, open standard advertising"
+        structuredData={structuredData}
+      />
+      <Layout
+        title="AdCP - Open Standard for Advertising Workflows"
+        description="AdCP is an open protocol that unifies advertising platforms through a single interface, enabling natural language interactions and automated workflows.">
+        <HomepageHeader />
+        <main>
+          <TheProblem />
+          <TheSolution />
+          <HowItWorks />
+          <GetStarted />
+          <CommunityAndSupport />
+        </main>
+      </Layout>
+    </>
   );
 }

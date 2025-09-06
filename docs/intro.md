@@ -1,20 +1,23 @@
 ---
 sidebar_position: 1
 title: Getting Started
+description: AdCP is an open standard for advertising automation built on Model Context Protocol (MCP). Learn how to integrate AI-powered advertising workflows.
+keywords: [advertising automation protocol, programmatic advertising API, MCP advertising integration, AI advertising workflows, unified advertising platform API]
 ---
 
 # Getting Started with Ad Context Protocol
 
-Welcome to the Ad Context Protocol (AdCP) documentation. AdCP enables AI assistants to interact with advertising platforms through standardized interfaces.
+Welcome to the Ad Context Protocol (AdCP) documentation. AdCP is an **open standard for advertising automation** that enables AI assistants to interact with advertising platforms through unified, standardized interfaces.
 
 ## What is Ad Context Protocol?
 
-Ad Context Protocol is an open standard that enables AI-powered advertising workflows through:
+Ad Context Protocol (AdCP) is an **open standard for advertising automation** that enables AI-powered programmatic advertising workflows through:
 
-- **Natural Language Interaction**: Describe what you want in plain English
+- **Unified Advertising API**: Single interface for all advertising platforms
+- **AI-Powered Automation**: Built on Model Context Protocol (MCP) for seamless AI integration
+- **Multi-Protocol Support**: Access through MCP, A2A, or future protocols
 - **Platform Agnostic**: Works with any compatible advertising platform
-- **Multi-Protocol Support**: Access AdCP through MCP, A2A, or future protocols
-- **AI-Powered**: Designed for integration with AI assistants and agents
+- **Programmatic Advertising Made Simple**: Standardized workflows across all ad tech
 
 AdCP uses a task-first architecture where core advertising tasks (like creating media buys or discovering signals) can be accessed through multiple protocols:
 - **MCP (Model Context Protocol)**: For direct AI assistant integration

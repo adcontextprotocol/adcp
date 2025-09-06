@@ -1,6 +1,8 @@
 ---
 sidebar_position: 2
 title: MCP Guide
+description: Complete guide to integrating AdCP with Model Context Protocol (MCP). Enable AI assistants to manage advertising campaigns through natural language.
+keywords: [MCP integration, Model Context Protocol advertising, AI assistant advertising, MCP advertising automation, AdCP MCP setup]
 ---
 
 # MCP Integration Guide
