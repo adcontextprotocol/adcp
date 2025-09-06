@@ -56,6 +56,11 @@ function HomepageHeader() {
                 Start Building
               </Link>
               <Link
+                className="button button--secondary button--lg margin-right--md"
+                to="https://testing.adcontextprotocol.org">
+                Try It Live
+              </Link>
+              <Link
                 className="button button--outline button--secondary button--lg"
                 to="https://github.com/adcontextprotocol/adcp">
                 View on GitHub
