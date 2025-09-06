@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/creative-asset.json",
   "title": "Creative Asset",
-  "description": "Uploaded creative content",
+  "description": "Creative asset for upload to library",
   "type": "object",
   "properties": {
     "creative_id": {
@@ -12,10 +12,6 @@
     "name": {
       "type": "string",
       "description": "Human-readable creative name"
-    },
-    "asset_role": {
-      "type": "string",
-      "description": "Role or purpose of this asset within the format (e.g., 'hero_image', 'logo', 'background_video', 'cta_button')"
     },
     "format": {
       "type": "string",
@@ -30,11 +26,6 @@
       "type": "string",
       "format": "uri",
       "description": "Landing page URL for the creative"
-    },
-    "url": {
-      "type": "string",
-      "format": "uri",
-      "description": "URL of the creative content"
     },
     "duration": {
       "type": "number",
@@ -51,51 +42,21 @@
       "description": "Height in pixels (for video/display)",
       "minimum": 0
     },
-    "status": {
-      "$ref": "/schemas/v1/enums/creative-status.json"
-    },
-    "platform_id": {
-      "type": "string",
-      "description": "Platform-specific ID assigned to the creative"
-    },
-    "review_feedback": {
-      "type": "string",
-      "description": "Feedback from platform review (if any)"
-    },
-    "compliance": {
-      "type": "object",
-      "description": "Compliance review status",
-      "properties": {
-        "status": {
-          "type": "string",
-          "description": "Compliance status"
-        },
-        "issues": {
-          "type": "array",
-          "description": "Array of compliance issues",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "required": ["status"],
-      "additionalProperties": false
-    },
-    "package_assignments": {
+    "tags": {
       "type": "array",
-      "description": "Package IDs or buyer_refs to assign this creative to",
+      "description": "User-defined tags for organization and searchability",
       "items": {
         "type": "string"
       }
     },
     "assets": {
       "type": "array",
-      "description": "For multi-asset formats like carousels",
+      "description": "Sub-assets for multi-asset formats like carousels",
       "items": {
         "$ref": "/schemas/v1/core/sub-asset.json"
       }
     }
   },
-  "required": ["creative_id", "name", "format"],
+  "required": ["creative_id", "name", "format", "media_url"],
   "additionalProperties": false
 }

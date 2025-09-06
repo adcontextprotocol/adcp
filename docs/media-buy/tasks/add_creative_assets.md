@@ -1,9 +1,18 @@
 ---
-title: add_creative_assets
+title: add_creative_assets (Deprecated)
 sidebar_position: 4
 ---
 
-# add_creative_assets
+# add_creative_assets (Deprecated)
+
+:::warning Deprecated
+This endpoint is deprecated. Please use [`manage_creative_assets`](./manage_creative_assets) instead, which provides a centralized creative library with better asset management capabilities.
+
+**Migration Guide:**
+1. Use `manage_creative_assets` with `action: "upload"` to add creatives to your library
+2. Use `manage_creative_assets` with `action: "assign"` to connect creatives to media buys
+3. Enjoy better creative reuse and management with the centralized library approach
+:::
 
 Upload creative assets and assign them to packages. This task includes validation, policy review, and format adaptation suggestions.
 

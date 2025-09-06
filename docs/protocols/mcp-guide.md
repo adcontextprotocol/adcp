@@ -120,16 +120,29 @@ if (mediaBuy.task_id) {
 }
 ```
 
-### Adding Creatives
+### Managing Creatives
+
+AdCP uses a centralized creative library. First upload to the library:
 
 ```javascript
-const result = await mcp.call('add_creative_assets', {
-  media_buy_id: "mb_12345",
-  creative_assets: [{
+// Upload creative to library
+const uploadResult = await mcp.call('manage_creative_assets', {
+  action: "upload",
+  assets: [{
+    creative_id: "hero_video_30s",
     name: "Hero Video 30s",
-    format: "video_16x9_30s",
-    url: "https://cdn.example.com/video.mp4"
+    format: "video",
+    media_url: "https://cdn.example.com/video.mp4",
+    click_url: "https://example.com/landing"
   }]
+});
+
+// Then assign to media buy packages
+const assignResult = await mcp.call('manage_creative_assets', {
+  action: "assign",
+  creative_ids: ["hero_video_30s"],
+  media_buy_id: "mb_12345",
+  package_assignments: ["pkg_001"]
 });
 ```
 
@@ -298,16 +311,25 @@ async function createCampaign() {
     const final = await waitForTask(mediaBuy.task_id);
     console.log(`Created: ${final.data.media_buy_id}`);
     
-    // 4. Add creatives
-    await mcp.call('add_creative_assets', {
-      media_buy_id: final.data.media_buy_id,
-      creative_assets: [
+    // 4. Upload creatives to library
+    const upload = await mcp.call('manage_creative_assets', {
+      action: "upload",
+      assets: [
         {
+          creative_id: "bmw_hero_30s",
           name: "BMW Hero 30s",
-          format: "video_16x9_30s",
-          url: "https://cdn.bmw.com/hero-30s.mp4"
+          format: "video",
+          media_url: "https://cdn.bmw.com/hero-30s.mp4"
         }
       ]
+    });
+    
+    // 5. Assign creatives to campaign packages
+    await mcp.call('manage_creative_assets', {
+      action: "assign",
+      creative_ids: ["bmw_hero_30s"],
+      media_buy_id: final.data.media_buy_id,
+      package_assignments: ["pkg_001"] // Use actual package IDs
     });
   }
 }

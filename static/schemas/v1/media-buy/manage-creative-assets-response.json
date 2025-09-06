@@ -1,0 +1,244 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/manage-creative-assets-response.json",
+  "title": "Manage Creative Assets Response",
+  "description": "Response from creative asset management operations",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable result message"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Context ID for tracking async operations"
+    },
+    "action": {
+      "type": "string",
+      "description": "Action that was performed",
+      "enum": ["upload", "list", "update", "assign", "unassign", "delete"]
+    },
+    "uploaded_assets": {
+      "type": "array",
+      "description": "Results from upload action",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Creative ID from the request"
+          },
+          "status": {
+            "$ref": "/schemas/v1/enums/creative-status.json"
+          },
+          "platform_id": {
+            "type": "string",
+            "description": "Platform-specific ID assigned to the creative"
+          },
+          "review_feedback": {
+            "type": "string",
+            "description": "Feedback from platform review"
+          },
+          "suggested_adaptations": {
+            "type": "array",
+            "description": "Recommended creative adaptations",
+            "items": {
+              "type": "object",
+              "properties": {
+                "adaptation_id": {
+                  "type": "string",
+                  "description": "Unique identifier for this adaptation"
+                },
+                "format_id": {
+                  "type": "string",
+                  "description": "Target format ID for the adaptation"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Suggested name for the adapted creative"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "What this adaptation does"
+                },
+                "changes_summary": {
+                  "type": "array",
+                  "description": "List of changes that will be made",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "rationale": {
+                  "type": "string",
+                  "description": "Why this adaptation is recommended"
+                },
+                "estimated_performance_lift": {
+                  "type": "number",
+                  "description": "Expected performance improvement (percentage)"
+                }
+              },
+              "required": ["adaptation_id", "format_id", "name", "description"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["creative_id", "status"],
+        "additionalProperties": false
+      }
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Results from list action",
+      "items": {
+        "$ref": "/schemas/v1/core/creative-library-item.json"
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination information for list action",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "description": "Total number of matching creatives"
+        },
+        "limit": {
+          "type": "integer", 
+          "description": "Maximum results per page"
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Number of results skipped"
+        },
+        "has_more": {
+          "type": "boolean",
+          "description": "Whether more results are available"
+        }
+      },
+      "required": ["total", "limit", "offset", "has_more"],
+      "additionalProperties": false
+    },
+    "updated_creative": {
+      "type": "object",
+      "description": "Result from update action",
+      "properties": {
+        "creative_id": {
+          "type": "string",
+          "description": "ID of the updated creative"
+        },
+        "name": {
+          "type": "string",
+          "description": "Updated creative name"
+        },
+        "click_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Updated landing page URL"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the update"
+        }
+      },
+      "required": ["creative_id", "last_updated"],
+      "additionalProperties": false
+    },
+    "assignments": {
+      "type": "array",
+      "description": "Results from assign action",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Creative that was assigned"
+          },
+          "assigned_packages": {
+            "type": "array",
+            "description": "Packages the creative was assigned to",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assignment_status": {
+            "type": "string",
+            "description": "Status of the assignment",
+            "enum": ["active", "pending", "failed"]
+          },
+          "estimated_impressions": {
+            "type": "integer",
+            "description": "Estimated impressions for this assignment"
+          }
+        },
+        "required": ["creative_id", "assigned_packages", "assignment_status"],
+        "additionalProperties": false
+      }
+    },
+    "unassignments": {
+      "type": "array",
+      "description": "Results from unassign action",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Creative that was unassigned"
+          },
+          "removed_from_packages": {
+            "type": "array",
+            "description": "Packages the creative was removed from",
+            "items": {
+              "type": "string"
+            }
+          },
+          "remaining_assignments": {
+            "type": "array",
+            "description": "Packages the creative is still assigned to",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["creative_id", "removed_from_packages", "remaining_assignments"],
+        "additionalProperties": false
+      }
+    },
+    "deleted_assets": {
+      "type": "array",
+      "description": "Results from delete action",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Creative that was deleted"
+          },
+          "status": {
+            "type": "string",
+            "description": "Deletion status",
+            "enum": ["archived", "deleted"]
+          },
+          "archived_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the creative was archived"
+          },
+          "deleted_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the creative was permanently deleted"
+          }
+        },
+        "required": ["creative_id", "status"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["adcp_version", "message", "action"],
+  "additionalProperties": false
+}
