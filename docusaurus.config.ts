@@ -5,9 +5,48 @@ import type * as Preset from '@docusaurus/preset-classic';
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 const config: Config = {
-  title: 'Ad Context Protocol',
-  tagline: 'Enabling AI-Powered Advertising Workflows',
+  title: 'AdCP - Open Standard for Advertising Workflows',
+  tagline: 'Unified advertising automation protocol built on Model Context Protocol (MCP)',
   favicon: 'img/favicon.ico',
+
+  // SEO metadata
+  headTags: [
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'description',
+        content: 'AdCP (Ad Context Protocol) is an open standard that unifies advertising platforms through AI-powered workflows. Built on MCP for seamless programmatic advertising automation.',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'keywords',
+        content: 'advertising automation protocol, programmatic advertising API, MCP advertising integration, AI advertising workflows, unified advertising platform API, advertising technology',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        property: 'og:type',
+        content: 'website',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'twitter:card',
+        content: 'summary_large_image',
+      },
+    },
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'viewport',
+        content: 'width=device-width, initial-scale=1.0',
+      },
+    },
+  ],
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
@@ -43,8 +82,8 @@ const config: Config = {
 
   plugins: [
     ['docusaurus-plugin-llms-txt', {
-      title: 'Ad Context Protocol',
-      description: 'Open standards for AI-powered advertising workflows',
+      title: 'AdCP - Ad Context Protocol',
+      description: 'Open standard for advertising automation and AI-powered workflows. Built on Model Context Protocol (MCP) for unified programmatic advertising.',
     }],
   ],
 
@@ -59,6 +98,12 @@ const config: Config = {
           editUrl:
             'https://github.com/adcontextprotocol/adcp/tree/main/',
         },
+        sitemap: {
+          changefreq: 'weekly',
+          priority: 0.5,
+          ignorePatterns: ['/tags/**'],
+          filename: 'sitemap.xml',
+        },
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -70,9 +115,9 @@ const config: Config = {
     // Replace with your project's social card
     image: 'img/docusaurus-social-card.jpg',
     navbar: {
-      title: 'Ad Context Protocol',
+      title: 'AdCP',
       logo: {
-        alt: 'AdCP Logo',
+        alt: 'AdCP - Advertising Context Protocol Logo',
         src: 'img/logo.svg',
       },
       items: [

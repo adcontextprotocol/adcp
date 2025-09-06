@@ -1,5 +1,7 @@
 ---
 title: Overview
+description: AdCP Media Buy Protocol - AI-powered programmatic advertising workflows. Learn how to automate media buying across all advertising platforms with unified APIs.
+keywords: [media buy protocol, programmatic advertising automation, AI advertising workflows, advertising platform API, unified media buying]
 ---
 
 # Advertising Context Protocol (AdCP) Overview

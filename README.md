@@ -1,14 +1,26 @@
-# Ad Context Protocol
+# AdCP - Open Standard for Advertising Automation
 
-Open standards for AI-powered advertising workflows.
+**Unified advertising automation protocol built on Model Context Protocol (MCP)**
+
+[![GitHub stars](https://img.shields.io/github/stars/adcontextprotocol/adcp?style=social)](https://github.com/adcontextprotocol/adcp)
+[![Documentation](https://img.shields.io/badge/docs-adcontextprotocol.org-blue)](https://adcontextprotocol.org)
+[![MCP Compatible](https://img.shields.io/badge/MCP-compatible-green)](https://modelcontextprotocol.io)
+
+> **AdCP revolutionizes advertising automation by providing a single, AI-powered protocol that works across all major advertising platforms.**
 
 ## Documentation
 
 Visit [adcontextprotocol.github.io](https://adcontextprotocol.github.io) for full documentation.
 
-## What is Ad Context Protocol?
+## What is AdCP?
 
-Ad Context Protocol (AdCP) is an open standard that enables AI assistants to interact with advertising platforms through natural language. Built on the Model Context Protocol (MCP), AdCP allows marketers to discover signals (audiences, contextual, geographical, temporal data), curate inventory, and execute campaigns using conversational AI.
+Ad Context Protocol (AdCP) is an **open standard for advertising automation** that enables AI assistants to interact with advertising platforms through natural language. Built on the Model Context Protocol (MCP), AdCP provides:
+
+- 🔌 **Unified Advertising API** - Single interface for all advertising platforms
+- 🤖 **AI-Powered Automation** - Built for natural language campaign management
+- 📊 **Cross-Platform Analytics** - Standardized reporting across all platforms  
+- 🔓 **Open Standard** - No vendor lock-in, community-driven development
+- ⚡ **Programmatic Ready** - Designed for modern ad tech workflows
 
 ### Quick Example
 
@@ -137,9 +149,35 @@ The Ad Context Protocol specifications are licensed under [Apache 2.0](./LICENSE
 - **Security Issues**: security@adcontextprotocol.org
 - **Partnership**: partnerships@adcontextprotocol.org
 
+## Use Cases
+
+### For Advertising Technology Companies
+- Build unified advertising automation tools
+- Integrate with multiple platforms through single API
+- Enable AI-powered advertising workflows
+- Create MCP-compatible advertising servers
+
+### For Agencies and Advertisers  
+- Automate campaign management across all platforms
+- Use natural language for advertising operations
+- Get unified analytics and reporting
+- Reduce integration and maintenance costs
+
+### For Publishers and Ad Networks
+- Expose inventory through standardized protocol
+- Enable AI assistant integration
+- Participate in automated advertising ecosystem
+- Implement once, work with all AI tools
+
+## Keywords
+
+`advertising automation`, `programmatic advertising API`, `MCP advertising integration`, `AI advertising workflows`, `unified advertising platform API`, `advertising protocol standard`, `Model Context Protocol advertising`, `cross-platform advertising automation`
+
 ## Links
 
 - **Website**: [adcontextprotocol.github.io](https://adcontextprotocol.github.io)
+- **API Documentation**: [Advertising Automation API](https://adcontextprotocol.github.io/advertising-automation-api)
+- **MCP Integration**: [MCP Advertising Guide](https://adcontextprotocol.github.io/mcp-advertising-integration)
 - **Specifications**: [Signals Protocol RFC](./signals-protocol-v1.md)
 - **Discussions**: [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
 - **Issues**: [Report Issues](https://github.com/adcontextprotocol/adcp/issues)
