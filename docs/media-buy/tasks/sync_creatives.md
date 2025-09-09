@@ -356,7 +356,7 @@ The `sync_creatives` task replaces the action-based `manage_creative_assets` app
 
 - [`list_creatives`](./list_creatives) - Query creative library with filtering and search
 - [`create_media_buy`](./create_media_buy) - Create campaigns that use library creatives
-- [`get_creative_formats`](./get_creative_formats) - Discover supported creative formats
+- [`list_creative_formats`](./list_creative_formats) - Discover supported creative formats
 
 ---
 

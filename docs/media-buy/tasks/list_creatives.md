@@ -502,7 +502,7 @@ const response = await adcp.list_creatives({
 
 - [`sync_creatives`](./sync_creatives) - Upload and manage creative assets
 - [`create_media_buy`](./create_media_buy) - Create campaigns using library creatives
-- [`get_creative_formats`](./get_creative_formats) - Discover supported creative formats
+- [`list_creative_formats`](./list_creative_formats) - Discover supported creative formats
 
 ---
 
