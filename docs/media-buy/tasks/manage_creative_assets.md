@@ -5,6 +5,16 @@ sidebar_position: 4
 
 # manage_creative_assets
 
+:::warning DEPRECATED
+This task is **deprecated** as of AdCP v1.5.0 and will be removed in v2.0.0. 
+
+**Use instead:**
+- [`sync_creatives`](./sync_creatives) - For uploading and updating creative assets with upsert semantics
+- [`list_creatives`](./list_creatives) - For querying the creative library with advanced filtering
+
+See the [Migration Guide](#migration-guide) below for detailed migration instructions.
+:::
+
 Comprehensive creative asset management for the centralized creative library. This unified endpoint handles all creative lifecycle operations from upload to assignment and deletion.
 
 **Request Schema**: [`/schemas/v1/media-buy/manage-creative-assets-request.json`](/schemas/v1/media-buy/manage-creative-assets-request.json)  
@@ -673,8 +683,365 @@ If you're currently using the deprecated `add_creative_assets` task:
 
 This new workflow eliminates redundant uploads and provides better creative governance.
 
+## Migration Guide
+
+This section provides detailed migration instructions for transitioning from `manage_creative_assets` to the new `sync_creatives` and `list_creatives` tasks.
+
+### Why Migrate?
+
+The new tasks provide:
+- **Better Performance**: Bulk operations and upsert semantics
+- **Simpler API**: No action parameter needed
+- **Enhanced Features**: Advanced filtering, pagination, and optional data inclusion
+- **Patch Updates**: Update only specific fields without full replacement
+
+### Migration Mapping
+
+| Old Action | New Task | Migration Notes |
+|------------|----------|-----------------|
+| `upload` | `sync_creatives` | Use upsert semantics - no action parameter needed |
+| `list` | `list_creatives` | Enhanced filtering and pagination options |
+| `update` | `sync_creatives` | Use patch mode for partial updates |
+| `assign` | `sync_creatives` | Use assignments parameter during sync |
+| `unassign` | *Manual process* | Remove from assignments, then sync |
+| `delete` | *Not supported* | Use creative status management instead |
+
+### 1. Upload Action → sync_creatives
+
+**Old Way:**
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "upload",
+    "assets": [
+      {
+        "creative_id": "hero_video_30s",
+        "name": "Brand Hero Video 30s",
+        "format": "video_30s_vast",
+        "media_url": "https://cdn.example.com/hero.mp4"
+      }
+    ]
+  }
+}
+```
+
+**New Way:**
+```json
+{
+  "tool": "sync_creatives",
+  "arguments": {
+    "creatives": [
+      {
+        "creative_id": "hero_video_30s",
+        "name": "Brand Hero Video 30s",
+        "format": "video_30s_vast",
+        "media_url": "https://cdn.example.com/hero.mp4"
+      }
+    ]
+  }
+}
+```
+
+### 2. List Action → list_creatives
+
+**Old Way:**
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "list",
+    "filters": {
+      "format": "video",
+      "status": "approved"
+    },
+    "pagination": {
+      "limit": 10,
+      "offset": 0
+    }
+  }
+}
+```
+
+**New Way:**
+```json
+{
+  "tool": "list_creatives",
+  "arguments": {
+    "filters": {
+      "format": "video",
+      "status": "approved"
+    },
+    "pagination": {
+      "limit": 10,
+      "offset": 0
+    }
+  }
+}
+```
+
+### 3. Update Action → sync_creatives (Patch Mode)
+
+**Old Way:**
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "update",
+    "creative_id": "hero_video_30s",
+    "updates": {
+      "click_url": "https://example.com/new-landing"
+    }
+  }
+}
+```
+
+**New Way:**
+```json
+{
+  "tool": "sync_creatives",
+  "arguments": {
+    "creatives": [
+      {
+        "creative_id": "hero_video_30s",
+        "click_url": "https://example.com/new-landing"
+      }
+    ],
+    "patch": true
+  }
+}
+```
+
+### 4. Assign Action → sync_creatives with Assignments
+
+**Old Way:**
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "assign",
+    "creative_ids": ["hero_video_30s", "banner_300x250"],
+    "media_buy_id": "mb_12345",
+    "package_assignments": ["pkg_ctv_001", "pkg_display_001"]
+  }
+}
+```
+
+**New Way:**
+```json
+{
+  "tool": "sync_creatives",
+  "arguments": {
+    "creatives": [], // Empty array for assignment-only operations
+    "assignments": {
+      "hero_video_30s": ["pkg_ctv_001"],
+      "banner_300x250": ["pkg_display_001"]
+    }
+  }
+}
+```
+
+### 5. Bulk Operations Migration
+
+**Old Way (Multiple Requests):**
+```json
+// Request 1: Upload
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "upload",
+    "assets": [...]
+  }
+}
+
+// Request 2: Assign
+{
+  "tool": "manage_creative_assets", 
+  "arguments": {
+    "action": "assign",
+    "creative_ids": [...],
+    "package_assignments": [...]
+  }
+}
+```
+
+**New Way (Single Request):**
+```json
+{
+  "tool": "sync_creatives",
+  "arguments": {
+    "creatives": [
+      {
+        "creative_id": "hero_video_30s",
+        "name": "Brand Hero Video 30s",
+        "format": "video_30s_vast",
+        "media_url": "https://cdn.example.com/hero.mp4"
+      }
+    ],
+    "assignments": {
+      "hero_video_30s": ["pkg_ctv_001", "pkg_ctv_002"]
+    }
+  }
+}
+```
+
+### 6. Advanced Query Migration
+
+**Enhanced Filtering (New Features):**
+```json
+{
+  "tool": "list_creatives",
+  "arguments": {
+    "filters": {
+      "formats": ["video", "audio"],           // Multiple formats
+      "statuses": ["approved", "pending_review"], // Multiple statuses  
+      "tags_any": ["mobile", "desktop"],       // OR logic for tags
+      "name_contains": "nike",                 // Text search
+      "has_performance_data": true,            // Performance filter
+      "created_after": "2024-01-01T00:00:00Z", // Date range
+      "unassigned": true                       // Assignment status
+    },
+    "sort": {
+      "field": "performance_score",            // New sort options
+      "direction": "desc"
+    },
+    "include_performance": true,               // Optional data
+    "include_assignments": true,
+    "fields": ["creative_id", "name", "status"] // Field selection
+  }
+}
+```
+
+### 7. Error Handling Migration
+
+**Old Response Format:**
+```json
+{
+  "message": "Upload completed with errors",
+  "uploaded_assets": [...],
+  "errors": [...]
+}
+```
+
+**New Response Format:**
+```json
+{
+  "message": "Sync completed: 2 created, 1 failed",
+  "summary": {
+    "total_processed": 3,
+    "created": 2,
+    "updated": 0,
+    "failed": 1
+  },
+  "results": [
+    {
+      "creative_id": "failed_creative",
+      "action": "failed",
+      "errors": ["Missing required field: format"]
+    }
+  ]
+}
+```
+
+### Migration Strategy
+
+**Phase 1: Parallel Implementation (Recommended)**
+1. Implement new sync_creatives/list_creatives calls alongside existing code
+2. Test new endpoints with non-production data
+3. Verify response formats match expectations
+4. Update error handling for new response structure
+
+**Phase 2: Gradual Migration**
+1. Start with list operations (lowest risk)
+2. Migrate upload operations to sync_creatives
+3. Replace update operations with patch mode
+4. Consolidate assignment operations
+
+**Phase 3: Cleanup**
+1. Remove all manage_creative_assets calls
+2. Clean up old error handling code
+3. Leverage new features (bulk operations, enhanced filtering)
+
+### Breaking Changes to Note
+
+1. **Response Structure**: Results array instead of direct asset arrays
+2. **Assignment Format**: Object with creative_id keys instead of arrays
+3. **Error Reporting**: Detailed per-creative error reporting
+4. **Status Values**: Enhanced status reporting with action types
+5. **Delete Operations**: No longer supported - use creative status management
+
+### Code Examples
+
+**TypeScript Migration Example:**
+```typescript
+// Old interface
+interface ManageCreativeAssetsRequest {
+  action: 'upload' | 'list' | 'update' | 'assign' | 'unassign' | 'delete';
+  assets?: CreativeAsset[];
+  creative_id?: string;
+  // ... other action-specific fields
+}
+
+// New interfaces  
+interface SyncCreativesRequest {
+  creatives: CreativeAsset[];
+  patch?: boolean;
+  assignments?: Record<string, string[]>;
+  dry_run?: boolean;
+  validation_mode?: 'strict' | 'lenient';
+}
+
+interface ListCreativesRequest {
+  filters?: CreativeFilters;
+  sort?: SortOptions;
+  pagination?: PaginationOptions;
+  include_assignments?: boolean;
+  include_performance?: boolean;
+}
+```
+
+**Migration Helper Function:**
+```javascript
+function migrateToSyncCreatives(oldRequest) {
+  const { action, assets, ...rest } = oldRequest;
+  
+  switch (action) {
+    case 'upload':
+      return {
+        tool: 'sync_creatives',
+        arguments: {
+          creatives: assets || []
+        }
+      };
+    case 'update':
+      return {
+        tool: 'sync_creatives', 
+        arguments: {
+          creatives: [{
+            creative_id: rest.creative_id,
+            ...rest.updates
+          }],
+          patch: true
+        }
+      };
+    case 'list':
+      return {
+        tool: 'list_creatives',
+        arguments: {
+          filters: rest.filters,
+          pagination: rest.pagination
+        }
+      };
+    default:
+      throw new Error(`Action ${action} requires manual migration`);
+  }
+}
+```
+
 ## Related Documentation
 
+- [`sync_creatives`](./sync_creatives) - New bulk creative management task  
+- [`list_creatives`](./list_creatives) - New creative library query task
 - [Creative Library](../creative-library.md) - Centralized creative management concepts
 - [Creative Lifecycle](../creative-lifecycle.md) - End-to-end creative workflow
 - [Creative Formats](../creative-formats.md) - Supported format specifications

@@ -46,7 +46,7 @@ For multi-asset formats, creatives can include multiple sub-assets with differen
 
 ### 1. Library Upload
 
-Creatives are uploaded to the centralized library using the [`manage_creative_assets`](./tasks/manage_creative_assets) task with `action: "upload"`. AdCP supports multiple creative types:
+Creatives are uploaded to the centralized library using the [`sync_creatives`](./tasks/sync_creatives) task with **upsert semantics** - creatives are automatically created or updated based on their `creative_id`. AdCP supports multiple creative types:
 
 **Creative Types Supported:**
 - **Hosted assets** - Traditional media files (images, videos, audio)
@@ -79,20 +79,22 @@ Review outcomes include:
 
 Once creatives are approved in the library, they can be assigned to specific media buys and packages:
 
-- **Flexible Assignment**: Use `action: "assign"` to connect library creatives to campaign packages
+- **Bulk Assignment**: Use the `assignments` parameter in `sync_creatives` to assign multiple creatives to packages
 - **Reuse Across Campaigns**: Same creative can be assigned to multiple media buys
 - **Selective Assignment**: Choose specific packages within a media buy for each creative
 - **Dynamic Management**: Add or remove assignments without re-uploading assets
+- **Combined Operations**: Upload and assign creatives in a single request for efficiency
 
 ### 4. Library Management
 
-Ongoing creative management through the `manage_creative_assets` task:
+Ongoing creative management through the new streamlined tasks:
 
-- **Library Querying**: Use `action: "list"` to search and filter library creatives
-- **Metadata Updates**: Use `action: "update"` to modify names, click URLs, and tags
-- **Assignment Tracking**: Monitor which campaigns are using each creative
-- **Lifecycle Control**: Use `action: "delete"` to archive or remove creatives
-- **Performance Analysis**: Track creative effectiveness across all assignments
+- **Library Querying**: Use [`list_creatives`](./tasks/list_creatives) to search and filter library creatives with advanced filtering
+- **Metadata Updates**: Use [`sync_creatives`](./tasks/sync_creatives) with `patch: true` to modify specific fields like names, click URLs, and tags
+- **Bulk Operations**: Process up to 100 creatives per sync request for efficient large-scale updates
+- **Assignment Tracking**: Monitor which campaigns are using each creative through enriched query responses
+- **Performance Analysis**: Track creative effectiveness across all assignments with optional performance data inclusion
+- **Validation Modes**: Choose between strict (fail-fast) or lenient (process-valid) validation for bulk operations
 
 ### 5. Adaptation & Optimization
 
@@ -147,7 +149,9 @@ Different platforms have varying creative requirements:
 
 ## Related Documentation
 
-- [`manage_creative_assets`](./tasks/manage_creative_assets) - Centralized creative library management
+- [`sync_creatives`](./tasks/sync_creatives) - Bulk creative management with upsert semantics
+- [`list_creatives`](./tasks/list_creatives) - Advanced creative library querying and filtering  
 - [Creative Library](./creative-library) - Centralized creative management concepts
 - [Creative Formats](./creative-formats) - Detailed format specifications
+- [`manage_creative_assets` (Deprecated)](./tasks/manage_creative_assets) - Legacy action-based creative management
 - [`add_creative_assets` (Deprecated)](./tasks/add_creative_assets) - Legacy creative upload endpoint

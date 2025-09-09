@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/sync-creatives-request.json",
+  "title": "Sync Creatives Request",
+  "description": "Request parameters for syncing creative assets with upsert semantics - supports bulk operations, patch updates, and assignment management",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.5.0"
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Array of creative assets to sync (create or update)",
+      "items": {
+        "$ref": "/schemas/v1/core/creative-asset.json"
+      },
+      "maxItems": 100
+    },
+    "patch": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, only provided fields are updated (partial update). When false, entire creative is replaced (full upsert)."
+    },
+    "assignments": {
+      "type": "object",
+      "description": "Optional bulk assignment of creatives to packages",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "array",
+          "description": "Array of package IDs to assign this creative to",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, creatives not included in this sync will be archived. Use with caution for full library replacement."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, preview changes without applying them. Returns what would be created/updated/deleted."
+    },
+    "validation_mode": {
+      "type": "string",
+      "enum": ["strict", "lenient"],
+      "default": "strict",
+      "description": "Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid creatives and reports errors."
+    }
+  },
+  "required": ["creatives"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Full sync with new and updated creatives",
+      "data": {
+        "creatives": [
+          {
+            "creative_id": "hero_video_30s",
+            "name": "Brand Hero Video 30s",
+            "format": "video_30s_vast",
+            "snippet": "https://vast.example.com/video/123",
+            "snippet_type": "vast_url",
+            "tags": ["q1_2024", "video"]
+          }
+        ],
+        "assignments": {
+          "hero_video_30s": ["pkg_ctv_001", "pkg_ctv_002"]
+        }
+      }
+    },
+    {
+      "description": "Patch update - only update click URLs",
+      "data": {
+        "creatives": [
+          {
+            "creative_id": "hero_video_30s",
+            "click_url": "https://example.com/new-landing"
+          }
+        ],
+        "patch": true
+      }
+    },
+    {
+      "description": "Dry run to preview changes",
+      "data": {
+        "creatives": [
+          {
+            "creative_id": "new_banner",
+            "name": "Test Banner",
+            "format": "display_300x250",
+            "media_url": "https://cdn.example.com/banner.jpg"
+          }
+        ],
+        "dry_run": true
+      }
+    }
+  ]
+}

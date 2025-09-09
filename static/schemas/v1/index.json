@@ -4,12 +4,12 @@
   "title": "AdCP Schema Registry v1",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "1.4.0",
+  "adcp_version": "1.5.0",
   "standard_formats_version": "1.0.0",
   "versioning": {
     "note": "All request/response schemas include adcp_version field. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2025-09-03",
+  "lastUpdated": "2025-09-09",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
@@ -160,11 +160,31 @@
         "manage-creative-assets": {
           "request": {
             "$ref": "/schemas/v1/media-buy/manage-creative-assets-request.json",
-            "description": "Request parameters for centralized creative library management"
+            "description": "Request parameters for centralized creative library management (DEPRECATED - use sync-creatives)"
           },
           "response": {
             "$ref": "/schemas/v1/media-buy/manage-creative-assets-response.json",
-            "description": "Response payload for manage_creative_assets task"
+            "description": "Response payload for manage_creative_assets task (DEPRECATED)"
+          }
+        },
+        "sync-creatives": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/sync-creatives-request.json",
+            "description": "Request parameters for syncing creative assets with upsert semantics"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/sync-creatives-response.json",
+            "description": "Response payload for sync_creatives task"
+          }
+        },
+        "list-creatives": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/list-creatives-request.json",
+            "description": "Request parameters for querying creative library with filtering and pagination"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/list-creatives-response.json",
+            "description": "Response payload for list_creatives task"
           }
         },
         "update-media-buy": {
