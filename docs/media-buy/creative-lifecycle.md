@@ -18,7 +18,9 @@ A `Creative` in the library contains:
 - **`creative_id`**: A unique, client-defined identifier for the creative
 - **`name`**: Human-readable creative name for organization
 - **`format`**: Creative format type (e.g., video, audio, display)
-- **`media_url`**: URL pointing to the creative asset file
+- **`media_url`**: URL pointing to the creative asset file (for hosted assets)
+- **`snippet`**: Third-party tag, VAST XML, or code snippet (for third-party assets)
+- **`snippet_type`**: Type of snippet content (vast_xml, vast_url, html, javascript, iframe, daast_url)
 
 **Metadata:**
 - **`click_url`**: Landing page URL for the creative
@@ -30,16 +32,32 @@ A `Creative` in the library contains:
 - **`assignments`**: Current package/media buy assignments
 - **`assignment_count`**: Number of active assignments
 
-For multi-asset formats (like carousels or sliders), creatives can include multiple sub-assets with different types (images, text, logos).
+For multi-asset formats, creatives can include multiple sub-assets with different types:
+
+**Carousel/Slider Formats:**
+- Multiple images, headlines, and descriptions for rotating content
+
+**Native Ad Templates:**
+- HTML template with placeholder variables (e.g., `[%Headline%]`, `%ImageUrl%`)
+- Variable content provided via sub-assets (headline, body_text, product_image, etc.)
+- Template validation ensures all required variables are provided
 
 ## Creative Lifecycle Phases
 
 ### 1. Library Upload
 
-Creatives are uploaded to the centralized library using the [`manage_creative_assets`](./tasks/manage_creative_assets) task with `action: "upload"`. This phase includes:
+Creatives are uploaded to the centralized library using the [`manage_creative_assets`](./tasks/manage_creative_assets) task with `action: "upload"`. AdCP supports multiple creative types:
 
+**Creative Types Supported:**
+- **Hosted assets** - Traditional media files (images, videos, audio)
+- **Third-party snippets** - VAST, HTML, JavaScript tags
+- **Native ad templates** - HTML templates with variable substitution
+
+**Upload Process Includes:**
 - Upload to centralized library (no immediate campaign assignment required)
 - Asset validation against format specifications
+- Third-party snippet validation and security review
+- Native template variable validation (ensures all required variables are provided)
 - Policy compliance checking
 - Optional adaptation suggestions from the publisher
 - Library storage with metadata for future reuse

@@ -68,17 +68,26 @@ Parameters vary based on the `action` specified:
 
 ## Asset Object (for Upload Action)
 
+AdCP supports both **hosted assets** (traditional media files) and **third-party snippets** (VAST, HTML, JavaScript tags).
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `creative_id` | string | Yes | Unique identifier for the creative |
 | `name` | string | Yes | Human-readable creative name |
 | `format` | string | Yes | Creative format type (e.g., `"video"`, `"audio"`, `"display"`) |
-| `media_url` | string | Yes | URL of the creative file |
+| `media_url` | string | No* | URL of the creative file (for hosted assets) |
+| `snippet` | string | No* | Third-party tag, VAST XML, or code snippet (for third-party assets) |
+| `snippet_type` | string | No* | Type of snippet: `vast_xml`, `vast_url`, `html`, `javascript`, `iframe`, `daast_url` |
 | `click_url` | string | No | Landing page URL for the creative |
 | `duration` | number | No | Duration in milliseconds (for video/audio) |
 | `width` | number | No | Width in pixels (for video/display) |
 | `height` | number | No | Height in pixels (for video/display) |
+| `tags` | string[] | No | User-defined tags for organization |
 | `assets` | SubAsset[] | No | For multi-asset formats like carousels |
+
+**Asset Type Requirements:**
+- **Hosted Asset**: Must provide `media_url` (cannot include `snippet` or `snippet_type`)
+- **Third-Party Asset**: Must provide both `snippet` and `snippet_type` (cannot include `media_url`)
 
 ## Response Structure
 
@@ -205,7 +214,201 @@ Upload new creatives to the central library without immediate campaign assignmen
 }
 ```
 
-### Example 2: List Library Creatives
+### Example 2: Upload Third-Party Snippets
+
+Upload creatives using VAST, HTML, and JavaScript snippets instead of hosted media files.
+
+#### Request
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "upload",
+    "assets": [
+      {
+        "creative_id": "video_vast_30s",
+        "name": "Brand Video VAST 30s",
+        "format": "video_30s_vast",
+        "snippet": "https://ads.example.com/vast?campaign=brand123&duration=30",
+        "snippet_type": "vast_url",
+        "click_url": "https://brand.com/landing"
+      },
+      {
+        "creative_id": "display_js_banner",
+        "name": "Programmatic Display Banner",
+        "format": "display_3p_300x250", 
+        "snippet": "<script type='text/javascript' src='https://ads.network.com/tag/12345'></script>",
+        "snippet_type": "javascript",
+        "click_url": "https://brand.com/products"
+      },
+      {
+        "creative_id": "audio_daast_15s",
+        "name": "Podcast Audio Spot 15s",
+        "format": "audio_3p_standard",
+        "snippet": "https://audio-ads.example.com/daast?campaign=podcast&duration=15",
+        "snippet_type": "daast_url",
+        "click_url": "https://brand.com/audio-offer"
+      }
+    ]
+  }
+}
+```
+
+#### Response
+```json
+{
+  "message": "Successfully uploaded 3 third-party creatives to your library. All snippets have been validated and are ready for campaign assignment.",
+  "uploaded_assets": [
+    {
+      "creative_id": "video_vast_30s",
+      "status": "approved",
+      "platform_id": "lib_creative_003",
+      "review_feedback": "VAST URL validated successfully",
+      "suggested_adaptations": []
+    },
+    {
+      "creative_id": "display_js_banner",
+      "status": "pending_review",
+      "platform_id": "lib_creative_004", 
+      "review_feedback": "JavaScript tag under security review",
+      "suggested_adaptations": []
+    },
+    {
+      "creative_id": "audio_daast_15s",
+      "status": "approved",
+      "platform_id": "lib_creative_005",
+      "review_feedback": "DAAST endpoint validated",
+      "suggested_adaptations": []
+    }
+  ]
+}
+```
+
+### Example 3: Upload Native Ad Templates
+
+Upload native ads using HTML templates with variable substitution.
+
+#### Request
+```json
+{
+  "tool": "manage_creative_assets", 
+  "arguments": {
+    "action": "upload",
+    "assets": [
+      {
+        "creative_id": "sponsored_post_template",
+        "name": "Travel Sponsored Post",
+        "format": "display_native_sponsored_post",
+        "snippet": "<div class=\"sponsored-post\"><div class=\"thumbnail\"><img src=\"%ImageUrl%\"/></div><div class=\"content\"><h1><a href=\"%%CLICK_URL_UNESC%%%%DEST_URL_ESC%%\" target=\"_blank\">[%Headline%]</a></h1><p>[%Body%]</p><div class=\"attribution\">SPONSORED BY [%SponsorName%]</div></div></div>",
+        "snippet_type": "html",
+        "click_url": "https://travel.com/deals",
+        "assets": [
+          {
+            "asset_type": "headline",
+            "asset_id": "main_headline",
+            "content": "Discover Amazing Travel Deals This Summer"
+          },
+          {
+            "asset_type": "body_text", 
+            "asset_id": "description",
+            "content": "Save up to 60% on flights and hotels. Limited time offer for tropical destinations."
+          },
+          {
+            "asset_type": "thumbnail_image",
+            "asset_id": "hero_image",
+            "content_uri": "https://cdn.travel.com/beach-sunset.jpg"
+          },
+          {
+            "asset_type": "sponsor_name",
+            "asset_id": "brand_name",
+            "content": "TravelDeals.com"
+          }
+        ]
+      },
+      {
+        "creative_id": "product_showcase_template", 
+        "name": "Running Shoes Product Showcase",
+        "format": "display_native_product",
+        "snippet": "<div class=\"native-product\"><div class=\"product-image\"><img src=\"%ProductImage%\" alt=\"Product\"/></div><div class=\"product-info\"><h3>[%ProductName%]</h3><p>[%Description%]</p><div class=\"price\">[%Price%]</div><a href=\"%ShopUrl%\" class=\"cta\">[%CTAText%]</a></div><div class=\"disclosure\">Sponsored</div></div>",
+        "snippet_type": "html",
+        "click_url": "https://runningstore.com/shoes/pro-runner-x1",
+        "assets": [
+          {
+            "asset_type": "headline", 
+            "asset_id": "product_name",
+            "content": "Pro Runner X1 - Ultimate Performance"
+          },
+          {
+            "asset_type": "body_text",
+            "asset_id": "product_desc", 
+            "content": "Advanced cushioning and breathable mesh for serious runners"
+          },
+          {
+            "asset_type": "price_text",
+            "asset_id": "offer_price",
+            "content": "$149.99"
+          },
+          {
+            "asset_type": "product_image",
+            "asset_id": "shoe_image",
+            "content_uri": "https://cdn.runningstore.com/pro-runner-x1.jpg"
+          },
+          {
+            "asset_type": "cta_text",
+            "asset_id": "buy_button",
+            "content": "Shop Now"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Response
+```json
+{
+  "message": "Successfully uploaded 2 native ad templates to your library. Templates validated and all required variables are provided.",
+  "uploaded_assets": [
+    {
+      "creative_id": "sponsored_post_template",
+      "status": "approved", 
+      "platform_id": "lib_creative_006",
+      "review_feedback": "Native template validated - all required variables provided",
+      "template_validation": {
+        "required_variables": ["headline", "body", "image_url", "click_url"],
+        "provided_variables": ["headline", "body_text", "thumbnail_image", "sponsor_name"],
+        "missing_variables": [],
+        "validation_status": "passed"
+      },
+      "suggested_adaptations": []
+    },
+    {
+      "creative_id": "product_showcase_template",
+      "status": "approved",
+      "platform_id": "lib_creative_007", 
+      "review_feedback": "Product showcase template approved for commerce campaigns",
+      "template_validation": {
+        "required_variables": ["product_name", "description", "product_image", "cta_text", "shop_url"],
+        "provided_variables": ["headline", "body_text", "price_text", "product_image", "cta_text"],
+        "missing_variables": [],
+        "validation_status": "passed"
+      },
+      "suggested_adaptations": [
+        {
+          "adaptation_id": "adapt_mobile_native",
+          "format_id": "display_native_product_mobile",
+          "name": "Mobile-Optimized Product Showcase", 
+          "description": "Responsive version optimized for mobile screens",
+          "estimated_performance_lift": 25
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Example 4: List Library Creatives
 
 Query creatives in the library with filtering and pagination.
 
@@ -267,7 +470,7 @@ Query creatives in the library with filtering and pagination.
 }
 ```
 
-### Example 3: Assign Creatives to Media Buy
+### Example 5: Assign Creatives to Media Buy
 
 Assign existing library creatives to specific packages within a media buy.
 
@@ -305,7 +508,7 @@ Assign existing library creatives to specific packages within a media buy.
 }
 ```
 
-### Example 4: Update Creative Metadata
+### Example 6: Update Creative Metadata
 
 Update creative information without re-uploading the asset.
 
@@ -337,7 +540,7 @@ Update creative information without re-uploading the asset.
 }
 ```
 
-### Example 5: Unassign Creatives
+### Example 7: Unassign Creatives
 
 Remove creative assignments from specific packages while keeping them in the library.
 
@@ -367,7 +570,7 @@ Remove creative assignments from specific packages while keeping them in the lib
 }
 ```
 
-### Example 6: Archive Creatives
+### Example 8: Archive Creatives
 
 Remove creatives from active use while preserving them for historical reference.
 

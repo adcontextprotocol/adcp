@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/creative-asset.json",
   "title": "Creative Asset",
-  "description": "Creative asset for upload to library",
+  "description": "Creative asset for upload to library - supports both hosted assets and third-party snippets",
   "type": "object",
   "properties": {
     "creative_id": {
@@ -20,7 +20,15 @@
     "media_url": {
       "type": "string",
       "format": "uri",
-      "description": "URL of the creative file"
+      "description": "URL of the creative file (for hosted assets)"
+    },
+    "snippet": {
+      "type": "string",
+      "description": "Third-party tag, VAST XML, or code snippet (for third-party served assets)"
+    },
+    "snippet_type": {
+      "$ref": "/schemas/v1/enums/snippet-type.json",
+      "description": "Type of snippet content"
     },
     "click_url": {
       "type": "string",
@@ -57,6 +65,25 @@
       }
     }
   },
-  "required": ["creative_id", "name", "format", "media_url"],
+  "required": ["creative_id", "name", "format"],
+  "oneOf": [
+    {
+      "description": "Hosted asset - requires media_url",
+      "required": ["media_url"],
+      "not": {
+        "anyOf": [
+          { "required": ["snippet"] },
+          { "required": ["snippet_type"] }
+        ]
+      }
+    },
+    {
+      "description": "Third-party asset - requires snippet and snippet_type",
+      "required": ["snippet", "snippet_type"],
+      "not": {
+        "required": ["media_url"]
+      }
+    }
+  ],
   "additionalProperties": false
 }
