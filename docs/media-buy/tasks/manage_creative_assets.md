@@ -1,0 +1,1047 @@
+---
+title: manage_creative_assets
+sidebar_position: 4
+---
+
+# manage_creative_assets
+
+:::warning DEPRECATED
+This task is **deprecated** as of AdCP v1.5.0 and will be removed in v2.0.0. 
+
+**Use instead:**
+- [`sync_creatives`](./sync_creatives) - For uploading and updating creative assets with upsert semantics
+- [`list_creatives`](./list_creatives) - For querying the creative library with advanced filtering
+
+See the [Migration Guide](#migration-guide) below for detailed migration instructions.
+:::
+
+Comprehensive creative asset management for the centralized creative library. This unified endpoint handles all creative lifecycle operations from upload to assignment and deletion.
+
+**Request Schema**: [`/schemas/v1/media-buy/manage-creative-assets-request.json`](/schemas/v1/media-buy/manage-creative-assets-request.json)  
+**Response Schema**: [`/schemas/v1/media-buy/manage-creative-assets-response.json`](/schemas/v1/media-buy/manage-creative-assets-response.json)
+
+## Overview
+
+The `manage_creative_assets` task provides a centralized approach to creative management that aligns with industry standards. Creatives are uploaded to a central library at the advertiser/account level, then assigned to specific media buys as needed. This eliminates redundant uploads and enables better creative governance.
+
+## Request Parameters
+
+### Common Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | string | Yes | Operation to perform: `upload`, `list`, `update`, `assign`, `unassign`, `delete` |
+| `adcp_version` | string | No | AdCP schema version (default: "1.0.0") |
+
+### Action-Specific Parameters
+
+Parameters vary based on the `action` specified:
+
+#### Upload Action
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `assets` | Asset[] | Yes | Array of creative assets to upload to library |
+
+#### List Action
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filters` | object | No | Filter criteria for querying creatives |
+| `pagination` | object | No | Pagination parameters |
+
+#### Update Action
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `creative_id` | string | Yes | ID of creative to update |
+| `updates` | object | Yes | Fields to update |
+
+#### Assign Action
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `creative_ids` | string[] | Yes | Creative IDs to assign |
+| `media_buy_id` | string | No* | Publisher's media buy ID |
+| `buyer_ref` | string | No* | Buyer's media buy reference |
+| `package_assignments` | string[] | Yes | Package IDs to assign creatives to |
+
+*Either `media_buy_id` or `buyer_ref` must be provided for assign action
+
+#### Unassign Action
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `creative_ids` | string[] | Yes | Creative IDs to unassign |
+| `package_ids` | string[] | No | Specific packages to unassign from (if omitted, unassigns from all) |
+
+#### Delete Action
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `creative_ids` | string[] | Yes | Creative IDs to delete |
+| `archive` | boolean | No | Whether to archive (soft delete) vs permanently delete (default: true) |
+
+## Asset Object (for Upload Action)
+
+AdCP supports both **hosted assets** (traditional media files) and **third-party snippets** (VAST, HTML, JavaScript tags).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `creative_id` | string | Yes | Unique identifier for the creative |
+| `name` | string | Yes | Human-readable creative name |
+| `format` | string | Yes | Creative format type (e.g., `"video"`, `"audio"`, `"display"`) |
+| `media_url` | string | No* | URL of the creative file (for hosted assets) |
+| `snippet` | string | No* | Third-party tag, VAST XML, or code snippet (for third-party assets) |
+| `snippet_type` | string | No* | Type of snippet: `vast_xml`, `vast_url`, `html`, `javascript`, `iframe`, `daast_url` |
+| `click_url` | string | No | Landing page URL for the creative |
+| `duration` | number | No | Duration in milliseconds (for video/audio) |
+| `width` | number | No | Width in pixels (for video/display) |
+| `height` | number | No | Height in pixels (for video/display) |
+| `tags` | string[] | No | User-defined tags for organization |
+| `assets` | SubAsset[] | No | For multi-asset formats like carousels |
+
+**Asset Type Requirements:**
+- **Hosted Asset**: Must provide `media_url` (cannot include `snippet` or `snippet_type`)
+- **Third-Party Asset**: Must provide both `snippet` and `snippet_type` (cannot include `media_url`)
+
+## Response Structure
+
+The response structure adapts based on the action performed:
+
+### Upload Response
+```json
+{
+  "message": "Successfully uploaded 2 creatives to library",
+  "uploaded_assets": [
+    {
+      "creative_id": "hero_video_30s",
+      "status": "approved",
+      "platform_id": "lib_creative_789",
+      "suggested_adaptations": [...]
+    }
+  ]
+}
+```
+
+### List Response
+```json
+{
+  "message": "Found 15 creatives matching criteria",
+  "creatives": [
+    {
+      "creative_id": "hero_video_30s",
+      "name": "Nike Air Max Hero 30s",
+      "format": "video",
+      "status": "approved",
+      "created_date": "2024-01-15T10:30:00Z",
+      "assignments": ["pkg_ctv_001", "pkg_mobile_002"]
+    }
+  ],
+  "pagination": {
+    "total": 15,
+    "limit": 10,
+    "offset": 0,
+    "has_more": true
+  }
+}
+```
+
+### Assign Response
+```json
+{
+  "message": "Successfully assigned 2 creatives to 3 packages",
+  "assignments": [
+    {
+      "creative_id": "hero_video_30s",
+      "assigned_packages": ["pkg_ctv_001", "pkg_ctv_002"],
+      "assignment_status": "active"
+    }
+  ]
+}
+```
+
+## Detailed Examples
+
+### Example 1: Upload Creatives to Library
+
+Upload new creatives to the central library without immediate campaign assignment.
+
+#### Request
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "upload",
+    "assets": [
+      {
+        "creative_id": "nike_hero_30s_v1",
+        "name": "Nike Air Max Hero 30s",
+        "format": "video",
+        "media_url": "https://cdn.nike.com/creatives/hero-30s.mp4",
+        "click_url": "https://nike.com/airmax",
+        "duration": 30000,
+        "width": 1920,
+        "height": 1080
+      },
+      {
+        "creative_id": "nike_hero_15s_v1",
+        "name": "Nike Air Max Hero 15s",
+        "format": "video", 
+        "media_url": "https://cdn.nike.com/creatives/hero-15s.mp4",
+        "click_url": "https://nike.com/airmax",
+        "duration": 15000,
+        "width": 1920,
+        "height": 1080
+      }
+    ]
+  }
+}
+```
+
+#### Response
+```json
+{
+  "message": "Successfully uploaded 2 creatives to your library. Both videos have been approved and are ready for campaign assignment. I've also identified opportunities for mobile optimization.",
+  "uploaded_assets": [
+    {
+      "creative_id": "nike_hero_30s_v1",
+      "status": "approved",
+      "platform_id": "lib_creative_001",
+      "review_feedback": "Passed all policy checks",
+      "suggested_adaptations": [
+        {
+          "adaptation_id": "adapt_mobile_vertical",
+          "format_id": "video_vertical_9x16",
+          "name": "Nike Hero Mobile Vertical",
+          "description": "9:16 version optimized for mobile feeds",
+          "estimated_performance_lift": 35
+        }
+      ]
+    },
+    {
+      "creative_id": "nike_hero_15s_v1", 
+      "status": "approved",
+      "platform_id": "lib_creative_002",
+      "review_feedback": "Approved for all placements",
+      "suggested_adaptations": []
+    }
+  ]
+}
+```
+
+### Example 2: Upload Third-Party Snippets
+
+Upload creatives using VAST, HTML, and JavaScript snippets instead of hosted media files.
+
+#### Request
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "upload",
+    "assets": [
+      {
+        "creative_id": "video_vast_30s",
+        "name": "Brand Video VAST 30s",
+        "format": "video_30s_vast",
+        "snippet": "https://ads.example.com/vast?campaign=brand123&duration=30",
+        "snippet_type": "vast_url",
+        "click_url": "https://brand.com/landing"
+      },
+      {
+        "creative_id": "display_js_banner",
+        "name": "Programmatic Display Banner",
+        "format": "display_3p_300x250", 
+        "snippet": "<script type='text/javascript' src='https://ads.network.com/tag/12345'></script>",
+        "snippet_type": "javascript",
+        "click_url": "https://brand.com/products"
+      },
+      {
+        "creative_id": "audio_daast_15s",
+        "name": "Podcast Audio Spot 15s",
+        "format": "audio_3p_standard",
+        "snippet": "https://audio-ads.example.com/daast?campaign=podcast&duration=15",
+        "snippet_type": "daast_url",
+        "click_url": "https://brand.com/audio-offer"
+      }
+    ]
+  }
+}
+```
+
+#### Response
+```json
+{
+  "message": "Successfully uploaded 3 third-party creatives to your library. All snippets have been validated and are ready for campaign assignment.",
+  "uploaded_assets": [
+    {
+      "creative_id": "video_vast_30s",
+      "status": "approved",
+      "platform_id": "lib_creative_003",
+      "review_feedback": "VAST URL validated successfully",
+      "suggested_adaptations": []
+    },
+    {
+      "creative_id": "display_js_banner",
+      "status": "pending_review",
+      "platform_id": "lib_creative_004", 
+      "review_feedback": "JavaScript tag under security review",
+      "suggested_adaptations": []
+    },
+    {
+      "creative_id": "audio_daast_15s",
+      "status": "approved",
+      "platform_id": "lib_creative_005",
+      "review_feedback": "DAAST endpoint validated",
+      "suggested_adaptations": []
+    }
+  ]
+}
+```
+
+### Example 3: Upload Native Ad Templates
+
+Upload native ads using HTML templates with variable substitution.
+
+#### Request
+```json
+{
+  "tool": "manage_creative_assets", 
+  "arguments": {
+    "action": "upload",
+    "assets": [
+      {
+        "creative_id": "sponsored_post_template",
+        "name": "Travel Sponsored Post",
+        "format": "display_native_sponsored_post",
+        "snippet": "<div class=\"sponsored-post\"><div class=\"thumbnail\"><img src=\"%ImageUrl%\"/></div><div class=\"content\"><h1><a href=\"%%CLICK_URL_UNESC%%%%DEST_URL_ESC%%\" target=\"_blank\">[%Headline%]</a></h1><p>[%Body%]</p><div class=\"attribution\">SPONSORED BY [%SponsorName%]</div></div></div>",
+        "snippet_type": "html",
+        "click_url": "https://travel.com/deals",
+        "assets": [
+          {
+            "asset_type": "headline",
+            "asset_id": "main_headline",
+            "content": "Discover Amazing Travel Deals This Summer"
+          },
+          {
+            "asset_type": "body_text", 
+            "asset_id": "description",
+            "content": "Save up to 60% on flights and hotels. Limited time offer for tropical destinations."
+          },
+          {
+            "asset_type": "thumbnail_image",
+            "asset_id": "hero_image",
+            "content_uri": "https://cdn.travel.com/beach-sunset.jpg"
+          },
+          {
+            "asset_type": "sponsor_name",
+            "asset_id": "brand_name",
+            "content": "TravelDeals.com"
+          }
+        ]
+      },
+      {
+        "creative_id": "product_showcase_template", 
+        "name": "Running Shoes Product Showcase",
+        "format": "display_native_product",
+        "snippet": "<div class=\"native-product\"><div class=\"product-image\"><img src=\"%ProductImage%\" alt=\"Product\"/></div><div class=\"product-info\"><h3>[%ProductName%]</h3><p>[%Description%]</p><div class=\"price\">[%Price%]</div><a href=\"%ShopUrl%\" class=\"cta\">[%CTAText%]</a></div><div class=\"disclosure\">Sponsored</div></div>",
+        "snippet_type": "html",
+        "click_url": "https://runningstore.com/shoes/pro-runner-x1",
+        "assets": [
+          {
+            "asset_type": "headline", 
+            "asset_id": "product_name",
+            "content": "Pro Runner X1 - Ultimate Performance"
+          },
+          {
+            "asset_type": "body_text",
+            "asset_id": "product_desc", 
+            "content": "Advanced cushioning and breathable mesh for serious runners"
+          },
+          {
+            "asset_type": "price_text",
+            "asset_id": "offer_price",
+            "content": "$149.99"
+          },
+          {
+            "asset_type": "product_image",
+            "asset_id": "shoe_image",
+            "content_uri": "https://cdn.runningstore.com/pro-runner-x1.jpg"
+          },
+          {
+            "asset_type": "cta_text",
+            "asset_id": "buy_button",
+            "content": "Shop Now"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Response
+```json
+{
+  "message": "Successfully uploaded 2 native ad templates to your library. Templates validated and all required variables are provided.",
+  "uploaded_assets": [
+    {
+      "creative_id": "sponsored_post_template",
+      "status": "approved", 
+      "platform_id": "lib_creative_006",
+      "review_feedback": "Native template validated - all required variables provided",
+      "template_validation": {
+        "required_variables": ["headline", "body", "image_url", "click_url"],
+        "provided_variables": ["headline", "body_text", "thumbnail_image", "sponsor_name"],
+        "missing_variables": [],
+        "validation_status": "passed"
+      },
+      "suggested_adaptations": []
+    },
+    {
+      "creative_id": "product_showcase_template",
+      "status": "approved",
+      "platform_id": "lib_creative_007", 
+      "review_feedback": "Product showcase template approved for commerce campaigns",
+      "template_validation": {
+        "required_variables": ["product_name", "description", "product_image", "cta_text", "shop_url"],
+        "provided_variables": ["headline", "body_text", "price_text", "product_image", "cta_text"],
+        "missing_variables": [],
+        "validation_status": "passed"
+      },
+      "suggested_adaptations": [
+        {
+          "adaptation_id": "adapt_mobile_native",
+          "format_id": "display_native_product_mobile",
+          "name": "Mobile-Optimized Product Showcase", 
+          "description": "Responsive version optimized for mobile screens",
+          "estimated_performance_lift": 25
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Example 4: List Library Creatives
+
+Query creatives in the library with filtering and pagination.
+
+#### Request
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "list",
+    "filters": {
+      "format": "video",
+      "status": "approved",
+      "created_after": "2024-01-01",
+      "name_contains": "nike"
+    },
+    "pagination": {
+      "limit": 10,
+      "offset": 0
+    }
+  }
+}
+```
+
+#### Response
+```json
+{
+  "message": "Found 3 Nike video creatives in your approved library",
+  "creatives": [
+    {
+      "creative_id": "nike_hero_30s_v1",
+      "name": "Nike Air Max Hero 30s",
+      "format": "video",
+      "status": "approved",
+      "platform_id": "lib_creative_001",
+      "created_date": "2024-01-15T10:30:00Z",
+      "duration": 30000,
+      "width": 1920,
+      "height": 1080,
+      "click_url": "https://nike.com/airmax",
+      "assignments": ["pkg_ctv_001", "pkg_ctv_prime"]
+    },
+    {
+      "creative_id": "nike_hero_15s_v1",
+      "name": "Nike Air Max Hero 15s", 
+      "format": "video",
+      "status": "approved",
+      "platform_id": "lib_creative_002",
+      "created_date": "2024-01-15T10:30:00Z",
+      "duration": 15000,
+      "assignments": ["pkg_ctv_midroll"]
+    }
+  ],
+  "pagination": {
+    "total": 3,
+    "limit": 10,
+    "offset": 0,
+    "has_more": false
+  }
+}
+```
+
+### Example 5: Assign Creatives to Media Buy
+
+Assign existing library creatives to specific packages within a media buy.
+
+#### Request
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "assign",
+    "creative_ids": ["nike_hero_30s_v1", "nike_hero_15s_v1"],
+    "media_buy_id": "mb_12345",
+    "package_assignments": ["pkg_ctv_prime", "pkg_ctv_midroll"]
+  }
+}
+```
+
+#### Response
+```json
+{
+  "message": "Successfully assigned Nike creatives to your CTV campaign. The 30s version will run in prime time slots, and the 15s version will serve during mid-roll breaks.",
+  "assignments": [
+    {
+      "creative_id": "nike_hero_30s_v1",
+      "assigned_packages": ["pkg_ctv_prime"],
+      "assignment_status": "active",
+      "estimated_impressions": 125000
+    },
+    {
+      "creative_id": "nike_hero_15s_v1",
+      "assigned_packages": ["pkg_ctv_midroll"],
+      "assignment_status": "active",
+      "estimated_impressions": 87500
+    }
+  ]
+}
+```
+
+### Example 6: Update Creative Metadata
+
+Update creative information without re-uploading the asset.
+
+#### Request
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "update",
+    "creative_id": "nike_hero_30s_v1",
+    "updates": {
+      "name": "Nike Air Max Hero 30s - Holiday Sale",
+      "click_url": "https://nike.com/airmax-holiday-sale"
+    }
+  }
+}
+```
+
+#### Response
+```json
+{
+  "message": "Successfully updated creative metadata. The new click URL will be used for all future impressions.",
+  "updated_creative": {
+    "creative_id": "nike_hero_30s_v1",
+    "name": "Nike Air Max Hero 30s - Holiday Sale",
+    "click_url": "https://nike.com/airmax-holiday-sale",
+    "last_updated": "2024-01-20T14:15:00Z"
+  }
+}
+```
+
+### Example 7: Unassign Creatives
+
+Remove creative assignments from specific packages while keeping them in the library.
+
+#### Request
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "unassign",
+    "creative_ids": ["nike_hero_30s_v1"],
+    "package_ids": ["pkg_ctv_prime"]
+  }
+}
+```
+
+#### Response
+```json
+{
+  "message": "Removed Nike Hero 30s from prime time CTV package. Creative remains available in your library for future campaigns.",
+  "unassignments": [
+    {
+      "creative_id": "nike_hero_30s_v1",
+      "removed_from_packages": ["pkg_ctv_prime"],
+      "remaining_assignments": ["pkg_ctv_midroll"]
+    }
+  ]
+}
+```
+
+### Example 8: Archive Creatives
+
+Remove creatives from active use while preserving them for historical reference.
+
+#### Request
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "delete",
+    "creative_ids": ["old_creative_v1", "expired_promo_v2"],
+    "archive": true
+  }
+}
+```
+
+#### Response
+```json
+{
+  "message": "Archived 2 creatives. They've been removed from active campaigns but preserved for reporting and compliance.",
+  "deleted_assets": [
+    {
+      "creative_id": "old_creative_v1",
+      "status": "archived",
+      "archived_date": "2024-01-20T15:30:00Z"
+    },
+    {
+      "creative_id": "expired_promo_v2",
+      "status": "archived", 
+      "archived_date": "2024-01-20T15:30:00Z"
+    }
+  ]
+}
+```
+
+## Filter Options (List Action)
+
+When using the `list` action, you can filter creatives using these criteria:
+
+| Filter | Type | Description |
+|--------|------|-------------|
+| `format` | string | Creative format (video, audio, display, etc.) |
+| `status` | string | Creative status (approved, pending_review, rejected, archived) |
+| `created_after` | string | ISO date string for minimum creation date |
+| `created_before` | string | ISO date string for maximum creation date |
+| `name_contains` | string | Search within creative names |
+| `assigned_to_package` | string | Show creatives assigned to specific package |
+| `unassigned` | boolean | Show only unassigned creatives if true |
+
+## Creative Status Values
+
+| Status | Description |
+|--------|-------------|
+| `approved` | Ready for campaign assignment and delivery |
+| `pending_review` | Uploaded and awaiting platform approval |
+| `rejected` | Failed policy review or technical validation |
+| `processing` | Being transcoded or processed |
+| `archived` | Soft-deleted, preserved for historical reference |
+
+## Best Practices
+
+### Library Organization
+- Use consistent naming conventions for creative IDs
+- Include version numbers for creative iterations
+- Organize by campaign, brand, or time period
+
+### Upload Strategy
+- Upload creatives to library before campaign launch
+- Consider suggested adaptations for better performance
+- Plan for multiple formats (mobile, desktop, audio, video)
+
+### Assignment Workflow
+1. Upload creatives to central library
+2. Review and approve all assets
+3. Assign to specific media buy packages as needed
+4. Monitor performance and iterate
+
+### Lifecycle Management
+- Regularly review and archive old creatives
+- Update click URLs for seasonal campaigns
+- Track creative performance across assignments
+
+## Platform Considerations
+
+Different ad platforms handle creative libraries differently:
+
+- **Google Ad Manager**: Supports advertiser-level creative libraries
+- **Kevel**: Template-based creative management
+- **Meta**: Ad account level creative library with reuse
+- **Triton Digital**: Station-level creative management
+
+The AdCP abstraction provides a unified interface regardless of underlying platform implementation.
+
+## Migration from add_creative_assets
+
+If you're currently using the deprecated `add_creative_assets` task:
+
+1. **Upload First**: Use `action: "upload"` to add creatives to library
+2. **Then Assign**: Use `action: "assign"` to connect creatives to media buys
+3. **Manage Centrally**: Use other actions for ongoing creative management
+
+This new workflow eliminates redundant uploads and provides better creative governance.
+
+## Migration Guide
+
+This section provides detailed migration instructions for transitioning from `manage_creative_assets` to the new `sync_creatives` and `list_creatives` tasks.
+
+### Why Migrate?
+
+The new tasks provide:
+- **Better Performance**: Bulk operations and upsert semantics
+- **Simpler API**: No action parameter needed
+- **Enhanced Features**: Advanced filtering, pagination, and optional data inclusion
+- **Patch Updates**: Update only specific fields without full replacement
+
+### Migration Mapping
+
+| Old Action | New Task | Migration Notes |
+|------------|----------|-----------------|
+| `upload` | `sync_creatives` | Use upsert semantics - no action parameter needed |
+| `list` | `list_creatives` | Enhanced filtering and pagination options |
+| `update` | `sync_creatives` | Use patch mode for partial updates |
+| `assign` | `sync_creatives` | Use assignments parameter during sync |
+| `unassign` | *Manual process* | Remove from assignments, then sync |
+| `delete` | *Not supported* | Use creative status management instead |
+
+### 1. Upload Action → sync_creatives
+
+**Old Way:**
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "upload",
+    "assets": [
+      {
+        "creative_id": "hero_video_30s",
+        "name": "Brand Hero Video 30s",
+        "format": "video_30s_vast",
+        "media_url": "https://cdn.example.com/hero.mp4"
+      }
+    ]
+  }
+}
+```
+
+**New Way:**
+```json
+{
+  "tool": "sync_creatives",
+  "arguments": {
+    "creatives": [
+      {
+        "creative_id": "hero_video_30s",
+        "name": "Brand Hero Video 30s",
+        "format": "video_30s_vast",
+        "media_url": "https://cdn.example.com/hero.mp4"
+      }
+    ]
+  }
+}
+```
+
+### 2. List Action → list_creatives
+
+**Old Way:**
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "list",
+    "filters": {
+      "format": "video",
+      "status": "approved"
+    },
+    "pagination": {
+      "limit": 10,
+      "offset": 0
+    }
+  }
+}
+```
+
+**New Way:**
+```json
+{
+  "tool": "list_creatives",
+  "arguments": {
+    "filters": {
+      "format": "video",
+      "status": "approved"
+    },
+    "pagination": {
+      "limit": 10,
+      "offset": 0
+    }
+  }
+}
+```
+
+### 3. Update Action → sync_creatives (Patch Mode)
+
+**Old Way:**
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "update",
+    "creative_id": "hero_video_30s",
+    "updates": {
+      "click_url": "https://example.com/new-landing"
+    }
+  }
+}
+```
+
+**New Way:**
+```json
+{
+  "tool": "sync_creatives",
+  "arguments": {
+    "creatives": [
+      {
+        "creative_id": "hero_video_30s",
+        "click_url": "https://example.com/new-landing"
+      }
+    ],
+    "patch": true
+  }
+}
+```
+
+### 4. Assign Action → sync_creatives with Assignments
+
+**Old Way:**
+```json
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "assign",
+    "creative_ids": ["hero_video_30s", "banner_300x250"],
+    "media_buy_id": "mb_12345",
+    "package_assignments": ["pkg_ctv_001", "pkg_display_001"]
+  }
+}
+```
+
+**New Way:**
+```json
+{
+  "tool": "sync_creatives",
+  "arguments": {
+    "creatives": [], // Empty array for assignment-only operations
+    "assignments": {
+      "hero_video_30s": ["pkg_ctv_001"],
+      "banner_300x250": ["pkg_display_001"]
+    }
+  }
+}
+```
+
+### 5. Bulk Operations Migration
+
+**Old Way (Multiple Requests):**
+```json
+// Request 1: Upload
+{
+  "tool": "manage_creative_assets",
+  "arguments": {
+    "action": "upload",
+    "assets": [...]
+  }
+}
+
+// Request 2: Assign
+{
+  "tool": "manage_creative_assets", 
+  "arguments": {
+    "action": "assign",
+    "creative_ids": [...],
+    "package_assignments": [...]
+  }
+}
+```
+
+**New Way (Single Request):**
+```json
+{
+  "tool": "sync_creatives",
+  "arguments": {
+    "creatives": [
+      {
+        "creative_id": "hero_video_30s",
+        "name": "Brand Hero Video 30s",
+        "format": "video_30s_vast",
+        "media_url": "https://cdn.example.com/hero.mp4"
+      }
+    ],
+    "assignments": {
+      "hero_video_30s": ["pkg_ctv_001", "pkg_ctv_002"]
+    }
+  }
+}
+```
+
+### 6. Advanced Query Migration
+
+**Enhanced Filtering (New Features):**
+```json
+{
+  "tool": "list_creatives",
+  "arguments": {
+    "filters": {
+      "formats": ["video", "audio"],           // Multiple formats
+      "statuses": ["approved", "pending_review"], // Multiple statuses  
+      "tags_any": ["mobile", "desktop"],       // OR logic for tags
+      "name_contains": "nike",                 // Text search
+      "has_performance_data": true,            // Performance filter
+      "created_after": "2024-01-01T00:00:00Z", // Date range
+      "unassigned": true                       // Assignment status
+    },
+    "sort": {
+      "field": "performance_score",            // New sort options
+      "direction": "desc"
+    },
+    "include_performance": true,               // Optional data
+    "include_assignments": true,
+    "fields": ["creative_id", "name", "status"] // Field selection
+  }
+}
+```
+
+### 7. Error Handling Migration
+
+**Old Response Format:**
+```json
+{
+  "message": "Upload completed with errors",
+  "uploaded_assets": [...],
+  "errors": [...]
+}
+```
+
+**New Response Format:**
+```json
+{
+  "message": "Sync completed: 2 created, 1 failed",
+  "summary": {
+    "total_processed": 3,
+    "created": 2,
+    "updated": 0,
+    "failed": 1
+  },
+  "results": [
+    {
+      "creative_id": "failed_creative",
+      "action": "failed",
+      "errors": ["Missing required field: format"]
+    }
+  ]
+}
+```
+
+### Migration Strategy
+
+**Phase 1: Parallel Implementation (Recommended)**
+1. Implement new sync_creatives/list_creatives calls alongside existing code
+2. Test new endpoints with non-production data
+3. Verify response formats match expectations
+4. Update error handling for new response structure
+
+**Phase 2: Gradual Migration**
+1. Start with list operations (lowest risk)
+2. Migrate upload operations to sync_creatives
+3. Replace update operations with patch mode
+4. Consolidate assignment operations
+
+**Phase 3: Cleanup**
+1. Remove all manage_creative_assets calls
+2. Clean up old error handling code
+3. Leverage new features (bulk operations, enhanced filtering)
+
+### Breaking Changes to Note
+
+1. **Response Structure**: Results array instead of direct asset arrays
+2. **Assignment Format**: Object with creative_id keys instead of arrays
+3. **Error Reporting**: Detailed per-creative error reporting
+4. **Status Values**: Enhanced status reporting with action types
+5. **Delete Operations**: No longer supported - use creative status management
+
+### Code Examples
+
+**TypeScript Migration Example:**
+```typescript
+// Old interface
+interface ManageCreativeAssetsRequest {
+  action: 'upload' | 'list' | 'update' | 'assign' | 'unassign' | 'delete';
+  assets?: CreativeAsset[];
+  creative_id?: string;
+  // ... other action-specific fields
+}
+
+// New interfaces  
+interface SyncCreativesRequest {
+  creatives: CreativeAsset[];
+  patch?: boolean;
+  assignments?: Record<string, string[]>;
+  dry_run?: boolean;
+  validation_mode?: 'strict' | 'lenient';
+}
+
+interface ListCreativesRequest {
+  filters?: CreativeFilters;
+  sort?: SortOptions;
+  pagination?: PaginationOptions;
+  include_assignments?: boolean;
+  include_performance?: boolean;
+}
+```
+
+**Migration Helper Function:**
+```javascript
+function migrateToSyncCreatives(oldRequest) {
+  const { action, assets, ...rest } = oldRequest;
+  
+  switch (action) {
+    case 'upload':
+      return {
+        tool: 'sync_creatives',
+        arguments: {
+          creatives: assets || []
+        }
+      };
+    case 'update':
+      return {
+        tool: 'sync_creatives', 
+        arguments: {
+          creatives: [{
+            creative_id: rest.creative_id,
+            ...rest.updates
+          }],
+          patch: true
+        }
+      };
+    case 'list':
+      return {
+        tool: 'list_creatives',
+        arguments: {
+          filters: rest.filters,
+          pagination: rest.pagination
+        }
+      };
+    default:
+      throw new Error(`Action ${action} requires manual migration`);
+  }
+}
+```
+
+## Related Documentation
+
+- [`sync_creatives`](./sync_creatives) - New bulk creative management task  
+- [`list_creatives`](./list_creatives) - New creative library query task
+- [Creative Library](../creative-library.md) - Centralized creative management concepts
+- [Creative Lifecycle](../creative-lifecycle.md) - End-to-end creative workflow
+- [Creative Formats](../creative-formats.md) - Supported format specifications

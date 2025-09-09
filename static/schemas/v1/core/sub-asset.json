@@ -2,30 +2,54 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/sub-asset.json",
   "title": "Sub-Asset",
-  "description": "Sub-asset for multi-asset creative formats",
+  "description": "Sub-asset for multi-asset creative formats, including carousel images and native ad template variables",
   "type": "object",
   "properties": {
     "asset_type": {
       "type": "string",
-      "description": "Type of asset (e.g., product_image, logo, headline)"
+      "description": "Type of asset. Common types: headline, body_text, thumbnail_image, product_image, featured_image, logo, cta_text, price_text, sponsor_name, author_name, click_url"
     },
     "asset_id": {
       "type": "string",
-      "description": "Unique identifier for the asset"
+      "description": "Unique identifier for the asset within the creative"
     },
     "content_uri": {
       "type": "string",
       "format": "uri",
-      "description": "URL for media assets"
+      "description": "URL for media assets (images, videos, etc.)"
     },
     "content": {
-      "type": "array",
-      "description": "Text content for text assets",
-      "items": {
-        "type": "string"
-      }
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Single text content value"
+        },
+        {
+          "type": "array",
+          "description": "Multiple text content values (for A/B testing or variations)",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "Text content for text-based assets like headlines, body text, CTA text, etc."
     }
   },
-  "required": ["asset_type", "asset_id"],
+  "oneOf": [
+    {
+      "description": "Media asset - requires content_uri",
+      "required": ["asset_type", "asset_id", "content_uri"],
+      "not": {
+        "required": ["content"]
+      }
+    },
+    {
+      "description": "Text asset - requires content",
+      "required": ["asset_type", "asset_id", "content"],
+      "not": {
+        "required": ["content_uri"]
+      }
+    }
+  ],
   "additionalProperties": false
 }

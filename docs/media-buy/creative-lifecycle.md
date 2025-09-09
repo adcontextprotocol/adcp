@@ -4,29 +4,63 @@ title: Creative Lifecycle
 
 # Creative Lifecycle
 
-AdCP provides a comprehensive set of tools for managing the entire lifecycle of creative assets within a media buy. This document explains the conceptual model and workflow for creative management.
+AdCP provides a comprehensive centralized creative library for managing the entire lifecycle of creative assets. This document explains the conceptual model and workflow for creative management using the centralized library approach.
 
-## The Creative Model
+## The Creative Library Model
 
-A `Creative` is a simple object that links a user-defined ID to a specific format and the location of the asset.
+AdCP uses a **centralized creative library** that aligns with industry standards. Creatives are uploaded to a central library at the advertiser/account level, then assigned to specific media buys as needed. This approach eliminates redundant uploads and enables better creative governance.
 
-Key components:
+### Creative Object Structure
+
+A `Creative` in the library contains:
+
+**Core Properties:**
 - **`creative_id`**: A unique, client-defined identifier for the creative
-- **`format_id`**: The ID of the format the creative adheres to (must match formats supported by the products)
-- **`content_uri`**: The URI pointing to the creative asset (e.g., VAST XML, image URL, or HTML5 ZIP)
+- **`name`**: Human-readable creative name for organization
+- **`format`**: Creative format type (e.g., video, audio, display)
+- **`media_url`**: URL pointing to the creative asset file (for hosted assets)
+- **`snippet`**: Third-party tag, VAST XML, or code snippet (for third-party assets)
+- **`snippet_type`**: Type of snippet content (vast_xml, vast_url, html, javascript, iframe, daast_url)
 
-For multi-asset formats (like carousels or sliders), creatives can include multiple assets with different types (images, text, logos).
+**Metadata:**
+- **`click_url`**: Landing page URL for the creative
+- **`tags`**: User-defined tags for organization and searchability
+- **`created_date`**: When the creative was uploaded to the library
+- **`status`**: Current approval status (approved, pending_review, rejected, archived)
+
+**Assignment Tracking:**
+- **`assignments`**: Current package/media buy assignments
+- **`assignment_count`**: Number of active assignments
+
+For multi-asset formats, creatives can include multiple sub-assets with different types:
+
+**Carousel/Slider Formats:**
+- Multiple images, headlines, and descriptions for rotating content
+
+**Native Ad Templates:**
+- HTML template with placeholder variables (e.g., `[%Headline%]`, `%ImageUrl%`)
+- Variable content provided via sub-assets (headline, body_text, product_image, etc.)
+- Template validation ensures all required variables are provided
 
 ## Creative Lifecycle Phases
 
-### 1. Submission & Upload
+### 1. Library Upload
 
-Creatives are submitted using the [`add_creative_assets`](./tasks/add_creative_assets) task. This phase includes:
+Creatives are uploaded to the centralized library using the [`sync_creatives`](./tasks/sync_creatives) task with **upsert semantics** - creatives are automatically created or updated based on their `creative_id`. AdCP supports multiple creative types:
 
+**Creative Types Supported:**
+- **Hosted assets** - Traditional media files (images, videos, audio)
+- **Third-party snippets** - VAST, HTML, JavaScript tags
+- **Native ad templates** - HTML templates with variable substitution
+
+**Upload Process Includes:**
+- Upload to centralized library (no immediate campaign assignment required)
 - Asset validation against format specifications
+- Third-party snippet validation and security review
+- Native template variable validation (ensures all required variables are provided)
 - Policy compliance checking
-- Assignment to specific packages within the media buy
 - Optional adaptation suggestions from the publisher
+- Library storage with metadata for future reuse
 
 ### 2. Review & Approval
 
@@ -41,15 +75,28 @@ Review outcomes include:
 - **Rejected**: Failed validation with feedback
 - **Pending**: Still under review
 
-### 3. Creative Management
+### 3. Campaign Assignment
 
-After initial upload, creatives can be managed through various tasks:
+Once creatives are approved in the library, they can be assigned to specific media buys and packages:
 
-- **Status Tracking**: Monitor approval status and delivery readiness
-- **Creative Groups**: Organize creatives for reuse across campaigns
-- **Performance Analysis**: Track creative effectiveness
+- **Bulk Assignment**: Use the `assignments` parameter in `sync_creatives` to assign multiple creatives to packages
+- **Reuse Across Campaigns**: Same creative can be assigned to multiple media buys
+- **Selective Assignment**: Choose specific packages within a media buy for each creative
+- **Dynamic Management**: Add or remove assignments without re-uploading assets
+- **Combined Operations**: Upload and assign creatives in a single request for efficiency
 
-### 4. Adaptation & Optimization
+### 4. Library Management
+
+Ongoing creative management through the new streamlined tasks:
+
+- **Library Querying**: Use [`list_creatives`](./tasks/list_creatives) to search and filter library creatives with advanced filtering
+- **Metadata Updates**: Use [`sync_creatives`](./tasks/sync_creatives) with `patch: true` to modify specific fields like names, click URLs, and tags
+- **Bulk Operations**: Process up to 100 creatives per sync request for efficient large-scale updates
+- **Assignment Tracking**: Monitor which campaigns are using each creative through enriched query responses
+- **Performance Analysis**: Track creative effectiveness across all assignments with optional performance data inclusion
+- **Validation Modes**: Choose between strict (fail-fast) or lenient (process-valid) validation for bulk operations
+
+### 5. Adaptation & Optimization
 
 A key feature of AdCP is publisher-assisted creative adaptation:
 
@@ -63,13 +110,15 @@ Common adaptation types:
 - Format additions (adding captions for sound-off viewing)
 - Platform-specific optimizations
 
-## Creative Groups
+## Creative Library Benefits
 
-Creative groups enable efficient management across campaigns:
+The centralized library naturally enables efficient creative management:
 
-- **Shared Assets**: Use the same creatives across multiple media buys
-- **Rotation Rules**: Define how creatives rotate within a group
-- **Performance Tracking**: Compare effectiveness across creatives
+- **Shared Assets**: Library creatives can be assigned to multiple media buys simultaneously
+- **Tag-Based Organization**: Use tags to group related creatives (e.g., "holiday_2024", "video_ads", "mobile_optimized")
+- **Search & Discovery**: Query library by format, status, tags, or assignment status
+- **Performance Comparison**: Track effectiveness across all assignments for each creative
+- **Efficient Updates**: Modify click URLs or metadata once, applies to all assignments
 
 ## Platform Considerations
 
@@ -100,6 +149,9 @@ Different platforms have varying creative requirements:
 
 ## Related Documentation
 
-- [`add_creative_assets`](./tasks/add_creative_assets) - Upload and manage creatives
+- [`sync_creatives`](./tasks/sync_creatives) - Bulk creative management with upsert semantics
+- [`list_creatives`](./tasks/list_creatives) - Advanced creative library querying and filtering  
+- [Creative Library](./creative-library) - Centralized creative management concepts
 - [Creative Formats](./creative-formats) - Detailed format specifications
-- [Asset Types](./asset-types) - Supported asset type reference
+- [`manage_creative_assets` (Deprecated)](./tasks/manage_creative_assets) - Legacy action-based creative management
+- [`add_creative_assets` (Deprecated)](./tasks/add_creative_assets) - Legacy creative upload endpoint

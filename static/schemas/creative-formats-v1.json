@@ -155,6 +155,142 @@
           }
         ],
         "is_3p_served": false
+      },
+      "display_native_sponsored_post": {
+        "format_id": "display_native_sponsored_post",
+        "type": "display",
+        "subtype": "native_template",
+        "description": "Template-based native sponsored post",
+        "template_variables": {
+          "headline": {
+            "placeholder": "[%Headline%]",
+            "asset_type": "headline",
+            "required": true,
+            "max_length": 80,
+            "description": "Main headline text for the sponsored post"
+          },
+          "body": {
+            "placeholder": "[%Body%]",
+            "asset_type": "body_text",
+            "required": true,
+            "max_length": 200,
+            "description": "Body text describing the offer or content"
+          },
+          "image_url": {
+            "placeholder": "%ImageUrl%",
+            "asset_type": "thumbnail_image",
+            "required": true,
+            "description": "URL of the primary image for the post"
+          },
+          "click_url": {
+            "placeholder": "%%CLICK_URL_UNESC%%%%DEST_URL_ESC%%",
+            "asset_type": "click_url",
+            "required": true,
+            "description": "Click tracking URL with destination"
+          },
+          "sponsor_name": {
+            "placeholder": "[%SponsorName%]",
+            "asset_type": "sponsor_name",
+            "required": false,
+            "max_length": 30,
+            "description": "Name of the sponsoring brand"
+          }
+        },
+        "example_template": "<div class=\"sponsored-post\"><div class=\"thumbnail\"><img src=\"%ImageUrl%\"/></div><div class=\"content\"><h1><a href=\"%%CLICK_URL_UNESC%%%%DEST_URL_ESC%%\" target=\"_blank\">[%Headline%]</a></h1><p>[%Body%]</p><div class=\"attribution\">SPONSORED BY [%SponsorName%]</div></div></div>",
+        "is_3p_served": false
+      },
+      "display_native_article": {
+        "format_id": "display_native_article",
+        "type": "display",
+        "subtype": "native_template", 
+        "description": "Template-based native article format",
+        "template_variables": {
+          "headline": {
+            "placeholder": "[%Headline%]",
+            "asset_type": "headline",
+            "required": true,
+            "max_length": 100,
+            "description": "Article headline"
+          },
+          "summary": {
+            "placeholder": "[%Summary%]",
+            "asset_type": "body_text",
+            "required": true,
+            "max_length": 150,
+            "description": "Brief article summary or excerpt"
+          },
+          "author": {
+            "placeholder": "[%Author%]",
+            "asset_type": "author_name",
+            "required": false,
+            "max_length": 40,
+            "description": "Article author name"
+          },
+          "featured_image": {
+            "placeholder": "%FeaturedImage%",
+            "asset_type": "featured_image",
+            "required": true,
+            "description": "Featured article image URL"
+          },
+          "read_more_url": {
+            "placeholder": "%ReadMoreUrl%",
+            "asset_type": "click_url",
+            "required": true,
+            "description": "URL to full article or landing page"
+          }
+        },
+        "example_template": "<article class=\"native-article\"><img src=\"%FeaturedImage%\" alt=\"Featured\"/><h2><a href=\"%ReadMoreUrl%\">[%Headline%]</a></h2><p class=\"summary\">[%Summary%]</p><div class=\"byline\">By [%Author%]</div><div class=\"sponsored\">Sponsored Content</div></article>",
+        "is_3p_served": false
+      },
+      "display_native_product": {
+        "format_id": "display_native_product",
+        "type": "display",
+        "subtype": "native_template",
+        "description": "Template-based native product showcase",
+        "template_variables": {
+          "product_name": {
+            "placeholder": "[%ProductName%]",
+            "asset_type": "headline",
+            "required": true,
+            "max_length": 60,
+            "description": "Product or service name"
+          },
+          "description": {
+            "placeholder": "[%Description%]",
+            "asset_type": "body_text",
+            "required": true,
+            "max_length": 120,
+            "description": "Product description or key benefit"
+          },
+          "price": {
+            "placeholder": "[%Price%]",
+            "asset_type": "price_text",
+            "required": false,
+            "max_length": 20,
+            "description": "Product price or offer"
+          },
+          "product_image": {
+            "placeholder": "%ProductImage%",
+            "asset_type": "product_image",
+            "required": true,
+            "description": "Product image URL"
+          },
+          "cta_text": {
+            "placeholder": "[%CTAText%]",
+            "asset_type": "cta_text", 
+            "required": true,
+            "max_length": 25,
+            "description": "Call-to-action button text"
+          },
+          "shop_url": {
+            "placeholder": "%ShopUrl%",
+            "asset_type": "click_url",
+            "required": true,
+            "description": "Product purchase or details URL"
+          }
+        },
+        "example_template": "<div class=\"native-product\"><div class=\"product-image\"><img src=\"%ProductImage%\" alt=\"Product\"/></div><div class=\"product-info\"><h3>[%ProductName%]</h3><p>[%Description%]</p><div class=\"price\">[%Price%]</div><a href=\"%ShopUrl%\" class=\"cta\">[%CTAText%]</a></div><div class=\"disclosure\">Sponsored</div></div>",
+        "is_3p_served": false
       }
     },
     "video": {

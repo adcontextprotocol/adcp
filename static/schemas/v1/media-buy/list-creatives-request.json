@@ -1,0 +1,219 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/list-creatives-request.json",
+  "title": "List Creatives Request",
+  "description": "Request parameters for querying creative assets from the centralized library with filtering, sorting, and pagination",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.5.0"
+    },
+    "filters": {
+      "type": "object",
+      "description": "Filter criteria for querying creatives",
+      "properties": {
+        "format": {
+          "type": "string",
+          "description": "Filter by creative format type (e.g., video, audio, display)"
+        },
+        "formats": {
+          "type": "array",
+          "description": "Filter by multiple creative format types",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "$ref": "/schemas/v1/enums/creative-status.json",
+          "description": "Filter by creative approval status"
+        },
+        "statuses": {
+          "type": "array",
+          "description": "Filter by multiple creative statuses",
+          "items": {
+            "$ref": "/schemas/v1/enums/creative-status.json"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "description": "Filter by creative tags (all tags must match)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tags_any": {
+          "type": "array",
+          "description": "Filter by creative tags (any tag must match)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name_contains": {
+          "type": "string",
+          "description": "Filter by creative names containing this text (case-insensitive)"
+        },
+        "creative_ids": {
+          "type": "array",
+          "description": "Filter by specific creative IDs",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100
+        },
+        "created_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives created after this date (ISO 8601)"
+        },
+        "created_before": {
+          "type": "string",
+          "format": "date-time", 
+          "description": "Filter creatives created before this date (ISO 8601)"
+        },
+        "updated_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives last updated after this date (ISO 8601)"
+        },
+        "updated_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives last updated before this date (ISO 8601)"
+        },
+        "assigned_to_package": {
+          "type": "string",
+          "description": "Filter creatives assigned to this specific package"
+        },
+        "assigned_to_packages": {
+          "type": "array",
+          "description": "Filter creatives assigned to any of these packages",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unassigned": {
+          "type": "boolean",
+          "description": "Filter for unassigned creatives when true, assigned creatives when false"
+        },
+        "snippet_type": {
+          "$ref": "/schemas/v1/enums/snippet-type.json",
+          "description": "Filter by third-party snippet type"
+        },
+        "has_performance_data": {
+          "type": "boolean",
+          "description": "Filter creatives that have performance data when true"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sort": {
+      "type": "object",
+      "description": "Sorting parameters",
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": ["created_date", "updated_date", "name", "status", "assignment_count", "performance_score"],
+          "default": "created_date",
+          "description": "Field to sort by"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["asc", "desc"],
+          "default": "desc",
+          "description": "Sort direction"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pagination": {
+      "type": "object", 
+      "description": "Pagination parameters",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of creatives to return"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Number of creatives to skip"
+        }
+      },
+      "additionalProperties": false
+    },
+    "include_assignments": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include package assignment information in response"
+    },
+    "include_performance": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include aggregated performance metrics in response"
+    },
+    "include_sub_assets": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include sub-assets (for carousel/native formats) in response"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific fields to include in response (omit for all fields)",
+      "items": {
+        "type": "string",
+        "enum": ["creative_id", "name", "format", "status", "created_date", "updated_date", "tags", "assignments", "performance", "sub_assets"]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "List all approved video creatives",
+      "data": {
+        "filters": {
+          "format": "video",
+          "status": "approved"
+        }
+      }
+    },
+    {
+      "description": "Search for Nike creatives with performance data",
+      "data": {
+        "filters": {
+          "name_contains": "nike",
+          "has_performance_data": true
+        },
+        "include_performance": true
+      }
+    },
+    {
+      "description": "Get unassigned creatives for assignment",
+      "data": {
+        "filters": {
+          "unassigned": true
+        },
+        "sort": {
+          "field": "created_date",
+          "direction": "desc"
+        },
+        "pagination": {
+          "limit": 20
+        }
+      }
+    },
+    {
+      "description": "Lightweight list with minimal fields",
+      "data": {
+        "fields": ["creative_id", "name", "status"],
+        "include_assignments": false
+      }
+    }
+  ]
+}
