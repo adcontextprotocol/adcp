@@ -85,6 +85,17 @@ const config: Config = {
       title: 'AdCP - Ad Context Protocol',
       description: 'Open standard for advertising automation and AI-powered workflows. Built on Model Context Protocol (MCP) for unified programmatic advertising.',
     }],
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        redirects: [
+          {
+            to: '/docs/intro/',
+            from: '/docs',
+          },
+        ],
+      },
+    ],
   ],
 
   presets: [
