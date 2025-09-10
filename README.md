@@ -10,7 +10,7 @@
 
 ## Documentation
 
-Visit [adcontextprotocol.github.io](https://adcontextprotocol.github.io) for full documentation.
+Visit [adcontextprotocol.org](https://adcontextprotocol.org) for full documentation.
 
 ## What is AdCP?
 
@@ -57,7 +57,7 @@ Execute and optimize media buys programmatically across platforms.
 
 Implement AdCP to enable AI-powered workflows for your customers:
 
-1. **Review the Specification**: [Signals Protocol](https://adcontextprotocol.github.io/docs/signals/specification)
+1. **Review the Specification**: [Signals Protocol](https://adcontextprotocol.org/docs/signals/specification)
 2. **Implement MCP Server**: Check out the [reference implementations](#reference-implementations)
 3. **Test Your Implementation**: Use the validation test suite
 
@@ -175,9 +175,9 @@ The Ad Context Protocol specifications are licensed under [Apache 2.0](./LICENSE
 
 ## Links
 
-- **Website**: [adcontextprotocol.github.io](https://adcontextprotocol.github.io)
-- **API Documentation**: [Advertising Automation API](https://adcontextprotocol.github.io/advertising-automation-api)
-- **MCP Integration**: [MCP Advertising Guide](https://adcontextprotocol.github.io/mcp-advertising-integration)
+- **Website**: [adcontextprotocol.org](https://adcontextprotocol.org)
+- **API Documentation**: [Advertising Automation API](https://adcontextprotocol.org/advertising-automation-api)
+- **MCP Integration**: [MCP Advertising Guide](https://adcontextprotocol.org/mcp-advertising-integration)
 - **Specifications**: [Signals Protocol RFC](./signals-protocol-v1.md)
 - **Discussions**: [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
 - **Issues**: [Report Issues](https://github.com/adcontextprotocol/adcp/issues)
