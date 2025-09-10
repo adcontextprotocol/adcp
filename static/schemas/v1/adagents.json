@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/adagents.json",
+  "title": "Authorized Sales Agents",
+  "description": "Declaration of authorized sales agents for advertising inventory. Hosted at /.well-known/adagents.json on publisher domains.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema identifier for this adagents.json file",
+      "default": "https://adcontextprotocol.org/schemas/v1/adagents.json"
+    },
+    "authorized_agents": {
+      "type": "array",
+      "description": "Array of sales agents authorized to sell this publisher's inventory",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The authorized agent's API endpoint URL"
+          },
+          "authorized_for": {
+            "type": "string",
+            "description": "Human-readable description of what this agent is authorized to sell (e.g., 'Official sales agent for our US and CA display inventory')",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": ["url", "authorized_for"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp indicating when this file was last updated (optional but recommended)"
+    }
+  },
+  "required": ["authorized_agents"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+      "authorized_agents": [
+        {
+          "url": "https://agent.example.com",
+          "authorized_for": "Official sales agent for our US and CA display inventory"
+        }
+      ],
+      "last_updated": "2025-01-10T12:00:00Z"
+    },
+    {
+      "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+      "authorized_agents": [
+        {
+          "url": "https://direct-agent.com",
+          "authorized_for": "Primary sales agent for premium video inventory worldwide"
+        },
+        {
+          "url": "https://reseller-network.com",
+          "authorized_for": "Authorized reseller for display inventory in EMEA region"
+        }
+      ],
+      "last_updated": "2025-01-10T15:30:00Z"
+    }
+  ]
+}
