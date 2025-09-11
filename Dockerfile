@@ -1,5 +1,5 @@
-# Use Node.js 18 Alpine for building
-FROM node:18-alpine AS builder
+# Use Node.js 20 Alpine for building
+FROM node:20-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -7,8 +7,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (skip postinstall scripts like husky)
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copy source code
 COPY . .
