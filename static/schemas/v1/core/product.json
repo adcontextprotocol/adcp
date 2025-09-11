@@ -17,6 +17,61 @@
       "type": "string",
       "description": "Detailed description of the product and its inventory"
     },
+    "properties": {
+      "type": "array",
+      "description": "Array of advertising properties covered by this product for adagents.json validation",
+      "items": {
+        "type": "object",
+        "properties": {
+          "property_type": {
+            "type": "string",
+            "enum": ["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"],
+            "description": "Type of advertising property"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable property name"
+          },
+          "identifiers": {
+            "type": "array",
+            "description": "Array of identifiers for this property",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Type of identifier (e.g., 'domain', 'bundle_id', 'roku_store_id', 'podcast_guid')"
+                },
+                "value": {
+                  "type": "string",
+                  "description": "The identifier value. For domain type: 'example.com' matches www.example.com and m.example.com only; 'subdomain.example.com' matches that specific subdomain; '*.example.com' matches all subdomains"
+                }
+              },
+              "required": ["type", "value"],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags for categorization and grouping (e.g., network membership, content categories)",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$",
+              "description": "Lowercase tag with underscores (e.g., 'conde_nast_network', 'premium_content')"
+            },
+            "uniqueItems": true
+          },
+          "publisher_domain": {
+            "type": "string",
+            "description": "Domain where adagents.json should be checked for authorization validation"
+          }
+        },
+        "required": ["property_type", "name", "identifiers", "publisher_domain"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
     "format_ids": {
       "type": "array",
       "description": "Array of supported creative format IDs - use list_creative_formats to get full format details",
@@ -66,6 +121,7 @@
     "product_id",
     "name",
     "description",
+    "properties",
     "format_ids",
     "delivery_type",
     "is_fixed_price"

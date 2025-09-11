@@ -198,6 +198,179 @@ sequenceDiagram
 - **Schema Validation Failure**: Agent rejects request as unauthorized
 - **Agent Not Listed**: Agent rejects request as unauthorized
 
+## Buyer Agent Validation
+
+Buyer agents MUST validate sales agent authorization before purchasing inventory to prevent unauthorized reselling.
+
+### Validation Process
+
+When receiving a `get_products` response, buyer agents should:
+
+1. **Extract Properties**: Get the `properties` array from each product
+2. **Check Each Domain**: For each property, fetch `/.well-known/adagents.json` from the domain
+3. **Validate Agent Authorization**: Confirm the sales agent URL appears in `authorized_agents`
+4. **Match Authorization Scope**: Compare `authorized_for` description with product details
+5. **Reject Unauthorized**: Decline products from unauthorized agents
+
+### Required Product Schema
+
+Products MUST include a `properties` array listing all domains/apps covered:
+
+```json
+{
+  "product_id": "premium-video-2024",
+  "name": "Premium Video Inventory",
+  "description": "High-quality video placements across Yahoo properties",
+  "properties": [
+    {
+      "domain": "yahoo.com",
+      "type": "website"
+    },
+    {
+      "domain": "finance.yahoo.com", 
+      "type": "website"
+    },
+    {
+      "domain": "mail.yahoo.com",
+      "type": "website"
+    },
+    {
+      "domain": "yahoo.com",
+      "type": "mobile_app",
+      "app_info": {
+        "platform": "both",
+        "app_name": "Yahoo News"
+      }
+    }
+  ]
+}
+```
+
+### Validation Examples
+
+#### ✅ Authorized Sale
+
+**Product from agent@salescompany.com**:
+```json
+{
+  "name": "Yahoo Display Package",
+  "description": "Display ads across Yahoo web properties",
+  "properties": [
+    {"domain": "yahoo.com", "type": "website"},
+    {"domain": "finance.yahoo.com", "type": "website"}
+  ]
+}
+```
+
+**yahoo.com/.well-known/adagents.json**:
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://agent@salescompany.com",
+      "authorized_for": "Display and video inventory across all Yahoo web properties"
+    }
+  ]
+}
+```
+
+**Result**: ✅ **AUTHORIZED** - Agent is listed and scope matches product description
+
+#### ❌ Unauthorized Resale
+
+**Product from agent@unauthorizedreseller.com**:
+```json
+{
+  "name": "Yahoo Premium Video",
+  "description": "Premium video inventory on Yahoo properties",
+  "properties": [
+    {"domain": "yahoo.com", "type": "website"}
+  ]
+}
+```
+
+**yahoo.com/.well-known/adagents.json**:
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://official-partner.com",
+      "authorized_for": "Official sales for Yahoo inventory"
+    }
+  ]
+}
+```
+
+**Result**: ❌ **UNAUTHORIZED** - Agent not listed in adagents.json
+
+#### ⚠️ Scope Mismatch
+
+**Product from agent@videospecialist.com**:
+```json
+{
+  "name": "Multi-Format Campaign",
+  "description": "Display, video, and native ads across news sites",
+  "properties": [
+    {"domain": "newssite.com", "type": "website"}
+  ]
+}
+```
+
+**newssite.com/.well-known/adagents.json**:
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://agent@videospecialist.com",
+      "authorized_for": "Video inventory only - no display or native formats"
+    }
+  ]
+}
+```
+
+**Result**: ⚠️ **SCOPE MISMATCH** - Agent authorized but scope doesn't match product offering
+
+### Mobile App Validation
+
+For mobile app properties, validate against the **app store publisher domain**:
+
+**Product**:
+```json
+{
+  "properties": [
+    {
+      "domain": "gamecompany.com",
+      "type": "mobile_app", 
+      "app_info": {
+        "platform": "ios",
+        "app_name": "Puzzle Adventure"
+      }
+    }
+  ]
+}
+```
+
+**Check**: `gamecompany.com/.well-known/adagents.json` (not the app itself)
+
+### Implementation Requirements
+
+Buyer agents MUST:
+
+1. **Validate All Properties**: Check adagents.json for every domain in the properties array
+2. **Handle Missing Files**: Treat missing adagents.json as a warning, not rejection (gradual adoption)
+3. **Cache Results**: Cache adagents.json responses for up to 24 hours
+4. **Scope Matching**: Parse `authorized_for` descriptions and compare with product details
+5. **Reject Clear Violations**: Immediately reject when agent is explicitly not listed
+6. **Log Validation Results**: Track authorization status for reporting and debugging
+
+### Error Handling
+
+- **Missing adagents.json**: Continue with warning (file may not exist yet)
+- **Invalid JSON**: Treat as authorization failure
+- **Agent Not Listed**: Reject as unauthorized resale
+- **Scope Mismatch**: Flag for manual review or reject based on policy
+- **Network Errors**: Retry with exponential backoff, treat repeated failures as warnings
+
 ## Security Considerations
 
 ### File Integrity

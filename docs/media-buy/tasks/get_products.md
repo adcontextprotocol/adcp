@@ -48,6 +48,20 @@ The message is returned differently in each protocol:
       "product_id": "string",
       "name": "string",
       "description": "string",
+      "properties": [
+        {
+          "property_type": "website|mobile_app|ctv_app|dooh|podcast|radio|streaming_audio",
+          "name": "string",
+          "identifiers": [
+            {
+              "type": "string",
+              "value": "string"
+            }
+          ],
+          "tags": ["string"],
+          "publisher_domain": "string"
+        }
+      ],
       "format_ids": [
         "format_id_string"
       ],
@@ -76,6 +90,14 @@ The message is returned differently in each protocol:
 - **product_id**: Unique identifier for the product
 - **name**: Human-readable product name
 - **description**: Detailed description of the product and its inventory
+- **properties**: Array of advertising properties covered by this product - **REQUIRED for buyer agent validation**
+  - **property_type**: Type of advertising property ("website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio")
+  - **name**: Human-readable property name
+  - **identifiers**: Array of identifiers for this property
+    - **type**: Type of identifier (e.g., 'domain', 'bundle_id', 'roku_store_id', 'podcast_guid')
+    - **value**: The identifier value with domain matching rules
+  - **tags**: Optional tags for categorization and grouping
+  - **publisher_domain**: Domain where adagents.json should be checked for authorization validation
 - **format_ids**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
 - **is_fixed_price**: Whether this product has fixed pricing (true) or uses auction (false)
@@ -92,6 +114,81 @@ The message is returned differently in each protocol:
   - **templates_available**: Whether creative templates are provided
 - **is_custom**: Whether this is a custom product
 - **brief_relevance**: Explanation of why this product matches the brief (only included when brief is provided)
+
+## Buyer Agent Validation
+
+**IMPORTANT**: Buyer agents MUST validate sales agent authorization before purchasing inventory to prevent unauthorized reselling.
+
+### Validation Requirements
+
+1. **Extract Properties**: For each product, extract the `properties` array
+2. **Check Authorization**: For each domain in `properties`, fetch `/.well-known/adagents.json`
+3. **Validate Agent**: Confirm the sales agent URL appears in `authorized_agents`
+4. **Scope Matching**: Compare `authorized_for` description with product details
+5. **Reject Unauthorized**: Decline products from unauthorized agents
+
+### Example Validation
+
+**Product Response**:
+```json
+{
+  "product_id": "yahoo-premium-video",
+  "name": "Yahoo Premium Video Package", 
+  "properties": [
+    {
+      "property_type": "website",
+      "name": "Yahoo",
+      "identifiers": [{"type": "domain", "value": "yahoo.com"}],
+      "publisher_domain": "yahoo.com"
+    },
+    {
+      "property_type": "website", 
+      "name": "Yahoo Finance",
+      "identifiers": [{"type": "domain", "value": "finance.yahoo.com"}],
+      "publisher_domain": "yahoo.com"
+    }
+  ]
+}
+```
+
+**Required Checks**:
+- Fetch `yahoo.com/.well-known/adagents.json`
+- Fetch `finance.yahoo.com/.well-known/adagents.json` 
+- Verify sales agent is authorized in both files
+- Validate scope matches product description
+
+For complete validation requirements, examples, and error handling, see the [Authorized Sales Agents](/docs/reference/adagents#buyer-agent-validation) documentation.
+
+## Domain Matching Examples
+
+When validating authorization, domain matching follows specific rules for identifier values:
+
+### Base Domain Matching
+```json
+{
+  "identifiers": [{"type": "domain", "value": "nytimes.com"}]
+}
+```
+**Matches**: `www.nytimes.com`, `m.nytimes.com`  
+**Does NOT Match**: `cooking.nytimes.com`, `games.nytimes.com`
+
+### Specific Subdomain Matching  
+```json
+{
+  "identifiers": [{"type": "domain", "value": "cooking.nytimes.com"}]
+}
+```
+**Matches**: `cooking.nytimes.com` only  
+**Does NOT Match**: `www.nytimes.com`, `games.nytimes.com`
+
+### Wildcard Subdomain Matching
+```json
+{
+  "identifiers": [{"type": "domain", "value": "*.nytimes.com"}]
+}
+```
+**Matches**: `cooking.nytimes.com`, `games.nytimes.com`, `travel.nytimes.com`  
+**Does NOT Match**: `www.nytimes.com`, `nytimes.com`, `subdomain.cooking.nytimes.com`
 ## Protocol-Specific Examples
 The AdCP payload is identical across protocols. Only the request/response wrapper differs.
 ### MCP Request
@@ -118,6 +215,19 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "product_id": "ctv_sports_premium",
       "name": "CTV Sports Premium",
       "description": "Premium CTV inventory on sports content",
+      "properties": [
+        {
+          "property_type": "website",
+          "name": "Sports Network",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "sportsnetwork.com"
+            }
+          ],
+          "publisher_domain": "sportsnetwork.com"
+        }
+      ],
       "format_ids": ["video_16x9_30s"],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
