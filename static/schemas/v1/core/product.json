@@ -19,49 +19,56 @@
     },
     "properties": {
       "type": "array",
-      "description": "Array of properties (domains/apps) covered by this product for adagents.json validation",
+      "description": "Array of advertising properties covered by this product for adagents.json validation",
       "items": {
         "type": "object",
         "properties": {
-          "domain": {
+          "property_type": {
             "type": "string",
-            "description": "Domain name (e.g., 'example.com') or app store publisher domain for mobile apps"
+            "enum": ["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"],
+            "description": "Type of advertising property"
           },
-          "type": {
+          "name": {
             "type": "string",
-            "enum": ["website", "mobile_app"],
-            "description": "Type of property - 'website' for web domains, 'mobile_app' for mobile applications"
+            "description": "Human-readable property name"
           },
-          "app_info": {
-            "type": "object",
-            "description": "Additional app information (only for mobile_app type)",
-            "properties": {
-              "platform": {
-                "type": "string",
-                "enum": ["ios", "android", "both"],
-                "description": "Mobile platform(s) for this app"
+          "identifiers": {
+            "type": "array",
+            "description": "Array of identifiers for this property",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Type of identifier (e.g., 'domain', 'bundle_id', 'roku_store_id', 'podcast_guid')"
+                },
+                "value": {
+                  "type": "string",
+                  "description": "The identifier value"
+                }
               },
-              "app_name": {
-                "type": "string",
-                "description": "Human-readable app name"
-              }
+              "required": ["type", "value"],
+              "additionalProperties": false
             },
-            "required": ["platform", "app_name"],
-            "additionalProperties": false
+            "minItems": 1
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags for categorization and grouping (e.g., network membership, content categories)",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$",
+              "description": "Lowercase tag with underscores (e.g., 'conde_nast_network', 'premium_content')"
+            },
+            "uniqueItems": true
+          },
+          "publisher_domain": {
+            "type": "string",
+            "description": "Domain where adagents.json should be checked for authorization validation"
           }
         },
-        "required": ["domain", "type"],
-        "additionalProperties": false,
-        "if": {
-          "properties": {
-            "type": {
-              "const": "mobile_app"
-            }
-          }
-        },
-        "then": {
-          "required": ["domain", "type", "app_info"]
-        }
+        "required": ["property_type", "name", "identifiers", "publisher_domain"],
+        "additionalProperties": false
       },
       "minItems": 1
     },

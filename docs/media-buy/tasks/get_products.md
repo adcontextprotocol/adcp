@@ -49,12 +49,16 @@ The message is returned differently in each protocol:
       "description": "string",
       "properties": [
         {
-          "domain": "string",
-          "type": "website|mobile_app",
-          "app_info": {
-            "platform": "ios|android|both",
-            "app_name": "string"
-          }
+          "property_type": "website|mobile_app|ctv_app|dooh|podcast|radio|streaming_audio",
+          "name": "string",
+          "identifiers": [
+            {
+              "type": "string",
+              "value": "string"
+            }
+          ],
+          "tags": ["string"],
+          "publisher_domain": "string"
         }
       ],
       "formats": [
@@ -85,12 +89,14 @@ The message is returned differently in each protocol:
 - **product_id**: Unique identifier for the product
 - **name**: Human-readable product name
 - **description**: Detailed description of the product and its inventory
-- **properties**: Array of properties (domains/apps) covered by this product - **REQUIRED for buyer agent validation**
-  - **domain**: Domain name (e.g., 'example.com') or app store publisher domain for mobile apps
-  - **type**: Either "website" or "mobile_app" 
-  - **app_info**: Additional app information (for mobile_app type only)
-    - **platform**: "ios", "android", or "both"
-    - **app_name**: Human-readable app name
+- **properties**: Array of advertising properties covered by this product - **REQUIRED for buyer agent validation**
+  - **property_type**: Type of property ("website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio")
+  - **name**: Human-readable property name
+  - **identifiers**: Array of identifiers for this property
+    - **type**: Type of identifier (e.g., "domain", "bundle_id", "roku_store_id", "podcast_guid")
+    - **value**: The identifier value
+  - **tags**: Optional array of tags for categorization (e.g., network membership, content categories)
+  - **publisher_domain**: Domain where adagents.json should be checked for authorization validation
 - **formats**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
 - **is_fixed_price**: Whether this product has fixed pricing (true) or uses auction (false)
@@ -114,11 +120,12 @@ The message is returned differently in each protocol:
 
 ### Validation Requirements
 
-1. **Extract Properties**: For each product, extract the `properties` array
-2. **Check Authorization**: For each domain in `properties`, fetch `/.well-known/adagents.json`
-3. **Validate Agent**: Confirm the sales agent URL appears in `authorized_agents`
-4. **Scope Matching**: Compare `authorized_for` description with product details
-5. **Reject Unauthorized**: Decline products from unauthorized agents
+1. **Extract Properties**: For each product, extract the enhanced `properties` array
+2. **Check Publisher Domains**: For each property, fetch `/.well-known/adagents.json` from `publisher_domain`
+3. **Validate Domain Identifiers**: For website properties, also check each domain identifier
+4. **Validate Agent**: Confirm the sales agent URL appears in `authorized_agents`
+5. **Scope Matching**: Compare `authorized_for` description with product details
+6. **Reject Unauthorized**: Decline products from unauthorized agents
 
 ### Example Validation
 
@@ -128,16 +135,25 @@ The message is returned differently in each protocol:
   "product_id": "yahoo-premium-video",
   "name": "Yahoo Premium Video Package", 
   "properties": [
-    {"domain": "yahoo.com", "type": "website"},
-    {"domain": "finance.yahoo.com", "type": "website"}
+    {
+      "property_type": "website",
+      "name": "Yahoo News & Finance Network",
+      "identifiers": [
+        {"type": "domain", "value": "yahoo.com"},
+        {"type": "domain", "value": "finance.yahoo.com"},
+        {"type": "network_id", "value": "yahoo_network"}
+      ],
+      "tags": ["yahoo_network", "news_media", "premium_content"],
+      "publisher_domain": "yahoo.com"
+    }
   ]
 }
 ```
 
 **Required Checks**:
-- Fetch `yahoo.com/.well-known/adagents.json`
-- Fetch `finance.yahoo.com/.well-known/adagents.json` 
-- Verify sales agent is authorized in both files
+- Fetch `yahoo.com/.well-known/adagents.json` (from `publisher_domain`)
+- Also validate domain identifiers: check `yahoo.com` and `finance.yahoo.com`
+- Verify sales agent is authorized in adagents.json
 - Validate scope matches product description
 
 For complete validation requirements, examples, and error handling, see the [Authorized Sales Agents](/docs/reference/adagents#buyer-agent-validation) documentation.
@@ -169,8 +185,13 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "description": "Premium CTV inventory on sports content",
       "properties": [
         {
-          "domain": "sportsnetwork.com",
-          "type": "website"
+          "property_type": "website",
+          "name": "Sports Network",
+          "identifiers": [
+            {"type": "domain", "value": "sportsnetwork.com"}
+          ],
+          "tags": ["sports_content", "premium_content"],
+          "publisher_domain": "sportsnetwork.com"
         }
       ],
       "formats": ["video_16x9_30s"],
