@@ -95,8 +95,8 @@ The message is returned differently in each protocol:
   - **name**: Human-readable property name
   - **identifiers**: Array of identifiers for this property
     - **type**: Type of identifier (e.g., 'domain', 'bundle_id', 'roku_store_id', 'podcast_guid')
-    - **value**: The identifier value with domain matching rules
-  - **tags**: Optional tags for categorization and grouping
+    - **value**: The identifier value with domain matching rules for domain type
+  - **tags**: Optional array of tags for categorization (e.g., network membership, content categories)
   - **publisher_domain**: Domain where adagents.json should be checked for authorization validation
 - **format_ids**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
@@ -121,11 +121,12 @@ The message is returned differently in each protocol:
 
 ### Validation Requirements
 
-1. **Extract Properties**: For each product, extract the `properties` array
-2. **Check Authorization**: For each domain in `properties`, fetch `/.well-known/adagents.json`
-3. **Validate Agent**: Confirm the sales agent URL appears in `authorized_agents`
-4. **Scope Matching**: Compare `authorized_for` description with product details
-5. **Reject Unauthorized**: Decline products from unauthorized agents
+1. **Extract Properties**: For each product, extract the enhanced `properties` array
+2. **Check Publisher Domains**: For each property, fetch `/.well-known/adagents.json` from `publisher_domain`
+3. **Validate Domain Identifiers**: For website properties, also check each domain identifier
+4. **Validate Agent**: Confirm the sales agent URL appears in `authorized_agents`
+5. **Scope Matching**: Compare `authorized_for` description with product details
+6. **Reject Unauthorized**: Decline products from unauthorized agents
 
 ### Example Validation
 
@@ -137,14 +138,13 @@ The message is returned differently in each protocol:
   "properties": [
     {
       "property_type": "website",
-      "name": "Yahoo",
-      "identifiers": [{"type": "domain", "value": "yahoo.com"}],
-      "publisher_domain": "yahoo.com"
-    },
-    {
-      "property_type": "website", 
-      "name": "Yahoo Finance",
-      "identifiers": [{"type": "domain", "value": "finance.yahoo.com"}],
+      "name": "Yahoo News & Finance Network",
+      "identifiers": [
+        {"type": "domain", "value": "yahoo.com"},
+        {"type": "domain", "value": "finance.yahoo.com"},
+        {"type": "network_id", "value": "yahoo_network"}
+      ],
+      "tags": ["yahoo_network", "news_media", "premium_content"],
       "publisher_domain": "yahoo.com"
     }
   ]
@@ -152,9 +152,9 @@ The message is returned differently in each protocol:
 ```
 
 **Required Checks**:
-- Fetch `yahoo.com/.well-known/adagents.json`
-- Fetch `finance.yahoo.com/.well-known/adagents.json` 
-- Verify sales agent is authorized in both files
+- Fetch `yahoo.com/.well-known/adagents.json` (from `publisher_domain`)
+- Also validate domain identifiers: check `yahoo.com` and `finance.yahoo.com`
+- Verify sales agent is authorized in adagents.json
 - Validate scope matches product description
 
 For complete validation requirements, examples, and error handling, see the [Authorized Sales Agents](/docs/reference/adagents#buyer-agent-validation) documentation.
@@ -220,11 +220,9 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
           "property_type": "website",
           "name": "Sports Network",
           "identifiers": [
-            {
-              "type": "domain",
-              "value": "sportsnetwork.com"
-            }
+            {"type": "domain", "value": "sportsnetwork.com"}
           ],
+          "tags": ["sports_content", "premium_content"],
           "publisher_domain": "sportsnetwork.com"
         }
       ],

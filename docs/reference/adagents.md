@@ -214,7 +214,7 @@ When receiving a `get_products` response, buyer agents should:
 
 ### Required Product Schema
 
-Products MUST include a `properties` array listing all domains/apps covered:
+Products MUST include a `properties` array with comprehensive property identification:
 
 ```json
 {
@@ -223,28 +223,143 @@ Products MUST include a `properties` array listing all domains/apps covered:
   "description": "High-quality video placements across Yahoo properties",
   "properties": [
     {
-      "domain": "yahoo.com",
-      "type": "website"
+      "property_type": "website",
+      "name": "Yahoo Network",
+      "identifiers": [
+        {"type": "domain", "value": "yahoo.com"},
+        {"type": "domain", "value": "finance.yahoo.com"},
+        {"type": "domain", "value": "mail.yahoo.com"},
+        {"type": "domain", "value": "sports.yahoo.com"},
+        {"type": "network_id", "value": "yahoo_network"}
+      ],
+      "tags": [
+        "yahoo_network",
+        "news_media",
+        "premium_content",
+        "brand_safe"
+      ],
+      "publisher_domain": "yahoo.com"
     },
     {
-      "domain": "finance.yahoo.com", 
-      "type": "website"
-    },
-    {
-      "domain": "mail.yahoo.com",
-      "type": "website"
-    },
-    {
-      "domain": "yahoo.com",
-      "type": "mobile_app",
-      "app_info": {
-        "platform": "both",
-        "app_name": "Yahoo News"
-      }
+      "property_type": "mobile_app",
+      "name": "Yahoo News App",
+      "identifiers": [
+        {"type": "ios_bundle", "value": "com.yahoo.mobile.client.iphone.yahoo"},
+        {"type": "android_package", "value": "com.yahoo.mobile.client.android.yahoo"},
+        {"type": "apple_app_store_id", "value": "328412701"},
+        {"type": "google_play_id", "value": "com.yahoo.mobile.client.android.yahoo"}
+      ],
+      "tags": [
+        "yahoo_network",
+        "news_app",
+        "mobile_only"
+      ],
+      "publisher_domain": "yahoo.com"
     }
   ]
 }
 ```
+
+### Property Types and Identifiers
+
+#### **Website Properties**
+```json
+{
+  "property_type": "website",
+  "identifiers": [
+    {"type": "domain", "value": "example.com"},
+    {"type": "subdomain", "value": "news.example.com"}
+  ]
+}
+```
+
+#### **Mobile App Properties**
+```json
+{
+  "property_type": "mobile_app",
+  "identifiers": [
+    {"type": "ios_bundle", "value": "com.company.app"},
+    {"type": "android_package", "value": "com.company.app"},
+    {"type": "apple_app_store_id", "value": "123456789"},
+    {"type": "google_play_id", "value": "com.company.app"}
+  ]
+}
+```
+
+#### **CTV/OTT App Properties**
+```json
+{
+  "property_type": "ctv_app",
+  "identifiers": [
+    {"type": "roku_store_id", "value": "12345"},
+    {"type": "fire_tv_asin", "value": "B00ABC123"},
+    {"type": "samsung_app_id", "value": "3201234567890"},
+    {"type": "apple_tv_bundle", "value": "com.company.tv"},
+    {"type": "bundle_id", "value": "com.company.tv"},
+    {"type": "bundle_id", "value": "com.company.tv.roku"}
+  ]
+}
+```
+
+#### **DOOH Properties**
+```json
+{
+  "property_type": "dooh",
+  "identifiers": [
+    {"type": "venue_id", "value": "NYC_TSQ_001"},
+    {"type": "screen_id", "value": "SCR_001"},
+    {"type": "screen_id", "value": "SCR_002"},
+    {"type": "network_id", "value": "clear_channel_nyc"},
+    {"type": "openooh_venue_type", "value": "transit_airport"}
+  ]
+}
+```
+
+#### **Podcast Properties**
+```json
+{
+  "property_type": "podcast",
+  "identifiers": [
+    {"type": "rss_url", "value": "https://feeds.example.com/podcast.rss"},
+    {"type": "apple_podcast_id", "value": "id1234567890"},
+    {"type": "spotify_show_id", "value": "3IM0lmZxpFGH5B3yNrfBkF"},
+    {"type": "podcast_guid", "value": "7f4d3c2b-9e8a-5d6c-b4a3-2e1f0d9c8b7a"}
+  ]
+}
+```
+
+### Tags for Scale
+
+Tags enable efficient management of large property portfolios:
+
+```json
+{
+  "property_type": "website",
+  "name": "Condé Nast Lifestyle Network",
+  "identifiers": [
+    {"type": "network_id", "value": "conde_nast"},
+    {"type": "domain", "value": "vogue.com"},
+    {"type": "domain", "value": "gq.com"},
+    {"type": "domain", "value": "wired.com"}
+  ],
+  "tags": [
+    "conde_nast_network",
+    "lifestyle",
+    "fashion",
+    "premium_content",
+    "brand_safe",
+    "comscore_top_100"
+  ],
+  "publisher_domain": "condenast.com"
+}
+```
+
+**Common Tag Categories**:
+- **Network Membership**: `yahoo_network`, `disney_network`, `conde_nast_network`
+- **Content Categories**: `news`, `sports`, `entertainment`, `gaming`, `lifestyle`
+- **Quality Indicators**: `premium_content`, `brand_safe`, `viewability_certified`
+- **Geographic**: `us_national`, `nyc_dma`, `tier_1_markets`
+- **Technical**: `gdpr_compliant`, `coppa_compliant`, `header_bidding_enabled`
 
 ### Validation Examples
 
@@ -256,8 +371,16 @@ Products MUST include a `properties` array listing all domains/apps covered:
   "name": "Yahoo Display Package",
   "description": "Display ads across Yahoo web properties",
   "properties": [
-    {"domain": "yahoo.com", "type": "website"},
-    {"domain": "finance.yahoo.com", "type": "website"}
+    {
+      "property_type": "website",
+      "name": "Yahoo Finance Network",
+      "identifiers": [
+        {"type": "domain", "value": "yahoo.com"},
+        {"type": "domain", "value": "finance.yahoo.com"}
+      ],
+      "tags": ["yahoo_network", "finance", "premium_content"],
+      "publisher_domain": "yahoo.com"
+    }
   ]
 }
 ```
@@ -284,7 +407,15 @@ Products MUST include a `properties` array listing all domains/apps covered:
   "name": "Yahoo Premium Video",
   "description": "Premium video inventory on Yahoo properties",
   "properties": [
-    {"domain": "yahoo.com", "type": "website"}
+    {
+      "property_type": "website",
+      "name": "Yahoo Homepage",
+      "identifiers": [
+        {"type": "domain", "value": "yahoo.com"}
+      ],
+      "tags": ["yahoo_network"],
+      "publisher_domain": "yahoo.com"
+    }
   ]
 }
 ```
@@ -311,7 +442,15 @@ Products MUST include a `properties` array listing all domains/apps covered:
   "name": "Multi-Format Campaign",
   "description": "Display, video, and native ads across news sites",
   "properties": [
-    {"domain": "newssite.com", "type": "website"}
+    {
+      "property_type": "website",
+      "name": "News Network Sites",
+      "identifiers": [
+        {"type": "domain", "value": "newssite.com"}
+      ],
+      "tags": ["news_network", "breaking_news"],
+      "publisher_domain": "newssite.com"
+    }
   ]
 }
 ```
@@ -330,38 +469,164 @@ Products MUST include a `properties` array listing all domains/apps covered:
 
 **Result**: ⚠️ **SCOPE MISMATCH** - Agent authorized but scope doesn't match product offering
 
-### Mobile App Validation
+### Enhanced Validation Examples
 
-For mobile app properties, validate against the **app store publisher domain**:
+#### CTV App Validation
 
-**Product**:
+**Product with Multiple CTV Platform IDs**:
 ```json
 {
   "properties": [
     {
-      "domain": "gamecompany.com",
-      "type": "mobile_app", 
-      "app_info": {
-        "platform": "ios",
-        "app_name": "Puzzle Adventure"
-      }
+      "property_type": "ctv_app",
+      "name": "Streaming News App",
+      "identifiers": [
+        {"type": "roku_store_id", "value": "12345"},
+        {"type": "fire_tv_asin", "value": "B00ABC123"},
+        {"type": "samsung_app_id", "value": "3201234567890"},
+        {"type": "bundle_id", "value": "com.news.ctv"},
+        {"type": "bundle_id", "value": "com.news.ctv.roku"}
+      ],
+      "tags": ["news_network", "ctv_app", "live_streaming"],
+      "publisher_domain": "newsnetwork.com"
     }
   ]
 }
 ```
 
-**Check**: `gamecompany.com/.well-known/adagents.json` (not the app itself)
+**Check**: `newsnetwork.com/.well-known/adagents.json`
+
+#### Mobile App Validation
+
+**Product with Multiple Platform Identifiers**:
+```json
+{
+  "properties": [
+    {
+      "property_type": "mobile_app",
+      "name": "Gaming Apps Portfolio",
+      "identifiers": [
+        {"type": "ios_bundle", "value": "com.gamecompany.puzzle"},
+        {"type": "android_package", "value": "com.gamecompany.puzzle"},
+        {"type": "apple_app_store_id", "value": "123456789"},
+        {"type": "google_play_id", "value": "com.gamecompany.puzzle"}
+      ],
+      "tags": ["mobile_gaming", "puzzle_games", "family_friendly"],
+      "publisher_domain": "gamecompany.com"
+    }
+  ]
+}
+```
+
+**Check**: `gamecompany.com/.well-known/adagents.json`
+
+#### DOOH Network Validation
+
+**Product with Venue and Screen IDs**:
+```json
+{
+  "properties": [
+    {
+      "property_type": "dooh",
+      "name": "Times Square Digital Network",
+      "identifiers": [
+        {"type": "venue_id", "value": "TSQ_001"},
+        {"type": "venue_id", "value": "TSQ_002"},
+        {"type": "screen_id", "value": "SCR_001"},
+        {"type": "screen_id", "value": "SCR_002"},
+        {"type": "network_id", "value": "clear_channel_tsq"},
+        {"type": "openooh_venue_type", "value": "outdoor_billboard"}
+      ],
+      "tags": ["clear_channel_network", "nyc_metro", "high_traffic", "tourist_zone"],
+      "publisher_domain": "clearchannel.com"
+    }
+  ]
+}
+```
+
+**Check**: `clearchannel.com/.well-known/adagents.json`
+
+#### Podcast Validation
+
+**Product with Multiple Podcast Platform IDs**:
+```json
+{
+  "properties": [
+    {
+      "property_type": "podcast",
+      "name": "Daily News Podcast",
+      "identifiers": [
+        {"type": "rss_url", "value": "https://feeds.newsnetwork.com/daily.rss"},
+        {"type": "apple_podcast_id", "value": "id1234567890"},
+        {"type": "spotify_show_id", "value": "3IM0lmZxpFGH5B3yNrfBkF"},
+        {"type": "podcast_guid", "value": "7f4d3c2b-9e8a-5d6c-b4a3-2e1f0d9c8b7a"}
+      ],
+      "tags": ["news_podcast", "daily_show", "professional_news"],
+      "publisher_domain": "newsnetwork.com"
+    }
+  ]
+}
+```
+
+**Check**: `newsnetwork.com/.well-known/adagents.json`
 
 ### Implementation Requirements
 
-Buyer agents MUST:
+Buyer agents MUST implement the following validation logic:
 
-1. **Validate All Properties**: Check adagents.json for every domain in the properties array
-2. **Handle Missing Files**: Treat missing adagents.json as a warning, not rejection (gradual adoption)
-3. **Cache Results**: Cache adagents.json responses for up to 24 hours
-4. **Scope Matching**: Parse `authorized_for` descriptions and compare with product details
-5. **Reject Clear Violations**: Immediately reject when agent is explicitly not listed
-6. **Log Validation Results**: Track authorization status for reporting and debugging
+#### 1. **Property-Level Validation**
+For each property in the `properties` array:
+- Extract the `publisher_domain` field
+- Fetch `/.well-known/adagents.json` from that domain
+- Validate sales agent authorization
+
+#### 2. **Identifier-Based Validation**
+For websites, also validate domain identifiers:
+```javascript
+// Pseudocode for domain validation
+function validateWebsiteProperty(property, sellingAgent) {
+  // Check main publisher domain
+  const mainAuth = checkAdagents(property.publisher_domain, sellingAgent);
+  
+  // For website properties, also check each domain identifier
+  const domainIds = property.identifiers.filter(id => id.type === 'domain');
+  for (const domainId of domainIds) {
+    if (!checkAdagents(domainId.value, sellingAgent)) {
+      return false; // Unauthorized on at least one domain
+    }
+  }
+  
+  return mainAuth;
+}
+```
+
+#### 3. **Tag-Based Efficiency (Optional Future Enhancement)**
+Publishers may eventually support tag-based authorization:
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://network-agent.com",
+      "authorized_for": "All Condé Nast Network properties",
+      "tags": ["conde_nast_network"]
+    }
+  ]
+}
+```
+
+#### 4. **Multi-Property Validation**
+- Validate **all** properties in the array
+- Reject if **any** property fails authorization
+- Cache results per publisher domain to avoid repeated requests
+
+#### 5. **Required Validation Steps**
+1. **Extract Properties**: Parse the enhanced `properties` array structure
+2. **Check Publisher Domains**: Fetch adagents.json from each `publisher_domain`
+3. **Validate Domain Identifiers**: For website properties, check each domain identifier
+4. **Match Authorization Scope**: Compare `authorized_for` with product details
+5. **Handle Property Types**: Different validation logic per `property_type`
+6. **Cache Efficiently**: Cache by publisher domain, not individual properties
+7. **Log Results**: Track authorization status for debugging and reporting
 
 ### Error Handling
 
