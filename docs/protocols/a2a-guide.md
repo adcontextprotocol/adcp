@@ -473,7 +473,7 @@ await a2a.send({
 });
 ```
 
-#### add_creative_assets
+#### sync_creatives
 ```javascript
 // Upload and assign creative assets
 await a2a.send({
@@ -482,7 +482,7 @@ await a2a.send({
       {
         kind: "data",
         data: {
-          skill: "add_creative_assets",
+          skill: "sync_creatives",
           parameters: {
             media_buy_id: "mb_12345",
             assignments: [
@@ -703,8 +703,8 @@ A2A agents advertise their capabilities via Agent Cards served at `.well-known/a
       ]
     },
     {
-      "name": "manage_creative_assets",
-      "description": "Centralized creative library management",
+      "name": "sync_creatives",
+      "description": "Creative library synchronization",
       "examples": [
         "Upload this video to my creative library",
         "Assign banner creatives to the campaign",

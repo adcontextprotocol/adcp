@@ -189,7 +189,7 @@ All media buy tasks are covered with complete request/response schemas:
 - `get_products` - Product discovery
 - `list_creative_formats` - Format discovery  
 - `create_media_buy` - Campaign creation
-- `add_creative_assets` - Creative upload
+- `sync_creatives` - Creative upload and management
 - `update_media_buy` - Campaign updates
 - `get_media_buy_delivery` - Performance reporting
 

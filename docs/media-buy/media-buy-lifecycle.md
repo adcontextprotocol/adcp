@@ -25,7 +25,7 @@ The media buy begins with the [`create_media_buy`](./tasks/create_media_buy) tas
 
 ### 2. Creative Upload Phase
 
-Once created, the media buy requires creative assets via [`add_creative_assets`](./tasks/add_creative_assets). Key aspects:
+Once created, the media buy requires creative assets via [`sync_creatives`](./tasks/sync_creatives). Key aspects:
 
 - Platform-specific format support (video, audio, display, custom)
 - Validation and policy review

@@ -147,26 +147,6 @@
             "description": "Response payload for create_media_buy task"
           }
         },
-        "add-creative-assets": {
-          "request": {
-            "$ref": "/schemas/v1/media-buy/add-creative-assets-request.json",
-            "description": "Request parameters for uploading creative assets (DEPRECATED - use manage-creative-assets)"
-          },
-          "response": {
-            "$ref": "/schemas/v1/media-buy/add-creative-assets-response.json",
-            "description": "Response payload for add_creative_assets task (DEPRECATED)"
-          }
-        },
-        "manage-creative-assets": {
-          "request": {
-            "$ref": "/schemas/v1/media-buy/manage-creative-assets-request.json",
-            "description": "Request parameters for centralized creative library management (DEPRECATED - use sync-creatives)"
-          },
-          "response": {
-            "$ref": "/schemas/v1/media-buy/manage-creative-assets-response.json",
-            "description": "Response payload for manage_creative_assets task (DEPRECATED)"
-          }
-        },
         "sync-creatives": {
           "request": {
             "$ref": "/schemas/v1/media-buy/sync-creatives-request.json",

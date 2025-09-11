@@ -246,7 +246,7 @@ When receiving creative assets with standard format IDs, validate against the st
 
 ```json
 {
-  "tool": "add_creative_assets",
+  "tool": "sync_creatives",
   "parameters": {
     "format_id": "display_300x250",
     "assets": [
@@ -371,7 +371,7 @@ Creating a display campaign with standard banner:
 
 // Step 3: Add creative
 {
-  "tool": "add_creative_assets",
+  "tool": "sync_creatives",
   "parameters": {
     "media_buy_id": "mb_123",
     "format_id": "display_300x250",

@@ -94,7 +94,7 @@ Core operations available in the Media Buy Protocol:
 - **[get_products](./tasks/get_products)** - Discover available advertising products
 - **[list_creative_formats](./tasks/list_creative_formats)** - View supported creative formats
 - **[create_media_buy](./tasks/create_media_buy)** - Create a media buy from selected packages
-- **[manage_creative_assets](./tasks/manage_creative_assets)** - Centralized creative library management
+- **[sync_creatives](./tasks/sync_creatives)** - Centralized creative library management
 - **[get_media_buy_delivery](./tasks/get_media_buy_delivery)** - Retrieve performance metrics and monitor delivery
 - **[update_media_buy](./tasks/update_media_buy)** - Update campaign settings
 
