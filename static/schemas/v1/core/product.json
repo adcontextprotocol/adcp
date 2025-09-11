@@ -17,6 +17,54 @@
       "type": "string",
       "description": "Detailed description of the product and its inventory"
     },
+    "properties": {
+      "type": "array",
+      "description": "Array of properties (domains/apps) covered by this product for adagents.json validation",
+      "items": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Domain name (e.g., 'example.com') or app store publisher domain for mobile apps"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["website", "mobile_app"],
+            "description": "Type of property - 'website' for web domains, 'mobile_app' for mobile applications"
+          },
+          "app_info": {
+            "type": "object",
+            "description": "Additional app information (only for mobile_app type)",
+            "properties": {
+              "platform": {
+                "type": "string",
+                "enum": ["ios", "android", "both"],
+                "description": "Mobile platform(s) for this app"
+              },
+              "app_name": {
+                "type": "string",
+                "description": "Human-readable app name"
+              }
+            },
+            "required": ["platform", "app_name"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["domain", "type"],
+        "additionalProperties": false,
+        "if": {
+          "properties": {
+            "type": {
+              "const": "mobile_app"
+            }
+          }
+        },
+        "then": {
+          "required": ["domain", "type", "app_info"]
+        }
+      },
+      "minItems": 1
+    },
     "formats": {
       "type": "array",
       "description": "Array of supported creative format IDs - use list_creative_formats to get full format details",
@@ -66,6 +114,7 @@
     "product_id",
     "name",
     "description",
+    "properties",
     "formats",
     "delivery_type",
     "is_fixed_price"
