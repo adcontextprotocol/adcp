@@ -94,8 +94,8 @@ The message is returned differently in each protocol:
   - **property_type**: Type of advertising property ("website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio")
   - **name**: Human-readable property name
   - **identifiers**: Array of identifiers for this property
-    - **type**: Type of identifier (e.g., 'domain', 'bundle_id', 'roku_store_id', 'podcast_guid')
-    - **value**: The identifier value with domain matching rules for domain type
+    - **type**: Type of identifier (e.g., "domain", "bundle_id", "roku_store_id", "podcast_guid")
+    - **value**: The identifier value. For domain type: `"example.com"` matches www.example.com and m.example.com only; `"subdomain.example.com"` matches that specific subdomain; `"*.example.com"` matches all subdomains
   - **tags**: Optional array of tags for categorization (e.g., network membership, content categories)
   - **publisher_domain**: Domain where adagents.json should be checked for authorization validation
 - **format_ids**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
@@ -150,6 +150,50 @@ The message is returned differently in each protocol:
   ]
 }
 ```
+
+
+### Domain Matching Examples
+
+#### Base Domain Matching
+```json
+{
+  "identifiers": [
+    {"type": "domain", "value": "newssite.com"}
+  ]
+}
+```
+**Matches**: `newssite.com`, `www.newssite.com`, `m.newssite.com`
+
+#### Specific Subdomain Matching
+```json
+{
+  "identifiers": [
+    {"type": "domain", "value": "sports.newssite.com"}
+  ]
+}
+```
+**Matches**: `sports.newssite.com` only
+
+#### Wildcard Subdomain Matching
+```json
+{
+  "identifiers": [
+    {"type": "domain", "value": "*.newssite.com"}
+  ]
+}
+```
+**Matches**: All subdomains (`sports.newssite.com`, `finance.newssite.com`, etc.) but not the base domain
+
+#### Combined Authorization Strategy
+```json
+{
+  "identifiers": [
+    {"type": "domain", "value": "newsnetwork.com"},
+    {"type": "domain", "value": "*.newsnetwork.com"}
+  ]
+}
+```
+**Matches**: Base domain, www/m subdomains, and all other subdomains
 
 **Required Checks**:
 - Fetch `yahoo.com/.well-known/adagents.json` (from `publisher_domain`)

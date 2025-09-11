@@ -636,6 +636,91 @@ Publishers may eventually support tag-based authorization:
 - **Scope Mismatch**: Flag for manual review or reject based on policy
 - **Network Errors**: Retry with exponential backoff, treat repeated failures as warnings
 
+
+## Domain Matching Rules
+
+For website properties with domain identifiers, AdCP uses specific matching patterns to determine authorization scope:
+
+### Base Domain Matching (`example.com`)
+
+Base domain format (without subdomain prefix) matches:
+- The exact domain: `example.com`
+- Standard mobile subdomain: `m.example.com`
+- Standard web subdomain: `www.example.com`
+
+**Example**: `"value": "yahoo.com"` authorizes:
+- ✅ `yahoo.com`
+- ✅ `www.yahoo.com`
+- ✅ `m.yahoo.com`
+- ❌ `finance.yahoo.com`
+- ❌ `mail.yahoo.com`
+
+### Specific Subdomain Matching (`subdomain.example.com`)
+
+Specific subdomain format matches only that exact subdomain:
+
+**Example**: `"value": "finance.yahoo.com"` authorizes:
+- ✅ `finance.yahoo.com`
+- ❌ `yahoo.com`
+- ❌ `www.yahoo.com`
+- ❌ `mail.yahoo.com`
+
+### Wildcard Subdomain Matching (`*.example.com`)
+
+Wildcard format matches all subdomains but not the base domain:
+
+**Example**: `"value": "*.yahoo.com"` authorizes:
+- ✅ `finance.yahoo.com`
+- ✅ `mail.yahoo.com`
+- ✅ `sports.yahoo.com`
+- ✅ `news.yahoo.com`
+- ❌ `yahoo.com`
+- ❌ `www.yahoo.com`
+
+### Implementation Examples
+
+#### Multi-Domain Authorization
+```json
+{
+  "property_type": "website",
+  "name": "Yahoo Network",
+  "identifiers": [
+    {"type": "domain", "value": "yahoo.com"},
+    {"type": "domain", "value": "finance.yahoo.com"},
+    {"type": "domain", "value": "mail.yahoo.com"}
+  ],
+  "publisher_domain": "yahoo.com"
+}
+```
+
+This configuration requires authorization validation for:
+- Base domain: `yahoo.com` (includes www.yahoo.com and m.yahoo.com)
+- Specific subdomain: `finance.yahoo.com`
+- Specific subdomain: `mail.yahoo.com`
+
+#### Wildcard Network Authorization
+```json
+{
+  "property_type": "website",
+  "name": "All Yahoo Subdomains",
+  "identifiers": [
+    {"type": "domain", "value": "*.yahoo.com"}
+  ],
+  "publisher_domain": "yahoo.com"
+}
+```
+
+This configuration authorizes all Yahoo subdomains but requires separate authorization for the base domain.
+
+### Validation Process
+
+When validating domain authorization:
+
+1. **Extract Domain Identifiers**: Get all `domain` type identifiers from the property
+2. **Apply Matching Rules**: For each domain identifier, determine which domains it matches
+3. **Check Authorization**: Fetch `/.well-known/adagents.json` from each matched domain
+4. **Verify Agent**: Confirm the selling agent appears in each domain's authorized agents list
+
 ## Security Considerations
 
 ### File Integrity
