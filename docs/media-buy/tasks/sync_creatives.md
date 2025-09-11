@@ -310,9 +310,9 @@ When assignments fail, they're reported separately:
 - Parse detailed error responses to identify data quality issues
 - Use patch mode for correcting specific field errors
 
-## Migration from manage_creative_assets
+## Migration from Legacy Creative Tasks
 
-The `sync_creatives` task replaces the action-based `manage_creative_assets` approach:
+The `sync_creatives` task replaces previous action-based creative management approaches:
 
 **Old Approach:**
 ```json

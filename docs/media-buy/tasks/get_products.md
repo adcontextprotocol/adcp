@@ -716,5 +716,5 @@ for brief in test_briefs:
 Discovery is just the first step. Ensure smooth transitions to the next phases:
 1. **Discovery** → `get_products` finds relevant inventory
 2. **Purchase** → [`create_media_buy`](./create_media_buy) executes the campaign
-3. **Creative** → [`add_creative_assets`](./add_creative_assets) uploads assets
+3. **Creative** → [`sync_creatives`](./sync_creatives) uploads assets
 4. **Monitor** → Track delivery and optimize

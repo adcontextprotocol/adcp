@@ -938,7 +938,7 @@ The complete media buy workflow with format awareness:
 4. create_media_buy -> Specify formats for each package (REQUIRED)
    └── Publisher creates placeholders in ad server
    └── Both sides have clear creative requirements
-5. add_creative_assets -> Upload actual files matching the specified formats
+5. sync_creatives -> Upload actual files matching the specified formats
 6. Campaign activation -> Replace placeholders with real creatives
 ```
 

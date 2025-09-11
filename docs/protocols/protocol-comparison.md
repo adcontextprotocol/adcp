@@ -71,7 +71,7 @@ Both protocols deliver identical data, just formatted differently:
 |-----------|------|--------------|--------------|
 | get_products | Sync | Direct data | Immediate artifacts |
 | create_media_buy | Async | Task ID | SSE updates |
-| add_creative_assets | Async | Task ID | SSE updates |
+| sync_creatives | Async | Task ID | SSE updates |
 
 ## Choosing Between Protocols
 

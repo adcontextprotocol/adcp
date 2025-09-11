@@ -65,7 +65,8 @@ const sidebars: SidebarsConfig = {
             'media-buy/tasks/get_products',
             'media-buy/tasks/list_creative_formats',
             'media-buy/tasks/create_media_buy',
-            'media-buy/tasks/add_creative_assets',
+            'media-buy/tasks/sync_creatives',
+            'media-buy/tasks/list_creatives',
             'media-buy/tasks/get_media_buy_delivery',
             'media-buy/tasks/update_media_buy',
           ],
@@ -85,6 +86,7 @@ const sidebars: SidebarsConfig = {
           label: 'Creatives',
           items: [
             'media-buy/creative-lifecycle',
+            'media-buy/creative-library',
             'media-buy/creative-formats',
             'media-buy/asset-types',
           ],

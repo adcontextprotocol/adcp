@@ -128,7 +128,7 @@ AdCP uses a centralized creative library. First upload to the library:
 
 ```javascript
 // Upload creative to library
-const uploadResult = await mcp.call('manage_creative_assets', {
+const uploadResult = await mcp.call('sync_creatives', {
   action: "upload",
   assets: [{
     creative_id: "hero_video_30s",
@@ -140,7 +140,7 @@ const uploadResult = await mcp.call('manage_creative_assets', {
 });
 
 // Then assign to media buy packages
-const assignResult = await mcp.call('manage_creative_assets', {
+const assignResult = await mcp.call('sync_creatives', {
   action: "assign",
   creative_ids: ["hero_video_30s"],
   media_buy_id: "mb_12345",
@@ -314,7 +314,7 @@ async function createCampaign() {
     console.log(`Created: ${final.data.media_buy_id}`);
     
     // 4. Upload creatives to library
-    const upload = await mcp.call('manage_creative_assets', {
+    const upload = await mcp.call('sync_creatives', {
       action: "upload",
       assets: [
         {
@@ -327,7 +327,7 @@ async function createCampaign() {
     });
     
     // 5. Assign creatives to campaign packages
-    await mcp.call('manage_creative_assets', {
+    await mcp.call('sync_creatives', {
       action: "assign",
       creative_ids: ["bmw_hero_30s"],
       media_buy_id: final.data.media_buy_id,

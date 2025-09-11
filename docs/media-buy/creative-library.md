@@ -17,6 +17,16 @@ Unlike the traditional model where creatives are uploaded directly to campaigns,
 
 This approach mirrors how Google Ad Manager, Meta Business Manager, and other major platforms handle creative assets.
 
+## Quick Start
+
+Ready to start using the Creative Library? Here's the essential workflow:
+
+1. **📤 Upload creatives**: [`sync_creatives`](./tasks/sync_creatives) - Add assets to your library
+2. **🔍 Find creatives**: [`list_creatives`](./tasks/list_creatives) - Search and filter your library  
+3. **🎯 Assign to campaigns**: Use assignments in [`sync_creatives`](./tasks/sync_creatives) or [`create_media_buy`](./tasks/create_media_buy)
+
+**New to creative management?** Start with the [Creative Lifecycle](./creative-lifecycle) conceptual overview.
+
 ## Library Architecture
 
 ### Creative Storage
@@ -47,26 +57,15 @@ Creative Library
 
 ## Core Operations
 
-All creative library operations are handled through the [`manage_creative_assets`](./tasks/manage_creative_assets) task with different actions:
+The creative library supports two primary operations:
 
-### 1. Upload (`action: "upload"`)
+### 1. Creative Management
 
-Add new creatives to the library:
-
-```json
-{
-  "action": "upload",
-  "assets": [
-    {
-      "creative_id": "brand_video_30s",
-      "name": "Brand Hero Video 30s",
-      "format": "video",
-      "media_url": "https://cdn.example.com/brand-hero.mp4",
-      "tags": ["video", "hero", "q1_2024"]
-    }
-  ]
-}
-```
+Use [`sync_creatives`](./tasks/sync_creatives) to:
+- Upload new creatives to the library
+- Update existing creative metadata
+- Assign creatives to packages
+- Bulk operations with upsert semantics
 
 **Benefits:**
 - No immediate campaign assignment required
@@ -74,27 +73,23 @@ Add new creatives to the library:
 - Validation and approval before assignment
 - Suggested adaptations for better performance
 
-### 2. Query (`action: "list"`)
+**📋 Get Started:** See the [`sync_creatives`](./tasks/sync_creatives) technical documentation for detailed examples and parameters.
 
-Search and filter library creatives:
+### 2. Creative Discovery
 
-```json
-{
-  "action": "list",
-  "filters": {
-    "format": "video",
-    "status": "approved",
-    "tags": ["q1_2024"],
-    "unassigned": false
-  }
-}
-```
+Use [`list_creatives`](./tasks/list_creatives) to:
+- Search and filter library creatives
+- Find available assets for new campaigns
+- Track assignment status
+- Analyze performance across creatives
 
 **Use Cases:**
 - Find creatives for new campaigns
 - Audit unused assets
 - Performance analysis across creatives
 - Compliance reviews
+
+**🔍 Get Started:** See the [`list_creatives`](./tasks/list_creatives) technical documentation for advanced filtering and querying options.
 
 ### 3. Assign (`action: "assign"`)
 
@@ -146,17 +141,9 @@ Remove creative from specific campaigns while keeping in library:
 
 **Preserves:** Creative remains in library for future use
 
-### 6. Archive (`action: "delete"`)
+### 6. Archival
 
-Remove creatives from active use:
-
-```json
-{
-  "action": "delete",
-  "creative_ids": ["expired_promo_v1"],
-  "archive": true
-}
-```
+Creatives can be archived through [`sync_creatives`](./tasks/sync_creatives) status updates:
 
 **Options:**
 - **Archive**: Soft delete, preserves for reporting
@@ -287,30 +274,23 @@ Compare creative performance across different contexts:
 3. **Usage Tracking**: Monitor which creatives are being used where
 4. **Performance Standards**: Set minimum performance thresholds
 
-## Migration from add_creative_assets
+## Migration to Creative Library
 
-If migrating from the deprecated `add_creative_assets` workflow:
+If migrating from deprecated creative workflows:
 
 ### Step 1: Upload Existing Creatives
+Use [`sync_creatives`](./tasks/sync_creatives) to add assets to the library:
 ```json
 {
-  "action": "upload",
-  "assets": [/* your existing creative assets */]
+  "creatives": [/* your existing creative assets */]
 }
 ```
 
 ### Step 2: Assign to Current Campaigns
-```json
-{
-  "action": "assign",
-  "creative_ids": ["existing_creative_1"],
-  "media_buy_id": "current_campaign",
-  "package_assignments": ["existing_packages"]
-}
-```
+Use the `assignments` parameter in [`sync_creatives`](./tasks/sync_creatives) or create new campaigns with [`create_media_buy`](./tasks/create_media_buy).
 
 ### Step 3: Adopt Library Workflow
-- Use library search before creating new creatives
+- Use [`list_creatives`](./tasks/list_creatives) to search before creating new creatives
 - Reuse approved creatives across campaigns
 - Manage all creative operations through the library
 
@@ -335,14 +315,33 @@ If migrating from the deprecated `add_creative_assets` workflow:
 
 ### Support Resources
 
-- Use `action: "list"` to audit current library state
+- Use [`list_creatives`](./tasks/list_creatives) to audit current library state
 - Check creative status and assignment history
 - Review platform-specific creative requirements
 - Monitor adaptation suggestions for optimization opportunities
 
+## Ready to Get Started?
+
+Now that you understand the Creative Library architecture, here are your next steps:
+
+### 🏗️ **Implementation**
+- **Start uploading**: Follow [`sync_creatives`](./tasks/sync_creatives) for technical implementation
+- **Query your library**: Use [`list_creatives`](./tasks/list_creatives) for advanced filtering and search
+- **Understand the workflow**: Read [Creative Lifecycle](./creative-lifecycle) for end-to-end process
+
+### 📋 **Planning**
+- **Review formats**: Check [Creative Formats](./creative-formats) for platform requirements
+- **Design your library**: Plan your creative ID conventions and tagging strategy
+- **Map your workflow**: Align the library approach with your existing creative operations
+
+### 🔗 **Integration**
+- **Connect platforms**: Integrate with your existing creative management tools
+- **Enable AI workflows**: Set up [MCP integration](../protocols/mcp-guide) for AI assistant access
+- **Build automations**: Leverage [A2A protocol](../protocols/a2a-guide) for natural language operations
+
 ## Related Documentation
 
-- [`manage_creative_assets`](./tasks/manage_creative_assets) - Complete API reference
+- [`sync_creatives`](./tasks/sync_creatives) - Creative management API reference
+- [`list_creatives`](./tasks/list_creatives) - Creative query API reference
 - [Creative Lifecycle](./creative-lifecycle) - End-to-end creative workflow
 - [Creative Formats](./creative-formats) - Supported format specifications
-- [Asset Types](./asset-types) - Sub-asset types for multi-asset creatives

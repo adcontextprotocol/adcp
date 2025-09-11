@@ -102,7 +102,7 @@ X-Auto-Advance: true
 ### Example: Testing Creative Rejection
 
 ```json
-POST /add_creative_assets
+POST /sync_creatives
 Headers: {
   "X-Dry-Run": "true",
   "X-Jump-To-Event": "creative_policy_violation"
