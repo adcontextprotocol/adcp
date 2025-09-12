@@ -129,6 +129,7 @@ const sidebars: SidebarsConfig = {
         'reference/error-codes',
         'reference/data-models',
         'reference/authentication',
+        'reference/adagents',
         'reference/glossary',
       ],
     },
