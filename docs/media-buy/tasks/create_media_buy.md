@@ -7,6 +7,8 @@ sidebar_position: 3
 
 Create a media buy from selected packages. This task handles the complete workflow including validation, approval if needed, and campaign creation.
 
+**Response Time**: Minutes to days (asynchronous with potential human-in-the-loop)
+
 **Format Specification Required**: Each package must specify the creative formats that will be used. This enables placeholder creation in ad servers and ensures both parties have clear expectations for creative asset requirements.
 
 

@@ -12,7 +12,7 @@ The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-fi
 
 1. **MCP-Based Interface**: Built on Model Context Protocol (MCP) for standardized AI agent interaction, not REST APIs.
 
-2. **Asynchronous by Design**: Operations may take seconds to days to complete. The protocol embraces pending states as normal workflow elements.
+2. **Asynchronous by Design**: Operations may take seconds to days to complete. The protocol embraces pending states as normal workflow elements. **This is not a real-time protocol** - response times range from 1 second for simple lookups to days for operations requiring human approval.
 
 3. **Human-in-the-Loop**: Publishers can require manual approval for any operation. The protocol includes comprehensive task management for human intervention.
 
@@ -28,6 +28,17 @@ The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-fi
 - **Creative Flexibility**: Support for standard IAB and custom publisher formats
 - **Real-time Optimization**: Continuous performance monitoring and adjustment
 - **Human-in-the-Loop**: Optional manual approval workflows where needed
+
+## Response Time Expectations
+
+AdCP is designed as a **timely but not real-time** protocol. Response times fall into four categories:
+
+- **Simple database lookups** (~1 second): Format and creative listings
+- **Inference/RAG operations** (~60 seconds): Product discovery, signal discovery with AI/LLM processing  
+- **Reporting queries** (~60 seconds): Delivery metrics with data aggregation
+- **Asynchronous operations** (minutes to days): Campaign creation/updates, creative sync, signal activation with potential human-in-the-loop approval
+
+Implementers should design for asynchronous operation and provide appropriate user feedback during processing.
 
 ## Separation of Concerns: A Collaborative Model
 
@@ -91,12 +102,12 @@ The following diagram illustrates the complete lifecycle of a media buy in AdCP:
 ### Tasks
 Core operations available in the Media Buy Protocol:
 
-- **[get_products](./tasks/get_products)** - Discover available advertising products
-- **[list_creative_formats](./tasks/list_creative_formats)** - View supported creative formats
-- **[create_media_buy](./tasks/create_media_buy)** - Create a media buy from selected packages
-- **[sync_creatives](./tasks/sync_creatives)** - Centralized creative library management
-- **[get_media_buy_delivery](./tasks/get_media_buy_delivery)** - Retrieve performance metrics and monitor delivery
-- **[update_media_buy](./tasks/update_media_buy)** - Update campaign settings
+- **[get_products](./tasks/get_products)** - Discover available advertising products *(~60s)*
+- **[list_creative_formats](./tasks/list_creative_formats)** - View supported creative formats *(~1s)*
+- **[create_media_buy](./tasks/create_media_buy)** - Create a media buy from selected packages *(minutes to days)*
+- **[sync_creatives](./tasks/sync_creatives)** - Centralized creative library management *(minutes to days)*
+- **[get_media_buy_delivery](./tasks/get_media_buy_delivery)** - Retrieve performance metrics and monitor delivery *(~60s)*
+- **[update_media_buy](./tasks/update_media_buy)** - Update campaign settings *(minutes to days)*
 
 ### Core Concepts
 Foundational elements of the Advertising Context Protocol:
