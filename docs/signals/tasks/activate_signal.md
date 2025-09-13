@@ -7,6 +7,8 @@ title: activate_signal
 
 **Task**: Activate a signal for use on a specific platform/account.
 
+**Response Time**: Minutes to days (asynchronous with potential human-in-the-loop)
+
 **Request Schema**: [`/schemas/v1/signals/activate-signal-request.json`](/schemas/v1/signals/activate-signal-request.json)  
 **Response Schema**: [`/schemas/v1/signals/activate-signal-response.json`](/schemas/v1/signals/activate-signal-response.json)
 

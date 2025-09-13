@@ -7,6 +7,8 @@ sidebar_position: 7
 
 Update campaign and package settings. This task supports partial updates and handles any required approvals.
 
+**Response Time**: Minutes to days (asynchronous with potential human-in-the-loop)
+
 
 **Request Schema**: [`/schemas/v1/media-buy/update-media-buy-request.json`](/schemas/v1/media-buy/update-media-buy-request.json)  
 **Response Schema**: [`/schemas/v1/media-buy/update-media-buy-response.json`](/schemas/v1/media-buy/update-media-buy-response.json)
