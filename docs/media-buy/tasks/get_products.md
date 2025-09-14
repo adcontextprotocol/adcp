@@ -5,7 +5,7 @@ sidebar_position: 1
 # get_products
 Discover available advertising products based on campaign requirements, using natural language briefs or structured filters.
 
-**Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications including requirements, file types, and dimensions.
+**Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications. **See [Creative Lifecycle](../creative-lifecycle#phase-1-format-discovery) for the complete workflow.**
 
 **Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](/schemas/v1/media-buy/get-products-request.json)  
 **Response Schema**: [`/schemas/v1/media-buy/get-products-response.json`](/schemas/v1/media-buy/get-products-response.json)
