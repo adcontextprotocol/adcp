@@ -9,6 +9,7 @@ Discover all supported creative formats in the system.
 
 **See [Creative Lifecycle](../creative-lifecycle#phase-1-format-discovery) for the complete workflow on how this tool works with `get_products` for format discovery.**
 
+**Response Time**: ~1 second (simple database lookup)
 
 **Request Schema**: [`/schemas/v1/media-buy/list-creative-formats-request.json`](/schemas/v1/media-buy/list-creative-formats-request.json)  
 **Response Schema**: [`/schemas/v1/media-buy/list-creative-formats-response.json`](/schemas/v1/media-buy/list-creative-formats-response.json)
