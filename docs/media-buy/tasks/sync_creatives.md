@@ -6,6 +6,8 @@ title: sync_creatives
 
 Synchronize creative assets with the centralized creative library using upsert semantics. This task supports bulk operations, partial updates, assignment management, and comprehensive validation for efficient creative library management.
 
+**Response Time**: Minutes to days (asynchronous with potential human-in-the-loop)
+
 ## Overview
 
 The `sync_creatives` task provides a powerful, efficient approach to creative library management using **upsert semantics** - creatives are either created (if they don't exist) or updated (if they do exist) based on their `creative_id`. This eliminates the need to check existence before uploading and enables seamless bulk operations.

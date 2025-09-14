@@ -6,6 +6,8 @@ title: list_creatives
 
 Query and search the centralized creative library with advanced filtering, sorting, pagination, and optional data enrichment. This task enables efficient discovery and management of creative assets with flexible query capabilities.
 
+**Response Time**: ~1 second (simple database lookup)
+
 ## Overview
 
 The `list_creatives` task provides comprehensive search and filtering capabilities for the creative library. It supports complex queries with multiple filter types, sorting options, pagination for large result sets, and optional inclusion of enriched data like assignments and performance metrics.
