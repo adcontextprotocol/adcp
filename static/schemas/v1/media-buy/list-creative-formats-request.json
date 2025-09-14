@@ -19,6 +19,18 @@
     "standard_only": {
       "type": "boolean",
       "description": "Only return IAB standard formats"
+    },
+    "category": {
+      "type": "string",
+      "description": "Filter by format category",
+      "enum": ["standard", "custom"]
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Filter by specific format IDs (e.g., from get_products response)",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "additionalProperties": false

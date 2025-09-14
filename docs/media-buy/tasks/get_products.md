@@ -7,7 +7,7 @@ Discover available advertising products based on campaign requirements, using na
 
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
 
-**Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications including requirements, file types, and dimensions.
+**Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications. **See [Creative Lifecycle](../creative-lifecycle#phase-1-format-discovery) for the complete workflow.**
 
 **Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](/schemas/v1/media-buy/get-products-request.json)  
 **Response Schema**: [`/schemas/v1/media-buy/get-products-response.json`](/schemas/v1/media-buy/get-products-response.json)

@@ -4,7 +4,74 @@ title: Creative Lifecycle
 
 # Creative Lifecycle
 
-AdCP provides a comprehensive centralized creative library for managing the entire lifecycle of creative assets. This document explains the conceptual model and workflow for creative management using the centralized library approach.
+AdCP manages the complete creative lifecycle from initial format discovery through ongoing optimization. This document covers the three main phases: discovering requirements, producing assets, and managing the creative library.
+
+## Phase 1: Format Discovery
+
+Before creating any creative assets, you need to understand **what formats are required**. AdCP provides two complementary tools that work together:
+
+### The Discovery Workflow
+
+**`get_products`** finds advertising inventory that matches your campaign needs, while **`list_creative_formats`** provides the detailed creative specifications for the formats those products require.
+
+#### Two Common Approaches:
+
+**1. Inventory-First** - "What products match my campaign?"
+```javascript
+// Find products for your campaign
+const products = await get_products({
+  brief: "Premium video inventory for sports fans",
+  promoted_offering: "Nike Air Max 2024"
+});
+// Products return: formats: ["video_15s_hosted", "homepage_takeover_2024"]
+
+// Get creative specs for those specific formats
+const formatSpecs = await list_creative_formats({
+  format_ids: products.products.flatMap(p => p.formats)
+});
+// Now you know: video_15s_hosted needs MP4 H.264, 15s, 1920x1080
+//                homepage_takeover_2024 needs hero image + logo + headline
+```
+
+**2. Creative-First** - "What video formats does this publisher support?"
+```javascript
+// Browse available video formats
+const videoFormats = await list_creative_formats({
+  type: "video",
+  category: "standard"
+});
+// Returns: video_15s_hosted, video_30s_vast, video_vertical_15s, etc.
+
+// Find products supporting your creative capabilities
+const products = await get_products({
+  promoted_offering: "Nike Air Max 2024",
+  filters: {
+    format_ids: ["video_15s_hosted", "video_30s_vast"]
+  }
+});
+// Returns only products that accept these specific formats
+```
+
+### Why Both Tools Matter
+
+- **Without `list_creative_formats`**: Format IDs from products are meaningless strings
+- **Without `get_products`**: You don't know which formats actually have available inventory
+- **Together**: You understand both what's available AND what's required
+
+**Common discovery patterns:**
+- **Campaign planning**: Inventory-first approach to find the right audience, then build creative
+- **Production planning**: Creative-first approach to understand capabilities, then find compatible inventory
+- **Cross-publisher campaigns**: Use standard formats for maximum reach across multiple publishers
+
+---
+
+## Phase 2: Creative Production
+
+Once you understand format requirements, create the actual creative assets according to the specifications discovered in Phase 1.
+
+---
+
+## Phase 3: Creative Library Management
 
 ## The Creative Library Model
 

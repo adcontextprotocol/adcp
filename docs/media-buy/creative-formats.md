@@ -6,6 +6,8 @@ title: Creative Formats
 
 All creative formats have a unique identifier and specify delivery methods. Formats can require either a single asset or multiple assets for rich media experiences.
 
+**For the complete workflow on format discovery, see the [Creative Lifecycle](./creative-lifecycle#phase-1-format-discovery) documentation.**
+
 ## Standard vs Custom Formats
 
 AdCP defines two categories of formats:

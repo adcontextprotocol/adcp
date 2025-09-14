@@ -5,7 +5,9 @@ sidebar_position: 2
 
 # list_creative_formats
 
-Discover all supported creative formats in the system.
+Discover all supported creative formats in the system. 
+
+**See [Creative Lifecycle](../creative-lifecycle#phase-1-format-discovery) for the complete workflow on how this tool works with `get_products` for format discovery.**
 
 **Response Time**: ~1 second (simple database lookup)
 
@@ -19,6 +21,7 @@ Discover all supported creative formats in the system.
 | `type` | string | No | Filter by format type (e.g., `"audio"`, `"video"`, `"display"`) |
 | `category` | string | No | Filter by category (`"standard"` or `"custom"`) |
 | `standard_only` | boolean | No | Only return standard formats (deprecated, use `category: "standard"`) |
+| `format_ids` | string[] | No | Filter by specific format IDs (e.g., from `get_products` response) |
 
 ## Response (Message)
 
@@ -59,6 +62,7 @@ The message is returned differently in each protocol:
 - **accepts_3p_tags**: Whether format can accept third-party tags
 - **requirements**: Format-specific requirements (varies by format type)
 - **assets_required**: Array of required assets with `asset_role` identifiers
+
 
 ## Protocol-Specific Examples
 
@@ -135,6 +139,81 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
     "type": "audio",
     "standard_only": true
   }
+}
+```
+
+### Example 3: Reverse Workflow (Product-First)
+
+#### MCP Request - Get specs for specific format IDs
+```json
+{
+  "tool": "list_creative_formats",
+  "arguments": {
+    "format_ids": ["video_15s_hosted", "video_30s_vast", "display_300x250"]
+  }
+}
+```
+
+#### MCP Response
+```json
+{
+  "message": "Found 3 specific formats. These are the exact creative requirements for your available inventory.",
+  "formats": [
+    {
+      "format_id": "video_15s_hosted",
+      "name": "15-Second Hosted Video",
+      "type": "video",
+      "category": "standard",
+      "duration": "15s",
+      "accepts_3p_tags": false,
+      "assets_required": [
+        {
+          "asset_id": "video_file",
+          "asset_type": "video",
+          "asset_role": "hero_video",
+          "required": true,
+          "requirements": {
+            "duration": "15s",
+            "format": "MP4 H.264",
+            "resolution": ["1920x1080", "1280x720"],
+            "max_file_size_mb": 30
+          }
+        }
+      ]
+    },
+    {
+      "format_id": "video_30s_vast",
+      "name": "30-Second VAST Video", 
+      "type": "video",
+      "category": "standard",
+      "duration": "30s",
+      "accepts_3p_tags": true,
+      "delivery": {
+        "method": "VAST",
+        "versions": ["3.0", "4.0", "4.1", "4.2"]
+      }
+    },
+    {
+      "format_id": "display_300x250",
+      "name": "Medium Rectangle",
+      "type": "display",
+      "category": "standard",
+      "dimensions": "300x250",
+      "accepts_3p_tags": false,
+      "assets_required": [
+        {
+          "asset_id": "banner_image",
+          "asset_type": "image",
+          "asset_role": "hero_image",
+          "required": true,
+          "width": 300,
+          "height": 250,
+          "acceptable_formats": ["jpg", "png", "gif"],
+          "max_file_size_kb": 200
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -368,14 +447,16 @@ I found 15 display formats including standard IAB sizes and innovative formats l
 
 ## Usage Notes
 
-- Use this tool to understand what creative formats are supported before creating assets
-- Standard formats follow IAB specifications for maximum compatibility
-- Non-standard formats may offer enhanced features but have limited inventory
-- For composite formats (like carousels), check `assets_required` for all needed components
-- Requirements vary by format type:
-  - Audio formats specify duration, file types, and bitrate
-  - Video formats include resolution, aspect ratio, and codec requirements
-  - Display formats define dimensions, file types, and size limits
+- **Primary use case**: Get creative specifications after `get_products` returns format IDs
+- **Format IDs are just strings** until you get their specifications from this tool
+- **Standard formats** follow IAB specifications and work across multiple publishers
+- **Custom formats** (like "homepage_takeover") are publisher-specific with unique requirements  
+- **The `format_ids` parameter** is the most efficient way to get specs for specific formats returned by products
+- **Asset requirements vary by format type**:
+  - Audio formats: duration, file types, bitrate specifications
+  - Video formats: resolution, aspect ratio, codec, delivery method
+  - Display formats: dimensions, file types, file size limits
+  - Rich media formats: multiple assets with specific roles and requirements
 
 ## Implementation Guide
 
