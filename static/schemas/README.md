@@ -94,7 +94,7 @@ const product = {
   "product_id": "ctv_sports_premium",
   "name": "CTV Sports Premium",
   "description": "Premium CTV inventory on sports content",
-  "formats": [{"format_id": "video_16x9_30s", "name": "30-second video"}],
+  "format_ids": ["video_16x9_30s"],
   "delivery_type": "guaranteed",
   "is_fixed_price": true
 };
@@ -120,7 +120,7 @@ product = {
     "product_id": "ctv_sports_premium",
     "name": "CTV Sports Premium",
     "description": "Premium CTV inventory on sports content",
-    "formats": [{"format_id": "video_16x9_30s", "name": "30-second video"}],
+    "format_ids": ["video_16x9_30s"],
     "delivery_type": "guaranteed",
     "is_fixed_price": True
 }

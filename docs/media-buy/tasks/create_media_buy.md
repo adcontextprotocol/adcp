@@ -33,7 +33,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this package |
 | `products` | string[] | Yes | Array of product IDs to include in this package |
-| `formats` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by all products |
+| `format_ids` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by all products |
 | `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
 
@@ -121,7 +121,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       {
         "buyer_ref": "nike_ctv_sports_package",
         "products": ["ctv_sports_premium", "ctv_prime_time"],
-        "formats": ["video_standard_30s", "video_standard_15s"],
+        "format_ids": ["video_standard_30s", "video_standard_15s"],
         "budget": {
           "total": 60000,
           "currency": "USD",
@@ -136,7 +136,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       {
         "buyer_ref": "nike_audio_drive_package",
         "products": ["audio_drive_time"],
-        "formats": ["audio_standard_30s"],
+        "format_ids": ["audio_standard_30s"],
         "budget": {
           "total": 40000,
           "currency": "USD",
@@ -257,7 +257,7 @@ await a2a.send({
               {
                 "buyer_ref": "nike_ctv_sports_package",
                 "products": ["ctv_sports_premium", "ctv_prime_time"],
-                "formats": ["video_standard_30s", "video_standard_15s"],
+                "format_ids": ["video_standard_30s", "video_standard_15s"],
                 "budget": {
                   "total": 60000,
                   "currency": "USD",
@@ -272,7 +272,7 @@ await a2a.send({
               {
                 "buyer_ref": "nike_audio_drive_package",
                 "products": ["audio_drive_time"],
-                "formats": ["audio_standard_30s"],
+                "format_ids": ["audio_standard_30s"],
                 "budget": {
                   "total": 40000,
                   "currency": "USD",
@@ -570,7 +570,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
     {
       "buyer_ref": "purina_ctv_package",
       "products": ["ctv_prime_time", "ctv_late_night"],
-      "formats": ["video_standard_30s"],
+      "format_ids": ["video_standard_30s"],
       "budget": {
         "total": 30000,
         "currency": "USD",
@@ -590,7 +590,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
     {
       "buyer_ref": "purina_audio_package",
       "products": ["audio_drive_time"],
-      "formats": ["audio_standard_30s"],
+      "format_ids": ["audio_standard_30s"],
       "budget": {
         "total": 20000,
         "currency": "USD"
@@ -621,7 +621,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
     {
       "buyer_ref": "purina_albertsons_conquest",
       "products": ["albertsons_competitive_conquest", "albertsons_onsite_display"],
-      "formats": ["display_300x250", "display_728x90"],
+      "format_ids": ["display_300x250", "display_728x90"],
       "budget": {
         "total": 75000,
         "currency": "USD",

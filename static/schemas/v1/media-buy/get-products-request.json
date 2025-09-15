@@ -26,13 +26,6 @@
         "delivery_type": {
           "$ref": "/schemas/v1/enums/delivery-type.json"
         },
-        "formats": {
-          "type": "array",
-          "description": "Filter by specific formats",
-          "items": {
-            "type": "string"
-          }
-        },
         "is_fixed_price": {
           "type": "boolean",
           "description": "Filter for fixed price vs auction products"

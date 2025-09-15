@@ -272,7 +272,7 @@ async function runTests() {
   await test('Core schemas have appropriate required fields', () => {
     const coreSchemas = schemas.filter(([path]) => path.includes('/core/'));
     const requiredFieldChecks = {
-      'product.json': ['product_id', 'name', 'description', 'formats', 'delivery_type', 'is_fixed_price'],
+      'product.json': ['product_id', 'name', 'description', 'format_ids', 'delivery_type', 'is_fixed_price'],
       'media-buy.json': ['media_buy_id', 'status', 'promoted_offering', 'total_budget', 'packages'],
       'package.json': ['package_id', 'status'],
       'creative-asset.json': ['creative_id', 'name', 'format'],

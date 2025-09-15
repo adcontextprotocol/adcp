@@ -25,7 +25,6 @@ Discover available advertising products based on campaign requirements, using na
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `delivery_type` | string | No | Filter by delivery type: `"guaranteed"` or `"non_guaranteed"` |
-| `formats` | string[] | No | Filter by specific formats (e.g., `["video"]`) |
 | `is_fixed_price` | boolean | No | Filter for fixed price vs auction products |
 | `format_types` | string[] | No | Filter by format types (e.g., `["video", "display"]`) |
 | `format_ids` | string[] | No | Filter by specific format IDs (e.g., `["video_standard_30s"]`) |
@@ -49,7 +48,7 @@ The message is returned differently in each protocol:
       "product_id": "string",
       "name": "string",
       "description": "string",
-      "formats": [
+      "format_ids": [
         "format_id_string"
       ],
       "delivery_type": "string",
@@ -77,7 +76,7 @@ The message is returned differently in each protocol:
 - **product_id**: Unique identifier for the product
 - **name**: Human-readable product name
 - **description**: Detailed description of the product and its inventory
-- **formats**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
+- **format_ids**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
 - **is_fixed_price**: Whether this product has fixed pricing (true) or uses auction (false)
 - **cpm**: Cost per thousand impressions in USD
@@ -119,7 +118,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "product_id": "ctv_sports_premium",
       "name": "CTV Sports Premium",
       "description": "Premium CTV inventory on sports content",
-      "formats": ["video_16x9_30s"],
+      "format_ids": ["video_16x9_30s"],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
@@ -191,7 +190,7 @@ A2A returns results as artifacts with text and data parts:
               "product_id": "ctv_sports_premium",
               "name": "CTV Sports Premium",
               "description": "Premium CTV inventory on sports content",
-              "formats": ["video_16x9_30s"],
+              "format_ids": ["video_16x9_30s"],
               "delivery_type": "guaranteed",
               "is_fixed_price": true,
               "cpm": 45.00,
@@ -239,7 +238,7 @@ A2A returns results as artifacts with text and data parts:
   "promoted_offering": "Peloton Digital Membership - unlimited access to live and on-demand fitness classes, promoting New Year special pricing",
   "filters": {
     "delivery_type": "guaranteed",
-    "formats": ["video"],
+    "format_types": ["video"],
     "is_fixed_price": true,
     "standard_formats_only": true
   }
@@ -264,7 +263,7 @@ A2A returns results as artifacts with text and data parts:
       "product_id": "open_exchange_video",
       "name": "Open Exchange - Video",
       "description": "Programmatic video inventory across all publishers",
-      "formats": ["video_standard"],
+      "format_ids": ["video_standard"],
       "delivery_type": "non_guaranteed",
       "is_fixed_price": false,
       "cpm": 12.00,
@@ -287,7 +286,7 @@ A2A returns results as artifacts with text and data parts:
       "product_id": "connected_tv_prime",
       "name": "Connected TV - Prime Time",
       "description": "Premium CTV inventory 8PM-11PM",
-      "formats": ["video_standard"],
+      "format_ids": ["video_standard"],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
@@ -309,7 +308,7 @@ A2A returns results as artifacts with text and data parts:
       "product_id": "albertsons_pet_category_syndicated",
       "name": "Pet Category Shoppers - Syndicated",
       "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days across offsite display and video inventory.",
-      "formats": [
+      "format_ids": [
         "display_300x250",
         "video_15s_vast"
       ],
@@ -335,7 +334,7 @@ A2A returns results as artifacts with text and data parts:
       "product_id": "albertsons_custom_competitive_conquest",
       "name": "Custom: Competitive Dog Food Buyers",
       "description": "Custom audience of Albertsons shoppers who buy competitive dog food brands. Higher precision targeting for conquest campaigns.",
-      "formats": [
+      "format_ids": [
         "display_300x250",
         "display_728x90"
       ],
