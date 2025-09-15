@@ -86,7 +86,7 @@ A server can offer a general catalog, but it can also return:
   "product_id": "connected_tv_prime",
   "name": "Connected TV - Prime Time",
   "description": "Premium CTV inventory 8PM-11PM",
-  "formats": [{"format_id": "video_standard", "name": "Standard Video"}],
+  "format_ids": ["video_standard"],
   "delivery_type": "guaranteed",
   "is_fixed_price": true,
   "cpm": 45.00
@@ -99,7 +99,7 @@ A server can offer a general catalog, but it can also return:
   "product_id": "custom_abc123",
   "name": "Custom - Gaming Enthusiasts",
   "description": "Custom audience package for gaming campaign",
-  "formats": [{"format_id": "display_300x250", "name": "Medium Rectangle"}],
+  "format_ids": ["display_300x250"],
   "delivery_type": "non_guaranteed",
   "is_fixed_price": false,
   "price_guidance": {
@@ -118,10 +118,10 @@ A server can offer a general catalog, but it can also return:
   "product_id": "albertsons_pet_category_offsite",
   "name": "Pet Category Shoppers - Offsite Display & Video",
   "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days. Reach them across premium display and video inventory.",
-  "formats": [
-    {"format_id": "display_300x250", "name": "Medium Rectangle"},
-    {"format_id": "display_728x90", "name": "Leaderboard"},
-    {"format_id": "video_15s_vast", "name": "15-second VAST"}
+  "format_ids": [
+    "display_300x250",
+    "display_728x90", 
+    "video_15s_vast"
   ],
   "delivery_type": "guaranteed",
   "is_fixed_price": true,

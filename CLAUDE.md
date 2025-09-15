@@ -239,6 +239,51 @@ For major version changes:
 - Run tests with `npm test` before committing
 - Ensure new features have corresponding tests
 
+### Format Field Naming Convention
+
+**CRITICAL**: Always use consistent naming for format-related fields to avoid developer confusion.
+
+**Established Convention**:
+- **`"formats"`** = Array of format objects (with full details like name, type, requirements, assets_required, etc.)
+- **`"format_ids"`** = Array of format ID strings (references to format objects)
+- **`"format_types"`** = Array of high-level type strings (video, display, audio, native, etc.)
+
+**Examples**:
+```json
+// ✅ CORRECT - list_creative_formats response (format objects)
+{
+  "formats": [
+    {
+      "format_id": "video_standard_30s",
+      "name": "Standard Video - 30 seconds", 
+      "type": "video",
+      "requirements": {...}
+    }
+  ]
+}
+
+// ✅ CORRECT - Product response (format ID strings)
+{
+  "product_id": "ctv_premium",
+  "format_ids": ["video_standard_30s", "video_standard_15s"]
+}
+
+// ✅ CORRECT - get_products filter (high-level types)
+{
+  "filters": {
+    "format_types": ["video", "display"]
+  }
+}
+```
+
+**When adding new fields**:
+- Use `format_ids` when referencing existing formats by ID
+- Use `formats` only when returning full format objects
+- Use `format_types` for broad categorical filtering
+- Never use `formats` for arrays of strings - always use `format_ids`
+
+**Schema Validation**: All schemas must follow this convention. Tests will fail if format fields don't match the expected naming pattern.
+
 ## Common Tasks
 
 ### Before Making Changes

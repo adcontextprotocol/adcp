@@ -32,7 +32,7 @@
               "type": "string"
             }
           },
-          "formats": {
+          "format_ids": {
             "type": "array",
             "description": "Array of format IDs that will be used for this package - must be supported by all products",
             "items": {
@@ -48,7 +48,7 @@
           }
         },
         "anyOf": [
-          {"required": ["buyer_ref", "products", "formats"]},
+          {"required": ["buyer_ref", "products", "format_ids"]},
           {"required": ["buyer_ref", "products", "format_selection"]}
         ],
         "additionalProperties": false
