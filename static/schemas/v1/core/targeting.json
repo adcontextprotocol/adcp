@@ -34,31 +34,6 @@
         "type": "string"
       }
     },
-    "geo_lat_long_radius": {
-      "type": "object",
-      "description": "Target by geographic coordinates and radius",
-      "properties": {
-        "latitude": {
-          "type": "number",
-          "minimum": -90,
-          "maximum": 90,
-          "description": "Latitude coordinate"
-        },
-        "longitude": {
-          "type": "number",
-          "minimum": -180,
-          "maximum": 180,
-          "description": "Longitude coordinate"
-        },
-        "radius_km": {
-          "type": "number",
-          "minimum": 0.1,
-          "description": "Radius in kilometers"
-        }
-      },
-      "required": ["latitude", "longitude", "radius_km"],
-      "additionalProperties": false
-    },
     "audience_segment_any_of": {
       "type": "array",
       "description": "Audience segment IDs to target",

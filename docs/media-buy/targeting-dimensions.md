@@ -34,7 +34,6 @@ These are provided to AXE but not available for overlay targeting:
 - **timezone**: User's timezone (required for dayparting calculations)
 - **postal_code**: Full postal/ZIP code
 - **postal_district**: First part of postal code
-- **lat_long**: Geographic coordinates
 
 ## Audio Channel
 

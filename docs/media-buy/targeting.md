@@ -81,13 +81,12 @@ Basic time-based impression suppression:
 ```json
 {
   "frequency_cap": {
-    "suppress_minutes": 30,    // Suppress for 30 minutes after impression
-    "scope": "media_buy"       // Apply at media_buy or package level
+    "suppress_minutes": 30    // Suppress for 30 minutes after impression (applied at package level)
   }
 }
 ```
 
-**Note**: This provides simple suppression. More sophisticated frequency management (cross-device, complex attribution windows, household-level) is handled by the AXE layer.
+**Note**: This provides simple suppression at the package level. More sophisticated frequency management (cross-device, complex attribution windows, household-level) is handled by the AXE layer.
 
 ### Custom Platform Targeting
 
@@ -142,8 +141,7 @@ Media buys apply targeting through the overlay:
     "geo_region_any_of": ["CA", "NY"],
     "audience_segment_any_of": ["3p:sports_fans"],
     "frequency_cap": {
-      "suppress_minutes": 30,
-      "scope": "media_buy"
+      "suppress_minutes": 30
     }
   }
 }
@@ -204,8 +202,7 @@ Example error:
     ]
   },
   "frequency_cap": {
-    "suppress_minutes": 180,  // 3 hours
-    "scope": "package"       // Applied at package level for CTV
+    "suppress_minutes": 180  // 3 hours (applied at package level for CTV)
   }
 }
 ```
