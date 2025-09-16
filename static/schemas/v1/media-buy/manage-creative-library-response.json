@@ -1,0 +1,164 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/manage-creative-library-response.json",
+  "title": "Manage Creative Library Response",
+  "description": "Response payload for manage_creative_library task",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["search", "upload", "tag", "organize", "get_details"],
+      "description": "The management action that was performed"
+    },
+    "result": {
+      "type": "object",
+      "description": "Action-specific result data"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"action": {"const": "search"}}
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "type": "object",
+            "properties": {
+              "assets": {
+                "type": "array",
+                "description": "Matching creative assets",
+                "items": {
+                  "$ref": "/schemas/v1/core/creative-asset.json"
+                }
+              },
+              "total_count": {
+                "type": "integer",
+                "description": "Total number of matching assets"
+              },
+              "suggestions": {
+                "type": "array",
+                "description": "Search refinement suggestions",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {"type": "string"},
+                    "description": {"type": "string"},
+                    "query": {"type": "string"}
+                  }
+                }
+              }
+            },
+            "required": ["assets", "total_count"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"action": {"const": "upload"}}
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "type": "object",
+            "properties": {
+              "asset": {
+                "$ref": "/schemas/v1/core/creative-asset.json",
+                "description": "The uploaded asset with assigned ID"
+              },
+              "upload_url": {
+                "type": "string",
+                "description": "URL for direct file upload if needed"
+              },
+              "processing_status": {
+                "type": "string",
+                "enum": ["uploaded", "processing", "ready", "failed"],
+                "description": "Current processing status of the asset"
+              }
+            },
+            "required": ["asset", "processing_status"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"action": {"enum": ["tag", "organize"]}}
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "type": "object",
+            "properties": {
+              "asset": {
+                "$ref": "/schemas/v1/core/creative-asset.json",
+                "description": "The updated asset"
+              },
+              "success": {
+                "type": "boolean",
+                "description": "Whether the operation was successful"
+              }
+            },
+            "required": ["asset", "success"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"action": {"const": "get_details"}}
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "type": "object",
+            "properties": {
+              "asset": {
+                "$ref": "/schemas/v1/core/creative-asset.json",
+                "description": "Detailed asset information"
+              },
+              "usage_history": {
+                "type": "array",
+                "description": "History of where this asset has been used",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "campaign_id": {"type": "string"},
+                    "campaign_name": {"type": "string"},
+                    "usage_date": {"type": "string", "format": "date-time"},
+                    "performance_metrics": {"type": "object"}
+                  }
+                }
+              },
+              "related_assets": {
+                "type": "array",
+                "description": "Related or similar assets",
+                "items": {
+                  "$ref": "/schemas/v1/core/creative-asset.json"
+                }
+              }
+            },
+            "required": ["asset"]
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
+    }
+  },
+  "required": ["adcp_version", "action", "result"],
+  "additionalProperties": false
+}
