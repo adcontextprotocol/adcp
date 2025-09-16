@@ -7,12 +7,39 @@ sidebar_position: 13
 
 Build creative content for a specific format using a creative agent that can generate either a creative manifest (static mode) or executable code (dynamic mode). This tool supports conversational refinement through a series of messages.
 
+## Format Lookup
+
+Creative agents need to understand format requirements to generate appropriate creatives. The format lookup process works as follows:
+
+1. **Standard AdCP Formats**: If `format_source` is omitted or null, the `format_id` refers to a standard AdCP format (e.g., "display_native", "video_standard_30s")
+
+2. **Publisher-Specific Formats**: If `format_source` is provided, the creative agent calls `list_creative_formats` on that sales agent URL to discover the format definition
+
+3. **Format Discovery**: Sales agents should make `list_creative_formats` accessible without authentication for creative agents to discover format requirements
+
+### Format Source Examples
+
+```json
+// Standard AdCP format
+{
+  "format_id": "display_native"
+  // format_source omitted = standard format
+}
+
+// Publisher-specific format
+{
+  "format_id": "premium_video_30s",
+  "format_source": "https://publisher.com/.well-known/adcp/sales"
+}
+```
+
 ## Request Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `message` | string | Yes | The request message (initial brief or refinement instructions) |
-| `format` | string or object | Yes* | Either format ID (string) for standard formats or full format definition (object) for custom formats (*Required for initial request) |
+| `format_source` | string | No | Source URL for format lookup (sales agent URL). If null/omitted, assumes standard AdCP format |
+| `format_id` | string | Yes | Format identifier to look up from the format source |
 | `context_id` | string | No | Session context from previous message for continuity |
 | `assets` | array | No | References to asset libraries and specific assets |
 | `output_mode` | string | No | `"manifest"` for creative manifest or `"code"` for executable (default: `"manifest"`) |
@@ -81,7 +108,7 @@ Build creative content for a specific format using a creative agent that can gen
 ```json
 {
   "type": "creative_manifest",
-  "format": "display_native",
+  "format_id": "display_native",
   "assets": {
     "headline": "Premium Dog Nutrition",
     "description": "Veterinarian recommended formula with real salmon",
@@ -112,7 +139,7 @@ Build creative content for a specific format using a creative agent that can gen
 ```json
 {
   "type": "creative_code",
-  "format": "html5",
+  "format_id": "html5",
   "code": "<div id='adcp-creative'>\n  <script>\n    (function() {\n      // Dynamic creative logic\n      const context = window.ADCP_CONTEXT || {};\n      const assets = {\n        sunny: 'outdoor-dog.jpg',\n        rainy: 'indoor-cozy.jpg'\n      };\n      \n      // Select asset based on weather\n      const heroImage = assets[context.weather] || assets.sunny;\n      \n      // Render creative\n      document.getElementById('adcp-creative').innerHTML = `\n        <img src=\"${heroImage}\" />\n        <h2>${context.time === 'morning' ? 'Start Their Day Right' : 'Premium Nutrition'}</h2>\n        <button>Shop Now</button>\n      `;\n    })();\n  </script>\n</div>",
   "dependencies": {
     "context_required": ["weather", "time"],
@@ -153,7 +180,7 @@ Build creative content for a specific format using a creative agent that can gen
 ```json
 {
   "message": "Create a native ad for Yahoo promoting Purina Pro Plan. Focus on the veterinarian recommendation and that real salmon is the #1 ingredient. Use an informative and trustworthy tone with 'Learn More' as the CTA.",
-  "format": "display_native",
+  "format_id": "display_native",
   "output_mode": "manifest",
   "assets": [
     {
@@ -172,7 +199,7 @@ Build creative content for a specific format using a creative agent that can gen
   "status": "draft",
   "creative_output": {
     "type": "creative_manifest",
-    "format": "display_native",
+    "format_id": "display_native",
     "assets": {
       "headline": "Veterinarian Recommended Nutrition",
       "description": "Pro Plan with real salmon as the #1 ingredient provides complete nutrition for your dog's sensitive skin and stomach.",
@@ -243,7 +270,7 @@ Build creative content for a specific format using a creative agent that can gen
   "status": "ready",
   "creative_output": {
     "type": "creative_manifest",
-    "format": "display_native",
+    "format_id": "display_native",
     "assets": {
       "headline": "Veterinarian Recommended Grain-Free Nutrition",
       "description": "Pro Plan's grain-free formula with real salmon as the #1 ingredient provides complete nutrition without grains that can upset sensitive stomachs.",
@@ -275,7 +302,7 @@ Build creative content for a specific format using a creative agent that can gen
   "status": "ready",
   "creative_output": {
     "type": "creative_manifest",
-    "format": "display_native",
+    "format_id": "display_native",
     "assets": {
       "headline": "Veterinarian Recommended Grain-Free Nutrition",
       "description": "Pro Plan's grain-free formula with real salmon as the #1 ingredient provides complete nutrition without grains that can upset sensitive stomachs.",
@@ -301,7 +328,7 @@ Build creative content for a specific format using a creative agent that can gen
 ```json
 {
   "message": "I need a dynamic 30-second video for Purina that adapts based on viewer context. It should be upbeat and personalized, focusing on premium nutrition tailored for each dog's needs. The CTA should be 'Find Your Formula'.",
-  "format": "video_standard_30s",
+  "format_id": "video_standard_30s",
   "output_mode": "code",
   "assets": [
     {
@@ -366,59 +393,73 @@ Build creative content for a specific format using a creative agent that can gen
 #### Message 1: Initial Brief
 ```json
 {
-  "message": "Create a TikTok Spark ad featuring user-generated content style. Keep it authentic and fun, focusing on real pet parents and their transformation stories. Use 'See Their Story' as the CTA.",
-  "format": {
-    "id": "custom_tiktok_spark",
-    "name": "TikTok Spark Ad",
-    "platform": "tiktok",
-    "required_assets": [
-      {"name": "video_url", "type": "video", "constraints": {"duration": "9-60s", "aspect_ratio": "9:16"}},
-      {"name": "cover_image", "type": "image", "constraints": {"dimensions": "1080x1920"}},
-      {"name": "caption", "type": "text", "constraints": {"max_length": 150}},
-      {"name": "cta_text", "type": "text", "constraints": {"max_length": 20}}
-    ]
-  },
-  "output_mode": "manifest",
-  "preview_options": {
-    "template_id": "tiktok_spark_preview_v2"
-  }
+  "message": "Create a short-form video ad featuring user-generated content style. Keep it authentic and fun, focusing on real pet parents and their transformation stories. Use 'See Their Story' as the CTA.",
+  "format_id": "custom_short_form_video",
+  "format_source": "https://videoplatform.com/.well-known/adcp/sales",
+  "output_mode": "manifest"
 }
 ```
 
 #### Response
 ```json
 {
-  "message": "Created a TikTok Spark ad with UGC-style content. The preview shows how it will appear in the TikTok feed with engagement metrics.",
-  "context_id": "ctx-tiktok-123",
-  "status": "ready",
-  "creative_output": {
-    "type": "creative_manifest",
-    "format": {
-      "id": "custom_tiktok_spark",
-      "name": "TikTok Spark Ad"
+  "context_id": "ctx-video-123",
+  "creative": {
+    "format_id": "custom_short_form_video",
+  "format_source": "https://videoplatform.com/.well-known/adcp/sales",
+      "id": "custom_short_form_video",
+      "name": "Short Form Video Ad",
+      "type": "video"
     },
-    "assets": {
-      "video_url": "https://cdn.purina.com/ugc/transformation-story.mp4",
-      "cover_image": "https://cdn.purina.com/ugc/transformation-cover.jpg",
-      "creator_handle": "@realpetparent",
-      "creator_avatar": "https://cdn.purina.com/ugc/creator-avatar.jpg",
-      "caption": "Can't believe the difference Pro Plan made! 🐕 #DogTransformation #PurinaPro",
-      "music_track": "Happy - Pharrell Williams",
-      "cta_text": "See Their Story",
-      "engagement_stats": {
-        "likes": "24.5K",
-        "comments": "892",
-        "shares": "1.2K"
+    "output_mode": "manifest",
+    "assets": [
+      {
+        "asset_id": "video_001",
+        "asset_role": "primary_video",
+        "type": "video",
+        "url": "https://cdn.petfood.com/ugc/transformation-story.mp4",
+        "metadata": {
+          "duration": 45,
+          "dimensions": {"width": 1080, "height": 1920}
+        }
+      },
+      {
+        "asset_id": "cover_001",
+        "asset_role": "cover_image",
+        "type": "image", 
+        "url": "https://cdn.petfood.com/ugc/transformation-cover.jpg",
+        "metadata": {
+          "dimensions": {"width": 1080, "height": 1920}
+        }
+      },
+      {
+        "asset_id": "text_001",
+        "asset_role": "caption",
+        "type": "text",
+        "content": "Can't believe the difference Pro Plan made! 🐕 #DogTransformation #PetNutrition"
+      },
+      {
+        "asset_id": "cta_001", 
+        "asset_role": "cta_text",
+        "type": "text",
+        "content": "See Their Story"
+      }
+    ],
+    "layout": {
+      "composition": "vertical_video_with_overlay_text",
+      "positioning": {
+        "caption": {"position": "bottom", "overlay": true},
+        "cta": {"position": "bottom_right", "overlay": true}
       }
     }
   },
-  "preview": {
-    "template_preview": {
-      "url": "https://preview.adcp.com/ctx-tiktok-123/tiktok-feed",
-      "template_id": "tiktok_spark_preview_v2",
-      "description": "Rendered using TikTok's Spark ad preview template"
+  "suggestions": [
+    {
+      "type": "variation",
+      "description": "Create horizontal version for display placements",
+      "prompt": "Adapt this creative to 16:9 aspect ratio for display advertising"
     }
-  }
+  ]
 }
 ```
 

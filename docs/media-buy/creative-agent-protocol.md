@@ -27,7 +27,7 @@ The creative building process involves:
 2. **Code Mode**: Returns executable code (HTML/JS) that renders the creative dynamically
 
 ### Asset Library
-Publishers maintain a library of reusable assets that can be combined to create creatives:
+Advertisers maintain a library of reusable assets that can be combined to create creatives:
 - Brand assets (logos, colors, fonts)
 - Stock imagery and video clips
 - Audio tracks and voiceovers
@@ -261,7 +261,7 @@ Subsequent messages continue the conversation using the context_id:
 
 ### Asset Discovery
 
-Publishers can provide tools to search and browse available assets:
+Asset providers (advertisers, agencies, or publishers) can provide tools to search and browse available assets:
 
 ```json
 {
