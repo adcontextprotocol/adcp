@@ -79,6 +79,8 @@ const sidebars: SidebarsConfig = {
             'media-buy/media-products',
             'media-buy/media-buys',
             'media-buy/dimensions',
+            'media-buy/brief-expectations',
+            'media-buy/example-briefs',
           ],
         },
         {
