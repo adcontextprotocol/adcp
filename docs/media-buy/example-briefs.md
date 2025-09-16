@@ -5,7 +5,7 @@ title: Example Campaign Briefs
 
 # Example Campaign Briefs
 
-These annotated examples demonstrate how natural language briefs work in AdCP for audience-enabled media buying, showing progression from basic to sophisticated targeting strategies.
+These annotated examples demonstrate how natural language briefs work in AdCP, describing target customers and campaign objectives to help publishers recommend appropriate media products.
 
 ## 1. Minimal Brief: Essential Elements
 
@@ -13,182 +13,208 @@ These annotated examples demonstrate how natural language briefs work in AdCP fo
 
 ```json
 {
-  "brief": "Mike's Plumbing Services needs to reach homeowners in the Denver metro area who might need emergency plumbing repairs or routine maintenance. We have $8,000 to spend from October 15-31, 2024. Looking to drive phone calls for service appointments."
+  "brief": "Mike's Plumbing Services needs to reach homeowners in the Denver, Colorado area who might need plumbing services. We have $8,000 USD to spend from October 15-31, 2024. Looking for display and native formats to drive phone calls."
 }
 ```
 
 **Why This Works:**
-- ✅ **Clear advertiser** - Mike's Plumbing Services
-- ✅ **Target audience** - Homeowners in Denver metro
-- ✅ **Objective** - Drive phone calls
-- ✅ **Budget and timing** - $8,000 over 2 weeks
-- ⚠️ **Could improve** - Add more audience details (age, income)
+- ✅ **Clear business** - Mike's Plumbing Services
+- ✅ **Customer description** - Homeowners needing plumbing
+- ✅ **Geographic market** - Denver, Colorado (USA implied)
+- ✅ **Format preferences** - Display and native
+- ✅ **Budget and timing** - $8,000 USD over 2 weeks
+- ✅ **Business outcome** - Phone calls
 
 **Publisher Interpretation:**
-- Geographic targeting: Denver DMA
-- Audience: Homeowners (property owners)
-- Optimization goal: Phone call conversions
-- Budget pacing: ~$500/day
+Publishers can suggest targeting approaches like:
+- Homeownership signals
+- Home improvement interest
+- Local service searchers
+- Emergency service needs
 
 ---
 
-## 2. Standard Brief: Clear Audience Definition
+## 2. Standard Brief: Customer Story
 
 ### E-commerce Product Launch
 
 ```json
 {
-  "brief": "TechGear Pro is launching new wireless headphones. We need to reach tech enthusiasts and early adopters aged 25-45 with household income over $50K who are interested in premium audio, music, fitness, and travel. Campaign runs November 1-14, 2024 with $25,000 budget. Goal is to drive online sales with target CPA of $45-55."
+  "brief": "TechGear Pro is launching premium wireless headphones in the United States. Our customers are typically young professionals who commute, work out regularly, and value high-quality audio for both music and calls. They're willing to pay more for products that last longer and perform better. We need video and display formats to drive online sales during our launch November 1-14, 2024. Budget is $25,000 USD with a target of acquiring customers at $45-55 each."
 }
 ```
 
 **Why This Works:**
-- ✅ **Demographic targeting** - Age 25-45, HHI $50K+
-- ✅ **Interest targeting** - Tech, audio, music, fitness, travel
-- ✅ **Behavioral targeting** - Early adopters, premium buyers
-- ✅ **Clear KPIs** - Sales with $45-55 CPA target
-- ✅ **Defined flight** - 2-week launch period
+- ✅ **Customer profile** - Young professionals with active lifestyles
+- ✅ **Customer values** - Quality, durability, performance
+- ✅ **Geographic market** - United States
+- ✅ **Format needs** - Video and display
+- ✅ **Clear economics** - $45-55 customer acquisition cost
+- ✅ **Natural description** - Lets publishers suggest targeting
 
-**Publisher Interpretation:**
-- Build audience segments from demographics and interests
-- Optimize toward conversion goals
-- Apply frequency caps for launch period
-- Use lookalike modeling from converter profiles
+**Publisher Suggestions Might Include:**
+- Commuter targeting
+- Fitness enthusiast segments
+- Premium brand affinity
+- Audio equipment researchers
+- Professional demographic overlays
 
 ---
 
-## 3. Comprehensive Brief: B2B Targeting
+## 3. Comprehensive Brief: B2B Customer Description
 
 ### Enterprise Software Campaign
 
 ```json
 {
-  "brief": "CloudSync Solutions needs to reach IT decision makers at mid-market companies (500-5000 employees) in financial services, healthcare, retail, and manufacturing. Target titles include IT Directors, Cloud Architects, CTOs, and DevOps Engineers. Focus on companies showing intent signals around cloud migration, hybrid cloud, and data synchronization. Also target visitors to competitor sites like Informatica, Talend, and MuleSoft. We want to generate 150 qualified leads at $200-250 per lead. Campaign runs October through December 2024 with $90,000 total budget. Primary markets are US and Canada, secondary markets UK and Germany."
+  "brief": "CloudSync Solutions helps companies manage data across multiple cloud platforms. Our ideal customers are growing businesses in the United States, Canada, United Kingdom, and Germany that have recently adopted cloud services and are struggling to keep data synchronized. These companies typically have distributed teams, use multiple SaaS tools, and are concerned about data security and compliance. The decision makers are usually technical leaders who report directly to the C-suite and are tasked with modernizing their company's infrastructure. We're looking for native content and display formats to generate qualified leads at $200-250 per lead. Q4 2024 campaign with $90,000 USD total budget."
 }
 ```
 
 **Why This Works:**
-- ✅ **Firmographic targeting** - Company size, industries
-- ✅ **Title/persona targeting** - Specific decision makers
-- ✅ **Intent signals** - Cloud migration, data sync research
-- ✅ **Competitive conquest** - Competitor site visitors
-- ✅ **Lead generation focus** - Clear volume and cost targets
-- ✅ **Geographic priorities** - Primary and secondary markets
+- ✅ **Customer context** - Growing businesses with cloud challenges
+- ✅ **Customer pain points** - Data sync, security, compliance
+- ✅ **Decision maker profile** - Technical leaders near C-suite
+- ✅ **Multiple countries** - US, CA, UK, DE specified
+- ✅ **Format preferences** - Native content and display
+- ✅ **Flexible targeting** - Publishers can interpret signals
 
-**Publisher Interpretation:**
-- Activate B2B data providers for firmographics
-- Use intent data for in-market identification
-- Apply title-based targeting from professional data
-- Set up competitive conquesting campaigns
-- Implement lead scoring and quality filters
+**Publisher Interpretation Opportunities:**
+- Cloud adoption signals
+- Company growth indicators
+- Technology stack analysis
+- Title and seniority matching
+- Industry compliance needs
 
 ---
 
-## 4. Advanced Brief: Multi-Segment Strategy
+## 4. Advanced Brief: Multi-Audience Campaign
 
-### Automotive Launch Campaign
+### Automotive Launch
 
 ```json
 {
-  "brief": "EcoMotion is launching our new hybrid SUV. Primary audience: eco-conscious families with household income $75K-150K, ages 35-55, who currently own SUVs and are interested in environmental topics. Secondary audience: affluent early adopters interested in luxury vehicles and new technology. Conquest audience: people actively shopping for Toyota Highlander, Honda Pilot, or other 3-row SUVs. Also target based on behaviors: outdoor enthusiasts, suburban families with children, and people who've visited EV/hybrid content. Geographic focus on California, Pacific Northwest, and Northeast metros. October through December with $450,000 total budget. Success is measured by test drive appointments and dealer visits."
+  "brief": "EcoMotion is launching our new hybrid SUV in the United States, specifically California, Pacific Northwest, and Northeast regions. We have three distinct customer groups we want to reach with video, Connected TV, and display formats:
+
+1. Eco-conscious families who currently drive older SUVs and are concerned about their environmental impact but need the space for kids and activities. They research extensively and value safety ratings and environmental certifications.
+
+2. Tech-forward professionals who see their vehicle as an extension of their digital lifestyle. They're early adopters who want the latest features and are willing to pay premium prices for innovation.
+
+3. Current owners of competitor vehicles (Toyota Highlander, Honda Pilot) who might be in market for their next vehicle. They value reliability and total cost of ownership.
+
+Campaign runs October-December 2024 with $450,000 USD budget. Success means driving dealership visits and test drive appointments."
 }
 ```
 
 **Why This Works:**
-- ✅ **Multiple audience segments** - Primary, secondary, conquest
-- ✅ **Rich behavioral data** - Current SUV owners, outdoor enthusiasts
-- ✅ **Competitive targeting** - Specific model conquest
-- ✅ **Interest + intent** - Environmental interest + auto shopping
-- ✅ **Geographic strategy** - EV-friendly markets
-- ✅ **Clear success metrics** - Test drives and dealer visits
+- ✅ **Three distinct customer stories** - Each with different motivations
+- ✅ **Regional focus** - Specific US regions identified
+- ✅ **Format strategy** - Video, CTV, and display
+- ✅ **Competitive context** - Without being prescriptive
+- ✅ **Customer journey insights** - Research behavior, values
+- ✅ **Clear success metrics** - Dealership engagement
 
-**Publisher Interpretation:**
-- Create separate audience segments for testing
-- Layer demographics with auto-intender data
-- Apply geographic and behavioral targeting
-- Use dynamic optimization across segments
-- Focus on lower-funnel automotive metrics
-
----
-
-## Industry-Specific Brief Examples
-
-### Financial Services
-```json
-{
-  "brief": "NextGen Banking wants to reach mass affluent consumers ($100K+ income, ages 30-60) who currently have savings accounts with traditional banks and are researching high-yield savings options. Exclude existing customers. Focus on major metros. January campaign with $400,000 budget targeting 5,000 new account opens."
-}
-```
-
-### Healthcare
-```json
-{
-  "brief": "HealthFirst Urgent Care needs to reach families with children and adults 25-65 within 10 miles of our 15 Ohio clinic locations. Target people with employer-sponsored health insurance who haven't visited an urgent care in the past year. $20,000 monthly ongoing budget to drive appointment bookings."
-}
-```
-
-### Streaming Service
-```json
-{
-  "brief": "StreamPlus needs to reach cord-cutters and cord-nevers aged 25-54 who are sports fans, particularly NFL and NBA followers, in markets where we have local broadcast rights. Also target households that subscribe to 2+ streaming services. Q4 campaign with $2M budget to drive free trial sign-ups."
-}
-```
-
-### Mobile Gaming
-```json
-{
-  "brief": "GameStudio targeting casual mobile gamers aged 25-45 who play puzzle and match-3 games, have made in-app purchases before, and use iOS devices. Focus on users who've played competitor games like Candy Crush or Gardenscapes. January launch with $175,000 budget, goal of 50,000 installs."
-}
-```
+**Publisher Value-Add:**
+- Suggest family-oriented contexts
+- Identify early adopter signals
+- Find competitive conquesting opportunities
+- Layer in environmental interest data
+- Apply automotive shopping behaviors
 
 ---
 
-## What NOT to Include in Briefs
+## Industry-Specific Examples
 
-Briefs should focus on **who** to reach and **what** business outcome to drive. They should NOT include:
+### Financial Services - United States
+```json
+{
+  "brief": "NextGen Banking is promoting our high-yield savings account across the United States. Our target customers are professionals who have accumulated some savings but keep it in traditional banks earning minimal interest. They're financially responsible but not necessarily investment-savvy, and they value security and ease of use over complex features. Looking for display and native formats to acquire 5,000 new accounts in January 2025 with $400,000 USD budget."
+}
+```
 
-### ❌ Creative Specifications
-- Asset sizes, formats, or technical specs
-- Creative messaging or copy
-- Production requirements
+### Healthcare - Regional US
+```json
+{
+  "brief": "HealthFirst Urgent Care serves families in Ohio who need convenient, affordable healthcare. Our patients typically have insurance but want to avoid emergency room costs and wait times. They're parents with young children, working professionals who can't take time off for appointments, and seniors who need accessible care close to home. We need display and video formats to drive appointment bookings. $20,000 USD monthly budget."
+}
+```
 
-### ❌ Technical Implementation
-- Attribution models
-- Pixel placement
-- Analytics integration
-- Measurement vendors
+### Streaming Service - North America
+```json
+{
+  "brief": "StreamPlus is expanding in the United States and Canada. Our subscribers love live sports but have cut the cord on traditional cable. They're social viewers who watch games with friends and family, follow multiple teams, and want access to both local and national broadcasts. We need Connected TV, video, and display formats for our Q4 2024 campaign with $2M USD budget to drive free trial sign-ups."
+}
+```
 
-### ❌ Media Tactics
-- Specific channels or publishers
-- Bid strategies
-- Frequency caps
-- Dayparting rules
-
-These are either handled separately (creative via `sync_creatives`) or determined by the publisher based on their capabilities and optimization strategies.
+### Mobile Gaming - Global English Markets
+```json
+{
+  "brief": "GameStudio is launching our puzzle game in the United States, United Kingdom, Canada, and Australia. Our players are typically adults who play mobile games during commutes, breaks, and before bed. They've played games like Candy Crush or Wordle and enjoy mental challenges that don't require long time commitments. Looking for video and display formats to acquire 50,000 players at $3.50 each in January 2025 with $175,000 USD budget."
+}
+```
 
 ---
 
 ## Brief Writing Best Practices
 
-### Focus on Audience Insights
-- **Demographics**: Age, income, gender, education
-- **Firmographics**: Company size, industry, revenue (B2B)
-- **Interests**: Topics, hobbies, content consumption
-- **Behaviors**: Purchase history, website visits, app usage
-- **Intent signals**: In-market status, research behavior
-- **Geography**: Markets, DMAs, radius targeting
+### Describe Your Customer Naturally
 
-### Specify Business Outcomes
-- **Direct response**: Leads, sales, app installs, sign-ups
-- **Engagement**: Website visits, content downloads, video views
-- **Awareness**: Reach, brand lift, consideration
-- **Offline**: Store visits, phone calls, test drives
+Instead of prescribing targeting tactics, describe your customer's:
+- **Situation**: What's happening in their life/business?
+- **Challenges**: What problems do they face?
+- **Values**: What matters to them?
+- **Behaviors**: How do they research and buy?
+- **Context**: When and why do they need you?
 
-### Provide Context
-- **Campaign purpose**: Launch, promotion, seasonal, always-on
-- **Competitive landscape**: Conquest targets, differentiation
-- **Budget parameters**: Total, monthly, or daily limits
-- **Success definitions**: KPIs, benchmarks, goals
+### Always Include Geographic Scope
+
+- Specify countries explicitly
+- Include currency (USD, EUR, GBP, etc.)
+- Note regional focuses within countries
+- Consider time zones for global campaigns
+
+### Specify Format Preferences
+
+Include format types to indicate channel strategy:
+- **Display**: Standard web advertising
+- **Video**: In-stream and out-stream video
+- **Connected TV**: Television streaming ads
+- **Audio**: Podcast and music streaming
+- **Native**: Content-style advertising
+
+### Let Publishers Add Value
+
+Good briefs leave room for publisher expertise:
+- Describe customers, not targeting parameters
+- Share context, not just demographics
+- Explain the "why" behind your campaign
+- Allow for creative targeting suggestions
+
+---
+
+## What's Different About AdCP Briefs
+
+### ✅ DO Include:
+- Customer descriptions and stories
+- Geographic markets and currencies
+- Format preferences (indicates channels)
+- Business objectives and KPIs
+- Budget and timing
+- Competitive context
+
+### ❌ DON'T Prescribe:
+- Specific targeting parameters
+- Exact audience segments
+- Technical implementations
+- Frequency caps or bid strategies
+- Attribution methodologies
+
+### 🤝 Let Publishers:
+- Suggest targeting approaches
+- Recommend audience strategies
+- Optimize based on their data
+- Apply their platform expertise
+- Test and learn what works
 
 ---
 
@@ -196,28 +222,30 @@ These are either handled separately (creative via `sync_creatives`) or determine
 
 ### Essential Elements
 - [ ] Clear advertiser/brand identification
-- [ ] Target audience description
-- [ ] Business objective or KPI
-- [ ] Budget amount
-- [ ] Campaign timing
+- [ ] Geographic markets specified
+- [ ] Currency indicated
+- [ ] Format preferences stated
+- [ ] Budget and timing included
+- [ ] Business objective defined
 
-### Audience Definition
-- [ ] Demographics or firmographics
-- [ ] Interests or behaviors
-- [ ] Geographic scope
-- [ ] Exclusions (existing customers, etc.)
+### Customer Description
+- [ ] Customer situation/context
+- [ ] Problems they're solving
+- [ ] How they make decisions
+- [ ] What they value
+- [ ] Natural, conversational tone
 
-### Optional Enhancements
-- [ ] Intent signals to leverage
-- [ ] Competitive conquest targets
-- [ ] Multiple audience segments
-- [ ] Success metrics/benchmarks
+### Campaign Context
+- [ ] Why this campaign now?
+- [ ] Success metrics defined
+- [ ] Competitive landscape mentioned
+- [ ] Flexibility for publisher input
 
 ---
 
 ## Related Documentation
 
 - [Brief Expectations](./brief-expectations.md) - How publishers process briefs
+- [Creative Formats](./creative-formats.md) - Available format types
 - [Media Buy Lifecycle](./media-buy-lifecycle.md) - Campaign execution workflow
-- [Targeting Dimensions](./targeting-dimensions.md) - Available audience capabilities
 - [Product Discovery](./product-discovery.md) - How briefs influence product selection
