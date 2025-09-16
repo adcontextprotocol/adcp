@@ -159,8 +159,7 @@ const exampleData = {
   },
   
   frequencyCap: {
-    "suppress_minutes": 1440,
-    "scope": "media_buy"
+    "suppress_minutes": 1440
   },
   
   format: {

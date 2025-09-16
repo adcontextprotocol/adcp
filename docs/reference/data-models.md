@@ -103,7 +103,6 @@ interface Targeting {
   signals?: string[];
   frequency_cap?: {
     suppress_minutes: number;
-    scope: 'media_buy' | 'package';
   };
 }
 ```

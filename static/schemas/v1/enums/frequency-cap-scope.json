@@ -4,9 +4,8 @@
   "title": "Frequency Cap Scope",
   "description": "Scope for frequency cap application",
   "type": "string",
-  "enum": ["media_buy", "package"],
+  "enum": ["package"],
   "enumDescriptions": {
-    "media_buy": "Apply frequency cap across the entire media buy",
     "package": "Apply frequency cap at the package level"
   }
 }

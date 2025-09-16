@@ -45,7 +45,6 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `geo_region_any_of` | string[] | No | Target specific regions/states |
 | `geo_metro_any_of` | string[] | No | Target specific metro areas (DMA codes) |
 | `geo_postal_code_any_of` | string[] | No | Target specific postal/ZIP codes |
-| `geo_lat_long_radius` | object | No | Target by geographic coordinates and radius |
 | `device_type_any_of` | string[] | No | Target specific device types (desktop, mobile, tablet, connected_tv, smart_speaker) |
 | `os_any_of` | string[] | No | Target specific operating systems (windows, macos, ios, android, linux, roku, tvos, other) |
 | `browser_any_of` | string[] | No | Target specific browsers (chrome, firefox, safari, edge, other) |
@@ -60,15 +59,13 @@ Create a media buy from selected packages. This task handles the complete workfl
 |-----------|------|----------|-------------|
 | `total` | number | Yes | Total budget amount |
 | `currency` | string | Yes | ISO 4217 currency code (e.g., "USD", "EUR", "GBP") |
-| `daily_cap` | number | No | Daily budget cap (null for no limit) |
-| `pacing` | string | No | Pacing strategy: `"even"`, `"asap"`, or `"front_loaded"` (default: `"even"`) |
+| `pacing` | string | No | Pacing strategy: `"even"` (allocate remaining budget evenly over remaining time), `"asap"` (spend remaining budget as quickly as possible), or `"front_loaded"` (allocate more remaining budget earlier) - default: `"even"` |
 
 ### Frequency Cap Object
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `suppress_minutes` | number | Yes | Minutes to suppress after impression |
-| `scope` | string | No | Apply at `"media_buy"` or `"package"` level |
+| `suppress_minutes` | number | Yes | Minutes to suppress after impression (applied at package level) |
 
 ## Response (Message)
 
@@ -156,7 +153,6 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
     "budget": {
       "total": 100000,
       "currency": "USD",
-      "daily_cap": 5000,
       "pacing": "even"
     }
   }
@@ -292,7 +288,6 @@ await a2a.send({
             "budget": {
               "total": 100000,
               "currency": "USD",
-              "daily_cap": 5000,
               "pacing": "even"
             }
           }
@@ -582,8 +577,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
         "axe_include_segment": "x7h4n",
         "signals": ["auto_intenders_q1_2025"],
         "frequency_cap": {
-          "suppress_minutes": 30,
-          "scope": "package"
+          "suppress_minutes": 30
         }
       }
     },
@@ -625,7 +619,6 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
       "budget": {
         "total": 75000,
         "currency": "USD",
-        "daily_cap": 2500,
         "pacing": "even"
       },
       "targeting_overlay": {
@@ -634,8 +627,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
         "axe_include_segment": "x3f9q",
         "axe_exclude_segment": "x2v8r",
         "frequency_cap": {
-          "suppress_minutes": 60,
-          "scope": "package"
+          "suppress_minutes": 60
         }
       }
     }
@@ -647,7 +639,6 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
   "budget": {
     "total": 75000,
     "currency": "USD",
-    "daily_cap": 2500,
     "pacing": "even"
   }
 }

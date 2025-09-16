@@ -286,7 +286,7 @@ data: {"artifacts": [{"name": "update_confirmation", "parts": [{"kind": "text", 
 ```
 
 #### Response - Immediate Update
-**Message**: "Campaign updated successfully. Budget increased from $50,000 to $75,000 (+50%), giving you more reach for the extended flight through February 28. CTV package switched to front-loaded pacing to maximize early delivery, while audio package has been paused. Changes take effect immediately."
+**Message**: "Campaign updated successfully. Budget increased from $50,000 to $75,000 (+50%), giving you more reach for the extended flight through February 28. CTV package switched to front-loaded pacing to allocate more remaining budget earlier in the remaining campaign period, while audio package has been paused. Changes take effect immediately."
 
 **Payload**:
 ```json
@@ -458,7 +458,7 @@ For A2A implementations, task status is delivered via:
 - Budget increases may require approval based on publisher policies
 - Pausing a campaign preserves all settings and can be resumed anytime
 - Package-level updates override campaign-level settings
-- Some updates may affect pacing calculations and delivery patterns
+- Some updates may affect how remaining budget is allocated over remaining time
 
 ## Platform Implementation
 

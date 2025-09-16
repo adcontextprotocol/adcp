@@ -6,8 +6,8 @@
   "type": "string",
   "enum": ["even", "asap", "front_loaded"],
   "enumDescriptions": {
-    "even": "Spend budget evenly over the campaign duration",
-    "asap": "Spend budget as quickly as possible",
-    "front_loaded": "Spend more budget at the beginning of the campaign"
+    "even": "Allocate remaining budget evenly over remaining campaign duration (default)",
+    "asap": "Spend remaining budget as quickly as possible",
+    "front_loaded": "Allocate more remaining budget earlier in the remaining campaign period"
   }
 }
