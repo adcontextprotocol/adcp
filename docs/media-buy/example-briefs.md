@@ -5,7 +5,7 @@ title: Example Campaign Briefs
 
 # Example Campaign Briefs
 
-These annotated examples demonstrate how to create effective campaign briefs at different complexity levels, showcasing the progression from essential elements to comprehensive strategies.
+These annotated examples demonstrate how natural language briefs work in AdCP, showing progression from essential elements to comprehensive campaign strategies.
 
 ## 1. Minimal Brief: Essential Elements
 
@@ -13,11 +13,7 @@ These annotated examples demonstrate how to create effective campaign briefs at 
 
 ```json
 {
-  "advertiser": "Mike's Plumbing Services",
-  "promoted_offering": "24/7 emergency plumbing repairs and routine maintenance in Denver metro area",
-  "objectives": "Drive phone calls for service appointments",
-  "flight_dates": "October 15-31, 2024",
-  "budget": "$8,000"
+  "brief": "Mike's Plumbing Services needs to drive phone calls for emergency plumbing repairs and routine maintenance in the Denver metro area. We have $8,000 to spend from October 15-31, 2024. Looking for local inventory that can drive calls, ideally during emergency hours when people need immediate service."
 }
 ```
 
@@ -29,16 +25,17 @@ These annotated examples demonstrate how to create effective campaign briefs at 
 - ⚠️ **Missing** - Audience definition (homeowners, property managers)
 
 **Publisher Response:**
-Publishers will likely recommend:
-- Local inventory products with call tracking
-- Mobile-first placements (emergency searches)
+Publishers will likely:
+- Parse "Denver metro area" for geographic targeting
+- Identify "phone calls" as conversion goal
+- Recommend local inventory with call tracking
+- Suggest mobile-first placements for emergency searches
 - Request clarification on success metrics
-- Suggest dayparting for emergency service hours
 
 **AdCP Workflow:**
-1. `get_products` - Query local inventory with geographic constraints
+1. `get_products` - Query with filters matching brief requirements
 2. `list_creative_formats` - Identify call-to-action enabled formats
-3. `create_media_buy` - Submit with phone tracking requirements
+3. `create_media_buy` - Submit with brief and selected products
 
 ---
 
@@ -48,31 +45,7 @@ Publishers will likely recommend:
 
 ```json
 {
-  "advertiser": "TechGear Pro",
-  "promoted_offering": "New ANC-Pro wireless headphones with 40-hour battery life, premium audio drivers",
-  
-  "objectives": {
-    "primary": "Drive online sales during launch week",
-    "secondary": "Build brand awareness in audio enthusiast community"
-  },
-  
-  "target_audience": {
-    "demographics": "Ages 25-45, household income $50K+",
-    "interests": "Technology, music, fitness, travel",
-    "behaviors": "Early tech adopters, premium audio purchasers"
-  },
-  
-  "success_metrics": {
-    "ctr": "0.8-1.2%",
-    "cpa": "$45-55",
-    "roas": "300%",
-    "conversion_rate": "2.5%"
-  },
-  
-  "flight_dates": "November 1-14, 2024",
-  "budget": "$25,000",
-  
-  "creative_requirements": "Product demos, lifestyle imagery, launch offer messaging"
+  "brief": "TechGear Pro is launching our new ANC-Pro wireless headphones with 40-hour battery life and premium audio drivers. Our goal is to drive online sales during launch week (November 1-14, 2024) with a secondary objective of building brand awareness in the audio enthusiast community. Target audience is ages 25-45 with household income $50K+, interested in technology, music, fitness, and travel - early tech adopters who buy premium audio products. Success metrics: 0.8-1.2% CTR, $45-55 CPA, 300% ROAS, 2.5% conversion rate. Budget is $25,000. Need creative that showcases product demos, lifestyle imagery, and launch offer messaging."
 }
 ```
 
@@ -81,21 +54,21 @@ Publishers will likely recommend:
 - ✅ **Clear audience definition** - Actionable demographic and behavioral signals
 - ✅ **Multiple success metrics** - Allows optimization flexibility
 - ✅ **Appropriate budget** - $25K reasonable for 2-week product launch
-- ⚠️ **Could improve** - Specify creative formats needed (video vs. display)
-- ⚠️ **Missing** - Competitive considerations, measurement preferences
+- ✅ **Creative direction** - Helps with format selection
 
 **Publisher Response:**
-Publishers will optimize for:
-- Audience matching against tech/audio enthusiast segments
-- Performance optimization toward CPA goals
-- Creative format recommendations based on inventory
-- Suggest retargeting pool creation
+Publishers will:
+- Extract demographic targeting (25-45, $50K+ HHI)
+- Build interest segments (technology, music, fitness, travel)
+- Optimize toward specified CPA and ROAS goals
+- Match creative requirements to available formats
+- Create retargeting pools for launch period
 
 **AdCP Workflow:**
-1. `get_products` with filters for audience targeting capabilities
-2. `list_creative_formats` to match product demo requirements
-3. Signal activation for tech enthusiast audiences
-4. Performance monitoring via `get_media_buy_delivery`
+1. `get_products` - Filter for audience targeting capabilities
+2. `list_creative_formats` - Match product demo requirements
+3. `create_media_buy` - Include full brief with success metrics
+4. `get_media_buy_delivery` - Monitor against KPI targets
 
 ---
 
@@ -105,116 +78,26 @@ Publishers will optimize for:
 
 ```json
 {
-  "advertiser": "CloudSync Solutions",
-  "promoted_offering": "Enterprise data synchronization platform for hybrid cloud environments",
-  
-  "campaign_context": "Q4 push to meet annual pipeline targets, focusing on enterprises actively evaluating cloud migration strategies",
-  
-  "business_objectives": {
-    "immediate": "Generate 150 Marketing Qualified Leads (MQLs)",
-    "quarterly": "Build pipeline of $2M in opportunities",
-    "strategic": "Position as leader in hybrid cloud data management"
-  },
-  
-  "target_audience": {
-    "firmographics": {
-      "company_size": "500-5000 employees",
-      "industries": ["financial_services", "healthcare", "retail", "manufacturing"],
-      "technology": "Multi-cloud environment (AWS, Azure, GCP)"
-    },
-    "personas": {
-      "primary": "IT Directors, Cloud Architects, CTOs",
-      "secondary": "DevOps Engineers, Data Engineers",
-      "influencers": "IT Consultants, System Integrators"
-    },
-    "signals": {
-      "intent": "Researching cloud migration, data sync, hybrid cloud",
-      "technographic": "Using Kubernetes, Docker, cloud-native tools",
-      "competitive": "Visiting competitor sites (Informatica, Talend, MuleSoft)"
-    }
-  },
-  
-  "success_metrics": {
-    "lead_generation": {
-      "mql_target": "150 leads",
-      "cost_per_mql": "$200-250",
-      "mql_to_sql_rate": "30%"
-    },
-    "engagement": {
-      "content_downloads": "500 whitepapers/guides",
-      "demo_requests": "50 qualified demos",
-      "webinar_registrations": "200 attendees"
-    },
-    "brand": {
-      "site_traffic_lift": "25%",
-      "branded_search_increase": "40%"
-    }
-  },
-  
-  "campaign_execution": {
-    "flight_dates": "October 1 - December 31, 2024",
-    "budget": {
-      "total": "$90,000",
-      "monthly": "$30,000",
-      "allocation": {
-        "lead_gen": "60%",
-        "brand_awareness": "25%",
-        "retargeting": "15%"
-      }
-    },
-    "geographic_focus": {
-      "primary": ["US", "Canada"],
-      "secondary": ["UK", "Germany"]
-    }
-  },
-  
-  "creative_and_messaging": {
-    "formats_needed": {
-      "display": ["300x250", "728x90", "160x600"],
-      "video": ["in-stream_15s", "in-stream_30s"],
-      "native": ["sponsored_content", "in-feed_units"]
-    },
-    "messaging_framework": {
-      "pain_points": "Data silos, sync failures, compliance risks",
-      "value_props": "Real-time sync, zero downtime, SOC2 certified",
-      "proof_points": "Fortune 500 case studies, Gartner recognition"
-    },
-    "content_assets": {
-      "whitepapers": "Hybrid Cloud Best Practices Guide",
-      "case_studies": "Financial Services Digital Transformation",
-      "demo_videos": "5-minute platform overview"
-    }
-  },
-  
-  "measurement_and_privacy": {
-    "attribution": "Multi-touch with 30-day window",
-    "analytics": "Google Analytics 4, Salesforce integration",
-    "privacy": "GDPR/CCPA compliant, no third-party cookies",
-    "brand_safety": "No competitor adjacency, B2B environments only"
-  },
-  
-  "adcp_workflow": {
-    "product_discovery": "Query B2B inventory with ABM capabilities",
-    "format_matching": "Professional formats supporting lead capture",
-    "signal_activation": "Intent and technographic data providers",
-    "approval_required": "Legal review for compliance claims"
-  }
+  "brief": "CloudSync Solutions needs to generate 150 Marketing Qualified Leads (MQLs) for our enterprise data synchronization platform for hybrid cloud environments. This is our Q4 push to meet annual pipeline targets, focusing on enterprises actively evaluating cloud migration strategies. We need to build a pipeline of $2M in opportunities while positioning ourselves as the leader in hybrid cloud data management.\n\nTarget companies with 500-5000 employees in financial services, healthcare, retail, and manufacturing that use multi-cloud environments (AWS, Azure, GCP). Decision makers include IT Directors, Cloud Architects, and CTOs, with DevOps Engineers and Data Engineers as secondary targets. Also want to reach IT Consultants and System Integrators who influence decisions.\n\nLook for signals indicating intent around cloud migration, data sync, and hybrid cloud research. Target companies using Kubernetes, Docker, and cloud-native tools. Include competitive conquest against visitors to Informatica, Talend, and MuleSoft.\n\nSuccess metrics: 150 MQLs at $200-250 per lead with 30% MQL-to-SQL conversion rate. Also targeting 500 whitepaper downloads, 50 qualified demo requests, and 200 webinar registrations. For brand metrics, looking for 25% site traffic lift and 40% increase in branded search.\n\nCampaign runs October 1 - December 31, 2024 with $90,000 total budget ($30,000 monthly). Allocate 60% to lead gen, 25% to brand awareness, and 15% to retargeting. Focus on US and Canada primarily, with UK and Germany as secondary markets.\n\nNeed display formats (300x250, 728x90, 160x600), video (15s and 30s in-stream), and native (sponsored content and in-feed units). Messaging should address pain points like data silos, sync failures, and compliance risks. Emphasize our real-time sync, zero downtime, and SOC2 certification. Use Fortune 500 case studies and Gartner recognition as proof points.\n\nContent assets include our Hybrid Cloud Best Practices Guide whitepaper, Financial Services Digital Transformation case study, and 5-minute platform overview video. Require multi-touch attribution with 30-day window, Google Analytics 4 and Salesforce integration. Must be GDPR/CCPA compliant with no third-party cookies. No competitor adjacency and B2B environments only for brand safety."
 }
 ```
 
 **Why This Works:**
-- ✅ **Complete strategic context** - Clear business goals and constraints
-- ✅ **Detailed audience definition** - Firmographics, personas, and signals
+- ✅ **Complete context** - Business goals, timeline, and constraints clear
+- ✅ **Detailed targeting** - Firmographics, personas, and intent signals
 - ✅ **Comprehensive metrics** - Lead gen, engagement, and brand KPIs
-- ✅ **AdCP-specific workflow** - Shows protocol integration points
-- ✅ **Privacy-forward approach** - GDPR/CCPA compliance specified
-- ✅ **Realistic B2B economics** - $200-250 CPL standard for enterprise
+- ✅ **Budget allocation** - Clear spending priorities
+- ✅ **Content strategy** - Specific assets and messaging framework
+- ✅ **Compliance requirements** - Privacy and brand safety specified
 
-**Publisher Optimization:**
-- ABM platform activation for target account lists
-- Intent data integration for in-market buyers
-- LinkedIn and professional publisher prioritization
-- Lead quality scoring and feedback loops
+**Publisher Response:**
+Publishers will:
+- Activate ABM platforms for target account lists
+- Integrate intent data for in-market identification
+- Prioritize LinkedIn and B2B publisher inventory
+- Set up lead quality scoring and feedback loops
+- Implement specified attribution and analytics
+- Ensure GDPR/CCPA compliance in targeting
 
 ---
 
@@ -224,174 +107,109 @@ Publishers will optimize for:
 
 ```json
 {
-  "advertiser": "EcoMotion Automotive",
-  "promoted_offering": "2025 EcoMotion Hybrid SUV - Luxury hybrid with 500-mile range",
-  
-  "campaign_overview": "Three-phase launch targeting eco-conscious families transitioning from traditional luxury SUVs",
-  
-  "phased_execution": {
-    "phase_1_awareness": {
-      "dates": "October 1-31, 2024",
-      "budget": "$200,000",
-      "objectives": "Build awareness, reach 10M unique users",
-      "success_metrics": {
-        "reach": "10M uniques",
-        "frequency": "3-5x",
-        "video_completion_rate": "70%",
-        "brand_lift": "12% awareness increase"
-      },
-      "formats_discovery": {
-        "connected_tv": "30-second spots during family programming",
-        "online_video": "15-second and 6-second bumpers",
-        "display": "High-impact takeovers on auto sites"
-      }
-    },
-    
-    "phase_2_consideration": {
-      "dates": "November 1-30, 2024",
-      "budget": "$150,000",
-      "objectives": "Drive configurator sessions and brochure downloads",
-      "success_metrics": {
-        "configurator_sessions": "50,000",
-        "cost_per_session": "$3.00",
-        "brochure_downloads": "10,000",
-        "site_engagement_time": "3+ minutes"
-      },
-      "audience_refinement": {
-        "retargeting": "Phase 1 video completers",
-        "lookalikes": "Current hybrid owners",
-        "conquest": "Competitive SUV intenders"
-      }
-    },
-    
-    "phase_3_conversion": {
-      "dates": "December 1-31, 2024",
-      "budget": "$100,000",
-      "objectives": "Generate test drive appointments",
-      "success_metrics": {
-        "test_drives": "500 appointments",
-        "cost_per_appointment": "$200",
-        "dealer_locator_uses": "5,000",
-        "appointment_show_rate": "70%"
-      },
-      "activation_strategy": {
-        "geo_targeting": "10-mile radius of dealers",
-        "dayparting": "Weekends and evenings",
-        "weather_triggers": "Activate during good weather"
-      }
-    }
-  },
-  
-  "audience_strategy": {
-    "primary": {
-      "demographics": "HHI $75K-150K, ages 35-55, families",
-      "psychographics": "Environmentally conscious, tech-savvy, safety-focused",
-      "behaviors": "SUV owners, outdoor enthusiasts, suburban lifestyle"
-    },
-    "signals": {
-      "auto_intender": "In-market for SUVs",
-      "green_interests": "EV/hybrid research, environmental content",
-      "competitive": "Visiting Toyota Highlander, Honda Pilot pages"
-    }
-  },
-  
-  "creative_specifications": {
-    "asset_requirements": {
-      "video": {
-        "hero_30s": "1920x1080, 16:9, max 50MB",
-        "social_15s": "1080x1080, 1:1, max 30MB",
-        "mobile_vertical": "1080x1920, 9:16, max 40MB"
-      },
-      "display": {
-        "standard_sizes": "300x250, 728x90, 320x50",
-        "rich_media": "HTML5 with 360-degree view",
-        "file_size": "Max 150KB initial load"
-      }
-    },
-    "dynamic_elements": {
-      "dealer_locator": "Real-time nearest dealer",
-      "inventory_status": "Available colors/trims",
-      "incentive_offers": "Regional lease/finance offers"
-    }
-  },
-  
-  "measurement_framework": {
-    "attribution": "Data-driven attribution with store visit tracking",
-    "brand_study": "Control/exposed lift measurement",
-    "incrementality": "Geo-experiments in 5 test markets",
-    "competitive": "Share of voice and consideration tracking"
-  },
-  
-  "adcp_integration": {
-    "workflow": [
-      "get_products: Query automotive inventory with CTV capability",
-      "list_creative_formats: Discover video and rich media options",
-      "activate_signal: Auto intender and green interest signals",
-      "create_media_buy: Submit phased campaign with approval gates",
-      "sync_creatives: Upload video and display assets per phase",
-      "get_media_buy_delivery: Daily performance monitoring",
-      "update_media_buy: Optimize based on phase performance"
-    ],
-    "approval_requirements": {
-      "legal": "Claim substantiation for MPG/range",
-      "brand": "Creative and placement approval",
-      "dealer": "Regional offer coordination"
-    }
-  }
+  "brief": "EcoMotion Automotive is launching the 2025 EcoMotion Hybrid SUV, our first luxury hybrid with 500-mile range targeting eco-conscious families transitioning from traditional luxury SUVs. This is a three-phase campaign with different objectives and budgets for each phase.\n\nPHASE 1 - AWARENESS (October 1-31, 2024, $200,000):\nBuild awareness reaching 10M unique users with 3-5x frequency. Success metrics: 70% video completion rate and 12% brand lift. Need connected TV (30-second spots during family programming), online video (15-second and 6-second bumpers), and high-impact display takeovers on auto sites.\n\nPHASE 2 - CONSIDERATION (November 1-30, 2024, $150,000):\nDrive 50,000 configurator sessions at $3.00 cost per session and 10,000 brochure downloads. Expecting 3+ minute site engagement. Retarget Phase 1 video completers, create lookalikes from current hybrid owners, and conquest competitive SUV intenders.\n\nPHASE 3 - CONVERSION (December 1-31, 2024, $100,000):\nGenerate 500 test drive appointments at $200 per appointment with 70% show rate. Expect 5,000 dealer locator uses. Target 10-mile radius around dealers, focus on weekends and evenings, activate during good weather conditions.\n\nPRIMARY AUDIENCE:\nHouseholds with $75K-150K income, ages 35-55 with families. Environmentally conscious, tech-savvy, safety-focused. Current SUV owners, outdoor enthusiasts with suburban lifestyle. Target in-market SUV shoppers researching EVs/hybrids and environmental content. Conquest shoppers looking at Toyota Highlander and Honda Pilot.\n\nCREATIVE REQUIREMENTS:\nVideo assets: Hero 30s (1920x1080, 16:9, max 50MB), Social 15s (1080x1080, 1:1, max 30MB), Mobile vertical (1080x1920, 9:16, max 40MB). Display: Standard sizes (300x250, 728x90, 320x50) plus HTML5 rich media with 360-degree vehicle view (max 150KB initial load). Include dynamic elements: real-time nearest dealer, available colors/trims, regional lease/finance offers.\n\nMEASUREMENT:\nImplement data-driven attribution with store visit tracking. Run control/exposed brand lift study. Set up geo-experiments in 5 test markets. Track share of voice and consideration versus competitors.\n\nAPPROVAL REQUIREMENTS:\nLegal review needed for MPG and range claims. Brand team approval for creative and placements. Coordinate with dealer network for regional offers.\n\nPRIMARY MARKETS:\nCalifornia (Los Angeles, San Francisco, San Diego), Northeast (New York, Boston, Philadelphia), Pacific Northwest (Seattle, Portland), Texas (Austin, Dallas, Houston)."
 }
 ```
 
 **Why This Works:**
-- ✅ **Sophisticated phasing** - Clear progression through funnel
-- ✅ **Detailed technical specs** - Asset requirements and file sizes
-- ✅ **Advanced targeting** - Signals, weather triggers, dayparting
-- ✅ **Complete AdCP workflow** - All protocol tools demonstrated
-- ✅ **Realistic automotive KPIs** - $200 per test drive achievable
-- ✅ **Multi-stakeholder coordination** - Legal, brand, dealer alignment
+- ✅ **Sophisticated phasing** - Clear progression through purchase funnel
+- ✅ **Phase-specific KPIs** - Different metrics for each objective
+- ✅ **Detailed technical specs** - Asset requirements clearly defined
+- ✅ **Advanced targeting** - Weather triggers, dayparting, geo-radius
+- ✅ **Multi-stakeholder needs** - Legal, brand, and dealer coordination
+- ✅ **Realistic automotive metrics** - $200 per test drive is achievable
+
+**Publisher Orchestration:**
+Publishers will:
+- Set up sequential campaign phases with different objectives
+- Implement audience pools that flow between phases
+- Configure weather-based activation triggers
+- Coordinate dealer inventory feeds for dynamic creative
+- Establish brand study and incrementality testing
+- Manage approval workflows for claims and creative
 
 ---
 
 ## Industry Quick Reference
 
-### Key Considerations by Vertical
+### How Different Industries Structure Briefs
 
 #### Financial Services
-- **Compliance**: FINRA, truth in advertising, fair lending
-- **Targeting restrictions**: No credit score or medical targeting
-- **Success metrics**: Account opens, funded accounts, AUM growth
-- **Typical CPAs**: $100-300 per funded account
-- **Creative requirements**: Disclaimers, FDIC/SIPC notices
+```json
+{
+  "brief": "NextGen Banking launching high-yield savings account with 4.5% APY, no minimum balance, no fees. Target mass affluent consumers ($100K+ income, ages 30-60) currently with traditional banks. Need to generate 5,000 funded accounts at $150 CAC. Must include FDIC insurance messaging and comply with FINRA regulations. No credit score or medical condition targeting. Campaign runs January with $400,000 budget."
+}
+```
 
 #### Healthcare
-- **Privacy**: HIPAA compliance, no condition targeting
-- **Geographic**: Service area restrictions
-- **Metrics**: Appointment bookings, patient acquisition
-- **Typical costs**: $30-80 per appointment
-- **Requirements**: Provider credentials, insurance accepted
+```json
+{
+  "brief": "HealthFirst Urgent Care needs to build awareness and drive appointment bookings for our 15 Ohio clinic locations. Target families with children and adults 25-65 within 10-mile radius of each clinic. Goal is 500 online appointments at $30-50 per appointment. Emphasize minimal wait times and online scheduling. Must be HIPAA compliant with no health condition targeting. $20,000 monthly ongoing budget."
+}
+```
 
-#### Streaming/Entertainment
-- **Objectives**: Trial starts, subscriber retention
-- **Metrics**: Cost per trial, trial-to-paid conversion
-- **Typical costs**: $20-50 per trial start
-- **Creative**: Content highlights, exclusive programming
+#### Streaming Service
+```json
+{
+  "brief": "StreamPlus Entertainment promoting new streaming service with exclusive original content and live sports during Q4 free trial promotion. Target cord-cutters and streaming enthusiasts aged 25-54 in NFL markets. Drive trial sign-ups at $25 cost per trial with 60% trial-to-paid conversion goal. Need video creative highlighting exclusive content. $2M Q4 2024 budget."
+}
+```
 
-#### Retail/E-commerce
-- **Seasonality**: Holiday, back-to-school, Prime Day
-- **Metrics**: ROAS, cart value, repeat purchase rate
-- **Typical ROAS**: 300-500% for established brands
-- **Formats**: Shopping ads, dynamic product ads
+#### Mobile App
+```json
+{
+  "brief": "FitTrack Fitness App needs 50,000 installs in January 2025 for our AI-powered personal training app. Target fitness enthusiasts and New Year resolution makers. $3.50 target CPI with 30% day-7 retention. Need video demos of app features and before/after testimonials. $175,000 budget. Requires iOS and Android app store links with deep linking support."
+}
+```
 
-#### Mobile Apps
-- **Objectives**: Installs, DAU, retention
-- **Metrics**: CPI, D7/D30 retention, LTV
-- **Typical CPI**: $2-5 for non-gaming apps
-- **Requirements**: App store links, deep linking
+---
+
+## Brief Writing Best Practices
+
+### Structure Your Brief Effectively
+
+1. **Start with the essentials**
+   - Who you are (advertiser/brand)
+   - What you're promoting
+   - Core objective
+   - Budget and timing
+
+2. **Add targeting details**
+   - Demographics and firmographics
+   - Interests and behaviors
+   - Intent signals
+   - Geographic markets
+
+3. **Specify success metrics**
+   - Primary KPIs with targets
+   - Secondary metrics
+   - Attribution preferences
+
+4. **Include creative requirements**
+   - Format preferences
+   - Asset specifications
+   - Messaging guidelines
+   - Dynamic elements
+
+5. **Note compliance needs**
+   - Industry regulations
+   - Privacy requirements
+   - Brand safety
+   - Approval workflows
+
+### Natural Language Tips
+
+- **Be specific but conversational** - Write as you would explain to a colleague
+- **Group related information** - Keep audience details together, metrics together
+- **Use industry-standard terms** - CPM, CPA, ROAS are understood
+- **Include context** - Why this campaign, why now
+- **Specify what's flexible** - "Prefer video but open to display if performance better"
 
 ---
 
 ## Brief Evaluation Checklist
 
-Before submitting your brief, ensure you have:
+Before submitting your brief, ensure it includes:
 
 ### Essential Elements
 - [ ] Advertiser name and promoted offering
@@ -400,13 +218,13 @@ Before submitting your brief, ensure you have:
 - [ ] Geographic scope (if applicable)
 
 ### Recommended Elements
-- [ ] Target audience definition
+- [ ] Target audience description
 - [ ] Success metrics with targets
 - [ ] Creative format preferences
 - [ ] Brand safety requirements
 
 ### Advanced Elements
-- [ ] Signal activation requirements
+- [ ] Intent signals to activate
 - [ ] Measurement framework
 - [ ] Privacy compliance needs
 - [ ] Approval workflow requirements
@@ -415,7 +233,7 @@ Before submitting your brief, ensure you have:
 
 ## Related Documentation
 
-- [Brief Expectations](./brief-expectations.md) - Processing guidelines and requirements
+- [Brief Expectations](./brief-expectations.md) - How publishers process briefs
 - [Media Buy Lifecycle](./media-buy-lifecycle.md) - Campaign execution workflow
 - [Creative Formats](./creative-formats.md) - Available format specifications
 - [Targeting Dimensions](./targeting-dimensions.md) - Audience capabilities
