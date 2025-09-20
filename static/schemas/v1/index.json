@@ -115,6 +115,10 @@
         "snippet-type": {
           "$ref": "/schemas/v1/enums/snippet-type.json",
           "description": "Types of third-party creative snippets (VAST, HTML, JavaScript, etc.)"
+        },
+        "identifier-types": {
+          "$ref": "/schemas/v1/enums/identifier-types.json",
+          "description": "Valid identifier types for property identification across different media types"
         }
       }
     },
