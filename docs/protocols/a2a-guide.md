@@ -946,7 +946,7 @@ function processArtifact(artifact) {
 
 ## Next Steps
 
-- Explore [Media Buy Tasks](../media-buy/tasks/get_products.md)
+- Explore [Media Buy Tasks](../media-buy/task-reference/)
 - Learn about [Signals](../signals/overview.md)  
 - Compare with [MCP](./mcp-guide.md) if curious
 - See [Protocol Comparison](./protocol-comparison.md) for differences

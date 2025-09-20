@@ -21,11 +21,11 @@ This approach mirrors how Google Ad Manager, Meta Business Manager, and other ma
 
 Ready to start using the Creative Library? Here's the essential workflow:
 
-1. **📤 Upload creatives**: [`sync_creatives`](./tasks/sync_creatives) - Add assets to your library
-2. **🔍 Find creatives**: [`list_creatives`](./tasks/list_creatives) - Search and filter your library  
-3. **🎯 Assign to campaigns**: Use assignments in [`sync_creatives`](./tasks/sync_creatives) or [`create_media_buy`](./tasks/create_media_buy)
+1. **📤 Upload creatives**: [`sync_creatives`](../task-reference/sync_creatives) - Add assets to your library
+2. **🔍 Find creatives**: [`list_creatives`](../task-reference/list_creatives) - Search and filter your library  
+3. **🎯 Assign to campaigns**: Use assignments in [`sync_creatives`](../task-reference/sync_creatives) or [`create_media_buy`](../task-reference/create_media_buy)
 
-**New to creative management?** Start with the [Creative Lifecycle](./creative-lifecycle) conceptual overview.
+**New to creative management?** Start with the [Creative Lifecycle](./index.md) conceptual overview.
 
 ## Library Architecture
 
@@ -61,7 +61,7 @@ The creative library supports two primary operations:
 
 ### 1. Creative Management
 
-Use [`sync_creatives`](./tasks/sync_creatives) to:
+Use [`sync_creatives`](../task-reference/sync_creatives) to:
 - Upload new creatives to the library
 - Update existing creative metadata
 - Assign creatives to packages
@@ -73,11 +73,11 @@ Use [`sync_creatives`](./tasks/sync_creatives) to:
 - Validation and approval before assignment
 - Suggested adaptations for better performance
 
-**📋 Get Started:** See the [`sync_creatives`](./tasks/sync_creatives) technical documentation for detailed examples and parameters.
+**📋 Get Started:** See the [`sync_creatives`](../task-reference/sync_creatives) technical documentation for detailed examples and parameters.
 
 ### 2. Creative Discovery
 
-Use [`list_creatives`](./tasks/list_creatives) to:
+Use [`list_creatives`](../task-reference/list_creatives) to:
 - Search and filter library creatives
 - Find available assets for new campaigns
 - Track assignment status
@@ -89,7 +89,7 @@ Use [`list_creatives`](./tasks/list_creatives) to:
 - Performance analysis across creatives
 - Compliance reviews
 
-**🔍 Get Started:** See the [`list_creatives`](./tasks/list_creatives) technical documentation for advanced filtering and querying options.
+**🔍 Get Started:** See the [`list_creatives`](../task-reference/list_creatives) technical documentation for advanced filtering and querying options.
 
 ### 3. Assign (`action: "assign"`)
 
@@ -143,7 +143,7 @@ Remove creative from specific campaigns while keeping in library:
 
 ### 6. Archival
 
-Creatives can be archived through [`sync_creatives`](./tasks/sync_creatives) status updates:
+Creatives can be archived through [`sync_creatives`](../task-reference/sync_creatives) status updates:
 
 **Options:**
 - **Archive**: Soft delete, preserves for reporting
@@ -279,7 +279,7 @@ Compare creative performance across different contexts:
 If migrating from deprecated creative workflows:
 
 ### Step 1: Upload Existing Creatives
-Use [`sync_creatives`](./tasks/sync_creatives) to add assets to the library:
+Use [`sync_creatives`](../task-reference/sync_creatives) to add assets to the library:
 ```json
 {
   "creatives": [/* your existing creative assets */]
@@ -287,10 +287,10 @@ Use [`sync_creatives`](./tasks/sync_creatives) to add assets to the library:
 ```
 
 ### Step 2: Assign to Current Campaigns
-Use the `assignments` parameter in [`sync_creatives`](./tasks/sync_creatives) or create new campaigns with [`create_media_buy`](./tasks/create_media_buy).
+Use the `assignments` parameter in [`sync_creatives`](../task-reference/sync_creatives) or create new campaigns with [`create_media_buy`](../task-reference/create_media_buy).
 
 ### Step 3: Adopt Library Workflow
-- Use [`list_creatives`](./tasks/list_creatives) to search before creating new creatives
+- Use [`list_creatives`](../task-reference/list_creatives) to search before creating new creatives
 - Reuse approved creatives across campaigns
 - Manage all creative operations through the library
 
@@ -315,7 +315,7 @@ Use the `assignments` parameter in [`sync_creatives`](./tasks/sync_creatives) or
 
 ### Support Resources
 
-- Use [`list_creatives`](./tasks/list_creatives) to audit current library state
+- Use [`list_creatives`](../task-reference/list_creatives) to audit current library state
 - Check creative status and assignment history
 - Review platform-specific creative requirements
 - Monitor adaptation suggestions for optimization opportunities
@@ -325,23 +325,23 @@ Use the `assignments` parameter in [`sync_creatives`](./tasks/sync_creatives) or
 Now that you understand the Creative Library architecture, here are your next steps:
 
 ### 🏗️ **Implementation**
-- **Start uploading**: Follow [`sync_creatives`](./tasks/sync_creatives) for technical implementation
-- **Query your library**: Use [`list_creatives`](./tasks/list_creatives) for advanced filtering and search
-- **Understand the workflow**: Read [Creative Lifecycle](./creative-lifecycle) for end-to-end process
+- **Start uploading**: Follow [`sync_creatives`](../task-reference/sync_creatives) for technical implementation
+- **Query your library**: Use [`list_creatives`](../task-reference/list_creatives) for advanced filtering and search
+- **Understand the workflow**: Read [Creative Lifecycle](./index.md) for end-to-end process
 
 ### 📋 **Planning**
-- **Review formats**: Check [Creative Formats](./creative-formats) for platform requirements
+- **Review formats**: Check [Creative Formats](../capability-discovery/creative-formats) for platform requirements
 - **Design your library**: Plan your creative ID conventions and tagging strategy
 - **Map your workflow**: Align the library approach with your existing creative operations
 
 ### 🔗 **Integration**
 - **Connect platforms**: Integrate with your existing creative management tools
-- **Enable AI workflows**: Set up [MCP integration](../protocols/mcp-guide) for AI assistant access
-- **Build automations**: Leverage [A2A protocol](../protocols/a2a-guide) for natural language operations
+- **Enable AI workflows**: Set up [MCP integration](../../protocols/mcp-guide) for AI assistant access
+- **Build automations**: Leverage [A2A protocol](../../protocols/a2a-guide) for natural language operations
 
 ## Related Documentation
 
-- [`sync_creatives`](./tasks/sync_creatives) - Creative management API reference
-- [`list_creatives`](./tasks/list_creatives) - Creative query API reference
-- [Creative Lifecycle](./creative-lifecycle) - End-to-end creative workflow
-- [Creative Formats](./creative-formats) - Supported format specifications
+- [`sync_creatives`](../task-reference/sync_creatives) - Creative management API reference
+- [`list_creatives`](../task-reference/list_creatives) - Creative query API reference
+- [Creative Lifecycle](./index.md) - End-to-end creative workflow
+- [Creative Formats](../capability-discovery/creative-formats) - Supported format specifications

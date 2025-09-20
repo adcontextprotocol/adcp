@@ -355,7 +355,7 @@ async function createCampaign() {
 
 ## Next Steps
 
-- Explore available [Media Buy Tasks](../media-buy/tasks/get_products.md)
+- Explore available [Media Buy Tasks](../media-buy/task-reference/)
 - Learn about [Signals](../signals/overview.md)
 - See [Error Codes](../reference/error-codes.md) reference
 - Review [Authentication](../reference/authentication.md) options

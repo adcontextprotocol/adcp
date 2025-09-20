@@ -7,7 +7,7 @@ sidebar_position: 2
 
 Discover all supported creative formats in the system. 
 
-**See [Creative Lifecycle](../creative-lifecycle#phase-1-format-discovery) for the complete workflow on how this tool works with `get_products` for format discovery.**
+**See [Creative Lifecycle](../creatives/index.md) for the complete workflow on how this tool works with `get_products` for format discovery.**
 
 **Response Time**: ~1 second (simple database lookup)
 

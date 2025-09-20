@@ -7,7 +7,7 @@ Discover available advertising products based on campaign requirements, using na
 
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
 
-**Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications. **See [Creative Lifecycle](../creative-lifecycle#phase-1-format-discovery) for the complete workflow.**
+**Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications. **See [Creative Lifecycle](../creatives/index.md) for the complete workflow.**
 
 **Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](/schemas/v1/media-buy/get-products-request.json)  
 **Response Schema**: [`/schemas/v1/media-buy/get-products-response.json`](/schemas/v1/media-buy/get-products-response.json)
@@ -265,7 +265,7 @@ for (const property of productProperties) {
 - Verify sales agent is authorized in adagents.json
 - Validate scope matches product description
 
-For complete validation requirements, examples, and error handling, see the [Authorized Sales Agents](/docs/reference/adagents#buyer-agent-validation) documentation.
+For complete validation requirements, examples, and error handling, see the [adagents.json Tech Spec](../capability-discovery/adagents#buyer-agent-validation) documentation.
 
 ## Domain Matching Examples
 
@@ -617,7 +617,7 @@ When the promoted offering is subject to policy restrictions, the response will 
 - The `message` field provides a human-readable summary of the response
 - Publishers may request clarification when briefs are incomplete
 ## Brief Requirements
-For comprehensive guidance on brief structure and expectations, see the [Brief Expectations](../brief-expectations) documentation. Key points:
+For comprehensive guidance on brief structure and expectations, see the [Brief Expectations](../product-discovery/brief-expectations) documentation. Key points:
 - **Required**: The `promoted_offering` field must clearly describe the advertiser and what is being promoted
 - **Optional**: The `brief` field - include for recommendations, omit for run-of-network
 - **Run-of-Network**: Omit brief to get broad reach products (not entire catalog)

@@ -6,7 +6,7 @@ title: Creative Formats
 
 All creative formats have a unique identifier and specify delivery methods. Formats can require either a single asset or multiple assets for rich media experiences.
 
-**For the complete workflow on format discovery, see the [Creative Lifecycle](./creative-lifecycle#phase-1-format-discovery) documentation.**
+**For the complete workflow on format discovery, see the [Creative Lifecycle](../creatives/index.md) documentation.**
 
 ## Standard vs Custom Formats
 
@@ -19,7 +19,7 @@ Pre-defined, industry-standard specifications that work consistently across publ
 - **Validated**: Pre-tested specifications
 - **Discoverable**: Available via `list_creative_formats`
 
-See the [Standard Formats Guide](./standard-formats-guide.md) for complete documentation.
+See the [Standard Formats Guide](../creatives/standard-formats-guide.md) for complete documentation.
 
 ### Custom Formats
 Publisher-specific formats for unique inventory:

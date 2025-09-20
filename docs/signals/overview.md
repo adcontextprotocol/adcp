@@ -295,7 +295,7 @@ flowchart LR
 - 📖 **Technical Teams**: Review the [Protocol Specification](./specification)
 - 💻 **Developers**: Explore the [Reference Implementation](https://github.com/adcontextprotocol/signals-agent)
 - 🏗️ **Platform Providers**: See [Integration Guide](./tasks/get_signals)
-- 💬 **Everyone**: Join the [Community](https://github.com/adcontextprotocol/adcp/discussions)
+- 💬 **Everyone**: Join the [Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
 
 ---
 
