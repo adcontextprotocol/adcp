@@ -214,6 +214,12 @@
         }
       }
     },
+    "adagents": {
+      "description": "Authorized sales agents file format specification",
+      "$ref": "/schemas/v1/adagents.json",
+      "file_location": "/.well-known/adagents.json",
+      "purpose": "Declares which sales agents are authorized to sell a publisher's advertising inventory"
+    },
     "standard-formats": {
       "description": "Standard creative formats registry and schemas",
       "$ref": "/schemas/v1/standard-formats/index.json",

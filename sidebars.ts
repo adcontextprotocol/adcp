@@ -63,6 +63,7 @@ const sidebars: SidebarsConfig = {
           label: 'Tasks',
           items: [
             'media-buy/tasks/get_products',
+            'media-buy/tasks/list_authorized_properties',
             'media-buy/tasks/list_creative_formats',
             'media-buy/tasks/create_media_buy',
             'media-buy/tasks/sync_creatives',
@@ -131,6 +132,7 @@ const sidebars: SidebarsConfig = {
         'reference/error-codes',
         'reference/data-models',
         'reference/authentication',
+        'reference/adagents',
         'reference/glossary',
       ],
     },
