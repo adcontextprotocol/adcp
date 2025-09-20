@@ -21,8 +21,8 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "string",
-            "description": "Type of identifier (e.g., 'domain', 'bundle_id', 'roku_store_id', 'podcast_guid')"
+            "$ref": "/schemas/v1/enums/identifier-types.json",
+            "description": "Type of identifier for this property"
           },
           "value": {
             "type": "string",
