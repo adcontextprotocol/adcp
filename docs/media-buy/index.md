@@ -107,6 +107,7 @@ Core operations available in the Media Buy Protocol:
 - **[create_media_buy](./tasks/create_media_buy)** - Create a media buy from selected packages *(minutes to days)*
 - **[sync_creatives](./tasks/sync_creatives)** - Centralized creative library management *(minutes to days)*
 - **[get_media_buy_delivery](./tasks/get_media_buy_delivery)** - Retrieve performance metrics and monitor delivery *(~60s)*
+- **[provide_performance_feedback](./tasks/provide_performance_feedback)** - Share performance outcomes to optimize future delivery *(~5s)*
 - **[update_media_buy](./tasks/update_media_buy)** - Update campaign settings *(minutes to days)*
 
 ### Core Concepts

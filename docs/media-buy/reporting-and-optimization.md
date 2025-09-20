@@ -23,14 +23,42 @@ Future versions will support rich dimensional breakdowns, allowing analysis by a
 
 ## Performance Feedback Loop
 
-The performance index system enables AI-driven optimization by feeding back business outcomes.
+The performance feedback system enables AI-driven optimization by feeding back business outcomes to publishers. See [`provide_performance_feedback`](./tasks/provide_performance_feedback) for detailed API documentation.
 
 ### Performance Index Concept
 
 A normalized score indicating relative performance:
+- `0.0` = No measurable value or impact
 - `1.0` = Baseline/expected performance
 - `> 1.0` = Above average (e.g., 1.45 = 45% better)
 - `< 1.0` = Below average (e.g., 0.8 = 20% worse)
+
+### Sharing Performance Data
+
+Buyers can voluntarily share performance outcomes using the [`provide_performance_feedback`](./tasks/provide_performance_feedback) task:
+
+```json
+{
+  "media_buy_id": "gam_1234567890",
+  "measurement_period": {
+    "start": "2024-01-15T00:00:00Z",
+    "end": "2024-01-21T23:59:59Z"
+  },
+  "performance_index": 1.35,
+  "metric_type": "conversion_rate"
+}
+```
+
+### Supported Metrics
+
+- **overall_performance**: General campaign success
+- **conversion_rate**: Post-click or post-view conversions
+- **brand_lift**: Brand awareness or consideration lift
+- **click_through_rate**: Engagement with creative
+- **completion_rate**: Video or audio completion rates
+- **viewability**: Viewable impression rate
+- **brand_safety**: Brand safety compliance
+- **cost_efficiency**: Cost per desired outcome
 
 ### How Publishers Use Performance Data
 
@@ -41,7 +69,13 @@ Publishers can leverage performance indices to:
 3. **Improve Products**: Refine product definitions based on performance patterns
 4. **Enhance Algorithms**: Train ML models on actual business outcomes
 
-### Dimensional Performance (Proposed)
+### Privacy and Data Sharing
+
+- Performance feedback sharing is voluntary and controlled by the buyer
+- Aggregate performance patterns may be used to improve overall platform performance
+- Individual campaign details remain confidential to the buyer-publisher relationship
+
+### Dimensional Performance (Future)
 
 Future implementations may support dimensional performance feedback, allowing optimization at the intersection of multiple dimensions (e.g., "mobile users in NYC perform 80% above baseline").
 

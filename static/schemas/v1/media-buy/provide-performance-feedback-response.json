@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/provide-performance-feedback-response.json",
+  "title": "Provide Performance Feedback Response",
+  "description": "Response payload for provide_performance_feedback task",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "success": {
+      "type": "boolean",
+      "description": "Whether the performance feedback was successfully received"
+    },
+    "message": {
+      "type": "string",
+      "description": "Optional human-readable message about the feedback processing"
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., invalid measurement period, missing campaign data)",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
+    }
+  },
+  "required": [
+    "adcp_version",
+    "success"
+  ],
+  "additionalProperties": false
+}
