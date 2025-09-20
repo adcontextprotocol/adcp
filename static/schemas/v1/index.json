@@ -75,6 +75,10 @@
           "$ref": "/schemas/v1/core/creative-library-item.json",
           "description": "Creative asset as it appears in the centralized library"
         },
+        "performance-feedback": {
+          "$ref": "/schemas/v1/core/performance-feedback.json",
+          "description": "Performance feedback data for a media buy or package"
+        },
         "property": {
           "$ref": "/schemas/v1/core/property.json",
           "description": "An advertising property that can be validated via adagents.json"
@@ -203,6 +207,16 @@
           "response": {
             "$ref": "/schemas/v1/media-buy/list-authorized-properties-response.json",
             "description": "Response payload for list_authorized_properties task"
+          }
+        },
+        "provide-performance-feedback": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/provide-performance-feedback-request.json",
+            "description": "Request parameters for sharing performance outcomes with publishers"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/provide-performance-feedback-response.json",
+            "description": "Response payload for provide_performance_feedback task"
           }
         }
       }
