@@ -74,6 +74,10 @@
         "creative-library-item": {
           "$ref": "/schemas/v1/core/creative-library-item.json",
           "description": "Creative asset as it appears in the centralized library"
+        },
+        "property": {
+          "$ref": "/schemas/v1/core/property.json",
+          "description": "An advertising property that can be validated via adagents.json"
         }
       }
     },
@@ -185,6 +189,16 @@
           "response": {
             "$ref": "/schemas/v1/media-buy/get-media-buy-delivery-response.json",
             "description": "Response payload for get_media_buy_delivery task"
+          }
+        },
+        "list-authorized-properties": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/list-authorized-properties-request.json",
+            "description": "Request parameters for discovering all properties this agent is authorized to represent"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/list-authorized-properties-response.json",
+            "description": "Response payload for list_authorized_properties task"
           }
         }
       }
