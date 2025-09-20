@@ -41,6 +41,10 @@ The message is returned differently in each protocol:
 - **A2A**: Returned as a text part in the artifact
 
 ## Response (Payload)
+
+Products include **EITHER** `properties` (for specific property lists) **OR** `property_tags` (for large networks), but never both.
+
+### Option A: Direct Properties
 ```json
 {
   "products": [
@@ -62,9 +66,7 @@ The message is returned differently in each protocol:
           "publisher_domain": "string"
         }
       ],
-      "format_ids": [
-        "format_id_string"
-      ],
+      "format_ids": ["format_id_string"],
       "delivery_type": "string",
       "is_fixed_price": "boolean",
       "cpm": "number",
@@ -86,11 +88,30 @@ The message is returned differently in each protocol:
   ]
 }
 ```
+
+### Option B: Property Tags (for Large Networks)
+```json
+{
+  "products": [
+    {
+      "product_id": "local_radio_midwest",
+      "name": "Midwest Radio Network",
+      "description": "500+ local radio stations across midwest markets",
+      "property_tags": ["local_radio", "midwest"],
+      "format_ids": ["audio_30s", "audio_60s"],
+      "delivery_type": "guaranteed",
+      "is_fixed_price": true,
+      "cpm": 25.00,
+      "min_spend": 5000
+    }
+  ]
+}
+```
 ### Field Descriptions
 - **product_id**: Unique identifier for the product
 - **name**: Human-readable product name
 - **description**: Detailed description of the product and its inventory
-- **properties**: Array of advertising properties covered by this product - **REQUIRED for buyer agent validation**
+- **properties**: Array of specific advertising properties covered by this product (see [Property Schema](/schemas/v1/core/property.json))
   - **property_type**: Type of advertising property ("website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio")
   - **name**: Human-readable property name
   - **identifiers**: Array of identifiers for this property
@@ -98,6 +119,9 @@ The message is returned differently in each protocol:
     - **value**: The identifier value. For domain type: `"example.com"` matches www.example.com and m.example.com only; `"subdomain.example.com"` matches that specific subdomain; `"*.example.com"` matches all subdomains
   - **tags**: Optional array of tags for categorization (e.g., network membership, content categories)
   - **publisher_domain**: Domain where adagents.json should be checked for authorization validation
+- **property_tags**: Array of tags referencing groups of properties (alternative to `properties` array)
+  - Use [`list_authorized_properties`](./list_authorized_properties) to resolve tags to actual property objects
+  - Recommended for products with large property sets (e.g., radio networks with 1000+ stations)
 - **format_ids**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
 - **is_fixed_price**: Whether this product has fixed pricing (true) or uses auction (false)
@@ -115,13 +139,53 @@ The message is returned differently in each protocol:
 - **is_custom**: Whether this is a custom product
 - **brief_relevance**: Explanation of why this product matches the brief (only included when brief is provided)
 
+## Property Tag Resolution
+
+When products use `property_tags` instead of full `properties` arrays, buyer agents must resolve the tags to actual property objects using [`list_authorized_properties`](./list_authorized_properties).
+
+### Resolution Process
+
+1. **Call list_authorized_properties**: Get all properties from the sales agent (cache this response)
+2. **Filter by tags**: Find properties where the `tags` array includes the referenced tags
+3. **Use for validation**: Use the resolved properties for authorization validation
+
+### Example
+
+**Product with tags**:
+```json
+{
+  "product_id": "local_radio_midwest", 
+  "property_tags": ["local_radio", "midwest"]
+}
+```
+
+**Resolve via list_authorized_properties**:
+```javascript
+// 1. Get all authorized properties (cache this)
+const authorized = await agent.list_authorized_properties();
+
+// 2. Resolve tags to properties
+const productProperties = authorized.properties.filter(prop => 
+  prop.tags.includes("local_radio") && prop.tags.includes("midwest")
+);
+
+// 3. Use resolved properties for validation
+for (const property of productProperties) {
+  await validateProperty(property);
+}
+```
+
+**Why use tags?**: For large networks (e.g., 1847 radio stations), including all properties in every product response would create massive payloads. Tags provide efficient references while maintaining full validation capability.
+
 ## Buyer Agent Validation
 
 **IMPORTANT**: Buyer agents MUST validate sales agent authorization before purchasing inventory to prevent unauthorized reselling.
 
 ### Validation Requirements
 
-1. **Extract Properties**: For each product, extract the enhanced `properties` array
+1. **Get Properties**: For each product, get property objects either:
+   - Directly from the `properties` array, OR
+   - By resolving `property_tags` via [`list_authorized_properties`](./list_authorized_properties)
 2. **Check Publisher Domains**: For each property, fetch `/.well-known/adagents.json` from `publisher_domain`
 3. **Validate Domain Identifiers**: For website properties, also check each domain identifier
 4. **Validate Agent**: Confirm the sales agent URL appears in `authorized_agents`

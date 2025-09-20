@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/list-authorized-properties-request.json",
+  "title": "List Authorized Properties Request",
+  "description": "Request parameters for discovering all properties this agent is authorized to represent",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
+    "tags": {
+      "type": "array",
+      "description": "Filter properties by specific tags (optional)",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_]+$",
+        "description": "Tag to filter by (e.g., 'local_radio', 'premium_content')"
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/list-authorized-properties-response.json",
+  "title": "List Authorized Properties Response",
+  "description": "Response payload for list_authorized_properties task",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "properties": {
+      "type": "array",
+      "description": "Array of all properties this agent is authorized to represent",
+      "items": {
+        "$ref": "/schemas/v1/core/property.json"
+      }
+    },
+    "tag_summary": {
+      "type": "object",
+      "description": "Summary descriptions for each tag referenced by properties",
+      "additionalProperties": {
+        "type": "string",
+        "description": "Human-readable description of what this tag represents"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., property availability issues)",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
+    }
+  },
+  "required": ["adcp_version", "properties"],
+  "additionalProperties": false
+}
