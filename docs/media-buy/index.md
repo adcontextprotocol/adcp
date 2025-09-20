@@ -1,16 +1,46 @@
 ---
-title: Overview
-description: AdCP Media Buy Protocol - AI-powered programmatic advertising workflows. Learn how to automate media buying across all advertising platforms with unified APIs.
-keywords: [media buy protocol, programmatic advertising automation, AI advertising workflows, advertising platform API, unified media buying]
+title: Media Buy Protocol
+description: AdCP Media Buy Protocol - Unified interface for AI-powered advertising automation across all platforms.
+keywords: [media buy protocol, advertising automation, AI advertising workflows, advertising platform API, unified media buying]
 ---
 
-# Advertising Context Protocol (AdCP) Overview
+# Media Buy Protocol Overview
 
-The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-first standard for the entire media buying lifecycle. It is designed to be language-agnostic and flexible, guiding any implementation of a sales agent server that exposes publisher inventory to AI-driven buyers.
+The Media Buy protocol is AdCP's core advertising automation interface, providing 8 standardized tasks for managing the complete advertising lifecycle - from inventory discovery through campaign optimization.
+
+## Protocol Access
+
+Media Buy tasks are accessible through multiple protocols:
+
+- **[MCP (Model Context Protocol)](../protocols/mcp-guide)**: Direct integration with AI assistants like Claude
+- **[A2A (Agent-to-Agent)](../protocols/a2a-guide)**: Complex agent workflows and collaboration
+- **REST API**: Coming soon for traditional integrations
+
+All protocols provide identical functionality - choose based on your integration needs. See [Protocol Comparison](../protocols/protocol-comparison) for guidance.
+
+## The 8 Core Media Buy Tasks
+
+The Media Buy protocol provides these essential operations:
+
+### Discovery & Planning
+- **[`get_products`](./task-reference/get_products)**: Discover advertising inventory using natural language briefs
+- **[`list_creative_formats`](./task-reference/list_creative_formats)**: Understand creative requirements and specifications
+- **[`list_authorized_properties`](./task-reference/list_authorized_properties)**: Verify publisher authorization and available properties
+
+### Campaign Execution
+- **[`create_media_buy`](./task-reference/create_media_buy)**: Launch advertising campaigns with complete lifecycle management
+- **[`update_media_buy`](./task-reference/update_media_buy)**: Modify budgets, targeting, and campaign settings
+
+### Creative Management
+- **[`list_creatives`](./task-reference/list_creatives)**: Browse and filter creative asset libraries
+- **[`sync_creatives`](./task-reference/sync_creatives)**: Upload and synchronize creative assets across platforms
+
+### Performance Optimization
+- **[`get_media_buy_delivery`](./task-reference/get_media_buy_delivery)**: Track performance metrics and campaign delivery
 
 ## Key Design Principles
 
-1. **MCP-Based Interface**: Built on Model Context Protocol (MCP) for standardized AI agent interaction, not REST APIs.
+1. **Protocol-Agnostic Design**: Access through MCP, A2A, or future protocols with identical functionality.
 
 2. **Asynchronous by Design**: Operations may take seconds to days to complete. The protocol embraces pending states as normal workflow elements. **This is not a real-time protocol** - response times range from 1 second for simple lookups to days for operations requiring human approval.
 
@@ -18,7 +48,7 @@ The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-fi
 
 4. **Multi-Platform Abstraction**: A unified interface that works across Google Ad Manager, Kevel, Triton Digital, and more.
 
-5. **AI-Optimized**: Designed for AI agents to discover, negotiate, and optimize media buys programmatically.
+5. **AI-Optimized**: Designed for AI agents to discover, negotiate, and optimize media buys autonomously.
 
 ## Key Features
 
@@ -31,7 +61,7 @@ The Advertising Context Protocol (AdCP) provides a simple, expressive, and AI-fi
 
 ## Response Time Expectations
 
-AdCP is designed as a **timely but not real-time** protocol. Response times fall into four categories:
+The Media Buy protocol is designed as a **timely but not real-time** protocol. Response times fall into four categories:
 
 - **Simple database lookups** (~1 second): Format and creative listings
 - **Inference/RAG operations** (~60 seconds): Product discovery, signal discovery with AI/LLM processing  
@@ -42,7 +72,7 @@ Implementers should design for asynchronous operation and provide appropriate us
 
 ## Separation of Concerns: A Collaborative Model
 
-AdCP is built on the principle that optimizing media campaigns is a collaborative process where each party focuses on what they do best. This separation of concerns creates efficiency and better outcomes for all participants.
+The Media Buy protocol is built on the principle that optimizing media campaigns is a collaborative process where each party focuses on what they do best. This separation of concerns creates efficiency and better outcomes for all participants.
 
 ### The Three Roles
 
@@ -72,7 +102,7 @@ Principals maintain control over their brand and campaign strategy:
 The principal focuses on high-level campaign goals while giving publishers flexibility to optimize delivery.
 
 #### 3. Orchestrator Role
-The orchestrator handles the technical mechanics, similar to a DSP in programmatic:
+The orchestrator handles the technical mechanics, similar to a DSP in digital advertising:
 - Information synchronization between parties
 - Creative asset management
 - Frequency capping enforcement
@@ -99,54 +129,49 @@ The following diagram illustrates the complete lifecycle of a media buy in AdCP:
 
 ## Documentation Structure
 
-### Tasks
-Core operations available in the Media Buy Protocol:
+### [Task Reference](./task-reference/) 🔗
+Complete API reference for all 8 media buying operations, from product discovery and creative management to campaign creation and optimization.
 
-- **[get_products](./tasks/get_products)** - Discover available advertising products *(~60s)*
-- **[list_creative_formats](./tasks/list_creative_formats)** - View supported creative formats *(~1s)*
-- **[create_media_buy](./tasks/create_media_buy)** - Create a media buy from selected packages *(minutes to days)*
-- **[sync_creatives](./tasks/sync_creatives)** - Centralized creative library management *(minutes to days)*
-- **[get_media_buy_delivery](./tasks/get_media_buy_delivery)** - Retrieve performance metrics and monitor delivery *(~60s)*
-- **[provide_performance_feedback](./tasks/provide_performance_feedback)** - Share performance outcomes to optimize future delivery *(~5s)*
-- **[update_media_buy](./tasks/update_media_buy)** - Update campaign settings *(minutes to days)*
+### [Capability Discovery](./capability-discovery/) 🔍
+Foundation concepts including creative format specifications and property authorization. Learn about preventing unauthorized resale and understanding format requirements.
 
-### Core Concepts
-Foundational elements of the Advertising Context Protocol:
+### [Product Discovery](./product-discovery/) 📋
+Natural language approach to finding inventory, including brief structure, product models, and real-world examples.
 
-- **[Product Discovery](product-discovery.md)** - Learn how to discover advertising inventory using natural language
-- **[Brief Expectations](brief-expectations.md)** - Comprehensive guide to brief structure and requirements
-- **[Media Products](media-products.md)** - Understand the product model and structure
-- **[Media Buys](media-buys.md)** - Understand how campaigns are created and managed across platforms
-- **[Dimensions](dimensions.md)** - Explore the unified system for categorizing products, targeting, and reporting
-- **[Targeting](targeting.md)** - Master the layered targeting approach using dimensional attributes
+### [Media Buys](./media-buys/) 🎯
+Complete campaign lifecycle management from creation through optimization, including asynchronous operations, human-in-the-loop workflows, performance monitoring, and data-driven campaign optimization.
 
-### Creatives
-Managing creative assets throughout their lifecycle:
+### [Creatives](./creatives/) 🎨
+Creative asset management including library management, asset lifecycle, and cross-platform synchronization.
 
-- **[Creative Lifecycle](creative-lifecycle.md)** - Submit, track, and adapt creative assets
-- **[Creative Formats](creative-formats.md)** - Detailed specifications for supported creative types
-- **[Standard Formats Guide](standard-formats-guide.md)** - Pre-defined formats that work across all publishers
-- **[Asset Types](asset-types.md)** - Understanding asset roles and specifications
-
-### Operations
-Running successful campaigns:
-
-- **[Media Buy Lifecycle](media-buy-lifecycle.md)** - End-to-end campaign workflow and state management
-- **[Reporting & Optimization](reporting-and-optimization.md)** - Monitor delivery and optimize performance
-- **[Principals & Security](principals-and-security.md)** - Multi-tenant security model and access control
-
-### Technical Reference
-Detailed implementation guidance:
-
-- **[Task Reference](./tasks/get_products.md)** - Complete task documentation with examples
-- **[Design Decisions](design-decisions.md)** - Architectural choices and rationale
-- **[Testing and Development](testing.md)** - Time simulation and dry run capabilities for faster development
-- **[Protocol Test Harness](https://storylab.scope3.com/sales-agents)** - Interactive tool for validating AdCP implementation compliance
+### [Advanced Topics](./advanced-topics/) 🛠️
+Advanced features including targeting dimensions, security models, design rationale, and development tools.
 
 ## Getting Started
 
-1. **Understand Discovery**: Start with [Product Discovery](product-discovery.md) to learn how to find inventory using natural language
-2. **Learn the Products**: Review [Media Products](media-products.md) to understand the product model
-3. **Follow the Workflow**: Study the [Media Buy Lifecycle](media-buy-lifecycle.md) for the complete process
-4. **Implement**: Use the [Task Reference](./tasks/get_products.md) for technical details
-5. **Optimize**: Apply [Reporting & Optimization](reporting-and-optimization.md) techniques
+Choose your path based on your role and needs:
+
+### **For AI Agent Developers**
+1. **Start with [Protocol Selection](../protocols/protocol-comparison)** - Choose MCP or A2A based on your use case
+2. **Learn [Capability Discovery](./capability-discovery/)** - Understand creative formats and property authorization
+3. **Try [Product Discovery](./product-discovery/)** - See how natural language briefs work
+4. **Reference [Task Reference](./task-reference/)** - Implement the 8 core tasks
+
+### **For Campaign Managers**
+1. **Understand the [Media Buy Lifecycle](./media-buys/)** - Learn the complete workflow
+2. **Review [Product Discovery](./product-discovery/)** - See how to find inventory with briefs
+3. **Study [Policy Compliance](./media-buys/policy-compliance)** - Understand approval requirements
+4. **Explore [Optimization & Reporting](./media-buys/optimization-reporting)** - Learn performance management
+
+### **For Publishers/Sales Agents**
+1. **Learn [Authorized Properties](./capability-discovery/authorized-properties)** - Understand authorization requirements
+2. **Review [Creative Formats](./capability-discovery/creative-formats)** - See supported creative specifications
+3. **Study [Advanced Topics](./advanced-topics/)** - Deep dive into technical implementation
+
+### **For Technical Implementers**
+1. **Choose your [Protocol](../protocols/protocol-comparison)** - MCP vs A2A comparison
+2. **Study [Task Reference](./task-reference/)** - Complete API documentation
+3. **Review [Advanced Topics](./advanced-topics/)** - Security, testing, and architecture
+4. **Explore [Creative Management](./creatives/)** - Asset lifecycle and synchronization
+
+The Media Buy protocol makes advertising automation accessible to AI agents while maintaining the human expertise and approval workflows that ensure quality and compliance.

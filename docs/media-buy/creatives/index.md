@@ -1,16 +1,38 @@
 ---
 title: Creative Lifecycle
+description: Manage creative assets throughout their lifecycle from format discovery to asset synchronization and library management.
+keywords: [creative management, creative assets, creative formats, asset library, creative lifecycle]
 ---
 
 # Creative Lifecycle
 
-AdCP manages the complete creative lifecycle from initial format discovery through ongoing optimization. This document covers the three main phases: discovering requirements, producing assets, and managing the creative library.
+Creative management is central to successful media buying campaigns. AdCP manages the complete creative lifecycle from initial format discovery through ongoing optimization, providing comprehensive tools for managing creative assets throughout their entire lifecycle.
 
-## Phase 1: Format Discovery
+## Overview
 
+AdCP's creative management system handles:
+
+- **Format specifications** for all supported creative types
+- **Asset lifecycle management** from creation to optimization
+- **Cross-platform synchronization** of creative libraries
+- **Standard format support** for consistent delivery
+
+## Key Creative Tasks
+
+### Creative Synchronization
+Use [`sync_creatives`](../task-reference/sync_creatives) to upload and manage creative assets in the centralized library. This ensures your creatives are available across all platforms and campaigns.
+
+### Creative Library Management  
+Use [`list_creatives`](../task-reference/list_creatives) to view and manage your creative asset library, including status tracking and performance metadata.
+
+## The Three Main Phases
+
+AdCP manages creatives through three main phases:
+
+### Phase 1: Format Discovery
 Before creating any creative assets, you need to understand **what formats are required**. AdCP provides two complementary tools that work together:
 
-### The Discovery Workflow
+#### The Discovery Workflow
 
 **`get_products`** finds advertising inventory that matches your campaign needs, while **`list_creative_formats`** provides the detailed creative specifications for the formats those products require.
 
@@ -52,26 +74,17 @@ const products = await get_products({
 // Returns only products that accept these specific formats
 ```
 
-### Why Both Tools Matter
+#### Why Both Tools Matter
 
 - **Without `list_creative_formats`**: Format IDs from products are meaningless strings
 - **Without `get_products`**: You don't know which formats actually have available inventory
 - **Together**: You understand both what's available AND what's required
 
-**Common discovery patterns:**
-- **Campaign planning**: Inventory-first approach to find the right audience, then build creative
-- **Production planning**: Creative-first approach to understand capabilities, then find compatible inventory
-- **Cross-publisher campaigns**: Use standard formats for maximum reach across multiple publishers
-
----
-
-## Phase 2: Creative Production
-
+### Phase 2: Creative Production
 Once you understand format requirements, create the actual creative assets according to the specifications discovered in Phase 1.
 
----
-
-## Phase 3: Creative Library Management
+### Phase 3: Creative Library Management
+Manage assets through the centralized creative library system.
 
 ## The Creative Library Model
 
@@ -99,21 +112,11 @@ A `Creative` in the library contains:
 - **`assignments`**: Current package/media buy assignments
 - **`assignment_count`**: Number of active assignments
 
-For multi-asset formats, creatives can include multiple sub-assets with different types:
-
-**Carousel/Slider Formats:**
-- Multiple images, headlines, and descriptions for rotating content
-
-**Native Ad Templates:**
-- HTML template with placeholder variables (e.g., `[%Headline%]`, `%ImageUrl%`)
-- Variable content provided via sub-assets (headline, body_text, product_image, etc.)
-- Template validation ensures all required variables are provided
-
 ## Creative Lifecycle Phases
 
 ### 1. Library Upload
 
-Creatives are uploaded to the centralized library using the [`sync_creatives`](./tasks/sync_creatives) task. This library-first approach allows creatives to be uploaded once and reused across multiple campaigns. AdCP supports multiple creative types:
+Creatives are uploaded to the centralized library using the [`sync_creatives`](../task-reference/sync_creatives) task. This library-first approach allows creatives to be uploaded once and reused across multiple campaigns. AdCP supports multiple creative types:
 
 **Creative Types:**
 - **Hosted assets** - Traditional media files (images, videos, audio)
@@ -125,11 +128,6 @@ Creatives are uploaded to the centralized library using the [`sync_creatives`](.
 - Asset validation and policy compliance checking
 - Optional adaptation suggestions from the publisher
 - Library storage with metadata for future reuse
-
-**Implementation Guide:**
-- 📋 **Upload creatives**: Use [`sync_creatives`](./tasks/sync_creatives) with bulk operations and upsert semantics
-- 🏗️ **Library architecture**: Learn more about the [Creative Library](./creative-library) centralized approach
-- 📝 **Format specifications**: Review [Creative Formats](./creative-formats) for platform requirements
 
 ### 2. Review & Approval
 
@@ -158,16 +156,10 @@ Once creatives are approved in the library, they can be assigned to specific med
 
 Ongoing creative management is handled through two core tasks:
 
-- **Library Querying**: Use [`list_creatives`](./tasks/list_creatives) to search, filter, and discover creative assets
-- **Asset Updates**: Use [`sync_creatives`](./tasks/sync_creatives) to update creative metadata, assignments, and content
+- **Library Querying**: Use [`list_creatives`](../task-reference/list_creatives) to search, filter, and discover creative assets
+- **Asset Updates**: Use [`sync_creatives`](../task-reference/sync_creatives) to update creative metadata, assignments, and content
 - **Assignment Tracking**: Monitor which campaigns are using each creative
 - **Performance Analysis**: Track creative effectiveness across all assignments
-
-**Implementation Guide:**
-- 🔍 **Search & filter**: Use [`list_creatives`](./tasks/list_creatives) with advanced filtering, pagination, and sorting
-- 📝 **Update metadata**: Use [`sync_creatives`](./tasks/sync_creatives) with patch mode for selective updates  
-- 📊 **Track performance**: Include performance data in queries to optimize creative reuse
-- 🎯 **Manage assignments**: Bulk assign/unassign creatives across multiple packages efficiently
 
 ### 5. Adaptation & Optimization
 
@@ -212,6 +204,13 @@ Different platforms have varying creative requirements:
 - Supports standard audio formats
 - Station-level creative targeting
 
+## Response Times
+
+Creative operations have varying response times:
+- **Format listings**: ~1 second (database lookup)
+- **Creative sync**: Minutes to days (asset processing and approval)
+- **Library queries**: ~1 second (database lookup)
+
 ## Best Practices
 
 1. **Format Planning**: Review supported formats before creative production
@@ -219,29 +218,16 @@ Different platforms have varying creative requirements:
 3. **Adaptation Acceptance**: Consider publisher suggestions for better performance
 4. **Asset Organization**: Use clear naming conventions for creative IDs
 5. **Performance Monitoring**: Track creative effectiveness and iterate
-
-## Next Steps
-
-Ready to implement creative management? Choose your path:
-
-### 🚀 **Start Building**
-1. **Set up your library**: Begin with [`sync_creatives`](./tasks/sync_creatives) to upload your first creatives
-2. **Discover assets**: Use [`list_creatives`](./tasks/list_creatives) to query and filter your library
-3. **Launch campaigns**: Connect creatives to media buys with [`create_media_buy`](./tasks/create_media_buy)
-
-### 📚 **Learn More**
-- **Architecture deep dive**: Read [Creative Library](./creative-library) for centralized management concepts
-- **Format planning**: Review [Creative Formats](./creative-formats) for platform requirements
-- **Best practices**: Study successful creative workflows and optimization strategies
-
-### 🔧 **Integrate Systems**
-- **MCP integration**: Enable AI assistants with the [MCP Guide](../protocols/mcp-guide)
-- **A2A integration**: Build natural language workflows with the [A2A Guide](../protocols/a2a-guide)
-- **Protocol comparison**: Choose the right integration approach with [Protocol Comparison](../protocols/protocol-comparison)
+6. **Quality Control**: Follow format specifications exactly
+7. **File Optimization**: Optimize file sizes for fast loading
+8. **Testing**: Test assets across different devices and platforms
 
 ## Related Documentation
 
-- [`sync_creatives`](./tasks/sync_creatives) - Bulk creative management with upsert semantics
-- [`list_creatives`](./tasks/list_creatives) - Advanced creative library querying and filtering  
-- [Creative Library](./creative-library) - Centralized creative management concepts
-- [Creative Formats](./creative-formats) - Detailed format specifications
+- **[`sync_creatives`](../task-reference/sync_creatives)** - Bulk creative management with upsert semantics
+- **[`list_creatives`](../task-reference/list_creatives)** - Advanced creative library querying and filtering  
+- **[`list_creative_formats`](../task-reference/list_creative_formats)** - Understanding format requirements
+- **[Creative Library](./creative-library)** - Centralized creative management concepts
+- **[Creative Formats](../capability-discovery/creative-formats)** - Detailed format specifications
+- **[Standard Formats Guide](./standard-formats-guide)** - Pre-defined formats that work across publishers
+- **[Asset Types](./asset-types)** - Understanding asset roles and specifications

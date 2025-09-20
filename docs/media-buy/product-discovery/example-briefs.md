@@ -246,6 +246,6 @@ Good briefs leave room for publisher expertise:
 ## Related Documentation
 
 - [Brief Expectations](./brief-expectations.md) - How publishers process briefs
-- [Creative Formats](./creative-formats.md) - Available format types
-- [Media Buy Lifecycle](./media-buy-lifecycle.md) - Campaign execution workflow
-- [Product Discovery](./product-discovery.md) - How briefs influence product selection
+- [Creative Formats](../capability-discovery/creative-formats.md) - Available format types
+- [Media Buy Lifecycle](../media-buys/index.md) - Campaign execution workflow
+- [Product Discovery](./index.md) - How briefs influence product selection

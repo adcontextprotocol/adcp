@@ -466,9 +466,9 @@ curl -X POST https://api.adcp.org/validate-creative \
 ## Resources
 
 - [Format Schemas](https://github.com/adcontextprotocol/adcp/tree/main/static/schemas/v1/standard-formats)
-- [Creative Formats Reference](./creative-formats.md)
+- [Creative Formats Reference](../capability-discovery/creative-formats.md)
 - [Asset Types Documentation](./asset-types.md)
-- [Task Reference](./tasks/get_products.md)
+- [Task Reference](../task-reference/)
 
 ## Next Steps
 

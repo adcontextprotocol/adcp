@@ -135,11 +135,6 @@ The AI assistant will:
 
 ## Available Protocols
 
-### 🔍 [Discovery Protocol](./discovery/protocol)
-**Status**: RFC/v1.0
-
-Automatically discover AdCP agents using `.well-known/adcp.json` endpoints.
-
 ### 🎯 [Signals Activation Protocol](./signals/overview)
 **Status**: RFC/v0.1
 
@@ -188,10 +183,10 @@ Learn more in the [Protocols section](./protocols/getting-started).
 
 - **Platform Providers**: Start with the [Signals Protocol Specification](./signals/specification)
 - **Developers**: Review the [Protocol Support](./protocols/getting-started) options
-- **Everyone**: Join the [community discussion](https://github.com/adcontextprotocol/adcp/discussions)
+- **Everyone**: Join the [community discussion](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
 
 ## Need Help?
 
 - 📖 Browse the documentation
-- 💬 Ask in [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)
+- 💬 Ask in [Slack Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
 - 📧 Email: support@adcontextprotocol.org

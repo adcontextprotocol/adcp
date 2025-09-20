@@ -3,7 +3,7 @@ title: Message Field Pattern
 sidebar_position: 10
 ---
 
-# Design Decision: Universal Message Field Pattern
+# Message Field Pattern
 
 ## Overview
 
