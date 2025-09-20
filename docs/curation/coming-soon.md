@@ -35,7 +35,7 @@ The Curation Protocol will enable AI assistants to discover and package media in
 
 Want to help shape the Curation Protocol?
 
-- Join our [working group](https://github.com/adcontextprotocol/adcp/discussions)
+- Join our [working group](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
 - Share your use cases
 - Review early drafts
 

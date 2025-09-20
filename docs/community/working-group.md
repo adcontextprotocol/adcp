@@ -9,9 +9,9 @@ The Ad Context Protocol Working Group is an open community of platform providers
 
 ## Join the Discussion
 
-Our primary collaboration happens through GitHub Discussions:
+Our primary collaboration happens through Slack:
 
-**[→ Join the AdCP Community on GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)**
+**[→ Join the AdCP Community on Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)**
 
 ## What We Discuss
 
@@ -30,9 +30,9 @@ Our primary collaboration happens through GitHub Discussions:
 
 ## Stay Updated
 
-- **Watch the Repository**: Get notifications about new discussions
-- **Star the Project**: Show your support and stay connected
-- **Follow Announcements**: Important updates are posted in the Announcements category
+- **Join Slack Channels**: Participate in topic-specific discussions
+- **Follow Announcements**: Important updates are posted in the #announcements channel
+- **Star the Project**: Show your support on GitHub and stay connected
 
 ## Other Ways to Connect
 

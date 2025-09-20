@@ -11,7 +11,7 @@ A **Product** is the core sellable unit in AdCP. This document details the Produ
 - `product_id` (string, required)
 - `name` (string, required)
 - `description` (string, required)
-- `formats` (list[Format], required): See [Creative Formats](creative-formats.md).
+- `formats` (list[Format], required): See [Creative Formats](../capability-discovery/creative-formats.md).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `is_fixed_price` (bool, required): `true` if the price is fixed, `false` if it is auction-based.
 - `cpm` (float, optional): The fixed Cost Per Mille. **Required** if `is_fixed_price` is `true`.
@@ -143,11 +143,11 @@ A server can offer a general catalog, but it can also return:
 
 ## Integration with Discovery
 
-Products are discovered through the [Product Discovery](./product-discovery.md) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be purchased via `create_media_buy`.
+Products are discovered through the [Product Discovery](./index.md) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be purchased via `create_media_buy`.
 
 ## See Also
 
-- [Product Discovery](./product-discovery.md) - How to discover products using natural language
-- [Media Buys](./media-buys.md) - How to purchase products
-- [Targeting](./targeting.md) - Detailed targeting options
-- [Creative Formats](./creative-formats.md) - Supported creative specifications
+- [Product Discovery](./index.md) - How to discover products using natural language
+- [Media Buys](../media-buys/index.md) - How to purchase products
+- [Targeting](../advanced-topics/targeting.md) - Detailed targeting options
+- [Creative Formats](../capability-discovery/creative-formats.md) - Supported creative specifications

@@ -444,3 +444,174 @@ Key principles:
 - No cross-references to placement or selection schemas
 - Assets are defined inline with clear specifications
 - Format categories match industry standards (display, video, native, etc.)
+
+## Documentation Structure Theory & Learnings
+
+### Core Documentation Principles
+
+Based on extensive reorganization of the AdCP documentation, these principles have emerged as critical for effective technical documentation:
+
+#### 1. **User-Centric Organization**
+- Structure docs around **user workflows**, not internal system architecture
+- Group related concepts together even if they map to different technical components
+- Prioritize **what users need to accomplish** over how the system is built internally
+
+#### 2. **Eliminate Redundancy Ruthlessly**
+- **One source of truth** for each concept - never duplicate content across multiple files
+- Use **cross-references** rather than copying content
+- When consolidating, choose the **most logical location** based on user workflow
+
+#### 3. **Consistent Naming Patterns**
+- Use **"Overview"** for index pages rather than repeating the section name
+- Examples: `capability-discovery/index.md` titled "Overview", not "Capability Discovery"
+- Avoid navigation hierarchies where the same name appears twice
+
+#### 4. **Protocol-Agnostic Documentation**
+- **Never** assume a specific protocol (MCP, A2A, REST) in core documentation
+- Focus on **tasks and capabilities**, not transport mechanisms
+- Reference protocol-specific details in dedicated protocol sections
+
+#### 5. **Workflow-Based Information Architecture**
+- Organize by **user journey stages**: Discovery → Planning → Execution → Optimization
+- Group related activities together (e.g., Policy Compliance belongs with Media Buys, not as standalone)
+- Separate **conceptual understanding** from **technical implementation**
+
+### Documentation Architecture Lessons
+
+#### Multi-Level Navigation Strategy
+```
+Main Section (e.g., "Media Buy")
+├── Overview (introduces the domain)
+├── Foundation Concepts (e.g., Capability Discovery)
+├── Planning Activities (e.g., Product Discovery)  
+├── Execution Workflows (e.g., Media Buys, Creatives)
+└── Advanced Topics (technical deep-dives)
+```
+
+#### Content Consolidation Guidelines
+
+**When to Consolidate:**
+- Content serves the **same user workflow**
+- Information is **closely related** conceptually
+- Separate documents create **cognitive overhead**
+- Users would naturally expect to find information together
+
+**When to Keep Separate:**
+- Content serves **different audiences** (conceptual vs. technical)
+- Documents are **reference material** (e.g., API docs)
+- Content has **different lifecycles** (e.g., stable concepts vs. evolving examples)
+
+#### Navigation Best Practices
+
+1. **Role-Based Getting Started**
+   - Provide **multiple entry points** based on user role
+   - "For AI Agent Developers", "For Campaign Managers", "For Publishers"
+   - Each path references the **same underlying documentation** but suggests different reading order
+
+2. **Clear Section Purposes**
+   - **Capability Discovery**: Foundation concepts and requirements
+   - **Product Discovery**: Natural language inventory search
+   - **Media Buys**: Campaign lifecycle and execution
+   - **Creatives**: Asset management workflows
+   - **Advanced Topics**: Technical implementation details
+
+3. **Avoid Deep Nesting**
+   - Maximum **3 levels** of navigation hierarchy
+   - Use **in-page sections** rather than additional file levels
+   - Prefer **longer comprehensive pages** over many small pages
+
+### Anti-Patterns to Avoid
+
+#### 1. **Technology-Centric Organization**
+```
+❌ BAD: Organized by tech stack
+├── MCP Integration
+├── A2A Integration  
+├── Database Schemas
+└── API Endpoints
+
+✅ GOOD: Organized by user workflow
+├── Discovery & Planning
+├── Campaign Execution
+├── Performance Optimization
+└── Technical Implementation
+```
+
+#### 2. **Redundant Section Titles**
+```
+❌ BAD: Navigation shows duplicate names
+Product Discovery
+├── Product Discovery (redundant!)
+├── Brief Expectations
+└── Example Briefs
+
+✅ GOOD: Clear hierarchy
+Product Discovery  
+├── Overview
+├── Brief Expectations
+└── Example Briefs
+```
+
+#### 3. **Protocol Assumptions**
+```
+❌ BAD: MCP-centric language
+"Use MCP tool calls to discover products..."
+
+✅ GOOD: Protocol-agnostic language  
+"Use the get_products task to discover products..."
+```
+
+#### 4. **Scattered Related Content**
+```
+❌ BAD: Related concepts separated
+├── Media Buys (lifecycle)
+├── Policy Compliance (standalone)
+└── Optimization (separate section)
+
+✅ GOOD: Workflow-grouped content
+└── Media Buys
+    ├── Lifecycle
+    ├── Policy Compliance  
+    └── Optimization & Reporting
+```
+
+### Specific AdCP Learnings
+
+#### 1. **Brief-Based Targeting Philosophy**
+- Documentation should emphasize **natural language approach** over technical targeting APIs
+- Focus on **publisher expertise** and **inclusive pricing** concepts
+- Technical overlays are **exception cases**, not the primary workflow
+
+#### 2. **Separation of Concerns Model**
+- The **three-role model** (Publisher, Principal, Orchestrator) is central to AdCP
+- This model should be explained in **Media Buy context**, not as general protocol theory
+- Each role has **different documentation needs** and entry points
+
+#### 3. **Asynchronous-First Design**
+- Emphasize **"timely but not real-time"** nature throughout documentation
+- Response time expectations should be **clearly communicated** early
+- Human-in-the-loop workflows are **normal**, not edge cases
+
+#### 4. **Multi-Protocol Reality**
+- AdCP **tasks are protocol-agnostic** - the same 8 tasks work across MCP, A2A, and future protocols
+- Protocol choice is an **integration decision**, not a capability limitation
+- Documentation should **guide protocol selection** based on use case, not assume one
+
+### Continuous Improvement Guidelines
+
+1. **Regular User Journey Reviews**
+   - Periodically trace through documentation **as different user types**
+   - Identify **friction points** and **missing connections**
+   - Consolidate or separate content based on **actual usage patterns**
+
+2. **Cross-Reference Validation**
+   - Ensure all **internal links** remain valid after reorganization
+   - Use **relative paths** that survive structural changes
+   - Regularly test **build process** to catch broken references
+
+3. **Content Lifecycle Management**
+   - Mark **outdated concepts** for removal rather than updating indefinitely
+   - **Archive rather than delete** content that may become relevant again
+   - Keep **CLAUDE.md updated** with structural decisions and rationale
+
+These principles emerged from reorganizing 50+ documentation files and should guide future structural decisions. The goal is always **user success** - helping people accomplish their goals with minimal cognitive overhead.

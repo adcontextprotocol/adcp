@@ -960,7 +960,7 @@ If validation fails, return an error:
 - Each package contains an array of products that share the same targeting, budget allocation, and format requirements
 - **Format specification is required** for each package - this enables placeholder creation and validation
 - Both media buys and packages have `buyer_ref` fields for the buyer's reference tracking
-- The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted (see [Brief Expectations](../brief-expectations) for guidance)
+- The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted (see [Brief Expectations](../product-discovery/brief-expectations) for guidance)
 - Publishers will validate the promoted offering against their policies before creating the media buy
 - Package-level targeting overlay applies additional criteria on top of product-level targeting
 - The total budget is distributed across packages based on their individual `budget` settings (or proportionally if not specified)

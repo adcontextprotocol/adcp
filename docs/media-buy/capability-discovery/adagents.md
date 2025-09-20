@@ -1,9 +1,9 @@
 ---
 sidebar_position: 8
-title: Authorized Sales Agents
+title: adagents.json Tech Spec
 ---
 
-# Authorized Sales Agents Specification
+# adagents.json Tech Spec
 
 The `adagents.json` file provides a standardized way for publishers to declare which sales agents are authorized to sell their advertising inventory. This specification addresses authorization transparency and helps prevent unauthorized reselling of publisher inventory.
 
