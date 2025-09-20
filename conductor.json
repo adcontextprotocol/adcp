@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "setup": "git config core.hooksPath .husky\nnpm install"
+  }
+}
