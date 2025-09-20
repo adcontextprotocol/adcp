@@ -17,12 +17,23 @@
         "$ref": "/schemas/v1/core/property.json"
       }
     },
-    "tag_summary": {
+    "tags": {
       "type": "object",
-      "description": "Summary descriptions for each tag referenced by properties",
+      "description": "Metadata for each tag referenced by properties",
       "additionalProperties": {
-        "type": "string",
-        "description": "Human-readable description of what this tag represents"
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this tag"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of what this tag represents"
+          }
+        },
+        "required": ["name", "description"],
+        "additionalProperties": false
       }
     },
     "errors": {

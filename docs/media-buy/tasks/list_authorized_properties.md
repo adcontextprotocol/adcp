@@ -59,11 +59,23 @@ The message is returned differently in each protocol:
       "publisher_domain": "radionetwork.com"
     }
   ],
-  "tag_summary": {
-    "local_radio": "1847 local radio stations across US markets",
-    "sports_network": "145 sports properties and networks",
-    "midwest": "523 properties in midwest markets",
-    "premium": "Premium tier inventory"
+  "tags": {
+    "local_radio": {
+      "name": "Local Radio Stations", 
+      "description": "1847 local radio stations across US markets"
+    },
+    "sports_network": {
+      "name": "Sports Network Properties",
+      "description": "145 sports properties and networks"
+    },
+    "midwest": {
+      "name": "Midwest Markets",
+      "description": "523 properties in midwest markets"
+    },
+    "premium": {
+      "name": "Premium Inventory",
+      "description": "Premium tier inventory across all property types"
+    }
   }
 }
 ```
@@ -71,7 +83,9 @@ The message is returned differently in each protocol:
 ### Field Descriptions
 
 - **properties**: Array of all authorized properties (see [Property Schema](/schemas/v1/core/property.json))
-- **tag_summary**: Human-readable descriptions for each tag used by properties
+- **tags**: Metadata for each tag used by properties
+  - **name**: Human-readable name for the tag
+  - **description**: Description of what the tag represents and optionally how many properties it includes
 
 ## Integration with get_products
 
@@ -169,9 +183,15 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "publisher_domain": "radionetwork.com"
     }
   ],
-  "tag_summary": {
-    "local_radio": "1847 local radio stations across US markets",
-    "midwest": "523 properties in midwest markets"
+  "tags": {
+    "local_radio": {
+      "name": "Local Radio Stations",
+      "description": "1847 local radio stations across US markets"
+    },
+    "midwest": {
+      "name": "Midwest Markets", 
+      "description": "523 properties in midwest markets"
+    }
   }
 }
 ```
@@ -220,9 +240,15 @@ await a2a.send({
               "publisher_domain": "radionetwork.com"
             }
           ],
-          "tag_summary": {
-            "local_radio": "1847 local radio stations across US markets",
-            "midwest": "523 properties in midwest markets"
+          "tags": {
+            "local_radio": {
+              "name": "Local Radio Stations",
+              "description": "1847 local radio stations across US markets"
+            },
+            "midwest": {
+              "name": "Midwest Markets",
+              "description": "523 properties in midwest markets"
+            }
           }
         }
       }
