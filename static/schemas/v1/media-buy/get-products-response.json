@@ -8,7 +8,13 @@
     "adcp_version": {
       "type": "string",
       "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.6.0"
+    },
+    "status": {
+      "$ref": "/schemas/v1/enums/task-status.json",
+      "description": "Current task state",
+      "default": "completed"
     },
     "products": {
       "type": "array",

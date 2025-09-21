@@ -1,107 +1,134 @@
 ---
 sidebar_position: 3
 title: A2A Guide
+description: Integrate AdCP with Agent-to-Agent Protocol (A2A). Transport-specific guide for artifacts, SSE streaming, and agent cards.
+keywords: [A2A integration, Agent-to-Agent Protocol, artifacts, SSE streaming, agent cards]
 ---
 
 # A2A Integration Guide
 
-Everything you need to integrate AdCP using the Agent-to-Agent Protocol.
+Transport-specific guide for integrating AdCP using the Agent-to-Agent Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](./core-concepts.md).
 
-## Quick Start
+## A2A Client Setup
 
-### 1. Initialize A2A Connection
+### 1. Initialize A2A Client
 
 ```javascript
 const a2a = new A2AClient({
   endpoint: 'https://adcp.example.com/a2a',
-  apiKey: process.env.ADCP_API_KEY
-});
-```
-
-### 2. Send Your First Message
-
-```javascript
-// Natural language request
-const task = await a2a.send({
-  message: {
-    parts: [{
-      kind: "text",
-      text: "I need video products for a pet food campaign"
-    }]
-  }
-});
-
-// Subscribe to updates
-task.on('update', (status) => {
-  console.log(status.message);
-});
-
-// Get final result
-const result = await task.complete();
-console.log(result.artifacts);
-```
-
-## Skill Invocation
-
-A2A supports two methods for invoking skills:
-
-### Natural Language Invocation
-The agent interprets natural language to determine which skill to execute:
-
-```javascript
-// Agent infers this should use the get_products skill
-const task = await a2a.send({
-  message: {
-    parts: [{
-      kind: "text",
-      text: "Find premium CTV inventory for sports fans"
-    }]
+  apiKey: process.env.ADCP_API_KEY,
+  agent: {
+    name: "AdCP Media Buyer",
+    version: "1.0.0"
   }
 });
 ```
 
-### Explicit Skill Invocation
-For deterministic execution, explicitly specify the skill name and parameters:
+### 2. Verify Agent Card
 
 ```javascript
-// Explicitly invoke the get_products skill
-const task = await a2a.send({
+// Check available skills
+const agentCard = await a2a.getAgentCard();
+console.log(agentCard.skills.map(s => s.name));
+// ["get_products", "create_media_buy", "sync_creatives", ...]
+```
+
+### 3. Send Your First Task
+
+```javascript
+const response = await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Find video products for pet food campaign"
+    }]
+  }
+});
+
+// All responses include unified status field (AdCP 1.6.0+)  
+console.log(response.status);   // "completed" | "input-required" | "working" | etc.
+console.log(response.message);  // Human-readable summary
+```
+
+## Message Structure (A2A-Specific)
+
+### Multi-Part Messages
+
+A2A's key advantage is multi-part messages combining text, data, and files:
+
+```javascript
+// Text + structured data + file
+const response = await a2a.send({
   message: {
     parts: [
       {
         kind: "text",
-        text: "Looking for video products"  // Optional human context
+        text: "Create campaign with these assets"
       },
       {
-        kind: "data",
+        kind: "data", 
         data: {
-          skill: "get_products",  // Exact skill name from Agent Card
+          skill: "create_media_buy",
           parameters: {
-            audience: "sports fans",
-            format: "video",
-            max_cpm: 50,
-            platforms: ["ctv", "online_video"]
+            packages: ["pkg_001"],
+            total_budget: 100000
           }
         }
+      },
+      {
+        kind: "file",
+        uri: "https://cdn.example.com/hero-video.mp4",
+        name: "hero_video_30s.mp4"
       }
     ]
   }
 });
 ```
 
-**Important**: When using explicit invocation, the `skill` field must exactly match the skill name advertised in the Agent Card.
+### Skill Invocation Methods
 
-### Combining Natural Language with Explicit Skills
-You can include both natural language context and explicit skill invocation:
-
+#### Natural Language (Flexible)
 ```javascript
-// Hybrid approach - provides context AND explicit execution
+// Agent interprets intent
+const task = await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Find premium CTV inventory under $50 CPM"
+    }]
+  }
+});
+```
+
+#### Explicit Skill (Deterministic)
+```javascript
+// Explicit skill with exact parameters
+const task = await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "get_products",
+        parameters: {
+          max_cpm: 50,
+          format_types: ["video"],
+          tier: "premium"
+        }
+      }
+    }]
+  }
+});
+```
+
+#### Hybrid Approach (Recommended)
+```javascript
+// Context + explicit execution for best results
 const task = await a2a.send({
   message: {
     parts: [
       {
         kind: "text",
-        text: "I'm looking for inventory for our spring campaign targeting millennials"
+        text: "Looking for inventory for spring campaign targeting millennials"
       },
       {
         kind: "data", 
@@ -110,7 +137,7 @@ const task = await a2a.send({
           parameters: {
             audience: "millennials",
             season: "Q2_2024",
-            categories: ["lifestyle", "entertainment"]
+            max_cpm: 45
           }
         }
       }
@@ -119,36 +146,19 @@ const task = await a2a.send({
 });
 ```
 
-This hybrid approach:
-- Provides human context for logging and understanding
-- Ensures deterministic skill execution
-- Allows the agent to use context for clarifications if needed
+**Status Handling**: See [Core Concepts](./core-concepts.md) for complete status handling patterns.
 
-## Understanding A2A Responses
+## A2A Response Format
 
-A2A uses two types of responses:
+**New in AdCP 1.6.0**: All responses include unified status field.
 
-### Messages (Communication)
-For conversations, clarifications, and updates:
-
+### Response Structure
 ```json
 {
-  "message": {
-    "parts": [{
-      "kind": "text",
-      "text": "I'd be happy to help. What's your campaign budget?"
-    }]
-  },
-  "artifacts": []
-}
-```
-
-### Artifacts (Deliverables)
-For actual results and data:
-
-```json
-{
-  "artifacts": [{
+  "status": "completed",        // Unified status (see Core Concepts)
+  "taskId": "task-123",         // A2A task identifier
+  "contextId": "ctx-456",       // Automatic context management
+  "artifacts": [{               // A2A-specific artifact structure
     "name": "product_catalog",
     "parts": [
       {
@@ -156,7 +166,7 @@ For actual results and data:
         "text": "Found 12 video products perfect for pet food campaigns"
       },
       {
-        "kind": "data",
+        "kind": "data", 
         "data": {
           "products": [...],
           "total": 12
@@ -167,386 +177,193 @@ For actual results and data:
 }
 ```
 
-## Common Workflows
+### A2A-Specific Fields
+- **taskId**: A2A task identifier for streaming updates
+- **contextId**: Automatically managed by A2A protocol
+- **artifacts**: Multi-part deliverables (vs. MCP's direct data field)
+- **status**: Same values as MCP for consistency
 
-### Product Discovery with Clarification
-
+### Processing Artifacts
 ```javascript
-// Initial request (vague)
-const task = await a2a.send({
-  message: {
-    parts: [{
-      kind: "text",
-      text: "I need to run some video ads"
-    }]
-  }
-});
-
-// A2A asks for clarification
-// Response: "I'd be happy to help. Could you share your budget and target audience?"
-
-// Provide more details
-const refined = await a2a.send({
-  contextId: task.contextId,
-  message: {
-    parts: [{
-      kind: "text", 
-      text: "Budget is $50K, targeting pet owners in California"
-    }]
-  }
-});
-
-// Now get results with artifacts
-console.log(refined.artifacts[0].parts[1].data.products);
-```
-
-### Creating a Media Buy with Approvals
-
-```javascript
-// Request media buy creation
-const task = await a2a.send({
-  message: {
-    parts: [{
-      kind: "text",
-      text: "Create a $100K CTV campaign for sports fans in NY and CA"
-    }]
-  }
-});
-
-// Monitor progress via SSE
-const events = new EventSource(`/a2a/tasks/${task.taskId}/events`);
-
-events.onmessage = (event) => {
-  const update = JSON.parse(event.data);
-  console.log(update.message);
-  // "Validating inventory..."
-  // "Checking budget approval..."
-  // "Pending human approval - budget exceeds auto-approval limit"
-};
-
-// Handle approval request
-if (task.status === 'pending_approval') {
-  // Approve in same context
-  await a2a.send({
-    contextId: task.contextId,
-    message: {
-      parts: [{
-        kind: "text",
-        text: "Approved - proceed with campaign creation"
-      }]
-    }
-  });
+function processA2aResponse(response) {
+  // Extract human message
+  const message = response.artifacts?.[0]?.parts
+    ?.find(p => p.kind === 'text')?.text;
+    
+  // Extract structured data
+  const data = response.artifacts?.[0]?.parts
+    ?.find(p => p.kind === 'data')?.data;
+    
+  return { message, data, status: response.status };
 }
-
-// Get final confirmation
-const result = await task.complete();
-const mediaBuyId = result.artifacts[0].parts[1].data.media_buy_id;
 ```
 
-### Uploading Creatives
+## SSE Streaming (A2A-Specific)
+
+A2A's key advantage is real-time updates via Server-Sent Events:
+
+### Task Monitoring
 
 ```javascript
-// Upload with file parts
-const task = await a2a.send({
-  contextId: existingContext,
-  message: {
-    parts: [
-      {
-        kind: "text",
-        text: "Add this creative to media buy MB-12345"
-      },
-      {
-        kind: "file",
-        uri: "https://cdn.example.com/hero-video.mp4",
-        name: "hero_video_30s.mp4"
-      }
-    ]
-  }
-});
-
-// Get processing updates
-// "Validating creative format..."
-// "Checking compliance..."
-// "Creative approved and assigned"
-```
-
-## Real-time Updates with SSE
-
-A2A provides real-time updates through Server-Sent Events:
-
-```javascript
-class A2ATaskMonitor {
+class A2aTaskMonitor {
   constructor(taskId) {
+    this.taskId = taskId;
     this.events = new EventSource(`/a2a/tasks/${taskId}/events`);
+    
+    this.events.addEventListener('status', (e) => {
+      const update = JSON.parse(e.data);
+      this.handleStatusUpdate(update);
+    });
     
     this.events.addEventListener('progress', (e) => {
       const data = JSON.parse(e.data);
-      console.log(`Progress: ${data.percentage}% - ${data.message}`);
+      console.log(`${data.percentage}% - ${data.message}`);
     });
-    
-    this.events.addEventListener('status', (e) => {
-      const data = JSON.parse(e.data);
-      if (data.state === 'completed') {
+  }
+  
+  handleStatusUpdate(update) {
+    switch (update.status) {
+      case 'input-required':
+        // Handle clarification/approval needed
+        this.emit('input-required', update);
+        break;
+      case 'completed':
         this.events.close();
-      }
-    });
+        this.emit('completed', update);
+        break;
+      case 'failed':
+        this.events.close();
+        this.emit('failed', update);
+        break;
+    }
   }
 }
 ```
 
-## Context Management
-
-A2A handles context automatically at the protocol level:
+### Real-Time Updates Example
 
 ```javascript
-// A2A maintains session state automatically
-const task1 = await a2a.send({
+// Start long-running operation
+const response = await a2a.send({
   message: {
     parts: [{
-      kind: "text",
-      text: "Show me premium video inventory"
-    }]
-  }
-});
-
-// The protocol tracks context - you can reference it if needed
-// but A2A manages the session for you
-const task2 = await a2a.send({
-  contextId: task1.contextId,  // Optional - A2A maintains this automatically
-  message: {
-    parts: [{
-      kind: "text",
-      text: "Filter for sports-related content"
-    }]
-  }
-});
-// System understands this refers to the premium video inventory
-```
-
-**Key Advantage**: Unlike MCP which requires manual context_id management, A2A handles session continuity automatically through the protocol. The contextId is available if you need explicit control, but the protocol maintains state for you.
-
-## Human-in-the-Loop Workflows
-
-A2A natively handles workflows requiring human intervention:
-
-```javascript
-async function handleApprovalWorkflow(task) {
-  // Monitor task status
-  const monitor = new TaskMonitor(task.taskId);
-  
-  monitor.on('pending_approval', async (details) => {
-    console.log(`Approval needed: ${details.reason}`);
-    
-    // Get human decision (from UI, Slack, etc.)
-    const decision = await getHumanApproval(details);
-    
-    // Send decision in context
-    await a2a.send({
-      contextId: task.contextId,
-      message: {
-        parts: [{
-          kind: "text",
-          text: decision.approved 
-            ? `Approved: ${decision.notes}`
-            : `Rejected: ${decision.reason}`
-        }]
+      kind: "data",
+      data: {
+        skill: "create_media_buy",
+        parameters: { packages: ["pkg_001"], total_budget: 100000 }
       }
-    });
+    }]
+  }
+});
+
+// Monitor in real-time
+if (response.status === 'working') {
+  const monitor = new A2aTaskMonitor(response.taskId);
+  
+  monitor.on('progress', (data) => {
+    updateUI(`${data.percentage}%: ${data.message}`);
   });
   
-  return monitor.waitForCompletion();
+  monitor.on('completed', (final) => {
+    console.log('Created:', final.artifacts[0].parts[1].data.media_buy_id);
+  });
 }
 ```
 
-## Multi-Modal Support
+## Context Management (A2A-Specific)
 
-A2A handles various content types in a single message:
+**Key Advantage**: A2A handles context automatically - no manual context_id management needed.
+
+### Automatic Context
 
 ```javascript
-// Mixed content message
-await a2a.send({
+// First request - A2A creates context automatically
+const response1 = await a2a.send({
+  message: {
+    parts: [{ kind: "text", text: "Find premium video products" }]
+  }
+});
+
+// Follow-up - A2A remembers context automatically  
+const response2 = await a2a.send({
+  message: {
+    parts: [{ kind: "text", text: "Filter for sports content" }]
+  }
+});
+// System automatically connects this to previous request
+```
+
+### Explicit Context (Optional)
+
+```javascript
+// When you need explicit control
+const response2 = await a2a.send({
+  contextId: response1.contextId,  // Optional - A2A tracks this anyway
+  message: {
+    parts: [{ kind: "text", text: "Refine those results" }]
+  }
+});
+```
+
+**vs. MCP**: Unlike MCP's manual context_id management, A2A handles session continuity at the protocol level.
+
+## Multi-Modal Messages (A2A-Specific)
+
+A2A's unique capability - combine text, data, and files in one message:
+
+### Creative Upload with Context
+
+```javascript
+// Upload creative with campaign context in single message
+const response = await a2a.send({
   message: {
     parts: [
       {
         kind: "text",
-        text: "Here's my creative brief and assets"
+        text: "Add this hero video to the premium sports campaign"
       },
-      {
-        kind: "file",
-        uri: "https://drive.google.com/brief.pdf",
-        name: "creative_brief.pdf"
-      },
-      {
-        kind: "data",
-        data: {
-          campaignGoals: ["awareness", "consideration"],
-          kpis: ["reach", "video_completion_rate"]
-        }
-      }
-    ]
-  }
-});
-```
-
-## AdCP Skill Examples
-
-Here are explicit invocation examples for each AdCP skill:
-
-### Media Buy Skills
-
-#### get_products
-```javascript
-// Explicit skill invocation
-await a2a.send({
-  message: {
-    parts: [
-      {
-        kind: "data",
-        data: {
-          skill: "get_products",
-          parameters: {
-            audience: "pet owners",
-            geo: ["US-CA", "US-NY"],
-            format: "video",
-            max_cpm: 75,
-            min_impressions: 1000000
-          }
-        }
-      }
-    ]
-  }
-});
-```
-
-#### list_creative_formats
-```javascript
-// List all supported formats
-await a2a.send({
-  message: {
-    parts: [
-      {
-        kind: "data",
-        data: {
-          skill: "list_creative_formats",
-          parameters: {
-            category: "video"  // Optional: filter by category
-          }
-        }
-      }
-    ]
-  }
-});
-```
-
-#### create_media_buy
-```javascript
-// Create campaign with selected products
-await a2a.send({
-  message: {
-    parts: [
-      {
-        kind: "data",
-        data: {
-          skill: "create_media_buy",
-          parameters: {
-            package_selections: [
-              {
-                package_id: "pkg_12345",
-                budget_amount: 50000,
-                impressions: 2000000
-              },
-              {
-                package_id: "pkg_67890",
-                budget_amount: 25000,
-                impressions: 1000000
-              }
-            ],
-            buyer_ref: "Q1_2024_campaign",
-            start_date: "2024-01-01",
-            end_date: "2024-03-31",
-            pacing: "even"
-          }
-        }
-      }
-    ]
-  }
-});
-```
-
-#### sync_creatives
-```javascript
-// Upload and assign creative assets
-await a2a.send({
-  message: {
-    parts: [
       {
         kind: "data",
         data: {
           skill: "sync_creatives",
           parameters: {
             media_buy_id: "mb_12345",
-            assignments: [
-              {
-                package_id: "pkg_12345",
-                format_id: "video_30s"
-              }
-            ]
+            action: "upload_and_assign"
           }
         }
       },
       {
         kind: "file",
-        uri: "https://cdn.example.com/video-30s.mp4",
-        name: "hero_video_30s.mp4"
+        uri: "https://cdn.example.com/hero-30s.mp4",
+        name: "sports_hero_30s.mp4"
       }
     ]
   }
 });
 ```
 
-#### get_media_buy_delivery
+### Campaign Brief + Assets
+
 ```javascript
-// Get campaign performance metrics
+// Submit comprehensive campaign brief
 await a2a.send({
   message: {
     parts: [
       {
-        kind: "data",
-        data: {
-          skill: "get_media_buy_delivery",
-          parameters: {
-            media_buy_id: "mb_12345",
-            date_range: {
-              start: "2024-01-01",
-              end: "2024-01-31"
-            },
-            metrics: ["impressions", "clicks", "video_completions"]
-          }
-        }
-      }
-    ]
-  }
-});
-```
-
-#### update_media_buy
-```javascript
-// Update campaign settings
-await a2a.send({
-  message: {
-    parts: [
+        kind: "text",
+        text: "Campaign brief and assets for Q1 launch"
+      },
+      {
+        kind: "file",
+        uri: "https://docs.google.com/campaign-brief.pdf",
+        name: "Q1_campaign_brief.pdf"
+      },
       {
         kind: "data",
         data: {
-          skill: "update_media_buy",
-          parameters: {
-            media_buy_id: "mb_12345",
-            updates: {
-              budget_amount: 150000,
-              pacing: "front_loaded",
-              end_date: "2024-04-30"
-            }
-          }
+          budget: 250000,
+          kpis: ["reach", "awareness", "conversions"],
+          target_launch: "2024-01-15"
         }
       }
     ]
@@ -554,403 +371,161 @@ await a2a.send({
 });
 ```
 
-### Signals Skills
+## Available Skills
 
-#### get_signals
+All AdCP tasks are available as A2A skills. Use explicit invocation for deterministic execution:
+
+### Skill Structure
 ```javascript
-// Discover relevant signals
+// Standard pattern for explicit skill invocation
 await a2a.send({
   message: {
-    parts: [
-      {
-        kind: "data",
-        data: {
-          skill: "get_signals",
-          parameters: {
-            requirements: {
-              audience: "luxury car intenders",
-              categories: ["automotive", "lifestyle"],
-              platforms: ["ttd", "amazon_dsp"]
-            },
-            limit: 10
-          }
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "skill_name",        // Exact name from Agent Card
+        parameters: {              // Task-specific parameters
+          // See task documentation for parameters
         }
       }
-    ]
-  }
-});
-```
-
-#### activate_signal
-```javascript
-// Activate signal on platform
-await a2a.send({
-  message: {
-    parts: [
-      {
-        kind: "data",
-        data: {
-          skill: "activate_signal",
-          parameters: {
-            signal_id: "sig_luxury_auto_123",
-            platform: "ttd",
-            account_id: "account_456",
-            activation_name: "Q1_luxury_segment"
-          }
-        }
-      }
-    ]
-  }
-});
-```
-
-## Skill Response Formats
-
-All skill invocations return results as artifacts with structured data:
-
-### Successful Skill Response
-```json
-{
-  "taskId": "task_123",
-  "contextId": "ctx_456",
-  "status": "completed",
-  "artifacts": [
-    {
-      "name": "skill_result",
-      "parts": [
-        {
-          "kind": "text",
-          "text": "Human-readable summary of the result"
-        },
-        {
-          "kind": "data",
-          "data": {
-            // Structured data specific to the skill
-            // e.g., for get_products: { products: [...], total: 5 }
-          }
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Asynchronous Skills
-Some skills (like `create_media_buy` or `activate_signal`) may require time to complete:
-
-1. **Initial Response**: Returns task ID with status "working"
-2. **Status Updates**: Available via SSE at `/a2a/tasks/{taskId}/events`
-3. **Final Result**: Contains artifacts with the completed data
-
-### Error Responses
-When a skill fails, the response includes an error message:
-
-```json
-{
-  "taskId": "task_123",
-  "status": "failed",
-  "message": {
-    "parts": [{
-      "kind": "text",
-      "text": "Unable to find products matching criteria: No inventory available for the specified audience"
     }]
   }
-}
+});
 ```
 
-## Agent Cards for AdCP
+### Available Skills
+- **Media Buy**: `get_products`, `list_creative_formats`, `create_media_buy`, `update_media_buy`, `sync_creatives`, `get_media_buy_delivery`, `list_authorized_properties`, `provide_performance_feedback`
+- **Signals**: `get_signals`, `activate_signal`
 
-A2A agents advertise their capabilities via Agent Cards served at `.well-known/agent.json`. Here are sample agent cards for AdCP implementations:
+**Task Parameters**: See [Media Buy](../media-buy/index.md) and [Signals](../signals/overview.md) documentation for complete parameter specifications.
 
-### Media Buy Agent Card
+## Agent Cards
 
+A2A agents advertise capabilities via Agent Cards at `.well-known/agent.json`:
+
+### Discovering Agent Cards
+```javascript
+// Get agent capabilities
+const agentCard = await a2a.getAgentCard();
+
+// List available skills
+const skillNames = agentCard.skills.map(skill => skill.name);
+console.log('Available skills:', skillNames);
+
+// Get skill details
+const getProductsSkill = agentCard.skills.find(s => s.name === 'get_products');
+console.log('Examples:', getProductsSkill.examples);
+```
+
+### Sample Agent Card Structure
 ```json
 {
   "name": "AdCP Media Buy Agent",
-  "description": "AI-powered media buying agent for programmatic advertising",
+  "description": "AI-powered media buying agent",
   "skills": [
     {
       "name": "get_products",
       "description": "Discover available advertising products",
       "examples": [
         "Find premium CTV inventory for sports fans",
-        "Show me video products under $50 CPM",
-        "Get retail media products for pet owners"
-      ]
-    },
-    {
-      "name": "list_creative_formats",
-      "description": "List supported creative formats",
-      "examples": [
-        "What video formats do you support?",
-        "Show me IAB standard display formats"
-      ]
-    },
-    {
-      "name": "create_media_buy",
-      "description": "Create a media buy campaign",
-      "examples": [
-        "Create a $100K campaign with these products",
-        "Book premium CTV package for Q1"
-      ]
-    },
-    {
-      "name": "update_media_buy",
-      "description": "Update an existing media buy",
-      "examples": [
-        "Increase budget to $150K",
-        "Change pacing to front-loaded"
-      ]
-    },
-    {
-      "name": "sync_creatives",
-      "description": "Creative library synchronization",
-      "examples": [
-        "Upload this video to my creative library",
-        "Assign banner creatives to the campaign",
-        "List my approved video creatives",
-        "Update the click URL for my hero video"
-      ]
-    },
-    {
-      "name": "get_media_buy_delivery",
-      "description": "Get campaign performance metrics",
-      "examples": [
-        "Show delivery stats for my campaign",
-        "How is the campaign performing?"
+        "Show me video products under $50 CPM"
       ]
     }
   ]
 }
 ```
 
-### Signals Agent Card
-
-```json
-{
-  "name": "AdCP Signals Agent",
-  "description": "Signal discovery and activation for audience targeting",
-  "skills": [
-    {
-      "name": "get_signals",
-      "description": "Discover signals based on requirements",
-      "examples": [
-        "Find signals for luxury car buyers",
-        "Get weather-based signals for beverages",
-        "Show signals available on The Trade Desk"
-      ]
-    },
-    {
-      "name": "activate_signal",
-      "description": "Activate signals on platforms",
-      "examples": [
-        "Activate this signal on The Trade Desk",
-        "Deploy the luxury segment to Amazon DSP"
-      ]
-    }
-  ]
-}
-```
-
-## Complete Example
-
-Here's a full campaign creation workflow using A2A:
+## Integration Example
 
 ```javascript
-async function createCampaignWithA2A() {
-  const a2a = new A2AClient({ /* config */ });
-  
-  // 1. Product discovery using explicit skill invocation
-  const discovery = await a2a.send({
-    message: {
-      parts: [
-        {
-          kind: "text",
-          text: "Finding inventory for BMW Q1 campaign"
-        },
-        {
-          kind: "data",
-          data: {
-            skill: "get_products",
-            parameters: {
-              audience: "luxury car intenders",
-              format: ["ctv", "audio"],
-              tier: "premium",
-              min_impressions: 5000000,
-              max_cpm: 100
-            }
-          }
-        }
-      ]
-    }
-  });
-  
-  // Monitor discovery progress
-  discovery.on('update', console.log);
-  
-  // 2. Get product recommendations
-  const products = await discovery.complete();
-  console.log(`Found ${products.artifacts[0].parts[1].data.total} products`);
-  
-  // 3. Create media buy (may need approval)
-  const mediaBuy = await a2a.send({
-    contextId: discovery.contextId,
-    message: {
-      parts: [{
-        kind: "text",
-        text: "Create media buy with top 5 recommended products"
-      }]
-    }
-  });
-  
-  // 4. Handle approval if needed
-  if (mediaBuy.status === 'pending_approval') {
-    console.log('Awaiting approval...');
-    
-    // Send approval
-    await a2a.send({
-      contextId: mediaBuy.contextId,
-      message: {
-        parts: [{
-          kind: "text",
-          text: "Approved by Marketing Director"
-        }]
-      }
-    });
+// Initialize A2A client  
+const a2a = new A2AClient({ /* config */ });
+
+// Use unified status handling (see Core Concepts)
+async function handleA2aResponse(response) {
+  switch (response.status) {
+    case 'input-required':
+      // Handle clarification (see Core Concepts for patterns)
+      const input = await promptUser(response.message);
+      return a2a.send({
+        contextId: response.contextId,
+        message: { parts: [{ kind: "text", text: input }] }
+      });
+      
+    case 'working':
+      // Monitor via SSE streaming
+      return streamUpdates(response.taskId);
+      
+    case 'completed':
+      return response.artifacts[0].parts[1].data;
+      
+    case 'failed':
+      throw new Error(response.message);
   }
+}
+
+// Example usage with multi-modal message
+const result = await a2a.send({
+  message: {
+    parts: [
+      { kind: "text", text: "Find luxury car inventory" },
+      { kind: "data", data: { skill: "get_products", parameters: { audience: "luxury car intenders" } } }
+    ]
+  }
+});
+
+const finalResult = await handleA2aResponse(result);
+```
+
+## A2A-Specific Considerations
+
+### Error Handling
+```javascript
+// A2A transport vs. task errors
+try {
+  const response = await a2a.send(message);
   
-  // 5. Upload creatives
-  const creativeUpload = await a2a.send({
-    contextId: mediaBuy.contextId,
-    message: {
-      parts: [
-        {
-          kind: "text",
-          text: "Add approved BMW creatives"
-        },
-        {
-          kind: "file",
-          uri: "https://cdn.bmw.com/hero-30s.mp4"
-        },
-        {
-          kind: "file", 
-          uri: "https://cdn.bmw.com/hero-15s.mp4"
-        }
-      ]
-    }
-  });
-  
-  // 6. Get final confirmation
-  const result = await creativeUpload.complete();
-  console.log('Campaign ready:', result.artifacts);
+  if (response.status === 'failed') {
+    // AdCP task error - show to user
+    showError(response.message);
+  }
+} catch (a2aError) {
+  // A2A transport error (connection, auth, etc.)
+  console.error('A2A Error:', a2aError);
+}
+```
+
+### File Upload Validation
+```javascript
+// A2A validates file types automatically
+const response = await a2a.send({
+  message: {
+    parts: [
+      { kind: "text", text: "Upload creative asset" },
+      { kind: "file", uri: "https://example.com/video.mp4", name: "hero.mp4" }
+    ]
+  }
+});
+
+// Check for file validation issues
+if (response.status === 'failed' && response.data?.file_errors) {
+  console.log('File issues:', response.data.file_errors);
 }
 ```
 
 ## Best Practices
 
-### 1. Choose the Right Invocation Method
-```javascript
-// Use natural language for flexible, human-like interaction
-if (userProvidedNaturalLanguageQuery) {
-  await a2a.send({
-    message: {
-      parts: [{ kind: "text", text: userQuery }]
-    }
-  });
-}
-
-// Use explicit skills for programmatic, deterministic execution
-if (needPredictableExecution) {
-  await a2a.send({
-    message: {
-      parts: [{
-        kind: "data",
-        data: {
-          skill: "get_products",
-          parameters: structuredParams
-        }
-      }]
-    }
-  });
-}
-```
-
-### 2. Distinguish Messages from Artifacts
-```javascript
-// Check what type of response
-if (response.artifacts && response.artifacts.length > 0) {
-  // Process deliverables
-  handleArtifacts(response.artifacts);
-} else if (response.message) {
-  // Handle communication
-  displayMessage(response.message.parts[0].text);
-}
-```
-
-### 3. Use Context for Conversations
-```javascript
-class A2AConversation {
-  constructor(client) {
-    this.client = client;
-    this.contextId = null;
-  }
-  
-  async send(text) {
-    const response = await this.client.send({
-      contextId: this.contextId,
-      message: {
-        parts: [{ kind: "text", text }]
-      }
-    });
-    
-    this.contextId = response.contextId;
-    return response;
-  }
-}
-```
-
-### 4. Handle Multi-Part Artifacts
-```javascript
-function processArtifact(artifact) {
-  artifact.parts.forEach(part => {
-    switch(part.kind) {
-      case 'text':
-        console.log(part.text);  // Human-readable summary
-        break;
-      case 'data':
-        processData(part.data);  // Structured data
-        break;
-      case 'file':
-        downloadFile(part.uri);  // External file
-        break;
-    }
-  });
-}
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**"Task not found"**
-- Tasks expire after completion
-- Store results if needed for later
-
-**"Context expired"**  
-- Contexts timeout after 1 hour of inactivity
-- Start a new conversation
-
-**"No artifacts in response"**
-- Check if response is a message (clarification)
-- Provide requested information and retry
+1. **Use hybrid messages** for best results (text + data + optional files)
+2. **Check status field** before processing artifacts  
+3. **Leverage SSE streaming** for real-time updates on long operations
+4. **Reference Core Concepts** for status handling patterns
+5. **Use agent cards** to discover available skills and examples
 
 ## Next Steps
 
-- Explore [Media Buy Tasks](../media-buy/task-reference/)
-- Learn about [Signals](../signals/overview.md)  
-- Compare with [MCP](./mcp-guide.md) if curious
-- See [Protocol Comparison](./protocol-comparison.md) for differences
+- **Core Concepts**: Read [Core Concepts](./core-concepts.md) for status handling and workflows  
+- **Task Reference**: See [Media Buy Tasks](../media-buy/index.md) and [Signals](../signals/overview.md)
+- **Protocol Comparison**: Compare with [MCP integration](./mcp-guide.md)
+- **Examples**: Find complete workflow examples in Core Concepts
 
-## Need More Detail?
-
-Most users only need this guide. For deep technical specifications, see the [Reference](../reference/data-models.md) section.
+**For status handling, async operations, and clarification patterns, see [Core Concepts](./core-concepts.md) - this guide focuses on A2A transport specifics only.**

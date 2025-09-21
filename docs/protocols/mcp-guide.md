@@ -1,365 +1,316 @@
 ---
 sidebar_position: 2
-title: MCP Guide
-description: Complete guide to integrating AdCP with Model Context Protocol (MCP). Enable AI assistants to manage advertising campaigns through natural language.
-keywords: [MCP integration, Model Context Protocol advertising, AI assistant advertising, MCP advertising automation, AdCP MCP setup]
+title: MCP Guide  
+description: Integrate AdCP with Model Context Protocol (MCP). Transport-specific guide for tool calls, context management, and MCP setup.
+keywords: [MCP integration, Model Context Protocol, tool calls, context management, MCP server setup]
 ---
 
 # MCP Integration Guide
 
-Everything you need to integrate AdCP using the Model Context Protocol.
+Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](./core-concepts.md).
 
-## Quick Start
+## MCP Server Setup
 
-### 1. Configure Your MCP Client
+### 1. Install AdCP MCP Server
+
+```bash
+npm install -g @adcp/mcp-server
+```
+
+### 2. Configure Your MCP Client
 
 ```json
 {
   "mcpServers": {
     "adcp": {
       "command": "npx",
-      "args": ["adcp-mcp-server"],
+      "args": ["@adcp/mcp-server"],
       "env": {
-        "ADCP_API_KEY": "your-api-key"
+        "ADCP_API_KEY": "your-api-key",
+        "ADCP_ENDPOINT": "https://api.adcp.example.com"
       }
     }
   }
 }
 ```
 
-### 2. Make Your First Call
+### 3. Verify Connection
 
 ```javascript
-// Discover products
-const result = await mcp.call('get_products', {
+// Test connection
+const tools = await mcp.listTools();
+console.log(tools.map(t => t.name));
+// ["get_products", "create_media_buy", "sync_creatives", ...]
+```
+
+## Tool Call Patterns
+
+### Basic Tool Invocation
+
+```javascript
+// Standard MCP tool call
+const response = await mcp.call('get_products', {
   brief: "Video campaign for pet owners",
   promoted_offering: "Premium dog food"
 });
 
-console.log(result.message);
-// "Found 12 video products with CPMs from $25-65"
+// All responses include status field (AdCP 1.6.0+)
+console.log(response.status);   // "completed" | "input-required" | "working" | etc.
+console.log(response.message);  // Human-readable summary
 ```
 
-### 3. Create a Media Buy
+### Tool Call with Filters
 
 ```javascript
-const mediaBuy = await mcp.call('create_media_buy', {
-  packages: ["pkg_ctv_001", "pkg_audio_002"],
-  promoted_offering: "Premium dog food - grain free",
-  total_budget: 50000
+// Structured parameters
+const response = await mcp.call('get_products', {
+  filters: {
+    format_types: ["video"],
+    delivery_type: "guaranteed", 
+    max_cpm: 50
+  },
+  promoted_offering: "Sports betting app"
 });
-
-console.log(mediaBuy.media_buy_id);
-// "mb_12345"
 ```
 
 ## MCP Response Format
 
-All MCP responses follow this structure:
+**New in AdCP 1.6.0**: All responses include unified status field.
 
 ```json
 {
-  "message": "Human-readable summary",
-  "context_id": "ctx-abc123",
-  "data": {
-    // Structured response data
-    // Task-specific errors are included within the task response data, not at protocol level
+  "status": "completed",           // Unified status (see Core Concepts)
+  "message": "Found 5 products",  // Human-readable summary  
+  "context_id": "ctx-abc123",     // MCP session continuity
+  "data": {                       // Task-specific structured data
+    "products": [...],
+    "errors": [...]               // Task-level errors/warnings
   }
 }
 ```
 
-### Key Fields
-- **message**: Always present, human-readable summary
-- **data**: Structured data for programmatic use
-- **context_id**: Maintains conversation state
-- **errors**: Non-fatal issues or warnings
+### MCP-Specific Fields
+- **context_id**: Session identifier that you must manually manage
+- **data**: Direct JSON structure (vs. A2A's artifact parts)
+- **status**: Same values as A2A protocol for consistency
 
-## Common Tasks
+**Status Handling**: See [Core Concepts](./core-concepts.md) for complete status handling patterns.
 
-### Product Discovery
+## Available Tools
+
+All AdCP tasks are available as MCP tools:
+
+### Media Buy Tools
+```javascript
+await mcp.call('get_products', {...});           // Discover inventory
+await mcp.call('list_creative_formats', {...});  // Get format specs
+await mcp.call('create_media_buy', {...});       // Create campaigns  
+await mcp.call('update_media_buy', {...});       // Modify campaigns
+await mcp.call('sync_creatives', {...});         // Manage creative assets
+await mcp.call('get_media_buy_delivery', {...}); // Performance metrics
+await mcp.call('list_authorized_properties', {...}); // Available properties
+await mcp.call('provide_performance_feedback', {...}); // Share outcomes
+```
+
+### Signals Tools
+```javascript
+await mcp.call('get_signals', {...});      // Discover audience signals
+await mcp.call('activate_signal', {...});  // Deploy signals to platforms
+```
+
+**Task Parameters**: See individual task documentation in [Media Buy](../media-buy/index.md) and [Signals](../signals/overview.md) sections.
+
+## Context Management (MCP-Specific)
+
+**Critical**: MCP requires manual context management. You must pass `context_id` to maintain conversation state.
+
+### Context Session Pattern
 
 ```javascript
-// With natural language brief
-const result = await mcp.call('get_products', {
-  brief: "CTV campaign targeting sports fans, $100K budget",
-  promoted_offering: "Sports betting app"
-});
-
-// With structured filters
-const result = await mcp.call('get_products', {
-  promoted_offering: "Sports betting app",
-  filters: {
-    format_types: ["video"],
-    delivery_type: "guaranteed",
-    min_spend: 25000
+class McpAdcpSession {
+  constructor(mcpClient) {
+    this.mcp = mcpClient;
+    this.contextId = null;
   }
-});
-```
-
-### Getting Creative Formats
-
-```javascript
-const formats = await mcp.call('list_creative_formats');
-// Returns supported creative specifications
-```
-
-### Creating Media Buys
-
-```javascript
-const mediaBuy = await mcp.call('create_media_buy', {
-  packages: ["pkg_001"],
-  promoted_offering: "Product description",
-  total_budget: 50000,
-  po_number: "PO-2024-001"
-});
-
-// Check status (async operations)
-if (mediaBuy.task_id) {
-  // Poll for completion
-  const status = await mcp.call('get_task_status', {
-    task_id: mediaBuy.task_id
-  });
-}
-```
-
-### Managing Creatives
-
-AdCP uses a centralized creative library. First upload to the library:
-
-```javascript
-// Upload creative to library
-const uploadResult = await mcp.call('sync_creatives', {
-  action: "upload",
-  assets: [{
-    creative_id: "hero_video_30s",
-    name: "Hero Video 30s",
-    format: "video",
-    media_url: "https://cdn.example.com/video.mp4",
-    click_url: "https://example.com/landing"
-  }]
-});
-
-// Then assign to media buy packages
-const assignResult = await mcp.call('sync_creatives', {
-  action: "assign",
-  creative_ids: ["hero_video_30s"],
-  media_buy_id: "mb_12345",
-  package_assignments: ["pkg_001"]
-});
-```
-
-## Handling Responses
-
-### Successful Response
-```javascript
-const result = await mcp.call('get_products', {...});
-
-if (result.data.products.length > 0) {
-  // Process products
-  result.data.products.forEach(product => {
-    console.log(`${product.name}: $${product.cpm} CPM`);
-  });
-}
-```
-
-### Clarification Response
-```javascript
-const result = await mcp.call('get_products', {
-  brief: "Video ads"  // Minimal brief
-});
-
-if (result.data.clarification_needed) {
-  console.log(result.message);
-  // "Could you share your budget and target audience?"
   
-  // Provide more details
-  const refined = await mcp.call('get_products', {
-    context_id: result.context_id,
-    brief: "Video ads, $50K budget, targeting parents"
-  });
-}
-```
-
-### Error Response
-```javascript
-try {
-  const result = await mcp.call('create_media_buy', {...});
-} catch (error) {
-  if (error.code === 'invalid_parameter') {
-    console.error(error.message);
-    // Handle validation error
+  async call(tool, params) {
+    // Include context from previous calls
+    if (this.contextId) {
+      params.context_id = this.contextId;
+    }
+    
+    const response = await this.mcp.call(tool, params);
+    
+    // Save context for next call
+    this.contextId = response.context_id;
+    
+    return response;
+  }
+  
+  reset() {
+    this.contextId = null;
   }
 }
 ```
 
-## Context Management
-
-MCP requires manual context management to maintain conversation state:
+### Usage Example
 
 ```javascript
-// First call - no context
-const result1 = await mcp.call('get_products', {
+const session = new McpAdcpSession(mcp);
+
+// First call - no context needed
+const products = await session.call('get_products', {
   brief: "Sports campaign"
 });
-// IMPORTANT: Save the context_id!
 
-// Follow-up - MUST include context_id
-const result2 = await mcp.call('get_products', {
-  context_id: result1.context_id,  // Required for continuity
-  brief: "Focus on CTV products"
+// Follow-up - context automatically included
+const refined = await session.call('get_products', {
+  brief: "Focus on premium CTV"
 });
-// Without context_id, system won't remember previous interaction
+// Session remembers previous interaction
 ```
 
-**Key Point**: Unlike A2A which handles context automatically, MCP requires you to manually pass context_id to maintain state.
-
-## Async Operations
-
-Some operations take time. MCP handles these with task IDs:
+### Context Expiration Handling
 
 ```javascript
-const result = await mcp.call('create_media_buy', {...});
-
-if (result.task_id) {
-  // Operation is async
-  let status;
-  do {
-    await sleep(2000);  // Wait 2 seconds
-    status = await mcp.call('get_task_status', {
-      task_id: result.task_id
-    });
-    console.log(status.progress.message);
-  } while (status.status === 'processing');
-  
-  if (status.status === 'completed') {
-    console.log('Media buy created:', status.data.media_buy_id);
+async function handleContextExpiration(session, tool, params) {
+  try {
+    return await session.call(tool, params);
+  } catch (error) {
+    if (error.message?.includes('context not found')) {
+      // Context expired - start fresh
+      session.reset();
+      return session.call(tool, params);
+    }
+    throw error;
   }
 }
+```
+
+**Key Difference**: Unlike A2A which manages context automatically, MCP requires explicit context_id management.
+
+## Async Operations (MCP-Specific)
+
+MCP handles long-running operations through polling with `context_id`:
+
+### Polling Pattern
+
+```javascript
+async function waitForCompletion(session, initialResponse) {
+  let response = initialResponse;
+  
+  // Poll while status is 'working' or 'submitted'
+  while (['working', 'submitted'].includes(response.status)) {
+    // Wait before polling again  
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Poll for updates using context_id
+    response = await session.call('get_products', {
+      // Empty params - just checking status with context
+    });
+  }
+  
+  return response;
+}
+```
+
+### Async Operation Example
+
+```javascript
+// Start async operation
+const initial = await session.call('create_media_buy', {
+  packages: ["pkg_001"],
+  total_budget: 100000
+});
+
+if (initial.status === 'working') {
+  // Wait for completion
+  const final = await waitForCompletion(session, initial);
+  
+  if (final.status === 'completed') {
+    console.log('Created:', final.data.media_buy_id);
+  }
+}
+```
+
+**Note**: No separate `get_task_status` tool needed - use context_id with any tool to check status.
+
+## Integration Example
+
+```javascript
+// Initialize MCP session with context management
+const session = new McpAdcpSession(mcp);
+
+// Use unified status handling (see Core Concepts)
+async function handleAdcpCall(tool, params) {
+  const response = await session.call(tool, params);
+  
+  switch (response.status) {
+    case 'input-required':
+      // Handle clarification (see Core Concepts for patterns)
+      const input = await promptUser(response.message);
+      return session.call(tool, { ...params, additional_info: input });
+      
+    case 'working':
+      // Handle async operations 
+      return waitForCompletion(session, response);
+      
+    case 'completed':
+      return response.data;
+      
+    case 'failed':
+      throw new Error(response.message);
+  }
+}
+
+// Example usage
+const products = await handleAdcpCall('get_products', {
+  brief: "CTV campaign for luxury cars"
+});
+```
+
+## MCP-Specific Considerations
+
+### Tool Discovery
+```javascript
+// List available AdCP tools
+const tools = await mcp.listTools();
+const adcpTools = tools.filter(t => t.name.startsWith('adcp_') || 
+  ['get_products', 'create_media_buy'].includes(t.name));
+```
+
+### Parameter Validation
+```javascript
+// MCP provides tool schemas for validation
+const toolSchema = await mcp.getToolSchema('get_products');
+// Use schema to validate parameters before calling
+```
+
+### Error Handling
+```javascript
+try {
+  const response = await session.call('get_products', params);
+} catch (mcpError) {
+  // MCP transport errors (connection, auth, etc.)
+  console.error('MCP Error:', mcpError);
+} 
+
+// AdCP task errors come in response.status === 'failed'
 ```
 
 ## Best Practices
 
-### 1. Always Handle the Message Field
-```javascript
-// Good - use message for user feedback
-console.log(result.message);
-
-// Also process structured data
-if (result.data) {
-  processData(result.data);
-}
-```
-
-### 2. Maintain Context
-```javascript
-let contextId = null;
-
-async function query(brief) {
-  const result = await mcp.call('get_products', {
-    context_id: contextId,
-    brief
-  });
-  contextId = result.context_id;  // Save for next call
-  return result;
-}
-```
-
-### 3. Handle Clarifications Gracefully
-```javascript
-async function getProducts(brief, details = {}) {
-  const result = await mcp.call('get_products', {
-    brief,
-    ...details
-  });
-  
-  if (result.data.clarification_needed) {
-    // Prompt for missing information
-    const moreDetails = await promptUser(result.message);
-    return getProducts(brief, moreDetails);
-  }
-  
-  return result;
-}
-```
-
-## Complete Example
-
-Here's a full workflow using MCP:
-
-```javascript
-async function createCampaign() {
-  // 1. Discover products
-  const products = await mcp.call('get_products', {
-    brief: "Q1 CTV campaign for luxury cars, $200K budget",
-    promoted_offering: "BMW Series 5 - The ultimate driving machine"
-  });
-  
-  console.log(products.message);
-  
-  // 2. Select products and create media buy
-  const selectedProducts = products.data.products
-    .filter(p => p.cpm <= 50)
-    .map(p => p.product_id);
-  
-  const mediaBuy = await mcp.call('create_media_buy', {
-    packages: selectedProducts,
-    promoted_offering: "BMW Series 5",
-    total_budget: 200000,
-    po_number: "BMW-Q1-2024"
-  });
-  
-  // 3. Wait for creation
-  if (mediaBuy.task_id) {
-    const final = await waitForTask(mediaBuy.task_id);
-    console.log(`Created: ${final.data.media_buy_id}`);
-    
-    // 4. Upload creatives to library
-    const upload = await mcp.call('sync_creatives', {
-      action: "upload",
-      assets: [
-        {
-          creative_id: "bmw_hero_30s",
-          name: "BMW Hero 30s",
-          format: "video",
-          media_url: "https://cdn.bmw.com/hero-30s.mp4"
-        }
-      ]
-    });
-    
-    // 5. Assign creatives to campaign packages
-    await mcp.call('sync_creatives', {
-      action: "assign",
-      creative_ids: ["bmw_hero_30s"],
-      media_buy_id: final.data.media_buy_id,
-      package_assignments: ["pkg_001"] // Use actual package IDs
-    });
-  }
-}
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**"Context not found"**
-- Context expires after 1 hour
-- Start a new conversation without context_id
-
-**"Invalid parameter"**
-- Check required fields in task documentation
-- Ensure correct data types
-
-**"Task timeout"**
-- Long operations may timeout
-- Implement proper polling with backoff
+1. **Use session wrapper** for automatic context management
+2. **Check status field** before processing response data  
+3. **Handle context expiration** gracefully with retries
+4. **Reference Core Concepts** for status handling patterns
+5. **Validate parameters** using MCP tool schemas when available
 
 ## Next Steps
 
-- Explore available [Media Buy Tasks](../media-buy/task-reference/)
-- Learn about [Signals](../signals/overview.md)
-- See [Error Codes](../reference/error-codes.md) reference
-- Review [Authentication](../reference/authentication.md) options
+- **Core Concepts**: Read [Core Concepts](./core-concepts.md) for status handling and workflows
+- **Task Reference**: See [Media Buy Tasks](../media-buy/index.md) and [Signals](../signals/overview.md)
+- **Protocol Comparison**: Compare with [A2A integration](./a2a-guide.md)
+- **Examples**: Find complete workflow examples in Core Concepts
 
-## Need More Detail?
-
-Most users only need this guide. For deep technical specifications, see the [Reference](../reference/data-models.md) section.
+**For status handling, async operations, and clarification patterns, see [Core Concepts](./core-concepts.md) - this guide focuses on MCP transport specifics only.**
