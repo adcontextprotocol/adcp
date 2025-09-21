@@ -7,20 +7,66 @@ title: Error Codes
 
 This page documents all standard error codes used across ACP implementations.
 
-## Error Response Format
+## Error Response Patterns
 
-All errors follow this consistent structure:
+AdCP uses different error handling patterns depending on the severity and context:
+
+### Task-Level Errors (Non-Fatal Warnings)
+
+Use the optional `errors` array in successful responses for warnings and non-blocking issues:
 
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable description",
-    "details": {
-      // Additional context (optional)
-    },
-    "retry_after": 30  // Seconds to wait before retry (optional)
+  "message": "Operation completed with warnings",
+  "adcp_version": "1.0.0", 
+  "context_id": "ctx-123",
+  // ... task-specific success data ...
+  "errors": [
+    {
+      "code": "ERROR_CODE",
+      "message": "Human-readable description",
+      "field": "field.path.with.issue",  // Optional
+      "suggestion": "Recommended action",  // Optional
+      "details": {
+        // Additional context (optional)
+      },
+      "retry_after": 30  // Seconds to wait before retry (optional)
+    }
+  ]
+}
+```
+
+### Protocol-Level Errors (Fatal)
+
+For operations that cannot be completed, use protocol-specific error mechanisms:
+
+**MCP (Model Context Protocol):**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text", 
+        "text": "Failed to process request: Invalid credentials provided"
+      }
+    ],
+    "isError": true
+  }
+}
+```
+
+**A2A (Agent-to-Agent Protocol):**
+```json
+{
+  "taskId": "task_123",
+  "status": "failed",
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "Unable to complete operation: Authentication failed"
+    }]
   }
 }
 ```

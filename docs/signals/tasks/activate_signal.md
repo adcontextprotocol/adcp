@@ -27,19 +27,22 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 
 *Required when activating at account level
 
-## Response (Message)
+## Response Structure
 
-The response includes a human-readable message that:
-- Confirms activation was initiated with estimated timing
-- Provides progress updates during processing
-- Explains successful deployment with segment ID
-- Describes any errors and remediation steps
+All AdCP responses include:
+- **message**: Human-readable summary of the activation status
+- **context_id**: Session continuity identifier for tracking progress
+- **data**: Task-specific payload (see Response Data below)
 
-The message is returned differently in each protocol:
-- **MCP**: Returned as a `message` field in the JSON response
-- **A2A**: Returned as a text part in the artifact
+The response structure is identical across protocols, with only the transport wrapper differing:
+- **MCP**: Returns complete response as flat JSON  
+- **A2A**: Returns as artifacts with message in text part, data in data part
 
-## Response (Payload)
+For asynchronous operations like activation, both protocols support:
+- **Status tracking**: Check completion status via task_id
+- **Progress updates**: Real-time updates on activation progress
+
+## Response Data
 
 ```json
 {
@@ -48,23 +51,31 @@ The message is returned differently in each protocol:
   "decisioning_platform_segment_id": "string",
   "estimated_activation_duration_minutes": "number",
   "deployed_at": "string",
-  "error": {
-    "code": "string",
-    "message": "string"
-  }
+  "errors": [
+    {
+      "code": "string",
+      "message": "string",
+      "field": "string",
+      "suggestion": "string",
+      "details": {}
+    }
+  ]
 }
 ```
 
 ### Field Descriptions
 
-- **task_id**: Unique identifier for tracking the activation
-- **status**: Current status (pending, processing, deployed, failed)
-- **decisioning_platform_segment_id**: The platform-specific ID to use once activated
-- **estimated_activation_duration_minutes**: Estimated time to complete (optional)
-- **deployed_at**: Timestamp when activation completed (optional)
-- **error**: Error details if activation failed (optional)
-  - **code**: Error code for programmatic handling
-  - **message**: Detailed error message
+- **task_id**: Unique identifier for tracking the activation task
+- **status**: Current activation status (pending, processing, deployed, failed)
+- **decisioning_platform_segment_id**: Platform-specific segment ID for campaign targeting
+- **estimated_activation_duration_minutes**: Estimated completion time (when status is pending)
+- **deployed_at**: ISO 8601 timestamp when activation completed (when status is deployed)
+- **errors**: Optional array of errors and warnings encountered during activation
+  - **code**: Standardized error code for programmatic handling
+  - **message**: Human-readable error description with context
+  - **field**: Field path associated with the error (optional)
+  - **suggestion**: Suggested fix for the error (optional)
+  - **details**: Additional activation-specific error details (optional)
 
 ## Protocol-Specific Examples
 
@@ -89,6 +100,7 @@ Initial response:
 {
   "message": "Initiating activation of 'Luxury Auto Intenders' on The Trade Desk",
   "context_id": "ctx-signals-123",
+  "adcp_version": "1.0.0",
   "task_id": "activation_789",
   "status": "pending",
   "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
@@ -100,11 +112,12 @@ After polling for completion:
 ```json
 {
   "message": "Signal successfully activated on The Trade Desk",
-  "context_id": "ctx-signals-123",
+  "context_id": "ctx-signals-123", 
+  "adcp_version": "1.0.0",
   "task_id": "activation_789",
   "status": "deployed",
   "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
-  "deployed_at": "2024-01-15T14:30:00Z"
+  "deployed_at": "2025-01-15T14:30:00Z"
 }
 ```
 
@@ -160,27 +173,33 @@ data: {"status": {"state": "completed"}, "artifacts": [{
   "parts": [
     {"kind": "text", "text": "Signal successfully activated on The Trade Desk"},
     {"kind": "data", "data": {
+      "context_id": "ctx-signals-123",
+      "adcp_version": "1.0.0",
+      "task_id": "activation_789",
       "status": "deployed",
       "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
-      "deployed_at": "2024-01-15T14:30:00Z"
+      "deployed_at": "2025-01-15T14:30:00Z"
     }}
   ]
 }]}
 ```
 
-### Key Differences
-- **MCP**: Returns task_id for polling asynchronous operations
-- **A2A**: Always async with real-time progress updates via SSE
-- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
+### Protocol Transport
+- **MCP**: Returns task_id for polling-based asynchronous operation tracking
+- **A2A**: Uses Server-Sent Events for real-time progress updates and completion
+- **Data Consistency**: Both protocols contain identical AdCP data structures and version information
 
 ## Scenarios
 
 ### Initial Response (Pending)
 **Message**: "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use."
 
-**Payload**:
+**Complete Response**:
 ```json
 {
+  "message": "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use.",
+  "context_id": "ctx-signals-def456",
+  "adcp_version": "1.0.0",
   "task_id": "activation_12345",
   "status": "pending",
   "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
@@ -191,9 +210,12 @@ data: {"status": {"state": "completed"}, "artifacts": [{
 ### Status Update (Processing)
 **Message**: "Good progress on the activation. Access permissions validated successfully. Now configuring the signal deployment on PubMatic's platform. About 45 minutes remaining."
 
-**Payload**:
+**Complete Response**:
 ```json
 {
+  "message": "Good progress on the activation. Access permissions validated successfully. Now configuring the signal deployment on PubMatic's platform. About 45 minutes remaining.",
+  "context_id": "ctx-signals-def456",
+  "adcp_version": "1.0.0",
   "task_id": "activation_12345",
   "status": "processing"
 }
@@ -202,9 +224,12 @@ data: {"status": {"state": "completed"}, "artifacts": [{
 ### Final Response (Deployed)
 **Message**: "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately in your campaigns with the ID 'pm_brand456_peer39_lux_auto'. The activation completed faster than expected - just 52 minutes."
 
-**Payload**:
+**Complete Response**:
 ```json
 {
+  "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately in your campaigns with the ID 'pm_brand456_peer39_lux_auto'. The activation completed faster than expected - just 52 minutes.",
+  "context_id": "ctx-signals-def456",
+  "adcp_version": "1.0.0",
   "task_id": "activation_12345",
   "status": "deployed",
   "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
@@ -212,18 +237,55 @@ data: {"status": {"state": "completed"}, "artifacts": [{
 }
 ```
 
+### Success with Warnings
+**Message**: "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated."
+
+**Complete Response**:
+```json
+{
+  "message": "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated.",
+  "context_id": "ctx-signals-def456",
+  "adcp_version": "1.0.0",
+  "task_id": "activation_12345",
+  "status": "deployed",
+  "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
+  "deployed_at": "2025-01-15T14:30:00Z",
+  "errors": [
+    {
+      "code": "SUBOPTIMAL_CONFIGURATION",
+      "message": "Account frequency cap settings may limit signal reach",
+      "field": "account.frequency_settings",
+      "suggestion": "Contact your PubMatic account manager to review frequency cap settings for optimal performance"
+    }
+  ]
+}
+```
+
 ### Error Response (Failed)
 **Message**: "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again."
 
-**Payload**:
+**Complete Response**:
 ```json
 {
+  "message": "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again.",
+  "context_id": "ctx-signals-def456",
+  "adcp_version": "1.0.0",
   "task_id": "activation_12345",
   "status": "failed",
-  "error": {
-    "code": "DEPLOYMENT_UNAUTHORIZED",
-    "message": "Account brand-456-pm not authorized for Peer39 data on PubMatic"
-  }
+  "errors": [
+    {
+      "code": "DEPLOYMENT_UNAUTHORIZED",
+      "message": "Account brand-456-pm not authorized for Peer39 data on PubMatic",
+      "field": "account",
+      "suggestion": "Contact your PubMatic account manager to enable Peer39 data access for your account",
+      "details": {
+        "account_id": "brand-456-pm",
+        "platform": "pubmatic",
+        "data_provider": "peer39",
+        "required_permission": "third_party_data_access"
+      }
+    }
+  ]
 }
 ```
 
@@ -232,15 +294,33 @@ data: {"status": {"state": "completed"}, "artifacts": [{
 - **pending**: Activation request received and queued
 - **processing**: Activation in progress
 - **deployed**: Signal successfully activated and ready to use
-- **failed**: Activation failed (see error message for details)
+- **failed**: Activation could not be completed (check errors array for details)
 
 ## Error Codes
 
+### Activation Errors
 - `SIGNAL_AGENT_SEGMENT_NOT_FOUND`: Signal agent segment ID doesn't exist
-- `ACTIVATION_FAILED`: Could not activate signal
-- `ALREADY_ACTIVATED`: Signal already active
-- `DEPLOYMENT_UNAUTHORIZED`: Can't deploy to platform/account
-- `INVALID_PRICING_MODEL`: Pricing model not available
+- `ACTIVATION_FAILED`: Could not activate signal for unspecified reasons
+- `ALREADY_ACTIVATED`: Signal already active on the specified platform/account
+- `DEPLOYMENT_UNAUTHORIZED`: Can't deploy to platform/account due to permissions
+- `INVALID_PRICING_MODEL`: Requested pricing model not available for this signal
+
+### Configuration Warnings
+- `SUBOPTIMAL_CONFIGURATION`: Signal activated but account settings may impact performance
+- `SLOW_ACTIVATION`: Activation taking longer than expected but still in progress
+- `FREQUENCY_CAP_RESTRICTIVE`: Signal activated but account frequency caps may reduce performance
+
+## Error Handling Philosophy
+
+### Status vs Errors
+- **Task Status**: Indicates overall activation outcome (`deployed`, `failed`, etc.)
+- **Errors Array**: Contains specific issues, warnings, and remediation steps
+- **Partial Success**: Signal can be `deployed` while still having warnings in `errors` array
+
+### Error Types
+- **Fatal Errors**: Prevent activation (status = `failed`)
+- **Warnings**: Signal activates successfully but with caveats (status = `deployed` + errors)
+- **Configuration Issues**: Non-blocking problems that affect performance
 
 ## Usage Notes
 
