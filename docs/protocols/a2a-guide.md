@@ -397,7 +397,7 @@ await a2a.send({
 - **Media Buy**: `get_products`, `list_creative_formats`, `create_media_buy`, `update_media_buy`, `sync_creatives`, `get_media_buy_delivery`, `list_authorized_properties`, `provide_performance_feedback`
 - **Signals**: `get_signals`, `activate_signal`
 
-**Task Parameters**: See [Media Buy](../media-buy/overview.md) and [Signals](../signals/overview.md) documentation for complete parameter specifications.
+**Task Parameters**: See [Media Buy](../media-buy/index.md) and [Signals](../signals/overview.md) documentation for complete parameter specifications.
 
 ## Agent Cards
 
@@ -524,7 +524,7 @@ if (response.status === 'failed' && response.data?.file_errors) {
 ## Next Steps
 
 - **Core Concepts**: Read [Core Concepts](./core-concepts.md) for status handling and workflows  
-- **Task Reference**: See [Media Buy Tasks](../media-buy/overview.md) and [Signals](../signals/overview.md)
+- **Task Reference**: See [Media Buy Tasks](../media-buy/index.md) and [Signals](../signals/overview.md)
 - **Protocol Comparison**: Compare with [MCP integration](./mcp-guide.md)
 - **Examples**: Find complete workflow examples in Core Concepts
 

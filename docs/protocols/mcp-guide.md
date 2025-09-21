@@ -118,7 +118,7 @@ await mcp.call('get_signals', {...});      // Discover audience signals
 await mcp.call('activate_signal', {...});  // Deploy signals to platforms
 ```
 
-**Task Parameters**: See individual task documentation in [Media Buy](../media-buy/overview.md) and [Signals](../signals/overview.md) sections.
+**Task Parameters**: See individual task documentation in [Media Buy](../media-buy/index.md) and [Signals](../signals/overview.md) sections.
 
 ## Context Management (MCP-Specific)
 
@@ -309,7 +309,7 @@ try {
 ## Next Steps
 
 - **Core Concepts**: Read [Core Concepts](./core-concepts.md) for status handling and workflows
-- **Task Reference**: See [Media Buy Tasks](../media-buy/overview.md) and [Signals](../signals/overview.md)
+- **Task Reference**: See [Media Buy Tasks](../media-buy/index.md) and [Signals](../signals/overview.md)
 - **Protocol Comparison**: Compare with [A2A integration](./a2a-guide.md)
 - **Examples**: Find complete workflow examples in Core Concepts
 
