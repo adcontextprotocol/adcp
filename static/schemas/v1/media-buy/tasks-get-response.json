@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/tasks-get-response.json",
+  "title": "Tasks Get Response",
+  "description": "Response containing detailed information about a specific task including status, context, and optional results",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable status message for this task"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Context ID for tracking related operations"
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for this task"
+    },
+    "task_type": {
+      "type": "string",
+      "description": "Type of AdCP operation",
+      "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal"]
+    },
+    "status": {
+      "$ref": "/schemas/v1/enums/task-status.json",
+      "description": "Current task status"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task was initially created (ISO 8601)"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task was last updated (ISO 8601)"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task completed (ISO 8601, only for completed/failed/canceled tasks)"
+    },
+    "estimated_completion_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Estimated time when task will complete (optional, ISO 8601)"
+    },
+    "context": {
+      "type": "object",
+      "description": "Task context information for identification and tracking",
+      "properties": {
+        "buyer_ref": {
+          "type": "string",
+          "description": "Buyer reference from original request"
+        },
+        "media_buy_id": {
+          "type": "string",
+          "description": "Media buy ID if created/being modified"
+        },
+        "package_ids": {
+          "type": "array",
+          "description": "Package IDs if relevant to task",
+          "items": {
+            "type": "string"
+          }
+        },
+        "creative_count": {
+          "type": "integer",
+          "description": "Number of creatives for sync_creatives tasks",
+          "minimum": 0
+        },
+        "signal_id": {
+          "type": "string",
+          "description": "Signal ID for activate_signal tasks"
+        }
+      },
+      "additionalProperties": false
+    },
+    "has_webhook": {
+      "type": "boolean",
+      "description": "Whether this task has webhook configuration"
+    },
+    "progress": {
+      "type": "object",
+      "description": "Progress information for long-running tasks",
+      "properties": {
+        "percentage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Completion percentage (0-100)"
+        },
+        "current_step": {
+          "type": "string",
+          "description": "Current step or phase of the operation"
+        },
+        "total_steps": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total number of steps in the operation"
+        },
+        "step_number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Current step number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "description": "Full task result for completed tasks (only included if include_result was true in request)",
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "description": "Error details for failed tasks",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Error code for programmatic handling"
+        },
+        "message": {
+          "type": "string",
+          "description": "Detailed error message"
+        },
+        "details": {
+          "type": "object",
+          "description": "Additional error context",
+          "additionalProperties": true
+        }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    },
+    "history": {
+      "type": "array",
+      "description": "Task status change history (only included if include_history was true in request)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this status change occurred (ISO 8601)"
+          },
+          "status": {
+            "$ref": "/schemas/v1/enums/task-status.json",
+            "description": "Status at this point in time"
+          },
+          "message": {
+            "type": "string",
+            "description": "Status message at this point in time"
+          },
+          "details": {
+            "type": "object",
+            "description": "Additional context for this status change",
+            "additionalProperties": true
+          }
+        },
+        "required": ["timestamp", "status"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["adcp_version", "message", "task_id", "task_type", "status", "created_at", "updated_at"],
+  "additionalProperties": false
+}

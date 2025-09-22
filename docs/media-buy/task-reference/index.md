@@ -21,6 +21,8 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | [`sync_creatives`](./sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
 | [`list_creatives`](./list_creatives) | Query creative library with filtering | ~1s | Creatives |
 | [`get_media_buy_delivery`](./get_media_buy_delivery) | Retrieve performance and delivery data | ~60s | Reporting |
+| [`tasks/list`](./tasks_list) | List and filter async tasks for state reconciliation | ~1s | Task Management |
+| [`tasks/get`](./tasks_get) | Poll specific task status and retrieve results | ~1s | Task Management |
 
 ## Response Time Categories
 
@@ -31,6 +33,8 @@ AdCP tasks fall into four response time categories:
 - [`list_creative_formats`](./list_creative_formats) - Format specifications
 - [`list_authorized_properties`](./list_authorized_properties) - Available properties  
 - [`list_creatives`](./list_creatives) - Creative library queries
+- [`tasks/list`](./tasks_list) - Task state reconciliation and filtering
+- [`tasks/get`](./tasks_get) - Task status polling and result retrieval
 
 ### 🟡 Processing (~60 seconds)  
 **AI/LLM inference with backend systems**
@@ -68,6 +72,12 @@ Handle creative assets throughout their lifecycle.
 Monitor and optimize campaign performance.
 
 - **[`get_media_buy_delivery`](./get_media_buy_delivery)** - Track delivery and performance metrics
+
+### Task Management
+Track and reconcile async operations across your account.
+
+- **[`tasks/list`](./tasks_list)** - List and filter pending or completed tasks for state reconciliation
+- **[`tasks/get`](./tasks_get)** - Poll specific task status and retrieve results when complete
 
 ## Schema Reference
 

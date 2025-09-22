@@ -175,9 +175,9 @@ AdCP operations fall into three categories:
    - `get_products` (when brief is vague)
    - Operations that need clarification or approval
 
-3. **Asynchronous** - Return `working` and require polling/streaming
+3. **Asynchronous** - Return `working` or `submitted` and require polling/streaming
    - `create_media_buy`, `activate_signal`, `sync_creatives`
-   - Operations that integrate with external systems
+   - Operations that integrate with external systems or require human approval
 
 ### Timeout Handling
 
@@ -187,12 +187,14 @@ Set reasonable timeouts based on operation type:
 const TIMEOUTS = {
   sync: 30_000,        // 30 seconds for immediate operations
   interactive: 300_000, // 5 minutes for human input
-  async: 1_800_000     // 30 minutes for long-running tasks
+  working: 120_000,    // 2 minutes for working tasks
+  submitted: 86_400_000 // 24 hours for submitted tasks
 };
 
 function setTimeoutForStatus(status) {
   switch (status) {
-    case 'working': return TIMEOUTS.async;
+    case 'working': return TIMEOUTS.working;
+    case 'submitted': return TIMEOUTS.submitted;
     case 'input-required': return TIMEOUTS.interactive;
     default: return TIMEOUTS.sync;
   }
@@ -250,6 +252,127 @@ async function handleRequest(request) {
   }
 }
 ```
+
+## Task Management & Webhooks
+
+### Task Tracking
+
+All async operations return a `task_id` at the protocol level for tracking:
+
+```json
+{
+  "status": "submitted",
+  "task_id": "task_456", 
+  "message": "Media buy requires manual approval",
+  "estimated_completion_time": "2025-01-23T10:00:00Z",
+  "context_id": "ctx-123"
+}
+```
+
+### Protocol-Level Webhook Configuration
+
+Webhook configuration is handled at the protocol wrapper level, not in individual task parameters:
+
+#### MCP Webhook Pattern
+```javascript
+class McpAdcpSession {
+  async call(tool, params, options = {}) {
+    const request = {
+      tool: tool,
+      arguments: params
+    };
+    
+    // Protocol-level extensions (like context_id)
+    if (this.contextId) {
+      request.context_id = this.contextId;
+    }
+    if (options.webhook_url) {
+      request.webhook_url = options.webhook_url;
+      request.webhook_auth = options.webhook_auth;
+    }
+    
+    return await this.mcp.call(request);
+  }
+}
+
+// Usage
+const response = await session.call('create_media_buy', 
+  { /* task params */ },
+  {
+    webhook_url: "https://buyer.com/webhooks/adcp",
+    webhook_auth: { type: "bearer", credentials: "secret" }
+  }
+);
+```
+
+#### A2A Native Support
+```javascript
+// A2A has native webhook support via PushNotificationConfig
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "create_media_buy",
+        parameters: { /* task params */ }
+      }
+    }]
+  },
+  push_notification_config: {
+    webhook_url: "https://buyer.com/webhooks/adcp",
+    auth: { type: "bearer", credentials: "secret" }
+  }
+});
+```
+
+### Server Decision on Webhook Usage
+
+The server always decides whether to use webhooks:
+
+- **Quick operations** (< 120s): Server returns `working`, ignores webhook
+- **Long operations** (hours/days): Server returns `submitted`, uses webhook if provided
+- **Client choice**: Webhook is optional - clients can always poll with `tasks/get`
+
+### Task State Reconciliation
+
+Use `tasks/list` to recover from lost state:
+
+```javascript
+// Find all pending operations
+const pending = await session.call('tasks/list', {
+  filters: {
+    statuses: ["submitted", "working", "input-required"]
+  }
+});
+
+// Reconcile with local state
+const missingTasks = pending.tasks.filter(task => 
+  !localState.hasTask(task.task_id)
+);
+
+// Resume tracking missing tasks
+for (const task of missingTasks) {
+  startPolling(task.task_id);
+}
+```
+
+### Status Progression
+
+Tasks progress through predictable states:
+
+```
+submitted → working → completed
+    ↓          ↓         ↑
+input-required → → → → →
+    ↓
+  failed
+```
+
+- **`submitted`**: Long-running (hours to days), provide webhook or poll
+- **`working`**: Processing (< 120 seconds), poll frequently  
+- **`input-required`**: Need user input, continue conversation
+- **`completed`**: Success, process results
+- **`failed`**: Error, handle appropriately
 
 ## Error Handling
 

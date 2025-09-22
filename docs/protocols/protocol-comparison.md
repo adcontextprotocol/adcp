@@ -16,7 +16,9 @@ Both MCP and A2A provide identical AdCP capabilities using the same unified stat
 | **Request Style** | Tool calls | Task messages |
 | **Response Style** | Direct JSON | Artifacts |
 | **Status System** | ✅ Unified status field | ✅ Unified status field |
-| **Async Handling** | Polling with context_id | SSE streaming |
+| **Async Handling** | Polling with tasks/get | SSE streaming |
+| **Webhooks** | Protocol wrapper extension | Native PushNotificationConfig |
+| **Task Management** | tasks/list, tasks/get tools | Native tasks/list, tasks/get |
 | **Context** | Manual (pass context_id) | Automatic (protocol-managed) |
 | **Best For** | Claude, AI assistants | Agent workflows |
 
@@ -40,9 +42,9 @@ Every response includes a status field that tells you exactly what to do:
 |--------|---------------|-------------|
 | `completed` | Task finished | Process data, show success |
 | `input-required` | Need user input | Read message, prompt user, follow up |
-| `working` | Processing | Show progress, wait for updates |
+| `working` | Processing (< 120s) | Poll frequently, show progress |
+| `submitted` | Long-running (hours to days) | Provide webhook or poll less frequently |
 | `failed` | Error occurred | Show error, handle gracefully |
-| `submitted` | Queued | Show "pending" status |
 | `auth-required` | Need auth | Prompt for credentials |
 
 See [Core Concepts](./core-concepts.md) for complete status handling guide.
@@ -95,25 +97,36 @@ Both protocols handle async operations with the same status progression:
 
 ### MCP Async Pattern
 ```javascript
-// Initial response
+// Initial response with task_id
 {
-  "status": "working",
-  "message": "Creating media buy...",
+  "status": "submitted",
+  "message": "Creating media buy, requires manual approval",
   "context_id": "ctx-123",
-  "data": { "task_id": "task-456" }
+  "task_id": "task-456",
+  "estimated_completion_time": "2025-01-23T10:00:00Z"
 }
 
-// Poll for updates using context_id
-const updates = await pollForUpdates(response.context_id);
+// Poll using tasks/get
+const updates = await session.call('tasks/get', { 
+  task_id: "task-456", 
+  include_result: true 
+});
+
+// Optional: Configure webhook at protocol level
+const response = await session.call('create_media_buy', params, {
+  webhook_url: "https://buyer.com/webhooks",
+  webhook_auth: { type: "bearer", credentials: "token" }
+});
 ```
 
 ### A2A Async Pattern
 ```javascript
-// Initial response
+// Initial response with native task tracking
 {
-  "status": "working", 
+  "status": "submitted", 
   "taskId": "task-456",
-  "contextId": "ctx-123"
+  "contextId": "ctx-123",
+  "estimatedCompletionTime": "2025-01-23T10:00:00Z"
 }
 
 // Real-time updates via SSE
@@ -122,7 +135,94 @@ events.onmessage = (event) => {
   const update = JSON.parse(event.data);
   console.log(`Status: ${update.status}, Message: ${update.message}`);
 };
+
+// Native webhook support
+await a2a.send({
+  message: { /* skill invocation */ },
+  push_notification_config: {
+    webhook_url: "https://buyer.com/webhooks",
+    auth: { type: "bearer", credentials: "token" }
+  }
+});
 ```
+
+## Webhook & Task Management Differences
+
+### Webhook Configuration
+
+Both protocols support webhooks but with different implementation approaches:
+
+#### MCP: Protocol Wrapper Extension
+```javascript
+// Webhook config at protocol level (like context_id)
+class McpAdcpSession {
+  async call(tool, params, options = {}) {
+    const request = { tool, arguments: params };
+    
+    if (options.webhook_url) {
+      request.webhook_url = options.webhook_url;
+      request.webhook_auth = options.webhook_auth;
+    }
+    
+    return await this.mcp.call(request);
+  }
+}
+```
+
+#### A2A: Native Push Notifications  
+```javascript
+// Built-in PushNotificationConfig
+await a2a.send({
+  message: { /* task */ },
+  push_notification_config: {
+    webhook_url: "https://buyer.com/webhooks",
+    auth: { type: "bearer", credentials: "token" },
+    events: ["state_change", "completion"]
+  }
+});
+```
+
+### Task Management
+
+Both protocols now provide equivalent task management capabilities:
+
+#### MCP: AdCP Tasks
+```javascript
+// List pending tasks
+await session.call('tasks/list', {
+  filters: { statuses: ["submitted", "working"] }
+});
+
+// Poll specific task
+await session.call('tasks/get', { 
+  task_id: "task_456", 
+  include_result: true 
+});
+
+// State reconciliation
+const reconciliation = await session.reconcileState();
+```
+
+#### A2A: Native RPC Methods
+```javascript
+// Native task management
+const tasks = await a2a.rpc('tasks/list', {
+  filters: { statuses: ["submitted", "working"] }
+});
+
+const task = await a2a.rpc('tasks/get', { 
+  task_id: "task_456",
+  include_result: true 
+});
+```
+
+### Server Decision Making
+
+In both protocols, the server decides whether to use webhooks:
+
+- **Quick operations** (< 120s): Returns `working`, ignores webhook configuration
+- **Long operations** (hours/days): Returns `submitted`, uses webhook if provided
+- **Fallback**: Clients can always poll regardless of webhook configuration
 
 ## Clarification Handling
 

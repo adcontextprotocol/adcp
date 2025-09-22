@@ -116,19 +116,25 @@ Campaign state transitions:
 
 ## Response Times
 
-Media buy operations are asynchronous with varying timing:
+Media buy operations use a unified status system with predictable timing:
 
-- **[`create_media_buy`](../task-reference/create_media_buy)**: Minutes to days
-  - Simple campaigns: Minutes (automated approval)
-  - Complex campaigns: Hours to days (human approval)
+- **[`create_media_buy`](../task-reference/create_media_buy)**: Instant to days
+  - `completed`: Simple campaigns created immediately  
+  - `working`: Processing within 120 seconds (validation, setup)
+  - `submitted`: Complex campaigns requiring hours to days (human approval)
   
-- **[`update_media_buy`](../task-reference/update_media_buy)**: Minutes to days  
-  - Budget changes: Minutes (immediate effect)
-  - Targeting updates: Hours (platform propagation)
-  - Package modifications: Days (requires validation)
+- **[`update_media_buy`](../task-reference/update_media_buy)**: Instant to days
+  - `completed`: Budget changes applied immediately
+  - `working`: Targeting updates within 120 seconds
+  - `submitted`: Package modifications requiring approval (hours to days)
 
 - **[`get_media_buy_delivery`](../task-reference/get_media_buy_delivery)**: ~60 seconds (data aggregation)
 - **Performance analysis**: ~1 second (cached metrics)
+
+**Status Meanings:**
+- **`completed`**: Operation finished, process results immediately
+- **`working`**: Processing, expect completion within 120 seconds  
+- **`submitted`**: Long-running operation, provide webhook or poll with `tasks/get`
 
 ## Best Practices
 

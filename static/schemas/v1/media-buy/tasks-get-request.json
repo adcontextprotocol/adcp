@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/tasks-get-request.json",
+  "title": "Tasks Get Request",
+  "description": "Request parameters for retrieving a specific task by ID with optional result inclusion",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.6.0"
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier of the task to retrieve"
+    },
+    "include_result": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include full task result for completed tasks (may increase response size)"
+    },
+    "include_history": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include task status change history and timeline"
+    }
+  },
+  "required": ["task_id"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Check task status",
+      "data": {
+        "task_id": "task_456"
+      }
+    },
+    {
+      "description": "Get completed task with results",
+      "data": {
+        "task_id": "task_789",
+        "include_result": true
+      }
+    },
+    {
+      "description": "Get task with full history for debugging",
+      "data": {
+        "task_id": "task_123",
+        "include_result": true,
+        "include_history": true
+      }
+    }
+  ]
+}

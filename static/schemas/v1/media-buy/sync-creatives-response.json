@@ -18,6 +18,20 @@
       "type": "string",
       "description": "Context ID for tracking async operations"
     },
+    "status": {
+      "$ref": "/schemas/v1/enums/task-status.json",
+      "description": "Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running operations",
+      "default": "completed"
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for tracking this async operation (present for submitted/working status)"
+    },
+    "estimated_completion_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Estimated time when task will complete (ISO 8601, only for submitted status)"
+    },
     "dry_run": {
       "type": "boolean",
       "description": "Whether this was a dry run (no actual changes made)"
@@ -221,6 +235,6 @@
       }
     }
   },
-  "required": ["adcp_version", "message", "summary", "results"],
+  "required": ["adcp_version", "message", "status"],
   "additionalProperties": false
 }
