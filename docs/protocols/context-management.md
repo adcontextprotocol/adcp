@@ -7,7 +7,51 @@ title: Context Management
 
 How AdCP handles conversation state differs significantly between protocols.
 
-## Key Difference
+## Key Identifiers
+
+AdCP uses two distinct identifiers for different purposes:
+
+### context_id vs task_id
+
+**context_id**:
+- Comes from the protocol layer (built into A2A)
+- Provides conversation history and session continuity
+- Lives at the protocol level
+- Used for maintaining state across multiple task calls in a conversation
+- Expires after conversation timeout (typically 1 hour)
+
+**task_id**:
+- Specific to individual requests that could be asynchronous
+- Lives beyond the conversation
+- Used for tracking operation progress over time
+- Persists until the task completes (may be days for complex media buys)
+- Can be referenced across different conversations or sessions
+
+### Usage Example
+
+```javascript
+// First call - establishes context and creates task
+const result = await call('create_media_buy', {
+  brief: "Launch summer campaign"
+});
+
+const contextId = result.context_id;  // For conversation continuity
+const taskId = result.task_id;        // For tracking this specific media buy
+
+// Later in same conversation - uses context_id
+const update1 = await call('update_media_buy', {
+  context_id: contextId,    // Maintains conversation state
+  task_id: taskId,          // References the specific media buy
+  updates: {...}
+});
+
+// Days later in new conversation - only task_id needed
+const status = await call('get_media_buy_status', {
+  task_id: taskId          // No context_id - this is a new conversation
+});
+```
+
+## Protocol Differences
 
 - **A2A**: Context is handled automatically by the protocol
 - **MCP**: Requires manual context_id management
@@ -74,12 +118,14 @@ class MCPSession {
 
 ## What Context Maintains
 
-Regardless of protocol:
-- Current media buy and products
-- Search results and filters
-- Conversation history
-- User preferences
-- Workflow state
+The `context_id` maintains conversation state, regardless of protocol:
+- Current media buy and products being discussed
+- Search results and applied filters
+- Conversation history and user intent
+- User preferences expressed in the session
+- Workflow state and temporary decisions
+
+Note: Long-term task state (like media buy status, creative assets, performance data) is tracked via `task_id`, not `context_id`.
 
 ## Best Practices
 

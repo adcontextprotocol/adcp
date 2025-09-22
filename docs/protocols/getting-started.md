@@ -131,5 +131,6 @@ The reference documentation is there when you need it, but most users only need 
 
 - **For MCP questions**: See the [MCP Guide](./mcp-guide.md)
 - **For A2A questions**: See the [A2A Guide](./a2a-guide.md)
+- **For context & task IDs**: See [Context Management](./context-management.md) to understand the difference between `context_id` and `task_id`
 - **For task details**: See the [Media Buy](../media-buy/index.md) or [Signals](../signals/overview.md) sections
 - **For deep technical details**: Check the [Reference](../reference/error-codes.md) section (only if needed)
