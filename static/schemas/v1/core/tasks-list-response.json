@@ -126,54 +126,9 @@
             "type": "string",
             "description": "Current human-readable status message"
           },
-          "context": {
-            "type": "object",
-            "description": "Task context information for identification and tracking",
-            "properties": {
-              "buyer_ref": {
-                "type": "string",
-                "description": "Buyer reference from original request"
-              },
-              "media_buy_id": {
-                "type": "string",
-                "description": "Media buy ID if created/being modified (media-buy tasks)"
-              },
-              "package_ids": {
-                "type": "array",
-                "description": "Package IDs if relevant to task (media-buy tasks)",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "creative_count": {
-                "type": "integer",
-                "description": "Number of creatives for sync_creatives tasks",
-                "minimum": 0
-              },
-              "signal_id": {
-                "type": "string",
-                "description": "Signal ID for signal tasks"
-              },
-              "signal_type": {
-                "type": "string",
-                "description": "Type of signal being sent (signal tasks)"
-              },
-              "endpoints_notified": {
-                "type": "integer",
-                "description": "Number of endpoints notified for signal tasks",
-                "minimum": 0
-              }
-            },
-            "additionalProperties": false
-          },
           "has_webhook": {
             "type": "boolean",
             "description": "Whether this task has webhook configuration"
-          },
-          "result": {
-            "type": "object",
-            "description": "Full task result for completed tasks (only included if include_result was true in request)",
-            "additionalProperties": true
           }
         },
         "required": ["task_id", "task_type", "domain", "status", "created_at", "updated_at", "message"],

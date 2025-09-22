@@ -130,15 +130,10 @@
       },
       "additionalProperties": false
     },
-    "include_context": {
-      "type": "boolean",
-      "default": true,
-      "description": "Include task context information (buyer_ref, media_buy_id, signal_id, etc.)"
-    },
-    "include_result": {
+    "include_history": {
       "type": "boolean",
       "default": false,
-      "description": "Include full task results for completed tasks (may increase response size)"
+      "description": "Include full conversation history for each task (may significantly increase response size)"
     }
   },
   "additionalProperties": false,
@@ -182,7 +177,7 @@
         "filters": {
           "context_contains": "nike_q1_2025"
         },
-        "include_result": true
+        "include_history": true
       }
     }
   ]

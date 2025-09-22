@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/tasks-get-response.json",
   "title": "Tasks Get Response",
-  "description": "Response containing detailed information about a specific task including status, context, and optional results across all AdCP domains",
+  "description": "Response containing detailed information about a specific task including status and optional conversation history across all AdCP domains",
   "type": "object",
   "properties": {
     "adcp_version": {
@@ -51,46 +51,6 @@
       "format": "date-time",
       "description": "When the task completed (ISO 8601, only for completed/failed/canceled tasks)"
     },
-    "context": {
-      "type": "object",
-      "description": "Task context information for identification and tracking",
-      "properties": {
-        "buyer_ref": {
-          "type": "string",
-          "description": "Buyer reference from original request"
-        },
-        "media_buy_id": {
-          "type": "string",
-          "description": "Media buy ID if created/being modified (media-buy tasks)"
-        },
-        "package_ids": {
-          "type": "array",
-          "description": "Package IDs if relevant to task (media-buy tasks)",
-          "items": {
-            "type": "string"
-          }
-        },
-        "creative_count": {
-          "type": "integer",
-          "description": "Number of creatives for sync_creatives tasks",
-          "minimum": 0
-        },
-        "signal_id": {
-          "type": "string",
-          "description": "Signal ID for signal tasks"
-        },
-        "signal_type": {
-          "type": "string",
-          "description": "Type of signal being sent (signal tasks)"
-        },
-        "endpoints_notified": {
-          "type": "integer",
-          "description": "Number of endpoints notified for signal tasks",
-          "minimum": 0
-        }
-      },
-      "additionalProperties": false
-    },
     "has_webhook": {
       "type": "boolean",
       "description": "Whether this task has webhook configuration"
@@ -121,11 +81,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "result": {
-      "type": "object",
-      "description": "Full task result for completed tasks (only included if include_result was true in request)",
-      "additionalProperties": true
     },
     "error": {
       "type": "object",
@@ -166,30 +121,27 @@
     },
     "history": {
       "type": "array",
-      "description": "Task status change history (only included if include_history was true in request)",
+      "description": "Complete conversation history for this task (only included if include_history was true in request)",
       "items": {
         "type": "object",
         "properties": {
           "timestamp": {
             "type": "string",
             "format": "date-time",
-            "description": "When this status change occurred (ISO 8601)"
+            "description": "When this exchange occurred (ISO 8601)"
           },
-          "status": {
-            "$ref": "/schemas/v1/enums/task-status.json",
-            "description": "Status at this point in time"
-          },
-          "message": {
+          "type": {
             "type": "string",
-            "description": "Status message at this point in time"
+            "enum": ["request", "response"],
+            "description": "Whether this was a request from client or response from server"
           },
-          "details": {
+          "data": {
             "type": "object",
-            "description": "Additional context for this status change",
+            "description": "The full request or response payload",
             "additionalProperties": true
           }
         },
-        "required": ["timestamp", "status"],
+        "required": ["timestamp", "type", "data"],
         "additionalProperties": false
       }
     }

@@ -82,8 +82,7 @@ List and filter async tasks across your account to enable state reconciliation a
 | `filters` | object | No | Filter criteria for querying tasks |
 | `sort` | object | No | Sorting parameters |
 | `pagination` | object | No | Pagination controls |
-| `include_context` | boolean | No | Include task context information (default: true) |
-| `include_result` | boolean | No | Include full results for completed tasks (default: false) |
+| `include_history` | boolean | No | Include full conversation history for each task (default: false) |
 
 ### Filtering Options
 
@@ -160,10 +159,6 @@ List and filter async tasks across your account to enable state reconciliation a
       "created_at": "2025-01-22T10:00:00Z",
       "updated_at": "2025-01-22T10:00:00Z",
       "message": "Media buy requires manual approval for $150K campaign",
-      "context": {
-        "buyer_ref": "nike_q1_2025",
-        "media_buy_id": null
-      },
       "has_webhook": true
     },
     {
@@ -174,10 +169,6 @@ List and filter async tasks across your account to enable state reconciliation a
       "created_at": "2025-01-22T09:45:00Z",
       "completed_at": "2025-01-22T09:46:00Z",
       "message": "Signal sent successfully to 3 endpoints",
-      "context": {
-        "signal_type": "conversion",
-        "endpoints_notified": 3
-      },
       "has_webhook": false
     }
   ],
@@ -227,6 +218,27 @@ Track only media-buy operations:
 }
 ```
 
+#### Lost Connection Recovery
+Recover from lost task submissions by examining conversation history:
+```json
+{
+  "filters": {
+    "created_after": "2025-01-22T10:00:00Z"
+  },
+  "include_history": true
+}
+```
+
+Then check `history[0].data` to see original requests and identify your lost task:
+```javascript
+tasks.tasks.forEach(task => {
+  const originalRequest = task.history?.[0]?.data;
+  if (originalRequest?.buyer_ref === "nike_q1_2025") {
+    console.log(`Found my lost task: ${task.task_id}`);
+  }
+});
+```
+
 ## tasks/get
 
 Poll a specific task by ID to check status, progress, and retrieve results when complete.
@@ -242,8 +254,7 @@ Poll a specific task by ID to check status, progress, and retrieve results when 
 |-----------|------|----------|-------------|
 | `adcp_version` | string | No | AdCP schema version (default: "1.6.0") |
 | `task_id` | string | Yes | Unique identifier of the task to retrieve |
-| `include_result` | boolean | No | Include full task result for completed tasks (default: false) |
-| `include_history` | boolean | No | Include status change history (default: false) |
+| `include_history` | boolean | No | Include full conversation history for this task (default: false) |
 
 ### Response Structure
 
@@ -274,16 +285,29 @@ Poll a specific task by ID to check status, progress, and retrieve results when 
 }
 ```
 
-#### Completed Task Results
+#### Task with Conversation History
 ```json
 {
   "status": "completed",
   "completed_at": "2025-01-22T10:25:00Z",
-  "result": {
-    // Domain-specific result structure
-    // For media-buy: media_buy_id, packages, etc.
-    // For signals: endpoint_results, delivery_status, etc.
-  }
+  "history": [
+    {
+      "timestamp": "2025-01-22T10:00:00Z",
+      "type": "request",
+      "data": {
+        "buyer_ref": "nike_q1_2025",
+        "brief": "Premium CTV inventory for Nike campaign"
+      }
+    },
+    {
+      "timestamp": "2025-01-22T10:25:00Z",
+      "type": "response",
+      "data": {
+        "media_buy_id": "mb_987654321",
+        "packages": [{ "package_id": "pkg_abc123" }]
+      }
+    }
+  ]
 }
 ```
 
@@ -311,13 +335,12 @@ Poll a specific task by ID to check status, progress, and retrieve results when 
 async function pollTask(taskId) {
   while (true) {
     const response = await session.call('tasks/get', { 
-      task_id: taskId,
-      include_result: true 
+      task_id: taskId
     });
     
     switch (response.status) {
       case 'completed':
-        return response.result;
+        return response; // Get full result from history if needed
         
       case 'failed':
         throw new Error(`Task failed: ${response.error.message}`);
@@ -380,8 +403,7 @@ const taskList = await session.call('tasks/list', {
 
 // Poll specific task
 const taskStatus = await session.call('tasks/get', {
-  task_id: 'task_456',
-  include_result: true
+  task_id: 'task_456'
 });
 ```
 
@@ -488,7 +510,7 @@ See **[Core Concepts: Webhook Reliability](./core-concepts.md#webhook-reliabilit
 ### Performance Optimization
 - Use pagination for accounts with many operations
 - Filter by date ranges to limit results to relevant periods
-- Set `include_result: false` unless you need full task outputs
+- Use `include_history: false` by default to keep responses lightweight
 - Implement exponential backoff for polling loops
 
 ### Monitoring and Alerting
