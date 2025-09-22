@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/v1/media-buy/tasks-list-request.json",
+  "$id": "/schemas/v1/core/tasks-list-request.json",
   "title": "Tasks List Request",
-  "description": "Request parameters for listing and filtering async tasks with state reconciliation capabilities",
+  "description": "Request parameters for listing and filtering async tasks across all AdCP domains with state reconciliation capabilities",
   "type": "object",
   "properties": {
     "adcp_version": {
@@ -15,6 +15,19 @@
       "type": "object",
       "description": "Filter criteria for querying tasks",
       "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Filter by single AdCP domain",
+          "enum": ["media-buy", "signals"]
+        },
+        "domains": {
+          "type": "array",
+          "description": "Filter by multiple AdCP domains",
+          "items": {
+            "type": "string",
+            "enum": ["media-buy", "signals"]
+          }
+        },
         "status": {
           "$ref": "/schemas/v1/enums/task-status.json",
           "description": "Filter by single task status"
@@ -29,14 +42,14 @@
         "task_type": {
           "type": "string",
           "description": "Filter by single task type",
-          "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal"]
+          "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "send_signal", "query_signals"]
         },
         "task_types": {
           "type": "array",
           "description": "Filter by multiple task types",
           "items": {
             "type": "string",
-            "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal"]
+            "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "send_signal", "query_signals"]
           }
         },
         "created_after": {
@@ -69,7 +82,7 @@
         },
         "context_contains": {
           "type": "string",
-          "description": "Filter tasks where context contains this text (searches buyer_ref, media_buy_id, etc.)"
+          "description": "Filter tasks where context contains this text (searches buyer_ref, media_buy_id, signal_id, etc.)"
         },
         "has_webhook": {
           "type": "boolean",
@@ -84,7 +97,7 @@
       "properties": {
         "field": {
           "type": "string",
-          "enum": ["created_at", "updated_at", "status", "task_type", "estimated_completion_time"],
+          "enum": ["created_at", "updated_at", "status", "task_type", "estimated_completion_time", "domain"],
           "default": "created_at",
           "description": "Field to sort by"
         },
@@ -120,7 +133,7 @@
     "include_context": {
       "type": "boolean",
       "default": true,
-      "description": "Include task context information (buyer_ref, media_buy_id, etc.)"
+      "description": "Include task context information (buyer_ref, media_buy_id, signal_id, etc.)"
     },
     "include_result": {
       "type": "boolean",
@@ -131,7 +144,7 @@
   "additionalProperties": false,
   "examples": [
     {
-      "description": "List all pending tasks",
+      "description": "List all pending tasks across domains",
       "data": {
         "filters": {
           "statuses": ["submitted", "working", "input-required"]
@@ -139,9 +152,10 @@
       }
     },
     {
-      "description": "Find tasks requiring attention",
+      "description": "Find media-buy tasks requiring attention",
       "data": {
         "filters": {
+          "domain": "media-buy",
           "statuses": ["input-required", "failed"]
         },
         "sort": {
@@ -151,10 +165,10 @@
       }
     },
     {
-      "description": "Recent media buy operations",
+      "description": "Recent signal operations",
       "data": {
         "filters": {
-          "task_types": ["create_media_buy", "update_media_buy"],
+          "domain": "signals",
           "created_after": "2025-01-01T00:00:00Z"
         },
         "pagination": {

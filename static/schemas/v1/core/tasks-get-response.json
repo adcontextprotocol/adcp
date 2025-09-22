@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/v1/media-buy/tasks-get-response.json",
+  "$id": "/schemas/v1/core/tasks-get-response.json",
   "title": "Tasks Get Response",
-  "description": "Response containing detailed information about a specific task including status, context, and optional results",
+  "description": "Response containing detailed information about a specific task including status, context, and optional results across all AdCP domains",
   "type": "object",
   "properties": {
     "adcp_version": {
@@ -25,7 +25,12 @@
     "task_type": {
       "type": "string",
       "description": "Type of AdCP operation",
-      "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal"]
+      "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "send_signal", "query_signals"]
+    },
+    "domain": {
+      "type": "string",
+      "description": "AdCP domain this task belongs to",
+      "enum": ["media-buy", "signals"]
     },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
@@ -61,11 +66,11 @@
         },
         "media_buy_id": {
           "type": "string",
-          "description": "Media buy ID if created/being modified"
+          "description": "Media buy ID if created/being modified (media-buy tasks)"
         },
         "package_ids": {
           "type": "array",
-          "description": "Package IDs if relevant to task",
+          "description": "Package IDs if relevant to task (media-buy tasks)",
           "items": {
             "type": "string"
           }
@@ -77,7 +82,16 @@
         },
         "signal_id": {
           "type": "string",
-          "description": "Signal ID for activate_signal tasks"
+          "description": "Signal ID for signal tasks"
+        },
+        "signal_type": {
+          "type": "string",
+          "description": "Type of signal being sent (signal tasks)"
+        },
+        "endpoints_notified": {
+          "type": "integer",
+          "description": "Number of endpoints notified for signal tasks",
+          "minimum": 0
         }
       },
       "additionalProperties": false
@@ -133,6 +147,22 @@
         "details": {
           "type": "object",
           "description": "Additional error context",
+          "properties": {
+            "domain": {
+              "type": "string",
+              "description": "AdCP domain where error occurred",
+              "enum": ["media-buy", "signals"]
+            },
+            "operation": {
+              "type": "string",
+              "description": "Specific operation that failed"
+            },
+            "specific_context": {
+              "type": "object",
+              "description": "Domain-specific error context",
+              "additionalProperties": true
+            }
+          },
           "additionalProperties": true
         }
       },
@@ -169,6 +199,6 @@
       }
     }
   },
-  "required": ["adcp_version", "message", "task_id", "task_type", "status", "created_at", "updated_at"],
+  "required": ["adcp_version", "message", "task_id", "task_type", "domain", "status", "created_at", "updated_at"],
   "additionalProperties": false
 }

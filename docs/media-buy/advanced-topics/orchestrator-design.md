@@ -305,40 +305,181 @@ class TaskMonitor:
                 await asyncio.sleep(backoff)
 ```
 
-### 4. Webhook Support
+### 4. Webhook Support with Reliability Patterns
 
-Implement webhook endpoints for real-time updates:
+Implement robust webhook endpoints following AdCP reliability patterns (see [Core Concepts: Webhook Reliability](../../protocols/core-concepts.md#webhook-reliability)):
 
 ```python
-@app.post("/webhooks/hitl-tasks")
-async def hitl_task_webhook(request: Request):
-    """Handle HITL task status updates."""
+import hmac
+import hashlib
+from datetime import datetime, timedelta
+
+class WebhookHandler:
+    def __init__(self, tracker, notifier, secret_key):
+        self.tracker = tracker
+        self.notifier = notifier
+        self.secret_key = secret_key
+        self.processed_events = {}  # In production, use Redis/database
+        
+    def verify_webhook_signature(self, payload: bytes, signature: str) -> bool:
+        """Verify webhook authenticity"""
+        expected_signature = hmac.new(
+            self.secret_key.encode(),
+            payload,
+            hashlib.sha256
+        ).hexdigest()
+        return signature == f"sha256={expected_signature}"
+    
+    async def is_replay_attack(self, timestamp: str, event_id: str) -> bool:
+        """Prevent replay attacks using timestamp and event ID"""
+        event_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        now = datetime.now()
+        
+        # Reject events older than 5 minutes
+        if now - event_time > timedelta(minutes=5):
+            return True
+            
+        # Check if we've processed this event before
+        return event_id in self.processed_events
+
+@app.post("/webhooks/adcp/{user_id}")
+async def adcp_webhook(user_id: str, request: Request):
+    """Handle AdCP task status updates with reliability patterns."""
+    
+    # Verify webhook signature
+    signature = request.headers.get('x-adcp-signature')
+    payload = await request.body()
+    
+    if not webhook_handler.verify_webhook_signature(payload, signature):
+        return {"error": "Invalid signature"}, 401
+    
     data = await request.json()
     
-    if data["event"] == "task_completed":
-        task_id = data["task_id"]
-        
-        # Find associated operation
-        operation = await db.operations.find_one({
-            "task_id": task_id
-        })
-        
-        if operation:
-            if data["resolution"] == "approved":
-                # Task was approved - operation executed
-                await handle_operation_completion(
-                    operation["id"],
-                    data["result"]
-                )
-            else:
-                # Task was rejected
-                await handle_operation_rejection(
-                    operation["id"],
-                    data["reason"]
-                )
+    # Prevent replay attacks
+    if await webhook_handler.is_replay_attack(data["timestamp"], data["event_id"]):
+        return {"status": "ignored", "reason": "replay_attack"}, 200
     
-    return {"status": "received"}
+    # Idempotent processing
+    event_id = data["event_id"]
+    if event_id in webhook_handler.processed_events:
+        return {"status": "already_processed"}, 200
+    
+    try:
+        # Record event as processed immediately
+        webhook_handler.processed_events[event_id] = {
+            "timestamp": data["timestamp"],
+            "task_id": data["task_id"]
+        }
+        
+        # Process the webhook
+        await process_adcp_webhook(user_id, data)
+        
+        return {"status": "processed"}, 200
+        
+    except Exception as e:
+        # Log error but still return 200 to prevent retries
+        logger.error(f"Webhook processing error: {e}")
+        return {"status": "error", "message": str(e)}, 200
+
+async def process_adcp_webhook(user_id: str, data: dict):
+    """Process AdCP webhook with sequence handling"""
+    task_id = data["task_id"]
+    current_status = data["current_status"]
+    timestamp = data["timestamp"]
+    
+    # Find associated operation
+    operation = await db.operations.find_one({"task_id": task_id})
+    if not operation:
+        logger.warning(f"Received webhook for unknown task: {task_id}")
+        return
+    
+    # Check for out-of-order events using timestamps
+    operation_timestamp = operation.get("updated_at")
+    webhook_timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+    
+    if operation_timestamp and operation_timestamp >= webhook_timestamp:
+        logger.info(f"Ignoring out-of-order webhook for task {task_id}")
+        return
+    
+    # Update operation status
+    update_data = {
+        "status": current_status,
+        "updated_at": webhook_timestamp
+    }
+    
+    # Include result or error data
+    if current_status == "completed" and "result" in data:
+        update_data["result"] = data["result"]
+    elif current_status == "failed" and "error" in data:
+        update_data["error"] = data["error"]
+    
+    await tracker.update_status(operation["id"], **update_data)
+    
+    # Cancel any active polling for this task
+    if task_id in handler.polling_tasks:
+        handler.polling_tasks[task_id].cancel()
+        del handler.polling_tasks[task_id]
+    
+    # Notify user of status change
+    await notifier.notify_status_change(user_id, operation["id"], current_status)
+
+class ReliableWebhookOrchestrator:
+    """Orchestrator with webhook reliability patterns"""
+    
+    def __init__(self):
+        self.webhook_timeout = timedelta(minutes=10)  # Max wait for webhook
+        self.backup_polling_delay = timedelta(minutes=2)  # Start backup polling
+        
+    async def _handle_submitted_with_webhook(self, operation_id, task_id, estimated_completion):
+        """Handle submitted task with webhook + backup polling"""
+        
+        # Start backup polling after delay (webhook should arrive first)
+        async def backup_polling():
+            await asyncio.sleep(self.backup_polling_delay.total_seconds())
+            
+            # Check if webhook already updated the operation
+            operation = await tracker.get_operation(operation_id)
+            if operation["status"] not in ["completed", "failed", "canceled"]:
+                # Webhook didn't arrive, start polling
+                logger.info(f"Starting backup polling for task {task_id}")
+                await self._poll_for_completion(operation_id, task_id, interval=60)
+        
+        # Schedule backup polling
+        asyncio.create_task(backup_polling())
+        
+        # Set webhook timeout
+        async def webhook_timeout():
+            await asyncio.sleep(self.webhook_timeout.total_seconds())
+            
+            operation = await tracker.get_operation(operation_id)
+            if operation["status"] not in ["completed", "failed", "canceled"]:
+                logger.warning(f"Webhook timeout for task {task_id}, falling back to polling")
+                await self._poll_for_completion(operation_id, task_id, interval=60)
+        
+        asyncio.create_task(webhook_timeout())
+    
+    async def health_check_webhooks(self):
+        """Periodic health check for webhook delivery"""
+        # Check if recent operations with webhooks completed via webhook vs polling
+        recent_ops = await tracker.get_recent_operations_with_webhooks()
+        
+        webhook_success_rate = calculate_webhook_success_rate(recent_ops)
+        
+        if webhook_success_rate < 0.8:  # Less than 80% webhook success
+            logger.warning(f"Webhook success rate low: {webhook_success_rate:.2%}")
+            # Consider disabling webhooks temporarily
+            await self.temporarily_disable_webhooks()
 ```
+
+#### Webhook Best Practices for Orchestrators
+
+1. **Always implement polling backup** - Never rely solely on webhooks
+2. **Use exponential backoff** - For backup polling when webhooks fail
+3. **Monitor webhook health** - Track success rates and disable if needed
+4. **Handle duplicates gracefully** - Use event IDs for idempotent processing
+5. **Implement proper timeouts** - Don't wait forever for webhook delivery
+6. **Verify webhook authenticity** - Always validate signatures
+7. **Log webhook events** - Maintain audit trail for debugging
 
 ### 5. User Communication
 

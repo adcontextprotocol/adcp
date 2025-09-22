@@ -126,6 +126,8 @@ await mcp.call('activate_signal', {...});  // Deploy signals to platforms
 
 **Task Parameters**: See individual task documentation in [Media Buy](../media-buy/index.md) and [Signals](../signals/overview.md) sections.
 
+**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Task Management](./task-management.md).
+
 ## Context Management (MCP-Specific)
 
 **Critical**: MCP requires manual context management. You must pass `context_id` to maintain conversation state.
@@ -366,7 +368,7 @@ switch (initial.status) {
 }
 ```
 
-**Note**: Use `tasks/get` for polling specific tasks, or `tasks/list` for state reconciliation.
+**Note**: Use `tasks/get` for polling specific tasks, or `tasks/list` for state reconciliation. See [Task Management](./task-management.md) for complete documentation on task tracking patterns and webhook integration.
 
 ## Integration Example
 
