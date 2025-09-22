@@ -94,7 +94,7 @@ List and filter async tasks across your account to enable state reconciliation a
     "status": "submitted",
     "statuses": ["submitted", "working", "input-required"],
     "task_type": "create_media_buy",
-    "task_types": ["create_media_buy", "send_signal"]
+    "task_types": ["create_media_buy", "activate_signal"]
   }
 }
 ```
@@ -109,8 +109,8 @@ List and filter async tasks across your account to enable state reconciliation a
       "create_media_buy",
       "update_media_buy", 
       "sync_creatives",
-      "send_signal",
-      "query_signals"
+      "activate_signal",
+      "get_signals"
     ]
   }
 }
@@ -168,7 +168,7 @@ List and filter async tasks across your account to enable state reconciliation a
     },
     {
       "task_id": "task_789",
-      "task_type": "send_signal",
+      "task_type": "activate_signal",
       "domain": "signals",
       "status": "completed",
       "created_at": "2025-01-22T09:45:00Z",

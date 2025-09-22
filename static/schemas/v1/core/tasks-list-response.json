@@ -96,7 +96,7 @@
           "task_type": {
             "type": "string",
             "description": "Type of AdCP operation",
-            "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "send_signal", "query_signals"]
+            "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal", "get_signals"]
           },
           "domain": {
             "type": "string",

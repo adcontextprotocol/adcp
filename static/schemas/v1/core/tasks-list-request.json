@@ -42,14 +42,14 @@
         "task_type": {
           "type": "string",
           "description": "Filter by single task type",
-          "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "send_signal", "query_signals"]
+          "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal", "get_signals"]
         },
         "task_types": {
           "type": "array",
           "description": "Filter by multiple task types",
           "items": {
             "type": "string",
-            "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "send_signal", "query_signals"]
+            "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal", "get_signals"]
           }
         },
         "created_after": {
