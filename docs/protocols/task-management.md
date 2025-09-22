@@ -511,4 +511,4 @@ See **[Core Concepts: Webhook Reliability](./core-concepts.md#webhook-reliabilit
 - **[MCP Guide](./mcp-guide)** - MCP-specific implementation patterns
 - **[A2A Guide](./a2a-guide)** - A2A-specific integration examples
 - **[Media Buy Reference](../media-buy/task-reference/)** - Domain-specific task documentation
-- **[Signals Reference](../signals/task-reference/)** - Signal-specific task documentation
+- **[Signals Reference](../signals/tasks/)** - Signal-specific task documentation
