@@ -19,11 +19,6 @@
       "type": "string",
       "description": "Unique identifier for tracking this async operation (present for submitted/working status)"
     },
-    "estimated_completion_time": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Estimated time when task will complete (ISO 8601, only for submitted status)"
-    },
     "media_buy_id": {
       "type": "string",
       "description": "Publisher's unique identifier for the created media buy"

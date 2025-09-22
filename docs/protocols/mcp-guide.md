@@ -249,7 +249,7 @@ const response = await session.call('create_media_buy',
 );
 
 if (response.status === 'submitted') {
-  console.log(`Task ${response.task_id} submitted, ETA: ${response.estimated_completion_time}`);
+  console.log(`Task ${response.task_id} submitted for long-running execution`);
   // Webhook will notify when complete, or poll manually
 } else if (response.status === 'completed') {
   console.log(`Media buy created: ${response.media_buy_id}`);
@@ -356,7 +356,7 @@ switch (initial.status) {
     break;
     
   case 'submitted':
-    console.log(`Queued for approval, ETA: ${initial.estimated_completion_time}`);
+    console.log(`Queued for approval - long-running operation`);
     console.log(`Track with task ID: ${initial.task_id}`);
     // Use webhook or poll manually
     break;

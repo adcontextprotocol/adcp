@@ -159,7 +159,6 @@ List and filter async tasks across your account to enable state reconciliation a
       "status": "submitted",
       "created_at": "2025-01-22T10:00:00Z",
       "updated_at": "2025-01-22T10:00:00Z",
-      "estimated_completion_time": "2025-01-23T10:00:00Z",
       "message": "Media buy requires manual approval for $150K campaign",
       "context": {
         "buyer_ref": "nike_q1_2025",
@@ -260,7 +259,6 @@ Poll a specific task by ID to check status, progress, and retrieve results when 
   "status": "working",
   "created_at": "2025-01-22T10:00:00Z",
   "updated_at": "2025-01-22T10:15:00Z",
-  "estimated_completion_time": "2025-01-22T10:30:00Z"
 }
 ```
 
@@ -335,7 +333,7 @@ async function pollTask(taskId) {
         break;
         
       case 'submitted':
-        console.log(`Task queued, ETA: ${response.estimated_completion_time}`);
+        console.log(`Task queued for long-running execution`);
         await sleep(60000); // Poll submitted tasks less frequently
         break;
     }

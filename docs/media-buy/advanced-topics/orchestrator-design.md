@@ -93,7 +93,6 @@ class OperationTracker:
             "updated_at": datetime.now(),
             "task_id": None,
             "context_id": None,
-            "estimated_completion_time": None,
             "result": None,
             "error": None
         }
@@ -162,7 +161,6 @@ class AsyncOperationHandler:
             status,
             task_id=response.get("task_id"),
             context_id=response.get("context_id"),
-            estimated_completion_time=response.get("estimated_completion_time"),
             result=response.get("result") if status == "completed" else None,
             error=response.get("error") if status == "failed" else None
         )
@@ -190,7 +188,7 @@ class AsyncOperationHandler:
         if webhook_config:
             # Webhook will handle completion notification
             await self.notifier.notify_submitted_with_webhook(
-                operation_id, task_id, response["estimated_completion_time"]
+                operation_id, task_id
             )
         else:
             # Start polling for completion
@@ -200,7 +198,7 @@ class AsyncOperationHandler:
             self.polling_tasks[task_id] = polling_task
             
             await self.notifier.notify_submitted_polling(
-                operation_id, task_id, response["estimated_completion_time"]
+                operation_id, task_id
             )
     
     async def _handle_working(self, operation_id, response):
@@ -583,7 +581,6 @@ class AdCPOrchestrator:
                     "status": "submitted",
                     "task_id": response["task_id"],
                     "message": response["message"],
-                    "estimated_completion_time": response["estimated_completion_time"],
                     "webhook_configured": webhook_config is not None
                 }
             

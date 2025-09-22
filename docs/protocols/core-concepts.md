@@ -264,7 +264,6 @@ All async operations return a `task_id` at the protocol level for tracking:
   "status": "submitted",
   "task_id": "task_456", 
   "message": "Media buy requires manual approval",
-  "estimated_completion_time": "2025-01-23T10:00:00Z",
   "context_id": "ctx-123"
 }
 ```

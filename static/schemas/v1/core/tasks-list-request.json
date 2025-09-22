@@ -97,7 +97,7 @@
       "properties": {
         "field": {
           "type": "string",
-          "enum": ["created_at", "updated_at", "status", "task_type", "estimated_completion_time", "domain"],
+          "enum": ["created_at", "updated_at", "status", "task_type", "domain"],
           "default": "created_at",
           "description": "Field to sort by"
         },

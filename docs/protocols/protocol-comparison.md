@@ -103,7 +103,6 @@ Both protocols handle async operations with the same status progression:
   "message": "Creating media buy, requires manual approval",
   "context_id": "ctx-123",
   "task_id": "task-456",
-  "estimated_completion_time": "2025-01-23T10:00:00Z"
 }
 
 // Poll using tasks/get

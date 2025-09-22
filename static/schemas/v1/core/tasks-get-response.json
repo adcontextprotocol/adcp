@@ -51,11 +51,6 @@
       "format": "date-time",
       "description": "When the task completed (ISO 8601, only for completed/failed/canceled tasks)"
     },
-    "estimated_completion_time": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Estimated time when task will complete (optional, ISO 8601)"
-    },
     "context": {
       "type": "object",
       "description": "Task context information for identification and tracking",
