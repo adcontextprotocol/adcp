@@ -36,10 +36,10 @@ The Signals Activation Protocol operates within the broader [AdCP Ecosystem Laye
 Every signal discovery request involves two key roles:
 
 #### Orchestrator
-The platform or system making the API request to the audience platform:
+The platform or system making the API request to the signal platform:
 - **Examples**: Scope3, Claude AI assistant, trading desk platform, campaign management tool
 - **Responsibilities**: Makes API calls, handles authentication, manages the technical interaction
-- **Account**: Has technical credentials and API access to the audience platform
+- **Account**: Has technical credentials and API access to the signal platform
 
 #### Principal  
 The entity on whose behalf the request is being made:
@@ -49,7 +49,7 @@ The entity on whose behalf the request is being made:
 
 #### How This Works in Practice
 
-1. **Request Flow**: Orchestrator → Audience Platform (on behalf of Principal) → Decisioning Platform
+1. **Request Flow**: Orchestrator → Signal Platform (on behalf of Principal) → Decisioning Platform
 2. **Authentication**: Orchestrator authenticates with technical credentials
 3. **Authorization**: Principal's identity determines available signals and pricing
 4. **Activation**: Signals are activated for Principal's account on the decisioning platform
@@ -65,14 +65,14 @@ The entity on whose behalf the request is being made:
 - **Flow**: Claude (on behalf of Omnicom) → LiveRamp (Omnicom's personalized catalog with negotiated rates and private data) → delivers to Omnicom's account on The Trade Desk
 
 **Scenario 2: Marketplace Agent with Personalized Catalog**  
-- **Orchestrator**: Scope3 platform (connecting audiences to agents)
+- **Orchestrator**: Scope3 platform (connecting signals to agents)
 - **Principal**: Nike (advertiser setting up their agent)
 - **Signal Agent**: Experian (marketplace agent, Nike has account for personalized catalog)
 - **Decisioning Platform**: Nike Advertising Agent (running on Scope3 platform)
 - **Flow**: Scope3 (on behalf of Nike) → Experian (Nike's personalized catalog with owned data and custom rates) → delivers to Nike's advertising agent (hosted by Scope3)
 
-**Scenario 3: Private Audience Agent**
-- **Orchestrator**: Scope3 platform (connecting audiences to agents)
+**Scenario 3: Private Signal Agent**
+- **Orchestrator**: Scope3 platform (connecting signals to agents)
 - **Principal**: Walmart (retailer setting up their agent)
 - **Signal Agent**: Walmart (private agent, only visible to Walmart)
 - **Decisioning Platform**: Walmart Advertising Agent (running on Scope3 platform)
@@ -116,7 +116,7 @@ External agents that license signal data with catalog-based access:
   - No account specification needed in requests
   - All segments already live (`scope: "platform-wide"`)
   
-- **Personalized Catalog**: Requires principal account with the audience agent
+- **Personalized Catalog**: Requires principal account with the signal agent
   - All platform-wide segments (same as public catalog)
   - PLUS account-specific segments (custom signals, private data)
   - Mixed pricing: negotiated rates for some, standard rates for others
@@ -127,11 +127,11 @@ External agents that license signal data with catalog-based access:
 - **Private**: Owner-only authentication (e.g., Walmart authenticates to their own agent)
 - **Marketplace**: Orchestrator authentication determines catalog access level
   - Public catalog: Orchestrator credentials sufficient
-  - Personalized catalog: Requires principal account with audience agent
+  - Personalized catalog: Requires principal account with signal agent
 
 ### Segment ID Structure
 
-Audience discovery involves multiple segment identifiers at different stages:
+Signal discovery involves multiple segment identifiers at different stages:
 
 #### Signal Agent Segment ID
 The identifier used by the signal agent for their internal segment tracking:
@@ -188,7 +188,7 @@ Activate a signal for use on a specific platform/account. This task handles the 
 
 ### Data Provider Multi-Platform Flow (e.g., Peer39)
 
-1. **Discovery**: Call `get_audiences` with multiple platforms to see all deployments at once
+1. **Discovery**: Call `get_signals` with multiple platforms to see all deployments at once
 
 2. **Review**: See which platforms have signals live vs. requiring activation, compare segment IDs across platforms
 
@@ -235,6 +235,33 @@ Activate a signal for use on a specific platform/account. This task handles the 
 - `INVALID_PRICING_MODEL`: Pricing model not available
 - `AGENT_NOT_FOUND`: Private signal agent not visible to this principal
 - `AGENT_ACCESS_DENIED`: Principal not authorized for this signal agent
+
+## Error Handling
+
+For comprehensive error handling guidance including pending vs error states, response patterns, and recovery strategies, see [Protocol Error Handling](../protocols/error-handling.md).
+
+Signal-specific error codes are documented in each task specification and the [Error Codes Reference](../reference/error-codes.md).
+
+## Response Structure
+
+All AdCP Signals responses follow a consistent structure across both MCP and A2A protocols:
+
+### Core Response Fields
+- **message**: Human-readable summary of the operation result
+- **context_id**: Session continuity identifier for follow-up requests
+- **adcp_version**: Schema version used for this response
+- **data**: Task-specific payload (varies by task)
+
+### Protocol Transport
+- **MCP**: Returns complete response as flat JSON object
+- **A2A**: Returns as structured artifacts with message in text part, data in data part
+- **Data Consistency**: Both protocols contain identical AdCP data structures and version information
+
+### Asynchronous Operations
+Some operations (like signal activation) are asynchronous and include:
+- **task_id**: Unique identifier for tracking operation progress
+- **status**: Current operation status (pending, processing, deployed, failed)
+- **estimated_duration**: Time estimates for pending operations
 
 ## Implementation Notes
 
@@ -295,12 +322,14 @@ The principal's identity determines business-level access and pricing:
 
 ### Best Practices
 
-1. Check `is_live` status before attempting activation
-2. Allow 24-48 hours for signal activation
-3. Understand the difference between size units
-4. Consider both pricing options when available
-5. Use multi-platform queries when discovering signals across SSPs
-6. Store platform-specific segment IDs for campaign execution
+1. **Status Checking**: Always check `is_live` status before attempting activation
+2. **Activation Timing**: Allow appropriate time for signal activation (typically 1-2 hours, up to 24-48 hours for complex deployments)
+3. **Size Understanding**: Understand the difference between individuals, devices, and households in coverage metrics
+4. **Pricing Flexibility**: Consider both CPM and revenue share pricing options when available
+5. **Multi-Platform Efficiency**: Use multi-platform queries when discovering signals across data providers to reduce API calls
+6. **Campaign Integration**: Store platform-specific segment IDs for use in campaign targeting
+7. **Asynchronous Handling**: Implement proper task monitoring for activation operations using task_id tracking
+8. **Context Continuity**: Use context_id for session management across related signal operations
 
 ## Next Steps
 

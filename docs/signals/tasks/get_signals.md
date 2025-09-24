@@ -47,19 +47,18 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `max_cpm` | number | No | Maximum CPM price filter |
 | `min_coverage_percentage` | number | No | Minimum coverage requirement |
 
-## Response (Message)
+## Response Structure
 
-The response includes a human-readable message that:
-- Summarizes the signals found matching the criteria
-- Explains deployment status across platforms
-- Highlights activation requirements or timing
-- Provides recommendations for signal selection
+All AdCP responses include:
+- **message**: Human-readable summary of the operation result
+- **context_id**: Session continuity identifier for follow-up requests  
+- **data**: Task-specific payload (see Response Data below)
 
-The message is returned differently in each protocol:
-- **MCP**: Returned as a `message` field in the JSON response
-- **A2A**: Returned as a text part in the artifact
+The response structure is identical across protocols, with only the transport wrapper differing:
+- **MCP**: Returns complete response as flat JSON
+- **A2A**: Returns as artifacts with message in text part, data in data part
 
-## Response (Payload)
+## Response Data
 
 ```json
 {
@@ -139,6 +138,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 {
   "message": "Found 1 luxury segment matching your criteria. Available on The Trade Desk, pending activation on Amazon DSP.",
   "context_id": "ctx-signals-123",
+  "adcp_version": "1.0.0",
   "signals": [
     {
       "signal_agent_segment_id": "luxury_auto_intenders",
@@ -213,7 +213,7 @@ await a2a.send({
 ```
 
 ### A2A Response
-A2A returns results as artifacts:
+A2A returns results as artifacts with the same data structure:
 ```json
 {
   "artifacts": [{
@@ -226,6 +226,8 @@ A2A returns results as artifacts:
         {
           "kind": "data",
           "data": {
+            "context_id": "ctx-signals-123",
+            "adcp_version": "1.0.0",
             "signals": [
               {
                 "signal_agent_segment_id": "luxury_auto_intenders",
@@ -263,10 +265,10 @@ A2A returns results as artifacts:
 }
 ```
 
-### Key Differences
-- **MCP**: Direct tool call with arguments, returns flat JSON response
-- **A2A**: Skill invocation with input, returns artifacts with text and data parts
-- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
+### Protocol Transport
+- **MCP**: Direct tool call with arguments, returns complete response as flat JSON
+- **A2A**: Skill invocation with input, returns structured artifacts with message and data separated
+- **Data Consistency**: Both protocols contain identical AdCP data structures and version information
 
 ## Scenarios
 
@@ -364,9 +366,15 @@ Discover all available deployments across platforms:
 
 ## Error Codes
 
+### Discovery Errors
 - `SIGNAL_AGENT_SEGMENT_NOT_FOUND`: Signal agent segment ID doesn't exist
 - `AGENT_NOT_FOUND`: Private signal agent not visible to this principal
 - `AGENT_ACCESS_DENIED`: Principal not authorized for this signal agent
+
+### Discovery Warnings
+- `PRICING_UNAVAILABLE`: Pricing data temporarily unavailable for one or more platforms
+- `PARTIAL_COVERAGE`: Some requested platforms don't support this signal type
+- `STALE_DATA`: Some signal metadata may be outdated due to provider refresh delays
 
 ## Usage Notes
 
@@ -382,6 +390,7 @@ Discover all available deployments across platforms:
 {
   "message": "I found 3 signals matching your luxury goods criteria. The best option is 'Affluent Shoppers' with 22% coverage, already live across all requested platforms. 'High Income Households' offers broader reach (35%) but requires activation on OpenX. All signals are priced between $2-4 CPM.",
   "context_id": "ctx-signals-abc123",
+  "adcp_version": "1.0.0",
   "signals": [
     {
       "signal_agent_segment_id": "acme_affluent_shoppers",
@@ -416,12 +425,69 @@ Discover all available deployments across platforms:
 }
 ```
 
+### Response - Partial Success with Warnings
+
+```json
+{
+  "message": "Found 2 luxury signals, but encountered some platform limitations. The 'Premium Auto Shoppers' signal has limited reach due to data restrictions, and pricing data is unavailable for one platform. Review the warnings below for optimization suggestions.",
+  "context_id": "ctx-signals-abc123",
+  "adcp_version": "1.0.0",
+  "signals": [
+    {
+      "signal_agent_segment_id": "premium_auto_shoppers",
+      "name": "Premium Auto Shoppers",
+      "description": "High-value automotive purchase intenders",
+      "signal_type": "marketplace",
+      "data_provider": "Experian",
+      "coverage_percentage": 8,
+      "deployments": [
+        {
+          "platform": "the-trade-desk",
+          "account": null,
+          "is_live": true,
+          "scope": "platform-wide",
+          "decisioning_platform_segment_id": "ttd_exp_auto_premium"
+        }
+      ],
+      "pricing": {
+        "cpm": 4.50,
+        "currency": "USD"
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": "PRICING_UNAVAILABLE",
+      "message": "Pricing data temporarily unavailable for The Trade Desk platform",
+      "field": "signals[0].pricing",
+      "suggestion": "Retry in 15-30 minutes when platform pricing feed updates",
+      "details": {
+        "affected_platform": "the-trade-desk",
+        "last_updated": "2025-01-15T12:00:00Z",
+        "retry_after": 1800
+      }
+    },
+    {
+      "code": "PRICING_UNAVAILABLE", 
+      "message": "Pricing data temporarily unavailable for Amazon DSP",
+      "field": "filters.platforms",
+      "suggestion": "Pricing will be available during activation, or try again later",
+      "details": {
+        "affected_platform": "amazon-dsp",
+        "retry_after": 1800
+      }
+    }
+  ]
+}
+```
+
 ### Response - No Signals Found
 
 ```json
 {
   "message": "I couldn't find any signals matching 'underwater basket weavers' in the requested platforms. This appears to be a very niche audience. Consider broadening your criteria to 'craft enthusiasts' or 'hobby communities' for better results. Alternatively, we could create a custom signal for this specific audience.",
   "context_id": "ctx-signals-abc123",
+  "adcp_version": "1.0.0",
   "signals": []
 }
 ```

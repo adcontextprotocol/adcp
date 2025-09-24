@@ -165,22 +165,11 @@ Media buy operations use a unified status system with predictable timing:
 - **Webhook Integration**: Implement webhooks for real-time updates
 - **User Communication**: Clearly communicate pending states to end users
 
-## Error Handling Philosophy
+## Error Handling
 
-### Pending States vs Errors
+For comprehensive error handling guidance including pending vs error states, response patterns, and recovery strategies, see [Protocol Error Handling](../../protocols/error-handling.md).
 
-**Pending States (Normal Flow):**
-- `pending_manual`: Operation requires human approval
-- `pending_permission`: Operation blocked by permissions
-- `pending_approval`: Awaiting ad server approval
-
-These are NOT errors and should be handled as part of normal operation flow.
-
-**Error States (Exceptional):**
-- `failed`: Operation cannot be completed
-- Authentication failures
-- Invalid parameters
-- Resource not found
+Media buy specific error codes are documented in each task specification and the [Error Codes Reference](../../reference/error-codes.md).
 
 ## Asynchronous Operations and Human-in-the-Loop
 

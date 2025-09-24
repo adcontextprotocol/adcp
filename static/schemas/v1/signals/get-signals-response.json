@@ -10,6 +10,14 @@
       "description": "AdCP schema version used for this response",
       "pattern": "^\\d+\\.\\d+\\.\\d+$"
     },
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary of the signal discovery results"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Session continuity identifier for follow-up requests"
+    },
     "signals": {
       "type": "array",
       "description": "Array of matching signals",
@@ -111,6 +119,6 @@
       }
     }
   },
-  "required": ["adcp_version", "signals"],
+  "required": ["adcp_version", "message", "context_id", "signals"],
   "additionalProperties": false
 }
