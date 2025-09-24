@@ -19,8 +19,8 @@ AdCP uses the same status values as the [A2A protocol's TaskState enum](https://
 
 | Status | Meaning | Your Action |
 |--------|---------|-------------|
-| `submitted` | Task received, waiting to start | Show "queued" indicator, wait for updates |
-| `working` | Agent actively processing | Show progress, poll/stream for updates |
+| `submitted` | Task queued for execution | Show "queued" indicator, wait for updates |
+| `working` | Agent actively processing | Show progress, poll frequently for updates |
 | `input-required` | Needs information from you | Read `message` field, prompt user, send follow-up |
 | `completed` | Successfully finished | Process `data`, show success message |
 | `canceled` | User/system canceled task | Show cancellation notice, clean up |
@@ -175,9 +175,9 @@ AdCP operations fall into three categories:
    - `get_products` (when brief is vague)
    - Operations that need clarification or approval
 
-3. **Asynchronous** - Return `working` and require polling/streaming
+3. **Asynchronous** - Return `working` or `submitted` and require polling/streaming
    - `create_media_buy`, `activate_signal`, `sync_creatives`
-   - Operations that integrate with external systems
+   - Operations that integrate with external systems or require human approval
 
 ### Timeout Handling
 
@@ -187,12 +187,14 @@ Set reasonable timeouts based on operation type:
 const TIMEOUTS = {
   sync: 30_000,        // 30 seconds for immediate operations
   interactive: 300_000, // 5 minutes for human input
-  async: 1_800_000     // 30 minutes for long-running tasks
+  working: 120_000,    // 2 minutes for working tasks
+  submitted: 86_400_000 // 24 hours for submitted tasks
 };
 
 function setTimeoutForStatus(status) {
   switch (status) {
-    case 'working': return TIMEOUTS.async;
+    case 'working': return TIMEOUTS.working;
+    case 'submitted': return TIMEOUTS.submitted;
     case 'input-required': return TIMEOUTS.interactive;
     default: return TIMEOUTS.sync;
   }
@@ -250,6 +252,353 @@ async function handleRequest(request) {
   }
 }
 ```
+
+## Task Management & Webhooks
+
+### Task Tracking
+
+All async operations return a `task_id` at the protocol level for tracking:
+
+```json
+{
+  "status": "submitted",
+  "task_id": "task_456", 
+  "message": "Media buy requires manual approval",
+  "context_id": "ctx-123"
+}
+```
+
+### Protocol-Level Webhook Configuration
+
+Webhook configuration is handled at the protocol wrapper level, not in individual task parameters:
+
+#### MCP Webhook Pattern
+```javascript
+class McpAdcpSession {
+  async call(tool, params, options = {}) {
+    const request = {
+      tool: tool,
+      arguments: params
+    };
+    
+    // Protocol-level extensions (like context_id)
+    if (this.contextId) {
+      request.context_id = this.contextId;
+    }
+    if (options.webhook_url) {
+      request.webhook_url = options.webhook_url;
+      request.webhook_auth = options.webhook_auth;
+    }
+    
+    return await this.mcp.call(request);
+  }
+}
+
+// Usage
+const response = await session.call('create_media_buy', 
+  { /* task params */ },
+  {
+    webhook_url: "https://buyer.com/webhooks/adcp",
+    webhook_auth: { type: "bearer", credentials: "secret" }
+  }
+);
+```
+
+#### A2A Native Support
+```javascript
+// A2A has native webhook support via PushNotificationConfig
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "create_media_buy",
+        parameters: { /* task params */ }
+      }
+    }]
+  },
+  push_notification_config: {
+    webhook_url: "https://buyer.com/webhooks/adcp",
+    auth: { type: "bearer", credentials: "secret" }
+  }
+});
+```
+
+### Server Decision on Webhook Usage
+
+The server always decides whether to use webhooks:
+
+- **Quick operations** (< 120s): Server returns `working`, ignores webhook
+- **Long operations** (hours/days): Server returns `submitted`, uses webhook if provided
+- **Client choice**: Webhook is optional - clients can always poll with `tasks/get`
+
+### Task State Reconciliation
+
+Use `tasks/list` to recover from lost state:
+
+```javascript
+// Find all pending operations
+const pending = await session.call('tasks/list', {
+  filters: {
+    statuses: ["submitted", "working", "input-required"]
+  }
+});
+
+// Reconcile with local state
+const missingTasks = pending.tasks.filter(task => 
+  !localState.hasTask(task.task_id)
+);
+
+// Resume tracking missing tasks
+for (const task of missingTasks) {
+  startPolling(task.task_id);
+}
+```
+
+### Status Progression
+
+Tasks progress through predictable states:
+
+```
+submitted → working → completed
+    ↓          ↓         ↑
+input-required → → → → →
+    ↓
+  failed
+```
+
+- **`submitted`**: Task queued for execution, provide webhook or poll
+- **`working`**: Agent actively processing, poll frequently  
+- **`input-required`**: Need user input, continue conversation
+- **`completed`**: Success, process results
+- **`failed`**: Error, handle appropriately
+
+For detailed timing expectations and polling patterns, see **[Task Management](./task-management.md#task-status-lifecycle)**.
+
+## Webhook Reliability
+
+### Delivery Semantics
+
+AdCP webhooks use **at-least-once delivery** semantics with the following characteristics:
+
+- **Not guaranteed**: Webhooks may fail due to network issues, server downtime, or configuration problems
+- **May be duplicated**: The same event might be delivered multiple times
+- **May arrive out of order**: Later events could arrive before earlier ones
+- **Timeout behavior**: Webhook delivery has limited retry attempts and timeouts
+
+### Implementation Requirements
+
+#### Idempotent Webhook Handlers
+
+Always implement idempotent webhook handlers that can safely process the same event multiple times:
+
+```javascript
+app.post('/webhooks/adcp', async (req, res) => {
+  const { task_id, current_status, timestamp, event_id } = req.body;
+  
+  // Idempotent check - avoid duplicate processing
+  const existing = await db.getWebhookEvent(event_id);
+  if (existing) {
+    console.log(`Webhook ${event_id} already processed`);
+    return res.status(200).json({ status: 'already_processed' });
+  }
+  
+  // Record this webhook event
+  await db.recordWebhookEvent(event_id, timestamp);
+  
+  // Process the status change
+  await processTaskStatusChange(task_id, current_status, timestamp);
+  
+  // Always return 200 for successful processing
+  res.status(200).json({ status: 'processed' });
+});
+```
+
+#### Sequence Handling
+
+Use timestamps to ensure proper event ordering:
+
+```javascript
+async function processTaskStatusChange(taskId, newStatus, timestamp) {
+  const currentTask = await db.getTask(taskId);
+  
+  // Ignore out-of-order events
+  if (currentTask?.updated_at >= timestamp) {
+    console.log(`Ignoring out-of-order webhook for task ${taskId}`);
+    return;
+  }
+  
+  // Update task with new status
+  await db.updateTask(taskId, {
+    status: newStatus,
+    updated_at: timestamp
+  });
+  
+  // Trigger any business logic
+  await handleStatusChange(taskId, newStatus);
+}
+```
+
+#### Polling as Backup
+
+Use polling as a reliable backup mechanism:
+
+```javascript
+class TaskTracker {
+  constructor() {
+    this.pendingTasks = new Map();
+    this.pollInterval = 30000; // 30 seconds
+  }
+  
+  async trackTask(taskId, webhookConfigured = false) {
+    this.pendingTasks.set(taskId, {
+      lastPolled: Date.now(),
+      webhookConfigured,
+      pollAttempts: 0
+    });
+    
+    // Start polling backup even if webhook is configured
+    this.schedulePolling(taskId);
+  }
+  
+  async schedulePolling(taskId) {
+    const task = this.pendingTasks.get(taskId);
+    if (!task) return;
+    
+    // Increase polling interval if webhook is configured
+    const interval = task.webhookConfigured ? 
+      this.pollInterval * 4 : // 2 minutes with webhook
+      this.pollInterval;      // 30 seconds without webhook
+    
+    setTimeout(async () => {
+      if (this.pendingTasks.has(taskId)) {
+        await this.pollTask(taskId);
+        this.schedulePolling(taskId); // Continue polling
+      }
+    }, interval);
+  }
+  
+  async pollTask(taskId) {
+    try {
+      const response = await adcp.call('tasks/get', {
+        task_id: taskId,
+        include_result: true
+      });
+      
+      // Update our state
+      await this.updateTaskState(taskId, response);
+      
+      // Stop tracking if complete
+      if (['completed', 'failed', 'canceled'].includes(response.status)) {
+        this.pendingTasks.delete(taskId);
+      }
+      
+    } catch (error) {
+      console.error(`Polling failed for task ${taskId}:`, error);
+      
+      // Exponential backoff on polling errors
+      const task = this.pendingTasks.get(taskId);
+      task.pollAttempts++;
+      
+      if (task.pollAttempts > 10) {
+        console.error(`Giving up on task ${taskId} after 10 failed polls`);
+        this.pendingTasks.delete(taskId);
+      }
+    }
+  }
+}
+```
+
+### Webhook Event Format
+
+AdCP webhook events include all necessary information for processing:
+
+```json
+{
+  "event_id": "evt_789abc123def",
+  "event_type": "task_status_changed",
+  "timestamp": "2025-01-22T10:25:00Z",
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "domain": "media-buy",
+  "previous_status": "working",
+  "current_status": "completed",
+  "context": {
+    "buyer_ref": "nike_q1_2025",
+    "media_buy_id": "mb_987654321"
+  },
+  "result": {
+    // Included for completed tasks
+    "media_buy_id": "mb_987654321",
+    "packages": [...]
+  },
+  "error": {
+    // Included for failed tasks
+    "code": "insufficient_inventory",
+    "message": "Requested targeting yielded 0 available impressions"
+  }
+}
+```
+
+### Security Considerations
+
+#### Webhook Authentication
+
+Verify webhook authenticity using the authentication method specified during webhook registration:
+
+```javascript
+function verifyWebhook(req, secret) {
+  const signature = req.headers['x-adcp-signature'];
+  const payload = JSON.stringify(req.body);
+  const expectedSignature = createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+  
+  return signature === `sha256=${expectedSignature}`;
+}
+
+app.post('/webhooks/adcp', (req, res) => {
+  if (!verifyWebhook(req, process.env.WEBHOOK_SECRET)) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+  
+  // Process webhook...
+});
+```
+
+#### Replay Attack Prevention
+
+Use timestamps and event IDs to prevent replay attacks:
+
+```javascript
+function isReplayAttack(timestamp, eventId) {
+  const eventTime = new Date(timestamp);
+  const now = new Date();
+  const fiveMinutes = 5 * 60 * 1000;
+  
+  // Reject events older than 5 minutes
+  if (now - eventTime > fiveMinutes) {
+    console.warn(`Rejecting old webhook event ${eventId}`);
+    return true;
+  }
+  
+  // Check if we've seen this event ID before
+  return db.hasSeenWebhookEvent(eventId);
+}
+```
+
+### Best Practices Summary
+
+1. **Always implement polling backup** - Don't rely solely on webhooks
+2. **Handle duplicates gracefully** - Use idempotent processing with event IDs
+3. **Check timestamps** - Ignore out-of-order events based on timestamps
+4. **Return 200 quickly** - Acknowledge webhook receipt immediately
+5. **Verify authenticity** - Always validate webhook signatures
+6. **Log webhook events** - Keep audit trail for debugging
+7. **Set reasonable timeouts** - Don't wait forever for webhook delivery
+8. **Graceful degradation** - Fall back to polling if webhooks consistently fail
+
+This reliability pattern ensures your application remains responsive and consistent even when webhook delivery is unreliable or fails entirely.
 
 ## Error Handling
 

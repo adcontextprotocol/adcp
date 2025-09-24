@@ -16,8 +16,8 @@
     "unknown"
   ],
   "enumDescriptions": {
-    "submitted": "Task has been submitted and is awaiting execution",
-    "working": "Agent is actively working on the task",
+    "submitted": "Task accepted and queued for long-running execution (hours to days). Client should poll with tasks/get or provide webhook_url at protocol level.",
+    "working": "Agent is actively processing the task, expect completion within 120 seconds",
     "input-required": "Task is paused and waiting for input from the user (e.g., clarification, approval)",
     "completed": "Task has been successfully completed",
     "canceled": "Task was canceled by the user",

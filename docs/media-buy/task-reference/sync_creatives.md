@@ -6,7 +6,7 @@ title: sync_creatives
 
 Synchronize creative assets with the centralized creative library using upsert semantics. This task supports bulk operations, partial updates, assignment management, and comprehensive validation for efficient creative library management.
 
-**Response Time**: Minutes to days (asynchronous with potential human-in-the-loop)
+**Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
 
 ## Overview
 

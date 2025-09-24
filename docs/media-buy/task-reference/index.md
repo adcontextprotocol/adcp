@@ -69,12 +69,15 @@ Monitor and optimize campaign performance.
 
 - **[`get_media_buy_delivery`](./get_media_buy_delivery)** - Track delivery and performance metrics
 
+
 ## Schema Reference
 
 All tasks include JSON schema definitions for requests and responses:
 
 - **Request Schemas**: `/schemas/v1/media-buy/[task-name]-request.json`
 - **Response Schemas**: `/schemas/v1/media-buy/[task-name]-response.json`
+
+**Task Management**: For tracking async operations across all AdCP domains, see [Task Management](../../protocols/task-management.md) in the protocols section.
 
 Schemas are accessible at runtime via the documentation server for validation and tooling.
 

@@ -13,8 +13,11 @@
     },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
-      "description": "Current task state - typically 'completed' for successful creation or 'input-required' if approval needed",
-      "default": "completed"
+      "description": "Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running operations, 'input-required' if approval needed"
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for tracking this async operation (present for submitted/working status)"
     },
     "media_buy_id": {
       "type": "string",
@@ -56,6 +59,6 @@
       }
     }
   },
-  "required": ["adcp_version", "media_buy_id", "buyer_ref", "packages"],
+  "required": ["adcp_version", "status", "buyer_ref"],
   "additionalProperties": false
 }

@@ -112,6 +112,12 @@ await mcp.call('list_authorized_properties', {...}); // Available properties
 await mcp.call('provide_performance_feedback', {...}); // Share outcomes
 ```
 
+### Task Management Tools
+```javascript
+await mcp.call('tasks/list', {...});          // List and filter async tasks
+await mcp.call('tasks/get', {...});           // Poll specific task status
+```
+
 ### Signals Tools
 ```javascript
 await mcp.call('get_signals', {...});      // Discover audience signals
@@ -119,6 +125,8 @@ await mcp.call('activate_signal', {...});  // Deploy signals to platforms
 ```
 
 **Task Parameters**: See individual task documentation in [Media Buy](../media-buy/index.md) and [Signals](../signals/overview.md) sections.
+
+**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Task Management](./task-management.md).
 
 ## Context Management (MCP-Specific)
 
@@ -131,30 +139,85 @@ class McpAdcpSession {
   constructor(mcpClient) {
     this.mcp = mcpClient;
     this.contextId = null;
+    this.activeTasks = new Map(); // Track async operations
   }
   
-  async call(tool, params) {
+  async call(tool, params, options = {}) {
+    // Build request with protocol-level fields
+    const request = {
+      tool: tool,
+      arguments: params
+    };
+    
     // Include context from previous calls
     if (this.contextId) {
-      params.context_id = this.contextId;
+      request.context_id = this.contextId;
     }
     
-    const response = await this.mcp.call(tool, params);
+    // Include webhook configuration (protocol-level)
+    if (options.webhook_url) {
+      request.webhook_url = options.webhook_url;
+      request.webhook_auth = options.webhook_auth;
+    }
+    
+    const response = await this.mcp.call(request);
     
     // Save context for next call
     this.contextId = response.context_id;
+    
+    // Track async operations
+    if (response.task_id) {
+      this.activeTasks.set(response.task_id, {
+        tool,
+        params,
+        startTime: new Date(),
+        status: response.status
+      });
+    }
     
     return response;
   }
   
   reset() {
     this.contextId = null;
+    this.activeTasks.clear();
+  }
+  
+  // Poll specific task
+  async pollTask(taskId, includeResult = false) {
+    return this.call('tasks/get', { 
+      task_id: taskId, 
+      include_result: includeResult 
+    });
+  }
+  
+  // List pending tasks
+  async listPendingTasks() {
+    return this.call('tasks/list', {
+      filters: {
+        statuses: ["submitted", "working", "input-required"]
+      }
+    });
+  }
+  
+  // State reconciliation helper
+  async reconcileState() {
+    const pending = await this.listPendingTasks();
+    const serverTasks = new Set(pending.tasks.map(t => t.task_id));
+    const clientTasks = new Set(this.activeTasks.keys());
+    
+    return {
+      missing_from_client: [...serverTasks].filter(id => !clientTasks.has(id)),
+      missing_from_server: [...clientTasks].filter(id => !serverTasks.has(id)),
+      total_pending: pending.tasks.length
+    };
   }
 }
 ```
 
-### Usage Example
+### Usage Examples
 
+#### Basic Session with Context
 ```javascript
 const session = new McpAdcpSession(mcp);
 
@@ -168,6 +231,49 @@ const refined = await session.call('get_products', {
   brief: "Focus on premium CTV"
 });
 // Session remembers previous interaction
+```
+
+#### Async Operations with Webhooks
+```javascript
+// Create media buy with webhook configuration
+const response = await session.call('create_media_buy', 
+  {
+    buyer_ref: "nike_q1_2025",
+    packages: [...],
+    budget: { total: 150000, currency: "USD" }
+  },
+  {
+    webhook_url: "https://buyer.com/webhooks/adcp",
+    webhook_auth: { type: "bearer", credentials: "secret_token" }
+  }
+);
+
+if (response.status === 'submitted') {
+  console.log(`Task ${response.task_id} submitted for long-running execution`);
+  // Webhook will notify when complete, or poll manually
+} else if (response.status === 'completed') {
+  console.log(`Media buy created: ${response.media_buy_id}`);
+}
+```
+
+#### Task Management and Polling
+```javascript
+// Check status of specific task
+const taskStatus = await session.pollTask('task_456', true);
+if (taskStatus.status === 'completed') {
+  console.log('Result:', taskStatus.result);
+}
+
+// State reconciliation
+const reconciliation = await session.reconcileState();
+if (reconciliation.missing_from_client.length > 0) {
+  console.log('Found orphaned tasks:', reconciliation.missing_from_client);
+  // Start tracking these tasks
+}
+
+// List all pending operations
+const pending = await session.listPendingTasks();
+console.log(`${pending.tasks.length} operations in progress`);
 ```
 
 ### Context Expiration Handling
@@ -197,20 +303,34 @@ MCP handles long-running operations through polling with `context_id`:
 
 ```javascript
 async function waitForCompletion(session, initialResponse) {
-  let response = initialResponse;
-  
-  // Poll while status is 'working' or 'submitted'
-  while (['working', 'submitted'].includes(response.status)) {
-    // Wait before polling again  
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Poll for updates using context_id
-    response = await session.call('get_products', {
-      // Empty params - just checking status with context
-    });
+  if (!initialResponse.task_id) {
+    return initialResponse; // Already completed
   }
   
-  return response;
+  let pollInterval = initialResponse.status === 'working' ? 5000 : 30000;
+  
+  while (true) {
+    // Poll using tasks/get with task_id
+    const response = await session.pollTask(initialResponse.task_id, true);
+    
+    if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      return response;
+    }
+    
+    if (response.status === 'input-required') {
+      // Handle user input requirement
+      const input = await promptUser(response.message);
+      // Continue conversation with context_id
+      return session.call('create_media_buy', {
+        context_id: response.context_id,
+        additional_info: input
+      });
+    }
+    
+    // Adjust polling frequency based on status
+    pollInterval = response.status === 'working' ? 5000 : 30000;
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
 }
 ```
 
@@ -219,21 +339,36 @@ async function waitForCompletion(session, initialResponse) {
 ```javascript
 // Start async operation
 const initial = await session.call('create_media_buy', {
-  packages: ["pkg_001"],
-  total_budget: 100000
+  buyer_ref: "nike_q1_2025",
+  packages: [...],
+  budget: { total: 100000, currency: "USD" }
 });
 
-if (initial.status === 'working') {
-  // Wait for completion
-  const final = await waitForCompletion(session, initial);
-  
-  if (final.status === 'completed') {
-    console.log('Created:', final.data.media_buy_id);
-  }
+switch (initial.status) {
+  case 'completed':
+    console.log('Created immediately:', initial.media_buy_id);
+    break;
+    
+  case 'working':
+    console.log('Processing, will complete within 2 minutes...');
+    const final = await waitForCompletion(session, initial);
+    console.log('Created:', final.result.media_buy_id);
+    break;
+    
+  case 'submitted':
+    console.log(`Queued for approval - long-running operation`);
+    console.log(`Track with task ID: ${initial.task_id}`);
+    // Use webhook or poll manually
+    break;
+    
+  case 'input-required':
+    console.log('Need additional info:', initial.message);
+    // Handle user input
+    break;
 }
 ```
 
-**Note**: No separate `get_task_status` tool needed - use context_id with any tool to check status.
+**Note**: Use `tasks/get` for polling specific tasks, or `tasks/list` for state reconciliation. See [Task Management](./task-management.md) for complete documentation on task tracking patterns and webhook integration.
 
 ## Integration Example
 
@@ -242,8 +377,8 @@ if (initial.status === 'working') {
 const session = new McpAdcpSession(mcp);
 
 // Use unified status handling (see Core Concepts)
-async function handleAdcpCall(tool, params) {
-  const response = await session.call(tool, params);
+async function handleAdcpCall(tool, params, options = {}) {
+  const response = await session.call(tool, params, options);
   
   switch (response.status) {
     case 'input-required':
@@ -252,11 +387,21 @@ async function handleAdcpCall(tool, params) {
       return session.call(tool, { ...params, additional_info: input });
       
     case 'working':
-      // Handle async operations 
+      // Handle short async operations 
       return waitForCompletion(session, response);
       
+    case 'submitted':
+      // Handle long async operations
+      if (options.webhook_url) {
+        console.log(`Task ${response.task_id} submitted, webhook will notify`);
+        return { pending: true, task_id: response.task_id };
+      } else {
+        console.log(`Task ${response.task_id} submitted, polling...`);
+        return waitForCompletion(session, response);
+      }
+      
     case 'completed':
-      return response.data;
+      return response.data || response.result;
       
     case 'failed':
       throw new Error(response.message);

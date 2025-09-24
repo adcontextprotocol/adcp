@@ -375,6 +375,8 @@ await a2a.send({
 
 All AdCP tasks are available as A2A skills. Use explicit invocation for deterministic execution:
 
+**Task Management**: For comprehensive guidance on tracking async operations across all domains, polling patterns, and webhook integration, see [Task Management](./task-management.md).
+
 ### Skill Structure
 ```javascript
 // Standard pattern for explicit skill invocation
@@ -482,6 +484,7 @@ const finalResult = await handleA2aResponse(result);
 ### Error Handling
 ```javascript
 // A2A transport vs. task errors
+// For complete task management patterns, see Task Management guide
 try {
   const response = await a2a.send(message);
   

@@ -10,6 +10,14 @@
       "description": "AdCP schema version used for this response",
       "pattern": "^\\d+\\.\\d+\\.\\d+$"
     },
+    "status": {
+      "$ref": "/schemas/v1/enums/task-status.json",
+      "description": "Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running operations, 'input-required' if approval needed"
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for tracking this async operation (present for submitted/working status)"
+    },
     "media_buy_id": {
       "type": "string",
       "description": "Publisher's identifier for the media buy"
@@ -50,6 +58,6 @@
       }
     }
   },
-  "required": ["adcp_version", "media_buy_id", "buyer_ref", "affected_packages"],
+  "required": ["adcp_version", "status", "media_buy_id", "buyer_ref"],
   "additionalProperties": false
 }
