@@ -9,7 +9,7 @@
       "type": "string",
       "description": "AdCP schema version for this request",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.5.0"
+      "default": "1.6.0"
     },
     "action": {
       "type": "string",

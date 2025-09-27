@@ -35,7 +35,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Signals',
+      label: 'Signals Protocol',
       items: [
         'signals/overview',
         'signals/specification',
@@ -51,12 +51,12 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Curation',
+      label: 'Curation Protocol',
       items: ['curation/coming-soon'],
     },
     {
       type: 'category',
-      label: 'Media Buy',
+      label: 'Media Buy Protocol',
       items: [
         'media-buy/index',
         {
@@ -68,8 +68,6 @@ const sidebars: SidebarsConfig = {
             'media-buy/task-reference/list_creative_formats',
             'media-buy/task-reference/list_authorized_properties',
             'media-buy/task-reference/create_media_buy',
-            'media-buy/task-reference/build_creative',
-            'media-buy/task-reference/manage_creative_library',
             'media-buy/task-reference/list_creatives',
             'media-buy/task-reference/sync_creatives',
             'media-buy/task-reference/get_media_buy_delivery',
@@ -111,8 +109,6 @@ const sidebars: SidebarsConfig = {
           label: 'Creatives',
           items: [
             'media-buy/creatives/index',
-            'media-buy/creative-agent-protocol',
-            'media-buy/why-creative-agents',
             'media-buy/creatives/creative-library',
             'media-buy/creatives/standard-formats-guide',
             'media-buy/creatives/asset-types',
@@ -128,6 +124,23 @@ const sidebars: SidebarsConfig = {
             'media-buy/advanced-topics/principals-and-security',
             'media-buy/advanced-topics/testing',
             'media-buy/advanced-topics/orchestrator-design',
+          ],
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Creative Protocol',
+      items: [
+        'creative-protocol/index',
+        'creative-protocol/getting-started',
+        'creative-protocol/why-creative-agents',
+        {
+          type: 'category',
+          label: 'Task Reference',
+          items: [
+            'creative-protocol/task-reference/build_creative',
+            'creative-protocol/task-reference/manage_creative_library',
           ],
         },
       ],

@@ -32,6 +32,26 @@
           "type": "string",
           "enum": ["manifest", "code"],
           "description": "Type of creative output generated"
+        },
+        "security_requirements": {
+          "type": "object",
+          "description": "Security requirements for web-based creative code",
+          "properties": {
+            "content_security_policy": {
+              "type": "string",
+              "description": "Required CSP header for secure rendering"
+            },
+            "sandbox_attributes": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Required iframe sandbox attributes"
+            },
+            "xss_protection": {
+              "const": "mandatory",
+              "description": "XSS protection must be enabled"
+            }
+          },
+          "required": ["content_security_policy", "xss_protection"]
         }
       },
       "allOf": [
