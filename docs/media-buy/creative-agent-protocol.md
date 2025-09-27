@@ -159,7 +159,7 @@ Consider a clothing retailer using a deployed creative agent:
 
 This tool builds creative content for a specific format, returning either a creative manifest (for traditional serving) or executable code (for dynamic rendering).
 
-For detailed request/response structures and examples, see the [`build_creative`](tasks/build_creative.md) task documentation.
+For detailed request/response structures and examples, see the [`build_creative`](task-reference/build_creative.md) task documentation.
 
 ### Basic Request Example
 
