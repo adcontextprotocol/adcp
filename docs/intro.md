@@ -88,20 +88,41 @@ The technical infrastructure that:
 - **Delivery Method**: Direct campaigns or programmatic (RTB)
 - **Examples**: DSPs, SSPs, Ad Servers, Google Ad Manager, Kevel
 
-## AdCP Information Flows
+## The Complete AdCP Flow with Creative Agents
 
-The AdCP ecosystem coordinates multiple flows of information between participants:
+The AdCP ecosystem extends beyond media transactions to include creative production and delivery. This expanded view shows how creative agents integrate with the core AdCP components:
 
-![AdCP Flows](./adcp-flows.png)
+![AdCP Flows with Creative Agents](./adcp_flows.png)
 
-### Key Flows Explained
+### Three Interconnected Flows
 
-- **Creative Flow**: Creative agents produce assets that flow through the ecosystem to reach consumers via properties
-- **Business Flow**: Advertisers work with principals who engage media sellers in the business layer
-- **Technical Flow**: Brand agents, media agents, and sales agents coordinate through the decisioning platform, with bidirectional communication enabling optimization
-- **Data Flow**: Signals flow between agents, with buyer signals and publisher signals enriching the decision-making process through the AXE (Agentic eXecution Engine)
+#### Creative Flow (Top)
+- **Creative Agent**: AI-powered creative generation and optimization
+- **Property**: The publisher or platform displaying the ad
+- **Consumer**: The end user viewing the advertisement
 
-These flows illustrate how AdCP enables seamless coordination between business stakeholders, technical systems, and creative processes.
+#### Business Flow (Middle)
+- **Advertiser**: The brand with a message to deliver
+- **Principal**: The buying principal (agency, trading desk, or brand itself)
+- **Media Seller**: The supply-side entity selling ad inventory
+
+#### Technical Flow (Bottom)
+- **Brand Agent**: Represents the advertiser's objectives and brand guidelines
+- **Media Agent**: Orchestrates the media buying process
+- **Sales Agent**: Facilitates inventory discovery and transaction execution
+- **Decisioning Platform**: Makes real-time ad serving decisions
+- **AEE (Agent Execution Environment)**: Provides real-time execution capabilities
+
+### How Creative Agents Enhance AdCP
+
+Creative agents add a new dimension to the AdCP ecosystem:
+
+1. **Dynamic Creative Generation**: Build creatives on-demand based on campaign objectives
+2. **Format Adaptation**: Automatically adapt creative assets to different ad formats
+3. **Real-time Optimization**: Adjust creative elements based on performance data
+4. **Asset Management**: Organize and tag creative assets for efficient campaign execution
+
+The creative flow operates in parallel with the business and technical flows, ensuring that the right creative reaches the right consumer at the right moment.
 
 ## How AdCP Protocols Work Together
 
@@ -121,6 +142,11 @@ Each AdCP protocol operates within this ecosystem:
 - **Scope**: Works primarily with **decisioning platforms** (DSPs, injective platforms)
 - **Integration**: Executes campaigns using curated inventory and activated signals
 - **Workflow**: Set objectives → Execute buys → Optimize performance
+
+### 🎨 Creative Agent Protocol
+- **Scope**: Works with **creative generation and optimization** systems
+- **Integration**: Builds creative assets and executable code for campaigns
+- **Workflow**: Define brief → Generate creative → Refine and deploy
 
 ## Quick Example
 
@@ -149,6 +175,11 @@ Curate media inventory based on context and brand safety.
 **Status**: RFC/v0.1
 
 Execute and optimize media buys programmatically.
+
+### 🎨 [Creative Protocol](./creative-protocol/)
+**Status**: RFC/v0.1
+
+Generate and optimize creative assets using AI-powered agents.
 
 ## Reference Implementations
 

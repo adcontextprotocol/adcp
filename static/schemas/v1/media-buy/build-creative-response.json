@@ -1,0 +1,164 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/build-creative-response.json",
+  "title": "Build Creative Response",
+  "description": "Response payload for build_creative task",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Context identifier for iterative refinement"
+    },
+    "creative": {
+      "type": "object",
+      "description": "Generated creative output",
+      "properties": {
+        "format": {
+          "type": "object",
+          "description": "Format specification used for this creative",
+          "properties": {
+            "id": {"type": "string"},
+            "name": {"type": "string"},
+            "type": {"type": "string"}
+          },
+          "required": ["id", "name", "type"]
+        },
+        "output_mode": {
+          "type": "string",
+          "enum": ["manifest", "code"],
+          "description": "Type of creative output generated"
+        },
+        "security_requirements": {
+          "type": "object",
+          "description": "Security requirements for web-based creative code",
+          "properties": {
+            "content_security_policy": {
+              "type": "string",
+              "description": "Required CSP header for secure rendering"
+            },
+            "sandbox_attributes": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Required iframe sandbox attributes"
+            },
+            "xss_protection": {
+              "const": "mandatory",
+              "description": "XSS protection must be enabled"
+            }
+          },
+          "required": ["content_security_policy", "xss_protection"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "output_mode": {"const": "manifest"}
+            }
+          },
+          "then": {
+            "properties": {
+              "assets": {
+                "type": "array",
+                "description": "Generated creative assets",
+                "items": {
+                  "$ref": "/schemas/v1/core/creative-asset.json"
+                }
+              },
+              "layout": {
+                "type": "object",
+                "description": "Creative layout and composition instructions",
+                "properties": {
+                  "composition": {"type": "string"},
+                  "positioning": {"type": "object"},
+                  "animations": {"type": "array"}
+                }
+              }
+            },
+            "required": ["assets"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_mode": {"const": "code"}
+            }
+          },
+          "then": {
+            "properties": {
+              "code": {
+                "type": "object",
+                "description": "Executable creative code",
+                "properties": {
+                  "html": {"type": "string"},
+                  "css": {"type": "string"},
+                  "javascript": {"type": "string"},
+                  "preview_url": {"type": "string"}
+                }
+              },
+              "dynamic_elements": {
+                "type": "array",
+                "description": "Dynamic content placeholders",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "element_id": {"type": "string"},
+                    "type": {"type": "string"},
+                    "data_source": {"type": "string"}
+                  }
+                }
+              }
+            },
+            "required": ["code"]
+          }
+        }
+      ],
+      "required": ["format", "output_mode"]
+    },
+    "suggestions": {
+      "type": "array",
+      "description": "Suggestions for creative improvement or variations",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["variation", "improvement", "format_adaptation"]
+          },
+          "description": {"type": "string"},
+          "prompt": {"type": "string"}
+        },
+        "required": ["type", "description", "prompt"]
+      }
+    },
+    "performance_insights": {
+      "type": "object",
+      "description": "AI-generated insights about creative performance potential",
+      "properties": {
+        "predicted_ctr": {"type": "number"},
+        "engagement_factors": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "optimization_opportunities": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
+    }
+  },
+  "required": ["adcp_version", "context_id", "creative"],
+  "additionalProperties": false
+}

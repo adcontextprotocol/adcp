@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/manage-creative-library-request.json",
+  "title": "Manage Creative Library Request",
+  "description": "Request parameters for managing creative library assets",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.6.0"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["search", "upload", "tag", "organize", "get_details"],
+      "description": "The management action to perform"
+    },
+    "query": {
+      "type": "string",
+      "description": "Natural language search query (for search action)"
+    },
+    "asset": {
+      "$ref": "/schemas/v1/core/creative-asset.json",
+      "description": "Asset to upload or update (for upload/tag actions)"
+    },
+    "asset_id": {
+      "type": "string",
+      "description": "ID of existing asset to operate on (for tag/organize/get_details actions)"
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Tags to add or update for the asset"
+    },
+    "organization": {
+      "type": "object",
+      "description": "Organization structure for assets",
+      "properties": {
+        "folder": {"type": "string"},
+        "campaign_association": {"type": "string"},
+        "priority": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "filters": {
+      "type": "object",
+      "description": "Filters for search operations",
+      "properties": {
+        "asset_types": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Filter by asset types (image, video, text, etc.)"
+        },
+        "tags": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Filter by tags"
+        },
+        "date_range": {
+          "type": "object",
+          "properties": {
+            "start": {"type": "string", "format": "date"},
+            "end": {"type": "string", "format": "date"}
+          }
+        },
+        "format_types": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Filter by compatible format types"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["action"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {"action": {"const": "search"}}
+      },
+      "then": {
+        "anyOf": [
+          {"required": ["query"]},
+          {"required": ["filters"]}
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {"action": {"const": "upload"}}
+      },
+      "then": {
+        "required": ["asset"]
+      }
+    },
+    {
+      "if": {
+        "properties": {"action": {"enum": ["tag", "organize", "get_details"]}}
+      },
+      "then": {
+        "required": ["asset_id"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

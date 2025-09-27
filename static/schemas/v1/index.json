@@ -222,6 +222,26 @@
             "$ref": "/schemas/v1/media-buy/provide-performance-feedback-response.json",
             "description": "Response payload for provide_performance_feedback task"
           }
+        },
+        "build-creative": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/build-creative-request.json",
+            "description": "Request parameters for AI-powered creative generation"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/build-creative-response.json",
+            "description": "Response payload for build_creative task"
+          }
+        },
+        "manage-creative-library": {
+          "request": {
+            "$ref": "/schemas/v1/media-buy/manage-creative-library-request.json",
+            "description": "Request parameters for managing creative library assets"
+          },
+          "response": {
+            "$ref": "/schemas/v1/media-buy/manage-creative-library-response.json",
+            "description": "Response payload for manage_creative_library task"
+          }
         }
       }
     },

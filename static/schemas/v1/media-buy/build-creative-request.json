@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/build-creative-request.json",
+  "title": "Build Creative Request",
+  "description": "Request parameters for building creative assets using AI-powered creative generation",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.6.0"
+    },
+    "message": {
+      "type": "string",
+      "description": "Natural language description of the creative brief or requirements"
+    },
+    "format_source": {
+      "type": "string",
+      "description": "Source URL for format lookup (sales agent URL) or null for standard AdCP formats",
+      "format": "uri"
+    },
+    "format_id": {
+      "type": "string", 
+      "description": "Format identifier to look up from the format source"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Optional context ID for iterative creative refinement"
+    },
+    "assets": {
+      "type": "array",
+      "description": "Available assets to use in creative generation",
+      "items": {
+        "$ref": "/schemas/v1/core/creative-asset.json"
+      }
+    },
+    "output_mode": {
+      "type": "string",
+      "enum": ["manifest", "code"],
+      "default": "manifest",
+      "description": "Output format - 'manifest' for asset-based creatives, 'code' for executable creative code"
+    },
+    "brand_guidelines": {
+      "type": "object",
+      "description": "Brand-specific guidelines and constraints",
+      "properties": {
+        "colors": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Brand color palette (hex codes)"
+        },
+        "fonts": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Approved brand fonts"
+        },
+        "tone": {
+          "type": "string",
+          "description": "Brand tone and voice guidelines"
+        },
+        "restrictions": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Content restrictions or requirements"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["message", "format_id"],
+  "additionalProperties": false
+}

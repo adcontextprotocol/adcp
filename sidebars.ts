@@ -35,7 +35,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Signals',
+      label: 'Signals Protocol',
       items: [
         'signals/overview',
         'signals/specification',
@@ -51,12 +51,12 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Curation',
+      label: 'Curation Protocol',
       items: ['curation/coming-soon'],
     },
     {
       type: 'category',
-      label: 'Media Buy',
+      label: 'Media Buy Protocol',
       items: [
         'media-buy/index',
         {
@@ -72,6 +72,7 @@ const sidebars: SidebarsConfig = {
             'media-buy/task-reference/sync_creatives',
             'media-buy/task-reference/get_media_buy_delivery',
             'media-buy/task-reference/update_media_buy',
+            'media-buy/task-reference/provide_performance_feedback',
           ],
         },
         {
@@ -123,6 +124,23 @@ const sidebars: SidebarsConfig = {
             'media-buy/advanced-topics/principals-and-security',
             'media-buy/advanced-topics/testing',
             'media-buy/advanced-topics/orchestrator-design',
+          ],
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Creative Protocol',
+      items: [
+        'creative-protocol/index',
+        'creative-protocol/getting-started',
+        'creative-protocol/why-creative-agents',
+        {
+          type: 'category',
+          label: 'Task Reference',
+          items: [
+            'creative-protocol/task-reference/build_creative',
+            'creative-protocol/task-reference/manage_creative_library',
           ],
         },
       ],
