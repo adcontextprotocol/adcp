@@ -58,6 +58,7 @@ The Media Buy protocol provides these essential operations:
 - **Creative Flexibility**: Support for standard IAB and custom publisher formats
 - **Real-time Optimization**: Continuous performance monitoring and adjustment
 - **Human-in-the-Loop**: Optional manual approval workflows where needed
+- **Performance Accountability**: Built-in feedback loop that tracks publisher delivery against promises
 
 ## Response Time Expectations
 
@@ -120,6 +121,74 @@ The orchestrator enables principals to stay focused on strategy rather than impl
 5. **Transparency**: Clear signals and feedback loops
 
 This collaborative approach optimizes outcomes by letting each participant do what they do best, creating a more efficient and effective advertising ecosystem.
+
+## Accountability & Trust Framework
+
+AdCP creates a built-in feedback loop that improves marketplace quality over time through measurable performance tracking and accountability mechanisms.
+
+### The Performance Promise Model
+
+When publishers respond to product discovery requests, they make implicit performance promises:
+
+- **Delivery Estimates**: "I can deliver 50K impressions in this package at a $3 CPM"
+- **Audience Quality**: Products targeting specific demographics or behaviors
+- **Minimum Exposure Commitments**: Guaranteed minimum impression delivery per user
+- **Format Compatibility**: Supported creative specifications and requirements
+
+These aren't guarantees, but they represent realistic expectations that can be measured and tracked.
+
+### Measurable Accountability
+
+The protocol enables systematic tracking of publisher performance against their promises:
+
+**Delivery Tracking**
+- Compare actual vs. estimated impression delivery
+- Monitor CPM accuracy against quoted prices
+- Track completion rates and audience quality metrics
+- Measure adherence to minimum exposure requirements
+
+**Quality Metrics**
+- Audience alignment with targeting promises
+- Creative format compatibility and performance
+- Brand safety compliance and policy adherence
+- Response time and operational reliability
+
+**Historical Performance**
+- Track publisher accuracy over time across multiple campaigns
+- Identify consistent over-performers and under-performers
+- Build reputation scores based on promise fulfillment
+- Enable data-driven publisher selection for future campaigns
+
+### The Feedback Loop
+
+This creates a self-improving marketplace where performance data influences future opportunities:
+
+1. **Discovery Quality**: Publishers who consistently deliver what they promise receive higher visibility in product discovery results
+2. **Allocation Decisions**: Buyers can factor historical performance into budget allocation decisions
+3. **Price Efficiency**: Accurate delivery estimates help buyers plan budgets more effectively
+4. **Marketplace Evolution**: Publishers are incentivized to provide realistic estimates and deliver quality results
+
+### Trust Building Benefits
+
+**For Buyers**:
+- Reduced risk through performance-based selection
+- More accurate campaign planning and budgeting
+- Higher confidence in publisher promises
+- Data-driven optimization opportunities
+
+**For Publishers**:
+- Competitive advantage through consistent performance
+- Higher allocation from satisfied buyers
+- Reputation-based pricing power
+- Clear incentives for operational excellence
+
+**For the Ecosystem**:
+- Self-regulating quality improvement
+- Reduced fraud and misrepresentation
+- More efficient allocation of advertising spend
+- Long-term relationship building based on performance
+
+This accountability framework transforms the advertising marketplace from a series of one-off transactions into a trust-building system that rewards performance and reliability.
 
 ## Media Buying Lifecycle
 

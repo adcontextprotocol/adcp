@@ -10,6 +10,8 @@ Continuous improvement through data-driven monitoring and optimization. AdCP pro
 
 Reporting in AdCP leverages the same [Dimensions](../advanced-topics/dimensions.md) system used for targeting, enabling consistent analysis across the campaign lifecycle. This unified approach means you can report on exactly what you targeted.
 
+Performance data feeds into AdCP's [Accountability & Trust Framework](../index.md#accountability--trust-framework), enabling publishers to build reputation through consistent delivery and helping buyers make data-driven allocation decisions.
+
 ## Key Optimization Tasks
 
 ### Delivery Reporting
