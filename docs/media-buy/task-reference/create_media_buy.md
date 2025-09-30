@@ -26,6 +26,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `start_time` | string | Yes | Campaign start date/time in ISO 8601 format (UTC unless timezone specified) |
 | `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
 | `budget` | Budget | Yes | Budget configuration for the media buy (see Budget Object below) |
+| `reporting_webhook` | ReportingWebhook | No | Optional webhook configuration for automated reporting delivery (see Reporting Webhook Object below) |
 
 ### Package Object
 
@@ -66,6 +67,23 @@ Create a media buy from selected packages. This task handles the complete workfl
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `suppress_minutes` | number | Yes | Minutes to suppress after impression (applied at package level) |
+
+### Reporting Webhook Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | Yes | Webhook endpoint URL for reporting notifications |
+| `auth_type` | string | Yes | Authentication type: `"bearer"`, `"basic"`, or `"none"` |
+| `auth_token` | string | No* | Authentication token or credentials (required unless auth_type is "none") |
+| `reporting_frequency` | string | Yes | Reporting frequency: `"hourly"`, `"daily"`, or `"monthly"`. Must be supported by all products in the media buy. |
+| `requested_metrics` | string[] | No | Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included. Must be subset of product's `available_metrics`. |
+
+**Publisher Commitment**: When a reporting webhook is configured, the publisher commits to sending **(campaign_duration / reporting_frequency) + 1** webhook notifications:
+- One notification per frequency period during the campaign
+- One final notification when the campaign completes
+- If reporting data is delayed beyond the product's `expected_delay_minutes`, a notification with `"delayed"` status will be sent to avoid appearing as a missed notification
+
+**Timezone Considerations**: For daily and monthly frequencies, the publisher's reporting timezone (specified in `reporting_capabilities.timezone`) determines when periods begin/end. Ensure alignment between your systems and the publisher's timezone to avoid confusion about reporting period boundaries.
 
 ## Response (Message)
 
@@ -154,6 +172,13 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "total": 100000,
       "currency": "USD",
       "pacing": "even"
+    },
+    "reporting_webhook": {
+      "url": "https://buyer.example.com/webhooks/reporting",
+      "auth_type": "bearer",
+      "auth_token": "secret_reporting_token_xyz",
+      "reporting_frequency": "daily",
+      "requested_metrics": ["impressions", "spend", "video_completions", "completion_rate"]
     }
   }
 }

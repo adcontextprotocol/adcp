@@ -63,6 +63,9 @@
     "measurement": {
       "$ref": "/schemas/v1/core/measurement.json"
     },
+    "reporting_capabilities": {
+      "$ref": "/schemas/v1/core/reporting-capabilities.json"
+    },
     "creative_policy": {
       "$ref": "/schemas/v1/core/creative-policy.json"
     },

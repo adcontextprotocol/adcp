@@ -132,6 +132,12 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
   - **attribution**: Attribution methodology (e.g., "deterministic_purchase", "probabilistic")
   - **window**: Attribution window (e.g., "30_days", "7_days")
   - **reporting**: Reporting frequency and format (e.g., "weekly_dashboard", "real_time_api")
+- **reporting_capabilities**: Automated reporting capabilities (optional)
+  - **available_reporting_frequencies**: Supported frequencies for webhook-based reporting (e.g., ["hourly", "daily", "monthly"])
+  - **expected_delay_minutes**: Expected delay in minutes before reporting data is available (e.g., 240 for 4 hours, 300 for 5 hours)
+  - **timezone**: Timezone for reporting periods - critical for daily/monthly alignment (e.g., "UTC", "America/New_York", "Europe/London")
+  - **supports_webhooks**: Whether webhook-based reporting notifications are available
+  - **available_metrics**: Metrics available in reporting - impressions and spend always implicitly included (e.g., ["impressions", "spend", "clicks", "video_completions", "conversions"])
 - **creative_policy**: Creative requirements and restrictions (optional)
   - **co_branding**: Co-branding requirement ("required", "optional", "none")
   - **landing_page**: Landing page requirements ("any", "retailer_site_only", "must_include_retailer")
@@ -514,7 +520,7 @@ A2A returns results as artifacts with text and data parts:
 }
 ```
 ### Response - Retail Media Products
-**Message**: "I found 3 products leveraging our pet shopper data. The syndicated Pet Category audience offers the best value at $13.50 CPM with a $10K minimum. For more precision, our Custom Competitive Conquesting audience targets shoppers buying competing brands at $18 CPM with a $50K minimum. All products include incremental sales measurement."
+**Message**: "I found 3 products leveraging our pet shopper data. The syndicated Pet Category audience offers the best value at $13.50 CPM with a $10K minimum. For more precision, our Custom Competitive Conquesting audience targets shoppers buying competing brands at $18 CPM with a $50K minimum. All products include incremental sales measurement and automated daily reporting."
 
 **Payload**:
 ```json
@@ -537,6 +543,13 @@ A2A returns results as artifacts with text and data parts:
         "attribution": "deterministic_purchase",
         "window": "30_days",
         "reporting": "weekly_dashboard"
+      },
+      "reporting_capabilities": {
+        "available_reporting_frequencies": ["daily", "monthly"],
+        "expected_delay_minutes": 300,
+        "timezone": "America/Los_Angeles",
+        "supports_webhooks": true,
+        "available_metrics": ["impressions", "spend", "clicks", "ctr", "conversions", "viewability"]
       },
       "creative_policy": {
         "co_branding": "optional",
