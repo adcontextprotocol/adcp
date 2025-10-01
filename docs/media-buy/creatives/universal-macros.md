@@ -388,6 +388,6 @@ Return this in `create_media_buy` responses and make it queryable for reconcilia
 
 ## Related Documentation
 
-- [Creative Formats](./creative-formats.md) - Supported format specifications
+- [Creative Formats](../capability-discovery/creative-formats.md) - Supported format specifications
 - [Creative Lifecycle](./index.md) - End-to-end creative workflow
 - [sync_creatives](../task-reference/sync_creatives.md) - Creative management API
