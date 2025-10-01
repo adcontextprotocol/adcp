@@ -48,6 +48,11 @@
         "standard_formats_only": {
           "type": "boolean",
           "description": "Only return products accepting IAB standard formats"
+        },
+        "min_exposures": {
+          "type": "integer",
+          "description": "Minimum exposures/impressions needed for measurement validity",
+          "minimum": 1
         }
       },
       "additionalProperties": false

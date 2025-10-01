@@ -52,12 +52,33 @@
     },
     "cpm": {
       "type": "number",
-      "description": "Cost per thousand impressions in USD",
+      "description": "Cost per thousand impressions",
       "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP"]
     },
     "min_spend": {
       "type": "number",
-      "description": "Minimum budget requirement in USD",
+      "description": "Minimum budget requirement",
+      "minimum": 0
+    },
+    "estimated_exposures": {
+      "type": "integer",
+      "description": "Estimated exposures/impressions for guaranteed products",
+      "minimum": 0
+    },
+    "floor_cpm": {
+      "type": "number",
+      "description": "Minimum CPM for non-guaranteed products (bids below this are rejected)",
+      "minimum": 0
+    },
+    "recommended_cpm": {
+      "type": "number",
+      "description": "Recommended CPM to achieve min_exposures target for non-guaranteed products",
       "minimum": 0
     },
     "measurement": {

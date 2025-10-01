@@ -29,6 +29,7 @@ Discover available advertising products based on campaign requirements, using na
 | `format_types` | string[] | No | Filter by format types (e.g., `["video", "display"]`) |
 | `format_ids` | string[] | No | Filter by specific format IDs (e.g., `["video_standard_30s"]`) |
 | `standard_formats_only` | boolean | No | Only return products accepting IAB standard formats |
+| `min_exposures` | integer | No | Minimum exposures/impressions needed for measurement validity |
 ## Response (Message)
 The response includes a human-readable message that:
 - Summarizes products found (e.g., "Found 3 premium video products matching your requirements")
@@ -102,6 +103,7 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 25.00,
+      "currency": "USD",
       "min_spend": 5000
     }
   ]
@@ -125,8 +127,12 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
 - **format_ids**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
 - **is_fixed_price**: Whether this product has fixed pricing (true) or uses auction (false)
-- **cpm**: Cost per thousand impressions in USD
-- **min_spend**: Minimum budget requirement in USD
+- **cpm**: Cost per thousand impressions (for guaranteed/fixed price products)
+- **currency**: ISO 4217 currency code (e.g., "USD", "EUR", "GBP")
+- **min_spend**: Minimum budget requirement
+- **estimated_exposures**: Estimated exposures/impressions for guaranteed products (optional)
+- **floor_cpm**: Minimum CPM for non-guaranteed products - bids below this are rejected (optional)
+- **recommended_cpm**: Recommended CPM to achieve min_exposures target for non-guaranteed products (optional)
 - **measurement**: Included measurement capabilities (optional)
   - **type**: Type of measurement (e.g., "incremental_sales_lift", "brand_lift", "foot_traffic")
   - **attribution**: Attribution methodology (e.g., "deterministic_purchase", "probabilistic")
@@ -338,6 +344,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
+      "currency": "USD",
       "min_spend": 10000,
       "is_custom": false,
       "brief_relevance": "Premium CTV with sports content alignment"
@@ -425,6 +432,54 @@ A2A returns results as artifacts with text and data parts:
 - **MCP**: Direct tool call with arguments, returns flat JSON response
 - **A2A**: Message-based invocation (natural language or explicit skill with parameters), returns artifacts with text and data parts
 - **Payload**: The `parameters` field in A2A explicit invocation contains the exact same structure as MCP's `arguments`
+## Minimum Exposures for Measurement
+
+When buyers specify `min_exposures` in the request, products are filtered to only include those that can deliver the required volume for measurement validity.
+
+### Guaranteed vs Non-Guaranteed Products
+
+**Guaranteed products** provide fixed pricing and predictable delivery:
+- `cpm`: Fixed cost per thousand impressions
+- `estimated_exposures`: Total exposures you can expect with your budget
+
+**Non-guaranteed products** use auction-based pricing:
+- `floor_cpm`: Minimum bid that will be accepted
+- `recommended_cpm`: Suggested bid to win enough inventory to meet min_exposures target
+
+### Example: Requesting Minimum Exposures
+
+**Request:**
+```json
+{
+  "promoted_offering": "Nike Air Max 2024",
+  "filters": {
+    "min_exposures": 10000
+  }
+}
+```
+
+**Response includes products that can deliver 10K+ exposures:**
+```json
+{
+  "products": [
+    {
+      "product_id": "guaranteed_sports",
+      "is_fixed_price": true,
+      "cpm": 45.00,
+      "currency": "USD",
+      "estimated_exposures": 222000  // Well above 10K minimum
+    },
+    {
+      "product_id": "programmatic_video",
+      "is_fixed_price": false,
+      "currency": "USD",
+      "floor_cpm": 5.00,
+      "recommended_cpm": 12.00  // Bid this to achieve 10K exposures
+    }
+  ]
+}
+```
+
 ## Scenarios
 ### Request with Natural Language Brief
 ```json
@@ -482,8 +537,10 @@ A2A returns results as artifacts with text and data parts:
       "format_ids": ["video_standard"],
       "delivery_type": "non_guaranteed",
       "is_fixed_price": false,
-      "cpm": 12.00,
+      "currency": "USD",
       "min_spend": 1000,
+      "floor_cpm": 5.00,
+      "recommended_cpm": 12.00,
       "is_custom": false
       // Note: No brief_relevance field since no brief was provided
     }
@@ -506,7 +563,9 @@ A2A returns results as artifacts with text and data parts:
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
+      "currency": "USD",
       "min_spend": 10000,
+      "estimated_exposures": 222000,
       "is_custom": false,
       "brief_relevance": "Premium CTV inventory aligns with sports content request and prime time targeting"
     }
@@ -531,6 +590,7 @@ A2A returns results as artifacts with text and data parts:
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 13.50,
+      "currency": "USD",
       "min_spend": 10000,
       "measurement": {
         "type": "incremental_sales_lift",
@@ -557,6 +617,7 @@ A2A returns results as artifacts with text and data parts:
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 18.00,
+      "currency": "USD",
       "min_spend": 50000,
       "measurement": {
         "type": "incremental_sales_lift",
