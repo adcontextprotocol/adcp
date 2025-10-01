@@ -72,7 +72,7 @@ Video formats support all [IAB VAST 4.x macros](http://interactiveadvertisingbur
 
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
-| `{AXEM}` | AXE contextual metadata (weather, time, etc.) | `weather:sunny,time:morning` |
+| `{AXEM}` | AXE contextual metadata (encoded blob) | `eyJjb250ZXh0IjoiLi4uIn0=` |
 | `{CUSTOM:key}` | Custom field (by agreement with publisher) | *(varies)* |
 
 ## Usage Examples
