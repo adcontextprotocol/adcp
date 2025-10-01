@@ -46,40 +46,47 @@ Different creative formats support different macros. Use `list_creative_formats`
 | `{CACHEBUSTER}` | Random number to prevent caching | `87654321` |
 | `{CLICK_URL}` | Publisher's click tracking URL | *(auto-inserted by sales agent)* |
 
-### Video Format Macros
+### Mobile App Macros
 
-In addition to common macros, video formats support:
+For any mobile app inventory (video, audio, display):
 
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
 | `{DEVICE_ID}` | Mobile advertising ID (IDFA/AAID) | `ABC-123-DEF-456` |
 | `{DEVICE_ID_TYPE}` | Type of device ID | `idfa`, `aaid` |
+
+### Web Macros
+
+For any web-based inventory (video, audio, display):
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
 | `{DOMAIN}` | Domain where ad is shown | `nytimes.com` |
+| `{PAGE_URL}` | Full page URL (encoded) | `https%3A%2F%2F...` |
+
+### Video-Specific Macros
+
+For video creative formats:
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
 | `{VIDEO_ID}` | Content video identifier | `video_12345` |
 | `{CONTENT_PLAYHEAD}` | Video content position | `00:05:23` |
 
 **VAST Standard Macros**: Video formats also support all [IAB VAST 4.x macros](http://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html) like `[CACHEBUSTING]`, `[TIMESTAMP]`, `[DOMAIN]`, `[IFA]`, etc. These work natively in VAST XML.
 
-### Audio Format Macros
+### Audio-Specific Macros
 
-In addition to common macros, audio formats support:
+For audio creative formats:
 
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
-| `{DEVICE_ID}` | Mobile advertising ID | `ABC-123-DEF-456` |
-| `{DOMAIN}` | Domain/app where ad is shown | `spotify.com` |
 | `{STATION_ID}` | Radio station or podcast feed | `WXYZ-FM` |
 | `{SHOW_NAME}` | Podcast or show name | `Tech News Daily` |
 
-### Display/Native Format Macros
+### Display/Native Macros
 
-In addition to common macros, display/native formats support:
-
-| Macro | Description | Example Value |
-|-------|-------------|---------------|
-| `{DEVICE_ID}` | Mobile advertising ID | `ABC-123-DEF-456` |
-| `{DOMAIN}` | Site domain | `nytimes.com` |
-| `{PAGE_URL}` | Full page URL (encoded) | `https%3A%2F%2F...` |
+Display and native formats use Common + Mobile/Web macros listed above. No additional format-specific macros.
 
 ### Custom Macros
 
