@@ -64,29 +64,9 @@ For any web-based inventory (video, audio, display):
 | `{DOMAIN}` | Domain where ad is shown | `nytimes.com` |
 | `{PAGE_URL}` | Full page URL (encoded) | `https%3A%2F%2F...` |
 
-### Video-Specific Macros
+### Video Formats
 
-For video creative formats:
-
-| Macro | Description | Example Value |
-|-------|-------------|---------------|
-| `{VIDEO_ID}` | Content video identifier | `video_12345` |
-| `{CONTENT_PLAYHEAD}` | Video content position | `00:05:23` |
-
-**VAST Standard Macros**: Video formats also support all [IAB VAST 4.x macros](http://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html) like `[CACHEBUSTING]`, `[TIMESTAMP]`, `[DOMAIN]`, `[IFA]`, etc. These work natively in VAST XML.
-
-### Audio-Specific Macros
-
-For audio creative formats:
-
-| Macro | Description | Example Value |
-|-------|-------------|---------------|
-| `{STATION_ID}` | Radio station or podcast feed | `WXYZ-FM` |
-| `{SHOW_NAME}` | Podcast or show name | `Tech News Daily` |
-
-### Display/Native Macros
-
-Display and native formats use Common + Mobile/Web macros listed above. No additional format-specific macros.
+Video formats support all [IAB VAST 4.x macros](http://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html) like `[CACHEBUSTING]`, `[TIMESTAMP]`, `[DOMAIN]`, `[IFA]`, etc. These work natively in VAST XML.
 
 ### Custom Macros
 
