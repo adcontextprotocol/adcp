@@ -10,6 +10,21 @@
       "description": "AdCP schema version used for this response",
       "pattern": "^\\d+\\.\\d+\\.\\d+$"
     },
+    "notification_type": {
+      "type": "string",
+      "enum": ["scheduled", "final", "delayed"],
+      "description": "Type of webhook notification (only present in webhook deliveries): scheduled = regular periodic update, final = campaign completed, delayed = data not yet available"
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Sequential notification number (only present in webhook deliveries, starts at 1)"
+    },
+    "next_expected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for next expected notification (only present in webhook deliveries when notification_type is not 'final')"
+    },
     "reporting_period": {
       "type": "object",
       "description": "Date range for the report",
@@ -35,7 +50,7 @@
     },
     "aggregated_totals": {
       "type": "object",
-      "description": "Combined metrics across all returned media buys",
+      "description": "Combined metrics across all returned media buys. Only included in API responses (get_media_buy_delivery), not in webhook notifications.",
       "properties": {
         "impressions": {
           "type": "number",
@@ -66,9 +81,9 @@
       "required": ["impressions", "spend", "media_buy_count"],
       "additionalProperties": false
     },
-    "deliveries": {
+    "media_buy_deliveries": {
       "type": "array",
-      "description": "Array of delivery data for each media buy",
+      "description": "Array of delivery data for media buys. When used in webhook notifications, may contain multiple media buys aggregated by publisher. When used in get_media_buy_delivery API responses, typically contains requested media buys.",
       "items": {
         "type": "object",
         "properties": {
@@ -208,6 +223,6 @@
       }
     }
   },
-  "required": ["adcp_version", "reporting_period", "currency", "aggregated_totals", "deliveries"],
+  "required": ["adcp_version", "reporting_period", "currency", "media_buy_deliveries"],
   "additionalProperties": false
 }

@@ -600,6 +600,99 @@ function isReplayAttack(timestamp, eventId) {
 
 This reliability pattern ensures your application remains responsive and consistent even when webhook delivery is unreliable or fails entirely.
 
+### Reporting Webhooks
+
+In addition to task status webhooks, AdCP supports **reporting webhooks** for automated delivery performance notifications. These webhooks are configured during media buy creation and follow a scheduled delivery pattern.
+
+#### Configuration
+
+Reporting webhooks are configured via the `reporting_webhook` parameter in `create_media_buy`:
+
+```json
+{
+  "buyer_ref": "campaign_2024",
+  "reporting_webhook": {
+    "url": "https://buyer.example.com/webhooks/reporting",
+    "auth_type": "bearer",
+    "auth_token": "secret_token",
+    "reporting_frequency": "daily"
+  }
+}
+```
+
+#### Publisher Commitment
+
+When a reporting webhook is configured, publishers commit to sending:
+
+**(campaign_duration / reporting_frequency) + 1** notifications
+
+- One per frequency period during the campaign
+- One final notification at campaign completion
+- Delayed notifications if data isn't ready within expected delay window
+
+#### Payload Structure
+
+Reporting webhooks deliver the same payload as `get_media_buy_delivery` with additional metadata:
+
+```json
+{
+  "notification_type": "scheduled",
+  "sequence_number": 5,
+  "next_expected_at": "2024-02-06T08:00:00Z",
+  "reporting_period": {
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_001",
+      "buyer_ref": "campaign_a",
+      "status": "active",
+      "totals": {...},
+      "by_package": [...]
+    }
+  ]
+}
+```
+
+**Notification Types:**
+- **`scheduled`**: Regular periodic update
+- **`final`**: Campaign completed
+- **`delayed`**: Data not yet available (prevents missed notification detection)
+
+#### Webhook Aggregation
+
+Publishers SHOULD aggregate webhooks when multiple media buys share the same webhook URL, reporting frequency, and reporting period. This reduces webhook volume significantly for buyers with many active campaigns.
+
+**Example**: Buyer with 100 active campaigns receives:
+- **Without aggregation**: 100 webhooks per reporting period
+- **With aggregation**: 1 webhook containing all 100 campaigns in `media_buy_deliveries` array
+
+Buyers must always handle `media_buy_deliveries` as an array, even when it contains a single media buy.
+
+#### Timezone Handling
+
+For daily and monthly frequencies, the publisher's reporting timezone (from product's `reporting_capabilities.timezone`) determines period boundaries:
+
+- **Daily**: Midnight to midnight in publisher's timezone
+- **Monthly**: 1st to last day of month in publisher's timezone
+- **Hourly**: UTC unless specified
+
+**Critical**: Store publisher's timezone when setting up webhooks to correctly interpret reporting periods.
+
+#### Implementation Requirements
+
+1. **Array Handling**: Always process `media_buy_deliveries` as an array (may contain 1 to N media buys)
+2. **Idempotent Processing**: Same as task webhooks - handle duplicates safely
+3. **Sequence Tracking**: Use `sequence_number` to detect gaps or out-of-order delivery
+4. **Fallback Strategy**: Continue polling `get_media_buy_delivery` as backup
+5. **Delay Handling**: Treat `"delayed"` notifications as normal, not errors
+6. **Frequency Validation**: Ensure requested frequency is in product's `available_reporting_frequencies`
+7. **Metrics Validation**: Ensure requested metrics are in product's `available_metrics`
+
+See [Optimization & Reporting](../media-buy/media-buys/optimization-reporting.md#webhook-based-reporting) for complete implementation guidance.
+
 ## Error Handling
 
 ### Error Categories

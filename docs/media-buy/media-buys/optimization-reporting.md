@@ -17,6 +17,8 @@ Performance data feeds into AdCP's [Accountability & Trust Framework](../index.m
 ### Delivery Reporting
 Use [`get_media_buy_delivery`](../task-reference/get_media_buy_delivery) to retrieve comprehensive performance data including impressions, spend, clicks, and conversions across all campaign packages.
 
+Alternatively, configure **webhook-based reporting** during media buy creation to receive automated delivery notifications at regular intervals.
+
 ### Campaign Updates
 Use [`update_media_buy`](../task-reference/update_media_buy) to modify campaign settings, budgets, and configurations based on performance insights.
 
@@ -50,6 +52,175 @@ Stay informed of important campaign events:
 - **Delivery alerts** for pacing issues
 - **Performance notifications** for significant changes
 - **Budget warnings** before limits are reached
+
+## Webhook-Based Reporting
+
+Publishers can proactively push reporting data to buyers on a scheduled basis through webhook notifications. This eliminates the need for continuous polling and provides timely campaign insights.
+
+### Configuration
+
+Configure reporting webhooks when creating a media buy using the `reporting_webhook` parameter:
+
+```json
+{
+  "buyer_ref": "campaign_2024",
+  "packages": [...],
+  "reporting_webhook": {
+    "url": "https://buyer.example.com/webhooks/reporting",
+    "auth_type": "bearer",
+    "auth_token": "secret_token",
+    "reporting_frequency": "daily"
+  }
+}
+```
+
+### Supported Frequencies
+
+Publishers declare supported reporting frequencies in the product's `reporting_capabilities`:
+
+- **`hourly`**: Receive notifications every hour during campaign flight
+- **`daily`**: Receive notifications once per day (timezone specified by publisher)
+- **`monthly`**: Receive notifications once per month (timezone specified by publisher)
+
+### Available Metrics
+
+Publishers declare which metrics they can provide in `reporting_capabilities.available_metrics`. Common metrics include:
+
+- **`impressions`**: Ad views (always available)
+- **`spend`**: Amount spent (always available)
+- **`clicks`**: Click events
+- **`ctr`**: Click-through rate
+- **`video_completions`**: Completed video views
+- **`completion_rate`**: Video completion percentage
+- **`conversions`**: Post-click or post-view conversions
+- **`viewability`**: Viewable impression percentage
+- **`engagement_rate`**: Platform-specific engagement metric
+
+Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
+
+### Publisher Commitment
+
+When a reporting webhook is configured, publishers commit to sending:
+
+**(campaign_duration / reporting_frequency) + 1** notifications
+
+- One notification per frequency period during the campaign
+- One final notification when the campaign completes
+- If reporting data is delayed beyond the expected delay window, a `"delayed"` notification will be sent
+
+### Webhook Payload
+
+Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](../task-reference/get_media_buy_delivery) with additional metadata:
+
+```json
+{
+  "notification_type": "scheduled",
+  "sequence_number": 5,
+  "next_expected_at": "2024-02-06T08:00:00Z",
+  "reporting_period": {
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_001",
+      "buyer_ref": "campaign_a",
+      "status": "active",
+      "totals": {
+        "impressions": 125000,
+        "spend": 5625.00,
+        "clicks": 250,
+        "ctr": 0.002
+      },
+      "by_package": [...]
+    }
+  ]
+}
+```
+
+**Fields:**
+- **`notification_type`**: `"scheduled"` (regular update), `"final"` (campaign complete), or `"delayed"` (data not yet available)
+- **`sequence_number`**: Sequential notification number (starts at 1)
+- **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
+- **`media_buy_deliveries`**: Array of media buy delivery data (may contain multiple media buys aggregated by publisher)
+
+### Timezone Considerations
+
+For daily and monthly frequencies, the publisher's reporting timezone (from `reporting_capabilities.timezone`) determines period boundaries:
+
+- **Daily**: Reporting day starts/ends at midnight in publisher's timezone
+- **Monthly**: Reporting month starts on 1st and ends on last day of month in publisher's timezone
+- **Hourly**: Uses UTC unless otherwise specified
+
+**Example**: Publisher with `"timezone": "America/New_York"` and daily frequency sends notifications at ~8:00 UTC (midnight ET + expected delay).
+
+### Delayed Reporting
+
+If reporting data is not available within the product's `expected_delay_minutes`, publishers send a notification with `notification_type: "delayed"`:
+
+```json
+{
+  "notification_type": "delayed",
+  "sequence_number": 3,
+  "next_expected_at": "2024-02-06T10:00:00Z",
+  "message": "Reporting data delayed due to upstream processing. Expected availability in 2 hours."
+}
+```
+
+This prevents buyers from incorrectly assuming a missed notification.
+
+### Webhook Aggregation
+
+Publishers SHOULD aggregate webhooks to reduce call volume when multiple media buys share:
+- Same webhook URL
+- Same reporting frequency
+- Same reporting period
+
+**Example**: Buyer has 100 active campaigns with daily reporting to the same endpoint. Publisher sends:
+- **Without aggregation**: 100 webhooks per day (inefficient)
+- **With aggregation**: 1 webhook per day containing all 100 campaigns (optimal)
+
+The `media_buy_deliveries` array may contain 1 to N media buys per webhook. Buyers should iterate through the array to process each campaign's data.
+
+**Aggregated webhook example:**
+```json
+{
+  "notification_type": "scheduled",
+  "reporting_period": {
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    { "media_buy_id": "mb_001", "totals": { "impressions": 50000, "spend": 1750 }, ... },
+    { "media_buy_id": "mb_002", "totals": { "impressions": 48500, "spend": 1695 }, ... },
+    // ... 98 more media buys
+  ]
+}
+```
+
+Buyers should iterate through the array and process each media buy independently. If aggregated totals are needed, calculate them from the individual media buy totals.
+
+### Implementation Best Practices
+
+1. **Handle Arrays**: Always process `media_buy_deliveries` as an array, even if it contains one element
+2. **Idempotent Handlers**: Process duplicate notifications safely (webhooks use at-least-once delivery)
+3. **Sequence Tracking**: Use `sequence_number` to detect missing or out-of-order notifications
+4. **Fallback Polling**: Continue periodic polling as backup if webhooks fail
+5. **Timezone Awareness**: Store publisher's reporting timezone for accurate period calculation
+6. **Validate Frequency**: Ensure requested frequency is in product's `available_reporting_frequencies`
+7. **Validate Metrics**: Ensure requested metrics are in product's `available_metrics`
+
+### Webhook Reliability
+
+Reporting webhooks follow AdCP's standard webhook reliability patterns:
+
+- **At-least-once delivery**: Same notification may be delivered multiple times
+- **Best-effort ordering**: Notifications may arrive out of order
+- **Timeout and retry**: Limited retry attempts on delivery failure
+
+See [Core Concepts: Webhook Reliability](../../protocols/core-concepts.md#webhook-reliability) for detailed implementation guidance.
 
 ## Optimization Strategies
 

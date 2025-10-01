@@ -53,7 +53,7 @@ The message is returned differently in each protocol:
     "video_completions": "number",
     "media_buy_count": "number"
   },
-  "deliveries": [
+  "media_buy_deliveries": [
     {
       "media_buy_id": "string",
       "buyer_ref": "string",
@@ -101,7 +101,7 @@ The message is returned differently in each protocol:
   - **clicks**: Total clicks across all media buys (if applicable)
   - **video_completions**: Total video completions across all media buys (if applicable)
   - **media_buy_count**: Number of media buys included in the response
-- **deliveries**: Array of delivery data for each media buy
+- **media_buy_deliveries**: Array of delivery data for each media buy
   - **media_buy_id**: Publisher's media buy identifier
   - **buyer_ref**: Buyer's reference identifier for this media buy
   - **status**: Current media buy status (`pending`, `active`, `paused`, `completed`, `failed`)
@@ -157,7 +157,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
     "video_completions": 875000,
     "media_buy_count": 1
   },
-  "deliveries": [
+  "media_buy_deliveries": [
     {
       "media_buy_id": "mb_12345",
       "status": "active",
@@ -243,7 +243,7 @@ A2A returns results as artifacts:
               "video_completions": 875000,
               "media_buy_count": 1
             },
-            "deliveries": [
+            "media_buy_deliveries": [
               {
                 "media_buy_id": "mb_12345",
                 "status": "active",
@@ -311,7 +311,7 @@ A2A returns results as artifacts:
     "video_completions": 315000,
     "media_buy_count": 1
   },
-  "deliveries": [
+  "media_buy_deliveries": [
     {
       "media_buy_id": "gam_1234567890",
       "status": "active",
@@ -391,7 +391,7 @@ A2A returns results as artifacts:
     "video_completions": 481250,
     "media_buy_count": 3
   },
-  "deliveries": [
+  "media_buy_deliveries": [
     {
       "media_buy_id": "gam_1234567890",
       "status": "active",
