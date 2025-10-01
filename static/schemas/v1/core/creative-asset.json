@@ -33,7 +33,23 @@
     "click_url": {
       "type": "string",
       "format": "uri",
-      "description": "Landing page URL for the creative"
+      "description": "Landing page URL for the creative - may contain universal macros like {MEDIA_BUY_ID}"
+    },
+    "impression_trackers": {
+      "type": "array",
+      "description": "Array of impression tracking URLs - may contain universal macros like {MEDIA_BUY_ID}, {DEVICE_ID}, {CACHEBUSTER}",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      }
+    },
+    "click_trackers": {
+      "type": "array",
+      "description": "Array of click tracking URLs - may contain universal macros like {MEDIA_BUY_ID}, {DEVICE_ID}, {CACHEBUSTER}",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      }
     },
     "duration": {
       "type": "number",

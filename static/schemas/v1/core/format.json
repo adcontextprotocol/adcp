@@ -54,6 +54,33 @@
     "accepts_3p_tags": {
       "type": "boolean",
       "description": "Whether this format can accept third-party served creative tags as an alternative to hosted assets"
+    },
+    "supported_macros": {
+      "type": "array",
+      "description": "Array of universal macros supported by this format",
+      "items": {
+        "type": "object",
+        "properties": {
+          "macro": {
+            "type": "string",
+            "description": "The macro placeholder (e.g., {MEDIA_BUY_ID}, {DEVICE_ID})"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what the macro represents"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether this macro must be included in tracking URLs"
+          }
+        },
+        "required": ["macro", "description"],
+        "additionalProperties": false
+      }
+    },
+    "vast_macros_supported": {
+      "type": "boolean",
+      "description": "Whether this format supports IAB VAST standard macros (video formats only)"
     }
   },
   "required": ["format_id", "name", "type"],
