@@ -9,7 +9,7 @@
       "type": "string",
       "description": "AdCP schema version for this request",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
+      "default": "1.7.0"
     },
     "buyer_ref": {
       "type": "string",
@@ -25,16 +25,13 @@
             "type": "string",
             "description": "Buyer's reference identifier for this package"
           },
-          "products": {
-            "type": "array",
-            "description": "Array of product IDs to include in this package",
-            "items": {
-              "type": "string"
-            }
+          "product_id": {
+            "type": "string",
+            "description": "Product ID for this package"
           },
           "format_ids": {
             "type": "array",
-            "description": "Array of format IDs that will be used for this package - must be supported by all products",
+            "description": "Array of format IDs that will be used for this package - must be supported by the product",
             "items": {
               "type": "string",
               "description": "Format ID referencing a format from list_creative_formats"
@@ -48,8 +45,8 @@
           }
         },
         "anyOf": [
-          {"required": ["buyer_ref", "products", "format_ids"]},
-          {"required": ["buyer_ref", "products", "format_selection"]}
+          {"required": ["buyer_ref", "product_id", "format_ids"]},
+          {"required": ["buyer_ref", "product_id", "format_selection"]}
         ],
         "additionalProperties": false
       }
