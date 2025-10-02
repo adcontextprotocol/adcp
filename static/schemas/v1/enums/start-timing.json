@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/enums/start-timing.json",
+  "title": "Start Timing",
+  "description": "Campaign start timing options",
+  "type": "string",
+  "enum": ["asap"],
+  "enumDescriptions": {
+    "asap": "Start campaign as soon as possible (no scheduled start time)"
+  }
+}

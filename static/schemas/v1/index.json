@@ -127,6 +127,10 @@
         "task-status": {
           "$ref": "/schemas/v1/enums/task-status.json",
           "description": "Standardized task status values based on A2A TaskState enum"
+        },
+        "start-timing": {
+          "$ref": "/schemas/v1/enums/start-timing.json",
+          "description": "Campaign start timing options (asap)"
         }
       }
     },

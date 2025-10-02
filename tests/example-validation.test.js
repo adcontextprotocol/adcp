@@ -237,6 +237,25 @@ const exampleData = {
       }
     ]
   },
+
+  createMediaBuyRequestAsap: {
+    "buyer_ref": "acme_flash_sale_campaign",
+    "packages": [
+      {
+        "buyer_ref": "acme_display_package",
+        "products": ["display_premium_sites"],
+        "format_ids": ["display_300x250"]
+      }
+    ],
+    "promoted_offering": "Acme Flash Sale - 24-hour limited time offer",
+    "start_time": "asap",
+    "end_time": "2024-10-03T23:59:59Z",
+    "budget": {
+      "total": 25000,
+      "currency": "USD",
+      "pacing": "asap"
+    }
+  },
   
   // Signals examples
   getSignalsRequest: {
@@ -418,9 +437,17 @@ test('create_media_buy request validates against schema', () => {
 
 test('create_media_buy response validates against schema', () => {
   return validateAgainstSchema(
-    exampleData.createMediaBuyResponse, 
-    '/schemas/v1/media-buy/create-media-buy-response.json', 
+    exampleData.createMediaBuyResponse,
+    '/schemas/v1/media-buy/create-media-buy-response.json',
     'create_media_buy response'
+  );
+});
+
+test('create_media_buy request with ASAP start validates against schema', () => {
+  return validateAgainstSchema(
+    exampleData.createMediaBuyRequestAsap,
+    '/schemas/v1/media-buy/create-media-buy-request.json',
+    'create_media_buy request with ASAP start'
   );
 });
 
