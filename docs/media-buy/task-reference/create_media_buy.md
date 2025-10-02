@@ -23,7 +23,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `packages` | Package[] | Yes | Array of package configurations (see Package Object below) |
 | `promoted_offering` | string | Yes | Description of advertiser and what is being promoted |
 | `po_number` | string | No | Purchase order number for tracking |
-| `start_time` | string | Yes | Campaign start date/time in ISO 8601 format (UTC unless timezone specified) |
+| `start_time` | string | Yes | Campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
 | `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
 | `budget` | Budget | Yes | Budget configuration for the media buy (see Budget Object below) |
 | `reporting_webhook` | ReportingWebhook | No | Optional webhook configuration for automated reporting delivery (see Reporting Webhook Object below) |

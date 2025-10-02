@@ -24,9 +24,7 @@
       "description": "Pause/resume the entire media buy"
     },
     "start_time": {
-      "type": "string",
-      "format": "date-time",
-      "description": "New start date/time in ISO 8601 format"
+      "$ref": "/schemas/v1/core/start-timing.json"
     },
     "end_time": {
       "type": "string",

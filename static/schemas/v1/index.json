@@ -82,6 +82,10 @@
         "property": {
           "$ref": "/schemas/v1/core/property.json",
           "description": "An advertising property that can be validated via adagents.json"
+        },
+        "start-timing": {
+          "$ref": "/schemas/v1/core/start-timing.json",
+          "description": "Campaign start timing: 'asap' or ISO 8601 date-time"
         }
       }
     },
