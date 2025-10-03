@@ -65,6 +65,11 @@
             "type": "string",
             "description": "The macro placeholder (e.g., {MEDIA_BUY_ID}, {DEVICE_ID})"
           },
+          "category": {
+            "type": "string",
+            "description": "Macro category for grouping",
+            "enum": ["identity", "privacy", "geo", "device", "content", "ad_context", "session", "custom"]
+          },
           "description": {
             "type": "string",
             "description": "Human-readable description of what the macro represents"
@@ -72,6 +77,14 @@
           "required": {
             "type": "boolean",
             "description": "Whether this macro must be included in tracking URLs"
+          },
+          "privacy_sensitive": {
+            "type": "boolean",
+            "description": "Whether this macro contains privacy-sensitive data"
+          },
+          "example_value": {
+            "type": "string",
+            "description": "Example value to illustrate macro output"
           }
         },
         "required": ["macro", "description"],

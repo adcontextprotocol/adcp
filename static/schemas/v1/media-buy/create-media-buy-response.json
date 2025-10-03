@@ -51,56 +51,6 @@
         "additionalProperties": false
       }
     },
-    "ad_server_mapping": {
-      "type": "object",
-      "description": "Mapping between AdCP IDs and ad server IDs for reconciliation",
-      "properties": {
-        "order_id": {
-          "type": "string",
-          "description": "Ad server order/insertion order ID"
-        },
-        "packages": {
-          "type": "array",
-          "description": "Package-to-line-item mappings",
-          "items": {
-            "type": "object",
-            "properties": {
-              "package_id": {
-                "type": "string",
-                "description": "AdCP package identifier"
-              },
-              "line_item_id": {
-                "type": "string",
-                "description": "Ad server line item ID"
-              },
-              "creatives": {
-                "type": "array",
-                "description": "Creative ID mappings",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "creative_id": {
-                      "type": "string",
-                      "description": "AdCP creative identifier"
-                    },
-                    "ad_server_creative_id": {
-                      "type": "string",
-                      "description": "Ad server creative ID"
-                    }
-                  },
-                  "required": ["creative_id", "ad_server_creative_id"],
-                  "additionalProperties": false
-                }
-              }
-            },
-            "required": ["package_id", "line_item_id"],
-            "additionalProperties": false
-          }
-        }
-      },
-      "required": ["order_id"],
-      "additionalProperties": false
-    },
     "errors": {
       "type": "array",
       "description": "Task-specific errors and warnings (e.g., partial package creation failures)",

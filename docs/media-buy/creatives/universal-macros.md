@@ -44,36 +44,117 @@ Different creative formats support different macros. Use `list_creative_formats`
 | `{PACKAGE_ID}` | Your AdCP package identifier | `pkg_ctv_prime` |
 | `{CREATIVE_ID}` | Your AdCP creative identifier | `cr_video_30s` |
 | `{CACHEBUSTER}` | Random number to prevent caching | `87654321` |
+| `{TIMESTAMP}` | Unix timestamp in milliseconds | `1704067200000` |
 | `{CLICK_URL}` | Publisher's click tracking URL | *(auto-inserted by sales agent)* |
 
-### Mobile App Macros
+### Privacy & Compliance Macros
 
-For any mobile app inventory (video, audio, display):
+**Critical for regulatory compliance** - Use these to respect user privacy choices in your creative logic.
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{GDPR}` | GDPR applicability flag | `1` (applies), `0` (doesn't apply) |
+| `{GDPR_CONSENT}` | IAB TCF 2.0 consent string | `CPc7TgPPc7TgPAGABC...` |
+| `{US_PRIVACY}` | US Privacy (CCPA) string | `1YNN` |
+| `{GPP_STRING}` | Global Privacy Platform consent string | `DBABMA~1...` |
+| `{DEVICE_LAT}` | Limit Ad Tracking enabled | `1` (limited), `0` (allowed) |
+
+**Example - Privacy-aware tracking**:
+```javascript
+// In creative logic
+if ({GDPR} == 1 && {GDPR_CONSENT} == '') {
+  // No consent - don't load tracking pixels
+} else {
+  // Load tracking
+}
+```
+
+### Device & Environment Macros
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{DEVICE_TYPE}` | Device category | `mobile`, `tablet`, `desktop`, `ctv`, `dooh` |
+| `{OS}` | Operating system | `iOS`, `Android`, `tvOS`, `Roku` |
+| `{OS_VERSION}` | OS version | `17.2`, `14.0` |
+| `{DEVICE_MAKE}` | Device manufacturer | `Apple`, `Samsung`, `Roku` |
+| `{DEVICE_MODEL}` | Device model | `iPhone15,2`, `Roku Ultra` |
+| `{USER_AGENT}` | Full user agent string | `Mozilla/5.0 ...` |
+| `{APP_BUNDLE}` | App bundle ID | `com.publisher.app` |
+| `{APP_NAME}` | Human-readable app name | `Publisher News App` |
+
+### Geographic Macros
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{COUNTRY}` | ISO 3166-1 alpha-2 country code | `US`, `GB`, `CA` |
+| `{REGION}` | State/province code | `NY`, `CA`, `ON` |
+| `{CITY}` | City name | `New York` |
+| `{ZIP}` | Postal code | `10001`, `90210` |
+| `{DMA}` | Nielsen DMA code (US) | `501` (New York) |
+| `{LAT}` | Latitude | `40.7128` |
+| `{LONG}` | Longitude | `-74.0060` |
+
+### Identity Macros
 
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
 | `{DEVICE_ID}` | Mobile advertising ID (IDFA/AAID) | `ABC-123-DEF-456` |
 | `{DEVICE_ID_TYPE}` | Type of device ID | `idfa`, `aaid` |
 
-### Web Macros
+### Web Context Macros
 
-For any web-based inventory (video, audio, display):
+For web-based inventory:
 
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
 | `{DOMAIN}` | Domain where ad is shown | `nytimes.com` |
 | `{PAGE_URL}` | Full page URL (encoded) | `https%3A%2F%2F...` |
+| `{REFERRER}` | HTTP referrer URL | `https://google.com` |
+| `{KEYWORDS}` | Page keywords (comma-separated) | `business,finance,tech` |
 
-### Video Formats
+### Placement & Position Macros
 
-Video formats support all [IAB VAST 4.x macros](http://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html) like `[CACHEBUSTING]`, `[TIMESTAMP]`, `[DOMAIN]`, `[IFA]`, etc. These work natively in VAST XML.
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{PLACEMENT_ID}` | Global Placement ID (IAB standard) | `12345678` |
+| `{FOLD_POSITION}` | Position relative to fold (display) | `above_fold`, `below_fold` |
+| `{AD_WIDTH}` | Ad slot width | `300`, `728` |
+| `{AD_HEIGHT}` | Ad slot height | `250`, `90` |
 
-### Custom Macros
+### Video Content Macros
+
+For video formats with content context:
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{VIDEO_ID}` | Content video identifier | `vid_12345` |
+| `{VIDEO_TITLE}` | Content video title | `Breaking News Story` |
+| `{VIDEO_DURATION}` | Content duration in seconds | `600` |
+| `{VIDEO_CATEGORY}` | IAB content category | `IAB1` (Arts & Entertainment) |
+| `{CONTENT_GENRE}` | Content genre | `news`, `sports`, `comedy` |
+| `{CONTENT_RATING}` | Content rating | `G`, `PG`, `TV-14` |
+| `{PLAYER_WIDTH}` | Video player width | `1920` |
+| `{PLAYER_HEIGHT}` | Video player height | `1080` |
+
+### Video Ad Pod Macros
+
+For video ads in commercial breaks:
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{POD_POSITION}` | Position within ad break | `1`, `2`, `3` |
+| `{POD_SIZE}` | Total ads in this break | `3` |
+| `{AD_BREAK_ID}` | Unique ad break identifier | `break_mid_1` |
+
+**Note**: Video formats also support all [IAB VAST 4.x macros](http://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html) like `[CACHEBUSTING]`, `[TIMESTAMP]`, `[DOMAIN]`, `[IFA]`, etc. These work natively in VAST XML.
+
+### AXE Integration
 
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
 | `{AXEM}` | AXE contextual metadata (encoded blob) | `eyJjb250ZXh0IjoiLi4uIn0=` |
-| `{CUSTOM:key}` | Custom field (by agreement with publisher) | *(varies)* |
+
+> **Note**: Publisher-specific custom macros may be defined in individual creative format specifications as `extra supported macros`.
 
 ## Usage Examples
 
@@ -149,6 +230,66 @@ Video formats support all [IAB VAST 4.x macros](http://interactiveadvertisingbur
 }
 ```
 
+## Macro Availability by Inventory Type
+
+Not all macros are available in all inventory types. Check format specifications to see which macros are supported.
+
+| Macro Category | Display | Video | Audio | Native | CTV/OTT | DOOH | Mobile App | Mobile Web | Desktop Web |
+|----------------|---------|-------|-------|--------|---------|------|------------|------------|-------------|
+| **Common** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{MEDIA_BUY_ID}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{PACKAGE_ID}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{CREATIVE_ID}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{CACHEBUSTER}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Privacy** | | | | | | | | | |
+| `{GDPR}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{GDPR_CONSENT}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{US_PRIVACY}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{DEVICE_LAT}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| **Identity** | | | | | | | | | |
+| `{DEVICE_ID}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `{DEVICE_ID_TYPE}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| **Geographic** | | | | | | | | | |
+| `{COUNTRY}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{REGION}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{CITY}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{ZIP}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{DMA}` | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `{LAT}/{LONG}` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅† | ✅† | ❌ |
+| **Device** | | | | | | | | | |
+| `{DEVICE_TYPE}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{OS}` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| `{OS_VERSION}` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| `{APP_BUNDLE}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `{USER_AGENT}` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| **Web Context** | | | | | | | | | |
+| `{DOMAIN}` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `{PAGE_URL}` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `{REFERRER}` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `{KEYWORDS}` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| **Placement** | | | | | | | | | |
+| `{PLACEMENT_ID}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{FOLD_POSITION}` | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| **Video Content** | | | | | | | | | |
+| `{VIDEO_ID}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `{VIDEO_CATEGORY}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `{CONTENT_GENRE}` | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Video Ad Pods** | | | | | | | | | |
+| `{POD_POSITION}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `{POD_SIZE}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `{AD_BREAK_ID}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+**Legend**:
+- ✅ = Available
+- ❌ = Not available
+- ✅* = In-app only (not mobile web)
+- ✅† = When location permission granted
+
+**Important Notes**:
+- Privacy macros (`{DEVICE_LAT}`, `{DEVICE_ID}`) may return empty values based on user privacy settings
+- Geographic macros accuracy varies by publisher's data capabilities
+- `{PLACEMENT_ID}` refers to the IAB Global Placement ID standard
+
 ## How Macros Work
 
 ### 1. Discovery
@@ -162,18 +303,27 @@ Query `list_creative_formats` to see which macros each format supports:
   "supported_macros": [
     {
       "macro": "{MEDIA_BUY_ID}",
+      "category": "identity",
       "description": "AdCP media buy identifier",
-      "required": false
+      "required": false,
+      "privacy_sensitive": false,
+      "example_value": "mb_spring_2025"
     },
     {
       "macro": "{DEVICE_ID}",
+      "category": "identity",
       "description": "Mobile advertising ID (IDFA/AAID)",
-      "required": false
+      "required": false,
+      "privacy_sensitive": true,
+      "example_value": "ABC-123-DEF-456"
     },
     {
-      "macro": "{CACHEBUSTER}",
-      "description": "Random cache busting number",
-      "required": true
+      "macro": "{GDPR}",
+      "category": "privacy",
+      "description": "GDPR applicability flag",
+      "required": true,
+      "privacy_sensitive": false,
+      "example_value": "1"
     }
   ],
   "vast_macros_supported": true
@@ -217,48 +367,6 @@ https://track.brand.com/imp?
   cb=87654321
 ```
 
-## Reconciliation
-
-### Mapping Between Systems
-
-Sales agents provide mapping between AdCP IDs and ad server IDs in the `create_media_buy` response:
-
-```json
-{
-  "media_buy_id": "mb_spring_2025",
-  "status": "active",
-  "ad_server_mapping": {
-    "order_id": "1234567",
-    "packages": [
-      {
-        "package_id": "pkg_ctv_prime",
-        "line_item_id": "8901234",
-        "creatives": [
-          {
-            "creative_id": "cr_video_30s",
-            "ad_server_creative_id": "5678901"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### Using IDs for Reconciliation
-
-Your tracking URLs automatically contain both your AdCP IDs and the publisher's ad server IDs, enabling automatic reconciliation:
-
-**Your tracking system** sees:
-- `campaign=mb_spring_2025` (your ID)
-- 100,000 impressions
-
-**Publisher's reporting** shows:
-- Order 1234567
-- 98,500 impressions
-
-**Match them**: Use the mapping to correlate `mb_spring_2025` ↔ `1234567`
-
 ## Best Practices
 
 ### Use Macros Consistently
@@ -282,14 +390,78 @@ For video, use both systems together:
 
 ### Privacy Compliance
 
-Device ID macros (`{DEVICE_ID}`) respect user privacy settings:
-- Only populated when user has consented
-- May be empty or masked based on privacy laws (GDPR, CCPA)
-- Use `{DEVICE_LAT}` to check if user has limited ad tracking
+**Critical**: Always respect user privacy choices in your creative logic.
+
+#### GDPR Compliance (EU Traffic)
+
+For campaigns serving in the EU:
+
+```javascript
+// Check consent before loading tracking
+if ({GDPR} == 1) {
+  if ({GDPR_CONSENT} && {GDPR_CONSENT} != '') {
+    // User has consented - load tracking pixels
+    loadTracking();
+  } else {
+    // No consent - skip tracking
+    console.log('Tracking skipped - no GDPR consent');
+  }
+} else {
+  // GDPR doesn't apply - load tracking
+  loadTracking();
+}
+```
+
+#### US Privacy / CCPA Compliance
+
+For US traffic:
+
+```javascript
+// Check US Privacy string
+if ({US_PRIVACY} == '1YYN') {
+  // User has opted out - don't sell personal info
+  skipPersonalizedTracking();
+} else {
+  // Load normal tracking
+  loadTracking();
+}
+```
+
+#### Device-Level Privacy
+
+Respect Limit Ad Tracking settings:
+
+```javascript
+// Check if device ID is available
+if ({DEVICE_LAT} == 1 || {DEVICE_ID} == '' || {DEVICE_ID} == '00000000-0000-0000-0000-000000000000') {
+  // User has limited tracking - use contextual attribution
+  useContextualTracking();
+} else {
+  // Device ID available
+  useDeviceTracking({DEVICE_ID});
+}
+```
+
+#### Privacy Macro Behavior
+
+**Empty Values**: Privacy-restricted macros return empty strings or zeros:
+- `{DEVICE_ID}` → `""` or `00000000-0000-0000-0000-000000000000` when LAT enabled
+- `{GDPR_CONSENT}` → `""` when no consent provided
+- `{IP_ADDRESS}` → `""` or masked IP when privacy restricted
+
+**Always test for empty values** before using privacy-sensitive macros.
 
 ### URL Encoding
 
 No need to URL-encode macro placeholders. The ad server handles encoding of actual values automatically.
+
+**Example**:
+```
+❌ WRONG: https://track.com/imp?device=%7BDEVICE_ID%7D
+✅ CORRECT: https://track.com/imp?device={DEVICE_ID}
+```
+
+The ad server will URL-encode the actual value when replacing the macro.
 
 ## Implementation Notes for Sales Agents
 
