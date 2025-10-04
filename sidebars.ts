@@ -112,6 +112,7 @@ const sidebars: SidebarsConfig = {
             'media-buy/creatives/creative-library',
             'media-buy/creatives/standard-formats-guide',
             'media-buy/creatives/asset-types',
+            'media-buy/creatives/universal-macros',
           ],
         },
         {
