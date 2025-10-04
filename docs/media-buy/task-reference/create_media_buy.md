@@ -38,6 +38,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `format_ids` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by the product |
 | `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
+| `creative_ids` | string[] | No | Creative IDs to assign to this package at creation time |
 
 \* Either `product_id` or `products` is required. Use `product_id` for new implementations.
 
@@ -149,7 +150,8 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
           "geo_country_any_of": ["US"],
           "geo_region_any_of": ["CA", "NY"],
           "axe_include_segment": "x8dj3k"
-        }
+        },
+        "creative_ids": ["creative_abc123", "creative_def456"]
       },
       {
         "buyer_ref": "nike_audio_drive_package",
@@ -291,7 +293,8 @@ await a2a.send({
                   "geo_country_any_of": ["US"],
                   "geo_region_any_of": ["CA", "NY"],
                   "axe_include_segment": "x8dj3k"
-                }
+                },
+                "creative_ids": ["creative_abc123", "creative_def456"]
               },
               {
                 "buyer_ref": "nike_audio_drive_package",

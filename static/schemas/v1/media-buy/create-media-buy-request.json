@@ -19,46 +19,7 @@
       "type": "array",
       "description": "Array of package configurations",
       "items": {
-        "type": "object",
-        "properties": {
-          "buyer_ref": {
-            "type": "string",
-            "description": "Buyer's reference identifier for this package"
-          },
-          "product_id": {
-            "type": "string",
-            "description": "Product ID for this package (recommended - replaces deprecated products array)"
-          },
-          "products": {
-            "type": "array",
-            "description": "DEPRECATED: Use product_id instead. Array of product IDs - only first product will be used",
-            "deprecated": true,
-            "items": {
-              "type": "string"
-            }
-          },
-          "format_ids": {
-            "type": "array",
-            "description": "Array of format IDs that will be used for this package - must be supported by the product",
-            "items": {
-              "type": "string",
-              "description": "Format ID referencing a format from list_creative_formats"
-            }
-          },
-          "budget": {
-            "$ref": "/schemas/v1/core/budget.json"
-          },
-          "targeting_overlay": {
-            "$ref": "/schemas/v1/core/targeting.json"
-          }
-        },
-        "anyOf": [
-          {"required": ["buyer_ref", "product_id", "format_ids"]},
-          {"required": ["buyer_ref", "products", "format_ids"]},
-          {"required": ["buyer_ref", "product_id", "format_selection"]},
-          {"required": ["buyer_ref", "products", "format_selection"]}
-        ],
-        "additionalProperties": false
+        "$ref": "/schemas/v1/media-buy/package-request.json"
       }
     },
     "promoted_offering": {
