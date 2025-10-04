@@ -55,9 +55,48 @@ Stay informed of important campaign events:
 
 ## Webhook-Based Reporting
 
-Publishers can proactively push reporting data to buyers on a scheduled basis through webhook notifications. This eliminates the need for continuous polling and provides timely campaign insights.
+Publishers can proactively push reporting data to buyers through webhook notifications or offline file delivery. This eliminates continuous polling and provides timely campaign insights.
 
-### Configuration
+### Delivery Methods
+
+**1. Webhook Push (Real-time)** - HTTP POST to buyer endpoint
+- Best for: Most buyer-seller relationships
+- Latency: Near real-time (seconds to minutes)
+- Cost: Standard webhook infrastructure
+
+**2. Offline File Delivery (Batch)** - Cloud storage bucket push
+- Best for: Large buyer-seller pairs (high volume)
+- Latency: Scheduled batch delivery (hourly/daily)
+- Cost: Significantly lower ($0.01-0.10 per GB vs. $0.50-2.00 per 1M webhooks)
+- Format: JSON Lines, CSV, or Parquet files
+- Storage: S3, GCS, Azure Blob Storage
+
+**Example: Offline Delivery**
+Publisher pushes daily report files to buyer's cloud storage:
+```
+s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.json.gz
+```
+
+File contains same structure as webhook payload but aggregated across all campaigns. Buyer processes files on their schedule.
+
+**When to Use Offline Delivery:**
+- \>100 active campaigns with same buyer
+- Hourly reporting requirements (24x cost reduction)
+- High data volume (detailed breakdowns, dimensional data)
+- Buyer has batch processing infrastructure
+
+Publishers declare support for offline delivery in product capabilities:
+```json
+{
+  "reporting_capabilities": {
+    "supports_webhooks": true,
+    "supports_offline_delivery": true,
+    "offline_delivery_protocols": ["s3", "gcs"]
+  }
+}
+```
+
+### Webhook Configuration
 
 Configure reporting webhooks when creating a media buy using the `reporting_webhook` parameter:
 
@@ -76,11 +115,13 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 
 ### Supported Frequencies
 
-Publishers declare supported reporting frequencies in the product's `reporting_capabilities`:
+Publishers declare supported reporting frequencies in the product's `reporting_capabilities`. Publishers are **not required** to support all frequencies - choose what makes operational sense for your platform.
 
-- **`hourly`**: Receive notifications every hour during campaign flight
-- **`daily`**: Receive notifications once per day (timezone specified by publisher)
+- **`hourly`**: Receive notifications every hour during campaign flight (optional, consider cost/complexity)
+- **`daily`**: Receive notifications once per day (most common, recommended for Phase 1)
 - **`monthly`**: Receive notifications once per month (timezone specified by publisher)
+
+**Cost Consideration:** Hourly webhooks generate 24x more traffic than daily. Large buyer-seller pairs may prefer offline reporting mechanisms (see below) for cost efficiency.
 
 ### Available Metrics
 
@@ -145,109 +186,50 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
 - **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
 - **`media_buy_deliveries`**: Array of media buy delivery data (may contain multiple media buys aggregated by publisher)
 
-### Timezone and DST Handling
+### Timezone Handling
 
-For daily and monthly frequencies, the publisher's reporting timezone (from `reporting_capabilities.timezone`) determines period boundaries. Publishers MUST handle Daylight Saving Time (DST) transitions correctly to prevent billing disputes.
+**Recommendation: Use UTC for all reporting periods.** This eliminates DST complexity, simplifies reconciliation, and reduces implementation burden for both publishers and buyers.
 
-#### Timezone Rules
+#### UTC Reporting (Recommended)
+
+```json
+{
+  "reporting_capabilities": {
+    "timezone": "UTC",
+    "available_reporting_frequencies": ["daily"]
+  }
+}
+```
+
+**Benefits:**
+- No DST transitions (every day is 24 hours)
+- Simpler period calculations
+- Easier reconciliation across systems
+- Industry standard for programmatic advertising
+
+#### Local Timezone Reporting (If Required)
+
+If business requirements demand local timezone reporting (e.g., for broadcast media aligned to market schedules):
 
 - **Daily**: Reporting day starts/ends at midnight in publisher's timezone
 - **Monthly**: Reporting month starts on 1st and ends on last day of month in publisher's timezone
-- **Hourly**: Uses UTC unless otherwise specified in product capabilities
+- Use IANA timezone identifiers (e.g., `"America/New_York"`)
+- Include timezone offset in all ISO 8601 timestamps
 
 **Example**: Publisher with `"timezone": "America/New_York"` and daily frequency sends notifications at ~8:00 UTC (midnight ET + expected delay).
 
-#### DST Transition Handling
+#### DST Transition Handling (Local Timezone Only)
 
-**Critical Rule**: DST transitions can create 23-hour or 25-hour reporting days. Publishers and buyers MUST account for this in calculations.
+**If using local timezone reporting** (not UTC), be aware that DST transitions create 23-hour or 25-hour reporting days.
 
-**Spring Forward (Clocks move ahead):**
-```
-March 10, 2024 - DST Starts in America/New_York
-- 2:00 AM becomes 3:00 AM (clocks skip forward)
-- This creates a 23-hour reporting day
-- Period: 2024-03-10T00:00:00-05:00 to 2024-03-10T23:59:59-04:00
-- Duration: 23 hours (82800 seconds)
-```
+**Key Considerations:**
+- **Spring Forward**: Creates a 23-hour day (e.g., March 10 in America/New_York)
+- **Fall Back**: Creates a 25-hour day (e.g., November 3 in America/New_York)
+- Include `duration_hours` field in reporting_period to prevent billing disputes
+- Pro-rate budgets based on actual duration, not assumed 24 hours
+- Use timezone-aware libraries (moment-timezone, date-fns-tz) for period calculations
 
-**Fall Back (Clocks move back):**
-```
-November 3, 2024 - DST Ends in America/New_York
-- 2:00 AM becomes 1:00 AM (clocks repeat an hour)
-- This creates a 25-hour reporting day
-- Period: 2024-11-03T00:00:00-04:00 to 2024-11-03T23:59:59-05:00
-- Duration: 25 hours (90000 seconds)
-```
-
-#### Implementation Requirements
-
-**Publishers MUST:**
-1. Use IANA timezone identifiers (e.g., `America/New_York`, not `EST` or `EDT`)
-2. Include timezone offset in all ISO 8601 timestamps
-3. Calculate reporting periods using wall-clock time, not duration
-4. Document DST behavior in product documentation
-5. Test webhook delivery during DST transitions
-
-**Buyers MUST:**
-1. Parse timezone offsets from ISO 8601 timestamps
-2. Expect 23/25-hour days during DST transitions
-3. Calculate durations using actual timestamps, not day counts
-4. Validate period boundaries account for DST
-
-**Correct Period Calculation (Publisher):**
-```javascript
-const moment = require('moment-timezone');
-
-function getReportingPeriod(date, timezone) {
-  // Use wall-clock midnight, not duration
-  const start = moment.tz(date, timezone).startOf('day');
-  const end = moment.tz(date, timezone).endOf('day');
-
-  return {
-    start: start.toISOString(),  // Includes timezone offset
-    end: end.toISOString(),
-    duration_hours: end.diff(start, 'hours', true)  // Will be 23, 24, or 25
-  };
-}
-
-// Example: DST transition day
-const period = getReportingPeriod('2024-03-10', 'America/New_York');
-// Returns:
-// {
-//   start: "2024-03-10T00:00:00-05:00",
-//   end: "2024-03-10T23:59:59-04:00",
-//   duration_hours: 23
-// }
-```
-
-**Correct Billing Calculation (Buyer):**
-```javascript
-function calculateExpectedSpend(period, dailyBudget) {
-  const start = new Date(period.start);
-  const end = new Date(period.end);
-
-  // Calculate actual duration in hours
-  const durationHours = (end - start) / (1000 * 60 * 60);
-
-  // Pro-rate budget based on actual duration
-  const expectedSpend = (dailyBudget / 24) * durationHours;
-
-  return {
-    expected_spend: expectedSpend,
-    duration_hours: durationHours,
-    is_dst_transition: durationHours !== 24
-  };
-}
-
-// Example: $1000 daily budget on 23-hour DST day
-const spend = calculateExpectedSpend(
-  { start: "2024-03-10T00:00:00-05:00", end: "2024-03-10T23:59:59-04:00" },
-  1000
-);
-// Returns: { expected_spend: 958.33, duration_hours: 23, is_dst_transition: true }
-```
-
-**Webhook Payload Format:**
+**Optional DST Fields in Webhook Payload:**
 ```json
 {
   "reporting_period": {
@@ -256,58 +238,11 @@ const spend = calculateExpectedSpend(
     "duration_hours": 23,
     "is_dst_transition": true,
     "dst_transition_type": "spring_forward"
-  },
-  "totals": {
-    "impressions": 95833,
-    "spend": 958.33
   }
 }
 ```
 
-#### Common Pitfalls
-
-**❌ WRONG - Assuming 24-hour days:**
-```javascript
-// This will over-bill on spring forward days
-const dailySpend = impressions * cpm / 1000;
-```
-
-**✅ CORRECT - Pro-rating by actual duration:**
-```javascript
-const hourlyRate = dailyCPM / 24;
-const actualSpend = (impressions * hourlyRate * durationHours) / 1000;
-```
-
-**❌ WRONG - Using date arithmetic without timezone:**
-```javascript
-// This loses DST information
-const start = new Date('2024-03-10').toISOString();
-// Returns: "2024-03-10T00:00:00.000Z" (UTC, not local time)
-```
-
-**✅ CORRECT - Using timezone-aware library:**
-```javascript
-const start = moment.tz('2024-03-10', 'America/New_York').toISOString();
-// Returns: "2024-03-10T00:00:00-05:00" (preserves timezone)
-```
-
-#### Testing DST Transitions
-
-**Key Test Dates (US):**
-- **Spring Forward**: Second Sunday of March (23-hour day)
-- **Fall Back**: First Sunday of November (25-hour day)
-
-**Publishers SHOULD test:**
-1. Webhook delivery timing during DST transitions
-2. Period boundary calculations across DST changes
-3. Spend calculations for 23/25-hour days
-4. `next_expected_at` calculation across DST transitions
-
-**Buyers SHOULD test:**
-1. Period duration calculation during DST
-2. Budget pacing with non-24-hour days
-3. Timezone parsing from ISO 8601 strings
-4. Reconciliation across DST boundaries
+These fields help buyers detect and handle non-24-hour days correctly. Omit if using UTC reporting.
 
 ### Delayed Reporting
 
@@ -635,18 +570,25 @@ async function checkWebhookHealth(mediaBuyId) {
 }
 ```
 
-### Data Reconciliation and Source of Truth
+## Data Reconciliation
 
-Webhooks provide timely notifications but are not guaranteed delivery. The `get_media_buy_delivery` task is the **authoritative source of truth** for all campaign metrics.
+**The `get_media_buy_delivery` API is the authoritative source of truth for all campaign metrics**, regardless of whether you use webhooks, offline delivery, or polling.
 
-#### Reconciliation Process
+Reconciliation is important for **any reporting delivery method** because:
+- **Webhooks**: May be missed due to network failures or circuit breaker drops
+- **Offline files**: May be delayed, corrupted, or fail to process
+- **Polling**: May miss data during API outages
+- **Late-arriving data**: Impressions can arrive 24-48+ hours after initial reporting (all methods)
 
-Buyers SHOULD periodically reconcile webhook data against API polling to ensure accuracy:
+### Reconciliation Process
+
+Buyers SHOULD periodically reconcile delivered data against API to ensure accuracy:
 
 **Recommended Reconciliation Schedule:**
-- **Hourly webhooks**: Reconcile via API daily
-- **Daily webhooks**: Reconcile via API weekly
-- **Monthly webhooks**: Reconcile via API at month end + 7 days
+- **Hourly delivery**: Reconcile via API daily
+- **Daily delivery**: Reconcile via API weekly
+- **Monthly delivery**: Reconcile via API at month end + 7 days
+- **Campaign close**: Always reconcile after campaign_end + attribution_window
 
 **Reconciliation Logic:**
 ```javascript
@@ -698,17 +640,17 @@ async function reconcileWebhookData(mediaBuyId, startDate, endDate) {
 ```
 
 **Why Discrepancies Occur:**
-1. **Missed webhooks**: Network failures, circuit breaker drops
-2. **Late-arriving data**: Impressions attributed after webhook sent (see below)
+1. **Delivery failures**: Webhooks missed, offline files corrupted, API timeouts during polling
+2. **Late-arriving data**: Impressions attributed after initial reporting (all delivery methods)
 3. **Data corrections**: Publisher adjusts metrics after initial reporting
-4. **Webhook aggregation**: Rounding errors in aggregated totals
-5. **Timezone differences**: Webhook period boundaries may differ from API query
+4. **Processing errors**: Buyer-side failures to process delivered data
+5. **Timezone differences**: Period boundaries may differ between delivery and API query
 
 **Source of Truth Rules:**
 - **For billing**: Always use `get_media_buy_delivery` API at campaign end + attribution window
-- **For real-time decisions**: Use webhook data for speed, reconcile later
+- **For real-time decisions**: Use delivered data (webhook/file/poll) for speed, reconcile later
 - **For discrepancies**: API data wins, update local records accordingly
-- **For audits**: API provides complete historical data, webhooks are ephemeral
+- **For audits**: API provides complete historical data, delivered data is ephemeral
 
 **Best Practices:**
 - Store webhook `sequence_number` to detect missed notifications
@@ -719,7 +661,7 @@ async function reconcileWebhookData(mediaBuyId, startDate, endDate) {
 
 ### Late-Arriving Impressions
 
-Ad serving data often arrives with significant delays due to attribution windows, offline tracking, and data pipeline latency. Publishers must handle late-arriving impressions transparently.
+Ad serving data often arrives with significant delays due to attribution windows, offline tracking, and data pipeline latency. Publishers must handle late-arriving impressions transparently **regardless of delivery method** (webhooks, offline files, or polling).
 
 #### Expected Delay Windows
 
@@ -734,10 +676,12 @@ This represents when **most** data is available, not **all** data.
 
 **Scenario**: Campaign runs Feb 1-7. Daily webhook sent Feb 2 at 8am with Feb 1 data. On Feb 3, publisher discovers 1000 additional Feb 1 impressions due to delayed attribution.
 
+**Webhook Advantage:** Publisher can send a correction webhook with `notification_type: "correction"` to overwrite the previous period. With polling-only, buyer must detect discrepancy through reconciliation.
+
 **Publisher Options:**
 
 **Option 1: Next-Period Correction (Recommended)**
-Include correction in next scheduled webhook:
+Include correction in next scheduled delivery (webhook, file, or available via API):
 ```json
 {
   "notification_type": "scheduled",
@@ -762,8 +706,8 @@ Include correction in next scheduled webhook:
 }
 ```
 
-**Option 2: Out-of-Band Webhook**
-Send immediate corrective webhook (only for significant adjustments >5%):
+**Option 2: Out-of-Band Correction (Webhooks Only)**
+Send immediate corrective webhook with "overwrite this period" instruction (only for significant adjustments >5%):
 ```json
 {
   "notification_type": "correction",
