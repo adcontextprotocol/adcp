@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/package-request.json",
+  "title": "Package Request",
+  "description": "Package configuration for media buy creation",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Package with explicit format IDs",
+      "properties": {
+        "buyer_ref": {
+          "type": "string",
+          "description": "Buyer's reference identifier for this package"
+        },
+        "products": {
+          "type": "array",
+          "description": "Array of product IDs to include in this package",
+          "items": {
+            "type": "string"
+          }
+        },
+        "format_ids": {
+          "type": "array",
+          "description": "Array of format IDs that will be used for this package - must be supported by all products",
+          "items": {
+            "type": "string",
+            "description": "Format ID referencing a format from list_creative_formats"
+          }
+        },
+        "budget": {
+          "$ref": "/schemas/v1/core/budget.json"
+        },
+        "targeting_overlay": {
+          "$ref": "/schemas/v1/core/targeting.json"
+        },
+        "creative_ids": {
+          "type": "array",
+          "description": "Creative IDs to assign to this package at creation time",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["buyer_ref", "products", "format_ids"],
+      "not": {
+        "required": ["format_selection"]
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "Package with dynamic format selection",
+      "properties": {
+        "buyer_ref": {
+          "type": "string",
+          "description": "Buyer's reference identifier for this package"
+        },
+        "products": {
+          "type": "array",
+          "description": "Array of product IDs to include in this package",
+          "items": {
+            "type": "string"
+          }
+        },
+        "format_selection": {
+          "type": "object",
+          "description": "Dynamic format selection criteria"
+        },
+        "budget": {
+          "$ref": "/schemas/v1/core/budget.json"
+        },
+        "targeting_overlay": {
+          "$ref": "/schemas/v1/core/targeting.json"
+        },
+        "creative_ids": {
+          "type": "array",
+          "description": "Creative IDs to assign to this package at creation time",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["buyer_ref", "products", "format_selection"],
+      "not": {
+        "required": ["format_ids"]
+      },
+      "additionalProperties": false
+    }
+  ]
+}
