@@ -11,7 +11,7 @@ Discover all supported creative formats in the system.
 
 **Response Time**: ~1 second (simple database lookup)
 
-**Request Schema**: [`/schemas/v1/media-buy/list-creative-formats-request.json`](/schemas/v1/media-buy/list-creative-formats-request.json)  
+**Request Schema**: [`/schemas/v1/media-buy/list-creative-formats-request.json`](/schemas/v1/media-buy/list-creative-formats-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/list-creative-formats-response.json`](/schemas/v1/media-buy/list-creative-formats-response.json)
 
 ## Request Parameters

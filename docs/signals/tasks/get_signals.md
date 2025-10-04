@@ -9,7 +9,7 @@ title: get_signals
 
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
 
-**Request Schema**: [`/schemas/v1/signals/get-signals-request.json`](/schemas/v1/signals/get-signals-request.json)  
+**Request Schema**: [`/schemas/v1/signals/get-signals-request.json`](/schemas/v1/signals/get-signals-request.json)
 **Response Schema**: [`/schemas/v1/signals/get-signals-response.json`](/schemas/v1/signals/get-signals-response.json)
 
 The `get_signals` task returns both signal metadata and real-time deployment status across platforms, allowing agents to understand availability and guide the activation process.
