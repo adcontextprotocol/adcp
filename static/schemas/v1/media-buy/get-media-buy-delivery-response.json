@@ -12,8 +12,8 @@
     },
     "notification_type": {
       "type": "string",
-      "enum": ["scheduled", "final", "delayed", "correction"],
-      "description": "Type of webhook notification (only present in webhook deliveries): scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, correction = out-of-band correction for late-arriving data"
+      "enum": ["scheduled", "final", "delayed", "adjusted"],
+      "description": "Type of webhook notification (only present in webhook deliveries): scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = resending period with updated data"
     },
     "partial_data": {
       "type": "boolean",
@@ -36,31 +36,17 @@
     },
     "reporting_period": {
       "type": "object",
-      "description": "Date range for the report",
+      "description": "Date range for the report. All periods use UTC timezone.",
       "properties": {
         "start": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 start timestamp with timezone offset"
+          "description": "ISO 8601 start timestamp in UTC (e.g., 2024-02-05T00:00:00Z)"
         },
         "end": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 end timestamp with timezone offset"
-        },
-        "duration_hours": {
-          "type": "number",
-          "description": "Actual duration in hours (may be 23, 24, or 25 due to DST transitions)",
-          "minimum": 0
-        },
-        "is_dst_transition": {
-          "type": "boolean",
-          "description": "Indicates if this period includes a DST transition"
-        },
-        "dst_transition_type": {
-          "type": "string",
-          "enum": ["spring_forward", "fall_back"],
-          "description": "Type of DST transition (only present when is_dst_transition is true)"
+          "description": "ISO 8601 end timestamp in UTC (e.g., 2024-02-05T23:59:59Z)"
         }
       },
       "required": ["start", "end"],
@@ -132,45 +118,9 @@
             "format": "date-time",
             "description": "When delayed data is expected to be available (only present when status is reporting_delayed)"
           },
-          "is_correction": {
+          "is_adjusted": {
             "type": "boolean",
-            "description": "Indicates this delivery replaces a previously reported period (for late-arriving data)"
-          },
-          "correction_reason": {
-            "type": "string",
-            "description": "Explanation of why correction was needed (only present when is_correction is true)"
-          },
-          "adjustments": {
-            "type": "array",
-            "description": "Incremental adjustments to previously reported periods (for late-arriving data)",
-            "items": {
-              "type": "object",
-              "properties": {
-                "period": {
-                  "type": "string",
-                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-                  "description": "Date being adjusted (YYYY-MM-DD)"
-                },
-                "impressions": {
-                  "type": "number",
-                  "description": "Additional impressions to add"
-                },
-                "spend": {
-                  "type": "number",
-                  "description": "Additional spend to add"
-                },
-                "clicks": {
-                  "type": "number",
-                  "description": "Additional clicks to add"
-                },
-                "reason": {
-                  "type": "string",
-                  "description": "Explanation of adjustment"
-                }
-              },
-              "required": ["period", "reason"],
-              "additionalProperties": false
-            }
+            "description": "Indicates this delivery contains updated data for a previously reported period. Buyer should replace previous period data with these totals."
           },
           "totals": {
             "type": "object",
@@ -281,63 +231,6 @@
               "required": ["date", "impressions", "spend"],
               "additionalProperties": false
             }
-          },
-          "webhook_health": {
-            "type": "object",
-            "description": "Webhook delivery health metrics (only present in get_media_buy_delivery API responses when webhook is configured, not in webhook notifications themselves)",
-            "properties": {
-              "webhook_url": {
-                "type": "string",
-                "format": "uri",
-                "description": "Configured webhook endpoint URL"
-              },
-              "last_delivery_attempt": {
-                "type": "string",
-                "format": "date-time",
-                "description": "When publisher last attempted delivery (success or failure)"
-              },
-              "last_successful_delivery": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Most recent successful delivery"
-              },
-              "last_failure": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Most recent failed delivery attempt"
-              },
-              "last_failure_reason": {
-                "type": "string",
-                "description": "Human-readable error from last failure"
-              },
-              "total_attempts": {
-                "type": "integer",
-                "minimum": 0,
-                "description": "Lifetime webhook delivery attempts"
-              },
-              "total_successes": {
-                "type": "integer",
-                "minimum": 0,
-                "description": "Lifetime successful deliveries"
-              },
-              "total_failures": {
-                "type": "integer",
-                "minimum": 0,
-                "description": "Lifetime failed deliveries"
-              },
-              "circuit_breaker_status": {
-                "type": "string",
-                "enum": ["CLOSED", "OPEN", "HALF_OPEN"],
-                "description": "Current circuit breaker state: CLOSED = normal operation, OPEN = endpoint down, HALF_OPEN = testing recovery"
-              },
-              "next_scheduled_delivery": {
-                "type": "string",
-                "format": "date-time",
-                "description": "When next webhook is scheduled"
-              }
-            },
-            "required": ["webhook_url", "total_attempts", "total_successes", "total_failures", "circuit_breaker_status"],
-            "additionalProperties": false
           }
         },
         "required": ["media_buy_id", "status", "totals", "by_package"],

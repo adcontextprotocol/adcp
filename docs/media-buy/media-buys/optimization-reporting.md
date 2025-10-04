@@ -188,9 +188,7 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
 
 ### Timezone Handling
 
-**Recommendation: Use UTC for all reporting periods.** This eliminates DST complexity, simplifies reconciliation, and reduces implementation burden for both publishers and buyers.
-
-#### UTC Reporting (Recommended)
+**All reporting MUST use UTC.** This eliminates DST complexity, simplifies reconciliation, and ensures consistent 24-hour reporting periods.
 
 ```json
 {
@@ -201,48 +199,20 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
 }
 ```
 
-**Benefits:**
-- No DST transitions (every day is 24 hours)
-- Simpler period calculations
-- Easier reconciliation across systems
-- Industry standard for programmatic advertising
+**Reporting periods:**
+- Daily: 00:00:00Z to 23:59:59Z (always 24 hours)
+- Hourly: Top of hour to 59:59 seconds (always 1 hour)
+- Monthly: First to last day of month
 
-#### Local Timezone Reporting (If Required)
-
-If business requirements demand local timezone reporting (e.g., for broadcast media aligned to market schedules):
-
-- **Daily**: Reporting day starts/ends at midnight in publisher's timezone
-- **Monthly**: Reporting month starts on 1st and ends on last day of month in publisher's timezone
-- Use IANA timezone identifiers (e.g., `"America/New_York"`)
-- Include timezone offset in all ISO 8601 timestamps
-
-**Example**: Publisher with `"timezone": "America/New_York"` and daily frequency sends notifications at ~8:00 UTC (midnight ET + expected delay).
-
-#### DST Transition Handling (Local Timezone Only)
-
-**If using local timezone reporting** (not UTC), be aware that DST transitions create 23-hour or 25-hour reporting days.
-
-**Key Considerations:**
-- **Spring Forward**: Creates a 23-hour day (e.g., March 10 in America/New_York)
-- **Fall Back**: Creates a 25-hour day (e.g., November 3 in America/New_York)
-- Include `duration_hours` field in reporting_period to prevent billing disputes
-- Pro-rate budgets based on actual duration, not assumed 24 hours
-- Use timezone-aware libraries (moment-timezone, date-fns-tz) for period calculations
-
-**Optional DST Fields in Webhook Payload:**
+**Example webhook payload:**
 ```json
 {
   "reporting_period": {
-    "start": "2024-03-10T00:00:00-05:00",
-    "end": "2024-03-10T23:59:59-04:00",
-    "duration_hours": 23,
-    "is_dst_transition": true,
-    "dst_transition_type": "spring_forward"
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
   }
 }
 ```
-
-These fields help buyers detect and handle non-24-hour days correctly. Omit if using UTC reporting.
 
 ### Delayed Reporting
 
@@ -466,109 +436,17 @@ Publishers MUST scrub personally identifiable information (PII) from all webhook
 
 ### Webhook Health Monitoring
 
-Publishers SHOULD provide operational visibility into webhook delivery health to help buyers diagnose issues and monitor reliability.
+Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Management](../../protocols/task-management.md)).
 
-#### Health Check via get_media_buy_delivery
+When a media buy is created with `reporting_webhook` configured, the publisher creates an ongoing task for webhook delivery. Buyers can monitor webhook health using standard task queries.
 
-The existing `get_media_buy_delivery` task returns webhook health metadata when a webhook is configured:
+**Benefits of using task management:**
+- Consistent status tracking across all AdCP operations
+- Standard polling/webhook notification patterns
+- Existing infrastructure for task status, history, and errors
+- No need for media-buy-specific webhook health endpoints
 
-```json
-{
-  "status": "completed",
-  "message": "Delivery report for campaign campaign_2024",
-  "data": {
-    "media_buy_id": "mb_001",
-    "totals": { ... },
-    "webhook_health": {
-      "webhook_url": "https://buyer.example.com/webhooks/reporting",
-      "last_delivery_attempt": "2024-02-05T08:00:15Z",
-      "last_successful_delivery": "2024-02-05T08:00:15Z",
-      "last_failure": "2024-02-04T08:00:10Z",
-      "last_failure_reason": "Connection timeout after 10 seconds",
-      "total_attempts": 42,
-      "total_successes": 40,
-      "total_failures": 2,
-      "circuit_breaker_status": "CLOSED",
-      "next_scheduled_delivery": "2024-02-06T08:00:00Z"
-    }
-  }
-}
-```
-
-**Key Health Fields:**
-- `last_delivery_attempt`: When publisher last attempted delivery (any result)
-- `last_successful_delivery`: Most recent successful delivery
-- `last_failure`: Most recent failed delivery attempt
-- `last_failure_reason`: Human-readable error from last failure
-- `total_attempts`: Lifetime webhook delivery attempts
-- `total_successes`: Lifetime successful deliveries
-- `total_failures`: Lifetime failed deliveries
-- `circuit_breaker_status`: Current circuit breaker state (`CLOSED`, `OPEN`, `HALF_OPEN`)
-- `next_scheduled_delivery`: When next webhook is scheduled
-
-**Buyer Use Cases:**
-1. **Debugging**: "Why am I not receiving webhooks?" → Check `circuit_breaker_status` and `last_failure_reason`
-2. **Reliability**: Calculate success rate from `total_successes / total_attempts`
-3. **Alerting**: Monitor `last_successful_delivery` to detect prolonged failures
-4. **Validation**: Compare `next_scheduled_delivery` to expected frequency
-
-#### Monitoring Best Practices
-
-**For Publishers:**
-- Include webhook health in every `get_media_buy_delivery` response when webhook configured
-- Persist delivery attempt history (last 30 days minimum)
-- Emit metrics on webhook delivery rates, latencies, and circuit breaker events
-- Alert internal teams when circuit breakers open for high-value buyers
-- Provide webhook delivery logs to buyers upon request (via support channels)
-
-**For Buyers:**
-- Poll `get_media_buy_delivery` occasionally to check webhook health
-- Alert when `circuit_breaker_status` is `OPEN` (indicates endpoint issues)
-- Track `last_successful_delivery` timestamp to detect missed webhooks
-- Calculate rolling success rates to monitor publisher reliability
-- Implement fallback to polling when webhook health degrades
-
-**Example Monitoring Query:**
-```javascript
-async function checkWebhookHealth(mediaBuyId) {
-  const delivery = await adcp.getMediaBuyDelivery({ media_buy_id: mediaBuyId });
-  const health = delivery.data.webhook_health;
-
-  if (!health) {
-    return { status: 'no_webhook_configured' };
-  }
-
-  if (health.circuit_breaker_status === 'OPEN') {
-    return {
-      status: 'webhook_failing',
-      message: `Circuit breaker OPEN. Last failure: ${health.last_failure_reason}`,
-      action: 'Check buyer endpoint availability and logs'
-    };
-  }
-
-  const timeSinceSuccess = Date.now() - new Date(health.last_successful_delivery).getTime();
-  const hoursSinceSuccess = timeSinceSuccess / (1000 * 60 * 60);
-
-  if (hoursSinceSuccess > 48) {
-    return {
-      status: 'webhook_stale',
-      message: `No successful delivery in ${hoursSinceSuccess.toFixed(1)} hours`,
-      action: 'Verify webhook endpoint is reachable'
-    };
-  }
-
-  const successRate = health.total_successes / health.total_attempts;
-  if (successRate < 0.95) {
-    return {
-      status: 'webhook_degraded',
-      message: `Success rate: ${(successRate * 100).toFixed(1)}%`,
-      action: 'Investigate intermittent failures'
-    };
-  }
-
-  return { status: 'healthy', success_rate: successRate };
-}
-```
+If webhook delivery fails persistently (circuit breaker opens), publishers update the task status to indicate the issue. Buyers detect this through normal task monitoring.
 
 ## Data Reconciliation
 
@@ -661,69 +539,31 @@ async function reconcileWebhookData(mediaBuyId, startDate, endDate) {
 
 ### Late-Arriving Impressions
 
-Ad serving data often arrives with significant delays due to attribution windows, offline tracking, and data pipeline latency. Publishers must handle late-arriving impressions transparently **regardless of delivery method** (webhooks, offline files, or polling).
-
-#### Expected Delay Windows
-
-Publishers declare `expected_delay_minutes` in product's `reporting_capabilities`:
-- **Display/Video**: Typically 240-360 minutes (4-6 hours)
-- **Audio**: Typically 480-720 minutes (8-12 hours)
-- **CTV**: May be 1440+ minutes (24+ hours)
+Ad serving data often arrives with delays due to attribution windows, offline tracking, and pipeline latency. Publishers declare `expected_delay_minutes` in `reporting_capabilities`:
+- **Display/Video**: Typically 4-6 hours
+- **Audio**: Typically 8-12 hours
+- **CTV**: May be 24+ hours
 
 This represents when **most** data is available, not **all** data.
 
-#### Late Arrival Handling
+#### Handling Late Arrivals
 
-**Scenario**: Campaign runs Feb 1-7. Daily webhook sent Feb 2 at 8am with Feb 1 data. On Feb 3, publisher discovers 1000 additional Feb 1 impressions due to delayed attribution.
+When late data arrives for a previously reported period, **resend that period** with `is_adjusted: true`:
 
-**Webhook Advantage:** Publisher can send a correction webhook with `notification_type: "correction"` to overwrite the previous period. With polling-only, buyer must detect discrepancy through reconciliation.
-
-**Publisher Options:**
-
-**Option 1: Next-Period Correction (Recommended)**
-Include correction in next scheduled delivery (webhook, file, or available via API):
 ```json
 {
-  "notification_type": "scheduled",
-  "sequence_number": 3,
-  "reporting_period": {
-    "start": "2024-02-02T00:00:00Z",
-    "end": "2024-02-02T23:59:59Z"
-  },
-  "media_buy_deliveries": [{
-    "media_buy_id": "mb_001",
-    "totals": {
-      "impressions": 52000,  // Feb 2 delivery
-      "spend": 1820
-    },
-    "adjustments": [{
-      "period": "2024-02-01",
-      "impressions": 1000,
-      "spend": 35,
-      "reason": "Late-arriving impressions from attribution window"
-    }]
-  }]
-}
-```
-
-**Option 2: Out-of-Band Correction (Webhooks Only)**
-Send immediate corrective webhook with "overwrite this period" instruction (only for significant adjustments >5%):
-```json
-{
-  "notification_type": "correction",
-  "sequence_number": null,  // Not part of regular sequence
+  "notification_type": "adjusted",
   "reporting_period": {
     "start": "2024-02-01T00:00:00Z",
     "end": "2024-02-01T23:59:59Z"
   },
   "media_buy_deliveries": [{
     "media_buy_id": "mb_001",
+    "is_adjusted": true,
     "totals": {
-      "impressions": 51000,  // UPDATED total for Feb 1
-      "spend": 1785
-    },
-    "is_correction": true,
-    "correction_reason": "Late-arriving impressions from attribution window"
+      "impressions": 51000,  // Updated total (was 50000)
+      "spend": 1785          // Updated spend (was 1750)
+    }
   }]
 }
 ```
@@ -731,45 +571,28 @@ Send immediate corrective webhook with "overwrite this period" instruction (only
 **Buyer Processing:**
 ```javascript
 function processWebhook(webhook) {
-  if (webhook.notification_type === 'correction') {
-    // Replace previous period data entirely
-    db.replaceCampaignPeriod(
-      webhook.media_buy_deliveries[0].media_buy_id,
-      webhook.reporting_period.start,
-      webhook.media_buy_deliveries[0].totals
-    );
-    console.log('Applied correction webhook');
-  } else if (webhook.media_buy_deliveries[0].adjustments) {
-    // Apply incremental adjustments
-    for (const adjustment of webhook.media_buy_deliveries[0].adjustments) {
-      db.incrementCampaignPeriod(
-        webhook.media_buy_deliveries[0].media_buy_id,
-        adjustment.period,
-        adjustment
+  for (const delivery of webhook.media_buy_deliveries) {
+    if (delivery.is_adjusted) {
+      // Replace entire period with updated totals
+      db.replaceCampaignPeriod(
+        delivery.media_buy_id,
+        webhook.reporting_period,
+        delivery.totals
       );
+    } else {
+      // Normal new period data
+      db.insertCampaignPeriod(delivery.media_buy_id, webhook.reporting_period, delivery.totals);
     }
-    console.log('Applied period adjustments');
   }
-
-  // Process current period data normally
-  processCampaignMetrics(webhook.media_buy_deliveries[0]);
 }
 ```
 
-**Attribution Window Guidance:**
-- **Post-click attribution**: 7-30 days typical
-- **Post-view attribution**: 1-7 days typical
-- **Offline conversions**: Can be 30-90 days
-- **CTV attribution**: Can be 48+ hours for set-top box data
+**When to send adjusted periods:**
+- Significant data changes (>2% impression variance or >1% spend variance)
+- Final reconciliation at campaign_end + attribution_window
+- Data quality corrections
 
-**Best Practices:**
-- Document attribution windows in product descriptions
-- Set `expected_delay_minutes` to cover 95th percentile, not median
-- Send correction webhooks only for significant adjustments (>5% change)
-- Use `adjustments` array for minor late-arriving data
-- Include `is_correction` flag when replacing entire period data
-- Run final reconciliation at campaign_end + max_attribution_window
-- Clearly communicate attribution windows in publisher-buyer agreements
+With polling-only, buyers detect adjustments through reconciliation by comparing API results over time.
 
 ### Webhook Reliability
 
