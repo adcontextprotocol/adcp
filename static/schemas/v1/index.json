@@ -132,6 +132,12 @@
     },
     "media-buy": {
       "description": "Media buy task request/response schemas",
+      "supporting-schemas": {
+        "package-request": {
+          "$ref": "/schemas/v1/media-buy/package-request.json",
+          "description": "Package configuration for media buy creation - used within create_media_buy request"
+        }
+      },
       "tasks": {
         "get-products": {
           "request": {
