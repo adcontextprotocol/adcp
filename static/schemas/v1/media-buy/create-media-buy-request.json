@@ -45,6 +45,13 @@
           },
           "targeting_overlay": {
             "$ref": "/schemas/v1/core/targeting.json"
+          },
+          "creative_ids": {
+            "type": "array",
+            "description": "Creative IDs to assign to this package at creation time",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "anyOf": [
