@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/budget.json",
   "title": "Budget",
-  "description": "Budget configuration for a media buy or package",
+  "description": "Budget configuration for a media buy or package. Budget is always expressed as a monetary amount - the pricing model determines what is being purchased.",
   "type": "object",
   "properties": {
     "total": {
       "type": "number",
-      "description": "Total budget amount",
+      "description": "Total budget amount in the specified currency",
       "minimum": 0
     },
     "currency": {

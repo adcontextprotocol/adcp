@@ -46,24 +46,32 @@
     "delivery_type": {
       "$ref": "/schemas/v1/enums/delivery-type.json"
     },
+    "pricing_options": {
+      "type": "array",
+      "description": "Available pricing models for this product",
+      "items": {
+        "$ref": "/schemas/v1/core/pricing-option.json"
+      },
+      "minItems": 1
+    },
     "is_fixed_price": {
       "type": "boolean",
-      "description": "Whether this product has fixed pricing (true) or uses auction (false)"
+      "description": "DEPRECATED: Use pricing_options instead. Whether this product has fixed pricing (true) or uses auction (false)"
     },
     "cpm": {
       "type": "number",
-      "description": "Cost per thousand impressions",
+      "description": "DEPRECATED: Use pricing_options instead. Cost per thousand impressions",
       "minimum": 0
     },
     "currency": {
       "type": "string",
-      "description": "ISO 4217 currency code",
+      "description": "ISO 4217 currency code (for products using legacy cpm field)",
       "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP"]
     },
     "min_spend": {
       "type": "number",
-      "description": "Minimum budget requirement",
+      "description": "DEPRECATED: Use pricing_options[].min_spend instead. Minimum budget requirement",
       "minimum": 0
     },
     "estimated_exposures": {
@@ -73,12 +81,12 @@
     },
     "floor_cpm": {
       "type": "number",
-      "description": "Minimum CPM for non-guaranteed products (bids below this are rejected)",
+      "description": "DEPRECATED: Use pricing_options with price_guidance instead. Minimum CPM for non-guaranteed products",
       "minimum": 0
     },
     "recommended_cpm": {
       "type": "number",
-      "description": "Recommended CPM to achieve min_exposures target for non-guaranteed products",
+      "description": "DEPRECATED: Use pricing_options with price_guidance instead. Recommended CPM to achieve exposures target",
       "minimum": 0
     },
     "measurement": {
@@ -104,12 +112,26 @@
       "description": "Expiration timestamp for custom products"
     }
   },
-  "oneOf": [
+  "allOf": [
     {
-      "required": ["properties"]
+      "oneOf": [
+        {
+          "required": ["properties"]
+        },
+        {
+          "required": ["property_tags"]
+        }
+      ]
     },
     {
-      "required": ["property_tags"]
+      "oneOf": [
+        {
+          "required": ["pricing_options"]
+        },
+        {
+          "required": ["is_fixed_price"]
+        }
+      ]
     }
   ],
   "required": [
@@ -117,8 +139,7 @@
     "name",
     "description",
     "format_ids",
-    "delivery_type",
-    "is_fixed_price"
+    "delivery_type"
   ],
   "additionalProperties": false
 }

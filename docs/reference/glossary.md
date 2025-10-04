@@ -30,10 +30,34 @@ Classification of signals as "marketplace" (third-party), "owned" (first-party),
 
 ## C
 
-**CPM (Cost Per Mille)**  
-Pricing model based on cost per thousand impressions.
+**CPA (Cost Per Action/Acquisition)**
+Pricing model based on cost per conversion or acquisition event (e.g., purchase, sign-up).
 
-**Customer Account**  
+**CPC (Cost Per Click)**
+Pricing model based on cost per click on the advertisement.
+
+**CPCV (Cost Per Completed View)**
+Pricing model based on cost per 100% video or audio completion.
+
+**CPL (Cost Per Lead)**
+Pricing model based on cost per qualified lead generated.
+
+**CPM (Cost Per Mille)**
+Pricing model based on cost per thousand impressions. Traditional display advertising pricing.
+
+**CPP (Cost Per Point)**
+Pricing model based on cost per Gross Rating Point (GRP), commonly used in TV and audio advertising.
+
+**CPV (Cost Per View)**
+Pricing model based on cost per view at a publisher-defined threshold (e.g., 50% video completion).
+
+**Completed View**
+A video or audio ad that has been viewed to 100% completion. Used for CPCV pricing and completion rate metrics.
+
+**Completion Rate**
+The percentage of video or audio ads that are viewed to 100% completion (completed_views / impressions).
+
+**Customer Account**
 Direct advertiser or agency account with specific seat access and negotiated rates.
 
 ## D
@@ -52,12 +76,25 @@ Technology platform that allows advertisers to buy advertising inventory program
 
 ## E
 
-**Estimated Activation Time**  
+**Estimated Activation Time**
 Predicted timeframe for signal deployment, typically 24-48 hours for new activations.
+
+## F
+
+**Flat Rate**
+Fixed-cost pricing model where a single payment is made regardless of delivery volume. Common for sponsorships and takeovers.
+
+**Frequency**
+The average number of times an individual is exposed to an advertisement during a campaign.
+
+## G
+
+**GRP (Gross Rating Point)**
+A unit of measurement for television and radio advertising representing 1% of the target audience. Used in CPP pricing models. Total GRPs = Reach % × Average Frequency.
 
 ## H
 
-**Households**  
+**Households**
 Size unit representing unique household addresses, useful for geographic and family-based targeting.
 
 ## I
@@ -91,24 +128,38 @@ First-party signal data belonging to the advertiser or platform.
 
 ## P
 
-**Platform Account**  
+**Platform Account**
 Master account representing an advertising platform that can syndicate signals to multiple customers.
 
-**Prompt**  
+**Pricing Model**
+The method by which advertising inventory is priced and billed. AdCP supports CPM, CPC, CPCV, CPV, CPA, CPL, CPP, and flat rate models.
+
+**Pricing Option**
+A specific pricing model offered by a publisher for a product, including rate, currency, and parameters.
+
+**Prompt**
 Natural language description used to discover relevant signals (e.g., "high-income sports enthusiasts", "premium automotive content", "users in urban areas during evening hours").
 
-**Provider**  
+**Provider**
 The company or platform that supplies signal data (e.g., LiveRamp, Experian, Peer39, weather services).
+
+## Q
+
+**Quartile (Video)**
+Milestones in video ad viewing: Q1 (25% viewed), Q2 (50% viewed), Q3 (75% viewed), Q4 (100% complete). Used to measure video engagement.
 
 ## R
 
-**Relevance Score**  
+**Reach**
+The number or percentage of unique individuals exposed to an advertisement at least once during a campaign.
+
+**Relevance Score**
 Numerical rating (0-1) indicating how well a signal matches the discovery prompt.
 
-**Relevance Rationale**  
+**Relevance Rationale**
 Human-readable explanation of why an audience received its relevance score.
 
-**Revenue Share**  
+**Revenue Share**
 Pricing model based on a percentage of media spend rather than fixed CPM.
 
 ## S

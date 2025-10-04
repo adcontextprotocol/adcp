@@ -13,39 +13,66 @@ A **Product** is the core sellable unit in AdCP. This document details the Produ
 - `description` (string, required)
 - `formats` (list[Format], required): See [Creative Formats](../../creative/formats.md).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
-- `is_fixed_price` (bool, required): `true` if the price is fixed, `false` if it is auction-based.
-- `cpm` (float, optional): The fixed Cost Per Mille. **Required** if `is_fixed_price` is `true`.
-- `price_guidance` (PriceGuidance, optional): Pricing guidance for auction-based products. **Required** if `is_fixed_price` is `false`.
-- `min_spend` (float, optional): Minimum budget requirement in USD.
+- `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
 - `measurement` (Measurement, optional): Included measurement capabilities. Common for retail media products.
 - `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
 - `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
 - `expires_at` (datetime, optional): If `is_custom`, the time the product is no longer valid.
 
+### Deprecated Fields
+
+- `is_fixed_price` (bool): **DEPRECATED in v1.7.0** - Use `pricing_options` instead.
+- `cpm` (float): **DEPRECATED in v1.7.0** - Use `pricing_options` instead.
+- `min_spend` (float): **DEPRECATED in v1.7.0** - Use `pricing_options[].min_spend` instead.
+
 ### Pricing Models
 
-AdCP supports two pricing models, determined by the `is_fixed_price` flag.
+Publishers declare which pricing models they support for each product. Buyers select from the available options when creating a media buy. This approach supports:
 
-#### Guaranteed, Fixed-Price Products
-These products represent reserved inventory with a predictable price and delivery.
-- `delivery_type`: `"guaranteed"`
-- `is_fixed_price`: `true`
-- `cpm`: A fixed float value (e.g., `45.00`).
+- **Multiple pricing models per product** - Publishers can offer the same inventory via different pricing structures
+- **Multi-currency support** - Publishers declare supported currencies; buyers must use a supported currency
+- **Flexible pricing** - Support for CPM, CPCV, CPP (GRP-based), CPA, and more
 
-#### Non-Guaranteed, Variable-Price Products
-These products represent inventory available in an auction. The final price is not fixed.
-- `delivery_type`: `"non_guaranteed"`
-- `is_fixed_price`: `false`
-- `price_guidance`: A `PriceGuidance` object that helps the buyer make an informed bid.
+#### Supported Pricing Models
 
-**Example `PriceGuidance`:**
+- **CPM** (Cost Per Mille) - Cost per 1,000 impressions (traditional display)
+- **CPC** (Cost Per Click) - Cost per click on the ad
+- **CPCV** (Cost Per Completed View) - Cost per 100% video/audio completion
+- **CPV** (Cost Per View) - Cost per view at publisher-defined threshold
+- **CPA** (Cost Per Action) - Cost per conversion/acquisition
+- **CPL** (Cost Per Lead) - Cost per lead generated
+- **CPP** (Cost Per Point) - Cost per Gross Rating Point (TV/audio)
+- **Flat Rate** - Fixed cost regardless of delivery volume
+
+#### PricingOption Structure
+
+Each pricing option includes:
 ```json
 {
-  "floor": 10.00,
-  "p25": 12.50,
-  "p50": 15.00,
-  "p75": 18.00,
-  "p90": 22.00
+  "pricing_model": "cpcv",
+  "rate": 0.15,
+  "currency": "USD",
+  "is_fixed": true,
+  "parameters": {
+    "view_threshold": 1.0
+  },
+  "min_spend": 5000
+}
+```
+
+For auction-based pricing (`is_fixed: false`), include `price_guidance`:
+```json
+{
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "is_fixed": false,
+  "price_guidance": {
+    "floor": 10.00,
+    "p25": 12.50,
+    "p50": 15.00,
+    "p75": 18.00,
+    "p90": 22.00
+  }
 }
 ```
 
@@ -80,39 +107,80 @@ A server can offer a general catalog, but it can also return:
 
 ## Product Examples
 
-### Standard Product
+### Standard CTV Product (Multiple Pricing Options)
 ```json
 {
   "product_id": "connected_tv_prime",
   "name": "Connected TV - Prime Time",
   "description": "Premium CTV inventory 8PM-11PM",
-  "format_ids": ["video_standard"],
+  "format_ids": ["video_15s", "video_30s"],
   "delivery_type": "guaranteed",
-  "is_fixed_price": true,
-  "cpm": 45.00
+  "pricing_options": [
+    {
+      "pricing_model": "cpm",
+      "rate": 45.00,
+      "currency": "USD",
+      "is_fixed": true,
+      "min_spend": 10000
+    },
+    {
+      "pricing_model": "cpcv",
+      "rate": 0.18,
+      "currency": "USD",
+      "is_fixed": true,
+      "min_spend": 10000
+    },
+    {
+      "pricing_model": "cpp",
+      "rate": 250.00,
+      "currency": "USD",
+      "is_fixed": true,
+      "parameters": {
+        "demographic": "A18-49",
+        "min_points": 50
+      },
+      "min_spend": 12500
+    }
+  ]
 }
 ```
 
-### Custom Product
+### Auction-Based Display Product
 ```json
 {
   "product_id": "custom_abc123",
   "name": "Custom - Gaming Enthusiasts",
   "description": "Custom audience package for gaming campaign",
-  "format_ids": ["display_300x250"],
+  "format_ids": ["display_300x250", "display_728x90"],
   "delivery_type": "non_guaranteed",
-  "is_fixed_price": false,
-  "price_guidance": {
-    "floor": 5.00,
-    "p50": 8.00,
-    "p75": 12.00
-  },
+  "pricing_options": [
+    {
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "is_fixed": false,
+      "price_guidance": {
+        "floor": 5.00,
+        "p50": 8.00,
+        "p75": 12.00
+      }
+    },
+    {
+      "pricing_model": "cpc",
+      "currency": "USD",
+      "is_fixed": false,
+      "price_guidance": {
+        "floor": 0.50,
+        "p50": 1.20,
+        "p75": 2.00
+      }
+    }
+  ],
   "is_custom": true,
-  "expires_at": "2024-02-15T00:00:00Z"
+  "expires_at": "2025-02-15T00:00:00Z"
 }
 ```
 
-### Retail Media Product
+### Retail Media Product with Measurement
 ```json
 {
   "product_id": "albertsons_pet_category_offsite",
@@ -120,13 +188,30 @@ A server can offer a general catalog, but it can also return:
   "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days. Reach them across premium display and video inventory.",
   "format_ids": [
     "display_300x250",
-    "display_728x90", 
-    "video_15s_vast"
+    "display_728x90",
+    "video_15s"
   ],
   "delivery_type": "guaranteed",
-  "is_fixed_price": true,
-  "cpm": 13.50,
-  "min_spend": 10000,
+  "pricing_options": [
+    {
+      "pricing_model": "cpm",
+      "rate": 13.50,
+      "currency": "USD",
+      "is_fixed": true,
+      "min_spend": 10000
+    },
+    {
+      "pricing_model": "cpa",
+      "rate": 15.00,
+      "currency": "USD",
+      "is_fixed": true,
+      "parameters": {
+        "action_type": "purchase",
+        "attribution_window_days": 30
+      },
+      "min_spend": 10000
+    }
+  ],
   "measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",

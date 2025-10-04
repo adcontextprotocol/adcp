@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/pricing-option.json",
+  "title": "Pricing Option",
+  "description": "A pricing model option offered by a publisher for a product",
+  "type": "object",
+  "properties": {
+    "pricing_model": {
+      "$ref": "/schemas/v1/enums/pricing-model.json"
+    },
+    "rate": {
+      "type": "number",
+      "description": "The rate for this pricing model (interpretation depends on pricing_model type)",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "is_fixed": {
+      "type": "boolean",
+      "description": "Whether this is a fixed rate (true) or auction-based (false)"
+    },
+    "price_guidance": {
+      "type": "object",
+      "description": "Pricing guidance for auction-based pricing (required if is_fixed is false)",
+      "properties": {
+        "floor": {
+          "type": "number",
+          "description": "Minimum bid price",
+          "minimum": 0
+        },
+        "p25": {
+          "type": "number",
+          "description": "25th percentile winning price",
+          "minimum": 0
+        },
+        "p50": {
+          "type": "number",
+          "description": "Median winning price",
+          "minimum": 0
+        },
+        "p75": {
+          "type": "number",
+          "description": "75th percentile winning price",
+          "minimum": 0
+        },
+        "p90": {
+          "type": "number",
+          "description": "90th percentile winning price",
+          "minimum": 0
+        }
+      },
+      "required": ["floor"]
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Additional parameters specific to this pricing model",
+      "properties": {
+        "demographic": {
+          "type": "string",
+          "description": "Target demographic for CPP pricing (e.g., 'A18-49', 'W25-54')"
+        },
+        "min_points": {
+          "type": "number",
+          "description": "Minimum GRPs/TRPs required for CPP pricing",
+          "minimum": 0
+        },
+        "view_threshold": {
+          "type": "number",
+          "description": "Percentage of video/audio that must be viewed for CPV pricing (0.0 to 1.0)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "action_type": {
+          "type": "string",
+          "description": "Type of action for CPA pricing (e.g., 'purchase', 'sign_up', 'download')"
+        },
+        "attribution_window_days": {
+          "type": "integer",
+          "description": "Attribution window in days for CPA/CPL pricing",
+          "minimum": 1
+        }
+      }
+    },
+    "min_spend": {
+      "type": "number",
+      "description": "Minimum spend requirement for this pricing option in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_model", "currency", "is_fixed"],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "is_fixed": { "const": true } }
+      },
+      "then": {
+        "required": ["rate"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "is_fixed": { "const": false } }
+      },
+      "then": {
+        "required": ["price_guidance"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

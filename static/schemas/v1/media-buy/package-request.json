@@ -33,7 +33,21 @@
           }
         },
         "budget": {
-          "$ref": "/schemas/v1/core/budget.json"
+          "type": "number",
+          "description": "Budget allocation for this package in the media buy's currency",
+          "minimum": 0
+        },
+        "pacing": {
+          "$ref": "/schemas/v1/enums/pacing.json"
+        },
+        "pricing_model": {
+          "$ref": "/schemas/v1/enums/pricing-model.json",
+          "description": "Selected pricing model from the product's available pricing_options (must be available in the media buy's currency)"
+        },
+        "bid_price": {
+          "type": "number",
+          "description": "Bid price for auction-based pricing (required if the selected pricing_option has is_fixed: false)",
+          "minimum": 0
         },
         "targeting_overlay": {
           "$ref": "/schemas/v1/core/targeting.json"
@@ -47,8 +61,8 @@
         }
       },
       "anyOf": [
-        {"required": ["buyer_ref", "product_id", "format_ids"]},
-        {"required": ["buyer_ref", "products", "format_ids"]}
+        {"required": ["buyer_ref", "product_id", "format_ids", "budget", "pricing_model"]},
+        {"required": ["buyer_ref", "products", "format_ids", "budget", "pricing_model"]}
       ],
       "not": {
         "required": ["format_selection"]
@@ -80,7 +94,21 @@
           "description": "Dynamic format selection criteria"
         },
         "budget": {
-          "$ref": "/schemas/v1/core/budget.json"
+          "type": "number",
+          "description": "Budget allocation for this package in the media buy's currency",
+          "minimum": 0
+        },
+        "pacing": {
+          "$ref": "/schemas/v1/enums/pacing.json"
+        },
+        "pricing_model": {
+          "$ref": "/schemas/v1/enums/pricing-model.json",
+          "description": "Selected pricing model from the product's available pricing_options (must be available in the media buy's currency)"
+        },
+        "bid_price": {
+          "type": "number",
+          "description": "Bid price for auction-based pricing (required if the selected pricing_option has is_fixed: false)",
+          "minimum": 0
         },
         "targeting_overlay": {
           "$ref": "/schemas/v1/core/targeting.json"
@@ -94,8 +122,8 @@
         }
       },
       "anyOf": [
-        {"required": ["buyer_ref", "product_id", "format_selection"]},
-        {"required": ["buyer_ref", "products", "format_selection"]}
+        {"required": ["buyer_ref", "product_id", "format_selection", "budget", "pricing_model"]},
+        {"required": ["buyer_ref", "products", "format_selection", "budget", "pricing_model"]}
       ],
       "not": {
         "required": ["format_ids"]

@@ -9,7 +9,7 @@
   "versioning": {
     "note": "All request/response schemas include adcp_version field. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2025-10-08",
+  "lastUpdated": "2025-10-12",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
@@ -98,12 +98,20 @@
         "creative-manifest": {
           "$ref": "/schemas/v1/core/creative-manifest.json",
           "description": "Complete specification of a creative with all assets needed for rendering"
+        },
+        "pricing-option": {
+          "$ref": "/schemas/v1/core/pricing-option.json",
+          "description": "A pricing model option offered by a publisher for a product"
         }
       }
     },
     "enums": {
       "description": "Enumerated types and constants",
       "schemas": {
+        "pricing-model": {
+          "$ref": "/schemas/v1/enums/pricing-model.json",
+          "description": "Supported pricing models for advertising products"
+        },
         "delivery-type": {
           "$ref": "/schemas/v1/enums/delivery-type.json",
           "description": "Type of inventory delivery"
