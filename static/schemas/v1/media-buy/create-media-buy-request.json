@@ -31,9 +31,19 @@
       "description": "Purchase order number for tracking"
     },
     "start_time": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Campaign start date/time in ISO 8601 format"
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "asap",
+          "description": "Start campaign as soon as possible"
+        },
+        {
+          "type": "string",
+          "format": "date-time",
+          "description": "Scheduled start date/time in ISO 8601 format"
+        }
+      ],
+      "description": "Campaign start time: 'asap' or ISO 8601 date-time"
     },
     "end_time": {
       "type": "string",

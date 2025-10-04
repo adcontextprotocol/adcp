@@ -20,7 +20,7 @@ Update campaign and package settings. This task supports partial updates and han
 | `media_buy_id` | string | No* | Publisher's ID of the media buy to update |
 | `buyer_ref` | string | No* | Buyer's reference for the media buy to update |
 | `active` | boolean | No | Pause/resume the entire media buy |
-| `start_time` | string | No | New start date/time in ISO 8601 format (UTC unless timezone specified) |
+| `start_time` | string | No | New campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
 | `end_time` | string | No | New end date/time in ISO 8601 format (UTC unless timezone specified) |
 | `budget` | Budget | No | New budget configuration (see Budget Object in create_media_buy) |
 | `packages` | PackageUpdate[] | No | Package-specific updates (see Package Update Object below) |

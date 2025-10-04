@@ -23,7 +23,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `packages` | Package[] | Yes | Array of package configurations (see Package Object below) |
 | `promoted_offering` | string | Yes | Description of advertiser and what is being promoted |
 | `po_number` | string | No | Purchase order number for tracking |
-| `start_time` | string | Yes | Campaign start date/time in ISO 8601 format (UTC unless timezone specified) |
+| `start_time` | string | Yes | Campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
 | `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
 | `budget` | Budget | Yes | Budget configuration for the media buy (see Budget Object below) |
 | `reporting_webhook` | ReportingWebhook | No | Optional webhook configuration for automated reporting delivery (see Reporting Webhook Object below) |
@@ -634,6 +634,35 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
   }
 }
 ```
+
+### ASAP Start Request
+```json
+{
+  "buyer_ref": "acme_flash_sale_campaign",
+  "packages": [
+    {
+      "buyer_ref": "acme_display_package",
+      "products": ["display_premium_sites"],
+      "format_ids": ["display_300x250", "display_728x90"],
+      "budget": {
+        "total": 25000,
+        "currency": "USD",
+        "pacing": "asap"
+      }
+    }
+  ],
+  "promoted_offering": "Acme Flash Sale - 24-hour limited time offer on electronics",
+  "start_time": "asap",
+  "end_time": "2024-10-03T23:59:59Z",
+  "budget": {
+    "total": 25000,
+    "currency": "USD",
+    "pacing": "asap"
+  }
+}
+```
+
+**Use Case**: Time-sensitive campaigns like flash sales, breaking news, or rapid response to market events. Setting `start_time: "asap"` with `pacing: "asap"` tells the publisher to start delivery and spend budget as quickly as possible.
 
 ### Retail Media Buy Request
 ```json
