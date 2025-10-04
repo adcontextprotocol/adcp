@@ -14,7 +14,7 @@ Discover all advertising properties this sales agent is authorized to represent,
 - Property tag resolution for products that use `property_tags` instead of full `properties` arrays
 - One-time discovery to cache property-to-domain mappings
 
-**Request Schema**: [`/schemas/v1/media-buy/list-authorized-properties-request.json`](/schemas/v1/media-buy/list-authorized-properties-request.json)  
+**Request Schema**: [`/schemas/v1/media-buy/list-authorized-properties-request.json`](/schemas/v1/media-buy/list-authorized-properties-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/list-authorized-properties-response.json`](/schemas/v1/media-buy/list-authorized-properties-response.json)
 
 ## Request Parameters
