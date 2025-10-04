@@ -9,7 +9,7 @@
       "type": "string",
       "description": "AdCP schema version for this request",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.7.0"
+      "default": "1.6.1"
     },
     "buyer_ref": {
       "type": "string",
@@ -27,7 +27,15 @@
           },
           "product_id": {
             "type": "string",
-            "description": "Product ID for this package"
+            "description": "Product ID for this package (recommended - replaces deprecated products array)"
+          },
+          "products": {
+            "type": "array",
+            "description": "DEPRECATED: Use product_id instead. Array of product IDs - only first product will be used",
+            "deprecated": true,
+            "items": {
+              "type": "string"
+            }
           },
           "format_ids": {
             "type": "array",
@@ -46,7 +54,9 @@
         },
         "anyOf": [
           {"required": ["buyer_ref", "product_id", "format_ids"]},
-          {"required": ["buyer_ref", "product_id", "format_selection"]}
+          {"required": ["buyer_ref", "products", "format_ids"]},
+          {"required": ["buyer_ref", "product_id", "format_selection"]},
+          {"required": ["buyer_ref", "products", "format_selection"]}
         ],
         "additionalProperties": false
       }

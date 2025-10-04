@@ -33,10 +33,13 @@ Create a media buy from selected packages. This task handles the complete workfl
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this package |
-| `product_id` | string | Yes | Product ID for this package |
+| `product_id` | string | Yes* | Product ID for this package (recommended - use instead of deprecated `products`) |
+| `products` | string[] | Yes* | **DEPRECATED**: Use `product_id` instead. Array of product IDs - only first product will be used |
 | `format_ids` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by the product |
 | `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
+
+\* Either `product_id` or `products` is required. Use `product_id` for new implementations.
 
 ### Targeting Overlay Object
 
@@ -983,6 +986,7 @@ If validation fails, return an error:
 
 - A media buy represents a complete advertising campaign with one or more packages
 - Each package is based on a single product with specific targeting, budget allocation, and format requirements
+- **Deprecation Notice**: The `products` array field is deprecated. Use `product_id` instead. If `products` is provided, only the first product will be used. This change reflects how ad servers work - each package (line item) targets a single product.
 - **Format specification is required** for each package - this enables placeholder creation and validation
 - Both media buys and packages have `buyer_ref` fields for the buyer's reference tracking
 - The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted (see [Brief Expectations](../product-discovery/brief-expectations) for guidance)

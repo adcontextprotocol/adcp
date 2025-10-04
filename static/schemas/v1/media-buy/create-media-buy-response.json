@@ -9,7 +9,7 @@
       "type": "string",
       "description": "AdCP schema version used for this response",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.7.0"
+      "default": "1.6.1"
     },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
