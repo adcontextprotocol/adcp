@@ -821,18 +821,68 @@ For MCP implementations using polling, use this endpoint to check the status of 
 
 #### Option 2: Webhooks (MCP)
 
-Register a callback URL to receive push notifications:
-```json
-{
-  "tool": "create_media_buy",
-  "arguments": {
-    "buyer_ref": "campaign_2024",
-    "packages": [...],
-    "webhook_url": "https://buyer.example.com/mcp/webhooks",
-    "webhook_auth_token": "bearer-token-xyz"
+Register a callback URL to receive push notifications for long-running operations. Webhooks are ONLY used when the initial response is `submitted`.
+
+**Configuration:**
+```javascript
+const response = await session.call('create_media_buy',
+  {
+    buyer_ref: "campaign_2024",
+    packages: [...]
+  },
+  {
+    webhook_url: "https://buyer.example.com/webhooks/adcp/create_media_buy/agent_id/op_id",
+    webhook_auth: { type: "bearer", credentials: "bearer-token-xyz" }
   }
+);
+```
+
+**Response patterns:**
+- **`completed`** - Synchronous success, webhook NOT called (you have the result)
+- **`working`** - Will complete within ~120s, webhook NOT called (wait for response)
+- **`submitted`** - Long-running operation, webhook WILL be called on status changes
+
+**Example webhook flow (only for `submitted` operations):**
+
+Webhook POST for human approval needed:
+```http
+POST /webhooks/adcp/create_media_buy/agent_id/op_id HTTP/1.1
+Host: buyer.example.com
+Authorization: Bearer bearer-token-xyz
+Content-Type: application/json
+
+{
+  "adcp_version": "1.6.0",
+  "status": "input-required",
+  "task_id": "task_456",
+  "buyer_ref": "campaign_2024",
+  "message": "Campaign budget $150K requires approval to proceed"
 }
 ```
+
+**Webhook POST when complete (after approval - full create_media_buy response):**
+```http
+POST /webhooks/adcp/create_media_buy/agent_id/op_id HTTP/1.1
+Host: buyer.example.com
+Authorization: Bearer bearer-token-xyz
+Content-Type: application/json
+
+{
+  "adcp_version": "1.6.0",
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "buyer_ref": "ctv_package"
+    }
+  ]
+}
+```
+
+Each webhook receives the full response object for that status. See **[Task Management: Webhook Integration](../../protocols/task-management.md#webhook-integration)** for complete details.
 
 ### A2A Status Checking
 

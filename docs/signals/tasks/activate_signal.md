@@ -185,9 +185,45 @@ data: {"status": {"state": "completed"}, "artifacts": [{
 ```
 
 ### Protocol Transport
-- **MCP**: Returns task_id for polling-based asynchronous operation tracking
+- **MCP**: Returns task_id for polling-based asynchronous operation tracking or webhook-based push notifications
 - **A2A**: Uses Server-Sent Events for real-time progress updates and completion
 - **Data Consistency**: Both protocols contain identical AdCP data structures and version information
+
+### Webhook Support
+
+For long-running activations (when initial response is `submitted`), configure a webhook to receive the complete response when activation completes:
+
+```javascript
+const response = await session.call('activate_signal',
+  {
+    signal_agent_segment_id: "luxury_auto_intenders",
+    platform: "the-trade-desk",
+    account: "agency-123-ttd"
+  },
+  {
+    webhook_url: "https://buyer.com/webhooks/adcp/activate_signal/agent_id/op_id",
+    webhook_auth: { type: "bearer", credentials: "secret-token" }
+  }
+);
+```
+
+When activation completes, you receive the full `activate_signal` response:
+
+```http
+POST /webhooks/adcp/activate_signal/agent_id/op_id HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer secret-token
+
+{
+  "adcp_version": "1.0.0",
+  "status": "deployed",
+  "task_id": "activation_789",
+  "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
+  "deployed_at": "2025-01-15T14:30:00Z"
+}
+```
+
+See **[Task Management: Webhook Integration](../../protocols/task-management.md#webhook-integration)** for complete details on webhook configuration and reliability.
 
 ## Scenarios
 
