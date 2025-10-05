@@ -326,11 +326,175 @@ await a2a.send({
 
 ### Server Decision on Webhook Usage
 
-The server always decides whether to use webhooks:
+The server decides whether to use webhooks based on the initial response status:
 
-- **Quick operations** (< 120s): Server returns `working`, ignores webhook
-- **Long operations** (hours/days): Server returns `submitted`, uses webhook if provided
+- **`completed`, `failed`, `rejected`**: Synchronous response - webhook is NOT called (client already has complete response)
+- **`working`**: Will respond synchronously within ~120 seconds - webhook is NOT called (just wait for the response)
+- **`submitted`**: Long-running async operation - webhook WILL be called on ALL subsequent status changes
 - **Client choice**: Webhook is optional - clients can always poll with `tasks/get`
+
+**Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted`.
+
+**When webhooks are called (for `submitted` operations):**
+- Status changes to `input-required` → Webhook called (human needs to respond)
+- Status changes to `completed` → Webhook called (final result)
+- Status changes to `failed` → Webhook called (error details)
+- Status changes to `canceled` → Webhook called (cancellation confirmation)
+
+### Webhook POST Format
+
+When an async operation changes status, the publisher POSTs the **complete task response object** to your webhook URL.
+
+#### Webhook Scenarios
+
+**Scenario 1: Synchronous completion (no webhook)**
+```javascript
+// Initial request
+const response = await session.call('create_media_buy', params, { webhook_url: "..." });
+
+// Response is immediate and complete - webhook is NOT called
+{
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "packages": [...]
+}
+```
+
+**Scenario 2: Quick async processing (no webhook - use working status)**
+```javascript
+// Initial response indicates processing will complete soon
+const response = await session.call('create_media_buy', params, { webhook_url: "..." });
+{
+  "status": "working",
+  "task_id": "task_789",
+  "message": "Creating media buy..."
+}
+
+// Wait for synchronous response (within ~120 seconds)
+// Webhook is NOT called - client should wait for the response to complete
+// The call will return the final result synchronously
+```
+
+**Scenario 3: Long-running operation (webhook IS called)**
+```javascript
+// Initial request
+const response = await session.call('create_media_buy', params, {
+  webhook_url: "https://buyer.com/webhooks/adcp/create_media_buy/agent_123/op_456"
+});
+
+// Response indicates long-running async operation
+{
+  "adcp_version": "1.6.0",
+  "status": "submitted",
+  "task_id": "task_456",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "message": "Campaign requires sales approval. Expected time: 2-4 hours."
+}
+
+// Later: Webhook POST when approval is needed
+POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
+{
+  "adcp_version": "1.6.0",
+  "status": "input-required",
+  "task_id": "task_456",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "message": "Please approve $150K campaign to proceed"
+}
+
+// Later: Webhook POST when approved and completed (full create_media_buy response)
+POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
+{
+  "adcp_version": "1.6.0",
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_12345_001",
+      "buyer_ref": "nike_ctv_sports_package"
+    },
+    {
+      "package_id": "pkg_12345_002",
+      "buyer_ref": "nike_audio_drive_package"
+    }
+  ]
+}
+```
+
+#### For Other Async Operations
+
+Each async operation posts its specific response schema:
+
+- **`activate_signal`** → `activate-signal-response.json`
+- **`sync_creatives`** → `sync-creatives-response.json`
+- **`update_media_buy`** → `update-media-buy-response.json`
+
+#### Webhook URL Patterns
+
+Structure your webhook URLs to identify the operation and agent:
+
+```
+https://buyer.com/webhooks/adcp/{task_name}/{agent_id}/{operation_id}
+```
+
+**Example URLs:**
+- `https://buyer.com/webhooks/adcp/create_media_buy/agent_abc/op_xyz`
+- `https://buyer.com/webhooks/adcp/activate_signal/agent_abc/op_123`
+- `https://buyer.com/webhooks/adcp/sync_creatives/agent_abc/op_456`
+
+Your webhook handler can parse the URL path to route to the correct handler based on the task name.
+
+#### Webhook Payload Structure
+
+Every webhook POST contains the complete task response for that status, matching the task's response schema.
+
+**`input-required` webhook (human needs to respond):**
+```json
+{
+  "adcp_version": "1.6.0",
+  "status": "input-required",
+  "task_id": "task_456",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "message": "Campaign budget requires VP approval to proceed"
+}
+```
+
+**`completed` webhook (operation finished - full create_media_buy response):**
+```json
+{
+  "adcp_version": "1.6.0",
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "buyer_ref": "nike_ctv_package"
+    }
+  ]
+}
+```
+
+**`failed` webhook (operation failed):**
+```json
+{
+  "adcp_version": "1.6.0",
+  "status": "failed",
+  "task_id": "task_456",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "errors": [
+    {
+      "code": "insufficient_inventory",
+      "message": "Requested targeting yielded 0 available impressions",
+      "suggestion": "Broaden geographic targeting or increase budget"
+    }
+  ]
+}
+```
+
+**Key principle:** Webhooks are ONLY called for `submitted` operations, and each webhook contains the full response object matching the task's response schema.
 
 ### Task State Reconciliation
 
