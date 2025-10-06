@@ -57,12 +57,12 @@ Different creative formats support different macros. Use `list_creative_formats`
 | `{GDPR_CONSENT}` | IAB TCF 2.0 consent string | `CPc7TgPPc7TgPAGABC...` |
 | `{US_PRIVACY}` | US Privacy (CCPA) string | `1YNN` |
 | `{GPP_STRING}` | Global Privacy Platform consent string | `DBABMA~1...` |
-| `{DEVICE_LAT}` | Limit Ad Tracking enabled | `1` (limited), `0` (allowed) |
+| `{LIMIT_AD_TRACKING}` | Limit Ad Tracking enabled | `1` (limited), `0` (allowed) |
 
 **Example - Privacy-aware tracking**:
 ```javascript
 // In creative logic
-if ({GDPR} == 1 && {GDPR_CONSENT} == '') {
+if (GDPR == 1 && GDPR_CONSENT == '') {
   // No consent - don't load tracking pixels
 } else {
   // Load tracking
@@ -79,20 +79,20 @@ if ({GDPR} == 1 && {GDPR_CONSENT} == '') {
 | `{DEVICE_MAKE}` | Device manufacturer | `Apple`, `Samsung`, `Roku` |
 | `{DEVICE_MODEL}` | Device model | `iPhone15,2`, `Roku Ultra` |
 | `{USER_AGENT}` | Full user agent string | `Mozilla/5.0 ...` |
-| `{APP_BUNDLE}` | App bundle ID | `com.publisher.app` |
+| `{APP_BUNDLE}` | App bundle ID (domain or numeric) | `com.publisher.app`, `123456789` |
 | `{APP_NAME}` | Human-readable app name | `Publisher News App` |
 
 ### Geographic Macros
 
 | Macro | Description | Example Value |
 |-------|-------------|---------------|
-| `{COUNTRY}` | ISO 3166-1 alpha-2 country code | `US`, `GB`, `CA` |
-| `{REGION}` | State/province code | `NY`, `CA`, `ON` |
-| `{CITY}` | City name | `New York` |
-| `{ZIP}` | Postal code | `10001`, `90210` |
-| `{DMA}` | Nielsen DMA code (US) | `501` (New York) |
-| `{LAT}` | Latitude | `40.7128` |
-| `{LONG}` | Longitude | `-74.0060` |
+| `{COUNTRY}` | ISO 3166-1 alpha-2 country code | `US`, `GB`, `CA`, `FR`, `JP`, `AU` |
+| `{REGION}` | State/province/region code | `NY`, `CA` (US states), `ON` (Canada), `IDF` (France), `NSW` (Australia) |
+| `{CITY}` | City name | `New York`, `London`, `Tokyo`, `Sydney` |
+| `{ZIP}` | Postal code | `10001` (US), `SW1A 1AA` (UK), `75001` (France), `100-0001` (Japan) |
+| `{DMA}` | [Nielsen DMA code](https://help.thetradedesk.com/s/article/Nielsen-DMA-Regions) (US TV markets) | `501` (New York), `803` (Los Angeles) |
+| `{LAT}` | Latitude | `40.7128`, `51.5074`, `35.6762` |
+| `{LONG}` | Longitude | `-74.0060`, `-0.1278`, `139.6503` |
 
 ### Identity Macros
 
@@ -245,7 +245,7 @@ Not all macros are available in all inventory types. Check format specifications
 | `{GDPR}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{GDPR_CONSENT}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{US_PRIVACY}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `{DEVICE_LAT}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `{LIMIT_AD_TRACKING}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
 | **Identity** | | | | | | | | | |
 | `{DEVICE_ID}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
 | `{DEVICE_ID_TYPE}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
@@ -286,7 +286,7 @@ Not all macros are available in all inventory types. Check format specifications
 - ✅† = When location permission granted
 
 **Important Notes**:
-- Privacy macros (`{DEVICE_LAT}`, `{DEVICE_ID}`) may return empty values based on user privacy settings
+- Privacy macros (`{LIMIT_AD_TRACKING}`, `{DEVICE_ID}`) may return empty values based on user privacy settings
 - Geographic macros accuracy varies by publisher's data capabilities
 - `{PLACEMENT_ID}` refers to the IAB Global Placement ID standard
 
@@ -398,8 +398,8 @@ For campaigns serving in the EU:
 
 ```javascript
 // Check consent before loading tracking
-if ({GDPR} == 1) {
-  if ({GDPR_CONSENT} && {GDPR_CONSENT} != '') {
+if (GDPR == 1) {
+  if (GDPR_CONSENT && GDPR_CONSENT != '') {
     // User has consented - load tracking pixels
     loadTracking();
   } else {
@@ -418,7 +418,7 @@ For US traffic:
 
 ```javascript
 // Check US Privacy string
-if ({US_PRIVACY} == '1YYN') {
+if (US_PRIVACY == '1YYN') {
   // User has opted out - don't sell personal info
   skipPersonalizedTracking();
 } else {
@@ -433,12 +433,12 @@ Respect Limit Ad Tracking settings:
 
 ```javascript
 // Check if device ID is available
-if ({DEVICE_LAT} == 1 || {DEVICE_ID} == '' || {DEVICE_ID} == '00000000-0000-0000-0000-000000000000') {
+if (LIMIT_AD_TRACKING == 1 || DEVICE_ID == '' || DEVICE_ID == '00000000-0000-0000-0000-000000000000') {
   // User has limited tracking - use contextual attribution
   useContextualTracking();
 } else {
   // Device ID available
-  useDeviceTracking({DEVICE_ID});
+  useDeviceTracking(DEVICE_ID);
 }
 ```
 
