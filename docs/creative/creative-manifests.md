@@ -109,7 +109,9 @@ The agent generates creative assets and packages them into deliverable formats.
 
 ---
 
-**All workflows can output:** Creative manifests, HTML/JS tags, or webhook endpoints depending on publisher capabilities and buyer needs.
+**All workflows can output:** Creative manifests, HTML/JS tags, or webhook endpoints.
+
+**Note**: In seller-managed storage (e.g., Meta, TikTok), creatives stay within the platform and are referenced by ID rather than exported as portable formats.
 
 ## Manifest Structure
 
@@ -243,47 +245,7 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
 
 **Note**: For client-side dynamic rendering, use `html` or `javascript` asset types with embedded tags instead of webhooks.
 
-### Hybrid Manifests
-
-Hybrid manifests combine static and dynamic elements:
-
-```json
-{
-  "format_id": "video_30s_vast",
-  "assets": {
-    "vast_tag": {
-      "asset_type": "vast_tag",
-      "content": "<?xml version=\"1.0\"?><VAST version=\"4.2\">...</VAST>",
-      "vast_version": "4.2",
-      "duration_seconds": 30
-    },
-    "companion_banner": {
-      "asset_type": "image",
-      "url": "https://cdn.example.com/companion-300x250.jpg",
-      "width": 300,
-      "height": 250,
-      "format": "jpg"
-    },
-    "end_card": {
-      "asset_type": "webhook",
-      "url": "https://creative-agent.example.com/endcard?campaign=123",
-      "method": "GET",
-      "timeout_ms": 300,
-      "supported_macros": ["COUNTRY", "DEVICE_TYPE"],
-      "response_type": "html",
-      "security": {
-        "method": "api_key",
-        "api_key_header": "X-API-Key"
-      }
-    }
-  }
-}
-```
-
-**Use Cases**:
-- Video with personalized end cards
-- Native ads with dynamic pricing
-- Carousel ads with real-time product feeds
+**Dynamic manifests can mix asset types** - some assets may be static (images, videos) while others are dynamic (webhooks, tags with macros). For example, a video VAST tag with a static hero video but a personalized end card webhook.
 
 ## Working with Manifests
 
@@ -471,22 +433,14 @@ Manifests support macro placeholders for dynamic values. AdCP uses universal mac
 
 ### Available Macros
 
-Each format defines which macros it supports via the `supported_macros` field. Common categories include:
+Each format defines which macros it supports via the `supported_macros` field. Consult the format specification and the universal macros specification for the complete list of available macros and their behavior.
 
-**Common Macros** (all formats):
-- `{MEDIA_BUY_ID}`, `{CREATIVE_ID}`, `{CACHEBUSTER}`, `{TIMESTAMP}`
-
-**Device & Environment**:
-- `{DEVICE_TYPE}`, `{OS}`, `{USER_AGENT}`, `{APP_BUNDLE}`
-
-**Geographic**:
-- `{COUNTRY}`, `{REGION}`, `{CITY}`, `{DMA}`, `{LAT}`, `{LONG}`
-
-**Privacy & Compliance**:
-- `{GDPR}`, `{GDPR_CONSENT}`, `{US_PRIVACY}`, `{LIMIT_AD_TRACKING}`
-
-**Video-Specific**:
-- `{VIDEO_ID}`, `{POD_POSITION}`, `{CONTENT_GENRE}`, `{PLAYER_WIDTH}`
+Common macro categories:
+- **Common**: `{MEDIA_BUY_ID}`, `{CREATIVE_ID}`, `{CACHEBUSTER}`, `{TIMESTAMP}`
+- **Device & Environment**: `{DEVICE_TYPE}`, `{OS}`, `{USER_AGENT}`, `{APP_BUNDLE}`
+- **Geographic**: `{COUNTRY}`, `{REGION}`, `{CITY}`, `{DMA}`, `{LAT}`, `{LONG}`
+- **Privacy & Compliance**: `{GDPR}`, `{GDPR_CONSENT}`, `{US_PRIVACY}`, `{LIMIT_AD_TRACKING}`
+- **Video-Specific**: `{VIDEO_ID}`, `{POD_POSITION}`, `{CONTENT_GENRE}`, `{PLAYER_WIDTH}`
 
 **Web Context**:
 - `{DOMAIN}`, `{PAGE_URL}`, `{REFERRER}`, `{KEYWORDS}`
