@@ -77,7 +77,7 @@ A media buy contains:
 
 ### Package Model
 Packages are the building blocks of media buys:
-- **Product selection** from discovery results
+- **Single product** selection from discovery results
 - **Creative formats** to be provided for this package
 - **Targeting overlays** for audience refinement beyond product defaults
 - **Budget allocation** as portion of overall media buy budget

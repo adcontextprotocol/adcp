@@ -4,12 +4,12 @@
   "title": "AdCP Schema Registry v1",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "1.6.0",
+  "adcp_version": "1.6.1",
   "standard_formats_version": "1.0.0",
   "versioning": {
     "note": "All request/response schemas include adcp_version field. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2025-09-21",
+  "lastUpdated": "2025-10-04",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
