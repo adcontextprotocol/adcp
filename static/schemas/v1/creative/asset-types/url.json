@@ -56,25 +56,21 @@
       "default": 2048,
       "description": "Maximum URL length in characters"
     },
-    "macro_support": {
-      "type": "object",
-      "properties": {
-        "supported_macros": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "uniqueItems": true,
-          "description": "List of supported macros (e.g., {CLICK_URL}, {CACHE_BUSTER}, {DEVICE_TYPE})"
-        },
-        "macro_format": {
-          "type": "string",
-          "enum": ["curly_braces", "square_brackets", "percent"],
-          "default": "curly_braces",
-          "description": "Format for macro placeholders: {MACRO}, [MACRO], or %MACRO%"
-        }
+    "supported_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
       },
-      "description": "Macro substitution support for this URL"
+      "uniqueItems": true,
+      "description": "List of universal macros that can be used in URL (e.g., {CLICK_URL}, {CACHEBUSTER}, {DEVICE_TYPE})"
+    },
+    "required_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "description": "List of universal macros that must be provided for URL to function"
     },
     "url_encoding": {
       "type": "object",

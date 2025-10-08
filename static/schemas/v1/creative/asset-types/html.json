@@ -215,12 +215,19 @@
       },
       "description": "iframe sandbox restrictions to apply"
     },
-    "macro_support": {
+    "supported_macros": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "List of macros that can be used in HTML (e.g., {CLICK_URL}, {CACHE_BUSTER})"
+      "description": "List of universal macros that can be used in HTML (e.g., {CLICK_URL}, {CACHEBUSTER})"
+    },
+    "required_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of universal macros that must be provided for HTML to function"
     },
     "validation_service": {
       "type": "string",

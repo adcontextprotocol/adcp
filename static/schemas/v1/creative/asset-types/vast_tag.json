@@ -179,13 +179,21 @@
       },
       "description": "Tracking event requirements"
     },
-    "macro_support": {
+    "supported_macros": {
       "type": "array",
       "items": {
         "type": "string"
       },
       "uniqueItems": true,
-      "description": "List of supported VAST macros (e.g., [TIMESTAMP], [CACHEBUSTING], [CONTENTPLAYHEAD])"
+      "description": "List of VAST macros that can be used (e.g., [TIMESTAMP], [CACHEBUSTING], [CONTENTPLAYHEAD])"
+    },
+    "required_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "description": "List of VAST macros that must be provided for the tag to function"
     },
     "ssl_required": {
       "type": "boolean",

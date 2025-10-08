@@ -137,6 +137,22 @@
           "enum": ["image", "html"]
         }
       }
+    },
+    "supported_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "description": "List of universal macros that can be passed to JavaScript (e.g., {CLICK_URL}, {CACHEBUSTER}, {DEVICE_TYPE})"
+    },
+    "required_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "description": "List of universal macros that must be provided for JavaScript to function"
     }
   },
   "required": ["asset_id", "asset_type", "required"],
