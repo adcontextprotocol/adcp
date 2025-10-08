@@ -61,53 +61,31 @@ Creative manifests provide the actual assets that meet those requirements:
 }
 ```
 
-### Creative Agents Generate Manifests
+### What Creative Agents Do
 
-Creative agents bridge the gap between what buyers provide and what formats require. They operate in four modalities:
+Creative agents transform inputs into creatives that can be trafficked. The transformation type is independent of where creatives are stored.
 
-#### 1. Static Validation (Manifest → Validated Manifest)
+#### Transformation Types
 
-Buyer provides complete manifest, creative agent validates and potentially enriches it.
+**1. Validation & Enrichment**: Manifest → Validated Manifest
+- Buyer provides complete creative manifest
+- Agent validates compliance, generates preview
+- Returns validated manifest ready for use
+- **Example**: Native ad manifest → validates image dimensions → adds preview URL
 
-- **Input**: Creative manifest (buyer-provided)
-- **Process**: Creative agent validates assets exist, meet requirements, generates preview
-- **Output**: Validated manifest (potentially with preview URL added)
-- **Example**: Native ad with title, image, URL → Agent validates dimensions, generates preview
+**2. Static Assembly**: Assets → Manifest/Tag/Webhook
+- Buyer provides individual assets (images, videos, text)
+- Agent packages into format-compliant output
+- Output can be manifest, HTML/JS tag, or webhook endpoint
+- **Example**: banner.jpg + headline → display_300x250 manifest OR `<script>` tag OR webhook URL
 
-**Use case**: Publisher-embedded creative agents where buyer provides structured native ad assets (title, description, image, clickthrough URL). Agent ensures compliance and generates preview.
+**3. Generative Creation**: Prompt/Brief → Manifest/Tag/Webhook
+- Buyer provides natural language brief or unstructured brand assets
+- Agent generates assets and packages into format
+- Output can be manifest, tag, or webhook
+- **Example**: "Running shoe banner" + brand assets → generates image → returns as manifest OR tag OR webhook
 
-#### 2. Static Asset Delivery (Creative Ad Server)
-
-Buyer provides individual assets, creative agent packages them into manifest format.
-
-- **Input**: Individual static assets (images, videos, etc.) + Format ID
-- **Process**: Creative agent validates assets meet format requirements, packages into manifest
-- **Output**: Creative manifest ready for trafficking
-- **Example**: Buyer uploads banner.jpg → Agent creates display_300x250 manifest
-
-**Use case**: Traditional creative workflow where advertiser has finished assets from agency.
-
-#### 3. Prompt to Static Rendering (Pre-Generation)
-
-Creative agent generates assets from prompts/briefs, then delivers static manifests.
-
-- **Input**: Natural language brief or unstructured assets (brand card) + Format ID
-- **Process**: Creative agent generates/selects assets, renders into static files
-- **Output**: Creative manifest with static URLs
-- **Example**: "Make me a banner for running shoes" → Agent generates image → Creates manifest with CDN URL
-
-**Use case**: Brand provides unstructured assets (logos, product images, taglines) and says "give this to me in format XYZ".
-
-#### 4. Prompt to Dynamic Rendering (DCO/Generative)
-
-Creative agent provides webhook that generates creatives in real-time at impression time.
-
-- **Input**: Brief + Format ID + Context requirements
-- **Process**: Creative agent creates webhook asset that renders based on macros
-- **Output**: Creative manifest with webhook URL
-- **Example**: Podcast ad that generates custom host read based on `{CONTENT_GENRE}`, `{WEATHER}`, etc.
-
-**Use case**: Contextual creative that adapts to user, environment, or content (DCO, generative audio, dynamic product feeds).
+The key insight: **transformation type (what you do) is separate from output format (manifest/tag/webhook) and storage location (buyer-managed vs agent-managed).**
 
 ## Manifest Structure
 
@@ -506,83 +484,64 @@ Sales Agent translates to: %%ADVERTISING_IDENTIFIER_PLAIN%% (for GAM)
 Ad Server substitutes: ABC-123-DEF-456
 ```
 
-## Creative Agent Lifecycle Patterns
+## Creative Storage Patterns
 
-Creative agents can be deployed in two distinct patterns, each with different capabilities and workflows:
+Where creatives are stored is independent of what transformations the creative agent performs. There are two storage patterns:
 
-### Embedded Pattern (Publisher-Hosted)
+### Buyer-Managed Storage
 
-Publisher embeds creative agent into their ad platform for direct buyer integration.
+Buyer stores and manages creative assets/manifests themselves. Agent provides transformation services on-demand.
 
-**Characteristics:**
-- Creative agent tied to specific publisher's inventory
-- Limited to validating and previewing buyer-provided manifests
-- Cannot independently serve creatives as tags/manifests
-- Optimized for native ad formats
+**How it works:**
+1. Buyer maintains their own asset library or creative management system
+2. When needed, buyer calls creative agent with assets/manifest/prompt
+3. Agent transforms and returns result (manifest, tag, or webhook)
+4. Buyer stores the result in their system
+5. Buyer passes creative to publisher during create_media_buy
 
-**Typical Workflow:**
-1. **Register Brand** (optional): Buyer submits brand card with reusable assets
-2. **Preview Creative**: Buyer submits manifest → Agent validates and returns preview URL
-3. **Submit to Campaign**: Validated manifest used in create_media_buy
+**Agent provides:**
+- `preview_creative` - Validate/preview on-demand
+- `build_creative` - Transform assets/prompts into creatives on-demand
+- Returns manifests, tags, or webhooks immediately
+- No persistent storage of buyer's creatives
 
-**Supported Tasks:**
-- `preview_creative` - Validate manifest and generate preview
-- `build_creative` (limited) - May validate and enrich buyer manifest
-- NO creative library management (buyer manages their own assets)
-- NO creative retrieval as tags (publisher renders directly from manifest)
+**Example:** Publisher offers native ad validation agent. Buyer has CMS with native ad templates. For each campaign, buyer generates manifest from CMS, sends to agent for validation/preview, gets back validated manifest, uses in create_media_buy.
 
-**Example Use Case:** Publisher has native ad placements. Buyer provides title, description, image, clickthrough URL. Creative agent validates image dimensions, generates preview showing how ad will appear in feed, ensures policy compliance.
+### Agent-Managed Storage
 
-### Independent Pattern (Ad Server)
+Creative agent maintains a library of buyer's creatives. Buyer can retrieve them by ID.
 
-Creative agent operates independently as a creative ad server or DCO platform.
+**How it works:**
+1. Buyer registers brand assets with agent (`manage_creative_library`)
+2. Buyer builds creatives, agent stores them with creative_id
+3. Buyer retrieves creatives later by ID in different formats
+4. Agent serves creative as manifest, tag, or webhook depending on publisher needs
 
-**Characteristics:**
-- Platform-agnostic creative serving
-- Full creative lifecycle management
-- Can serve creatives as tags, manifests, or webhooks
-- Supports all creative modalities (validation, static, generative, dynamic)
-
-**Typical Workflow:**
-1. **Register Brand**: Submit brand card with assets to agent's library
-2. **Build Creative**: Agent generates manifest from brief or assets
-3. **Preview Creative**: Test creative with different contexts
-4. **Store in Library**: Add/update creative in agent's storage
-5. **Retrieve for Campaign**: Get creative as tag, manifest, or webhook for trafficking
-
-**Supported Tasks:**
-- `preview_creative` - Full preview with multiple variants and contexts
-- `build_creative` - Generate manifests from briefs or unstructured assets
+**Agent provides:**
+- `preview_creative` - Full preview capabilities
+- `build_creative` - Generate and store creatives
 - `manage_creative_library` - Add/update/delete/list creatives
-- `get_creative_as_tag` - Retrieve HTML/JS/VAST tag for embedding
-- `get_creative_as_manifest` - Retrieve structured manifest
-- `get_creative_as_webhook` - Get webhook URL for dynamic rendering
+- `get_creative` - Retrieve by ID as manifest, tag, or webhook
+- Persistent storage of all buyer creatives
 
-**Example Use Case:** Independent DCO platform. Buyer registers brand assets, generates multiple creative variants for different audiences, stores in library, retrieves as VAST tags for video campaigns or webhooks for dynamic display ads.
+**Example:** Independent DCO platform. Buyer uploads brand assets once. Generates 50 creative variants for different audiences. Stores all in agent library. For Publisher A (supports manifests), retrieves as manifest. For Publisher B (requires VAST tags), retrieves same creative as VAST tag. For Publisher C (wants DCO), retrieves as webhook.
 
-### Choosing a Pattern
+### Key Difference
 
-| Capability | Embedded | Independent |
-|-----------|----------|-------------|
-| Validate manifests | ✅ | ✅ |
-| Generate previews | ✅ | ✅ |
-| Build from briefs | Limited | ✅ |
-| Creative library | ❌ | ✅ |
-| Serve as tags | ❌ | ✅ |
-| Multi-publisher | ❌ | ✅ |
-| Dynamic rendering | ❌ | ✅ |
+| Aspect | Buyer-Managed | Agent-Managed |
+|--------|---------------|---------------|
+| Storage | Buyer's system | Agent's system |
+| Retrieval | Not applicable | By creative_id |
+| Reuse | Buyer handles | Agent provides multiple formats |
+| Library tasks | ❌ | ✅ (`manage_creative_library`) |
+| Transformation tasks | ✅ | ✅ |
+| Multi-publisher | Buyer's responsibility | Agent handles format conversion |
 
-**When to use Embedded:**
-- Publisher wants control over creative rendering
-- Native ad formats with publisher-specific styling
-- Buyer provides pre-built assets
-- No need for cross-publisher creative reuse
+**Both patterns support all transformation types** (validation, static assembly, generative creation).
 
-**When to use Independent:**
-- Creative needs to work across multiple publishers
-- DCO or generative creative requirements
-- Buyer wants centralized creative management
-- Need for programmatic creative optimization
+**Both patterns can output** manifests, tags, or webhooks.
+
+The difference is simply: **who stores the creative after it's created?**
 
 ## Best Practices
 
