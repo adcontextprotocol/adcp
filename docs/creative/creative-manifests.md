@@ -107,10 +107,6 @@ The agent packages your assets into format-compliant creatives (manifests, tags,
 
 The agent generates creative assets and packages them into deliverable formats.
 
----
-
-**All workflows can output:** Creative manifests, HTML/JS tags, or webhook endpoints.
-
 **Note**: In seller-managed storage (e.g., Meta, TikTok), creatives stay within the platform and are referenced by ID rather than exported as portable formats.
 
 ## Manifest Structure
@@ -327,44 +323,31 @@ The creative agent returns preview URLs and renderings.
 
 ### Submitting Manifests
 
-Manifests are submitted through the media buy protocol:
-
-#### During Campaign Creation
+Manifests are submitted to the creative library using `sync_creatives`, then referenced by ID in media buys:
 
 ```json
 {
-  "task": "create_media_buy",
+  "task": "sync_creatives",
   "parameters": {
-    "formats_to_provide": [
-      {
-        "format_id": "native_responsive",
-        "creative_manifest": {
-          "format_id": "native_responsive",
-          "assets": {
-            // ... manifest assets
-          }
-        }
-      }
-    ]
-  }
-}
-```
-
-#### Via Creative Library
-
-```json
-{
-  "task": "manage_creative_library",
-  "parameters": {
-    "action": "add",
     "creatives": [
       {
         "creative_id": "native-salmon-v1",
+        "name": "Salmon Special Native Ad",
         "format_id": "native_responsive",
         "manifest": {
           "format_id": "native_responsive",
+          "promoted_offering": "Fresh Pacific Salmon",
           "assets": {
-            // ... manifest assets
+            "headline": {
+              "asset_type": "text",
+              "content": "Fresh Pacific Salmon - 20% Off Today"
+            },
+            "main_image": {
+              "asset_type": "image",
+              "url": "https://cdn.example.com/salmon.jpg",
+              "width": 1200,
+              "height": 628
+            }
           }
         }
       }
@@ -373,42 +356,7 @@ Manifests are submitted through the media buy protocol:
 }
 ```
 
-## Multi-Format Manifests
-
-For campaigns spanning multiple placements, provide manifests for each format:
-
-```json
-{
-  "formats_to_provide": [
-    {
-      "format_id": "display_300x250",
-      "creative_manifest": {
-        "format_id": "display_300x250",
-        "assets": {
-          "banner_image": {
-            "url": "https://cdn.example.com/banner-300x250.jpg",
-            "width": 300,
-            "height": 250
-          }
-        }
-      }
-    },
-    {
-      "format_id": "video_30s_hosted",
-      "creative_manifest": {
-        "format_id": "video_30s_hosted",
-        "assets": {
-          "video_file": {
-            "url": "https://cdn.example.com/video-30s.mp4",
-            "width": 1920,
-            "height": 1080
-          }
-        }
-      }
-    }
-  ]
-}
-```
+Then reference in media buys by `creative_id`. Each manifest is for a single format.
 
 ## Macro Substitution in Manifests
 
@@ -466,25 +414,25 @@ Ad Server substitutes: ABC-123-DEF-456
 
 Where creatives are stored is separate from how they're created. Choose the pattern that matches your business model.
 
-### Buyer-Managed Storage ("Bring Your Own Creative")
+### Buyer-Managed Storage ("Bring Your Own Ad Server")
 
-**Who:** Traditional advertisers, agencies with creative teams
-**Example platforms:** Workfront, Brandfolder, Adobe Creative Cloud, Canva
+**Who:** Buyers with their own ad serving infrastructure
+**Example platforms:** Google Campaign Manager, Innovid, Extreme Reach, Adform
 
-Buyer maintains their own creative assets. Creative agent provides transformation services (validation, assembly, generation) on-demand. Agent doesn't store creatives long-term.
+Agent generates creatives that are trafficked directly into buyer's ad serving platform. Agent provides generation but buyer's ad server handles storage and delivery.
 
 **Use when:**
-- Buyer has existing creative management system
-- Creative assets are confidential/sensitive
-- One-time campaign creative needs
-- Buyer wants full control over versioning
+- Buyer has existing ad server or delivery infrastructure
+- Buyer wants control over creative serving and decisioning
+- Multi-publisher campaigns with centralized ad serving
+- Need for buyer-side reporting and optimization
 
 **Creative agent provides:**
-- `preview_creative` - Validate and preview
-- `build_creative` - Transform assets into creatives
+- `build_creative` - Generate creatives for ad server trafficking
+- `preview_creative` - Preview before trafficking
 - Returns output immediately, no persistent storage
 
-**Real-world example:** Advertiser has Workfront DAM. Stores all assets locally. Exports native ad manifest per campaign. Sends to publisher's validation agent to check compliance. Gets back validated manifest. Uses in create_media_buy. Agent never stores the creative.
+**Real-world example:** Agency generates creative manifests for client campaign. Traffics them into Google Campaign Manager. Campaign Manager serves creatives across multiple publisher SSPs. Agent only generates, doesn't store or serve.
 
 ### Agent-Managed Storage ("Creative Platform")
 
@@ -624,39 +572,25 @@ Some formats (carousels, slideshows) use frame-based structures:
 }
 ```
 
-### Third-Party Tags
+### Asset Sequences
 
-Manifests can include third-party tags for external ad serving:
-
-```json
-{
-  "format_id": "display_300x250",
-  "assets": {
-    "third_party_tag": {
-      "content": "<script src=\"https://adserver.example.com/ad.js\"></script>"
-    }
-  },
-  "metadata": {
-    "is_third_party": true,
-    "tag_type": "javascript"
-  }
-}
-```
-
-### Localization
-
-Manifests can specify localized assets:
+For formats requiring multiple variants (e.g., carousel ads, video sequences), provide multiple assets for the same role:
 
 ```json
 {
-  "format_id": "native_responsive",
+  "format_id": "carousel_native",
   "assets": {
-    "headline": {
-      "content": "Premium Quality You Can Trust",
-      "localizations": {
-        "es": "Calidad Premium en la que Puede Confiar",
-        "fr": "Qualité Premium en laquelle Vous Pouvez Avoir Confiance"
-      }
+    "card_1_image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/card-1.jpg"
+    },
+    "card_2_image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/card-2.jpg"
+    },
+    "card_3_image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/card-3.jpg"
     }
   }
 }
