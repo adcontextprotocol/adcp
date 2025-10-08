@@ -10,7 +10,7 @@ Update campaign and package settings. This task supports partial updates and han
 **Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
 
 
-**Request Schema**: [`/schemas/v1/media-buy/update-media-buy-request.json`](/schemas/v1/media-buy/update-media-buy-request.json)  
+**Request Schema**: [`/schemas/v1/media-buy/update-media-buy-request.json`](/schemas/v1/media-buy/update-media-buy-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/update-media-buy-response.json`](/schemas/v1/media-buy/update-media-buy-response.json)
 
 ## Request Parameters

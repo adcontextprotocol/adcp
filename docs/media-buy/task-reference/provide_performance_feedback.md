@@ -9,7 +9,7 @@ Share performance outcomes with publishers to enable data-driven optimization an
 
 **Response Time**: ~5 seconds (data ingestion)
 
-**Request Schema**: [`/schemas/v1/media-buy/provide-performance-feedback-request.json`](/schemas/v1/media-buy/provide-performance-feedback-request.json)  
+**Request Schema**: [`/schemas/v1/media-buy/provide-performance-feedback-request.json`](/schemas/v1/media-buy/provide-performance-feedback-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/provide-performance-feedback-response.json`](/schemas/v1/media-buy/provide-performance-feedback-response.json)
 
 ## Request Parameters

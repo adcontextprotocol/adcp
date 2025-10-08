@@ -10,7 +10,7 @@ Retrieve comprehensive delivery metrics and performance data for reporting.
 **Response Time**: ~60 seconds (reporting query)
 
 
-**Request Schema**: [`/schemas/v1/media-buy/get-media-buy-delivery-request.json`](/schemas/v1/media-buy/get-media-buy-delivery-request.json)  
+**Request Schema**: [`/schemas/v1/media-buy/get-media-buy-delivery-request.json`](/schemas/v1/media-buy/get-media-buy-delivery-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/get-media-buy-delivery-response.json`](/schemas/v1/media-buy/get-media-buy-delivery-response.json)
 
 ## Request Parameters

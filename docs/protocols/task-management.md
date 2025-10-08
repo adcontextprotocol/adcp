@@ -71,7 +71,7 @@ List and filter async tasks across your account to enable state reconciliation a
 
 **Response Time**: ~1 second (simple database lookup)
 
-**Request Schema**: [`/schemas/v1/core/tasks-list-request.json`](/schemas/v1/core/tasks-list-request.json)  
+**Request Schema**: [`/schemas/v1/core/tasks-list-request.json`](/schemas/v1/core/tasks-list-request.json)
 **Response Schema**: [`/schemas/v1/core/tasks-list-response.json`](/schemas/v1/core/tasks-list-response.json)
 
 ### Request Parameters
@@ -245,7 +245,7 @@ Poll a specific task by ID to check status, progress, and retrieve results when 
 
 **Response Time**: ~1 second (simple database lookup)
 
-**Request Schema**: [`/schemas/v1/core/tasks-get-request.json`](/schemas/v1/core/tasks-get-request.json)  
+**Request Schema**: [`/schemas/v1/core/tasks-get-request.json`](/schemas/v1/core/tasks-get-request.json)
 **Response Schema**: [`/schemas/v1/core/tasks-get-response.json`](/schemas/v1/core/tasks-get-response.json)
 
 ### Request Parameters

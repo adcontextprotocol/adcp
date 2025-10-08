@@ -9,7 +9,7 @@ Discover available advertising products based on campaign requirements, using na
 
 **Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications. **See [Creative Lifecycle](../creatives/index.md) for the complete workflow.**
 
-**Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](/schemas/v1/media-buy/get-products-request.json)  
+**Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](/schemas/v1/media-buy/get-products-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/get-products-response.json`](/schemas/v1/media-buy/get-products-response.json)
 
 ## Request Parameters
