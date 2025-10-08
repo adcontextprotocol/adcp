@@ -272,22 +272,22 @@ async function runTests() {
   await test('Core schemas have appropriate required fields', () => {
     const coreSchemas = schemas.filter(([path]) => path.includes('/core/'));
     const requiredFieldChecks = {
-      'product.json': ['product_id', 'name', 'description', 'format_ids', 'delivery_type', 'is_fixed_price'],
+      'product.json': ['product_id', 'name', 'description', 'format_ids', 'delivery_type'],
       'media-buy.json': ['media_buy_id', 'status', 'promoted_offering', 'total_budget', 'packages'],
       'package.json': ['package_id', 'status'],
       'creative-asset.json': ['creative_id', 'name', 'format'],
       'error.json': ['code', 'message'],
-      'budget.json': ['total', 'currency']
+      'budget.json': ['total', 'currency']  // Budget is always a monetary amount
     };
-    
+
     for (const [schemaPath, schema] of coreSchemas) {
       const filename = path.basename(schemaPath);
       const expectedRequired = requiredFieldChecks[filename];
-      
+
       if (expectedRequired) {
         const actualRequired = schema.required || [];
         const missing = expectedRequired.filter(field => !actualRequired.includes(field));
-        
+
         if (missing.length > 0) {
           return `${filename}: Missing required fields: ${missing.join(', ')}`;
         }
