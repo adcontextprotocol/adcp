@@ -76,6 +76,41 @@ Use the `context_id` to make improvements:
 
 ## Common Patterns
 
+### Using Brand Cards
+
+Provide brand context for better creative generation:
+
+```json
+{
+  "message": "Create a display ad for our coffee shop promotion",
+  "format_id": "display_300x250",
+  "brand_card": {
+    "url": "https://mycoffeeshop.com",
+    "name": "Brew & Co",
+    "colors": {
+      "primary": "#6F4E37",
+      "secondary": "#C4A35A"
+    },
+    "tone": "warm and inviting"
+  },
+  "output_mode": "manifest"
+}
+```
+
+**Minimal Brand Card**: Start with just a URL for low-friction creative generation:
+
+```json
+{
+  "message": "Create a coffee shop ad",
+  "format_id": "display_native",
+  "brand_card": {
+    "url": "https://mycoffeeshop.com"
+  }
+}
+```
+
+See [Brand Card Reference](../reference/brand-card) for comprehensive examples.
+
 ### Using Your Own Assets
 
 Provide existing assets to incorporate into the creative:
@@ -84,6 +119,9 @@ Provide existing assets to incorporate into the creative:
 {
   "message": "Create a display ad featuring our signature latte",
   "format_id": "display_300x250",
+  "brand_card": {
+    "url": "https://mycoffeeshop.com"
+  },
   "assets": [
     {
       "asset_id": "brand_logo",

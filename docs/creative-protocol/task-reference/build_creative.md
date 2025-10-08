@@ -41,6 +41,7 @@ Creative agents need to understand format requirements to generate appropriate c
 | `format_source` | string | No | Source URL for format lookup (sales agent URL). If null/omitted, assumes standard AdCP format |
 | `format_id` | string | Yes | Format identifier to look up from the format source |
 | `context_id` | string | No | Session context from previous message for continuity |
+| `brand_card` | BrandCard | No | Brand information manifest for creative generation context. See [Brand Card](../../reference/brand-card) for details. Replaces legacy `brand_guidelines`. |
 | `assets` | array | No | References to asset libraries and specific assets |
 | `output_mode` | string | No | `"manifest"` for creative manifest or `"code"` for executable (default: `"manifest"`) |
 | `preview_options` | object | No | Options for generating preview |
@@ -174,14 +175,50 @@ Creative agents need to understand format requirements to generate appropriate c
 
 ## Examples
 
-### Example 1: Building a Native Ad (Manifest Mode)
+### Example 1: Building a Native Ad with Brand Card (Manifest Mode)
 
-#### Initial Request
+#### Initial Request with Brand Card
+```json
+{
+  "message": "Create a native ad for Yahoo promoting Purina Pro Plan. Focus on the veterinarian recommendation and that real salmon is the #1 ingredient.",
+  "format_id": "display_native",
+  "output_mode": "manifest",
+  "brand_card": {
+    "url": "https://purina.com",
+    "name": "Purina Pro Plan",
+    "logos": [
+      {
+        "url": "https://cdn.purina.com/logos/proplan-square.png",
+        "tags": ["square", "dark"],
+        "width": 512,
+        "height": 512
+      }
+    ],
+    "colors": {
+      "primary": "#E31837",
+      "secondary": "#003DA5",
+      "background": "#FFFFFF"
+    },
+    "tone": "informative and trustworthy"
+  },
+  "assets": [
+    {
+      "library_id": "purina_assets",
+      "tags": ["product_shots", "salmon_formula"]
+    }
+  ]
+}
+```
+
+#### Simple Request (Minimal Brand Card)
 ```json
 {
   "message": "Create a native ad for Yahoo promoting Purina Pro Plan. Focus on the veterinarian recommendation and that real salmon is the #1 ingredient. Use an informative and trustworthy tone with 'Learn More' as the CTA.",
   "format_id": "display_native",
   "output_mode": "manifest",
+  "brand_card": {
+    "url": "https://purina.com"
+  },
   "assets": [
     {
       "library_id": "purina_assets",

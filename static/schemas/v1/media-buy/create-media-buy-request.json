@@ -26,6 +26,14 @@
       "type": "string",
       "description": "Description of advertiser and what is being promoted"
     },
+    "brand_card": {
+      "$ref": "/schemas/v1/core/brand-card.json",
+      "description": "Optional brand information manifest for creative generation and campaign context. Can be cached and reused across multiple requests."
+    },
+    "promoted_products": {
+      "$ref": "/schemas/v1/core/promoted-products.json",
+      "description": "Products or offerings being promoted in this media buy. Supports SKU selection from brand card's product catalog, or inline offerings for non-commerce campaigns."
+    },
     "po_number": {
       "type": "string",
       "description": "Purchase order number for tracking"
