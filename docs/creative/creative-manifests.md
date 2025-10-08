@@ -58,8 +58,6 @@ Creative manifests provide the actual assets that meet those requirements:
     }
   },
   "metadata": {
-    "advertiser": "Example Brand",
-    "campaign": "Summer Sale 2025",
     "promoted_offering": "Premium Widget Pro"
   }
 }
@@ -122,20 +120,12 @@ Creative agent provides dynamic endpoint that generates creatives in real-time a
       // URL: url, purpose (clickthrough/tracking/etc)
       // HTML: content or url, width, height, file_size
       // JavaScript: content or url, inline
-      // Dynamic Endpoint: url, supported_macros, timeout_ms
+      // Dynamic Endpoint (Tag): delivery_method="tag", tag_type, tag_content, supported_macros
+      // Dynamic Endpoint (Webhook): delivery_method="webhook", url, method, timeout_ms, response_type, security, supported_macros
     }
   };
   metadata?: {
-    advertiser?: string;
-    brand?: string;
-    campaign?: string;
-    creative_name?: string;
     promoted_offering?: string;  // Product being advertised (maps to create_media_buy)
-    created_at?: string;       // ISO 8601 date-time
-    updated_at?: string;       // ISO 8601 date-time
-    version?: string;
-    tags?: string[];
-    [key: string]: any;        // Additional custom metadata
   };
 }
 ```
@@ -215,9 +205,17 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
   "assets": {
     "dynamic_endpoint": {
       "asset_type": "dynamic_endpoint",
+      "delivery_method": "webhook",
       "url": "https://creative-agent.example.com/render/campaign-123",
+      "method": "POST",
+      "timeout_ms": 500,
       "supported_macros": ["WEATHER", "TIME", "DEVICE_TYPE", "COUNTRY"],
-      "timeout_ms": 500
+      "response_type": "html",
+      "security": {
+        "method": "hmac_sha256",
+        "hmac_header": "X-Signature"
+      },
+      "fallback_required": true
     },
     "fallback_image": {
       "asset_type": "image",
@@ -235,6 +233,32 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
 - Time-of-day personalization
 - Product availability messaging
 - Real-time inventory updates
+
+**Alternative: Tag-Based Dynamic**
+
+For client-side rendering, use a tag instead of webhook:
+
+```json
+{
+  "format_id": "display_dynamic_300x250",
+  "assets": {
+    "dynamic_tag": {
+      "asset_type": "dynamic_endpoint",
+      "delivery_method": "tag",
+      "tag_type": "javascript",
+      "tag_content": "<script src=\"https://creative-agent.example.com/render.js?campaign=123\" data-macros=\"DEVICE_TYPE,COUNTRY,WEATHER\"></script>",
+      "supported_macros": ["DEVICE_TYPE", "COUNTRY", "WEATHER"]
+    },
+    "fallback_image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/fallback-300x250.jpg",
+      "width": 300,
+      "height": 250,
+      "format": "jpg"
+    }
+  }
+}
+```
 
 ### Hybrid Manifests
 
@@ -259,8 +283,16 @@ Hybrid manifests combine static and dynamic elements:
     },
     "end_card_endpoint": {
       "asset_type": "dynamic_endpoint",
+      "delivery_method": "webhook",
       "url": "https://creative-agent.example.com/endcard?campaign=123",
-      "supported_macros": ["COUNTRY", "DEVICE_TYPE"]
+      "method": "GET",
+      "timeout_ms": 300,
+      "supported_macros": ["COUNTRY", "DEVICE_TYPE"],
+      "response_type": "html",
+      "security": {
+        "method": "api_key",
+        "api_key_header": "X-API-Key"
+      }
     }
   }
 }

@@ -2,123 +2,130 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/creative/asset-types/dynamic_endpoint.json",
   "title": "Dynamic Endpoint Asset Type Schema",
-  "description": "Schema for dynamic creative endpoints that return content at render time (DCO)",
-  "type": "object",
-  "properties": {
-    "asset_id": {
-      "type": "string",
-      "pattern": "^[a-z0-9_]+$",
-      "description": "Unique identifier for this asset within the format"
-    },
-    "asset_type": {
-      "type": "string",
-      "const": "dynamic_endpoint"
-    },
-    "required": {
-      "type": "boolean",
-      "description": "Whether this asset is mandatory for the format"
-    },
-    "endpoint_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "URL endpoint that returns creative content at render time"
-    },
-    "method": {
-      "type": "string",
-      "enum": ["GET", "POST"],
-      "default": "POST",
-      "description": "HTTP method for endpoint request"
-    },
-    "timeout_ms": {
-      "type": "integer",
-      "minimum": 50,
-      "maximum": 1000,
-      "default": 200,
-      "description": "Maximum time to wait for endpoint response"
-    },
-    "request_payload": {
+  "description": "Schema for dynamic creative rendering - either an embed tag (HTML/JS/VAST) or a webhook that returns content at render time",
+  "oneOf": [
+    {
       "type": "object",
+      "description": "Embed tag for client-side dynamic rendering (HTML/JavaScript/VAST)",
       "properties": {
-        "includes_context": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["user_id", "placement_id", "geo", "device", "time", "weather", "audience_segments", "page_context"]
-          },
-          "description": "Context data to include in request"
+        "asset_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "description": "Unique identifier for this asset within the format"
         },
-        "custom_params": {
-          "type": "object",
-          "additionalProperties": true,
-          "description": "Custom parameters to send with request"
-        }
-      }
-    },
-    "response_format": {
-      "type": "string",
-      "enum": ["html", "json", "xml", "javascript"],
-      "description": "Expected format of endpoint response"
-    },
-    "response_schema": {
-      "type": "object",
-      "description": "JSON Schema for validating response structure",
-      "additionalProperties": true
-    },
-    "cache_config": {
-      "type": "object",
-      "properties": {
-        "cache_enabled": {
+        "asset_type": {
+          "type": "string",
+          "const": "dynamic_endpoint"
+        },
+        "required": {
           "type": "boolean",
-          "default": false
+          "description": "Whether this asset is mandatory for the format"
         },
-        "ttl_seconds": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 3600,
-          "default": 0
+        "delivery_method": {
+          "type": "string",
+          "const": "tag",
+          "description": "Indicates this is an embed tag"
         },
-        "cache_key": {
+        "tag_type": {
+          "type": "string",
+          "enum": ["html", "javascript", "vast"],
+          "description": "Type of tag content"
+        },
+        "tag_content": {
+          "type": "string",
+          "description": "The actual tag code (HTML snippet, JavaScript, or VAST XML)"
+        },
+        "supported_macros": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Fields to use for cache key generation"
+          "description": "Universal macros this tag expects (e.g., DEVICE_TYPE, COUNTRY, WEATHER)"
         }
-      }
+      },
+      "required": ["asset_id", "asset_type", "required", "delivery_method", "tag_type", "tag_content"],
+      "additionalProperties": false
     },
-    "fallback_asset": {
+    {
       "type": "object",
-      "description": "Static fallback asset if endpoint fails",
+      "description": "Webhook for server-side dynamic rendering",
       "properties": {
+        "asset_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "description": "Unique identifier for this asset within the format"
+        },
+        "asset_type": {
+          "type": "string",
+          "const": "dynamic_endpoint"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this asset is mandatory for the format"
+        },
+        "delivery_method": {
+          "type": "string",
+          "const": "webhook",
+          "description": "Indicates this is a server-side webhook"
+        },
         "url": {
           "type": "string",
-          "format": "uri"
+          "format": "uri",
+          "description": "Webhook URL to call for dynamic content"
         },
-        "type": {
+        "method": {
           "type": "string",
-          "enum": ["image", "html", "video"]
-        }
-      }
-    },
-    "security": {
-      "type": "object",
-      "properties": {
-        "requires_https": {
-          "type": "boolean",
-          "default": true
+          "enum": ["GET", "POST"],
+          "default": "POST",
+          "description": "HTTP method"
         },
-        "authentication": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 5000,
+          "default": 500,
+          "description": "Maximum time to wait for response in milliseconds"
+        },
+        "supported_macros": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Universal macros to pass to webhook (e.g., DEVICE_TYPE, COUNTRY, WEATHER)"
+        },
+        "response_type": {
           "type": "string",
-          "enum": ["none", "api_key", "oauth2", "custom"],
-          "default": "none"
+          "enum": ["html", "json", "xml", "javascript"],
+          "description": "Expected content type of webhook response"
         },
-        "cors_enabled": {
+        "security": {
+          "type": "object",
+          "description": "Security configuration for webhook calls",
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": ["hmac_sha256", "api_key", "none"],
+              "description": "Authentication method"
+            },
+            "hmac_header": {
+              "type": "string",
+              "description": "Header name for HMAC signature (e.g., 'X-Signature')"
+            },
+            "api_key_header": {
+              "type": "string",
+              "description": "Header name for API key (e.g., 'X-API-Key')"
+            }
+          },
+          "required": ["method"]
+        },
+        "fallback_required": {
           "type": "boolean",
-          "default": true
+          "default": true,
+          "description": "Whether a fallback asset must be provided if webhook fails"
         }
-      }
+      },
+      "required": ["asset_id", "asset_type", "required", "delivery_method", "url", "response_type", "security"],
+      "additionalProperties": false
     }
-  },
-  "required": ["asset_id", "asset_type", "required", "endpoint_url", "response_format"],
-  "additionalProperties": false
+  ]
 }

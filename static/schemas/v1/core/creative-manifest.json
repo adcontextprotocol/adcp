@@ -251,36 +251,96 @@
             },
             {
               "type": "object",
-              "description": "Dynamic endpoint that renders creative in real-time",
+              "description": "Dynamic endpoint - embed tag (HTML/JS/VAST) for client-side rendering",
               "properties": {
                 "asset_type": {
                   "type": "string",
                   "const": "dynamic_endpoint"
                 },
-                "url": {
+                "delivery_method": {
                   "type": "string",
-                  "format": "uri",
-                  "description": "Endpoint URL for real-time creative generation"
+                  "const": "tag"
+                },
+                "tag_type": {
+                  "type": "string",
+                  "enum": ["html", "javascript", "vast"]
+                },
+                "tag_content": {
+                  "type": "string",
+                  "description": "The tag code (HTML snippet, JavaScript, or VAST XML)"
                 },
                 "supported_macros": {
                   "type": "array",
                   "items": {
                     "type": "string"
                   },
-                  "description": "List of macros this endpoint expects"
+                  "description": "Universal macros this tag expects"
+                }
+              },
+              "required": ["asset_type", "delivery_method", "tag_type", "tag_content"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "Dynamic endpoint - webhook for server-side rendering",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "dynamic_endpoint"
+                },
+                "delivery_method": {
+                  "type": "string",
+                  "const": "webhook"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "Webhook URL to call for dynamic content"
+                },
+                "method": {
+                  "type": "string",
+                  "enum": ["GET", "POST"],
+                  "default": "POST"
                 },
                 "timeout_ms": {
                   "type": "integer",
                   "minimum": 10,
                   "maximum": 5000,
-                  "description": "Maximum render time in milliseconds"
+                  "default": 500
+                },
+                "supported_macros": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Universal macros to pass to webhook"
+                },
+                "response_type": {
+                  "type": "string",
+                  "enum": ["html", "json", "xml", "javascript"]
+                },
+                "security": {
+                  "type": "object",
+                  "properties": {
+                    "method": {
+                      "type": "string",
+                      "enum": ["hmac_sha256", "api_key", "none"]
+                    },
+                    "hmac_header": {
+                      "type": "string"
+                    },
+                    "api_key_header": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["method"]
                 },
                 "fallback_required": {
                   "type": "boolean",
-                  "description": "Whether a fallback asset must be provided"
+                  "default": true
                 }
               },
-              "required": ["asset_type", "url"],
+              "required": ["asset_type", "delivery_method", "url", "response_type", "security"],
               "additionalProperties": false
             },
             {
@@ -359,51 +419,14 @@
     },
     "metadata": {
       "type": "object",
-      "description": "Additional metadata about the creative",
+      "description": "Optional metadata about the creative. Keep minimal - most information should be in the creative_id or tracking URLs.",
       "properties": {
-        "advertiser": {
-          "type": "string",
-          "description": "Advertiser name"
-        },
-        "brand": {
-          "type": "string",
-          "description": "Brand name"
-        },
-        "campaign": {
-          "type": "string",
-          "description": "Campaign name"
-        },
-        "creative_name": {
-          "type": "string",
-          "description": "Human-readable creative name"
-        },
-        "created_at": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Creation timestamp"
-        },
-        "updated_at": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Last update timestamp"
-        },
-        "version": {
-          "type": "string",
-          "description": "Creative version identifier"
-        },
-        "tags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Tags for organization and filtering"
-        },
         "promoted_offering": {
           "type": "string",
           "description": "Product name or offering being advertised. Maps to promoted_offerings in create_media_buy request to associate creative with the product being promoted."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     }
   },
   "required": ["format_id", "assets"],
