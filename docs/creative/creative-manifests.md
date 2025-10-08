@@ -524,73 +524,51 @@ Publisher stores advertiser creatives within their platform. Advertiser creates/
 
 ## Advanced Topics
 
-### Frame-Based Manifests
+### Asset Sequences
 
-Some formats (carousels, slideshows) use frame-based structures:
+For formats requiring multiple variants (e.g., carousel ads, video sequences), provide numbered asset groups. Each group represents one frame/card in the sequence:
 
 ```json
 {
   "format_id": "retail_product_carousel",
   "assets": {
-    "frames": [
-      {
-        "product_image": {
-          "url": "https://cdn.example.com/product1.jpg",
-          "width": 300,
-          "height": 300
-        },
-        "product_name": {
-          "content": "Product Name 1"
-        },
-        "product_price": {
-          "content": "$29.99"
-        }
-      },
-      {
-        "product_image": {
-          "url": "https://cdn.example.com/product2.jpg",
-          "width": 300,
-          "height": 300
-        },
-        "product_name": {
-          "content": "Product Name 2"
-        },
-        "product_price": {
-          "content": "$39.99"
-        }
-      }
-    ],
+    "card_1_image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/product1.jpg",
+      "width": 300,
+      "height": 300
+    },
+    "card_1_title": {
+      "asset_type": "text",
+      "content": "Product Name 1"
+    },
+    "card_1_price": {
+      "asset_type": "text",
+      "content": "$29.99"
+    },
+    "card_2_image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/product2.jpg",
+      "width": 300,
+      "height": 300
+    },
+    "card_2_title": {
+      "asset_type": "text",
+      "content": "Product Name 2"
+    },
+    "card_2_price": {
+      "asset_type": "text",
+      "content": "$39.99"
+    },
     "logo": {
+      "asset_type": "image",
       "url": "https://cdn.example.com/brand-logo.png",
       "width": 200,
       "height": 50
     },
     "cta_text": {
+      "asset_type": "text",
       "content": "Shop Now"
-    }
-  }
-}
-```
-
-### Asset Sequences
-
-For formats requiring multiple variants (e.g., carousel ads, video sequences), provide multiple assets for the same role:
-
-```json
-{
-  "format_id": "carousel_native",
-  "assets": {
-    "card_1_image": {
-      "asset_type": "image",
-      "url": "https://cdn.example.com/card-1.jpg"
-    },
-    "card_2_image": {
-      "asset_type": "image",
-      "url": "https://cdn.example.com/card-2.jpg"
-    },
-    "card_3_image": {
-      "asset_type": "image",
-      "url": "https://cdn.example.com/card-3.jpg"
     }
   }
 }
