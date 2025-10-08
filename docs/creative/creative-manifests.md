@@ -61,31 +61,55 @@ Creative manifests provide the actual assets that meet those requirements:
 }
 ```
 
-### What Creative Agents Do
+### Creative Agent Workflows
 
-Creative agents transform inputs into creatives that can be trafficked. The transformation type is independent of where creatives are stored.
+Creative agents help buyers prepare creatives for trafficking. The workflow depends on what you're starting with and what you need.
 
-#### Transformation Types
+#### Creative Validation
 
-**1. Validation & Enrichment**: Manifest → Validated Manifest
-- Buyer provides complete creative manifest
-- Agent validates compliance, generates preview
-- Returns validated manifest ready for use
-- **Example**: Native ad manifest → validates image dimensions → adds preview URL
+**You have:** Complete creative (manifest or assets)
+**You need:** Validation that it meets format requirements
+**Common use cases:** Publisher creative review, compliance checking, format verification
 
-**2. Static Assembly**: Assets → Manifest/Tag/Webhook
-- Buyer provides individual assets (images, videos, text)
-- Agent packages into format-compliant output
-- Output can be manifest, HTML/JS tag, or webhook endpoint
-- **Example**: banner.jpg + headline → display_300x250 manifest OR `<script>` tag OR webhook URL
+**Real-world examples:**
+- **GAM Creative Validation**: Publisher checks native ad has required fields
+- **Facebook Creative Review**: Validates text ratio in images, policy compliance
+- **Twitter/X Compliance**: Checks political ad disclosures
+- **TikTok Moderation**: AI reviews creative against community guidelines
 
-**3. Generative Creation**: Prompt/Brief → Manifest/Tag/Webhook
-- Buyer provides natural language brief or unstructured brand assets
-- Agent generates assets and packages into format
-- Output can be manifest, tag, or webhook
-- **Example**: "Running shoe banner" + brand assets → generates image → returns as manifest OR tag OR webhook
+The agent validates your creative and returns a preview or list of issues to fix.
 
-The key insight: **transformation type (what you do) is separate from output format (manifest/tag/webhook) and storage location (buyer-managed vs agent-managed).**
+#### Creative Assembly
+
+**You have:** Individual brand assets (images, logos, text, videos)
+**You need:** Formatted creatives for specific placements
+**Common use cases:** Multi-size banner campaigns, responsive ads, format adaptation
+
+**Real-world examples:**
+- **Flashtalking**: Takes hero image + logo + headline → generates 15 banner sizes
+- **Celtra**: Assembles product feed + template → creates carousel ads
+- **Sizmek**: Brand assets → multi-format campaign package
+- **Google Display & Video 360**: Responsive display ads from component assets
+
+The agent packages your assets into format-compliant creatives (manifests, tags, or webhooks).
+
+#### Creative Generation
+
+**You have:** Brand guidelines, prompts, or product data
+**You need:** AI-generated creative content
+**Common use cases:** Dynamic creative optimization, personalized ads, creative testing
+
+**Real-world examples:**
+- **Meta Advantage+**: Text prompt + product catalog → generates ad variations
+- **Google Performance Max**: Brand guidelines → AI creates display/video assets
+- **Pencil (by Madgicx)**: Brief + brand assets → AI-generated creative variations
+- **Omneky**: Product feed + brand voice → generates social creatives
+
+The agent generates creative assets and packages them into deliverable formats.
+
+---
+
+**All workflows can output:** Creative manifests, HTML/JS tags, or webhook endpoints depending on publisher capabilities and buyer needs.
 
 ## Manifest Structure
 
@@ -484,32 +508,36 @@ Sales Agent translates to: %%ADVERTISING_IDENTIFIER_PLAIN%% (for GAM)
 Ad Server substitutes: ABC-123-DEF-456
 ```
 
-## Creative Storage Patterns
+## Creative Storage: Who Manages What
 
-Where creatives are stored is independent of what transformations the creative agent performs. There are two storage patterns:
+Where creatives are stored is separate from how they're created. Choose the pattern that matches your business model.
 
-### Buyer-Managed Storage
+### Buyer-Managed Storage ("Bring Your Own Creative")
 
-Buyer stores and manages creative assets/manifests themselves. Agent provides transformation services on-demand.
+**Who:** Traditional advertisers, agencies with creative teams
+**Example platforms:** Workfront, Brandfolder, Adobe Creative Cloud, Canva
 
-**How it works:**
-1. Buyer maintains their own asset library or creative management system
-2. When needed, buyer calls creative agent with assets/manifest/prompt
-3. Agent transforms and returns result (manifest, tag, or webhook)
-4. Buyer stores the result in their system
-5. Buyer passes creative to publisher during create_media_buy
+Buyer maintains their own creative assets. Creative agent provides transformation services (validation, assembly, generation) on-demand. Agent doesn't store creatives long-term.
 
-**Agent provides:**
-- `preview_creative` - Validate/preview on-demand
-- `build_creative` - Transform assets/prompts into creatives on-demand
-- Returns manifests, tags, or webhooks immediately
-- No persistent storage of buyer's creatives
+**Use when:**
+- Buyer has existing creative management system
+- Creative assets are confidential/sensitive
+- One-time campaign creative needs
+- Buyer wants full control over versioning
 
-**Example:** Publisher offers native ad validation agent. Buyer has CMS with native ad templates. For each campaign, buyer generates manifest from CMS, sends to agent for validation/preview, gets back validated manifest, uses in create_media_buy.
+**Creative agent provides:**
+- `preview_creative` - Validate and preview
+- `build_creative` - Transform assets into creatives
+- Returns output immediately, no persistent storage
 
-### Agent-Managed Storage
+**Real-world example:** Advertiser has Workfront DAM. Stores all assets locally. Exports native ad manifest per campaign. Sends to publisher's validation agent to check compliance. Gets back validated manifest. Uses in create_media_buy. Agent never stores the creative.
 
-Creative agent maintains a library of buyer's creatives. Buyer can retrieve them by ID.
+### Agent-Managed Storage ("Creative Platform")
+
+**Who:** DCO platforms, creative agencies, production studios
+**Example platforms:** Flashtalking, Celtra, Omneky, independent studios
+
+Agent stores buyer's brand assets and creatives. Buyer can retrieve by ID in different formats as needed across campaigns and publishers.
 
 **How it works:**
 1. Buyer registers brand assets with agent (`manage_creative_library`)
@@ -517,31 +545,54 @@ Creative agent maintains a library of buyer's creatives. Buyer can retrieve them
 3. Buyer retrieves creatives later by ID in different formats
 4. Agent serves creative as manifest, tag, or webhook depending on publisher needs
 
-**Agent provides:**
-- `preview_creative` - Full preview capabilities
+**Use when:**
+- Buyer works across many publishers with different format needs
+- Creative reuse across multiple campaigns
+- Multi-channel, multi-format campaigns
+- Dynamic creative optimization
+
+**Creative agent provides:**
+- `manage_creative_library` - Store and organize creatives
 - `build_creative` - Generate and store creatives
-- `manage_creative_library` - Add/update/delete/list creatives
-- `get_creative` - Retrieve by ID as manifest, tag, or webhook
-- Persistent storage of all buyer creatives
+- `preview_creative` - Full preview capabilities
+- `get_creative` - Retrieve by ID as manifest/tag/webhook
+- Persistent storage and format conversion
 
-**Example:** Independent DCO platform. Buyer uploads brand assets once. Generates 50 creative variants for different audiences. Stores all in agent library. For Publisher A (supports manifests), retrieves as manifest. For Publisher B (requires VAST tags), retrieves same creative as VAST tag. For Publisher C (wants DCO), retrieves as webhook.
+**Real-world example:** Nike uses Flashtalking DCO. Uploads brand assets once. Generates 50 creative variants for different audiences. For CNN video buy, retrieves as VAST tag. For Meta campaign, retrieves as manifest. For programmatic display, retrieves as webhook. Same creative, multiple formats on-demand.
 
-### Key Difference
+### Seller/Publisher-Managed Storage ("Walled Garden")
 
-| Aspect | Buyer-Managed | Agent-Managed |
-|--------|---------------|---------------|
-| Storage | Buyer's system | Agent's system |
-| Retrieval | Not applicable | By creative_id |
-| Reuse | Buyer handles | Agent provides multiple formats |
-| Library tasks | ❌ | ✅ (`manage_creative_library`) |
-| Transformation tasks | ✅ | ✅ |
-| Multi-publisher | Buyer's responsibility | Agent handles format conversion |
+**Who:** Publisher platforms, social networks, retail media networks
+**Example platforms:** Meta Ads Manager, TikTok Creative Studio, Amazon DSP, Snap Ads
 
-**Both patterns support all transformation types** (validation, static assembly, generative creation).
+Publisher stores advertiser creatives within their platform. Advertiser creates/uploads via publisher's interface, references by ID in media buys.
 
-**Both patterns can output** manifests, tags, or webhooks.
+**Use when:**
+- Publisher offers integrated creative studio
+- Publisher-specific creative formats/features
+- Simplified workflow for buyers
+- Publisher wants control over creative serving
 
-The difference is simply: **who stores the creative after it's created?**
+**Creative agent provides:**
+- `manage_creative_library` - Store in publisher system
+- `build_creative` - Generate publisher-optimized creatives
+- `preview_creative` - Preview in publisher environment
+- Integration with publisher's ad serving infrastructure
+- Automatic optimization for publisher's inventory
+
+**Real-world example:** Advertiser creates campaign in TikTok Ads Manager. Uses TikTok's creative tools to generate video variations. TikTok stores all creatives. At media buy time, advertiser just references creative_id. TikTok serves from their CDN. Advertiser never manages creative files directly.
+
+### Comparison
+
+| Aspect | Buyer-Managed | Agent-Managed | Seller-Managed |
+|--------|---------------|---------------|----------------|
+| Who stores | Buyer's system | Agent's system | Publisher's system |
+| Retrieval | Not applicable | By creative_id | By creative_id |
+| Multi-format | Buyer's responsibility | Agent handles | Publisher handles |
+| Cross-publisher | Buyer manages | Agent facilitates | Not applicable |
+| Examples | Workfront, Canva | Flashtalking, Celtra | Meta, TikTok, Amazon |
+
+**All three patterns support** validation, assembly, and generation workflows. The difference is simply **who manages the storage and versioning**.
 
 ## Best Practices
 
