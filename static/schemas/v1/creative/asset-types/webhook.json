@@ -41,7 +41,14 @@
       "items": {
         "type": "string"
       },
-      "description": "Universal macros to pass to webhook (e.g., DEVICE_TYPE, COUNTRY, WEATHER)"
+      "description": "Universal macros that can be passed to webhook (e.g., DEVICE_TYPE, COUNTRY, WEATHER)"
+    },
+    "required_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Universal macros that must be provided for webhook to function properly. Subset of supported_macros."
     },
     "response_type": {
       "type": "string",

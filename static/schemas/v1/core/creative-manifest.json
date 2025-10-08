@@ -282,7 +282,14 @@
                   "items": {
                     "type": "string"
                   },
-                  "description": "Universal macros to pass to webhook"
+                  "description": "Universal macros that can be passed to webhook"
+                },
+                "required_macros": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Universal macros that must be provided"
                 },
                 "response_type": {
                   "type": "string",

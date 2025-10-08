@@ -63,20 +63,31 @@ Creative manifests provide the actual assets that meet those requirements:
 
 ### Creative Agents Generate Manifests
 
-Creative agents bridge the gap between what buyers provide and what formats require. They operate in three modalities:
+Creative agents bridge the gap between what buyers provide and what formats require. They operate in four modalities:
 
-#### 1. Static Asset Delivery (Creative Ad Server)
+#### 1. Static Validation (Manifest → Validated Manifest)
 
-The simplest modality: buyer provides pre-built assets, creative agent delivers them in the right format.
+Buyer provides complete manifest, creative agent validates and potentially enriches it.
 
-- **Input**: Static assets (images, videos, etc.) + Format ID
+- **Input**: Creative manifest (buyer-provided)
+- **Process**: Creative agent validates assets exist, meet requirements, generates preview
+- **Output**: Validated manifest (potentially with preview URL added)
+- **Example**: Native ad with title, image, URL → Agent validates dimensions, generates preview
+
+**Use case**: Publisher-embedded creative agents where buyer provides structured native ad assets (title, description, image, clickthrough URL). Agent ensures compliance and generates preview.
+
+#### 2. Static Asset Delivery (Creative Ad Server)
+
+Buyer provides individual assets, creative agent packages them into manifest format.
+
+- **Input**: Individual static assets (images, videos, etc.) + Format ID
 - **Process**: Creative agent validates assets meet format requirements, packages into manifest
 - **Output**: Creative manifest ready for trafficking
 - **Example**: Buyer uploads banner.jpg → Agent creates display_300x250 manifest
 
 **Use case**: Traditional creative workflow where advertiser has finished assets from agency.
 
-#### 2. Prompt to Static Rendering (Pre-Generation)
+#### 3. Prompt to Static Rendering (Pre-Generation)
 
 Creative agent generates assets from prompts/briefs, then delivers static manifests.
 
@@ -87,13 +98,13 @@ Creative agent generates assets from prompts/briefs, then delivers static manife
 
 **Use case**: Brand provides unstructured assets (logos, product images, taglines) and says "give this to me in format XYZ".
 
-#### 3. Prompt to Dynamic Rendering (DCO/Generative)
+#### 4. Prompt to Dynamic Rendering (DCO/Generative)
 
-Creative agent provides dynamic endpoint that generates creatives in real-time at impression time.
+Creative agent provides webhook that generates creatives in real-time at impression time.
 
 - **Input**: Brief + Format ID + Context requirements
-- **Process**: Creative agent creates dynamic_endpoint asset that renders based on macros
-- **Output**: Creative manifest with dynamic_endpoint URL
+- **Process**: Creative agent creates webhook asset that renders based on macros
+- **Output**: Creative manifest with webhook URL
 - **Example**: Podcast ad that generates custom host read based on `{CONTENT_GENRE}`, `{WEATHER}`, etc.
 
 **Use case**: Contextual creative that adapts to user, environment, or content (DCO, generative audio, dynamic product feeds).
@@ -494,6 +505,84 @@ Sales Agent translates to: %%ADVERTISING_IDENTIFIER_PLAIN%% (for GAM)
   ↓
 Ad Server substitutes: ABC-123-DEF-456
 ```
+
+## Creative Agent Lifecycle Patterns
+
+Creative agents can be deployed in two distinct patterns, each with different capabilities and workflows:
+
+### Embedded Pattern (Publisher-Hosted)
+
+Publisher embeds creative agent into their ad platform for direct buyer integration.
+
+**Characteristics:**
+- Creative agent tied to specific publisher's inventory
+- Limited to validating and previewing buyer-provided manifests
+- Cannot independently serve creatives as tags/manifests
+- Optimized for native ad formats
+
+**Typical Workflow:**
+1. **Register Brand** (optional): Buyer submits brand card with reusable assets
+2. **Preview Creative**: Buyer submits manifest → Agent validates and returns preview URL
+3. **Submit to Campaign**: Validated manifest used in create_media_buy
+
+**Supported Tasks:**
+- `preview_creative` - Validate manifest and generate preview
+- `build_creative` (limited) - May validate and enrich buyer manifest
+- NO creative library management (buyer manages their own assets)
+- NO creative retrieval as tags (publisher renders directly from manifest)
+
+**Example Use Case:** Publisher has native ad placements. Buyer provides title, description, image, clickthrough URL. Creative agent validates image dimensions, generates preview showing how ad will appear in feed, ensures policy compliance.
+
+### Independent Pattern (Ad Server)
+
+Creative agent operates independently as a creative ad server or DCO platform.
+
+**Characteristics:**
+- Platform-agnostic creative serving
+- Full creative lifecycle management
+- Can serve creatives as tags, manifests, or webhooks
+- Supports all creative modalities (validation, static, generative, dynamic)
+
+**Typical Workflow:**
+1. **Register Brand**: Submit brand card with assets to agent's library
+2. **Build Creative**: Agent generates manifest from brief or assets
+3. **Preview Creative**: Test creative with different contexts
+4. **Store in Library**: Add/update creative in agent's storage
+5. **Retrieve for Campaign**: Get creative as tag, manifest, or webhook for trafficking
+
+**Supported Tasks:**
+- `preview_creative` - Full preview with multiple variants and contexts
+- `build_creative` - Generate manifests from briefs or unstructured assets
+- `manage_creative_library` - Add/update/delete/list creatives
+- `get_creative_as_tag` - Retrieve HTML/JS/VAST tag for embedding
+- `get_creative_as_manifest` - Retrieve structured manifest
+- `get_creative_as_webhook` - Get webhook URL for dynamic rendering
+
+**Example Use Case:** Independent DCO platform. Buyer registers brand assets, generates multiple creative variants for different audiences, stores in library, retrieves as VAST tags for video campaigns or webhooks for dynamic display ads.
+
+### Choosing a Pattern
+
+| Capability | Embedded | Independent |
+|-----------|----------|-------------|
+| Validate manifests | ✅ | ✅ |
+| Generate previews | ✅ | ✅ |
+| Build from briefs | Limited | ✅ |
+| Creative library | ❌ | ✅ |
+| Serve as tags | ❌ | ✅ |
+| Multi-publisher | ❌ | ✅ |
+| Dynamic rendering | ❌ | ✅ |
+
+**When to use Embedded:**
+- Publisher wants control over creative rendering
+- Native ad formats with publisher-specific styling
+- Buyer provides pre-built assets
+- No need for cross-publisher creative reuse
+
+**When to use Independent:**
+- Creative needs to work across multiple publishers
+- DCO or generative creative requirements
+- Buyer wants centralized creative management
+- Need for programmatic creative optimization
 
 ## Best Practices
 
