@@ -4,7 +4,35 @@ title: Creative Formats
 
 # Creative Formats
 
-All creative formats have a unique identifier and specify delivery methods. Formats can require either a single asset or multiple assets for rich media experiences.
+Creative formats define the structure, requirements, and delivery methods for advertising creatives. Each format specifies what assets are needed, their technical requirements, and how they should be assembled for delivery.
+
+## Formats, Manifests, and Creative Agents
+
+Understanding the relationship between these three concepts is essential:
+
+### Creative Formats
+Define **what** is needed:
+- Format identifier and type
+- Required and optional assets with their specifications
+- Technical requirements (dimensions, file sizes, etc.)
+- Delivery methods (hosted, VAST, third-party tags)
+
+### Creative Manifests
+Provide **the actual content**:
+- Specific assets that fulfill format requirements
+- URLs to hosted assets or inline content
+- Metadata about the creative and campaign
+
+### Creative Agents
+Generate and validate creatives:
+- Build manifests from natural language briefs
+- Validate manifests against format requirements
+- Generate previews of how creatives will render
+- Manage asset libraries
+
+**For details on creative manifests, see the [Creative Manifests](../../creative/creative-manifests.md) documentation.**
+
+**For details on the standard creative agent, see the [Standard Creative Agent](../../creative/standard-creative-agent.md) documentation.**
 
 **For the complete workflow on format discovery, see the [Creative Lifecycle](../creatives/index.md) documentation.**
 
@@ -15,9 +43,10 @@ AdCP defines two categories of formats:
 ### Standard Formats
 Pre-defined, industry-standard specifications that work consistently across publishers:
 - **Simplified**: No platform-specific complexity
-- **Portable**: One creative works everywhere  
+- **Portable**: One creative works everywhere
 - **Validated**: Pre-tested specifications
 - **Discoverable**: Available via `list_creative_formats`
+- **Powered by Standard Creative Agent**: All standard formats are supported by the [AdCP Standard Creative Agent](../../creative/standard-creative-agent.md)
 
 See the [Standard Formats Guide](../creatives/standard-formats-guide.md) for complete documentation.
 
@@ -27,6 +56,7 @@ Publisher-specific formats for unique inventory:
 - **Specialized**: Platform-specific capabilities
 - **Extended**: Often based on standard formats
 - **Documented**: Clear specifications required
+- **Powered by Creative Agents**: Publishers provide creative agents that understand and support their custom formats
 
 ## Authoritative Source
 

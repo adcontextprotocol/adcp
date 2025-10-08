@@ -1,0 +1,411 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/creative-manifest.json",
+  "title": "Creative Manifest",
+  "description": "Complete specification of a creative with all assets needed for rendering in a specific format. Each asset is typed according to its asset_role from the format specification and contains the actual content/URL that fulfills the format requirements.",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "type": "string",
+      "description": "Format identifier this manifest is for"
+    },
+    "assets": {
+      "type": "object",
+      "description": "Map of asset roles (from format spec) to actual asset content. Each key is an asset_role defined by the format (e.g., 'hero_image', 'logo', 'headline', 'video_file', 'vast_tag').",
+      "patternProperties": {
+        "^[a-z0-9_]+$": {
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "Image asset with hosted URL",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "image"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL to hosted image asset"
+                },
+                "width": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Image width in pixels"
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Image height in pixels"
+                },
+                "format": {
+                  "type": "string",
+                  "enum": ["jpg", "jpeg", "png", "gif", "webp", "svg"],
+                  "description": "Image file format"
+                },
+                "file_size": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "File size in bytes"
+                },
+                "alt": {
+                  "type": "string",
+                  "description": "Alternative text for accessibility"
+                }
+              },
+              "required": ["asset_type", "url", "width", "height"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "Video asset with hosted URL",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "video"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL to hosted video asset"
+                },
+                "width": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Video width in pixels"
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Video height in pixels"
+                },
+                "duration_seconds": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Video duration in seconds"
+                },
+                "format": {
+                  "type": "string",
+                  "enum": ["mp4", "webm", "mov"],
+                  "description": "Video container format"
+                },
+                "codec": {
+                  "type": "string",
+                  "enum": ["h264", "h265", "vp8", "vp9", "av1"],
+                  "description": "Video codec"
+                },
+                "bitrate_mbps": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Video bitrate in Mbps"
+                },
+                "file_size": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "File size in bytes"
+                },
+                "aspect_ratio": {
+                  "type": "string",
+                  "pattern": "^\\d+:\\d+$",
+                  "description": "Aspect ratio (e.g., '16:9', '9:16')"
+                }
+              },
+              "required": ["asset_type", "url", "width", "height", "duration_seconds"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "Audio asset with hosted URL",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "audio"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL to hosted audio asset"
+                },
+                "duration_seconds": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Audio duration in seconds"
+                },
+                "format": {
+                  "type": "string",
+                  "enum": ["mp3", "aac", "m4a", "wav", "ogg"],
+                  "description": "Audio file format"
+                },
+                "codec": {
+                  "type": "string",
+                  "enum": ["mp3", "aac", "opus", "vorbis"],
+                  "description": "Audio codec"
+                },
+                "bitrate_kbps": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Audio bitrate in Kbps"
+                },
+                "sample_rate_hz": {
+                  "type": "integer",
+                  "enum": [22050, 44100, 48000, 96000],
+                  "description": "Sample rate in Hz"
+                },
+                "channels": {
+                  "type": "string",
+                  "enum": ["mono", "stereo", "5.1", "7.1"],
+                  "description": "Audio channel configuration"
+                },
+                "file_size": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "File size in bytes"
+                }
+              },
+              "required": ["asset_type", "url", "duration_seconds"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "VAST XML tag for third-party video serving",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "vast_tag"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Complete VAST XML content"
+                },
+                "vast_version": {
+                  "type": "string",
+                  "enum": ["2.0", "3.0", "4.0", "4.1", "4.2"],
+                  "description": "VAST specification version"
+                },
+                "vpaid_enabled": {
+                  "type": "boolean",
+                  "description": "Whether VPAID is used"
+                },
+                "duration_seconds": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Expected video duration in seconds"
+                }
+              },
+              "required": ["asset_type", "content", "vast_version"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "Text content asset",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "text"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Text content"
+                },
+                "length": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Character count"
+                },
+                "format": {
+                  "type": "string",
+                  "enum": ["plain", "html", "markdown"],
+                  "default": "plain",
+                  "description": "Text format"
+                }
+              },
+              "required": ["asset_type", "content"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "URL asset for clickthrough, tracking, etc.",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "url"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "The URL"
+                },
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "clickthrough",
+                    "landing_page",
+                    "tracking_pixel",
+                    "impression_tracker"
+                  ],
+                  "description": "Purpose of this URL"
+                }
+              },
+              "required": ["asset_type", "url"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "Dynamic endpoint that renders creative in real-time",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "dynamic_endpoint"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "Endpoint URL for real-time creative generation"
+                },
+                "supported_macros": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "List of macros this endpoint expects"
+                },
+                "timeout_ms": {
+                  "type": "integer",
+                  "minimum": 10,
+                  "maximum": 5000,
+                  "description": "Maximum render time in milliseconds"
+                },
+                "fallback_required": {
+                  "type": "boolean",
+                  "description": "Whether a fallback asset must be provided"
+                }
+              },
+              "required": ["asset_type", "url"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "HTML5 creative asset",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "html"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Complete HTML content"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL to externally hosted HTML file"
+                },
+                "width": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Ad width in pixels"
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Ad height in pixels"
+                },
+                "file_size": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Total file size in bytes"
+                }
+              },
+              "required": ["asset_type"],
+              "oneOf": [
+                { "required": ["content"] },
+                { "required": ["url"] }
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "JavaScript code asset",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "javascript"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "JavaScript code content"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL to external JavaScript file"
+                },
+                "inline": {
+                  "type": "boolean",
+                  "description": "Whether code should be inlined vs external script tag"
+                }
+              },
+              "required": ["asset_type"],
+              "oneOf": [
+                { "required": ["content"] },
+                { "required": ["url"] }
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata about the creative",
+      "properties": {
+        "advertiser": {
+          "type": "string",
+          "description": "Advertiser name"
+        },
+        "brand": {
+          "type": "string",
+          "description": "Brand name"
+        },
+        "campaign": {
+          "type": "string",
+          "description": "Campaign name"
+        },
+        "creative_name": {
+          "type": "string",
+          "description": "Human-readable creative name"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        },
+        "version": {
+          "type": "string",
+          "description": "Creative version identifier"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags for organization and filtering"
+        },
+        "promoted_offering": {
+          "type": "string",
+          "description": "Product name or offering being advertised. Maps to promoted_offerings in create_media_buy request to associate creative with the product being promoted."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["format_id", "assets"],
+  "additionalProperties": false
+}

@@ -130,17 +130,20 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Creative Protocol',
+      label: 'Creative',
       items: [
-        'creative-protocol/index',
-        'creative-protocol/getting-started',
-        'creative-protocol/why-creative-agents',
+        'creative/index',
+        'creative/getting-started',
+        'creative/why-creative-agents',
+        'creative/standard-creative-agent',
+        'creative/creative-manifests',
         {
           type: 'category',
           label: 'Task Reference',
           items: [
-            'creative-protocol/task-reference/build_creative',
-            'creative-protocol/task-reference/manage_creative_library',
+            'creative/task-reference/build_creative',
+            'creative/task-reference/manage_creative_library',
+            'creative/task-reference/preview_creative',
           ],
         },
       ],

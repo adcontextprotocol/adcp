@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/creative/asset-types/index.json",
+  "title": "AdCP Asset Type Definitions Registry",
+  "description": "Standardized definitions for all asset types used in AdCP creative manifests. These asset types are used when providing actual creative content that fulfills format requirements.",
+  "version": "1.0.0",
+  "lastUpdated": "2025-10-08",
+  "asset_types": {
+    "image": {
+      "description": "Static image asset (JPG, PNG, GIF, WebP, SVG)",
+      "schema": "/schemas/v1/creative/asset-types/image.json",
+      "typical_use": "Hero images, logos, product photos, backgrounds"
+    },
+    "video": {
+      "description": "Hosted video file asset (MP4, WebM, MOV)",
+      "schema": "/schemas/v1/creative/asset-types/video.json",
+      "typical_use": "Video ads, product demos, brand stories"
+    },
+    "audio": {
+      "description": "Audio file asset (MP3, AAC, M4A, WAV, OGG)",
+      "schema": "/schemas/v1/creative/asset-types/audio.json",
+      "typical_use": "Audio ads for streaming, podcasts, radio"
+    },
+    "vast_tag": {
+      "description": "VAST XML tag for third-party video ad serving",
+      "schema": "/schemas/v1/creative/asset-types/vast_tag.json",
+      "typical_use": "Third-party served video ads with VAST 2.0-4.2"
+    },
+    "text": {
+      "description": "Text content asset (plain, HTML, markdown)",
+      "schema": "/schemas/v1/creative/asset-types/text.json",
+      "typical_use": "Headlines, descriptions, CTAs, body copy, disclaimers"
+    },
+    "url": {
+      "description": "URL asset for clickthrough, tracking, landing pages",
+      "schema": "/schemas/v1/creative/asset-types/url.json",
+      "typical_use": "Clickthrough URLs, tracking pixels, impression trackers"
+    },
+    "html": {
+      "description": "HTML5 creative asset for interactive ads",
+      "schema": "/schemas/v1/creative/asset-types/html.json",
+      "typical_use": "HTML5 display banners, rich media, interactive ads"
+    },
+    "dynamic_endpoint": {
+      "description": "Dynamic creative endpoint for real-time rendering",
+      "schema": "/schemas/v1/creative/asset-types/dynamic_endpoint.json",
+      "typical_use": "DCO (Dynamic Creative Optimization), real-time personalization"
+    },
+    "javascript": {
+      "description": "JavaScript code for dynamic creative logic",
+      "schema": "/schemas/v1/creative/asset-types/javascript.json",
+      "typical_use": "Third-party tags, custom interaction logic, analytics"
+    }
+  },
+  "common_properties": {
+    "asset_id": {
+      "description": "Unique identifier for this asset within the format (maps to asset_role in format spec)",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "examples": ["hero_image", "logo", "headline", "video_file", "vast_tag", "cta_text"]
+    },
+    "asset_type": {
+      "description": "The type of asset - determines which schema and properties apply",
+      "type": "string",
+      "enum": ["image", "video", "audio", "vast_tag", "text", "url", "html", "dynamic_endpoint", "javascript"]
+    },
+    "required": {
+      "description": "Whether this asset is mandatory for the creative format",
+      "type": "boolean",
+      "note": "This field is in format specs, not creative manifests"
+    }
+  },
+  "usage_notes": {
+    "format_specs": "Format specifications define what asset_roles are needed (e.g., 'hero_image', 'logo'). Each asset_role specifies its asset_type and requirements.",
+    "creative_manifests": "Creative manifests provide actual assets mapped by asset_role. Each asset must have an asset_type field and type-specific properties.",
+    "example_flow": "Format says 'hero_image' must be asset_type 'image' with width 1200, height 627. Manifest provides hero_image with asset_type 'image', url 'https://...', width 1200, height 627."
+  }
+}

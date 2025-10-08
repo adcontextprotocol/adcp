@@ -15,9 +15,11 @@ Before you can effectively buy advertising through AdCP, you need to understand 
 Understand the technical specifications and requirements for all supported creative types across display, video, audio, and native advertising. Learn how to:
 
 - Discover available creative formats and their requirements
-- Plan creative production based on format specifications  
+- Understand the relationship between formats, manifests, and creative agents
+- Plan creative production based on format specifications
 - Validate format compatibility with advertising products
-- Understand platform-specific format variations
+- Leverage the Standard Creative Agent for standard formats
+- Work with publisher-specific creative agents for custom formats
 
 ### [Authorized Properties](./authorized-properties) 🔐
 Learn how AdCP prevents unauthorized resale and ensures sales agents are legitimate. Understand:
@@ -52,9 +54,11 @@ Capability discovery typically happens early in your AdCP workflow:
 
 ### Creative Formats
 - **Production Planning**: Know requirements before creating assets
+- **Creative Agents**: Leverage AI-powered agents to build and validate creatives
 - **Platform Compatibility**: Ensure creatives work across advertising platforms
 - **Cost Efficiency**: Avoid recreating assets due to specification mismatches
 - **Quality Assurance**: Meet technical standards for optimal performance
+- **Preview Capabilities**: Test creative rendering before campaign launch
 
 ### Authorized Properties  
 - **Fraud Prevention**: Avoid unauthorized sellers and inventory fraud
@@ -67,6 +71,9 @@ Together, these capabilities provide the foundation for safe, efficient, and eff
 ## Related Documentation
 
 - **[Task Reference](../task-reference/)** - Complete API documentation
-- **[Product Discovery](../product-discovery/)** - Finding advertising inventory  
+- **[Product Discovery](../product-discovery/)** - Finding advertising inventory
 - **[Creatives](../creatives/)** - Creative asset management
+- **[Creative Protocol](../../creative/)** - Creative agents and manifests
+- **[Standard Creative Agent](../../creative/standard-creative-agent.md)** - Official AdCP creative agent
+- **[Creative Manifests](../../creative/creative-manifests.md)** - Understanding creative specifications
 - **[AdAgents Specification](./adagents)** - Technical authorization details
