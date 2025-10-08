@@ -41,10 +41,10 @@
       "schema": "/schemas/v1/creative/asset-types/html.json",
       "typical_use": "HTML5 display banners, rich media, interactive ads"
     },
-    "dynamic_endpoint": {
-      "description": "Dynamic creative endpoint for real-time rendering",
-      "schema": "/schemas/v1/creative/asset-types/dynamic_endpoint.json",
-      "typical_use": "DCO (Dynamic Creative Optimization), real-time personalization"
+    "webhook": {
+      "description": "Server-side webhook for dynamic creative rendering",
+      "schema": "/schemas/v1/creative/asset-types/webhook.json",
+      "typical_use": "DCO (Dynamic Creative Optimization), real-time personalization, server-side rendering"
     },
     "javascript": {
       "description": "JavaScript code for dynamic creative logic",
@@ -62,7 +62,7 @@
     "asset_type": {
       "description": "The type of asset - determines which schema and properties apply",
       "type": "string",
-      "enum": ["image", "video", "audio", "vast_tag", "text", "url", "html", "dynamic_endpoint", "javascript"]
+      "enum": ["image", "video", "audio", "vast_tag", "text", "url", "html", "webhook", "javascript"]
     },
     "required": {
       "description": "Whether this asset is mandatory for the creative format",

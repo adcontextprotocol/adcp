@@ -9,6 +9,10 @@
       "type": "string",
       "description": "Format identifier this manifest is for"
     },
+    "promoted_offering": {
+      "type": "string",
+      "description": "Product name or offering being advertised. Maps to promoted_offerings in create_media_buy request to associate creative with the product being promoted."
+    },
     "assets": {
       "type": "object",
       "description": "Map of asset roles (from format spec) to actual asset content. Each key is an asset_role defined by the format (e.g., 'hero_image', 'logo', 'headline', 'video_file', 'vast_tag').",
@@ -251,44 +255,9 @@
             },
             {
               "type": "object",
-              "description": "Dynamic endpoint - embed tag (HTML/JS/VAST) for client-side rendering",
+              "description": "Webhook for server-side dynamic content rendering",
               "properties": {
                 "asset_type": {
-                  "type": "string",
-                  "const": "dynamic_endpoint"
-                },
-                "delivery_method": {
-                  "type": "string",
-                  "const": "tag"
-                },
-                "tag_type": {
-                  "type": "string",
-                  "enum": ["html", "javascript", "vast"]
-                },
-                "tag_content": {
-                  "type": "string",
-                  "description": "The tag code (HTML snippet, JavaScript, or VAST XML)"
-                },
-                "supported_macros": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "Universal macros this tag expects"
-                }
-              },
-              "required": ["asset_type", "delivery_method", "tag_type", "tag_content"],
-              "additionalProperties": false
-            },
-            {
-              "type": "object",
-              "description": "Dynamic endpoint - webhook for server-side rendering",
-              "properties": {
-                "asset_type": {
-                  "type": "string",
-                  "const": "dynamic_endpoint"
-                },
-                "delivery_method": {
                   "type": "string",
                   "const": "webhook"
                 },
@@ -340,7 +309,7 @@
                   "default": true
                 }
               },
-              "required": ["asset_type", "delivery_method", "url", "response_type", "security"],
+              "required": ["asset_type", "url", "response_type", "security"],
               "additionalProperties": false
             },
             {
@@ -413,17 +382,6 @@
               "additionalProperties": false
             }
           ]
-        }
-      },
-      "additionalProperties": false
-    },
-    "metadata": {
-      "type": "object",
-      "description": "Optional metadata about the creative. Keep minimal - most information should be in the creative_id or tracking URLs.",
-      "properties": {
-        "promoted_offering": {
-          "type": "string",
-          "description": "Product name or offering being advertised. Maps to promoted_offerings in create_media_buy request to associate creative with the product being promoted."
         }
       },
       "additionalProperties": false

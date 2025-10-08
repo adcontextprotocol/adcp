@@ -47,6 +47,7 @@ Creative manifests provide the actual assets that meet those requirements:
 ```json
 {
   "format_id": "display_300x250",
+  "promoted_offering": "Premium Widget Pro",
   "assets": {
     "banner_image": {
       "asset_type": "image",
@@ -56,9 +57,6 @@ Creative manifests provide the actual assets that meet those requirements:
       "format": "jpg",
       "file_size": 180000
     }
-  },
-  "metadata": {
-    "promoted_offering": "Premium Widget Pro"
   }
 }
 ```
@@ -107,9 +105,10 @@ Creative agent provides dynamic endpoint that generates creatives in real-time a
 ```typescript
 {
   format_id: string;           // Format this manifest is for
+  promoted_offering?: string;  // Product being advertised (maps to create_media_buy)
   assets: {
     [asset_role: string]: {    // Keyed by asset role from format spec
-      asset_type: string;      // Type: image, video, audio, vast_tag, text, url, html, javascript, dynamic_endpoint
+      asset_type: string;      // Type: image, video, audio, vast_tag, text, url, html, javascript, webhook
 
       // Type-specific fields - see asset type schemas for details
       // Image: url, width, height, format, file_size, alt
@@ -118,14 +117,10 @@ Creative agent provides dynamic endpoint that generates creatives in real-time a
       // VAST: content, vast_version, vpaid_enabled, duration_seconds
       // Text: content, length, format (plain/html/markdown)
       // URL: url, purpose (clickthrough/tracking/etc)
-      // HTML: content or url, width, height, file_size
-      // JavaScript: content or url, inline
-      // Dynamic Endpoint (Tag): delivery_method="tag", tag_type, tag_content, supported_macros
-      // Dynamic Endpoint (Webhook): delivery_method="webhook", url, method, timeout_ms, response_type, security, supported_macros
+      // HTML: content or url, width, height, file_size (for client-side tags)
+      // JavaScript: content or url, inline (for client-side tags)
+      // Webhook: url, method, timeout_ms, response_type, security, supported_macros (server-side)
     }
-  };
-  metadata?: {
-    promoted_offering?: string;  // Product being advertised (maps to create_media_buy)
   };
 }
 ```
@@ -203,9 +198,8 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
 {
   "format_id": "display_dynamic_300x250",
   "assets": {
-    "dynamic_endpoint": {
-      "asset_type": "dynamic_endpoint",
-      "delivery_method": "webhook",
+    "dynamic_content": {
+      "asset_type": "webhook",
       "url": "https://creative-agent.example.com/render/campaign-123",
       "method": "POST",
       "timeout_ms": 500,
@@ -234,31 +228,7 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
 - Product availability messaging
 - Real-time inventory updates
 
-**Alternative: Tag-Based Dynamic**
-
-For client-side rendering, use a tag instead of webhook:
-
-```json
-{
-  "format_id": "display_dynamic_300x250",
-  "assets": {
-    "dynamic_tag": {
-      "asset_type": "dynamic_endpoint",
-      "delivery_method": "tag",
-      "tag_type": "javascript",
-      "tag_content": "<script src=\"https://creative-agent.example.com/render.js?campaign=123\" data-macros=\"DEVICE_TYPE,COUNTRY,WEATHER\"></script>",
-      "supported_macros": ["DEVICE_TYPE", "COUNTRY", "WEATHER"]
-    },
-    "fallback_image": {
-      "asset_type": "image",
-      "url": "https://cdn.example.com/fallback-300x250.jpg",
-      "width": 300,
-      "height": 250,
-      "format": "jpg"
-    }
-  }
-}
-```
+**Note**: For client-side dynamic rendering, use `html` or `javascript` asset types with embedded tags instead of webhooks.
 
 ### Hybrid Manifests
 
@@ -281,9 +251,8 @@ Hybrid manifests combine static and dynamic elements:
       "height": 250,
       "format": "jpg"
     },
-    "end_card_endpoint": {
-      "asset_type": "dynamic_endpoint",
-      "delivery_method": "webhook",
+    "end_card": {
+      "asset_type": "webhook",
       "url": "https://creative-agent.example.com/endcard?campaign=123",
       "method": "GET",
       "timeout_ms": 300,
