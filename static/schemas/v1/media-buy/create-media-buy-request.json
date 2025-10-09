@@ -77,17 +77,30 @@
     },
     "reporting_webhook": {
       "type": "object",
-      "description": "Optional webhook configuration for automated reporting delivery. When configured, publisher MUST implement HMAC-SHA256 signature verification using the provided secret (see AdCP Webhook Security specification).",
+      "description": "Optional webhook configuration for automated reporting delivery. When configured, publisher MUST include Authorization header with Bearer token for authentication.",
       "properties": {
         "url": {
           "type": "string",
           "format": "uri",
           "description": "Webhook endpoint URL for reporting notifications"
         },
-        "secret": {
-          "type": "string",
-          "description": "Shared secret for HMAC-SHA256 signature verification. Exchanged out-of-band during publisher onboarding. Publisher uses this to generate X-ADCP-Signature header on all webhook requests.",
-          "minLength": 32
+        "auth": {
+          "type": "object",
+          "description": "Authentication configuration for webhook delivery",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["bearer"],
+              "description": "Authentication type (currently only 'bearer' is supported)"
+            },
+            "token": {
+              "type": "string",
+              "description": "Bearer token for authentication. Publisher will include 'Authorization: Bearer <token>' header with webhook requests. Minimum 32 characters recommended. Should be exchanged out-of-band (not in request payload in production).",
+              "minLength": 32
+            }
+          },
+          "required": ["type", "token"],
+          "additionalProperties": false
         },
         "reporting_frequency": {
           "type": "string",
@@ -104,7 +117,7 @@
           "uniqueItems": true
         }
       },
-      "required": ["url", "secret", "reporting_frequency"],
+      "required": ["url", "auth", "reporting_frequency"],
       "additionalProperties": false
     }
   },

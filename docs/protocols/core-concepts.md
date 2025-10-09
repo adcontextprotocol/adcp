@@ -558,122 +558,59 @@ AdCP webhooks use **at-least-once delivery** semantics with the following charac
 
 ### Security
 
-#### HMAC Signature Verification (Required)
+#### Webhook Authentication (Required)
 
-**All AdCP webhooks MUST use HMAC-SHA256 signature verification.** This is a core protocol requirement, not an optional feature.
+**All AdCP webhooks MUST use Bearer token authentication.** This is simple, standard, and secure.
 
-- Publishers MUST sign all webhook payloads
-- Buyers MUST verify signatures before processing webhook data
-- Implementations without signature verification are non-compliant
-
-**Why Required:**
-Without mandated security, every integration becomes a negotiation. The default becomes "no security" because it's easier. By making HMAC verification required in the spec, we ensure secure by default across all implementations.
-
-#### Protocol Alignment
-
-**MCP (Model Context Protocol):**
-- AdCP defines `webhook_url` and `webhook_secret` as protocol-level parameters
-- MCP doesn't specify webhook security - AdCP adds this requirement
-
-**A2A (Agent-to-Agent Protocol):**
-- A2A defines `push_notification_config` structure (we can't change this)
-- A2A supports `auth.type: "custom"` for extensibility
-- AdCP maps its HMAC requirement into A2A's `auth.data.hmac_secret`
-- Servers still send `X-ADCP-Signature` and `X-ADCP-Timestamp` headers
-
-**Result:** AdCP security requirements work across all protocols, adapting to each protocol's native structures.
-
-**Signature Generation (Publisher):**
-```javascript
-const crypto = require('crypto');
-
-function signWebhook(payload, secret) {
-  const signature = crypto
-    .createHmac('sha256', secret)
-    .update(JSON.stringify(payload))
-    .digest('hex');
-  return signature;
+**Configuration Structure:**
+```json
+{
+  "webhook_config": {
+    "url": "https://buyer.example.com/webhooks/adcp",
+    "auth": {
+      "type": "bearer",
+      "token": "secret_token_min_32_chars"
+    }
+  }
 }
+```
 
-// Add signature to request headers
-const payload = { /* webhook data */ };
-const signature = signWebhook(payload, webhookSecret);
-
-axios.post(webhookUrl, payload, {
+**Publisher Implementation:**
+```javascript
+// Send webhook with Authorization header
+await axios.post(webhookConfig.url, payload, {
   headers: {
     'Content-Type': 'application/json',
-    'X-ADCP-Signature': `sha256=${signature}`,
-    'X-ADCP-Timestamp': new Date().toISOString()
+    'Authorization': `Bearer ${webhookConfig.auth.token}`
   }
 });
 ```
 
-**Signature Verification (Buyer):**
+**Buyer Implementation:**
 ```javascript
-function verifyWebhookSignature(req, secret) {
-  const signature = req.headers['x-adcp-signature'];
-  const timestamp = req.headers['x-adcp-timestamp'];
-
-  if (!signature || !timestamp) {
-    throw new Error('Missing signature or timestamp');
-  }
-
-  // Verify timestamp to prevent replay attacks (5 minute window)
-  const requestTime = new Date(timestamp).getTime();
-  const now = Date.now();
-  if (Math.abs(now - requestTime) > 5 * 60 * 1000) {
-    throw new Error('Webhook timestamp too old or in future');
-  }
-
-  // Extract hash from signature header
-  const [algorithm, hash] = signature.split('=');
-  if (algorithm !== 'sha256') {
-    throw new Error('Unsupported signature algorithm');
-  }
-
-  // Compute expected signature
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(JSON.stringify(req.body))
-    .digest('hex');
-
-  // Constant-time comparison to prevent timing attacks
-  if (!crypto.timingSafeEqual(
-    Buffer.from(hash),
-    Buffer.from(expectedSignature)
-  )) {
-    throw new Error('Invalid webhook signature');
-  }
-
-  return true;
-}
-
-// Webhook endpoint
 app.post('/webhooks/adcp', async (req, res) => {
-  try {
-    // ALWAYS verify signature first
-    verifyWebhookSignature(req, process.env.ADCP_WEBHOOK_SECRET);
-
-    // Then process webhook
-    await processWebhook(req.body);
-    res.status(200).json({ status: 'processed' });
-  } catch (error) {
-    console.error('Webhook verification failed:', error);
-    res.status(401).json({ error: 'Unauthorized' });
+  // Verify Authorization header
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing Authorization header' });
   }
+
+  const token = authHeader.substring(7); // Remove 'Bearer '
+  if (token !== process.env.ADCP_WEBHOOK_TOKEN) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  // Process webhook
+  await processWebhook(req.body);
+  res.status(200).json({ status: 'processed' });
 });
 ```
 
-**Webhook Secret Management:**
-- Secrets are exchanged out-of-band (e.g., during publisher onboarding)
-- Use different secrets per buyer or per webhook endpoint
-- Store secrets securely (environment variables, secret management systems)
-- Support secret rotation without downtime (accept both old and new signatures during rotation)
-
-**Required Headers:**
-- `X-ADCP-Signature`: HMAC signature in format `sha256={hex_signature}`
-- `X-ADCP-Timestamp`: ISO 8601 timestamp of webhook generation
-- `Content-Type`: Must be `application/json`
+**Token Management:**
+- Tokens exchanged out-of-band (during publisher onboarding)
+- Minimum 32 characters
+- Store securely (environment variables, secret management)
+- Support rotation (accept old and new tokens during transition)
 
 ### Retry and Circuit Breaker Patterns
 

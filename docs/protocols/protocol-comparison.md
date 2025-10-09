@@ -113,8 +113,13 @@ const updates = await session.call('tasks/get', {
 
 // Optional: Configure webhook at protocol level
 const response = await session.call('create_media_buy', params, {
-  webhook_url: "https://buyer.com/webhooks",
-  webhook_secret: "shared_secret_for_hmac_sha256_verification"
+  webhook_config: {
+    url: "https://buyer.com/webhooks",
+    auth: {
+      type: "bearer",
+      token: "secret_token_min_32_chars"
+    }
+  }
 });
 ```
 
@@ -157,10 +162,15 @@ Both protocols support webhooks but with different implementation approaches:
 class McpAdcpSession {
   async call(tool, params, options = {}) {
     const request = { tool, arguments: params };
-    
-    if (options.webhook_url) {
-      request.webhook_url = options.webhook_url;
-      request.webhook_secret = options.webhook_secret;  // HMAC-SHA256 shared secret (required)
+
+    if (options.webhook_config) {
+      request.webhook_config = {
+        url: options.webhook_config.url,
+        auth: {
+          type: 'bearer',
+          token: options.webhook_config.auth.token  // Bearer token (required)
+        }
+      };
     }
 
     return await this.mcp.call(request);

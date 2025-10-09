@@ -155,9 +155,14 @@ class McpAdcpSession {
     }
     
     // Include webhook configuration (protocol-level)
-    if (options.webhook_url) {
-      request.webhook_url = options.webhook_url;
-      request.webhook_secret = options.webhook_secret;  // HMAC-SHA256 shared secret (required)
+    if (options.webhook_config) {
+      request.webhook_config = {
+        url: options.webhook_config.url,
+        auth: {
+          type: 'bearer',
+          token: options.webhook_config.auth.token  // Bearer token (required)
+        }
+      };
     }
     
     const response = await this.mcp.call(request);
@@ -236,15 +241,20 @@ const refined = await session.call('get_products', {
 #### Async Operations with Webhooks
 ```javascript
 // Create media buy with webhook configuration
-const response = await session.call('create_media_buy', 
+const response = await session.call('create_media_buy',
   {
     buyer_ref: "nike_q1_2025",
     packages: [...],
     budget: { total: 150000, currency: "USD" }
   },
   {
-    webhook_url: "https://buyer.com/webhooks/adcp",
-    webhook_secret: "shared_secret_for_hmac_sha256_verification"
+    webhook_config: {
+      url: "https://buyer.com/webhooks/adcp",
+      auth: {
+        type: "bearer",
+        token: "secret_token_min_32_chars_exchanged_out_of_band"
+      }
+    }
   }
 );
 
