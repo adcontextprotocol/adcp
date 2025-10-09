@@ -268,6 +268,8 @@ await a2a.send({
 
 ## Agent Capabilities and Market Filtering
 
+**Note**: For A2A protocol users, consider using the [AdCP extension to Agent Cards](../../protocols/a2a-guide#adcp-extension-to-agent-cards) for pre-connection discovery instead. Agent Cards provide the same metadata at `/.well-known/agent.json` before you even connect, enabling efficient brief routing without tool invocation.
+
 ### Capabilities Description
 
 The optional `capabilities_description` field allows sales agents to describe their inventory, targeting capabilities, and special features in free-form markdown. This helps buying agents determine if a brief is relevant before sending product discovery requests.

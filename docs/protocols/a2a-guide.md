@@ -419,6 +419,79 @@ const getProductsSkill = agentCard.skills.find(s => s.name === 'get_products');
 console.log('Examples:', getProductsSkill.examples);
 ```
 
+### AdCP Extension to Agent Cards
+
+AdCP extends the standard A2A Agent Card with advertising-specific metadata to enable pre-connection discovery and brief routing.
+
+#### Proposed `adcp` Extension Field
+
+```json
+{
+  "name": "Premium DOOH Network",
+  "description": "Digital out-of-home advertising across North America",
+  "url": "https://dooh-network.example.com/a2a",
+  "version": "1.0.0",
+  "skills": [
+    {"name": "get_products", "description": "Discover advertising products"},
+    {"name": "create_media_buy", "description": "Create media buy campaigns"}
+  ],
+
+  "adcp": {
+    "version": "1.6.0",
+    "capabilities_description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification.",
+    "markets": {
+      "include_countries": ["US", "CA", "MX"]
+    }
+  }
+}
+```
+
+#### Extension Fields
+
+- **`adcp.version`**: AdCP protocol version this agent supports
+- **`adcp.capabilities_description`**: Markdown-formatted description of inventory, audiences, targeting capabilities, and special features
+- **`adcp.markets.include_countries`**: ISO country codes agent accepts briefs for (mutually exclusive with `exclude_countries`)
+- **`adcp.markets.exclude_countries`**: ISO country codes agent does NOT accept briefs for (mutually exclusive with `include_countries`)
+
+#### Pre-Connection Discovery Workflow
+
+```javascript
+// 1. Fetch Agent Card before connecting
+const response = await fetch('https://dooh-network.com/.well-known/agent.json');
+const agentCard = await response.json();
+
+// 2. Check if agent is relevant to brief
+const brief = "I need DOOH in US airports for business travelers";
+
+if (agentCard.adcp?.markets?.include_countries?.includes('US')) {
+  // Check capabilities description matches
+  if (agentCard.adcp.capabilities_description.includes("Airports")) {
+    // Agent is relevant, connect and send brief
+    const a2a = new A2AClient({ endpoint: agentCard.url });
+    const products = await a2a.send({
+      message: {
+        parts: [{
+          kind: "data",
+          data: { skill: "get_products", parameters: { brief } }
+        }]
+      }
+    });
+  }
+}
+```
+
+#### Complementary to `list_authorized_properties`
+
+**Agent Card** (pre-connection):
+- Quick relevance check before connecting
+- Market filtering (avoid connecting to non-relevant agents)
+- High-level capability overview
+
+**`list_authorized_properties`** (post-connection):
+- Detailed property lists with identifiers
+- Authorization validation via adagents.json
+- Property tag resolution for products
+
 ### Sample Agent Card Structure
 ```json
 {
