@@ -552,9 +552,16 @@ AdCP webhooks use **at-least-once delivery** semantics with the following charac
 
 ### Security
 
-#### HMAC Signature Verification
+#### HMAC Signature Verification (Required)
 
-Publishers MUST sign all webhook payloads with HMAC-SHA256 to ensure message authenticity and integrity. Buyers MUST verify signatures before processing webhook data.
+**All AdCP webhooks MUST use HMAC-SHA256 signature verification.** This is a core protocol requirement, not an optional feature.
+
+- Publishers MUST sign all webhook payloads
+- Buyers MUST verify signatures before processing webhook data
+- Implementations without signature verification are non-compliant
+
+**Why Required:**
+Without mandated security, every integration becomes a negotiation. The default becomes "no security" because it's easier. By making HMAC verification required in the spec, we ensure secure by default across all implementations.
 
 **Signature Generation (Publisher):**
 ```javascript

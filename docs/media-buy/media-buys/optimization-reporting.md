@@ -106,12 +106,18 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
   "packages": [...],
   "reporting_webhook": {
     "url": "https://buyer.example.com/webhooks/reporting",
-    "auth_type": "bearer",
-    "auth_token": "secret_token",
+    "secret": "shared_secret_min_32_chars_exchanged_out_of_band",
     "reporting_frequency": "daily"
   }
 }
 ```
+
+**Security is Required:**
+- `secret` field is mandatory (minimum 32 characters)
+- Publisher MUST send `X-ADCP-Signature` header with every webhook
+- Buyer MUST verify signature before processing
+- Exchanged out-of-band during publisher onboarding
+- See [Webhook Security](../../protocols/core-concepts.md#security) for implementation details
 
 ### Supported Frequencies
 

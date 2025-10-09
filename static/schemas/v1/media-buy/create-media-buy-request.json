@@ -77,21 +77,17 @@
     },
     "reporting_webhook": {
       "type": "object",
-      "description": "Optional webhook configuration for automated reporting delivery",
+      "description": "Optional webhook configuration for automated reporting delivery. When configured, publisher MUST implement HMAC-SHA256 signature verification using the provided secret (see AdCP Webhook Security specification).",
       "properties": {
         "url": {
           "type": "string",
           "format": "uri",
           "description": "Webhook endpoint URL for reporting notifications"
         },
-        "auth_type": {
+        "secret": {
           "type": "string",
-          "enum": ["bearer", "basic", "none"],
-          "description": "Authentication type for webhook requests"
-        },
-        "auth_token": {
-          "type": "string",
-          "description": "Authentication token or credentials (format depends on auth_type)"
+          "description": "Shared secret for HMAC-SHA256 signature verification. Exchanged out-of-band during publisher onboarding. Publisher uses this to generate X-ADCP-Signature header on all webhook requests.",
+          "minLength": 32
         },
         "reporting_frequency": {
           "type": "string",
@@ -108,7 +104,7 @@
           "uniqueItems": true
         }
       },
-      "required": ["url", "auth_type", "reporting_frequency"],
+      "required": ["url", "secret", "reporting_frequency"],
       "additionalProperties": false
     }
   },
