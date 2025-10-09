@@ -243,6 +243,60 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
 
 **Dynamic manifests can mix asset types** - some assets may be static (images, videos) while others are dynamic (webhooks, tags with macros). For example, a video VAST tag with a static hero video but a personalized end card webhook.
 
+### DOOH Manifests with Proof-of-Play
+
+Digital Out-of-Home (DOOH) creatives require proof-of-play tracking to verify when ads actually render on physical screens. DOOH manifests include proof-of-play URLs that are called when the creative displays.
+
+```json
+{
+  "format_id": "dooh_billboard_1920x1080",
+  "promoted_offering": "Premium Coffee Blend",
+  "assets": {
+    "billboard_image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/billboard-1920x1080.jpg",
+      "width": 1920,
+      "height": 1080,
+      "format": "jpg"
+    },
+    "proof_of_play": {
+      "asset_type": "url",
+      "url_purpose": "proof_of_play",
+      "url": "https://tracking.example.com/pop?screen={SCREEN_ID}&venue={VENUE_TYPE}&ts={PLAY_TIMESTAMP}&lat={VENUE_LAT}&lon={VENUE_LONG}",
+      "tracking_method": "beacon",
+      "required_macros": ["SCREEN_ID", "PLAY_TIMESTAMP", "VENUE_LAT", "VENUE_LONG"],
+      "supported_macros": ["SCREEN_ID", "VENUE_TYPE", "VENUE_NAME", "PLAY_TIMESTAMP", "VENUE_LAT", "VENUE_LONG", "DWELL_TIME", "LOOP_LENGTH"],
+      "response_requirements": {
+        "expected_status_codes": [200, 204],
+        "timeout_ms": 5000
+      }
+    }
+  }
+}
+```
+
+**DOOH-Specific Macros**:
+- `{SCREEN_ID}` - Unique identifier for the physical screen/display
+- `{VENUE_TYPE}` - Venue category (e.g., transit/airports, retail/malls, outdoor/billboards)
+- `{VENUE_NAME}` - Specific venue name (e.g., "JFK Terminal 4 Gate 23")
+- `{PLAY_TIMESTAMP}` - Unix timestamp when creative displayed on screen
+- `{VENUE_LAT}` / `{VENUE_LONG}` - Physical location coordinates (fixed, unlike mobile)
+- `{DWELL_TIME}` - Expected viewer dwell time in seconds
+- `{LOOP_LENGTH}` - Rotation frequency (how often creative plays)
+
+**Use Cases**:
+- Billboard advertising with location-based proof
+- Transit advertising (airports, subway, buses)
+- Retail digital signage
+- Mall and venue advertising
+- Proof-of-play verification for billing
+
+**Key Differences from Digital**:
+- Proof-of-play is separate from impression tracking (billed when rendered, not won)
+- Location is fixed and part of inventory (venue-based targeting)
+- No cookies or device IDs (physical location-based)
+- Longer creative lifespans (days/weeks vs. milliseconds)
+
 ## Working with Manifests
 
 ### Building Manifests
@@ -389,6 +443,7 @@ Common macro categories:
 - **Geographic**: `{COUNTRY}`, `{REGION}`, `{CITY}`, `{DMA}`, `{LAT}`, `{LONG}`
 - **Privacy & Compliance**: `{GDPR}`, `{GDPR_CONSENT}`, `{US_PRIVACY}`, `{LIMIT_AD_TRACKING}`
 - **Video-Specific**: `{VIDEO_ID}`, `{POD_POSITION}`, `{CONTENT_GENRE}`, `{PLAYER_WIDTH}`
+- **DOOH-Specific**: `{VENUE_TYPE}`, `{VENUE_NAME}`, `{SCREEN_ID}`, `{PLAY_TIMESTAMP}`, `{VENUE_LAT}`, `{VENUE_LONG}`, `{DWELL_TIME}`, `{LOOP_LENGTH}`
 
 **Web Context**:
 - `{DOMAIN}`, `{PAGE_URL}`, `{REFERRER}`, `{KEYWORDS}`

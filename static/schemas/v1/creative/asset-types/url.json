@@ -29,9 +29,10 @@
         "video_start_tracker",
         "video_complete_tracker",
         "quartile_tracker",
-        "error_tracker"
+        "error_tracker",
+        "proof_of_play"
       ],
-      "description": "The purpose/usage of this URL"
+      "description": "The purpose/usage of this URL. proof_of_play is used for DOOH to verify creative actually rendered on screen."
     },
     "protocol": {
       "type": "array",
