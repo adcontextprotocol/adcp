@@ -44,18 +44,14 @@ Create a media buy from selected packages. This task handles the complete workfl
 
 ### Targeting Overlay Object
 
+**Note**: Targeting overlays should be rare. Most targeting should be expressed in your brief and handled by the publisher through product selection. Use overlays only for geographic restrictions (RCT testing, regulatory compliance) or frequency capping.
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `geo_country_any_of` | string[] | No | Target specific countries (ISO codes) |
-| `geo_region_any_of` | string[] | No | Target specific regions/states |
-| `geo_metro_any_of` | string[] | No | Target specific metro areas (DMA codes) |
-| `geo_postal_code_any_of` | string[] | No | Target specific postal/ZIP codes |
-| `device_type_any_of` | string[] | No | Target specific device types (desktop, mobile, tablet, connected_tv, smart_speaker) |
-| `os_any_of` | string[] | No | Target specific operating systems (windows, macos, ios, android, linux, roku, tvos, other) |
-| `browser_any_of` | string[] | No | Target specific browsers (chrome, firefox, safari, edge, other) |
-| `axe_include_segment` | string | No | AXE segment ID to include for targeting |
-| `axe_exclude_segment` | string | No | AXE segment ID to exclude from targeting |
-| `signals` | string[] | No | Signal IDs from get_signals |
+| `geo_country_any_of` | string[] | No | Restrict delivery to specific countries (ISO codes). Use for regulatory compliance or RCT testing. |
+| `geo_region_any_of` | string[] | No | Restrict delivery to specific regions/states. Use for regulatory compliance or RCT testing. |
+| `geo_metro_any_of` | string[] | No | Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing. |
+| `geo_postal_code_any_of` | string[] | No | Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing. |
 | `frequency_cap` | FrequencyCap | No | Frequency capping settings (see Frequency Cap Object below) |
 
 ### Budget Object
