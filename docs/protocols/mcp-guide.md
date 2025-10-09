@@ -154,15 +154,9 @@ class McpAdcpSession {
       request.context_id = this.contextId;
     }
     
-    // Include webhook configuration (protocol-level)
-    if (options.webhook_config) {
-      request.webhook_config = {
-        url: options.webhook_config.url,
-        auth: {
-          type: 'bearer',
-          token: options.webhook_config.auth.token  // Bearer token (required)
-        }
-      };
+    // Include webhook configuration (protocol-level, A2A-compatible)
+    if (options.push_notification_config) {
+      request.push_notification_config = options.push_notification_config;
     }
     
     const response = await this.mcp.call(request);
@@ -248,11 +242,11 @@ const response = await session.call('create_media_buy',
     budget: { total: 150000, currency: "USD" }
   },
   {
-    webhook_config: {
+    push_notification_config: {
       url: "https://buyer.com/webhooks/adcp",
-      auth: {
-        type: "bearer",
-        token: "secret_token_min_32_chars_exchanged_out_of_band"
+      authentication: {
+        schemes: ["HMAC-SHA256"],  // or ["Bearer"] for simple auth
+        credentials: "shared_secret_32_chars"
       }
     }
   }

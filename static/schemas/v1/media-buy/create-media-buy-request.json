@@ -77,29 +77,34 @@
     },
     "reporting_webhook": {
       "type": "object",
-      "description": "Optional webhook configuration for automated reporting delivery. When configured, publisher MUST include Authorization header with Bearer token for authentication.",
+      "description": "Optional webhook configuration for automated reporting delivery using A2A-compatible PushNotificationConfig structure. Supports Bearer tokens (simple) or HMAC signatures (production-recommended).",
       "properties": {
         "url": {
           "type": "string",
           "format": "uri",
           "description": "Webhook endpoint URL for reporting notifications"
         },
-        "auth": {
+        "authentication": {
           "type": "object",
-          "description": "Authentication configuration for webhook delivery",
+          "description": "Authentication configuration for webhook delivery (A2A-compatible)",
           "properties": {
-            "type": {
-              "type": "string",
-              "enum": ["bearer"],
-              "description": "Authentication type (currently only 'bearer' is supported)"
+            "schemes": {
+              "type": "array",
+              "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+              "items": {
+                "type": "string",
+                "enum": ["Bearer", "HMAC-SHA256"]
+              },
+              "minItems": 1,
+              "maxItems": 1
             },
-            "token": {
+            "credentials": {
               "type": "string",
-              "description": "Bearer token for authentication. Publisher will include 'Authorization: Bearer <token>' header with webhook requests. Minimum 32 characters recommended. Should be exchanged out-of-band (not in request payload in production).",
+              "description": "Credentials for authentication. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
               "minLength": 32
             }
           },
-          "required": ["type", "token"],
+          "required": ["schemes", "credentials"],
           "additionalProperties": false
         },
         "reporting_frequency": {
@@ -117,7 +122,7 @@
           "uniqueItems": true
         }
       },
-      "required": ["url", "auth", "reporting_frequency"],
+      "required": ["url", "authentication", "reporting_frequency"],
       "additionalProperties": false
     }
   },

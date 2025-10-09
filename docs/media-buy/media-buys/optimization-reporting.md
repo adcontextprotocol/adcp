@@ -106,9 +106,25 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
   "packages": [...],
   "reporting_webhook": {
     "url": "https://buyer.example.com/webhooks/reporting",
-    "auth": {
-      "type": "bearer",
-      "token": "secret_token_min_32_chars_exchanged_out_of_band"
+    "authentication": {
+      "schemes": ["Bearer"],
+      "credentials": "secret_token_min_32_chars"
+    },
+    "reporting_frequency": "daily"
+  }
+}
+```
+
+**Or with HMAC signature (recommended for production):**
+```json
+{
+  "buyer_ref": "campaign_2024",
+  "packages": [...],
+  "reporting_webhook": {
+    "url": "https://buyer.example.com/webhooks/reporting",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "shared_secret_min_32_chars"
     },
     "reporting_frequency": "daily"
   }
@@ -116,10 +132,10 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 ```
 
 **Security is Required:**
-- `auth` configuration is mandatory with Bearer token (minimum 32 characters)
-- Publisher MUST send `Authorization: Bearer <token>` header with every webhook
-- Buyer MUST verify token before processing
-- Token exchanged out-of-band during publisher onboarding
+- `authentication` configuration is mandatory (minimum 32 characters)
+- **Bearer tokens**: Simple, good for development (Authorization header)
+- **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
+- Credentials exchanged out-of-band during publisher onboarding
 - See [Webhook Security](../../protocols/core-concepts.md#security) for implementation details
 
 ### Supported Frequencies

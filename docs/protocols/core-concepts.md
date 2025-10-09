@@ -280,26 +280,46 @@ class McpAdcpSession {
       tool: tool,
       arguments: params
     };
-    
+
     // Protocol-level extensions (like context_id)
     if (this.contextId) {
       request.context_id = this.contextId;
     }
-    if (options.webhook_url) {
-      request.webhook_url = options.webhook_url;
-      request.webhook_secret = options.webhook_secret;  // HMAC-SHA256 shared secret (required)
+
+    // Use A2A-compatible push_notification_config
+    if (options.push_notification_config) {
+      request.push_notification_config = options.push_notification_config;
     }
 
     return await this.mcp.call(request);
   }
 }
 
-// Usage
+// Usage (Bearer token)
 const response = await session.call('create_media_buy',
   { /* task params */ },
   {
-    webhook_url: "https://buyer.com/webhooks/adcp",
-    webhook_secret: "shared_secret_min_32_chars_for_hmac_verification"
+    push_notification_config: {
+      url: "https://buyer.com/webhooks/adcp",
+      authentication: {
+        schemes: ["Bearer"],
+        credentials: "secret_token_32_chars"
+      }
+    }
+  }
+);
+
+// Usage (HMAC signature - recommended for production)
+const response = await session.call('create_media_buy',
+  { /* task params */ },
+  {
+    push_notification_config: {
+      url: "https://buyer.com/webhooks/adcp",
+      authentication: {
+        schemes: ["HMAC-SHA256"],
+        credentials: "shared_secret_32_chars"
+      }
+    }
   }
 );
 ```
@@ -307,7 +327,7 @@ const response = await session.call('create_media_buy',
 #### A2A Native Support
 ```javascript
 // A2A has native webhook support via PushNotificationConfig
-// Note: A2A spec defines the structure - we map AdCP security to A2A's auth model
+// AdCP uses the same structure - no mapping needed!
 await a2a.send({
   message: {
     parts: [{
@@ -319,14 +339,13 @@ await a2a.send({
     }]
   },
   push_notification_config: {
-    webhook_url: "https://buyer.com/webhooks/adcp",
+    url: "https://buyer.com/webhooks/adcp",
     authentication: {
-      schemes: ["Bearer"],
-      credentials: "secret_token_min_32_chars"
+      schemes: ["HMAC-SHA256"],  // or ["Bearer"]
+      credentials: "shared_secret_32_chars"
     }
   }
 });
-// Server sends: Authorization: Bearer <token> header (AdCP requirement)
 ```
 
 ### Server Decision on Webhook Usage
@@ -559,57 +578,133 @@ AdCP webhooks use **at-least-once delivery** semantics with the following charac
 
 #### Webhook Authentication (Required)
 
-**All AdCP webhooks MUST use Bearer token authentication.** This is simple, standard, and secure.
+**AdCP adopts A2A's PushNotificationConfig structure** for webhook configuration. This provides a standard, flexible authentication model that supports multiple security schemes.
 
-**Configuration Structure:**
+**Configuration Structure (A2A-Compatible):**
 ```json
 {
-  "webhook_config": {
+  "push_notification_config": {
     "url": "https://buyer.example.com/webhooks/adcp",
-    "auth": {
-      "type": "bearer",
-      "token": "secret_token_min_32_chars"
+    "authentication": {
+      "schemes": ["Bearer"],
+      "credentials": "secret_token_min_32_chars"
     }
   }
 }
 ```
 
-**Publisher Implementation:**
+**Supported Authentication Schemes:**
+
+1. **Bearer Token (Simple, Recommended for Development)**
+   ```json
+   {
+     "authentication": {
+       "schemes": ["Bearer"],
+       "credentials": "secret_token_32_chars"
+     }
+   }
+   ```
+
+2. **HMAC Signature (Enterprise, Recommended for Production)**
+   ```json
+   {
+     "authentication": {
+       "schemes": ["HMAC-SHA256"],
+       "credentials": "shared_secret_32_chars"
+     }
+   }
+   ```
+
+**Publisher Implementation (Bearer):**
 ```javascript
-// Send webhook with Authorization header
-await axios.post(webhookConfig.url, payload, {
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${webhookConfig.auth.token}`
-  }
-});
+const config = pushNotificationConfig;
+const scheme = config.authentication.schemes[0];
+
+if (scheme === 'Bearer') {
+  await axios.post(config.url, payload, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${config.authentication.credentials}`
+    }
+  });
+}
 ```
 
-**Buyer Implementation:**
+**Publisher Implementation (HMAC-SHA256):**
+```javascript
+if (scheme === 'HMAC-SHA256') {
+  const timestamp = new Date().toISOString();
+  const signature = crypto
+    .createHmac('sha256', config.authentication.credentials)
+    .update(timestamp + JSON.stringify(payload))
+    .digest('hex');
+
+  await axios.post(config.url, payload, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-ADCP-Signature': `sha256=${signature}`,
+      'X-ADCP-Timestamp': timestamp
+    }
+  });
+}
+```
+
+**Buyer Implementation (Bearer):**
 ```javascript
 app.post('/webhooks/adcp', async (req, res) => {
-  // Verify Authorization header
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing Authorization header' });
   }
 
-  const token = authHeader.substring(7); // Remove 'Bearer '
+  const token = authHeader.substring(7);
   if (token !== process.env.ADCP_WEBHOOK_TOKEN) {
     return res.status(401).json({ error: 'Invalid token' });
   }
 
-  // Process webhook
   await processWebhook(req.body);
   res.status(200).json({ status: 'processed' });
 });
 ```
 
-**Token Management:**
-- Tokens exchanged out-of-band (during publisher onboarding)
-- Minimum 32 characters
+**Buyer Implementation (HMAC-SHA256):**
+```javascript
+app.post('/webhooks/adcp', async (req, res) => {
+  const signature = req.headers['x-adcp-signature'];
+  const timestamp = req.headers['x-adcp-timestamp'];
+
+  if (!signature || !timestamp) {
+    return res.status(401).json({ error: 'Missing signature headers' });
+  }
+
+  // Reject old webhooks (prevent replay attacks)
+  const eventTime = new Date(timestamp);
+  if (Date.now() - eventTime > 5 * 60 * 1000) {
+    return res.status(401).json({ error: 'Webhook too old' });
+  }
+
+  // Verify signature
+  const expectedSig = crypto
+    .createHmac('sha256', process.env.ADCP_WEBHOOK_SECRET)
+    .update(timestamp + JSON.stringify(req.body))
+    .digest('hex');
+
+  if (signature !== `sha256=${expectedSig}`) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  await processWebhook(req.body);
+  res.status(200).json({ status: 'processed' });
+});
+```
+
+**Authentication Best Practices:**
+- **Bearer tokens**: Simple, good for development and testing
+- **HMAC signatures**: Prevents replay attacks, recommended for production
+- Credentials exchanged out-of-band (during publisher onboarding)
+- Minimum 32 characters for all credentials
 - Store securely (environment variables, secret management)
-- Support rotation (accept old and new tokens during transition)
+- Support credential rotation (accept old and new during transition)
 
 ### Retry and Circuit Breaker Patterns
 

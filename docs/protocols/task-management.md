@@ -455,11 +455,11 @@ Configure webhooks at the protocol level when making async task calls. See **[Co
 const response = await session.call('create_media_buy',
   { /* task params */ },
   {
-    webhook_config: {
+    push_notification_config: {
       url: "https://buyer.com/webhooks/adcp/create_media_buy/agent_id/operation_id",
-      auth: {
-        type: "bearer",
-        token: "secret_token_min_32_chars"
+      authentication: {
+        schemes: ["HMAC-SHA256"],  // or ["Bearer"] for simple auth
+        credentials: "shared_secret_32_chars"
       }
     }
   }
