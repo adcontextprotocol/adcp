@@ -61,7 +61,7 @@ The message is returned differently in each protocol:
   ],
   "tags": {
     "local_radio": {
-      "name": "Local Radio Stations", 
+      "name": "Local Radio Stations",
       "description": "1847 local radio stations across US markets"
     },
     "sports_network": {
@@ -76,6 +76,10 @@ The message is returned differently in each protocol:
       "name": "Premium Inventory",
       "description": "Premium tier inventory across all property types"
     }
+  },
+  "capabilities_description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification.",
+  "markets": {
+    "include_countries": ["US", "CA", "MX"]
   }
 }
 ```
@@ -86,6 +90,11 @@ The message is returned differently in each protocol:
 - **tags**: Metadata for each tag used by properties
   - **name**: Human-readable name for the tag
   - **description**: Description of what the tag represents and optionally how many properties it includes
+- **capabilities_description** *(optional)*: Markdown-formatted description of the sales agent's capabilities, inventory types, audience options, and special features. Used by buying agents to determine brief relevance.
+- **markets** *(optional)*: Geographic market filtering for brief routing
+  - **include_countries**: ISO country codes this agent accepts briefs for (mutually exclusive with exclude_countries)
+  - **exclude_countries**: ISO country codes this agent does NOT accept briefs for (mutually exclusive with include_countries)
+  - If neither specified, agent accepts briefs for any country
 
 ## Integration with get_products
 
@@ -256,6 +265,57 @@ await a2a.send({
   }]
 }
 ```
+
+## Agent Capabilities and Market Filtering
+
+### Capabilities Description
+
+The optional `capabilities_description` field allows sales agents to describe their inventory, targeting capabilities, and special features in free-form markdown. This helps buying agents determine if a brief is relevant before sending product discovery requests.
+
+**Best Practices**:
+- Use markdown for light structure (bold, lists, etc.)
+- Describe inventory types, formats, and channels
+- Highlight audience targeting capabilities
+- Mention special features or differentiators
+- Keep concise but informative
+
+**Example**:
+```json
+{
+  "capabilities_description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification."
+}
+```
+
+### Market Filtering
+
+The optional `markets` object specifies which geographic markets the agent accepts briefs for. This enables orchestrators to route briefs efficiently without unnecessary requests.
+
+**Include Countries** (positive list):
+```json
+{
+  "markets": {
+    "include_countries": ["US", "CA", "MX"]
+  }
+}
+```
+Agent only accepts briefs for US, Canada, and Mexico campaigns.
+
+**Exclude Countries** (negative list):
+```json
+{
+  "markets": {
+    "exclude_countries": ["CN", "RU", "KP"]
+  }
+}
+```
+Agent accepts briefs for all countries except China, Russia, and North Korea.
+
+**No markets field**: Agent accepts briefs for any country.
+
+**Use Cases**:
+- **Regulatory compliance**: US news publisher excludes restricted markets
+- **Geographic focus**: EMEA-only network specifies European countries
+- **Licensing restrictions**: Content rights limited to specific regions
 
 ## Use Cases
 

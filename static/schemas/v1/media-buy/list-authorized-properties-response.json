@@ -36,6 +36,40 @@
         "additionalProperties": false
       }
     },
+    "capabilities_description": {
+      "type": "string",
+      "description": "Markdown-formatted description of the sales agent's capabilities, inventory types, audience targeting options, and special features. Used by buying agents to determine brief relevance.",
+      "minLength": 1,
+      "maxLength": 5000
+    },
+    "markets": {
+      "type": "object",
+      "description": "Geographic markets this agent accepts briefs for. Used to filter brief routing.",
+      "properties": {
+        "include_countries": {
+          "type": "array",
+          "description": "ISO country codes this agent accepts briefs for. If specified, agent only accepts briefs for these countries. Mutually exclusive with exclude_countries.",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1
+        },
+        "exclude_countries": {
+          "type": "array",
+          "description": "ISO country codes this agent does NOT accept briefs for. If specified, agent accepts briefs for all countries except these. Mutually exclusive with include_countries.",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1
+        }
+      },
+      "not": {
+        "required": ["include_countries", "exclude_countries"]
+      },
+      "additionalProperties": false
+    },
     "errors": {
       "type": "array",
       "description": "Task-specific errors and warnings (e.g., property availability issues)",
