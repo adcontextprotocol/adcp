@@ -145,7 +145,10 @@ await a2a.send({
   message: { /* skill invocation */ },
   push_notification_config: {
     webhook_url: "https://buyer.com/webhooks",
-    auth: { type: "bearer", credentials: "token" }
+    authentication: {
+      schemes: ["Bearer"],
+      credentials: "secret_token_min_32_chars"
+    }
   }
 });
 ```
@@ -185,7 +188,10 @@ await a2a.send({
   message: { /* task */ },
   push_notification_config: {
     webhook_url: "https://buyer.com/webhooks",
-    auth: { type: "bearer", credentials: "token" },
+    authentication: {
+      schemes: ["Bearer"],
+      credentials: "secret_token_min_32_chars"
+    },
     events: ["state_change", "completion"]
   }
 });

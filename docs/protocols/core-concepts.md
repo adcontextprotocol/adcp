@@ -320,14 +320,13 @@ await a2a.send({
   },
   push_notification_config: {
     webhook_url: "https://buyer.com/webhooks/adcp",
-    auth: {
-      type: "custom",
-      // AdCP passes HMAC secret through A2A's auth.data
-      data: { hmac_secret: "shared_secret_for_hmac_sha256_verification" }
+    authentication: {
+      schemes: ["Bearer"],
+      credentials: "secret_token_min_32_chars"
     }
   }
 });
-// Server sends: X-ADCP-Signature and X-ADCP-Timestamp headers (AdCP requirement)
+// Server sends: Authorization: Bearer <token> header (AdCP requirement)
 ```
 
 ### Server Decision on Webhook Usage
