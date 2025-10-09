@@ -456,7 +456,7 @@ const response = await session.call('create_media_buy',
   { /* task params */ },
   {
     webhook_url: "https://buyer.com/webhooks/adcp/create_media_buy/agent_id/operation_id",
-    webhook_auth: { type: "bearer", credentials: "secret" }
+    webhook_secret: "shared_secret_for_hmac_sha256_verification"
   }
 );
 ```

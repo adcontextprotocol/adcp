@@ -287,19 +287,19 @@ class McpAdcpSession {
     }
     if (options.webhook_url) {
       request.webhook_url = options.webhook_url;
-      request.webhook_auth = options.webhook_auth;
+      request.webhook_secret = options.webhook_secret;  // HMAC-SHA256 shared secret (required)
     }
-    
+
     return await this.mcp.call(request);
   }
 }
 
 // Usage
-const response = await session.call('create_media_buy', 
+const response = await session.call('create_media_buy',
   { /* task params */ },
   {
     webhook_url: "https://buyer.com/webhooks/adcp",
-    webhook_auth: { type: "bearer", credentials: "secret" }
+    webhook_secret: "shared_secret_min_32_chars_for_hmac_verification"
   }
 );
 ```
@@ -319,7 +319,7 @@ await a2a.send({
   },
   push_notification_config: {
     webhook_url: "https://buyer.com/webhooks/adcp",
-    auth: { type: "bearer", credentials: "secret" }
+    secret: "shared_secret_for_hmac_sha256_verification"  // AdCP requires HMAC security
   }
 });
 ```

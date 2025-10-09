@@ -157,7 +157,7 @@ class McpAdcpSession {
     // Include webhook configuration (protocol-level)
     if (options.webhook_url) {
       request.webhook_url = options.webhook_url;
-      request.webhook_auth = options.webhook_auth;
+      request.webhook_secret = options.webhook_secret;  // HMAC-SHA256 shared secret (required)
     }
     
     const response = await this.mcp.call(request);
@@ -244,7 +244,7 @@ const response = await session.call('create_media_buy',
   },
   {
     webhook_url: "https://buyer.com/webhooks/adcp",
-    webhook_auth: { type: "bearer", credentials: "secret_token" }
+    webhook_secret: "shared_secret_for_hmac_sha256_verification"
   }
 );
 

@@ -114,7 +114,7 @@ const updates = await session.call('tasks/get', {
 // Optional: Configure webhook at protocol level
 const response = await session.call('create_media_buy', params, {
   webhook_url: "https://buyer.com/webhooks",
-  webhook_auth: { type: "bearer", credentials: "token" }
+  webhook_secret: "shared_secret_for_hmac_sha256_verification"
 });
 ```
 
@@ -160,9 +160,9 @@ class McpAdcpSession {
     
     if (options.webhook_url) {
       request.webhook_url = options.webhook_url;
-      request.webhook_auth = options.webhook_auth;
+      request.webhook_secret = options.webhook_secret;  // HMAC-SHA256 shared secret (required)
     }
-    
+
     return await this.mcp.call(request);
   }
 }
