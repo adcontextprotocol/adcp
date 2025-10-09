@@ -24,6 +24,7 @@ Update campaign and package settings. This task supports partial updates and han
 | `end_time` | string | No | New end date/time in ISO 8601 format (UTC unless timezone specified) |
 | `budget` | Budget | No | New budget configuration (see Budget Object in create_media_buy) |
 | `packages` | PackageUpdate[] | No | Package-specific updates (see Package Update Object below) |
+| `push_notification_config` | PushNotificationConfig | No | Optional webhook for async update notifications (see Webhook Configuration below) |
 
 *Either `media_buy_id` or `buyer_ref` must be provided
 
@@ -39,6 +40,37 @@ Update campaign and package settings. This task supports partial updates and han
 | `creative_ids` | string[] | No | Update creative assignments |
 
 *Either `package_id` or `buyer_ref` must be provided
+
+## Webhook Configuration (Task-Specific)
+
+For long-running updates (typically requiring approval workflows), you can provide a task-specific webhook to be notified when the update completes:
+
+```json
+{
+  "buyer_ref": "nike_q1_campaign_2024",
+  "budget": {
+    "total": 150000,
+    "currency": "USD"
+  },
+  "push_notification_config": {
+    "url": "https://buyer.com/webhooks/media-buy-updates",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "shared_secret_32_chars"
+    }
+  }
+}
+```
+
+**When webhooks are sent:**
+- Update requires manual approval (status: `submitted` → `completed`)
+- Update takes longer than ~120 seconds (status: `working` → `completed`)
+
+**Webhook payload:**
+- Complete update_media_buy response with final status
+- Includes media_buy_id, affected_packages, and implementation_date
+
+See [Webhook Security](../../protocols/core-concepts.md#security) for authentication details.
 
 ## Response (Message)
 

@@ -78,6 +78,10 @@
         ],
         "additionalProperties": false
       }
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/v1/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async update notifications. Publisher will send webhook when update completes if operation takes longer than immediate response time."
     }
   },
   "oneOf": [

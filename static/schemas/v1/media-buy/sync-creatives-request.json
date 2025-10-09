@@ -53,6 +53,10 @@
       "enum": ["strict", "lenient"],
       "default": "strict",
       "description": "Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid creatives and reports errors."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/v1/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async sync notifications. Publisher will send webhook when sync completes if operation takes longer than immediate response time (typically for large bulk operations)."
     }
   },
   "required": ["creatives"],

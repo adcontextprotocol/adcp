@@ -32,6 +32,7 @@ The `sync_creatives` task provides a powerful, efficient approach to creative li
 | `patch` | boolean | No | Partial update mode (default: false) |
 | `dry_run` | boolean | No | Preview changes without applying (default: false) |
 | `validation_mode` | enum | No | Validation strictness: "strict" or "lenient" (default: "strict") |
+| `push_notification_config` | PushNotificationConfig | No | Optional webhook for async sync notifications (see Webhook Configuration below) |
 
 ### Assignment Management
 
@@ -59,6 +60,34 @@ Each creative in the `creatives` array follows the [Creative Asset schema](/sche
 - `snippet` (HTML template with variables like `[%Headline%]`)
 - `snippet_type: "html"`
 - `assets` array with sub-assets for template variables
+
+## Webhook Configuration (Task-Specific)
+
+For large bulk operations or creative approval workflows, you can provide a task-specific webhook to be notified when the sync completes:
+
+```json
+{
+  "creatives": [/* up to 100 creatives */],
+  "push_notification_config": {
+    "url": "https://buyer.com/webhooks/creative-sync",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "shared_secret_32_chars"
+    }
+  }
+}
+```
+
+**When webhooks are sent:**
+- Bulk sync takes longer than ~120 seconds (status: `working` → `completed`)
+- Creative approval required (status: `submitted` → `completed`)
+- Large creative uploads processing asynchronously
+
+**Webhook payload:**
+- Complete sync_creatives response with summary and results
+- Includes action taken for each creative (created/updated/unchanged/failed)
+
+See [Webhook Security](../../protocols/core-concepts.md#security) for authentication details.
 
 ## Response Format
 
