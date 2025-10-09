@@ -307,6 +307,7 @@ const response = await session.call('create_media_buy',
 #### A2A Native Support
 ```javascript
 // A2A has native webhook support via PushNotificationConfig
+// Note: A2A spec defines the structure - we map AdCP security to A2A's auth model
 await a2a.send({
   message: {
     parts: [{
@@ -319,9 +320,14 @@ await a2a.send({
   },
   push_notification_config: {
     webhook_url: "https://buyer.com/webhooks/adcp",
-    secret: "shared_secret_for_hmac_sha256_verification"  // AdCP requires HMAC security
+    auth: {
+      type: "custom",
+      // AdCP passes HMAC secret through A2A's auth.data
+      data: { hmac_secret: "shared_secret_for_hmac_sha256_verification" }
+    }
   }
 });
+// Server sends: X-ADCP-Signature and X-ADCP-Timestamp headers (AdCP requirement)
 ```
 
 ### Server Decision on Webhook Usage
@@ -562,6 +568,20 @@ AdCP webhooks use **at-least-once delivery** semantics with the following charac
 
 **Why Required:**
 Without mandated security, every integration becomes a negotiation. The default becomes "no security" because it's easier. By making HMAC verification required in the spec, we ensure secure by default across all implementations.
+
+#### Protocol Alignment
+
+**MCP (Model Context Protocol):**
+- AdCP defines `webhook_url` and `webhook_secret` as protocol-level parameters
+- MCP doesn't specify webhook security - AdCP adds this requirement
+
+**A2A (Agent-to-Agent Protocol):**
+- A2A defines `push_notification_config` structure (we can't change this)
+- A2A supports `auth.type: "custom"` for extensibility
+- AdCP maps its HMAC requirement into A2A's `auth.data.hmac_secret`
+- Servers still send `X-ADCP-Signature` and `X-ADCP-Timestamp` headers
+
+**Result:** AdCP security requirements work across all protocols, adapting to each protocol's native structures.
 
 **Signature Generation (Publisher):**
 ```javascript
