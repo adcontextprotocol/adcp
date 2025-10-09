@@ -86,6 +86,14 @@
         "property": {
           "$ref": "/schemas/v1/core/property.json",
           "description": "An advertising property that can be validated via adagents.json"
+        },
+        "brand-card": {
+          "$ref": "/schemas/v1/core/brand-card.json",
+          "description": "Brand information manifest for creative generation context"
+        },
+        "promoted-products": {
+          "$ref": "/schemas/v1/core/promoted-products.json",
+          "description": "Product selection schema for creative campaigns"
         }
       }
     },

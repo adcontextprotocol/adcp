@@ -25,6 +25,9 @@ The preview can generate multiple variants showing different contexts, devices, 
 | `creative_manifest` | object | Yes | Complete creative manifest with all required assets |
 | `inputs` | array | No | Array of input sets for generating multiple preview variants |
 | `template_id` | string | No | Specific template for custom format rendering |
+| `brand_card` | object | No | Brand information manifest providing context for dynamic previews |
+| `promoted_products` | object | No | Products/offerings being promoted - provides product context for previews |
+| `asset_filters` | object | No | Filters to select specific assets from brand card (tags, asset_types, exclude_tags) |
 
 ### Creative Manifest Structure
 
@@ -485,6 +488,102 @@ Response:
     }
   ],
   "interactive_url": "https://creative-agent.example.com/preview/video456/player",
+  "expires_at": "2025-02-15T18:00:00Z"
+}
+```
+
+### Example 4: Using Brand Card for Dynamic Previews
+
+Preview creative variants using brand context and product information:
+
+```json
+{
+  "format_id": "native_responsive",
+  "creative_manifest": {
+    "format_id": "native_responsive",
+    "assets": {
+      "headline": {
+        "asset_type": "text",
+        "content": "{PRODUCT_NAME} - {TAGLINE}"
+      },
+      "main_image": {
+        "asset_type": "image",
+        "url": "{BRAND_ASSET_URL}"
+      },
+      "cta": {
+        "asset_type": "text",
+        "content": "Shop Now"
+      }
+    }
+  },
+  "brand_card": {
+    "url": "https://acmecorp.com",
+    "assets": [
+      {
+        "asset_id": "hero_holiday",
+        "asset_type": "image",
+        "url": "https://cdn.acmecorp.com/holiday-hero.jpg",
+        "tags": ["holiday", "winter", "hero"]
+      }
+    ]
+  },
+  "promoted_products": {
+    "skus": ["WIDGET-PRO-2024"]
+  },
+  "asset_filters": {
+    "tags": ["holiday", "winter"]
+  },
+  "inputs": [
+    {
+      "name": "Holiday Desktop",
+      "macros": {
+        "DEVICE_TYPE": "desktop"
+      },
+      "context_description": "Holiday shopping season, premium product showcase"
+    },
+    {
+      "name": "Holiday Mobile",
+      "macros": {
+        "DEVICE_TYPE": "mobile"
+      },
+      "context_description": "Mobile browsing during holiday sales"
+    }
+  ]
+}
+```
+
+Response shows how creative renders with brand assets and product context:
+
+```json
+{
+  "adcp_version": "1.0.0",
+  "previews": [
+    {
+      "name": "Holiday Desktop",
+      "preview_url": "https://creative-agent.example.com/preview/brand123/desktop.png",
+      "preview_type": "image",
+      "description": "Native ad with holiday branding - desktop",
+      "macros_used": {
+        "DEVICE_TYPE": "desktop",
+        "PRODUCT_NAME": "Widget Pro 2024",
+        "TAGLINE": "Premium Quality You Can Trust",
+        "BRAND_ASSET_URL": "https://cdn.acmecorp.com/holiday-hero.jpg"
+      }
+    },
+    {
+      "name": "Holiday Mobile",
+      "preview_url": "https://creative-agent.example.com/preview/brand123/mobile.png",
+      "preview_type": "image",
+      "description": "Native ad with holiday branding - mobile",
+      "macros_used": {
+        "DEVICE_TYPE": "mobile",
+        "PRODUCT_NAME": "Widget Pro 2024",
+        "TAGLINE": "Premium Quality You Can Trust",
+        "BRAND_ASSET_URL": "https://cdn.acmecorp.com/holiday-hero.jpg"
+      }
+    }
+  ],
+  "interactive_url": "https://creative-agent.example.com/preview/brand123/interactive",
   "expires_at": "2025-02-15T18:00:00Z"
 }
 ```
