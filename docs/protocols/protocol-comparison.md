@@ -111,10 +111,15 @@ const updates = await session.call('tasks/get', {
   include_result: true 
 });
 
-// Optional: Configure webhook at protocol level
+// Optional: Configure webhook at protocol level (A2A-compatible structure)
 const response = await session.call('create_media_buy', params, {
-  webhook_url: "https://buyer.com/webhooks",
-  webhook_auth: { type: "bearer", credentials: "token" }
+  push_notification_config: {
+    url: "https://buyer.com/webhooks",
+    authentication: {
+      schemes: ["HMAC-SHA256"],  // or ["Bearer"]
+      credentials: "shared_secret_32_chars"
+    }
+  }
 });
 ```
 
@@ -140,7 +145,10 @@ await a2a.send({
   message: { /* skill invocation */ },
   push_notification_config: {
     webhook_url: "https://buyer.com/webhooks",
-    auth: { type: "bearer", credentials: "token" }
+    authentication: {
+      schemes: ["Bearer"],
+      credentials: "secret_token_min_32_chars"
+    }
   }
 });
 ```
@@ -153,33 +161,37 @@ Both protocols support webhooks but with different implementation approaches:
 
 #### MCP: Protocol Wrapper Extension
 ```javascript
-// Webhook config at protocol level (like context_id)
+// AdCP uses A2A-compatible structure for MCP as well
 class McpAdcpSession {
   async call(tool, params, options = {}) {
     const request = { tool, arguments: params };
-    
-    if (options.webhook_url) {
-      request.webhook_url = options.webhook_url;
-      request.webhook_auth = options.webhook_auth;
+
+    // Same structure as A2A - no mapping needed
+    if (options.push_notification_config) {
+      request.push_notification_config = options.push_notification_config;
     }
-    
+
     return await this.mcp.call(request);
   }
 }
 ```
 
-#### A2A: Native Push Notifications  
+#### A2A: Native Push Notifications
 ```javascript
-// Built-in PushNotificationConfig
+// Built-in PushNotificationConfig - AdCP uses this structure universally
 await a2a.send({
   message: { /* task */ },
   push_notification_config: {
-    webhook_url: "https://buyer.com/webhooks",
-    auth: { type: "bearer", credentials: "token" },
-    events: ["state_change", "completion"]
+    url: "https://buyer.com/webhooks",
+    authentication: {
+      schemes: ["HMAC-SHA256"],  // or ["Bearer"]
+      credentials: "shared_secret_32_chars"
+    }
   }
 });
 ```
+
+**Key Insight:** AdCP adopts A2A's `PushNotificationConfig` structure as the universal webhook configuration format across all protocols. This eliminates protocol-specific mapping and provides a consistent developer experience.
 
 ### Task Management
 

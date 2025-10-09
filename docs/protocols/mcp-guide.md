@@ -154,10 +154,9 @@ class McpAdcpSession {
       request.context_id = this.contextId;
     }
     
-    // Include webhook configuration (protocol-level)
-    if (options.webhook_url) {
-      request.webhook_url = options.webhook_url;
-      request.webhook_auth = options.webhook_auth;
+    // Include webhook configuration (protocol-level, A2A-compatible)
+    if (options.push_notification_config) {
+      request.push_notification_config = options.push_notification_config;
     }
     
     const response = await this.mcp.call(request);
@@ -236,15 +235,20 @@ const refined = await session.call('get_products', {
 #### Async Operations with Webhooks
 ```javascript
 // Create media buy with webhook configuration
-const response = await session.call('create_media_buy', 
+const response = await session.call('create_media_buy',
   {
     buyer_ref: "nike_q1_2025",
     packages: [...],
     budget: { total: 150000, currency: "USD" }
   },
   {
-    webhook_url: "https://buyer.com/webhooks/adcp",
-    webhook_auth: { type: "bearer", credentials: "secret_token" }
+    push_notification_config: {
+      url: "https://buyer.com/webhooks/adcp",
+      authentication: {
+        schemes: ["HMAC-SHA256"],  // or ["Bearer"] for simple auth
+        credentials: "shared_secret_32_chars"
+      }
+    }
   }
 );
 
