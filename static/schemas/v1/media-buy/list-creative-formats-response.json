@@ -16,9 +16,55 @@
       "description": "Current task state",
       "default": "completed"
     },
+    "format_ids": {
+      "type": "array",
+      "description": "Array of format IDs supported by this sales agent",
+      "items": {
+        "type": "string"
+      }
+    },
+    "creative_agents": {
+      "type": "array",
+      "description": "Creative agents that provide format definitions and services for this sales agent",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dco.example.com')"
+          },
+          "agent_name": {
+            "type": "string",
+            "description": "Human-readable name for the creative agent"
+          },
+          "agent_type": {
+            "type": "string",
+            "enum": ["standard", "custom"],
+            "description": "Type of creative agent - standard (AdCP reference) or custom (third-party)"
+          },
+          "format_ids": {
+            "type": "array",
+            "description": "Format IDs provided by this creative agent",
+            "items": {
+              "type": "string"
+            }
+          },
+          "capabilities": {
+            "type": "array",
+            "description": "Capabilities this creative agent provides",
+            "items": {
+              "type": "string",
+              "enum": ["validation", "assembly", "generation", "preview"]
+            }
+          }
+        },
+        "required": ["agent_url", "agent_name", "format_ids"]
+      }
+    },
     "formats": {
       "type": "array",
-      "description": "Array of available creative formats",
+      "description": "Optional: Full format definitions. Sales agents may include this for convenience, but buyers should query creative agents directly for authoritative format details.",
       "items": {
         "$ref": "/schemas/v1/core/format.json"
       }
@@ -31,6 +77,6 @@
       }
     }
   },
-  "required": ["adcp_version", "formats"],
+  "required": ["adcp_version", "format_ids", "creative_agents"],
   "additionalProperties": false
 }

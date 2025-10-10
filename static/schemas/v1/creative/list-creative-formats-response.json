@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/creative/list-creative-formats-response.json",
+  "title": "List Creative Formats Response (Creative Agent)",
+  "description": "Response payload for list_creative_formats task from creative agent - returns full format definitions",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.6.0"
+    },
+    "status": {
+      "$ref": "/schemas/v1/enums/task-status.json",
+      "description": "Current task state",
+      "default": "completed"
+    },
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL for this creative agent (authoritative source for these formats)"
+    },
+    "agent_name": {
+      "type": "string",
+      "description": "Human-readable name for this creative agent"
+    },
+    "formats": {
+      "type": "array",
+      "description": "Array of creative format definitions provided by this agent",
+      "items": {
+        "$ref": "/schemas/v1/core/format.json"
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "Capabilities this creative agent provides",
+      "items": {
+        "type": "string",
+        "enum": ["validation", "assembly", "generation", "preview"]
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/v1/core/error.json"
+      }
+    }
+  },
+  "required": ["adcp_version", "agent_url", "agent_name", "formats"],
+  "additionalProperties": false
+}

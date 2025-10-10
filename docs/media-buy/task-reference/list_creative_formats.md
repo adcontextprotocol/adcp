@@ -3,16 +3,26 @@ title: list_creative_formats
 sidebar_position: 2
 ---
 
-# list_creative_formats
+# list_creative_formats (Sales Agent)
 
-Discover all supported creative formats in the system. 
-
-**See [Creative Lifecycle](../creatives/index.md) for the complete workflow on how this tool works with `get_products` for format discovery.**
+Discover which creative formats this sales agent supports and which creative agents provide those formats.
 
 **Response Time**: ~1 second (simple database lookup)
 
 **Request Schema**: [`/schemas/v1/media-buy/list-creative-formats-request.json`](/schemas/v1/media-buy/list-creative-formats-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/list-creative-formats-response.json`](/schemas/v1/media-buy/list-creative-formats-response.json)
+
+## Two-Tier Discovery Model
+
+**Sales agents** return:
+1. **format_ids**: Which formats they support
+2. **creative_agents**: Which creative agents provide those formats (with URLs)
+
+**Creative agents** (queried separately) return:
+- Full format specifications with all details
+- The authoritative source for format definitions
+
+This ensures each format has a **single authoritative home** (its creative agent URL).
 
 ## Request Parameters
 
@@ -23,45 +33,42 @@ Discover all supported creative formats in the system.
 | `standard_only` | boolean | No | Only return standard formats (deprecated, use `category: "standard"`) |
 | `format_ids` | string[] | No | Filter by specific format IDs (e.g., from `get_products` response) |
 
-## Response (Message)
-
-The response includes a human-readable message that:
-- Summarizes available formats (e.g., "Found 47 creative formats across video, audio, and display")
-- Provides recommendations for format selection
-- Highlights standard vs custom format trade-offs
-
-The message is returned differently in each protocol:
-- **MCP**: Returned as a `message` field in the JSON response
-- **A2A**: Returned as a text part in the artifact
-
-## Response (Payload)
+## Response Structure
 
 ```json
 {
-  "formats": [
+  "adcp_version": "1.6.0",
+  "format_ids": ["video_standard_30s", "display_300x250", "native_responsive"],
+  "creative_agents": [
     {
-      "format_id": "string",
-      "name": "string",
-      "type": "string",
-      "is_standard": "boolean",
-      "iab_specification": "string",
-      "requirements": "object",
-      "assets_required": "array"
+      "agent_url": "https://reference.adcp.org",
+      "agent_name": "AdCP Reference Creative Agent",
+      "agent_type": "standard",
+      "format_ids": ["video_standard_30s", "display_300x250"],
+      "capabilities": ["validation", "assembly", "preview"]
+    },
+    {
+      "agent_url": "https://dco.example.com",
+      "agent_name": "Custom DCO Platform",
+      "agent_type": "custom",
+      "format_ids": ["native_responsive"],
+      "capabilities": ["validation", "assembly", "generation", "preview"]
     }
-  ]
+  ],
+  "formats": []  // Optional: May include full format details for convenience
 }
 ```
 
 ### Field Descriptions
 
-- **format_id**: Unique identifier for the format
-- **name**: Human-readable format name
-- **type**: Format type (e.g., `"audio"`, `"video"`, `"display"`)
-- **category**: Format category (`"standard"` or `"custom"`)
-- **is_standard**: Whether this follows IAB or AdCP standards
-- **accepts_3p_tags**: Whether format can accept third-party tags
-- **requirements**: Format-specific requirements (varies by format type)
-- **assets_required**: Array of required assets with `asset_role` identifiers
+- **format_ids**: Array of all format IDs this sales agent supports
+- **creative_agents**: Array of creative agent information
+  - **agent_url**: Base URL for the creative agent (authoritative source)
+  - **agent_name**: Human-readable name
+  - **agent_type**: `"standard"` (AdCP reference) or `"custom"` (third-party)
+  - **format_ids**: Formats provided by this specific creative agent
+  - **capabilities**: What this creative agent can do (validation/assembly/generation/preview)
+- **formats**: Optional full format definitions (for convenience, but buyers should query creative agents for authoritative specs)
 
 
 ## Protocol-Specific Examples
