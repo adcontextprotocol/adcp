@@ -1,30 +1,24 @@
 ---
 title: list_creative_formats
-sidebar_position: 2
+sidebar_position: 4
 ---
 
 # list_creative_formats
 
-Discover supported creative formats by querying the sales agent.
+Discover all supported creative formats from a creative agent. This is the canonical source for format definitions.
 
-**See [Creative Lifecycle](../creatives/index.md) for the complete workflow on how this tool works with `get_products` for format discovery.**
-
-**Response Time**: ~1 second (simple proxy to creative agent)
+**Response Time**: ~1 second (simple database lookup)
 
 **Request Schema**: [`/schemas/v1/creative/list-creative-formats-request.json`](/schemas/v1/creative/list-creative-formats-request.json)
 **Response Schema**: [`/schemas/v1/creative/list-creative-formats-response.json`](/schemas/v1/creative/list-creative-formats-response.json)
 
-## Protocol Proxying
+## Protocol Context
 
-**Sales agents proxy this request to their creative agent.** The creative agent is the canonical source for format definitions. Sales agents:
+This task is part of the **Creative Protocol**. When sales agents receive a `list_creative_formats` request, they proxy it to their associated creative agent and return the canonical format list. This ensures:
 
-1. Receive `list_creative_formats` request from buyer
-2. Forward request to associated creative agent
-3. Return creative agent's response unchanged
-
-This ensures buyers always get the definitive format list regardless of whether they query the sales agent or creative agent directly.
-
-**For the authoritative documentation, see**: [Creative Protocol: list_creative_formats](/docs/creative/task-reference/list_creative_formats)
+- **Single source of truth**: Creative agents define what formats they support
+- **Consistency**: Sales agents always return the same format list as the creative agent
+- **Simplicity**: Buyers can query either sales agents or creative agents for formats
 
 ## Request Parameters
 

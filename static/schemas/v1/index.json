@@ -163,12 +163,12 @@
         },
         "list-creative-formats": {
           "request": {
-            "$ref": "/schemas/v1/media-buy/list-creative-formats-request.json",
-            "description": "Request parameters for discovering supported creative formats"
+            "$ref": "/schemas/v1/creative/list-creative-formats-request.json",
+            "description": "Request parameters for discovering supported creative formats. Media buy protocol proxies this to creative protocol."
           },
           "response": {
-            "$ref": "/schemas/v1/media-buy/list-creative-formats-response.json",
-            "description": "Response payload for list_creative_formats task"
+            "$ref": "/schemas/v1/creative/list-creative-formats-response.json",
+            "description": "Response payload for list_creative_formats task. Sales agents proxy this request to creative agents for the canonical format list."
           }
         },
         "create-media-buy": {
@@ -274,6 +274,16 @@
           "response": {
             "$ref": "/schemas/v1/creative/preview-creative-response.json",
             "description": "Response payload for preview_creative task"
+          }
+        },
+        "list-creative-formats": {
+          "request": {
+            "$ref": "/schemas/v1/creative/list-creative-formats-request.json",
+            "description": "Request parameters for discovering supported creative formats"
+          },
+          "response": {
+            "$ref": "/schemas/v1/creative/list-creative-formats-response.json",
+            "description": "Response payload for list_creative_formats task. This is the canonical format list - media buy protocol proxies to this."
           }
         }
       },
