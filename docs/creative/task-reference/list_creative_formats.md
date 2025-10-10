@@ -3,28 +3,26 @@ title: list_creative_formats
 sidebar_position: 5
 ---
 
-# list_creative_formats (Creative Agent)
+# list_creative_formats
 
-Returns full specifications for all creative formats provided by this creative agent. This is the authoritative source for format definitions.
+Returns full specifications for all creative formats provided by this creative agent.
 
 **Response Time**: ~1 second (simple database lookup)
+
+**Authentication**: None required - this endpoint must be publicly accessible for format discovery
 
 **Request Schema**: [`/schemas/v1/creative/list-creative-formats-request.json`](/schemas/v1/creative/list-creative-formats-request.json)
 **Response Schema**: [`/schemas/v1/creative/list-creative-formats-response.json`](/schemas/v1/creative/list-creative-formats-response.json)
 
-## Authoritative Format Source
+## Recursive Discovery Model
 
-Each creative format has a single authoritative home - the creative agent that provides it. When buyers need full format specifications:
+Creative agents use the same response format as sales agents:
+1. **formats**: Full format definitions for formats they own/support
+2. **creative_agents** (optional): URLs to other creative agents providing additional formats
 
-1. **Query sales agent** first to discover which creative agents are supported
-2. **Query creative agent(s)** to get authoritative format definitions
+Each format includes an **agent_url** field indicating its authoritative source.
 
-Creative agents return complete format specifications including:
-- Asset requirements
-- Technical specifications
-- Macro support
-- Validation rules
-- Preview capabilities
+Buyers can recursively query creative_agents to discover all available formats. **Buyers must track visited URLs to avoid infinite loops.**
 
 ## Request Parameters
 

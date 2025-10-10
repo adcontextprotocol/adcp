@@ -9,6 +9,11 @@
       "type": "string",
       "description": "Unique identifier for the format"
     },
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL of the agent that provides this format (authoritative source). E.g., 'https://reference.adcp.org', 'https://dco.example.com'"
+    },
     "name": {
       "type": "string",
       "description": "Human-readable format name"

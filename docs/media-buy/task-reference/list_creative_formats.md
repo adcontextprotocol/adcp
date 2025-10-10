@@ -3,26 +3,26 @@ title: list_creative_formats
 sidebar_position: 2
 ---
 
-# list_creative_formats (Sales Agent)
+# list_creative_formats
 
-Discover which creative formats this sales agent supports and which creative agents provide those formats.
+Discover all creative formats supported by this agent. Returns full format definitions, not just IDs.
 
 **Response Time**: ~1 second (simple database lookup)
+
+**Authentication**: None required - this endpoint must be publicly accessible for format discovery
 
 **Request Schema**: [`/schemas/v1/media-buy/list-creative-formats-request.json`](/schemas/v1/media-buy/list-creative-formats-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/list-creative-formats-response.json`](/schemas/v1/media-buy/list-creative-formats-response.json)
 
-## Two-Tier Discovery Model
+## Recursive Discovery Model
 
-**Sales agents** return:
-1. **format_ids**: Which formats they support
-2. **creative_agents**: Which creative agents provide those formats (with URLs)
+Both sales agents and creative agents use the same response format:
+1. **formats**: Full format definitions for formats they own/support
+2. **creative_agents** (optional): URLs to other creative agents providing additional formats
 
-**Creative agents** (queried separately) return:
-- Full format specifications with all details
-- The authoritative source for format definitions
+Each format includes an **agent_url** field indicating its authoritative source.
 
-This ensures each format has a **single authoritative home** (its creative agent URL).
+Buyers can recursively query creative_agents to discover all available formats. **Buyers must track visited URLs to avoid infinite loops.**
 
 ## Request Parameters
 
@@ -38,37 +38,50 @@ This ensures each format has a **single authoritative home** (its creative agent
 ```json
 {
   "adcp_version": "1.6.0",
-  "format_ids": ["video_standard_30s", "display_300x250", "native_responsive"],
+  "formats": [
+    {
+      "format_id": "video_standard_30s",
+      "agent_url": "https://sales-agent.example.com",
+      "name": "Standard Video - 30 seconds",
+      "type": "video",
+      "category": "standard",
+      "requirements": { /* ... */ },
+      "assets_required": [ /* ... */ ]
+    },
+    {
+      "format_id": "display_300x250",
+      "agent_url": "https://sales-agent.example.com",
+      "name": "Medium Rectangle Banner",
+      "type": "display",
+      "category": "standard"
+      // ... full format details
+    }
+  ],
   "creative_agents": [
     {
       "agent_url": "https://reference.adcp.org",
       "agent_name": "AdCP Reference Creative Agent",
-      "agent_type": "standard",
-      "format_ids": ["video_standard_30s", "display_300x250"],
       "capabilities": ["validation", "assembly", "preview"]
     },
     {
       "agent_url": "https://dco.example.com",
       "agent_name": "Custom DCO Platform",
-      "agent_type": "custom",
-      "format_ids": ["native_responsive"],
       "capabilities": ["validation", "assembly", "generation", "preview"]
     }
-  ],
-  "formats": []  // Optional: May include full format details for convenience
+  ]
 }
 ```
 
 ### Field Descriptions
 
-- **format_ids**: Array of all format IDs this sales agent supports
-- **creative_agents**: Array of creative agent information
-  - **agent_url**: Base URL for the creative agent (authoritative source)
+- **formats**: Full format definitions for formats this agent owns/supports
+  - **format_id**: Unique identifier
+  - **agent_url**: Authoritative source URL for this format (where it's defined)
+  - All other format fields as per [Format schema](/schemas/v1/core/format.json)
+- **creative_agents** (optional): Other creative agents providing additional formats
+  - **agent_url**: Base URL to query for more formats (call list_creative_formats)
   - **agent_name**: Human-readable name
-  - **agent_type**: `"standard"` (AdCP reference) or `"custom"` (third-party)
-  - **format_ids**: Formats provided by this specific creative agent
-  - **capabilities**: What this creative agent can do (validation/assembly/generation/preview)
-- **formats**: Optional full format definitions (for convenience, but buyers should query creative agents for authoritative specs)
+  - **capabilities**: What the agent can do (validation/assembly/generation/preview)
 
 
 ## Protocol-Specific Examples
