@@ -207,44 +207,51 @@ Creative formats specify their required assets using these standardized types:
 }
 ```
 
-## Frame-Based Formats
+## Repeatable Asset Groups
 
-For formats with multiple frames (like carousels), assets are defined within a `frame_schema`:
+For formats with asset sequences (like carousels, slideshows, stories), assets are defined within repeatable groups:
 
 ```json
 {
-  "min_frames": 3,
-  "max_frames": 10,
-  "frame_schema": {
-    "assets": [
-      {
-        "asset_id": "product_image",
-        "asset_type": "image",
-        "required": true,
-        "width": 600,
-        "height": 600,
-        "acceptable_formats": ["jpg", "png"]
-      },
-      {
-        "asset_id": "product_headline",
-        "asset_type": "text",
-        "required": true,
-        "text_type": "headline",
-        "max_length": 50
-      }
-    ]
-  },
-  "global_assets": [
+  "asset_group_id": "product",
+  "repeatable": true,
+  "min_count": 3,
+  "max_count": 10,
+  "assets": [
     {
-      "asset_id": "brand_logo",
+      "asset_id": "image",
       "asset_type": "image",
       "required": true,
-      "width": 200,
-      "height": 50,
-      "acceptable_formats": ["png", "svg"],
-      "notes": "Brand logo"
+      "requirements": {
+        "width": 600,
+        "height": 600,
+        "file_types": ["jpg", "png"]
+      }
+    },
+    {
+      "asset_id": "headline",
+      "asset_type": "text",
+      "required": true,
+      "requirements": {
+        "max_length": 50
+      }
     }
   ]
+}
+```
+
+Individual assets outside the repeating group:
+
+```json
+{
+  "asset_id": "brand_logo",
+  "asset_type": "image",
+  "required": true,
+  "requirements": {
+    "width": 200,
+    "height": 50,
+    "file_types": ["png", "svg"]
+  }
 }
 ```
 

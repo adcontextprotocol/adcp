@@ -28,10 +28,11 @@ Buyers can recursively query creative_agents to discover all available formats. 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `type` | string | No | Filter by format type (e.g., `"audio"`, `"video"`, `"display"`, `"native"`, `"dooh"`) |
-| `category` | string | No | Filter by category (`"standard"` or `"custom"`) |
-| `standard_only` | boolean | No | Only return IAB/AdCP standard formats |
-| `format_ids` | string[] | No | Filter by specific format IDs |
+| `format_ids` | string[] | No | Return only these specific format IDs |
+| `type` | string | No | Filter by format type: `"audio"`, `"video"`, `"display"`, `"dooh"` (technical categories with distinct requirements) |
+| `asset_types` | string[] | No | Filter to formats that include these asset types. For third-party tags, search for `["html"]` or `["javascript"]`. E.g., `["image", "text"]` returns formats with images and text, `["javascript"]` returns formats accepting JavaScript tags. Values: `image`, `video`, `audio`, `text`, `html`, `javascript`, `url` |
+| `dimensions` | string | No | Filter to formats with specific dimensions (e.g., `"300x250"`, `"728x90"`). Combine with `asset_types` to find specific sizes like "300x250 JavaScript" |
+| `name_search` | string | No | Search for formats by name (case-insensitive partial match, e.g., `"mobile"` or `"vertical"`) |
 
 ## Response Structure
 
@@ -84,13 +85,13 @@ Buyers can recursively query creative_agents to discover all available formats. 
 - **formats**: Array of complete format definitions
   - See [Format schema](/schemas/v1/core/format.json) for full specification
 
-## Example: Standard AdCP Formats
+## Example 1: Find Formats by Asset Types
 
-Query the reference creative agent for standard formats:
+"I have images and text - what formats can I build?"
 
 ```json
 {
-  "category": "standard"
+  "asset_types": ["image", "text"]
 }
 ```
 
@@ -104,30 +105,36 @@ Response:
   "capabilities": ["validation", "assembly", "preview"],
   "formats": [
     {
-      "format_id": "video_standard_30s",
-      "name": "Standard Video - 30 seconds",
-      "type": "video",
-      "category": "standard"
-      // ... full format details
-    },
-    {
       "format_id": "display_300x250",
-      "name": "Medium Rectangle Banner",
+      "agent_url": "https://reference.adcp.org",
+      "name": "Medium Rectangle",
       "type": "display",
-      "category": "standard"
-      // ... full format details
+      "accepts_3p_tags": false,
+      "assets_required": [
+        {
+          "asset_type": "image",
+          "asset_role": "hero_image",
+          "required": true
+        },
+        {
+          "asset_type": "text",
+          "asset_role": "headline",
+          "required": true
+        }
+      ]
     }
   ]
 }
 ```
 
-## Example: Custom DCO Formats
+## Example 2: Find Formats for Third-Party HTML Tags
 
-Query a custom DCO platform for their proprietary formats:
+"I have 728x90 HTML tags - which of your formats support them?"
 
 ```json
 {
-  "category": "custom"
+  "asset_types": ["html"],
+  "dimensions": "728x90"
 }
 ```
 
@@ -141,21 +148,40 @@ Response:
   "capabilities": ["validation", "assembly", "generation", "preview"],
   "formats": [
     {
-      "format_id": "dco_responsive_multiformat",
-      "name": "Responsive Multi-Format DCO",
+      "format_id": "display_728x90_3p",
+      "agent_url": "https://dco.example.com",
+      "name": "Leaderboard - Third Party",
       "type": "display",
-      "category": "custom",
-      "is_standard": false,
-      "accepts_3p_tags": false,
-      "requirements": {
-        "dynamic_optimization": true,
-        "ai_generation": true
-      }
-      // ... custom format details
+      "dimensions": "728x90",
+      "assets_required": [
+        {
+          "asset_id": "tag",
+          "asset_type": "html",
+          "asset_role": "third_party_tag",
+          "required": true,
+          "requirements": {
+            "width": 728,
+            "height": 90,
+            "max_file_size_kb": 200
+          }
+        }
+      ]
     }
   ]
 }
 ```
+
+## Example 3: Search by Name
+
+"Show me your vertical or mobile formats"
+
+```json
+{
+  "name_search": "vertical"
+}
+```
+
+Response returns all formats with "vertical" in the name.
 
 ## Usage Workflow
 

@@ -1,4 +1,4 @@
-# Getting Started with Creative Protocol
+# Generative Creative
 
 The Creative Protocol enables AI-powered creative generation and asset management for advertising campaigns. This guide will help you create your first creative in 5 minutes.
 

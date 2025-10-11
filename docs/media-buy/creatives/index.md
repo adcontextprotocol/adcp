@@ -30,55 +30,89 @@ Use [`list_creatives`](../task-reference/list_creatives) to view and manage your
 AdCP manages creatives through three main phases:
 
 ### Phase 1: Format Discovery
-Before creating any creative assets, you need to understand **what formats are required**. AdCP provides two complementary tools that work together:
+Before creating any creative assets, you need to understand **what formats are available and required**. AdCP provides two complementary tools that work together:
 
 #### The Discovery Workflow
 
-**`get_products`** finds advertising inventory that matches your campaign needs, while **`list_creative_formats`** provides the detailed creative specifications for the formats those products require.
+**`get_products`** finds advertising inventory that matches your campaign needs and returns format IDs those products support. **`list_creative_formats`** provides full format specifications with detailed creative requirements.
+
+#### Recursive Format Discovery
+
+Sales agents can optionally reference creative agents that provide additional formats. This creates a recursive discovery pattern:
+
+1. Call `list_creative_formats` on a sales agent
+2. Receive full format definitions for formats the agent directly supports
+3. Optionally receive a `creative_agents` array with URLs to other creative agents
+4. Recursively call `list_creative_formats` on those creative agents to discover more formats
+5. **Buyers must track visited URLs to avoid infinite loops**
+
+Each format includes an `agent_url` field indicating its authoritative source.
+
+**Note**: `list_creative_formats` does not require authentication, enabling public format discovery.
 
 #### Two Common Approaches:
 
-**1. Inventory-First** - "What products match my campaign?"
+**1. Inventory-First** - "What products match my campaign, and what formats do they need?"
 ```javascript
 // Find products for your campaign
 const products = await get_products({
   brief: "Premium video inventory for sports fans",
   promoted_offering: "Nike Air Max 2024"
 });
-// Products return: formats: ["video_15s_hosted", "homepage_takeover_2024"]
+// Products return: format_ids: ["video_15s_hosted", "homepage_takeover_2024"]
 
-// Get creative specs for those specific formats
-const formatSpecs = await list_creative_formats({
-  format_ids: products.products.flatMap(p => p.formats)
-});
-// Now you know: video_15s_hosted needs MP4 H.264, 15s, 1920x1080
-//                homepage_takeover_2024 needs hero image + logo + headline
+// Get full creative specs (returns complete format objects, not just IDs)
+const response = await list_creative_formats({});
+const formatSpecs = response.formats.filter(f =>
+  products.products.flatMap(p => p.format_ids).includes(f.format_id)
+);
+// Now you have full specs: video_15s_hosted needs MP4 H.264, 15s, 1920x1080
+//                          homepage_takeover_2024 needs hero image + logo + headline
+
+// Optionally discover formats from linked creative agents
+if (response.creative_agents) {
+  for (const agent of response.creative_agents) {
+    const agentFormats = await list_creative_formats({ agent_url: agent.agent_url });
+    formatSpecs.push(...agentFormats.formats);
+  }
+}
 ```
 
 **2. Creative-First** - "What video formats does this publisher support?"
 ```javascript
-// Browse available video formats
-const videoFormats = await list_creative_formats({
+// Browse all available formats (returns full format objects immediately)
+const response = await list_creative_formats({
   type: "video",
   category: "standard"
 });
-// Returns: video_15s_hosted, video_30s_vast, video_vertical_15s, etc.
+// response.formats contains: full format objects for video_15s_hosted, video_30s_vast, etc.
+
+// Recursively discover formats from creative agents if needed
+const allFormats = [...response.formats];
+if (response.creative_agents) {
+  for (const agent of response.creative_agents) {
+    const agentResponse = await list_creative_formats({
+      agent_url: agent.agent_url,
+      type: "video"
+    });
+    allFormats.push(...agentResponse.formats);
+  }
+}
 
 // Find products supporting your creative capabilities
 const products = await get_products({
   promoted_offering: "Nike Air Max 2024",
   filters: {
-    format_ids: ["video_15s_hosted", "video_30s_vast"]
+    format_ids: allFormats.map(f => f.format_id)
   }
 });
-// Returns only products that accept these specific formats
 ```
 
 #### Why Both Tools Matter
 
-- **Without `list_creative_formats`**: Format IDs from products are meaningless strings
+- **Without `list_creative_formats`**: Format IDs from products are opaque identifiers
 - **Without `get_products`**: You don't know which formats actually have available inventory
-- **Together**: You understand both what's available AND what's required
+- **Together**: You understand both what's available AND what's required to meet specifications
 
 ### Phase 2: Creative Production
 Once you understand format requirements, create the actual creative assets according to the specifications discovered in Phase 1.
@@ -229,5 +263,5 @@ Creative operations have varying response times:
 - **[`list_creative_formats`](../task-reference/list_creative_formats)** - Understanding format requirements
 - **[Creative Library](./creative-library)** - Centralized creative management concepts
 - **[Creative Formats](../capability-discovery/creative-formats)** - Detailed format specifications
-- **[Standard Formats Guide](./standard-formats-guide)** - Pre-defined formats that work across publishers
-- **[Asset Types](./asset-types)** - Understanding asset roles and specifications
+- **[Creative Channel Guides](../../creative/channels/video)** - Format examples across video, display, audio, DOOH, and carousels
+- **[Asset Types](../../creative/asset-types)** - Understanding asset roles and specifications

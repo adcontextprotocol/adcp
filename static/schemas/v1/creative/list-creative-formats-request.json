@@ -11,26 +11,33 @@
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "default": "1.6.0"
     },
-    "type": {
-      "type": "string",
-      "description": "Filter by format type",
-      "enum": ["audio", "video", "display", "native", "dooh"]
-    },
-    "standard_only": {
-      "type": "boolean",
-      "description": "Only return IAB/AdCP standard formats"
-    },
-    "category": {
-      "type": "string",
-      "description": "Filter by format category",
-      "enum": ["standard", "custom"]
-    },
     "format_ids": {
       "type": "array",
-      "description": "Filter by specific format IDs",
+      "description": "Return only these specific format IDs",
       "items": {
         "type": "string"
       }
+    },
+    "type": {
+      "type": "string",
+      "description": "Filter by format type (technical categories with distinct requirements)",
+      "enum": ["audio", "video", "display", "dooh"]
+    },
+    "asset_types": {
+      "type": "array",
+      "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
+      "items": {
+        "type": "string",
+        "enum": ["image", "video", "audio", "text", "html", "javascript", "url"]
+      }
+    },
+    "dimensions": {
+      "type": "string",
+      "description": "Filter to formats with specific dimensions (e.g., '300x250', '728x90'). Useful with asset_types to find specific sizes like '300x250 JavaScript'"
+    },
+    "name_search": {
+      "type": "string",
+      "description": "Search for formats by name (case-insensitive partial match)"
     }
   },
   "additionalProperties": false

@@ -74,6 +74,6 @@ Together, these capabilities provide the foundation for safe, efficient, and eff
 - **[Product Discovery](../product-discovery/)** - Finding advertising inventory
 - **[Creatives](../creatives/)** - Creative asset management
 - **[Creative Protocol](../../creative/)** - Creative agents and manifests
-- **[Standard Creative Agent](../../creative/standard-creative-agent.md)** - Official AdCP creative agent
+- **[Creative Channel Guides](../../creative/channels/video)** - Format examples and patterns
 - **[Creative Manifests](../../creative/creative-manifests.md)** - Understanding creative specifications
 - **[AdAgents Specification](./adagents)** - Technical authorization details

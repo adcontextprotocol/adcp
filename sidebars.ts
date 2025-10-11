@@ -110,8 +110,6 @@ const sidebars: SidebarsConfig = {
           items: [
             'media-buy/creatives/index',
             'media-buy/creatives/creative-library',
-            'media-buy/creatives/standard-formats-guide',
-            'media-buy/creatives/asset-types',
           ],
         },
         {
@@ -133,10 +131,21 @@ const sidebars: SidebarsConfig = {
       label: 'Creative',
       items: [
         'creative/index',
-        'creative/getting-started',
-        'creative/why-creative-agents',
-        'creative/standard-creative-agent',
+        'creative/generative-creative',
+        'creative/asset-types',
         'creative/creative-manifests',
+        'creative/universal-macros',
+        {
+          type: 'category',
+          label: 'Channel Guides',
+          items: [
+            'creative/channels/video',
+            'creative/channels/display',
+            'creative/channels/audio',
+            'creative/channels/dooh',
+            'creative/channels/carousels',
+          ],
+        },
         {
           type: 'category',
           label: 'Task Reference',
@@ -144,6 +153,7 @@ const sidebars: SidebarsConfig = {
             'creative/task-reference/build_creative',
             'creative/task-reference/manage_creative_library',
             'creative/task-reference/preview_creative',
+            'creative/task-reference/list_creative_formats',
           ],
         },
       ],

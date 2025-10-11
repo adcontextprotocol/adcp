@@ -236,8 +236,7 @@ Choose your path based on your role and needs:
 ### **For Publishers/Sales Agents**
 1. **Learn [Authorized Properties](./capability-discovery/authorized-properties)** - Understand authorization requirements
 2. **Review [Creative Formats](./capability-discovery/creative-formats)** - See supported creative specifications
-3. **Understand [Creative Agents](../creative/standard-creative-agent.md)** - Learn how to provide creative agent support
-4. **Study [Advanced Topics](./advanced-topics/)** - Deep dive into technical implementation
+3. **Study [Advanced Topics](./advanced-topics/)** - Deep dive into technical implementation
 
 ### **For Technical Implementers**
 1. **Choose your [Protocol](../protocols/protocol-comparison)** - MCP vs A2A comparison

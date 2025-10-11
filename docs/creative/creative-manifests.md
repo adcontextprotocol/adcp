@@ -61,53 +61,6 @@ Creative manifests provide the actual assets that meet those requirements:
 }
 ```
 
-### Creative Agent Workflows
-
-Creative agents help buyers prepare creatives for trafficking. The workflow depends on what you're starting with and what you need.
-
-#### Creative Validation
-
-**You have:** Complete creative (manifest or assets)
-**You need:** Validation that it meets format requirements
-**Common use cases:** Publisher creative review, compliance checking, format verification
-
-**Real-world examples:**
-- **GAM Creative Validation**: Publisher checks native ad has required fields
-- **Facebook Creative Review**: Validates text ratio in images, policy compliance
-- **Twitter/X Compliance**: Checks political ad disclosures
-- **TikTok Moderation**: AI reviews creative against community guidelines
-
-The agent validates your creative and returns a preview or list of issues to fix.
-
-#### Creative Assembly
-
-**You have:** Individual brand assets (images, logos, text, videos)
-**You need:** Formatted creatives for specific placements
-**Common use cases:** Multi-size banner campaigns, responsive ads, format adaptation
-
-**Real-world examples:**
-- **Flashtalking**: Takes hero image + logo + headline → generates 15 banner sizes
-- **Celtra**: Assembles product feed + template → creates carousel ads
-- **Sizmek**: Brand assets → multi-format campaign package
-- **Google Display & Video 360**: Responsive display ads from component assets
-
-The agent packages your assets into format-compliant creatives (manifests, tags, or webhooks).
-
-#### Creative Generation
-
-**You have:** Brand guidelines, prompts, or product data
-**You need:** AI-generated creative content
-**Common use cases:** Dynamic creative optimization, personalized ads, creative testing
-
-**Real-world examples:**
-- **Meta Advantage+**: Text prompt + product catalog → generates ad variations
-- **Google Performance Max**: Brand guidelines → AI creates display/video assets
-- **Pencil (by Madgicx)**: Brief + brand assets → AI-generated creative variations
-- **Omneky**: Product feed + brand voice → generates social creatives
-
-The agent generates creative assets and packages them into deliverable formats.
-
-**Note**: In seller-managed storage (e.g., Meta, TikTok), creatives stay within the platform and are referenced by ID rather than exported as portable formats.
 
 ## Manifest Structure
 
@@ -465,91 +418,6 @@ Sales Agent translates to: %%ADVERTISING_IDENTIFIER_PLAIN%% (for GAM)
 Ad Server substitutes: ABC-123-DEF-456
 ```
 
-## Creative Storage: Who Manages What
-
-Where creatives are stored is separate from how they're created. Choose the pattern that matches your business model.
-
-### Buyer-Managed Storage ("Bring Your Own Ad Server")
-
-**Who:** Buyers with their own ad serving infrastructure
-**Example platforms:** Google Campaign Manager, Innovid, Extreme Reach, Adform
-
-Agent generates creatives that are trafficked directly into buyer's ad serving platform. Agent provides generation but buyer's ad server handles storage and delivery.
-
-**Use when:**
-- Buyer has existing ad server or delivery infrastructure
-- Buyer wants control over creative serving and decisioning
-- Multi-publisher campaigns with centralized ad serving
-- Need for buyer-side reporting and optimization
-
-**Creative agent provides:**
-- `build_creative` - Generate creatives for ad server trafficking
-- `preview_creative` - Preview before trafficking
-- Returns output immediately, no persistent storage
-
-**Real-world example:** Agency generates creative manifests for client campaign. Traffics them into Google Campaign Manager. Campaign Manager serves creatives across multiple publisher SSPs. Agent only generates, doesn't store or serve.
-
-### Agent-Managed Storage ("Creative Platform")
-
-**Who:** DCO platforms, creative agencies, production studios
-**Example platforms:** Flashtalking, Celtra, Omneky, independent studios
-
-Agent stores buyer's brand assets and creatives. Buyer can retrieve by ID in different formats as needed across campaigns and publishers.
-
-**How it works:**
-1. Buyer registers brand assets with agent (`manage_creative_library`)
-2. Buyer builds creatives, agent stores them with creative_id
-3. Buyer retrieves creatives later by ID in different formats
-4. Agent serves creative as manifest, tag, or webhook depending on publisher needs
-
-**Use when:**
-- Buyer works across many publishers with different format needs
-- Creative reuse across multiple campaigns
-- Multi-channel, multi-format campaigns
-- Dynamic creative optimization
-
-**Creative agent provides:**
-- `manage_creative_library` - Store and organize creatives
-- `build_creative` - Generate and store creatives
-- `preview_creative` - Full preview capabilities
-- `get_creative` - Retrieve by ID as manifest/tag/webhook
-- Persistent storage and format conversion
-
-**Real-world example:** Nike uses Flashtalking DCO. Uploads brand assets once. Generates 50 creative variants for different audiences. For CNN video buy, retrieves as VAST tag. For Meta campaign, retrieves as manifest. For programmatic display, retrieves as webhook. Same creative, multiple formats on-demand.
-
-### Seller/Publisher-Managed Storage ("Walled Garden")
-
-**Who:** Publisher platforms, social networks, retail media networks
-**Example platforms:** Meta Ads Manager, TikTok Creative Studio, Amazon DSP, Snap Ads
-
-Publisher stores advertiser creatives within their platform. Advertiser creates/uploads via publisher's interface, references by ID in media buys.
-
-**Use when:**
-- Publisher offers integrated creative studio
-- Publisher-specific creative formats/features
-- Simplified workflow for buyers
-- Publisher wants control over creative serving
-
-**Creative agent provides:**
-- `manage_creative_library` - Store in publisher system
-- `build_creative` - Generate publisher-optimized creatives
-- `preview_creative` - Preview in publisher environment
-- Integration with publisher's ad serving infrastructure
-- Automatic optimization for publisher's inventory
-
-**Real-world example:** Advertiser creates campaign in TikTok Ads Manager. Uses TikTok's creative tools to generate video variations. TikTok stores all creatives. At media buy time, advertiser just references creative_id. TikTok serves from their CDN. Advertiser never manages creative files directly.
-
-### Comparison
-
-| Aspect | Buyer-Managed | Agent-Managed | Seller-Managed |
-|--------|---------------|---------------|----------------|
-| Who stores | Buyer's system | Agent's system | Publisher's system |
-| Retrieval | Not applicable | By creative_id | By creative_id |
-| Multi-format | Buyer's responsibility | Agent handles | Publisher handles |
-| Cross-publisher | Buyer manages | Agent facilitates | Not applicable |
-| Examples | Workfront, Canva | Flashtalking, Celtra | Meta, TikTok, Amazon |
-
-**All three patterns support** validation, assembly, and generation workflows. The difference is simply **who manages the storage and versioning**.
 
 ## Best Practices
 
@@ -579,55 +447,9 @@ Publisher stores advertiser creatives within their platform. Advertiser creates/
 
 ## Advanced Topics
 
-### Asset Sequences
+### Repeatable Asset Groups
 
-For formats requiring multiple variants (e.g., carousel ads, video sequences), provide numbered asset groups. Each group represents one frame/card in the sequence:
-
-```json
-{
-  "format_id": "retail_product_carousel",
-  "assets": {
-    "card_1_image": {
-      "asset_type": "image",
-      "url": "https://cdn.example.com/product1.jpg",
-      "width": 300,
-      "height": 300
-    },
-    "card_1_title": {
-      "asset_type": "text",
-      "content": "Product Name 1"
-    },
-    "card_1_price": {
-      "asset_type": "text",
-      "content": "$29.99"
-    },
-    "card_2_image": {
-      "asset_type": "image",
-      "url": "https://cdn.example.com/product2.jpg",
-      "width": 300,
-      "height": 300
-    },
-    "card_2_title": {
-      "asset_type": "text",
-      "content": "Product Name 2"
-    },
-    "card_2_price": {
-      "asset_type": "text",
-      "content": "$39.99"
-    },
-    "logo": {
-      "asset_type": "image",
-      "url": "https://cdn.example.com/brand-logo.png",
-      "width": 200,
-      "height": 50
-    },
-    "cta_text": {
-      "asset_type": "text",
-      "content": "Shop Now"
-    }
-  }
-}
-```
+For carousel, slideshow, and multi-asset formats, see the [Carousel & Multi-Asset Formats](./channels/carousels.md) guide for complete documentation on repeatable asset groups.
 
 ## Schema Reference
 
@@ -638,6 +460,6 @@ For formats requiring multiple variants (e.g., carousel ads, video sequences), p
 ## Related Documentation
 
 - [Creative Formats](../media-buy/capability-discovery/creative-formats.md)
-- [Standard Creative Agent](./standard-creative-agent.md)
+- [Channel Guides](./channels/video.md) - Format examples across video, display, audio, DOOH, and carousels
 - [build_creative Task](./task-reference/build_creative.md)
 - [preview_creative Task](./task-reference/preview_creative.md)

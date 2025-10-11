@@ -32,7 +32,7 @@ Generate and validate creatives:
 
 **For details on creative manifests, see the [Creative Manifests](../../creative/creative-manifests.md) documentation.**
 
-**For details on the standard creative agent, see the [Standard Creative Agent](../../creative/standard-creative-agent.md) documentation.**
+**For format examples and patterns, see the [Creative Channel Guides](../../creative/channels/video.md).**
 
 **For the complete workflow on format discovery, see the [Creative Lifecycle](../creatives/index.md) documentation.**
 
@@ -46,9 +46,8 @@ Pre-defined, industry-standard specifications that work consistently across publ
 - **Portable**: One creative works everywhere
 - **Validated**: Pre-tested specifications
 - **Discoverable**: Available via `list_creative_formats`
-- **Powered by Standard Creative Agent**: All standard formats are supported by the [AdCP Standard Creative Agent](../../creative/standard-creative-agent.md)
 
-See the [Standard Formats Guide](../creatives/standard-formats-guide.md) for complete documentation.
+See the [Creative Channel Guides](../../creative/channels/video.md) for format documentation across video, display, audio, DOOH, and carousels.
 
 ### Custom Formats
 Publisher-specific formats for unique inventory:
