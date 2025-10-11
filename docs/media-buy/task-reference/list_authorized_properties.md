@@ -77,9 +77,11 @@ The message is returned differently in each protocol:
       "description": "Premium tier inventory across all property types"
     }
   },
-  "capabilities_description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification.",
-  "markets": {
-    "include_countries": ["US", "CA", "MX"]
+  "summary": {
+    "primary_channels": ["dooh"],
+    "primary_markets": ["US", "CA", "MX"],
+    "total_properties": 125,
+    "description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification."
   }
 }
 ```
@@ -90,11 +92,11 @@ The message is returned differently in each protocol:
 - **tags**: Metadata for each tag used by properties
   - **name**: Human-readable name for the tag
   - **description**: Description of what the tag represents and optionally how many properties it includes
-- **capabilities_description** *(optional)*: Markdown-formatted description of the sales agent's capabilities, inventory types, audience options, and special features. Used by buying agents to determine brief relevance.
-- **markets** *(optional)*: Geographic market filtering for brief routing
-  - **include_countries**: ISO country codes this agent accepts briefs for (mutually exclusive with exclude_countries)
-  - **exclude_countries**: ISO country codes this agent does NOT accept briefs for (mutually exclusive with include_countries)
-  - If neither specified, agent accepts briefs for any country
+- **summary** *(optional)*: High-level portfolio summary for quick relevance filtering
+  - **primary_channels**: Main advertising channels (display, video, dooh, ctv, etc.)
+  - **primary_markets**: Main geographic markets (ISO country codes)
+  - **total_properties**: Total number of properties
+  - **description**: Markdown description of the property portfolio
 
 ## Integration with get_products
 
@@ -266,58 +268,84 @@ await a2a.send({
 }
 ```
 
-## Agent Capabilities and Market Filtering
+## Property Portfolio Summary
 
-**Note**: For A2A protocol users, consider using the [AdCP extension to Agent Cards](../../protocols/a2a-guide#adcp-extension-to-agent-cards) for pre-connection discovery instead. Agent Cards provide the same metadata at `/.well-known/agent.json` before you even connect, enabling efficient brief routing without tool invocation.
+The optional `summary` field provides high-level metadata about the property portfolio to help buying agents quickly determine relevance without examining every property.
 
-### Capabilities Description
+### Why Summaries?
 
-The optional `capabilities_description` field allows sales agents to describe their inventory, targeting capabilities, and special features in free-form markdown. This helps buying agents determine if a brief is relevant before sending product discovery requests.
+**The core insight**: This isn't about what the agent *can do* (that's in A2A skills) - it's about what properties the agent *represents*. Properties change over time as inventory is added or removed.
 
-**Best Practices**:
-- Use markdown for light structure (bold, lists, etc.)
-- Describe inventory types, formats, and channels
-- Highlight audience targeting capabilities
-- Mention special features or differentiators
-- Keep concise but informative
+**Use case**: Orchestrator needs to route brief "DOOH in US airports" to relevant agents:
+```javascript
+// Quick filtering before detailed analysis
+const response = await agent.send({ skill: 'list_authorized_properties' });
 
-**Example**:
-```json
-{
-  "capabilities_description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification."
+if (response.summary?.primary_channels?.includes('dooh') &&
+    response.summary?.primary_markets?.includes('US')) {
+  // Relevant! Now examine detailed properties
+  const airportProperties = response.properties.filter(p =>
+    p.tags?.includes('airports')
+  );
 }
 ```
 
-### Market Filtering
+### Summary Fields
 
-The optional `markets` object specifies which geographic markets the agent accepts briefs for. This enables orchestrators to route briefs efficiently without unnecessary requests.
+**`primary_channels`** *(optional)*: Main advertising channels in this portfolio
+- `"display"`, `"video"`, `"dooh"`, `"ctv"`, `"podcast"`, `"retail"`, etc.
+- Helps filter "Do you have DOOH?" before examining properties
 
-**Include Countries** (positive list):
+**`primary_markets`** *(optional)*: Main geographic markets (ISO country codes)
+- Where the bulk of properties are concentrated
+- Helps filter "Do you have US inventory?" before examining properties
+
+**`total_properties`** *(optional)*: Total number of properties
+- Context for portfolio size
+- "1847 radio stations" vs "5 premium properties"
+
+**`description`** *(optional)*: Markdown description of the portfolio
+- Inventory types and characteristics
+- Audience profiles
+- Special features or capabilities
+
+### Example Summaries
+
+**DOOH Network**:
 ```json
 {
-  "markets": {
-    "include_countries": ["US", "CA", "MX"]
+  "summary": {
+    "primary_channels": ["dooh"],
+    "primary_markets": ["US", "CA"],
+    "total_properties": 125,
+    "description": "Premium digital out-of-home across airports and transit. Business traveler focus with proof-of-play."
   }
 }
 ```
-Agent only accepts briefs for US, Canada, and Mexico campaigns.
 
-**Exclude Countries** (negative list):
+**Multi-Channel Publisher**:
 ```json
 {
-  "markets": {
-    "exclude_countries": ["CN", "RU", "KP"]
+  "summary": {
+    "primary_channels": ["display", "video", "native"],
+    "primary_markets": ["US", "GB", "AU"],
+    "total_properties": 45,
+    "description": "News and business publisher network. Desktop and mobile web properties with professional audience."
   }
 }
 ```
-Agent accepts briefs for all countries except China, Russia, and North Korea.
 
-**No markets field**: Agent accepts briefs for any country.
-
-**Use Cases**:
-- **Regulatory compliance**: US news publisher excludes restricted markets
-- **Geographic focus**: EMEA-only network specifies European countries
-- **Licensing restrictions**: Content rights limited to specific regions
+**Large Radio Network**:
+```json
+{
+  "summary": {
+    "primary_channels": ["audio"],
+    "primary_markets": ["US"],
+    "total_properties": 1847,
+    "description": "National radio network covering all US DMAs. Mix of news, talk, and music formats."
+  }
+}
+```
 
 ## Use Cases
 
