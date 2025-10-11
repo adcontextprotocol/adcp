@@ -122,12 +122,11 @@ Once you understand format requirements, create the actual creative assets accor
 AdCP uses a centralized creative library where assets are uploaded once and assigned to multiple campaigns. This industry-standard approach enables:
 
 - Upload creatives to account-level library
-- Assign library assets to specific campaigns/packages
+- Assign creatives to specific campaigns/packages
 - Reuse creatives across multiple media buys
 - Track performance across all assignments
-- Update metadata globally for all uses
 
-**For complete details on library operations, organization, and best practices**, see [Creative Library](./creative-library.md).
+Asset management is handled through [Brand Cards](../../reference/brand-card), which provide brand-level assets with tags for discovery.
 
 ## Platform Considerations
 
@@ -171,7 +170,7 @@ Creative operations have varying response times:
 - **[`sync_creatives`](../task-reference/sync_creatives)** - Bulk creative management with upsert semantics
 - **[`list_creatives`](../task-reference/list_creatives)** - Advanced creative library querying and filtering
 - **[`list_creative_formats`](../task-reference/list_creative_formats)** - Understanding format requirements
-- **[Creative Library](./creative-library)** - Centralized creative management concepts
+- **[Brand Card](../../reference/brand-card)** - Brand identity and asset management
 - **[Creative Formats](../../creative/formats)** - Understanding format specifications and discovery
 - **[Creative Channel Guides](../../creative/channels/video)** - Format examples across video, display, audio, DOOH, and carousels
 - **[Asset Types](../../creative/asset-types)** - Understanding asset roles and specifications

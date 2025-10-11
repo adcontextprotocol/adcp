@@ -6,10 +6,13 @@ The Creative Protocol enables AI-powered creative generation and asset managemen
 
 ## Overview
 
-The Creative Protocol provides two main capabilities:
+The Creative Protocol provides AI-powered creative generation:
 
 - **`build_creative`**: Generate creative content using AI with either static manifests or dynamic code
-- **`manage_creative_library`**: Organize and search creative assets with intelligent tagging
+- **`preview_creative`**: Generate previews of creative manifests
+- **`list_creative_formats`**: Discover supported creative formats
+
+Assets are provided via [Brand Card](../reference/brand-card) - no separate asset library management needed.
 
 ## Quick Start: Generate Your First Creative
 
@@ -170,42 +173,6 @@ For custom publisher formats, specify the source:
 }
 ```
 
-## Asset Library Management
-
-### Organizing Assets
-
-Tag your assets for easy discovery:
-
-```json
-{
-  "action": "upload",
-  "asset": {
-    "type": "image",
-    "url": "https://brand.com/summer-menu.jpg",
-    "tags": ["seasonal", "summer", "menu", "photography"],
-    "metadata": {
-      "campaign": "summer_2024",
-      "dimensions": {"width": 1200, "height": 800}
-    }
-  }
-}
-```
-
-### Searching Assets
-
-Find assets using natural language:
-
-```json
-{
-  "action": "search", 
-  "query": "summer beverage photos for social media",
-  "filters": {
-    "asset_types": ["image"],
-    "tags": ["summer", "beverages"]
-  }
-}
-```
-
 ## Next Steps
 
 - **Browse Examples**: See [Task Reference](task-reference/build_creative.md) for detailed examples
@@ -224,13 +191,13 @@ If you get a format error, the publisher may not support that format. Try:
 ### Creative Quality Issues
 To improve creative output:
 1. Be more specific in your message: "Create a minimalist coffee ad with earth tones"
-2. Provide brand guidelines in the request
-3. Use the conversational refinement feature to iterate
+2. Provide comprehensive brand card with assets and guidelines
+3. Use the conversational refinement feature to iterate (via `context_id`)
 
-### Asset Library Organization
-For better asset management:
-1. Use consistent tagging conventions
-2. Include campaign and date information
-3. Add descriptive metadata for easier searching
+### Asset Management
+Assets are provided via [Brand Card](../reference/brand-card):
+1. Include assets in brand card with descriptive tags
+2. Use `asset_filters` in requests to select specific assets
+3. Reference product catalogs for large inventories
 
 Ready to create your first creative? Start with the basic example above and explore from there!

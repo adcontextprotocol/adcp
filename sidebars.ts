@@ -109,7 +109,6 @@ const sidebars: SidebarsConfig = {
           label: 'Creatives',
           items: [
             'media-buy/creatives/index',
-            'media-buy/creatives/creative-library',
           ],
         },
         {
@@ -153,7 +152,6 @@ const sidebars: SidebarsConfig = {
           label: 'Task Reference',
           items: [
             'creative/task-reference/build_creative',
-            'creative/task-reference/manage_creative_library',
             'creative/task-reference/preview_creative',
             'creative/task-reference/list_creative_formats',
           ],

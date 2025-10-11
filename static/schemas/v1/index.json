@@ -71,10 +71,6 @@
           "$ref": "/schemas/v1/core/creative-assignment.json",
           "description": "Assignment of a creative asset to a package"
         },
-        "creative-library-item": {
-          "$ref": "/schemas/v1/core/creative-library-item.json",
-          "description": "Creative asset as it appears in the centralized library"
-        },
         "creative-manifest": {
           "$ref": "/schemas/v1/core/creative-manifest.json",
           "description": "Complete specification of a creative with all assets needed for rendering"
@@ -262,16 +258,6 @@
           "response": {
             "$ref": "/schemas/v1/media-buy/build-creative-response.json",
             "description": "Response payload for build_creative task"
-          }
-        },
-        "manage-creative-library": {
-          "request": {
-            "$ref": "/schemas/v1/media-buy/manage-creative-library-request.json",
-            "description": "Request parameters for managing creative library assets"
-          },
-          "response": {
-            "$ref": "/schemas/v1/media-buy/manage-creative-library-response.json",
-            "description": "Response payload for manage_creative_library task"
           }
         },
         "preview-creative": {
