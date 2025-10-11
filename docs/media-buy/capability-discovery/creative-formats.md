@@ -49,6 +49,8 @@ Pre-defined, industry-standard specifications that work consistently across publ
 
 See the [Creative Channel Guides](../../creative/channels/video.md) for format documentation across video, display, audio, DOOH, and carousels.
 
+**For standard formats:** See [Standard AdCP Creative Formats](../../creative/standard-formats.md) for details on the reference creative agent at `https://creative.adcontextprotocol.org`.
+
 ### Custom Formats
 Publisher-specific formats for unique inventory:
 - **Unique**: Truly differentiated experiences
@@ -56,6 +58,166 @@ Publisher-specific formats for unique inventory:
 - **Extended**: Often based on standard formats
 - **Documented**: Clear specifications required
 - **Powered by Creative Agents**: Publishers provide creative agents that understand and support their custom formats
+
+## Implementing Format Support as a Sales Agent
+
+Sales agents have flexibility in how they provide format support to buyers. There are two primary patterns:
+
+### Pattern 1: Reference Standard Formats
+
+**Recommended for most publishers:** Reference the standard creative agent rather than replicating IAB formats.
+
+```json
+{
+  "formats": [],
+  "creative_agents": [
+    "https://creative.adcontextprotocol.org"
+  ]
+}
+```
+
+**When to use:**
+- Your inventory accepts standard IAB sizes (300x250, 728x90, standard video, etc.)
+- You don't need custom validation or assembly logic for these formats
+- You want to minimize maintenance and ensure ecosystem consistency
+
+**Benefits:**
+- No need to maintain format definitions
+- Automatic updates when standards evolve
+- Buyers already have compatible creatives
+- Reduced testing burden
+
+### Pattern 2: Host Custom Formats
+
+**For differentiated inventory:** Define formats unique to your platform.
+
+```json
+{
+  "formats": [
+    {
+      "format_id": "homepage_takeover_2024",
+      "name": "Homepage Takeover Experience",
+      "agent_url": "https://youragent.com",
+      "type": "rich_media",
+      "assets_required": [...]
+    },
+    {
+      "format_id": "native_feed_card",
+      "name": "Native Feed Integration",
+      "agent_url": "https://youragent.com",
+      "type": "native",
+      "assets_required": [...]
+    }
+  ],
+  "creative_agents": [
+    "https://creative.adcontextprotocol.org"  // Still support standard formats
+  ]
+}
+```
+
+**When to use:**
+- Unique ad experiences not covered by IAB standards
+- Platform-specific rendering requirements
+- Custom validation or approval workflows
+- Premium/differentiated inventory
+
+### Pattern 3: Standard Formats with Custom Logic
+
+**For specialized needs:** Host standard format definitions with custom validation or assembly.
+
+```json
+{
+  "formats": [
+    {
+      "format_id": "display_300x250",
+      "name": "Medium Rectangle",
+      "agent_url": "https://youragent.com",  // Your agent for custom logic
+      "type": "display",
+      "assets_required": [...]  // Standard IAB spec
+    }
+  ]
+}
+```
+
+**When to use:**
+- Need custom creative review process
+- Platform-specific asset optimization
+- Additional validation beyond IAB specs
+- Special preview or assembly requirements
+
+**Trade-off:** More control, but more maintenance burden.
+
+## Format Authority
+
+Each format includes an `agent_url` field pointing to its authoritative source:
+
+```json
+{
+  "format_id": "video_30s_hosted",
+  "agent_url": "https://creative.adcontextprotocol.org",
+  "name": "Standard 30-Second Video"
+}
+```
+
+The creative agent at that URL is the definitive source for:
+- Complete format specifications
+- Asset validation rules
+- Preview generation
+- Format documentation
+
+Buyers query the agent_url for full format details, validation, and preview capabilities.
+
+## Implementation Best Practices
+
+### ✅ DO Reference Standard Formats
+
+**Reduces complexity and improves compatibility:**
+
+```json
+{
+  "creative_agents": ["https://creative.adcontextprotocol.org"]
+}
+```
+
+### ✅ DO Define Custom Formats for Differentiation
+
+**Enables unique ad experiences:**
+
+```json
+{
+  "formats": [
+    {"format_id": "your_custom_format", "agent_url": "https://youragent.com"}
+  ]
+}
+```
+
+### ✅ DO Combine Both Approaches
+
+**Support standard + custom formats:**
+
+```json
+{
+  "formats": [{...your custom formats...}],
+  "creative_agents": ["https://creative.adcontextprotocol.org"]
+}
+```
+
+### ❌ DON'T Replicate Standard Formats Unnecessarily
+
+**Avoid copying IAB formats you don't customize:**
+
+```json
+// ❌ Not recommended - unnecessary duplication
+{
+  "formats": [
+    {"format_id": "display_300x250", "agent_url": "https://youragent.com"},
+    {"format_id": "display_728x90", "agent_url": "https://youragent.com"},
+    // ... 50 more standard formats you're just copying
+  ]
+}
+```
+
+**Instead, reference the standard agent unless you need custom logic.**
 
 ## Authoritative Source
 

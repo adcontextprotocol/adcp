@@ -39,7 +39,7 @@ Buyers can recursively query creative_agents to discover all available formats. 
 ```json
 {
   "adcp_version": "1.6.0",
-  "agent_url": "https://reference.adcp.org",
+  "agent_url": "https://creative.adcontextprotocol.org",
   "agent_name": "AdCP Reference Creative Agent",
   "capabilities": ["validation", "assembly", "preview"],
   "formats": [
@@ -100,13 +100,13 @@ Response:
 ```json
 {
   "adcp_version": "1.6.0",
-  "agent_url": "https://reference.adcp.org",
+  "agent_url": "https://creative.adcontextprotocol.org",
   "agent_name": "AdCP Reference Creative Agent",
   "capabilities": ["validation", "assembly", "preview"],
   "formats": [
     {
       "format_id": "display_300x250",
-      "agent_url": "https://reference.adcp.org",
+      "agent_url": "https://creative.adcontextprotocol.org",
       "name": "Medium Rectangle",
       "type": "display",
       "accepts_3p_tags": false,

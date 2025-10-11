@@ -131,6 +131,7 @@ const sidebars: SidebarsConfig = {
       label: 'Creative',
       items: [
         'creative/index',
+        'creative/standard-formats',
         'creative/generative-creative',
         'creative/asset-types',
         'creative/creative-manifests',

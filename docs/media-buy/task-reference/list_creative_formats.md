@@ -60,7 +60,7 @@ Buyers can recursively query creative_agents to discover all available formats. 
   ],
   "creative_agents": [
     {
-      "agent_url": "https://reference.adcp.org",
+      "agent_url": "https://creative.adcontextprotocol.org",
       "agent_name": "AdCP Reference Creative Agent",
       "capabilities": ["validation", "assembly", "preview"]
     },
