@@ -235,7 +235,7 @@ Choose your path based on your role and needs:
 
 ### **For Publishers/Sales Agents**
 1. **Learn [Authorized Properties](./capability-discovery/authorized-properties)** - Understand authorization requirements
-2. **Review [Creative Formats](./capability-discovery/creative-formats)** - See supported creative specifications
+2. **Review [Creative Formats](../creative/formats)** - See supported creative specifications
 3. **Study [Advanced Topics](./advanced-topics/)** - Deep dive into technical implementation
 
 ### **For Technical Implementers**

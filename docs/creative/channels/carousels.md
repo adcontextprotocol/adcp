@@ -4,22 +4,23 @@ title: Carousel & Multi-Asset Formats
 
 # Carousel & Multi-Asset Formats
 
-This guide covers formats that display multiple items in sequence: product carousels, image slideshows, story formats, and video playlists.
+This guide covers how AdCP represents carousel and multi-asset advertising formats that display multiple items in sequence: product carousels, image slideshows, story sequences, and video playlists.
 
-## Overview
+## Carousel Format Characteristics
 
-Carousel formats use **repeatable asset groups** - the same pattern works for:
+Carousel formats use repeatable asset groups to represent:
+- **Product Carousels** - Multiple products with images, titles, and prices
+- **Image Slideshows** - Series of images with optional captions
+- **Story Sequences** - Sequential narrative frames (mobile stories)
+- **Video Playlists** - Multiple video clips displayed in sequence
 
-- **Product Carousels** - Multiple products with images, titles, prices
-- **Image Slideshows** - Series of photos with captions
-- **Story Formats** - Sequential narrative frames
-- **Video Playlists** - Multiple video clips in sequence
-
-All use the same `asset_group_id` pattern with `min_count` and `max_count`.
+All carousel formats use `asset_group_id` with `repeatable: true`, `min_count`, and `max_count` to define the structure.
 
 ## Repeatable Asset Groups
 
-### Format Structure
+### Basic Structure
+
+Carousel formats define a repeatable asset group containing the assets for each item:
 
 ```json
 {
@@ -64,72 +65,7 @@ All use the same `asset_group_id` pattern with `min_count` and `max_count`.
 }
 ```
 
-### Manifest Pattern
-
-Assets use naming pattern: `{group_id}_{index}_{asset_id}`
-
-```json
-{
-  "format_id": "product_carousel_3_to_10",
-  "assets": {
-    "product_0_image": {
-      "asset_type": "image",
-      "url": "https://cdn.brand.com/products/shoes_red.jpg",
-      "width": 300,
-      "height": 300
-    },
-    "product_0_title": {
-      "asset_type": "text",
-      "content": "Red Running Shoes"
-    },
-    "product_0_price": {
-      "asset_type": "text",
-      "content": "$89.99"
-    },
-    "product_1_image": {
-      "asset_type": "image",
-      "url": "https://cdn.brand.com/products/shoes_blue.jpg",
-      "width": 300,
-      "height": 300
-    },
-    "product_1_title": {
-      "asset_type": "text",
-      "content": "Blue Trail Shoes"
-    },
-    "product_1_price": {
-      "asset_type": "text",
-      "content": "$79.99"
-    },
-    "product_2_image": {
-      "asset_type": "image",
-      "url": "https://cdn.brand.com/products/shoes_black.jpg",
-      "width": 300,
-      "height": 300
-    },
-    "product_2_title": {
-      "asset_type": "text",
-      "content": "Black Casual Shoes"
-    },
-    "product_2_price": {
-      "asset_type": "text",
-      "content": "$69.99"
-    },
-    "brand_logo": {
-      "asset_type": "image",
-      "url": "https://cdn.brand.com/logo.png",
-      "width": 80,
-      "height": 80
-    },
-    "landing_url": {
-      "asset_type": "url",
-      "url_purpose": "clickthrough",
-      "url": "https://brand.com/shoes?product={PRODUCT_ID}&campaign={MEDIA_BUY_ID}"
-    }
-  }
-}
-```
-
-## Common Carousel Formats
+## Standard Carousel Formats
 
 ### Product Carousel (Display)
 
@@ -203,9 +139,7 @@ Assets use naming pattern: `{group_id}_{index}_{asset_id}`
 }
 ```
 
-### Story Format (Mobile)
-
-Mobile-first sequential story format:
+### Story Sequence (Mobile)
 
 ```json
 {
@@ -252,8 +186,6 @@ Mobile-first sequential story format:
 
 ### Video Playlist
 
-Multiple video clips in sequence:
-
 ```json
 {
   "format_id": "video_playlist_6s_bumpers",
@@ -280,9 +212,22 @@ Multiple video clips in sequence:
 }
 ```
 
-## Creating Carousel Manifests
+## Creative Manifests
 
-### Basic Product Carousel
+### Naming Convention
+
+Assets in manifests use the pattern: `{group_id}_{index}_{asset_id}`
+
+Indexing is **zero-based**: `product_0_image`, `product_1_image`, `product_2_image`
+
+**Example**: For a format with `asset_group_id: "product"` and `asset_id: "image"`, the manifest provides:
+- First item: `product_0_image`
+- Second item: `product_1_image`
+- Third item: `product_2_image`
+
+All assets for a given index must be provided together (you cannot have `product_0_image` without `product_0_title` if title is required).
+
+### Product Carousel Manifest
 
 ```json
 {
@@ -290,45 +235,45 @@ Multiple video clips in sequence:
   "assets": {
     "product_0_image": {
       "asset_type": "image",
-      "url": "https://cdn.brand.com/product1.jpg",
+      "url": "https://cdn.brand.com/products/shoes_red.jpg",
       "width": 300,
       "height": 300
     },
     "product_0_title": {
       "asset_type": "text",
-      "content": "Summer Dress"
+      "content": "Red Running Shoes"
     },
     "product_0_price": {
       "asset_type": "text",
-      "content": "$49.99"
+      "content": "$89.99"
     },
     "product_1_image": {
       "asset_type": "image",
-      "url": "https://cdn.brand.com/product2.jpg",
+      "url": "https://cdn.brand.com/products/shoes_blue.jpg",
       "width": 300,
       "height": 300
     },
     "product_1_title": {
       "asset_type": "text",
-      "content": "Casual Jeans"
+      "content": "Blue Trail Shoes"
     },
     "product_1_price": {
       "asset_type": "text",
-      "content": "$39.99"
+      "content": "$79.99"
     },
     "product_2_image": {
       "asset_type": "image",
-      "url": "https://cdn.brand.com/product3.jpg",
+      "url": "https://cdn.brand.com/products/shoes_black.jpg",
       "width": 300,
       "height": 300
     },
     "product_2_title": {
       "asset_type": "text",
-      "content": "Canvas Sneakers"
+      "content": "Black Casual Shoes"
     },
     "product_2_price": {
       "asset_type": "text",
-      "content": "$29.99"
+      "content": "$69.99"
     },
     "brand_logo": {
       "asset_type": "image",
@@ -339,13 +284,13 @@ Multiple video clips in sequence:
     "landing_url": {
       "asset_type": "url",
       "url_purpose": "clickthrough",
-      "url": "https://brand.com/summer?campaign={MEDIA_BUY_ID}"
+      "url": "https://brand.com/shoes?campaign={MEDIA_BUY_ID}"
     }
   }
 }
 ```
 
-### Story Format with Macros
+### Story Sequence Manifest
 
 ```json
 {
@@ -403,32 +348,16 @@ Multiple video clips in sequence:
       "asset_type": "url",
       "url_purpose": "clickthrough",
       "url": "https://brand.com/summer-sale?device={DEVICE_ID}&campaign={MEDIA_BUY_ID}"
-    },
-    "impression_tracker": {
-      "asset_type": "url",
-      "url_purpose": "impression_tracker",
-      "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     }
   }
 }
 ```
 
-## Carousel-Specific Considerations
+## Manifest Validation Rules
 
-### Indexing Pattern
+### Complete Groups Required
 
-Always use zero-based indexing: `{group_id}_0_{asset_id}`, `{group_id}_1_{asset_id}`, etc.
-
-```
-product_0_image
-product_0_title
-product_1_image
-product_1_title
-```
-
-### Partial Groups Not Allowed
-
-Each group instance must include **all required assets** in that group:
+Each group instance must include all required assets defined in the format:
 
 ```json
 // ❌ INVALID - missing product_1_title
@@ -438,7 +367,7 @@ Each group instance must include **all required assets** in that group:
   "product_1_image": {...}
 }
 
-// ✅ VALID - all assets present for each product
+// ✅ VALID - all required assets present for each product
 {
   "product_0_image": {...},
   "product_0_title": {...},
@@ -447,19 +376,19 @@ Each group instance must include **all required assets** in that group:
 }
 ```
 
-### Count Validation
+### Count Constraints
 
-Manifests must respect `min_count` and `max_count`:
+Manifests must provide between `min_count` and `max_count` instances:
 
 ```json
-// Format requires 3-10 products
+// Format specification
 {
   "asset_group_id": "product",
   "min_count": 3,
   "max_count": 10
 }
 
-// ❌ INVALID - only 2 products
+// ❌ INVALID - only 2 products (below minimum)
 {
   "product_0_image": {...},
   "product_1_image": {...}
@@ -473,72 +402,57 @@ Manifests must respect `min_count` and `max_count`:
 }
 ```
 
-### Optional Assets in Groups
+### Optional Assets
 
-Individual assets within a group can be optional:
+Individual assets within a group can be marked `"required": false`:
 
 ```json
 {
   "asset_group_id": "slide",
-  "repeatable": true,
-  "min_count": 3,
-  "max_count": 8,
   "assets": [
     {
       "asset_id": "image",
-      "asset_type": "image",
       "required": true
     },
     {
       "asset_id": "caption",
-      "asset_type": "text",
-      "required": false  // Optional
+      "required": false  // Can be omitted
     }
   ]
 }
 ```
 
-You can provide captions for some slides but not others:
+Optional assets can be provided for some instances but not others:
 
 ```json
 {
   "slide_0_image": {...},
-  "slide_0_caption": {...},  // Included
-  "slide_1_image": {...},    // No caption for this slide
+  "slide_0_caption": {...},  // Caption provided
+  "slide_1_image": {...},    // No caption
   "slide_2_image": {...},
-  "slide_2_caption": {...}   // Caption included again
+  "slide_2_caption": {...}   // Caption provided
 }
 ```
 
-## Best Practices
+### Zero-Based Indexing
 
-### Asset Consistency
+Always use sequential zero-based indexing starting from 0:
 
-Keep assets within a carousel consistent:
-- **Same dimensions** for all images in the group
-- **Similar content length** for text fields
-- **Consistent quality** across all items
-- **Visual coherence** (same style, colors, branding)
+```
+product_0_image
+product_0_title
+product_1_image
+product_1_title
+product_2_image
+product_2_title
+```
 
-### Performance
+## Clickthrough URL Patterns
 
-- **Lazy loading**: Load carousel items as needed, not all upfront
-- **Image optimization**: Use appropriate file sizes for carousel images
-- **Total size limit**: Keep total manifest size reasonable (typically under 2MB)
+### Single Landing URL
 
-### User Experience
+All carousel items link to the same destination:
 
-- **Clear navigation**: Show indicators (dots, arrows) for multi-item carousels
-- **Auto-advance timing**: 3-5 seconds per slide for auto-rotating carousels
-- **Swipe support**: Enable touch gestures on mobile
-- **Pause on interaction**: Stop auto-rotation when user engages
-
-### Clickthrough Behavior
-
-Different approaches for carousel clicks:
-
-#### Single Landing URL
-All items link to same destination:
 ```json
 {
   "landing_url": {
@@ -549,8 +463,10 @@ All items link to same destination:
 }
 ```
 
-#### Per-Item Landing URLs
-Each carousel item has its own link:
+### Per-Item Landing URLs
+
+Each carousel item can have its own clickthrough URL (if supported by format):
+
 ```json
 {
   "product_0_landing_url": {
@@ -562,72 +478,34 @@ Each carousel item has its own link:
     "asset_type": "url",
     "url_purpose": "clickthrough",
     "url": "https://brand.com/product/shoes-blue?campaign={MEDIA_BUY_ID}"
-  }
-}
-```
-
-Format should specify if per-item URLs are supported.
-
-### Tracking Individual Items
-
-Track which carousel items are viewed/clicked using macros:
-
-```json
-{
-  "impression_tracker": {
+  },
+  "product_2_landing_url": {
     "asset_type": "url",
-    "url_purpose": "impression_tracker",
-    "url": "https://track.brand.com/view?buy={MEDIA_BUY_ID}&item={CAROUSEL_INDEX}&cb={CACHEBUSTER}"
+    "url_purpose": "clickthrough",
+    "url": "https://brand.com/product/shoes-black?campaign={MEDIA_BUY_ID}"
   }
 }
 ```
 
-Some platforms support `{CAROUSEL_INDEX}` macro for item-level tracking.
+The format definition specifies whether per-item URLs are supported.
 
-## Discovery
+## Carousel-Specific Macros
 
-### Finding Carousel Formats
+In addition to [universal macros](../universal-macros.md), some platforms support carousel-specific macros:
 
-Use `list_creative_formats` to discover carousel formats:
+- `{CAROUSEL_INDEX}` - Zero-based index of current carousel item
+- `{CAROUSEL_POSITION}` - One-based position (for user display)
+- `{CAROUSEL_TOTAL}` - Total number of items in carousel
 
-```json
-{
-  "asset_types": ["image", "text"],
-  "name_search": "carousel"
-}
+**Example tracking URL:**
+```
+https://track.brand.com/view?buy={MEDIA_BUY_ID}&item={CAROUSEL_INDEX}&total={CAROUSEL_TOTAL}
 ```
 
-Or search by specific dimensions:
+## Complete Example
 
-```json
-{
-  "asset_types": ["image", "text"],
-  "dimensions": "300x250",
-  "name_search": "product"
-}
-```
+### Format Definition
 
-### Identifying Repeatable Groups
-
-Look for `repeatable: true` in format definitions:
-
-```json
-{
-  "format_id": "product_carousel",
-  "assets_required": [
-    {
-      "asset_group_id": "product",
-      "repeatable": true,  // ← Indicates carousel/sequence format
-      "min_count": 3,
-      "max_count": 10
-    }
-  ]
-}
-```
-
-## Example: Complete Product Carousel
-
-Format definition:
 ```json
 {
   "format_id": "ecommerce_carousel_300x600",
@@ -684,7 +562,8 @@ Format definition:
 }
 ```
 
-Manifest:
+### Manifest
+
 ```json
 {
   "format_id": "ecommerce_carousel_300x600",
@@ -765,8 +644,8 @@ Manifest:
 
 ## Related Documentation
 
-- [Creative Protocol](../index.md) - How assets, formats, and manifests work together
-- [Creative Manifests](../creative-manifests.md) - Repeatable asset group specifications
-- [Universal Macros](../universal-macros.md) - Supported macros for tracking and personalization
-- [Display Ads](display.md) - Standard display format patterns
-- [Video Ads](video.md) - Video playlist formats
+- [Creative Manifests](../creative-manifests.md) - Complete manifest specification
+- [Universal Macros](../universal-macros.md) - Supported macros for tracking
+- [Asset Types](../asset-types.md) - Asset type specifications
+- [Display Ads](display.md) - Standard display formats
+- [Video Ads](video.md) - Video format specifications

@@ -330,7 +330,7 @@ Now that you understand the Creative Library architecture, here are your next st
 - **Understand the workflow**: Read [Creative Lifecycle](./index.md) for end-to-end process
 
 ### 📋 **Planning**
-- **Review formats**: Check [Creative Formats](../capability-discovery/creative-formats) for platform requirements
+- **Review formats**: Check [Creative Formats](../../creative/formats) for platform requirements
 - **Design your library**: Plan your creative ID conventions and tagging strategy
 - **Map your workflow**: Align the library approach with your existing creative operations
 
@@ -344,4 +344,4 @@ Now that you understand the Creative Library architecture, here are your next st
 - [`sync_creatives`](../task-reference/sync_creatives) - Creative management API reference
 - [`list_creatives`](../task-reference/list_creatives) - Creative query API reference
 - [Creative Lifecycle](./index.md) - End-to-end creative workflow
-- [Creative Formats](../capability-discovery/creative-formats) - Supported format specifications
+- [Creative Formats](../../creative/formats) - Understanding format specifications and discovery

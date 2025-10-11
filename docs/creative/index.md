@@ -1,8 +1,8 @@
 ---
-title: Creative Protocol
+title: Overview
 ---
 
-# Creative Protocol
+# Creative Protocol Overview
 
 This guide explains how creatives work in AdCP, from defining format requirements to assembling and delivering ads.
 
@@ -57,52 +57,15 @@ Sales Agent (validates & delivers)
 
 ### 1. **Discovery** - "What formats do you support?"
 
-Buyers call `list_creative_formats` on sales or creative agents to discover available formats with full specifications.
+Buyers call `list_creative_formats` on sales or creative agents to discover available formats with full specifications. The `agent_url` field identifies the creative agent authoritative for each format.
 
-```json
-{
-  "format_id": "video_30s",
-  "agent_url": "https://creative.example.com",
-  "type": "video",
-  "assets_required": [
-    {
-      "asset_id": "video_file",
-      "asset_type": "video",
-      "requirements": {
-        "duration": "30s",
-        "format": "MP4 H.264",
-        "resolution": ["1920x1080", "1280x720"]
-      }
-    }
-  ]
-}
-```
-
-**Key Point**: The `agent_url` tells you where the authoritative documentation for this format lives - that creative agent defines how it works and how to render it.
+See [Creative Formats](./formats.md) for format discovery details.
 
 ### 2. **Assembly** - "Here are my assets"
 
-Buyers create manifests providing assets that fulfill format requirements:
+Buyers create manifests providing assets that fulfill format requirements. Manifests pair format specifications with actual asset URLs and content.
 
-```json
-{
-  "format_id": "video_30s",
-  "assets": {
-    "video_file": {
-      "asset_type": "video",
-      "url": "https://cdn.brand.com/spring_30s.mp4",
-      "duration": 30,
-      "width": 1920,
-      "height": 1080
-    },
-    "landing_url": {
-      "asset_type": "url",
-      "url_purpose": "clickthrough",
-      "url": "https://brand.com/spring"
-    }
-  }
-}
-```
+See [Creative Manifests](./creative-manifests.md) for manifest structure details.
 
 ### 3. **Validation** - "Does this match the requirements?"
 
@@ -136,99 +99,33 @@ Each format has an authoritative source - the creative agent that defines it (in
 - Describes how the format renders
 - Provides validation rules
 
-**No special "standard" designation** - the reference creative agent's formats are just formats like any other. What matters is the `agent_url` pointing to the authority.
+**Standard vs. Custom Formats:**
+- **Standard formats** are hosted by the reference creative agent (`https://creative.adcontextprotocol.org`) and based on IAB specifications
+- **Custom formats** are defined by individual publishers or creative platforms for specialized inventory
+- Technically, both work the same way - the `agent_url` field identifies which agent is authoritative for each format
 
 See the [Channel Guides](channels/video.md) for format examples and patterns across video, display, audio, DOOH, and carousels.
 
 ### Manifests
-Manifests are JSON structures pairing asset IDs from the format with actual asset content:
-
-```json
-{
-  "format_id": "product_carousel",
-  "assets": {
-    "product_0_image": { "asset_type": "image", "url": "..." },
-    "product_0_title": { "asset_type": "text", "content": "..." },
-    "product_1_image": { "asset_type": "image", "url": "..." },
-    "logo": { "asset_type": "image", "url": "..." }
-  }
-}
-```
-
-For formats with repeatable asset groups (carousels, slideshows), use numbered sequences: `product_0_image`, `product_1_image`, `product_2_image`.
+Manifests are JSON structures pairing asset IDs from the format with actual asset content. They provide the URLs, text, and tracking pixels needed to assemble a complete creative.
 
 See [Creative Manifests](creative-manifests.md) for detailed documentation.
 
 ### Universal Macros
-Macros are placeholders in tracking URLs that get replaced with actual values at impression time:
-
-```
-https://track.brand.com/imp?campaign={MEDIA_BUY_ID}&device={DEVICE_ID}&cb={CACHEBUSTER}
-```
-
-Becomes:
-```
-https://track.brand.com/imp?campaign=mb_spring_2025&device=ABC-123&cb=87654321
-```
-
-AdCP defines universal macros that work across all platforms - sales agents translate them to their ad server's syntax.
+Macros are placeholders in tracking URLs that get replaced with actual values at impression time (e.g., `{MEDIA_BUY_ID}`, `{DEVICE_ID}`, `{CACHEBUSTER}`). AdCP defines universal macros that work across all platforms - sales agents translate them to their ad server's syntax.
 
 See [Universal Macros](universal-macros.md) for complete reference.
 
 ## Common Patterns
 
 ### Third-Party Tags
-For third-party served ads, formats specify HTML or JavaScript asset requirements:
-
-```json
-{
-  "format_id": "display_300x250_3p",
-  "assets_required": [
-    {
-      "asset_id": "tag",
-      "asset_type": "javascript",
-      "requirements": {
-        "width": 300,
-        "height": 250,
-        "max_file_size_kb": 200
-      }
-    }
-  ]
-}
-```
+For third-party served ads, formats specify HTML or JavaScript asset requirements. See the [Display Channel Guide](channels/display.md) for third-party tag format examples.
 
 ### Repeatable Asset Groups
-For carousels, slideshows, stories, playlists - anything with multiple repetitions of the same structure:
+For carousels, slideshows, stories, playlists - anything with multiple repetitions of the same structure. See the [Carousel & Multi-Asset Formats](channels/carousels.md) guide for complete documentation on repeatable asset groups.
 
-```json
-{
-  "asset_group_id": "product",
-  "repeatable": true,
-  "min_count": 3,
-  "max_count": 10,
-  "assets": [
-    {"asset_id": "image", "asset_type": "image"},
-    {"asset_id": "title", "asset_type": "text"},
-    {"asset_id": "price", "asset_type": "text"}
-  ]
-}
-```
-
-Manifests provide: `product_0_image`, `product_0_title`, `product_0_price`, `product_1_image`, etc.
-
-### DOOH & Proof-of-Play
-Digital Out-of-Home formats include venue-specific macros and proof-of-play webhooks:
-
-```json
-{
-  "proof_of_play": {
-    "asset_type": "url",
-    "url_purpose": "proof_of_play",
-    "url": "https://track.com/pop?screen={SCREEN_ID}&ts={PLAY_TIMESTAMP}",
-    "required_macros": ["SCREEN_ID", "PLAY_TIMESTAMP", "VENUE_LAT", "VENUE_LONG"]
-  }
-}
-```
+### DOOH Impression Tracking
+Digital Out-of-Home formats use impression tracking with venue-specific macros instead of device identifiers. See the [DOOH Channel Guide](channels/dooh.md) for DOOH-specific macro details.
 
 ## Channel-Specific Information
 
@@ -237,7 +134,7 @@ For detailed information on specific ad formats and channels, see the [Creative 
 - **Video Ads** - VAST, hosted video, CTV formats
 - **Display Ads** - Banners, third-party tags, responsive formats
 - **Audio Ads** - Streaming audio formats
-- **DOOH** - Digital billboards, venue targeting, proof-of-play
+- **DOOH** - Digital billboards, venue targeting, venue-based impression tracking
 - **Repeatable Asset Groups** - Carousels, slideshows, story formats
 
 ## Getting Started

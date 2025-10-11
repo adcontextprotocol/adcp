@@ -4,19 +4,20 @@ title: DOOH (Digital Out-of-Home)
 
 # DOOH - Digital Out-of-Home
 
-This guide covers Digital Out-of-Home advertising formats for digital billboards, transit screens, and venue displays.
+This guide covers how AdCP represents Digital Out-of-Home advertising formats for digital billboards, transit screens, and venue displays.
 
-## Overview
+## DOOH Format Characteristics
 
-DOOH formats are unique because:
-- Ads display on physical screens in public spaces
-- Venue context matters (airport, mall, highway, etc.)
-- Proof-of-play verification confirms actual display
-- No click tracking (but QR codes work)
+DOOH formats differ from other digital formats:
+- Display on physical screens in public spaces
+- Include venue context (airport, mall, highway, etc.)
+- Use venue-based impression tracking instead of device identifiers
+- No clickthrough URLs (use QR codes instead)
+- Often display without audio
 
-## Common DOOH Formats
+## Standard DOOH Formats
 
-### Digital Billboard
+### Digital Billboard (Landscape)
 
 ```json
 {
@@ -27,19 +28,25 @@ DOOH formats are unique because:
       "asset_id": "billboard_image",
       "asset_type": "image",
       "asset_role": "hero_image",
+      "required": true,
       "requirements": {
         "width": 1920,
         "height": 1080,
         "file_types": ["jpg", "png"],
-        "max_file_size_kb": 500,
-        "text_readable_distance": "50 feet minimum"
+        "max_file_size_kb": 1000
       }
+    },
+    {
+      "asset_id": "impression_tracker",
+      "asset_type": "url",
+      "url_purpose": "impression",
+      "required": true
     }
   ]
 }
 ```
 
-### Transit Screen
+### Transit Screen (Portrait)
 
 ```json
 {
@@ -49,45 +56,82 @@ DOOH formats are unique because:
     {
       "asset_id": "screen_image",
       "asset_type": "image",
+      "asset_role": "hero_image",
+      "required": true,
       "requirements": {
         "width": 1080,
         "height": 1920,
-        "aspect_ratio": "9:16"
+        "aspect_ratio": "9:16",
+        "file_types": ["jpg", "png"]
       }
+    },
+    {
+      "asset_id": "impression_tracker",
+      "asset_type": "url",
+      "url_purpose": "impression",
+      "required": true
     }
   ]
 }
 ```
 
-## Proof-of-Play
-
-DOOH formats include webhooks that fire when the creative actually displays on screen:
+### Video Billboard
 
 ```json
 {
-  "format_id": "dooh_billboard_1920x1080",
+  "format_id": "dooh_video_15s",
+  "type": "dooh",
   "assets_required": [
     {
-      "asset_id": "billboard_image",
-      "asset_type": "image",
-      "requirements": {"width": 1920, "height": 1080}
-    },
-    {
-      "asset_id": "proof_of_play",
-      "asset_type": "url",
-      "url_purpose": "proof_of_play",
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "asset_role": "hero_video",
       "required": true,
       "requirements": {
-        "required_macros": ["SCREEN_ID", "PLAY_TIMESTAMP", "VENUE_LAT", "VENUE_LONG"]
+        "duration": "15s",
+        "width": 1920,
+        "height": 1080,
+        "format": ["MP4"],
+        "audio_required": false,
+        "max_file_size_mb": 50
       }
+    },
+    {
+      "asset_id": "impression_tracker",
+      "asset_type": "url",
+      "url_purpose": "impression",
+      "required": true
     }
   ]
 }
 ```
 
-## Creating DOOH Manifests
+## Impression Tracking for DOOH
 
-### Static Billboard
+DOOH formats use impression trackers (often called "proof-of-play") to verify when creatives display on physical screens. These are standard URL assets with DOOH-specific macros:
+
+```json
+{
+  "asset_id": "impression_tracker",
+  "asset_type": "url",
+  "url_purpose": "impression",
+  "required": true,
+  "requirements": {
+    "required_macros": [
+      "SCREEN_ID",
+      "PLAY_TIMESTAMP",
+      "VENUE_LAT",
+      "VENUE_LONG"
+    ]
+  }
+}
+```
+
+The mechanics are identical to digital impression tracking - it's just a URL that fires when the ad displays. The difference is the macros capture physical venue context instead of device identifiers.
+
+## Creative Manifests
+
+### Static Billboard Manifest
 
 ```json
 {
@@ -99,16 +143,16 @@ DOOH formats include webhooks that fire when the creative actually displays on s
       "width": 1920,
       "height": 1080
     },
-    "proof_of_play": {
+    "impression_tracker": {
       "asset_type": "url",
-      "url_purpose": "proof_of_play",
+      "url_purpose": "impression",
       "url": "https://track.brand.com/pop?buy={MEDIA_BUY_ID}&screen={SCREEN_ID}&venue={VENUE_TYPE}&ts={PLAY_TIMESTAMP}&lat={VENUE_LAT}&long={VENUE_LONG}"
     }
   }
 }
 ```
 
-### Video Billboard
+### Video Billboard Manifest
 
 ```json
 {
@@ -122,9 +166,9 @@ DOOH formats include webhooks that fire when the creative actually displays on s
       "height": 1080,
       "audio": false
     },
-    "proof_of_play": {
+    "impression_tracker": {
       "asset_type": "url",
-      "url_purpose": "proof_of_play",
+      "url_purpose": "impression",
       "url": "https://track.brand.com/pop?buy={MEDIA_BUY_ID}&screen={SCREEN_ID}&ts={PLAY_TIMESTAMP}"
     }
   }
@@ -133,7 +177,7 @@ DOOH formats include webhooks that fire when the creative actually displays on s
 
 ## DOOH-Specific Macros
 
-In addition to [universal macros](../universal-macros.md):
+In addition to [universal macros](../universal-macros.md), DOOH formats support:
 
 ### Venue Information
 - `{SCREEN_ID}` - Unique screen identifier
@@ -146,9 +190,9 @@ In addition to [universal macros](../universal-macros.md):
 - `{DWELL_TIME}` - Average dwell time at this location (seconds)
 - `{LOOP_LENGTH}` - Total ad rotation duration (seconds)
 
-Example proof-of-play URL with all macros:
+**Example impression tracking URL:**
 ```
-https://track.brand.com/pop?
+https://track.brand.com/imp?
   buy={MEDIA_BUY_ID}&
   screen={SCREEN_ID}&
   venue={VENUE_TYPE}&
@@ -159,62 +203,20 @@ https://track.brand.com/pop?
   dwell={DWELL_TIME}
 ```
 
-## DOOH Best Practices
+## Common Aspect Ratios
 
-### Design for Distance
-- **Large text**: Minimum 200px height for readability
-- **High contrast**: Works in varying light conditions
-- **Simple message**: 6-8 words maximum
-- **Bold graphics**: Details get lost at distance
-
-### No Audio
-Most DOOH screens have no audio. Video should work with sound off.
-
-### File Sizes
-- **Static images**: Max 1MB (fast loading for rotation)
-- **Video**: Max 50MB for 15s
-
-### Aspect Ratios
-Common DOOH aspect ratios:
-- **16:9** (1920x1080) - Landscape billboards
-- **9:16** (1080x1920) - Portrait transit/retail
+- **16:9** (1920x1080) - Landscape billboards and highway screens
+- **9:16** (1080x1920) - Portrait transit and retail displays
 - **1:1** (1080x1080) - Square formats
 
-### Brightness & Contrast
-- Design for outdoor viewing (high brightness)
-- Test in various lighting conditions
-- Avoid subtle gradients or low-contrast elements
+## Impression Verification
 
-### QR Codes
-Since click-through isn't possible, use QR codes:
-- Large enough to scan from distance (at least 200x200px)
-- High contrast (black on white)
-- Test scanning from various angles/distances
-- Link to mobile-optimized landing pages
-
-### Loop Duration
-Most DOOH screens rotate ads:
-- Typical loop: 15-30 seconds per ad
-- Static: 8-15 seconds display time
-- Video: Full duration played
-
-### Venue Targeting
-Use venue macros to understand performance:
-- Track which venue types perform best
-- Adjust messaging by venue (airport vs. mall)
-- Optimize based on dwell time
-
-## Proof-of-Play Verification
-
-Unlike digital ads where impression tracking is probabilistic, DOOH proof-of-play is deterministic:
-
-**What it confirms:**
-- Creative actually displayed on screen
+DOOH impression trackers confirm:
+- Creative actually displayed on physical screen
 - Exact timestamp of display
-- Specific screen location
-- Venue context
+- Specific screen location and venue context
 
-**What to track:**
+**Example impression data captured:**
 ```json
 {
   "media_buy_id": "mb_dooh_q1",
@@ -227,57 +229,10 @@ Unlike digital ads where impression tracking is probabilistic, DOOH proof-of-pla
 }
 ```
 
-## Example: Complete DOOH Campaign
-
-Format definition:
-```json
-{
-  "format_id": "dooh_billboard_highway",
-  "type": "dooh",
-  "venue_types": ["highway"],
-  "assets_required": [
-    {
-      "asset_id": "billboard_image",
-      "asset_type": "image",
-      "requirements": {
-        "width": 1920,
-        "height": 1080,
-        "text_size_min": "200px",
-        "qr_code_size_min": "200x200"
-      }
-    },
-    {
-      "asset_id": "proof_of_play",
-      "asset_type": "url",
-      "url_purpose": "proof_of_play",
-      "required": true
-    }
-  ]
-}
-```
-
-Manifest:
-```json
-{
-  "format_id": "dooh_billboard_highway",
-  "assets": {
-    "billboard_image": {
-      "asset_type": "image",
-      "url": "https://cdn.brand.com/highway_billboard.jpg",
-      "width": 1920,
-      "height": 1080
-    },
-    "proof_of_play": {
-      "asset_type": "url",
-      "url_purpose": "proof_of_play",
-      "url": "https://track.brand.com/pop?buy={MEDIA_BUY_ID}&screen={SCREEN_ID}&venue={VENUE_TYPE}&name={VENUE_NAME}&ts={PLAY_TIMESTAMP}&lat={VENUE_LAT}&long={VENUE_LONG}&dwell={DWELL_TIME}"
-    }
-  }
-}
-```
+This is functionally identical to impression tracking in other channels - the URL fires when the ad displays, providing verification for billing and reporting.
 
 ## Related Documentation
 
 - [Universal Macros](../universal-macros.md) - Complete macro reference including DOOH macros
-- [Creative Manifests](../creative-manifests.md) - Proof-of-play webhook details
+- [Creative Manifests](../creative-manifests.md) - Manifest structure and examples
 - [Asset Types](../asset-types.md) - URL asset specifications

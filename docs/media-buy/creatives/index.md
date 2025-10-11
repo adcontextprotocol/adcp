@@ -169,9 +169,9 @@ Creative operations have varying response times:
 ## Related Documentation
 
 - **[`sync_creatives`](../task-reference/sync_creatives)** - Bulk creative management with upsert semantics
-- **[`list_creatives`](../task-reference/list_creatives)** - Advanced creative library querying and filtering  
+- **[`list_creatives`](../task-reference/list_creatives)** - Advanced creative library querying and filtering
 - **[`list_creative_formats`](../task-reference/list_creative_formats)** - Understanding format requirements
 - **[Creative Library](./creative-library)** - Centralized creative management concepts
-- **[Creative Formats](../capability-discovery/creative-formats)** - Detailed format specifications
+- **[Creative Formats](../../creative/formats)** - Understanding format specifications and discovery
 - **[Creative Channel Guides](../../creative/channels/video)** - Format examples across video, display, audio, DOOH, and carousels
 - **[Asset Types](../../creative/asset-types)** - Understanding asset roles and specifications

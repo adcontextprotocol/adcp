@@ -2,6 +2,8 @@
 
 The Creative Protocol enables AI-powered creative generation and asset management for advertising campaigns. This guide will help you create your first creative in 5 minutes.
 
+> **Technical Reference**: This guide shows how to use the [`build_creative` task](./task-reference/build_creative.md). For complete API specifications, see the task reference documentation.
+
 ## Overview
 
 The Creative Protocol provides two main capabilities:

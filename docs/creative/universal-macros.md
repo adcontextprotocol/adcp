@@ -234,6 +234,11 @@ For video ads in commercial breaks:
 
 Not all macros are available in all inventory types. Check format specifications to see which macros are supported.
 
+**Important**: The columns below represent format types (Display, Video, etc.) which can run in different environments (app vs web). For example:
+- Display ads in mobile apps have `DEVICE_ID` (✅*), but display ads on web do not
+- The ✅* notation means "available in-app contexts only"
+- Format type + inventory environment determine actual macro availability
+
 | Macro Category | Display | Video | Audio | Native | CTV/OTT | DOOH | Mobile App | Mobile Web | Desktop Web |
 |----------------|---------|-------|-------|--------|---------|------|------------|------------|-------------|
 | **Common** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -245,23 +250,23 @@ Not all macros are available in all inventory types. Check format specifications
 | `{GDPR}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{GDPR_CONSENT}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{US_PRIVACY}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `{LIMIT_AD_TRACKING}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `{LIMIT_AD_TRACKING}` | ✅* | ✅* | ✅* | ✅* | ✅ | ❌ | ✅ | ❌ | ❌ |
 | **Identity** | | | | | | | | | |
-| `{DEVICE_ID}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| `{DEVICE_ID_TYPE}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `{DEVICE_ID}` | ✅* | ✅* | ✅* | ✅* | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `{DEVICE_ID_TYPE}` | ✅* | ✅* | ✅* | ✅* | ✅ | ❌ | ✅ | ❌ | ❌ |
 | **Geographic** | | | | | | | | | |
 | `{COUNTRY}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{REGION}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{CITY}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{ZIP}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `{DMA}` | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `{LAT}/{LONG}` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅† | ✅† | ❌ |
+| `{DMA}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{LAT}/{LONG}` | ✅† | ❌ | ❌ | ✅† | ❌ | ✅ | ✅† | ❌ | ❌ |
 | **Device** | | | | | | | | | |
 | `{DEVICE_TYPE}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `{OS}` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
-| `{OS_VERSION}` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
-| `{APP_BUNDLE}` | ❌ | ✅* | ✅* | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| `{USER_AGENT}` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `{OS}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{OS_VERSION}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{APP_BUNDLE}` | ✅* | ✅* | ✅* | ✅* | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `{USER_AGENT}` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ |
 | **Web Context** | | | | | | | | | |
 | `{DOMAIN}` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | `{PAGE_URL}` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
@@ -269,7 +274,7 @@ Not all macros are available in all inventory types. Check format specifications
 | `{KEYWORDS}` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | **Placement** | | | | | | | | | |
 | `{PLACEMENT_ID}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `{FOLD_POSITION}` | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `{FOLD_POSITION}` | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | **Video Content** | | | | | | | | | |
 | `{VIDEO_ID}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | `{VIDEO_CATEGORY}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -547,6 +552,6 @@ Return this in `create_media_buy` responses and make it queryable for reconcilia
 
 ## Related Documentation
 
-- [Creative Formats](../media-buy/capability-discovery/creative-formats.md) - Supported format specifications
+- [Creative Formats](./formats.md) - Understanding format specifications and discovery
 - [Creative Protocol](./index.md) - How creatives work in AdCP
 - [sync_creatives](../media-buy/task-reference/sync_creatives.md) - Creative management API

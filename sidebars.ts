@@ -80,7 +80,7 @@ const sidebars: SidebarsConfig = {
           label: 'Capability Discovery',
           items: [
             'media-buy/capability-discovery/index',
-            'media-buy/capability-discovery/creative-formats',
+            'media-buy/capability-discovery/implementing-standard-formats',
             'media-buy/capability-discovery/authorized-properties',
             'media-buy/capability-discovery/adagents',
           ],
@@ -131,11 +131,12 @@ const sidebars: SidebarsConfig = {
       label: 'Creative',
       items: [
         'creative/index',
-        'creative/standard-formats',
-        'creative/generative-creative',
+        'creative/formats',
         'creative/asset-types',
         'creative/creative-manifests',
         'creative/universal-macros',
+        'creative/implementing-creative-agents',
+        'creative/generative-creative',
         {
           type: 'category',
           label: 'Channel Guides',

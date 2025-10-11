@@ -4,20 +4,21 @@ title: Video Ads
 
 # Video Ads
 
-This guide covers video creative formats in AdCP, including hosted video files and VAST tags.
+This guide covers how AdCP represents video advertising formats for online video, CTV, and streaming platforms.
 
-## Overview
+## Video Format Characteristics
 
-Video formats fall into two main delivery methods:
+Video formats include:
+- **Hosted Video** - Direct video file URLs served by publisher ad servers
+- **VAST Tags** - Third-party ad server URLs returning VAST/VPAID XML
+- **Inline VAST XML** - Complete VAST XML provided in creative manifest
+- **Multiple Resolutions** - Same creative in different encoding profiles
 
-1. **Hosted Video** - You provide video file URLs, publisher's ad server hosts/serves them
-2. **VAST Tags** - You provide VAST XML, your ad server serves the video
+Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video content, or in-feed as out-stream video.
 
-## Common Video Format Patterns
+## Standard Video Formats
 
-### Hosted Video by Duration
-
-Standard durations with technical requirements:
+### Horizontal Video by Duration
 
 #### 15-Second Video
 ```json
@@ -32,10 +33,13 @@ Standard durations with technical requirements:
       "required": true,
       "requirements": {
         "duration": "15s",
-        "format": "MP4 H.264",
+        "format": ["MP4"],
+        "codec": "H.264",
         "resolution": ["1920x1080", "1280x720"],
         "max_file_size_mb": 30,
-        "bitrate": "8-10 Mbps"
+        "bitrate_min": "4Mbps",
+        "bitrate_max": "10Mbps",
+        "audio_codec": "AAC"
       }
     }
   ]
@@ -43,14 +47,112 @@ Standard durations with technical requirements:
 ```
 
 #### 30-Second Video
-Same structure, `duration: "30s"`, `max_file_size_mb: 50`
+```json
+{
+  "format_id": "video_30s",
+  "type": "video",
+  "assets_required": [
+    {
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "asset_role": "hero_video",
+      "required": true,
+      "requirements": {
+        "duration": "30s",
+        "format": ["MP4"],
+        "codec": "H.264",
+        "resolution": ["1920x1080", "1280x720"],
+        "max_file_size_mb": 50,
+        "bitrate_min": "4Mbps",
+        "bitrate_max": "10Mbps",
+        "audio_codec": "AAC"
+      }
+    }
+  ]
+}
+```
 
 #### 6-Second Bumper
-Same structure, `duration: "6s"`, `max_file_size_mb`: 15
+```json
+{
+  "format_id": "video_6s",
+  "type": "video",
+  "assets_required": [
+    {
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "asset_role": "hero_video",
+      "required": true,
+      "requirements": {
+        "duration": "6s",
+        "format": ["MP4"],
+        "codec": "H.264",
+        "resolution": ["1920x1080", "1280x720"],
+        "max_file_size_mb": 15,
+        "bitrate_min": "4Mbps",
+        "bitrate_max": "10Mbps"
+      }
+    }
+  ]
+}
+```
+
+### Vertical/Mobile Video
+
+```json
+{
+  "format_id": "video_vertical_15s",
+  "type": "video",
+  "assets_required": [
+    {
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "asset_role": "hero_video",
+      "required": true,
+      "requirements": {
+        "duration": "15s",
+        "aspect_ratio": "9:16",
+        "resolution": "1080x1920",
+        "format": ["MP4"],
+        "codec": "H.264",
+        "max_file_size_mb": 30
+      }
+    }
+  ]
+}
+```
+
+### CTV/OTT Video
+
+```json
+{
+  "format_id": "video_30s_ctv",
+  "type": "video",
+  "assets_required": [
+    {
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "asset_role": "hero_video",
+      "required": true,
+      "requirements": {
+        "duration": "30s",
+        "format": ["MP4"],
+        "codec": "H.264",
+        "resolution": "1920x1080",
+        "max_file_size_mb": 35,
+        "bitrate_min": "4Mbps",
+        "bitrate_max": "8Mbps",
+        "audio_codec": "AAC",
+        "audio_channels": "stereo"
+      }
+    }
+  ]
+}
+```
 
 ### VAST Tag Formats
 
-For third-party served video:
+For third-party ad servers:
 
 ```json
 {
@@ -71,30 +173,29 @@ For third-party served video:
 }
 ```
 
-### Vertical/Mobile Video
-
-For mobile-optimized vertical video:
+### VPAID Interactive Video
 
 ```json
 {
-  "format_id": "video_vertical_15s",
+  "format_id": "video_30s_vpaid",
   "type": "video",
   "assets_required": [
     {
-      "asset_id": "video_file",
-      "asset_type": "video",
+      "asset_id": "vpaid_tag",
+      "asset_type": "url",
+      "asset_role": "vpaid_url",
+      "required": true,
       "requirements": {
-        "duration": "15s",
-        "aspect_ratio": "9:16",
-        "resolution": "1080x1920",
-        "format": "MP4 H.264"
+        "vpaid_version": ["2.0"],
+        "duration": "30s",
+        "api_framework": "VPAID"
       }
     }
   ]
 }
 ```
 
-## Creating Video Manifests
+## Creative Manifests
 
 ### Hosted Video Manifest
 
@@ -108,12 +209,14 @@ For mobile-optimized vertical video:
       "duration": 30,
       "width": 1920,
       "height": 1080,
-      "format": "video/mp4"
+      "format": "video/mp4",
+      "codec": "H.264",
+      "bitrate_kbps": 8000
     },
     "impression_tracker": {
       "asset_type": "url",
       "url_purpose": "impression_tracker",
-      "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&cre={CREATIVE_ID}&cb={CACHEBUSTER}"
+      "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&video={VIDEO_ID}&cb={CACHEBUSTER}"
     },
     "landing_url": {
       "asset_type": "url",
@@ -153,6 +256,40 @@ For mobile-optimized vertical video:
 }
 ```
 
+### Multi-Resolution Manifest
+
+```json
+{
+  "format_id": "video_30s",
+  "assets": {
+    "video_1080p": {
+      "asset_type": "video",
+      "url": "https://cdn.brand.com/spring_30s_1080p.mp4",
+      "duration": 30,
+      "width": 1920,
+      "height": 1080,
+      "bitrate_kbps": 8000
+    },
+    "video_720p": {
+      "asset_type": "video",
+      "url": "https://cdn.brand.com/spring_30s_720p.mp4",
+      "duration": 30,
+      "width": 1280,
+      "height": 720,
+      "bitrate_kbps": 5000
+    },
+    "video_480p": {
+      "asset_type": "video",
+      "url": "https://cdn.brand.com/spring_30s_480p.mp4",
+      "duration": 30,
+      "width": 854,
+      "height": 480,
+      "bitrate_kbps": 2500
+    }
+  }
+}
+```
+
 ## Video-Specific Macros
 
 In addition to [universal macros](../universal-macros.md), video formats support:
@@ -163,160 +300,228 @@ In addition to [universal macros](../universal-macros.md), video formats support
 - `{VIDEO_DURATION}` - Content duration in seconds
 - `{VIDEO_CATEGORY}` - IAB content category
 - `{CONTENT_GENRE}` - Content genre (news, sports, comedy)
-- `{CONTENT_RATING}` - Content rating (G, PG, TV-14)
-- `{PLAYER_WIDTH}` / `{PLAYER_HEIGHT}` - Video player dimensions
+- `{CONTENT_RATING}` - Content rating (G, PG, TV-14, etc.)
+- `{PLAYER_WIDTH}` / `{PLAYER_HEIGHT}` - Video player dimensions in pixels
 
 ### Ad Pod Position
-- `{POD_POSITION}` - Position within ad break (1, 2, 3)
+- `{POD_POSITION}` - Position within ad break (1, 2, 3, etc.)
 - `{POD_SIZE}` - Total ads in this break
 - `{AD_BREAK_ID}` - Unique ad break identifier
 
+### Playback Context
+- `{PLAYBACK_METHOD}` - auto-play-sound-on, auto-play-sound-off, click-to-play
+- `{PLAYER_SIZE}` - small, medium, large, fullscreen
+- `{VIDEO_PLACEMENT}` - in-stream, in-banner, in-article, in-feed, interstitial
+
 ### VAST Macros
-Video formats also support all [IAB VAST 4.x macros](http://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html):
+
+AdCP macros (`{CURLY_BRACES}`) work alongside [IAB VAST 4.x macros](http://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html) (`[SQUARE_BRACKETS]`):
+
 - `[CACHEBUSTING]` - Random number for cache prevention
 - `[TIMESTAMP]` - Unix timestamp
 - `[DOMAIN]` - Publisher domain
 - `[IFA]` - Device advertising ID (IDFA/AAID)
-- And many more
+- `[REGULATIONS]` - Privacy regulation signals (GDPR, CCPA)
+- `[DEVICEUA]` - Device user agent string
 
-**Important**: Mix AdCP macros (`{CURLY_BRACES}`) and VAST macros (`[SQUARE_BRACKETS]`) - both work together:
-
+**Example mixing both macro formats:**
 ```
 https://track.brand.com/imp?
   buy={MEDIA_BUY_ID}&
+  video={VIDEO_ID}&
   device=[IFA]&
+  domain=[DOMAIN]&
   cb=[CACHEBUSTING]
 ```
 
-## Video Ad Types
+## Video Tracking Assets
 
-### Pre-Roll
-Video ad that plays before content starts. Most common video format.
+### Standard Tracking Events
 
-**Typical formats**: `video_15s`, `video_30s`, `video_6s`
-
-### Mid-Roll
-Video ad that plays during content breaks. Uses ad pod macros.
-
-**Typical formats**: `video_15s`, `video_30s` with `{POD_POSITION}` macros
-
-### Post-Roll
-Video ad that plays after content ends. Less common but valuable for completion attribution.
-
-**Typical formats**: `video_15s`, `video_30s`
-
-### Out-Stream
-Video ad that plays in feed/article content, not in a video player.
-
-**Typical formats**: `video_vertical_15s`, custom out-stream formats
-
-## CTV / OTT Considerations
-
-Connected TV and Over-The-Top platforms have specific requirements:
-
-### TV-Safe Areas
-Ensure important content is within TV-safe zones (avoid edges that might be cut off)
-
-### File Size
-OTT platforms prefer smaller files:
-- 15s: Max 20MB
-- 30s: Max 35MB
-
-### Aspect Ratios
-Standard: 16:9 (1920x1080, 1280x720)
-
-### Audio
-Stereo audio required, normalized levels
-
-### Companion Banners
-Many CTV formats support optional companion banners shown alongside video
-
-## Best Practices
-
-### File Encoding
-- **Container**: MP4
-- **Video Codec**: H.264
-- **Audio Codec**: AAC
-- **Bitrate**: 8-10 Mbps for high quality, 4-6 Mbps for mobile
-- **Frame Rate**: 23.976, 24, 25, 29.97, or 30 fps
-
-### Multiple Resolutions
-Provide both 1920x1080 and 1280x720 for broader compatibility
-
-### VAST Best Practices
-- Use VAST 4.2 when possible (latest spec)
-- Include viewability tracking (`<Verification>`)
-- Provide skip controls if format allows
-- Test with major video players (JW Player, Video.js, etc.)
-
-### Tracking
-Always include:
-- Impression trackers (fires on ad start)
-- Quartile tracking (25%, 50%, 75% completion)
-- Complete tracking (100% watched)
-- Click tracking (user engagement)
-
-### Landing Pages
-Ensure landing pages work on the device type:
-- CTV: QR codes or short URLs (no clickthrough)
-- Mobile: Direct clickthrough to mobile-optimized pages
-- Desktop: Standard landing pages
-
-## Example: Complete Video Campaign
-
-Format definition:
 ```json
 {
-  "format_id": "video_30s_ctv",
-  "type": "video",
+  "format_id": "video_30s",
+  "assets": {
+    "video_file": {
+      "asset_type": "video",
+      "url": "https://cdn.brand.com/video_30s.mp4"
+    },
+    "impression_tracker": {
+      "asset_type": "url",
+      "url_purpose": "impression_tracker",
+      "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    },
+    "start_tracker": {
+      "asset_type": "url",
+      "url_purpose": "video_start",
+      "url": "https://track.brand.com/start?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    },
+    "quartile_25_tracker": {
+      "asset_type": "url",
+      "url_purpose": "video_25percent",
+      "url": "https://track.brand.com/q25?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    },
+    "quartile_50_tracker": {
+      "asset_type": "url",
+      "url_purpose": "video_50percent",
+      "url": "https://track.brand.com/q50?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    },
+    "quartile_75_tracker": {
+      "asset_type": "url",
+      "url_purpose": "video_75percent",
+      "url": "https://track.brand.com/q75?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    },
+    "complete_tracker": {
+      "asset_type": "url",
+      "url_purpose": "video_complete",
+      "url": "https://track.brand.com/complete?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    },
+    "click_tracker": {
+      "asset_type": "url",
+      "url_purpose": "click_tracker",
+      "url": "https://track.brand.com/click?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+    }
+  }
+}
+```
+
+### Interactive Tracking Events
+
+For formats supporting user interaction:
+
+```json
+{
+  "pause_tracker": {
+    "asset_type": "url",
+    "url_purpose": "video_pause",
+    "url": "https://track.brand.com/pause?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+  },
+  "resume_tracker": {
+    "asset_type": "url",
+    "url_purpose": "video_resume",
+    "url": "https://track.brand.com/resume?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+  },
+  "skip_tracker": {
+    "asset_type": "url",
+    "url_purpose": "video_skip",
+    "url": "https://track.brand.com/skip?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+  },
+  "mute_tracker": {
+    "asset_type": "url",
+    "url_purpose": "video_mute",
+    "url": "https://track.brand.com/mute?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+  },
+  "unmute_tracker": {
+    "asset_type": "url",
+    "url_purpose": "video_unmute",
+    "url": "https://track.brand.com/unmute?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
+  }
+}
+```
+
+## Common Aspect Ratios
+
+- **16:9** (1920x1080, 1280x720) - Standard horizontal video
+- **9:16** (1080x1920) - Vertical mobile video
+- **4:3** (640x480) - Legacy format, rare
+- **1:1** (1080x1080) - Square social video
+
+## Video Placement Types
+
+### Pre-Roll
+Video ad plays before content starts. Most common placement.
+
+**Common durations:** 6s, 15s, 30s
+
+### Mid-Roll
+Video ad plays during content breaks. Uses ad pod macros for position tracking.
+
+**Common durations:** 15s, 30s
+
+### Post-Roll
+Video ad plays after content ends.
+
+**Common durations:** 15s, 30s
+
+### Out-Stream
+Video ad plays in-feed or in-article, not in a video player.
+
+**Common formats:** Vertical mobile video, in-feed video
+
+## VAST/VPAID Integration
+
+### VAST Versions
+
+AdCP supports all VAST versions:
+- **VAST 2.0** - Legacy support
+- **VAST 3.0** - Adds verification and error handling
+- **VAST 4.0** - Improved tracking, viewability
+- **VAST 4.1** - Enhanced ad pod support
+- **VAST 4.2** - Latest specification (recommended)
+
+### VPAID Support
+
+VPAID (Video Player Ad-Serving Interface Definition) enables interactive video ads:
+
+```json
+{
+  "format_id": "video_30s_vpaid",
+  "accepts_3p_tags": true,
   "assets_required": [
     {
-      "asset_id": "video_file",
-      "asset_type": "video",
+      "asset_id": "vpaid_tag",
+      "asset_type": "url",
+      "asset_role": "vpaid_url",
       "requirements": {
-        "duration": "30s",
-        "format": "MP4 H.264",
-        "resolution": ["1920x1080"],
-        "max_file_size_mb": 35
+        "vpaid_version": ["2.0"],
+        "api_framework": "VPAID"
       }
     }
   ]
 }
 ```
 
-Manifest:
-```json
-{
-  "format_id": "video_30s_ctv",
-  "assets": {
-    "video_file": {
-      "asset_type": "video",
-      "url": "https://cdn.brand.com/ctv_spring_30s.mp4",
-      "duration": 30,
-      "width": 1920,
-      "height": 1080
-    },
-    "impression_tracker": {
-      "asset_type": "url",
-      "url_purpose": "impression_tracker",
-      "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pod={POD_POSITION}&cb={CACHEBUSTER}"
-    },
-    "quartile_tracker": {
-      "asset_type": "url",
-      "url_purpose": "quartile_tracker",
-      "url": "https://track.brand.com/q?buy={MEDIA_BUY_ID}&pct={PERCENT}&cb={CACHEBUSTER}"
-    },
-    "complete_tracker": {
-      "asset_type": "url",
-      "url_purpose": "video_complete_tracker",
-      "url": "https://track.brand.com/complete?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
-    }
-  }
-}
-```
+## File Specifications
+
+### Video Codecs
+- **H.264** - Most widely supported
+- **H.265/HEVC** - Better compression, limited support
+- **VP8/VP9** - Open codec, growing support
+
+### Audio Codecs
+- **AAC** - Recommended for MP4
+- **MP3** - Legacy support
+- **Opus** - High quality, growing support
+
+### Container Formats
+- **MP4** - Industry standard
+- **WebM** - Open format
+- **MOV** - Apple format, transcoded by publishers
+
+### Bitrate Ranges
+- **High Quality (1080p):** 8-10 Mbps
+- **Standard Quality (720p):** 4-6 Mbps
+- **Mobile Optimized (480p):** 2-3 Mbps
+- **CTV/OTT:** 4-8 Mbps (file size limits apply)
+
+### Frame Rates
+- 23.976 fps, 24 fps, 25 fps, 29.97 fps, 30 fps, 60 fps
+
+### Common Resolutions
+
+**16:9 Landscape:**
+- 1920x1080 (1080p Full HD)
+- 1280x720 (720p HD)
+- 854x480 (480p SD)
+
+**9:16 Portrait:**
+- 1080x1920 (Mobile vertical)
+
+**1:1 Square:**
+- 1080x1080 (Social video)
 
 ## Related Documentation
 
-- [Universal Macros](../universal-macros.md) - Complete macro reference
-- [Creative Manifests](../creative-manifests.md) - Manifest structure details
-- [Asset Types](../asset-types.md) - Video asset specifications
+- [Universal Macros](../universal-macros.md) - Complete macro reference including video macros
+- [Creative Manifests](../creative-manifests.md) - Manifest structure and asset specifications
+- [Asset Types](../asset-types.md) - Video asset type definitions
