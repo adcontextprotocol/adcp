@@ -17,13 +17,6 @@
       "type": "string",
       "description": "ID of the product this package is based on"
     },
-    "products": {
-      "type": "array",
-      "description": "Array of product IDs to include in this package",
-      "items": {
-        "type": "string"
-      }
-    },
     "budget": {
       "$ref": "/schemas/v1/core/budget.json"
     },

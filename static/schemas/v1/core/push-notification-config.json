@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/push-notification-config.json",
+  "title": "Push Notification Config",
+  "description": "Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. Supports Bearer tokens (simple) or HMAC signatures (production-recommended).",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Webhook endpoint URL for task status notifications"
+    },
+    "token": {
+      "type": "string",
+      "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
+      "minLength": 16
+    },
+    "authentication": {
+      "type": "object",
+      "description": "Authentication configuration for webhook delivery (A2A-compatible)",
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+          "items": {
+            "type": "string",
+            "enum": ["Bearer", "HMAC-SHA256"]
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "credentials": {
+          "type": "string",
+          "description": "Credentials for authentication. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+          "minLength": 32
+        }
+      },
+      "required": ["schemes", "credentials"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["url", "authentication"],
+  "additionalProperties": false
+}

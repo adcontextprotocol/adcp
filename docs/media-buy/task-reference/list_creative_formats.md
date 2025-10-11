@@ -5,48 +5,69 @@ sidebar_position: 2
 
 # list_creative_formats
 
-Discover all supported creative formats in the system. 
-
-**See [Creative Lifecycle](../creatives/index.md) for the complete workflow on how this tool works with `get_products` for format discovery.**
+Discover all creative formats supported by this agent. Returns full format definitions, not just IDs.
 
 **Response Time**: ~1 second (simple database lookup)
 
+**Authentication**: None required - this endpoint must be publicly accessible for format discovery
+
 **Request Schema**: [`/schemas/v1/media-buy/list-creative-formats-request.json`](/schemas/v1/media-buy/list-creative-formats-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/list-creative-formats-response.json`](/schemas/v1/media-buy/list-creative-formats-response.json)
+
+## Recursive Discovery Model
+
+Both sales agents and creative agents use the same response format:
+1. **formats**: Full format definitions for formats they own/support
+2. **creative_agents** (optional): URLs to other creative agents providing additional formats
+
+Each format includes an **agent_url** field indicating its authoritative source.
+
+Buyers can recursively query creative_agents to discover all available formats. **Buyers must track visited URLs to avoid infinite loops.**
 
 ## Request Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `type` | string | No | Filter by format type (e.g., `"audio"`, `"video"`, `"display"`) |
-| `category` | string | No | Filter by category (`"standard"` or `"custom"`) |
-| `standard_only` | boolean | No | Only return standard formats (deprecated, use `category: "standard"`) |
-| `format_ids` | string[] | No | Filter by specific format IDs (e.g., from `get_products` response) |
+| `format_ids` | string[] | No | Return only these specific format IDs (e.g., from `get_products` response) |
+| `type` | string | No | Filter by format type: `"audio"`, `"video"`, `"display"`, `"dooh"` (technical categories with distinct requirements) |
+| `asset_types` | string[] | No | Filter to formats that include these asset types. For third-party tags, search for `["html"]` or `["javascript"]`. E.g., `["image", "text"]` returns formats with images and text, `["javascript"]` returns formats accepting JavaScript tags. Values: `image`, `video`, `audio`, `text`, `html`, `javascript`, `url` |
+| `dimensions` | string | No | Filter to formats with specific dimensions (e.g., `"300x250"`, `"728x90"`). Combine with `asset_types` to find specific sizes like "300x250 JavaScript" |
+| `name_search` | string | No | Search for formats by name (case-insensitive partial match, e.g., `"mobile"` or `"vertical"`) |
 
-## Response (Message)
-
-The response includes a human-readable message that:
-- Summarizes available formats (e.g., "Found 47 creative formats across video, audio, and display")
-- Provides recommendations for format selection
-- Highlights standard vs custom format trade-offs
-
-The message is returned differently in each protocol:
-- **MCP**: Returned as a `message` field in the JSON response
-- **A2A**: Returned as a text part in the artifact
-
-## Response (Payload)
+## Response Structure
 
 ```json
 {
+  "adcp_version": "1.6.0",
   "formats": [
     {
-      "format_id": "string",
-      "name": "string",
-      "type": "string",
-      "is_standard": "boolean",
-      "iab_specification": "string",
-      "requirements": "object",
-      "assets_required": "array"
+      "format_id": "video_standard_30s",
+      "agent_url": "https://sales-agent.example.com",
+      "name": "Standard Video - 30 seconds",
+      "type": "video",
+      "category": "standard",
+      "requirements": { /* ... */ },
+      "assets_required": [ /* ... */ ]
+    },
+    {
+      "format_id": "display_300x250",
+      "agent_url": "https://sales-agent.example.com",
+      "name": "Medium Rectangle Banner",
+      "type": "display",
+      "category": "standard"
+      // ... full format details
+    }
+  ],
+  "creative_agents": [
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "agent_name": "AdCP Reference Creative Agent",
+      "capabilities": ["validation", "assembly", "preview"]
+    },
+    {
+      "agent_url": "https://dco.example.com",
+      "agent_name": "Custom DCO Platform",
+      "capabilities": ["validation", "assembly", "generation", "preview"]
     }
   ]
 }
@@ -54,28 +75,30 @@ The message is returned differently in each protocol:
 
 ### Field Descriptions
 
-- **format_id**: Unique identifier for the format
-- **name**: Human-readable format name
-- **type**: Format type (e.g., `"audio"`, `"video"`, `"display"`)
-- **category**: Format category (`"standard"` or `"custom"`)
-- **is_standard**: Whether this follows IAB or AdCP standards
-- **accepts_3p_tags**: Whether format can accept third-party tags
-- **requirements**: Format-specific requirements (varies by format type)
-- **assets_required**: Array of required assets with `asset_role` identifiers
+- **formats**: Full format definitions for formats this agent owns/supports
+  - **format_id**: Unique identifier
+  - **agent_url**: Authoritative source URL for this format (where it's defined)
+  - All other format fields as per [Format schema](/schemas/v1/core/format.json)
+- **creative_agents** (optional): Other creative agents providing additional formats
+  - **agent_url**: Base URL to query for more formats (call list_creative_formats)
+  - **agent_name**: Human-readable name
+  - **capabilities**: What the agent can do (validation/assembly/generation/preview)
 
 
 ## Protocol-Specific Examples
 
 The AdCP payload is identical across protocols. Only the request/response wrapper differs.
 
-### Example 1: Standard Formats Only
+### Example 1: Find Formats by Asset Types
+
+"I have images and text - what can I build?"
 
 #### MCP Request
 ```json
 {
   "tool": "list_creative_formats",
   "arguments": {
-    "category": "standard"
+    "asset_types": ["image", "text"]
   }
 }
 ```
@@ -86,10 +109,9 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
   "formats": [
     {
       "format_id": "display_300x250",
+      "agent_url": "https://sales-agent.example.com",
       "name": "Medium Rectangle",
       "type": "display",
-      "category": "standard",
-      "is_standard": true,
       "dimensions": "300x250",
       "accepts_3p_tags": false,
       "assets_required": [
@@ -104,66 +126,165 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
           "max_file_size_kb": 200
         },
         {
-          "asset_id": "clickthrough_url",
-          "asset_type": "url",
-          "asset_role": "clickthrough_url",
-          "required": true
+          "asset_id": "headline",
+          "asset_type": "text",
+          "asset_role": "headline",
+          "required": true,
+          "max_length": 25
         }
       ]
     },
     {
-      "format_id": "video_skippable_15s",
-      "name": "15-Second Skippable Video",
-      "type": "video",
-      "category": "standard",
-      "is_standard": true,
-      "duration": "15s",
-      "accepts_3p_tags": true,
-      "requirements": {
-        "aspect_ratios": ["16:9", "9:16", "1:1"],
-        "max_file_size_mb": 30,
-        "codec": "H.264"
-      }
+      "format_id": "native_responsive",
+      "agent_url": "https://sales-agent.example.com",
+      "name": "Responsive Native Ad",
+      "type": "display",
+      "accepts_3p_tags": false,
+      "assets_required": [
+        {
+          "asset_id": "primary_image",
+          "asset_type": "image",
+          "asset_role": "hero_image",
+          "required": true
+        },
+        {
+          "asset_id": "headline",
+          "asset_type": "text",
+          "asset_role": "headline",
+          "required": true,
+          "max_length": 80
+        },
+        {
+          "asset_id": "description",
+          "asset_type": "text",
+          "asset_role": "body_text",
+          "required": false,
+          "max_length": 200
+        }
+      ]
     }
   ]
 }
 ```
 
-### Example 2: Filter by Type
+### Example 2: Find Formats for Third-Party JavaScript Tags
+
+"I have 300x250 JavaScript tags - which formats support them?"
 
 #### MCP Request
 ```json
 {
   "tool": "list_creative_formats",
   "arguments": {
-    "type": "audio",
-    "standard_only": true
+    "asset_types": ["javascript"],
+    "dimensions": "300x250"
   }
 }
 ```
 
-### Example 3: Reverse Workflow (Product-First)
+#### Response
+```json
+{
+  "formats": [
+    {
+      "format_id": "display_300x250_3p",
+      "agent_url": "https://sales-agent.example.com",
+      "name": "Medium Rectangle - Third Party",
+      "type": "display",
+      "dimensions": "300x250",
+      "assets_required": [
+        {
+          "asset_id": "tag",
+          "asset_type": "javascript",
+          "asset_role": "third_party_tag",
+          "required": true,
+          "requirements": {
+            "width": 300,
+            "height": 250,
+            "max_file_size_kb": 200
+          }
+        }
+      ]
+    }
+  ]
+}
+```
 
-#### MCP Request - Get specs for specific format IDs
+### Example 3: Search by Name
+
+"Show me mobile or vertical formats"
+
+#### MCP Request
 ```json
 {
   "tool": "list_creative_formats",
   "arguments": {
-    "format_ids": ["video_15s_hosted", "video_30s_vast", "display_300x250"]
+    "name_search": "vertical"
   }
 }
 ```
 
-#### MCP Response
+#### Response
 ```json
 {
-  "message": "Found 3 specific formats. These are the exact creative requirements for your available inventory.",
+  "formats": [
+    {
+      "format_id": "video_vertical_15s",
+      "agent_url": "https://sales-agent.example.com",
+      "name": "15-Second Vertical Video",
+      "type": "video",
+      "duration": "15s",
+      "accepts_3p_tags": false,
+      "assets_required": [
+        {
+          "asset_id": "video_file",
+          "asset_type": "video",
+          "asset_role": "hero_video",
+          "required": true,
+          "requirements": {
+            "duration": "15s",
+            "aspect_ratio": "9:16",
+            "resolution": "1080x1920",
+            "format": "MP4 H.264"
+          }
+        }
+      ]
+    },
+    {
+      "format_id": "display_vertical_mobile",
+      "agent_url": "https://sales-agent.example.com",
+      "name": "Vertical Mobile Banner",
+      "type": "display",
+      "dimensions": "320x480",
+      "accepts_3p_tags": false
+    }
+  ]
+}
+```
+
+### Example 4: Get Specs for Specific Format IDs
+
+"I got these format IDs from get_products - give me the full specs"
+
+#### MCP Request
+```json
+{
+  "tool": "list_creative_formats",
+  "arguments": {
+    "format_ids": ["video_15s_hosted", "display_300x250"]
+  }
+}
+```
+
+#### Response
+```json
+{
   "formats": [
     {
       "format_id": "video_15s_hosted",
+      "agent_url": "https://sales-agent.example.com",
       "name": "15-Second Hosted Video",
       "type": "video",
-      "category": "standard",
       "duration": "15s",
       "accepts_3p_tags": false,
       "assets_required": [
@@ -182,22 +303,10 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       ]
     },
     {
-      "format_id": "video_30s_vast",
-      "name": "30-Second VAST Video", 
-      "type": "video",
-      "category": "standard",
-      "duration": "30s",
-      "accepts_3p_tags": true,
-      "delivery": {
-        "method": "VAST",
-        "versions": ["3.0", "4.0", "4.1", "4.2"]
-      }
-    },
-    {
       "format_id": "display_300x250",
+      "agent_url": "https://sales-agent.example.com",
       "name": "Medium Rectangle",
       "type": "display",
-      "category": "standard",
       "dimensions": "300x250",
       "accepts_3p_tags": false,
       "assets_required": [

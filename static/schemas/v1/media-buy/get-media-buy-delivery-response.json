@@ -12,8 +12,17 @@
     },
     "notification_type": {
       "type": "string",
-      "enum": ["scheduled", "final", "delayed"],
-      "description": "Type of webhook notification (only present in webhook deliveries): scheduled = regular periodic update, final = campaign completed, delayed = data not yet available"
+      "enum": ["scheduled", "final", "delayed", "adjusted"],
+      "description": "Type of webhook notification (only present in webhook deliveries): scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = resending period with updated data"
+    },
+    "partial_data": {
+      "type": "boolean",
+      "description": "Indicates if any media buys in this webhook have missing/delayed data (only present in webhook deliveries)"
+    },
+    "unavailable_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of media buys with reporting_delayed or failed status (only present in webhook deliveries when partial_data is true)"
     },
     "sequence_number": {
       "type": "integer",
@@ -27,17 +36,17 @@
     },
     "reporting_period": {
       "type": "object",
-      "description": "Date range for the report",
+      "description": "Date range for the report. All periods use UTC timezone.",
       "properties": {
         "start": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 start timestamp"
+          "description": "ISO 8601 start timestamp in UTC (e.g., 2024-02-05T00:00:00Z)"
         },
         "end": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 end timestamp"
+          "description": "ISO 8601 end timestamp in UTC (e.g., 2024-02-05T23:59:59Z)"
         }
       },
       "required": ["start", "end"],
@@ -97,8 +106,21 @@
           },
           "status": {
             "type": "string",
-            "description": "Current media buy status",
-            "enum": ["pending", "active", "paused", "completed", "failed"]
+            "description": "Current media buy status. In webhook context, reporting_delayed indicates data temporarily unavailable.",
+            "enum": ["pending", "active", "paused", "completed", "failed", "reporting_delayed"]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message (typically present when status is reporting_delayed or failed)"
+          },
+          "expected_availability": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When delayed data is expected to be available (only present when status is reporting_delayed)"
+          },
+          "is_adjusted": {
+            "type": "boolean",
+            "description": "Indicates this delivery contains updated data for a previously reported period. Buyer should replace previous period data with these totals."
           },
           "totals": {
             "type": "object",

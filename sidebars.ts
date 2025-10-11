@@ -80,7 +80,7 @@ const sidebars: SidebarsConfig = {
           label: 'Capability Discovery',
           items: [
             'media-buy/capability-discovery/index',
-            'media-buy/capability-discovery/creative-formats',
+            'media-buy/capability-discovery/implementing-standard-formats',
             'media-buy/capability-discovery/authorized-properties',
             'media-buy/capability-discovery/adagents',
           ],
@@ -110,8 +110,6 @@ const sidebars: SidebarsConfig = {
           items: [
             'media-buy/creatives/index',
             'media-buy/creatives/creative-library',
-            'media-buy/creatives/standard-formats-guide',
-            'media-buy/creatives/asset-types',
           ],
         },
         {
@@ -130,17 +128,34 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Creative Protocol',
+      label: 'Creative',
       items: [
-        'creative-protocol/index',
-        'creative-protocol/getting-started',
-        'creative-protocol/why-creative-agents',
+        'creative/index',
+        'creative/formats',
+        'creative/asset-types',
+        'creative/creative-manifests',
+        'creative/universal-macros',
+        'creative/implementing-creative-agents',
+        'creative/generative-creative',
+        {
+          type: 'category',
+          label: 'Channel Guides',
+          items: [
+            'creative/channels/video',
+            'creative/channels/display',
+            'creative/channels/audio',
+            'creative/channels/dooh',
+            'creative/channels/carousels',
+          ],
+        },
         {
           type: 'category',
           label: 'Task Reference',
           items: [
-            'creative-protocol/task-reference/build_creative',
-            'creative-protocol/task-reference/manage_creative_library',
+            'creative/task-reference/build_creative',
+            'creative/task-reference/manage_creative_library',
+            'creative/task-reference/preview_creative',
+            'creative/task-reference/list_creative_formats',
           ],
         },
       ],

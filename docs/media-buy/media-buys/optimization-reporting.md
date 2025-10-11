@@ -55,9 +55,48 @@ Stay informed of important campaign events:
 
 ## Webhook-Based Reporting
 
-Publishers can proactively push reporting data to buyers on a scheduled basis through webhook notifications. This eliminates the need for continuous polling and provides timely campaign insights.
+Publishers can proactively push reporting data to buyers through webhook notifications or offline file delivery. This eliminates continuous polling and provides timely campaign insights.
 
-### Configuration
+### Delivery Methods
+
+**1. Webhook Push (Real-time)** - HTTP POST to buyer endpoint
+- Best for: Most buyer-seller relationships
+- Latency: Near real-time (seconds to minutes)
+- Cost: Standard webhook infrastructure
+
+**2. Offline File Delivery (Batch)** - Cloud storage bucket push
+- Best for: Large buyer-seller pairs (high volume)
+- Latency: Scheduled batch delivery (hourly/daily)
+- Cost: Significantly lower ($0.01-0.10 per GB vs. $0.50-2.00 per 1M webhooks)
+- Format: JSON Lines, CSV, or Parquet files
+- Storage: S3, GCS, Azure Blob Storage
+
+**Example: Offline Delivery**
+Publisher pushes daily report files to buyer's cloud storage:
+```
+s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.json.gz
+```
+
+File contains same structure as webhook payload but aggregated across all campaigns. Buyer processes files on their schedule.
+
+**When to Use Offline Delivery:**
+- \>100 active campaigns with same buyer
+- Hourly reporting requirements (24x cost reduction)
+- High data volume (detailed breakdowns, dimensional data)
+- Buyer has batch processing infrastructure
+
+Publishers declare support for offline delivery in product capabilities:
+```json
+{
+  "reporting_capabilities": {
+    "supports_webhooks": true,
+    "supports_offline_delivery": true,
+    "offline_delivery_protocols": ["s3", "gcs"]
+  }
+}
+```
+
+### Webhook Configuration
 
 Configure reporting webhooks when creating a media buy using the `reporting_webhook` parameter:
 
@@ -67,20 +106,47 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
   "packages": [...],
   "reporting_webhook": {
     "url": "https://buyer.example.com/webhooks/reporting",
-    "auth_type": "bearer",
-    "auth_token": "secret_token",
+    "authentication": {
+      "schemes": ["Bearer"],
+      "credentials": "secret_token_min_32_chars"
+    },
     "reporting_frequency": "daily"
   }
 }
 ```
 
+**Or with HMAC signature (recommended for production):**
+```json
+{
+  "buyer_ref": "campaign_2024",
+  "packages": [...],
+  "reporting_webhook": {
+    "url": "https://buyer.example.com/webhooks/reporting",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "shared_secret_min_32_chars"
+    },
+    "reporting_frequency": "daily"
+  }
+}
+```
+
+**Security is Required:**
+- `authentication` configuration is mandatory (minimum 32 characters)
+- **Bearer tokens**: Simple, good for development (Authorization header)
+- **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
+- Credentials exchanged out-of-band during publisher onboarding
+- See [Webhook Security](../../protocols/core-concepts.md#security) for implementation details
+
 ### Supported Frequencies
 
-Publishers declare supported reporting frequencies in the product's `reporting_capabilities`:
+Publishers declare supported reporting frequencies in the product's `reporting_capabilities`. Publishers are **not required** to support all frequencies - choose what makes operational sense for your platform.
 
-- **`hourly`**: Receive notifications every hour during campaign flight
-- **`daily`**: Receive notifications once per day (timezone specified by publisher)
+- **`hourly`**: Receive notifications every hour during campaign flight (optional, consider cost/complexity)
+- **`daily`**: Receive notifications once per day (most common, recommended for Phase 1)
 - **`monthly`**: Receive notifications once per month (timezone specified by publisher)
+
+**Cost Consideration:** Hourly webhooks generate 24x more traffic than daily. Large buyer-seller pairs may prefer offline reporting mechanisms (see below) for cost efficiency.
 
 ### Available Metrics
 
@@ -145,15 +211,33 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
 - **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
 - **`media_buy_deliveries`**: Array of media buy delivery data (may contain multiple media buys aggregated by publisher)
 
-### Timezone Considerations
+### Timezone Handling
 
-For daily and monthly frequencies, the publisher's reporting timezone (from `reporting_capabilities.timezone`) determines period boundaries:
+**All reporting MUST use UTC.** This eliminates DST complexity, simplifies reconciliation, and ensures consistent 24-hour reporting periods.
 
-- **Daily**: Reporting day starts/ends at midnight in publisher's timezone
-- **Monthly**: Reporting month starts on 1st and ends on last day of month in publisher's timezone
-- **Hourly**: Uses UTC unless otherwise specified
+```json
+{
+  "reporting_capabilities": {
+    "timezone": "UTC",
+    "available_reporting_frequencies": ["daily"]
+  }
+}
+```
 
-**Example**: Publisher with `"timezone": "America/New_York"` and daily frequency sends notifications at ~8:00 UTC (midnight ET + expected delay).
+**Reporting periods:**
+- Daily: 00:00:00Z to 23:59:59Z (always 24 hours)
+- Hourly: Top of hour to 59:59 seconds (always 1 hour)
+- Monthly: First to last day of month
+
+**Example webhook payload:**
+```json
+{
+  "reporting_period": {
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
+  }
+}
+```
 
 ### Delayed Reporting
 
@@ -202,6 +286,168 @@ The `media_buy_deliveries` array may contain 1 to N media buys per webhook. Buye
 
 Buyers should iterate through the array and process each media buy independently. If aggregated totals are needed, calculate them from the individual media buy totals.
 
+#### Partial Failure Handling
+
+When aggregating multiple media buys into a single webhook, publishers must handle cases where some campaigns have data available while others don't.
+
+**Approach: Best-Effort Delivery with Status Indicators**
+
+Publishers SHOULD send aggregated webhooks containing all available data, using status fields to indicate partial availability:
+
+```json
+{
+  "notification_type": "scheduled",
+  "sequence_number": 5,
+  "reporting_period": {
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_001",
+      "status": "active",
+      "totals": {
+        "impressions": 50000,
+        "spend": 1750
+      }
+    },
+    {
+      "media_buy_id": "mb_002",
+      "status": "active",
+      "totals": {
+        "impressions": 48500,
+        "spend": 1695
+      }
+    },
+    {
+      "media_buy_id": "mb_003",
+      "status": "reporting_delayed",
+      "message": "Reporting data temporarily unavailable for this campaign",
+      "expected_availability": "2024-02-06T02:00:00Z"
+    }
+  ],
+  "partial_data": true,
+  "unavailable_count": 1
+}
+```
+
+**Key Fields for Partial Failures:**
+- `partial_data`: Boolean indicating if any campaigns are missing data
+- `unavailable_count`: Number of campaigns with delayed/missing data
+- `status`: Per-campaign status (`"active"`, `"reporting_delayed"`, `"failed"`)
+- `expected_availability`: When delayed data is expected (if known)
+
+**When to Use Partial Delivery:**
+1. **Upstream delays**: Some data sources are slower than others
+2. **System degradation**: Partial system outage affects subset of campaigns
+3. **Data quality issues**: Specific campaigns fail validation, others proceed
+4. **Rate limiting**: API limits prevent fetching all campaign data
+
+**When NOT to Use Partial Delivery:**
+1. **Complete system outage**: Send `"delayed"` notification instead
+2. **All campaigns affected**: Use `notification_type: "delayed"`
+3. **Buyer endpoint issues**: Circuit breaker handles this (don't send at all)
+
+**Buyer Processing Logic:**
+```javascript
+function processAggregatedWebhook(webhook) {
+  if (webhook.partial_data) {
+    console.warn(`Partial data: ${webhook.unavailable_count} campaigns delayed`);
+  }
+
+  for (const delivery of webhook.media_buy_deliveries) {
+    if (delivery.status === 'reporting_delayed') {
+      // Mark campaign as pending, retry via polling or wait for next webhook
+      markCampaignPending(delivery.media_buy_id, delivery.expected_availability);
+    } else if (delivery.status === 'active') {
+      // Process normal delivery data
+      processCampaignMetrics(delivery);
+    } else {
+      console.error(`Unexpected status for ${delivery.media_buy_id}: ${delivery.status}`);
+    }
+  }
+}
+```
+
+**Best Practices:**
+- Always include all campaigns in array, even if data unavailable (with status indicator)
+- Set `partial_data: true` flag when any campaigns are delayed/failed
+- Provide `expected_availability` timestamp if known
+- Don't retry the entire webhook - buyers can poll individual campaigns if needed
+- Track partial delivery rates in monitoring to detect systemic issues
+
+### Privacy and Compliance
+
+#### PII Scrubbing for GDPR/CCPA
+
+Publishers MUST scrub personally identifiable information (PII) from all webhook payloads to ensure GDPR and CCPA compliance. Reporting webhooks should contain only aggregated, anonymized metrics.
+
+**What to Scrub:**
+- User IDs, device IDs, IP addresses
+- Email addresses, phone numbers
+- Precise geolocation data (latitude/longitude)
+- Cookie IDs, advertising IDs (unless aggregated)
+- Any custom dimensions containing PII
+
+**What to Keep:**
+- Aggregated metrics (impressions, spend, clicks, etc.)
+- Coarse geography (city, state, country - not street address)
+- Device type categories (mobile, desktop, tablet)
+- Browser/OS categories
+- Time-based aggregations
+
+**Example - Before PII Scrubbing (❌ DO NOT SEND):**
+```json
+{
+  "media_buy_id": "mb_001",
+  "user_events": [
+    {
+      "user_id": "user_12345",
+      "ip_address": "192.168.1.100",
+      "device_id": "abc-def-ghi",
+      "impressions": 1,
+      "lat": 40.7128,
+      "lon": -74.0060
+    }
+  ]
+}
+```
+
+**Example - After PII Scrubbing (✅ CORRECT):**
+```json
+{
+  "media_buy_id": "mb_001",
+  "totals": {
+    "impressions": 125000,
+    "spend": 5625.00,
+    "clicks": 250
+  },
+  "by_geography": [
+    {
+      "city": "New York",
+      "state": "NY",
+      "country": "US",
+      "impressions": 45000,
+      "spend": 2025.00
+    }
+  ]
+}
+```
+
+**Publisher Responsibilities:**
+- Implement PII scrubbing at the data collection layer, not at webhook delivery
+- Ensure aggregation thresholds prevent re-identification (e.g., minimum 10 users per segment)
+- Document what data is collected vs. what is shared in webhooks
+- Provide data processing agreements (DPAs) for GDPR compliance
+- Support GDPR/CCPA data deletion requests
+
+**Buyer Responsibilities:**
+- Do not request PII in `requested_metrics` or custom dimensions
+- Understand that webhook data is aggregated and anonymized
+- Implement proper data retention policies
+- Include webhook data in privacy policies and user disclosures
+
 ### Implementation Best Practices
 
 1. **Handle Arrays**: Always process `media_buy_deliveries` as an array, even if it contains one element
@@ -211,6 +457,167 @@ Buyers should iterate through the array and process each media buy independently
 5. **Timezone Awareness**: Store publisher's reporting timezone for accurate period calculation
 6. **Validate Frequency**: Ensure requested frequency is in product's `available_reporting_frequencies`
 7. **Validate Metrics**: Ensure requested metrics are in product's `available_metrics`
+8. **PII Compliance**: Never include user-level data in webhook payloads
+
+### Webhook Health Monitoring
+
+Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Management](../../protocols/task-management.md)).
+
+When a media buy is created with `reporting_webhook` configured, the publisher creates an ongoing task for webhook delivery. Buyers can monitor webhook health using standard task queries.
+
+**Benefits of using task management:**
+- Consistent status tracking across all AdCP operations
+- Standard polling/webhook notification patterns
+- Existing infrastructure for task status, history, and errors
+- No need for media-buy-specific webhook health endpoints
+
+If webhook delivery fails persistently (circuit breaker opens), publishers update the task status to indicate the issue. Buyers detect this through normal task monitoring.
+
+## Data Reconciliation
+
+**The `get_media_buy_delivery` API is the authoritative source of truth for all campaign metrics**, regardless of whether you use webhooks, offline delivery, or polling.
+
+Reconciliation is important for **any reporting delivery method** because:
+- **Webhooks**: May be missed due to network failures or circuit breaker drops
+- **Offline files**: May be delayed, corrupted, or fail to process
+- **Polling**: May miss data during API outages
+- **Late-arriving data**: Impressions can arrive 24-48+ hours after initial reporting (all methods)
+
+### Reconciliation Process
+
+Buyers SHOULD periodically reconcile delivered data against API to ensure accuracy:
+
+**Recommended Reconciliation Schedule:**
+- **Hourly delivery**: Reconcile via API daily
+- **Daily delivery**: Reconcile via API weekly
+- **Monthly delivery**: Reconcile via API at month end + 7 days
+- **Campaign close**: Always reconcile after campaign_end + attribution_window
+
+**Reconciliation Logic:**
+```javascript
+async function reconcileWebhookData(mediaBuyId, startDate, endDate) {
+  // Get authoritative data from API
+  const apiData = await adcp.getMediaBuyDelivery({
+    media_buy_id: mediaBuyId,
+    date_range: { start: startDate, end: endDate }
+  });
+
+  // Compare with webhook data in local database
+  const webhookData = await db.getWebhookTotals(mediaBuyId, startDate, endDate);
+
+  const discrepancy = {
+    impressions: apiData.totals.impressions - webhookData.impressions,
+    spend: apiData.totals.spend - webhookData.spend,
+    clicks: apiData.totals.clicks - webhookData.clicks
+  };
+
+  // Acceptable discrepancy thresholds
+  const impressionVariance = Math.abs(discrepancy.impressions) / apiData.totals.impressions;
+  const spendVariance = Math.abs(discrepancy.spend) / apiData.totals.spend;
+
+  if (impressionVariance > 0.02 || spendVariance > 0.01) {
+    // Significant discrepancy (>2% impressions or >1% spend)
+    console.warn(`Reconciliation discrepancy for ${mediaBuyId}:`, discrepancy);
+
+    // Update local database with authoritative API data
+    await db.updateCampaignTotals(mediaBuyId, apiData.totals);
+
+    // Alert if discrepancy is unusually large
+    if (impressionVariance > 0.10 || spendVariance > 0.05) {
+      await alertOps(`Large reconciliation discrepancy detected`, {
+        media_buy_id: mediaBuyId,
+        webhook_totals: webhookData,
+        api_totals: apiData.totals,
+        discrepancy
+      });
+    }
+  }
+
+  return {
+    status: impressionVariance < 0.02 ? 'reconciled' : 'discrepancy_found',
+    api_data: apiData.totals,
+    webhook_data: webhookData,
+    discrepancy
+  };
+}
+```
+
+**Why Discrepancies Occur:**
+1. **Delivery failures**: Webhooks missed, offline files corrupted, API timeouts during polling
+2. **Late-arriving data**: Impressions attributed after initial reporting (all delivery methods)
+3. **Data corrections**: Publisher adjusts metrics after initial reporting
+4. **Processing errors**: Buyer-side failures to process delivered data
+5. **Timezone differences**: Period boundaries may differ between delivery and API query
+
+**Source of Truth Rules:**
+- **For billing**: Always use `get_media_buy_delivery` API at campaign end + attribution window
+- **For real-time decisions**: Use delivered data (webhook/file/poll) for speed, reconcile later
+- **For discrepancies**: API data wins, update local records accordingly
+- **For audits**: API provides complete historical data, delivered data is ephemeral
+
+**Best Practices:**
+- Store webhook `sequence_number` to detect missed notifications
+- Run automated reconciliation daily for active campaigns
+- Alert on discrepancies >2% for impressions or >1% for spend
+- Use API data for all financial reporting and invoicing
+- Document reconciliation process for audit compliance
+
+### Late-Arriving Impressions
+
+Ad serving data often arrives with delays due to attribution windows, offline tracking, and pipeline latency. Publishers declare `expected_delay_minutes` in `reporting_capabilities`:
+- **Display/Video**: Typically 4-6 hours
+- **Audio**: Typically 8-12 hours
+- **CTV**: May be 24+ hours
+
+This represents when **most** data is available, not **all** data.
+
+#### Handling Late Arrivals
+
+When late data arrives for a previously reported period, **resend that period** with `is_adjusted: true`:
+
+```json
+{
+  "notification_type": "adjusted",
+  "reporting_period": {
+    "start": "2024-02-01T00:00:00Z",
+    "end": "2024-02-01T23:59:59Z"
+  },
+  "media_buy_deliveries": [{
+    "media_buy_id": "mb_001",
+    "is_adjusted": true,
+    "totals": {
+      "impressions": 51000,  // Updated total (was 50000)
+      "spend": 1785          // Updated spend (was 1750)
+    }
+  }]
+}
+```
+
+**Buyer Processing:**
+```javascript
+function processWebhook(webhook) {
+  for (const delivery of webhook.media_buy_deliveries) {
+    if (delivery.is_adjusted) {
+      // Replace entire period with updated totals
+      db.replaceCampaignPeriod(
+        delivery.media_buy_id,
+        webhook.reporting_period,
+        delivery.totals
+      );
+    } else {
+      // Normal new period data
+      db.insertCampaignPeriod(delivery.media_buy_id, webhook.reporting_period, delivery.totals);
+    }
+  }
+}
+```
+
+**When to send adjusted periods:**
+- Significant data changes (>2% impression variance or >1% spend variance)
+- Final reconciliation at campaign_end + attribution_window
+- Data quality corrections
+
+With polling-only, buyers detect adjustments through reconciliation by comparing API results over time.
 
 ### Webhook Reliability
 

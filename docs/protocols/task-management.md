@@ -446,34 +446,140 @@ await a2a.send({
 
 Task management integrates with protocol-level webhook configuration for push notifications.
 
-### Webhook Events
+### Webhook Configuration
 
-AdCP sends webhook notifications for task status changes:
+Configure webhooks at the protocol level when making async task calls. See **[Core Concepts: Protocol-Level Webhook Configuration](./core-concepts.md#protocol-level-webhook-configuration)** for complete setup examples.
 
-```json
-{
-  "event_type": "task_status_changed",
-  "task_id": "task_456",
-  "previous_status": "working", 
-  "current_status": "completed",
-  "timestamp": "2025-01-22T10:25:00Z",
-  "task_type": "create_media_buy",
-  "domain": "media-buy",
-  "context": {
-    "buyer_ref": "nike_q1_2025"
-  },
-  "result": {
-    // Included for completed tasks
-    "media_buy_id": "mb_987654321"
+**Quick example:**
+```javascript
+const response = await session.call('create_media_buy',
+  { /* task params */ },
+  {
+    push_notification_config: {
+      url: "https://buyer.com/webhooks/adcp/create_media_buy/agent_id/operation_id",
+      authentication: {
+        schemes: ["HMAC-SHA256"],  // or ["Bearer"] for simple auth
+        credentials: "shared_secret_32_chars"
+      }
+    }
   }
+);
+```
+
+### Webhook POST Format
+
+When a task's status changes, the publisher POSTs the **complete task response object** to your webhook URL.
+
+**Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted` (long-running operations).
+
+**When webhooks are NOT triggered:**
+- Initial response is `completed`, `failed`, or `rejected` → Synchronous response, client already has result
+- Initial response is `working` → Will complete synchronously within ~120 seconds, client should wait for response
+
+**When webhooks ARE triggered (for `submitted` operations only):**
+- Status changes to `input-required` → Webhook called (alerts that human input needed)
+- Status changes to `completed` → Webhook called (final result available)
+- Status changes to `failed` → Webhook called (error details provided)
+- Status changes to `canceled` → Webhook called (cancellation confirmed)
+
+**Example: `input-required` webhook (human approval needed):**
+```http
+POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
+Host: buyer.example.com
+Authorization: Bearer your-secret-token
+Content-Type: application/json
+
+{
+  "adcp_version": "1.6.0",
+  "status": "input-required",
+  "task_id": "task_456",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "message": "Campaign budget $150K requires VP approval to proceed"
 }
+```
+
+**Example: `completed` webhook (after approval granted - full create_media_buy response):**
+```http
+POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
+Host: buyer.example.com
+Authorization: Bearer your-secret-token
+Content-Type: application/json
+
+{
+  "adcp_version": "1.6.0",
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_package" }
+  ]
+}
+```
+
+The webhook receives the **full response object** for each status, not just a notification. This means your webhook handler gets all the context and data needed to take appropriate action.
+
+### Webhook Handling Example
+
+```javascript
+app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) => {
+  const { task_type, agent_id, operation_id } = req.params;
+  const response = req.body;
+
+  // Webhooks are only called for 'submitted' operations
+  // So we only need to handle status changes that occur after submission
+  switch (response.status) {
+    case 'input-required':
+      // Alert human that input is needed
+      await notifyHuman({
+        operation_id,
+        message: response.message,
+        context_id: response.context_id,
+        approval_data: response.data
+      });
+      break;
+
+    case 'completed':
+      // Process the completed operation
+      if (task_type === 'media_buy') {
+        await handleMediaBuyCreated({
+          media_buy_id: response.media_buy_id,
+          buyer_ref: response.buyer_ref,
+          packages: response.packages,
+          creative_deadline: response.creative_deadline
+        });
+      }
+      break;
+
+    case 'failed':
+      // Handle failure
+      await handleOperationFailed({
+        operation_id,
+        error: response.error,
+        message: response.message
+      });
+      break;
+
+    case 'canceled':
+      // Handle cancellation
+      await handleOperationCanceled(operation_id, response.message);
+      break;
+  }
+
+  res.status(200).json({ status: 'processed' });
+});
 ```
 
 ### Webhook Reliability
 
 **Important**: Webhooks use at-least-once delivery semantics and may be duplicated or arrive out of order.
 
-See **[Core Concepts: Webhook Reliability](./core-concepts.md#webhook-reliability)** for detailed implementation guidance including idempotent handlers, sequence handling, security considerations, and polling as backup.
+See **[Core Concepts: Webhook Reliability](./core-concepts.md#webhook-reliability)** for detailed implementation guidance including:
+- Idempotent webhook handlers
+- Sequence handling and out-of-order detection
+- Security considerations (signature verification)
+- Polling as backup mechanism
+- Replay attack prevention
 
 ## Error Handling
 

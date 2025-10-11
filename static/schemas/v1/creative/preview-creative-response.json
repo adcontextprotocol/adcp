@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/creative/preview-creative-response.json",
+  "title": "Preview Creative Response",
+  "description": "Response containing preview links and renderings of a creative",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version used for this response",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "previews": {
+      "type": "array",
+      "description": "Array of preview variants generated for the creative. May include multiple variants for different contexts, devices, or input sets.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this variant (matches input name or auto-generated like 'Mobile', 'Desktop', 'Dark mode')"
+          },
+          "preview_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to rendered preview (may be static image, video, audio sample, or interactive page)"
+          },
+          "preview_type": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "interactive", "html"],
+            "description": "Type of preview rendering"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of this variant (e.g., 'Shows creative on mobile device in dark mode', 'AI-generated host read for podcast about weather')"
+          },
+          "dimensions": {
+            "type": "object",
+            "description": "Dimensions for image/video previews",
+            "properties": {
+              "width": {
+                "type": "number",
+                "description": "Preview width in pixels",
+                "minimum": 0
+              },
+              "height": {
+                "type": "number",
+                "description": "Preview height in pixels",
+                "minimum": 0
+              }
+            },
+            "required": ["width", "height"]
+          },
+          "duration_seconds": {
+            "type": "number",
+            "description": "Duration for video/audio previews in seconds",
+            "minimum": 0
+          },
+          "macros_used": {
+            "type": "object",
+            "description": "Actual macro values used in rendering this variant (including defaults)",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "context_applied": {
+            "type": "string",
+            "description": "Description of the context that was applied (from context_description or inferred from macros)"
+          }
+        },
+        "required": ["name", "preview_url", "preview_type"]
+      },
+      "minItems": 1
+    },
+    "interactive_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional URL to interactive preview page showing all variants with ability to switch between them"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when preview links expire"
+    }
+  },
+  "required": ["adcp_version", "previews", "expires_at"],
+  "additionalProperties": false
+}

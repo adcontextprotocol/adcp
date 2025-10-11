@@ -25,7 +25,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `promoted_products` | PromotedProducts | No | Products or offerings being promoted in this media buy. Supports SKU selection from brand card's product catalog, or inline offerings for non-commerce campaigns. |
 | `promoted_offering` | string | No | **DEPRECATED**: Use `brand_card` with `promoted_products` instead. Legacy field for describing what is being promoted. |
 | `po_number` | string | No | Purchase order number for tracking |
-| `start_time` | string | Yes | Campaign start date/time in ISO 8601 format (UTC unless timezone specified) |
+| `start_time` | string | Yes | Campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
 | `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
 | `budget` | Budget | Yes | Budget configuration for the media buy (see Budget Object below) |
 | `reporting_webhook` | ReportingWebhook | No | Optional webhook configuration for automated reporting delivery (see Reporting Webhook Object below) |
@@ -35,11 +35,14 @@ Create a media buy from selected packages. This task handles the complete workfl
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this package |
-| `products` | string[] | Yes | Array of product IDs to include in this package |
-| `format_ids` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by all products |
+| `product_id` | string | Yes* | Product ID for this package (recommended - use instead of deprecated `products`) |
+| `products` | string[] | Yes* | **DEPRECATED**: Use `product_id` instead. Array of product IDs - only first product will be used |
+| `format_ids` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by the product |
 | `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
 | `creative_ids` | string[] | No | Creative IDs to assign to this package at creation time |
+
+\* Either `product_id` or `products` is required. Use `product_id` for new implementations.
 
 ### Targeting Overlay Object
 
@@ -138,7 +141,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
     "packages": [
       {
         "buyer_ref": "nike_ctv_sports_package",
-        "products": ["ctv_sports_premium", "ctv_prime_time"],
+        "product_id": "ctv_sports_premium",
         "format_ids": ["video_standard_30s", "video_standard_15s"],
         "budget": {
           "total": 60000,
@@ -154,7 +157,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       },
       {
         "buyer_ref": "nike_audio_drive_package",
-        "products": ["audio_drive_time"],
+        "product_id": "audio_drive_time",
         "format_ids": ["audio_standard_30s"],
         "budget": {
           "total": 40000,
@@ -281,7 +284,7 @@ await a2a.send({
             "packages": [
               {
                 "buyer_ref": "nike_ctv_sports_package",
-                "products": ["ctv_sports_premium", "ctv_prime_time"],
+                "product_id": "ctv_sports_premium",
                 "format_ids": ["video_standard_30s", "video_standard_15s"],
                 "budget": {
                   "total": 60000,
@@ -297,7 +300,7 @@ await a2a.send({
               },
               {
                 "buyer_ref": "nike_audio_drive_package",
-                "products": ["audio_drive_time"],
+                "product_id": "audio_drive_time",
                 "format_ids": ["audio_standard_30s"],
                 "budget": {
                   "total": 40000,
@@ -594,7 +597,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
   "packages": [
     {
       "buyer_ref": "purina_ctv_package",
-      "products": ["ctv_prime_time", "ctv_late_night"],
+      "product_id": "ctv_prime_time",
       "format_ids": ["video_standard_30s"],
       "budget": {
         "total": 30000,
@@ -613,7 +616,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
     },
     {
       "buyer_ref": "purina_audio_package",
-      "products": ["audio_drive_time"],
+      "product_id": "audio_drive_time",
       "format_ids": ["audio_standard_30s"],
       "budget": {
         "total": 20000,
@@ -644,7 +647,7 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
   "packages": [
     {
       "buyer_ref": "purina_albertsons_conquest",
-      "products": ["albertsons_competitive_conquest", "albertsons_onsite_display"],
+      "product_id": "albertsons_competitive_conquest",
       "format_ids": ["display_300x250", "display_728x90"],
       "budget": {
         "total": 75000,
@@ -826,18 +829,68 @@ For MCP implementations using polling, use this endpoint to check the status of 
 
 #### Option 2: Webhooks (MCP)
 
-Register a callback URL to receive push notifications:
-```json
-{
-  "tool": "create_media_buy",
-  "arguments": {
-    "buyer_ref": "campaign_2024",
-    "packages": [...],
-    "webhook_url": "https://buyer.example.com/mcp/webhooks",
-    "webhook_auth_token": "bearer-token-xyz"
+Register a callback URL to receive push notifications for long-running operations. Webhooks are ONLY used when the initial response is `submitted`.
+
+**Configuration:**
+```javascript
+const response = await session.call('create_media_buy',
+  {
+    buyer_ref: "campaign_2024",
+    packages: [...]
+  },
+  {
+    webhook_url: "https://buyer.example.com/webhooks/adcp/create_media_buy/agent_id/op_id",
+    webhook_auth: { type: "bearer", credentials: "bearer-token-xyz" }
   }
+);
+```
+
+**Response patterns:**
+- **`completed`** - Synchronous success, webhook NOT called (you have the result)
+- **`working`** - Will complete within ~120s, webhook NOT called (wait for response)
+- **`submitted`** - Long-running operation, webhook WILL be called on status changes
+
+**Example webhook flow (only for `submitted` operations):**
+
+Webhook POST for human approval needed:
+```http
+POST /webhooks/adcp/create_media_buy/agent_id/op_id HTTP/1.1
+Host: buyer.example.com
+Authorization: Bearer bearer-token-xyz
+Content-Type: application/json
+
+{
+  "adcp_version": "1.6.0",
+  "status": "input-required",
+  "task_id": "task_456",
+  "buyer_ref": "campaign_2024",
+  "message": "Campaign budget $150K requires approval to proceed"
 }
 ```
+
+**Webhook POST when complete (after approval - full create_media_buy response):**
+```http
+POST /webhooks/adcp/create_media_buy/agent_id/op_id HTTP/1.1
+Host: buyer.example.com
+Authorization: Bearer bearer-token-xyz
+Content-Type: application/json
+
+{
+  "adcp_version": "1.6.0",
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "buyer_ref": "ctv_package"
+    }
+  ]
+}
+```
+
+Each webhook receives the full response object for that status. See **[Task Management: Webhook Integration](../../protocols/task-management.md#webhook-integration)** for complete details.
 
 ### A2A Status Checking
 
@@ -867,7 +920,7 @@ response = await mcp.call_tool("create_media_buy", {
     "packages": [
         {
             "buyer_ref": "espn_ctv_sports",
-            "products": ["sports_ctv_premium", "sports_online_video"],
+            "product_id": "sports_ctv_premium",
             "budget": {
                 "total": 30000,
                 "currency": "USD",
@@ -881,7 +934,7 @@ response = await mcp.call_tool("create_media_buy", {
         },
         {
             "buyer_ref": "espn_audio_sports",
-            "products": ["audio_sports_talk"],
+            "product_id": "audio_sports_talk",
             "budget": {
                 "total": 20000,
                 "currency": "USD"
@@ -968,7 +1021,7 @@ The complete media buy workflow with format awareness:
 ### Format Validation
 
 Publishers MUST validate that:
-- All specified formats are supported by ALL products in each package
+- All specified formats are supported by the product in each package
 - Format specifications match those returned by `list_creative_formats`
 - Creative requirements can be fulfilled within campaign timeline
 
@@ -987,7 +1040,8 @@ If validation fails, return an error:
 ## Usage Notes
 
 - A media buy represents a complete advertising campaign with one or more packages
-- Each package contains an array of products that share the same targeting, budget allocation, and format requirements
+- Each package is based on a single product with specific targeting, budget allocation, and format requirements
+- **Deprecation Notice**: The `products` array field is deprecated. Use `product_id` instead. If `products` is provided, only the first product will be used. This change reflects how ad servers work - each package (line item) targets a single product.
 - **Format specification is required** for each package - this enables placeholder creation and validation
 - Both media buys and packages have `buyer_ref` fields for the buyer's reference tracking
 - The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted (see [Brief Expectations](../product-discovery/brief-expectations) for guidance)

@@ -11,13 +11,16 @@ Before you can effectively buy advertising through AdCP, you need to understand 
 
 ## What You'll Learn
 
-### [Creative Formats](./creative-formats) 🎨
-Understand the technical specifications and requirements for all supported creative types across display, video, audio, and native advertising. Learn how to:
+### [Implementing Standard Format Support](./implementing-standard-formats) 🎨
+Learn how sales agents can support standard creative formats through the reference creative agent. Learn how to:
 
-- Discover available creative formats and their requirements
-- Plan creative production based on format specifications  
+- Reference standard IAB formats without replicating them
+- Implement custom formats for unique inventory
+- Use format ID namespacing to prevent conflicts
+- Combine standard and custom format support
 - Validate format compatibility with advertising products
-- Understand platform-specific format variations
+- Leverage the Standard Creative Agent for standard formats
+- Work with publisher-specific creative agents for custom formats
 
 ### [Authorized Properties](./authorized-properties) 🔐
 Learn how AdCP prevents unauthorized resale and ensures sales agents are legitimate. Understand:
@@ -52,9 +55,11 @@ Capability discovery typically happens early in your AdCP workflow:
 
 ### Creative Formats
 - **Production Planning**: Know requirements before creating assets
+- **Creative Agents**: Leverage AI-powered agents to build and validate creatives
 - **Platform Compatibility**: Ensure creatives work across advertising platforms
 - **Cost Efficiency**: Avoid recreating assets due to specification mismatches
 - **Quality Assurance**: Meet technical standards for optimal performance
+- **Preview Capabilities**: Test creative rendering before campaign launch
 
 ### Authorized Properties  
 - **Fraud Prevention**: Avoid unauthorized sellers and inventory fraud
@@ -67,6 +72,9 @@ Together, these capabilities provide the foundation for safe, efficient, and eff
 ## Related Documentation
 
 - **[Task Reference](../task-reference/)** - Complete API documentation
-- **[Product Discovery](../product-discovery/)** - Finding advertising inventory  
+- **[Product Discovery](../product-discovery/)** - Finding advertising inventory
 - **[Creatives](../creatives/)** - Creative asset management
+- **[Creative Protocol](../../creative/)** - Creative agents and manifests
+- **[Creative Channel Guides](../../creative/channels/video)** - Format examples and patterns
+- **[Creative Manifests](../../creative/creative-manifests.md)** - Understanding creative specifications
 - **[AdAgents Specification](./adagents)** - Technical authorization details

@@ -1,0 +1,259 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/creative/asset-types/html.json",
+  "title": "HTML Asset Type Schema",
+  "description": "Schema for HTML5 creative assets including display banners, rich media, and interactive ads",
+  "type": "object",
+  "properties": {
+    "asset_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Unique identifier for this asset within the format"
+    },
+    "asset_type": {
+      "type": "string",
+      "const": "html"
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether this asset is mandatory for the format"
+    },
+    "content": {
+      "type": "string",
+      "description": "Complete HTML content including all markup"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to externally hosted HTML file (alternative to inline content)"
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4096,
+      "description": "Ad width in pixels"
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4096,
+      "description": "Ad height in pixels"
+    },
+    "max_file_size_kb": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5120,
+      "description": "Maximum total file size including all assets in kilobytes"
+    },
+    "initial_load_size_kb": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 200,
+      "description": "Maximum initial load size in kilobytes (before user interaction)"
+    },
+    "external_resources": {
+      "type": "object",
+      "properties": {
+        "allowed": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether external resources (images, scripts, fonts) are allowed"
+        },
+        "ssl_required": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether all external resources must use HTTPS"
+        },
+        "max_requests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Maximum number of external resource requests allowed"
+        }
+      },
+      "description": "Rules for external resource loading"
+    },
+    "javascript": {
+      "type": "object",
+      "properties": {
+        "allowed": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether JavaScript is allowed"
+        },
+        "frameworks_allowed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of allowed JavaScript frameworks/libraries"
+        },
+        "forbidden_apis": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "document.write",
+              "eval",
+              "alert",
+              "prompt",
+              "confirm",
+              "sync_xhr"
+            ]
+          },
+          "description": "JavaScript APIs that are not allowed"
+        }
+      },
+      "description": "JavaScript usage restrictions"
+    },
+    "animation": {
+      "type": "object",
+      "properties": {
+        "allowed": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether animation is allowed"
+        },
+        "max_duration_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 30,
+          "description": "Maximum duration for animations"
+        },
+        "loop_allowed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether animations can loop continuously"
+        },
+        "max_loops": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum number of animation loops if looping is allowed"
+        }
+      },
+      "description": "Animation restrictions"
+    },
+    "user_interaction": {
+      "type": "object",
+      "properties": {
+        "auto_expand": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether ad can expand automatically without user interaction"
+        },
+        "auto_audio": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether audio can play automatically without user interaction"
+        },
+        "clickable_area": {
+          "type": "string",
+          "enum": ["full_ad", "specific_elements", "border_only"],
+          "default": "full_ad",
+          "description": "What areas of the ad are clickable"
+        }
+      },
+      "description": "User interaction requirements"
+    },
+    "responsive": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the HTML ad is responsive and adapts to container size"
+    },
+    "responsive_breakpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "min_width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "layout": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Breakpoints for responsive behavior"
+    },
+    "accessibility": {
+      "type": "object",
+      "properties": {
+        "wcag_level": {
+          "type": "string",
+          "enum": ["A", "AA", "AAA"],
+          "description": "Required WCAG compliance level"
+        },
+        "skip_link_required": {
+          "type": "boolean",
+          "description": "Whether a skip link must be provided"
+        },
+        "keyboard_navigable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether ad must be fully keyboard navigable"
+        }
+      },
+      "description": "Accessibility requirements"
+    },
+    "sandbox_restrictions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "allow-same-origin",
+          "allow-scripts",
+          "allow-forms",
+          "allow-popups",
+          "allow-top-navigation"
+        ]
+      },
+      "description": "iframe sandbox restrictions to apply"
+    },
+    "supported_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of universal macros that can be used in HTML (e.g., {CLICK_URL}, {CACHEBUSTER})"
+    },
+    "required_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of universal macros that must be provided for HTML to function"
+    },
+    "validation_service": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to validation service endpoint (e.g., Google HTML5 Validator)"
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Additional requirements or restrictions"
+    }
+  },
+  "required": ["asset_id", "asset_type", "required"],
+  "oneOf": [
+    {
+      "required": ["content"],
+      "not": {
+        "required": ["url"]
+      }
+    },
+    {
+      "required": ["url"],
+      "not": {
+        "required": ["content"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}
