@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/start-timing.json",
+  "title": "Start Timing",
+  "description": "Campaign start timing: 'asap' or ISO 8601 date-time",
+  "oneOf": [
+    {
+      "type": "string",
+      "const": "asap",
+      "description": "Start campaign as soon as possible"
+    },
+    {
+      "type": "string",
+      "format": "date-time",
+      "description": "Scheduled start date/time in ISO 8601 format"
+    }
+  ]
+}

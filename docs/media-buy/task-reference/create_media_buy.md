@@ -23,7 +23,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `packages` | Package[] | Yes | Array of package configurations (see Package Object below) |
 | `promoted_offering` | string | Yes | Description of advertiser and what is being promoted |
 | `po_number` | string | No | Purchase order number for tracking |
-| `start_time` | string | Yes | Campaign start date/time in ISO 8601 format (UTC unless timezone specified) |
+| `start_time` | string | Yes | Campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
 | `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
 | `budget` | Budget | Yes | Budget configuration for the media buy (see Budget Object below) |
 | `reporting_webhook` | ReportingWebhook | No | Optional webhook configuration for automated reporting delivery (see Reporting Webhook Object below) |
@@ -827,18 +827,68 @@ For MCP implementations using polling, use this endpoint to check the status of 
 
 #### Option 2: Webhooks (MCP)
 
-Register a callback URL to receive push notifications:
-```json
-{
-  "tool": "create_media_buy",
-  "arguments": {
-    "buyer_ref": "campaign_2024",
-    "packages": [...],
-    "webhook_url": "https://buyer.example.com/mcp/webhooks",
-    "webhook_auth_token": "bearer-token-xyz"
+Register a callback URL to receive push notifications for long-running operations. Webhooks are ONLY used when the initial response is `submitted`.
+
+**Configuration:**
+```javascript
+const response = await session.call('create_media_buy',
+  {
+    buyer_ref: "campaign_2024",
+    packages: [...]
+  },
+  {
+    webhook_url: "https://buyer.example.com/webhooks/adcp/create_media_buy/agent_id/op_id",
+    webhook_auth: { type: "bearer", credentials: "bearer-token-xyz" }
   }
+);
+```
+
+**Response patterns:**
+- **`completed`** - Synchronous success, webhook NOT called (you have the result)
+- **`working`** - Will complete within ~120s, webhook NOT called (wait for response)
+- **`submitted`** - Long-running operation, webhook WILL be called on status changes
+
+**Example webhook flow (only for `submitted` operations):**
+
+Webhook POST for human approval needed:
+```http
+POST /webhooks/adcp/create_media_buy/agent_id/op_id HTTP/1.1
+Host: buyer.example.com
+Authorization: Bearer bearer-token-xyz
+Content-Type: application/json
+
+{
+  "adcp_version": "1.6.0",
+  "status": "input-required",
+  "task_id": "task_456",
+  "buyer_ref": "campaign_2024",
+  "message": "Campaign budget $150K requires approval to proceed"
 }
 ```
+
+**Webhook POST when complete (after approval - full create_media_buy response):**
+```http
+POST /webhooks/adcp/create_media_buy/agent_id/op_id HTTP/1.1
+Host: buyer.example.com
+Authorization: Bearer bearer-token-xyz
+Content-Type: application/json
+
+{
+  "adcp_version": "1.6.0",
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "buyer_ref": "ctv_package"
+    }
+  ]
+}
+```
+
+Each webhook receives the full response object for that status. See **[Task Management: Webhook Integration](../../protocols/task-management.md#webhook-integration)** for complete details.
 
 ### A2A Status Checking
 

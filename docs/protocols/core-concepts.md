@@ -280,26 +280,46 @@ class McpAdcpSession {
       tool: tool,
       arguments: params
     };
-    
+
     // Protocol-level extensions (like context_id)
     if (this.contextId) {
       request.context_id = this.contextId;
     }
-    if (options.webhook_url) {
-      request.webhook_url = options.webhook_url;
-      request.webhook_auth = options.webhook_auth;
+
+    // Use A2A-compatible push_notification_config
+    if (options.push_notification_config) {
+      request.push_notification_config = options.push_notification_config;
     }
-    
+
     return await this.mcp.call(request);
   }
 }
 
-// Usage
-const response = await session.call('create_media_buy', 
+// Usage (Bearer token)
+const response = await session.call('create_media_buy',
   { /* task params */ },
   {
-    webhook_url: "https://buyer.com/webhooks/adcp",
-    webhook_auth: { type: "bearer", credentials: "secret" }
+    push_notification_config: {
+      url: "https://buyer.com/webhooks/adcp",
+      authentication: {
+        schemes: ["Bearer"],
+        credentials: "secret_token_32_chars"
+      }
+    }
+  }
+);
+
+// Usage (HMAC signature - recommended for production)
+const response = await session.call('create_media_buy',
+  { /* task params */ },
+  {
+    push_notification_config: {
+      url: "https://buyer.com/webhooks/adcp",
+      authentication: {
+        schemes: ["HMAC-SHA256"],
+        credentials: "shared_secret_32_chars"
+      }
+    }
   }
 );
 ```
@@ -307,6 +327,7 @@ const response = await session.call('create_media_buy',
 #### A2A Native Support
 ```javascript
 // A2A has native webhook support via PushNotificationConfig
+// AdCP uses the same structure - no mapping needed!
 await a2a.send({
   message: {
     parts: [{
@@ -318,19 +339,186 @@ await a2a.send({
     }]
   },
   push_notification_config: {
-    webhook_url: "https://buyer.com/webhooks/adcp",
-    auth: { type: "bearer", credentials: "secret" }
+    url: "https://buyer.com/webhooks/adcp",
+    authentication: {
+      schemes: ["HMAC-SHA256"],  // or ["Bearer"]
+      credentials: "shared_secret_32_chars"
+    }
   }
 });
 ```
 
 ### Server Decision on Webhook Usage
 
-The server always decides whether to use webhooks:
+The server decides whether to use webhooks based on the initial response status:
 
-- **Quick operations** (< 120s): Server returns `working`, ignores webhook
-- **Long operations** (hours/days): Server returns `submitted`, uses webhook if provided
+- **`completed`, `failed`, `rejected`**: Synchronous response - webhook is NOT called (client already has complete response)
+- **`working`**: Will respond synchronously within ~120 seconds - webhook is NOT called (just wait for the response)
+- **`submitted`**: Long-running async operation - webhook WILL be called on ALL subsequent status changes
 - **Client choice**: Webhook is optional - clients can always poll with `tasks/get`
+
+**Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted`.
+
+**When webhooks are called (for `submitted` operations):**
+- Status changes to `input-required` → Webhook called (human needs to respond)
+- Status changes to `completed` → Webhook called (final result)
+- Status changes to `failed` → Webhook called (error details)
+- Status changes to `canceled` → Webhook called (cancellation confirmation)
+
+### Webhook POST Format
+
+When an async operation changes status, the publisher POSTs the **complete task response object** to your webhook URL.
+
+#### Webhook Scenarios
+
+**Scenario 1: Synchronous completion (no webhook)**
+```javascript
+// Initial request
+const response = await session.call('create_media_buy', params, { webhook_url: "..." });
+
+// Response is immediate and complete - webhook is NOT called
+{
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "packages": [...]
+}
+```
+
+**Scenario 2: Quick async processing (no webhook - use working status)**
+```javascript
+// Initial response indicates processing will complete soon
+const response = await session.call('create_media_buy', params, { webhook_url: "..." });
+{
+  "status": "working",
+  "task_id": "task_789",
+  "message": "Creating media buy..."
+}
+
+// Wait for synchronous response (within ~120 seconds)
+// Webhook is NOT called - client should wait for the response to complete
+// The call will return the final result synchronously
+```
+
+**Scenario 3: Long-running operation (webhook IS called)**
+```javascript
+// Initial request
+const response = await session.call('create_media_buy', params, {
+  webhook_url: "https://buyer.com/webhooks/adcp/create_media_buy/agent_123/op_456"
+});
+
+// Response indicates long-running async operation
+{
+  "adcp_version": "1.6.0",
+  "status": "submitted",
+  "task_id": "task_456",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "message": "Campaign requires sales approval. Expected time: 2-4 hours."
+}
+
+// Later: Webhook POST when approval is needed
+POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
+{
+  "adcp_version": "1.6.0",
+  "status": "input-required",
+  "task_id": "task_456",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "message": "Please approve $150K campaign to proceed"
+}
+
+// Later: Webhook POST when approved and completed (full create_media_buy response)
+POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
+{
+  "adcp_version": "1.6.0",
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_12345_001",
+      "buyer_ref": "nike_ctv_sports_package"
+    },
+    {
+      "package_id": "pkg_12345_002",
+      "buyer_ref": "nike_audio_drive_package"
+    }
+  ]
+}
+```
+
+#### For Other Async Operations
+
+Each async operation posts its specific response schema:
+
+- **`activate_signal`** → `activate-signal-response.json`
+- **`sync_creatives`** → `sync-creatives-response.json`
+- **`update_media_buy`** → `update-media-buy-response.json`
+
+#### Webhook URL Patterns
+
+Structure your webhook URLs to identify the operation and agent:
+
+```
+https://buyer.com/webhooks/adcp/{task_name}/{agent_id}/{operation_id}
+```
+
+**Example URLs:**
+- `https://buyer.com/webhooks/adcp/create_media_buy/agent_abc/op_xyz`
+- `https://buyer.com/webhooks/adcp/activate_signal/agent_abc/op_123`
+- `https://buyer.com/webhooks/adcp/sync_creatives/agent_abc/op_456`
+
+Your webhook handler can parse the URL path to route to the correct handler based on the task name.
+
+#### Webhook Payload Structure
+
+Every webhook POST contains the complete task response for that status, matching the task's response schema.
+
+**`input-required` webhook (human needs to respond):**
+```json
+{
+  "adcp_version": "1.6.0",
+  "status": "input-required",
+  "task_id": "task_456",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "message": "Campaign budget requires VP approval to proceed"
+}
+```
+
+**`completed` webhook (operation finished - full create_media_buy response):**
+```json
+{
+  "adcp_version": "1.6.0",
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "buyer_ref": "nike_ctv_package"
+    }
+  ]
+}
+```
+
+**`failed` webhook (operation failed):**
+```json
+{
+  "adcp_version": "1.6.0",
+  "status": "failed",
+  "task_id": "task_456",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "errors": [
+    {
+      "code": "insufficient_inventory",
+      "message": "Requested targeting yielded 0 available impressions",
+      "suggestion": "Broaden geographic targeting or increase budget"
+    }
+  ]
+}
+```
+
+**Key principle:** Webhooks are ONLY called for `submitted` operations, and each webhook contains the full response object matching the task's response schema.
 
 ### Task State Reconciliation
 
@@ -385,6 +573,379 @@ AdCP webhooks use **at-least-once delivery** semantics with the following charac
 - **May be duplicated**: The same event might be delivered multiple times
 - **May arrive out of order**: Later events could arrive before earlier ones
 - **Timeout behavior**: Webhook delivery has limited retry attempts and timeouts
+
+### Security
+
+#### Webhook Authentication (Required)
+
+**AdCP adopts A2A's PushNotificationConfig structure** for webhook configuration. This provides a standard, flexible authentication model that supports multiple security schemes.
+
+**Configuration Structure (A2A-Compatible):**
+```json
+{
+  "push_notification_config": {
+    "url": "https://buyer.example.com/webhooks/adcp",
+    "authentication": {
+      "schemes": ["Bearer"],
+      "credentials": "secret_token_min_32_chars"
+    }
+  }
+}
+```
+
+**Supported Authentication Schemes:**
+
+1. **Bearer Token (Simple, Recommended for Development)**
+   ```json
+   {
+     "authentication": {
+       "schemes": ["Bearer"],
+       "credentials": "secret_token_32_chars"
+     }
+   }
+   ```
+
+2. **HMAC Signature (Enterprise, Recommended for Production)**
+   ```json
+   {
+     "authentication": {
+       "schemes": ["HMAC-SHA256"],
+       "credentials": "shared_secret_32_chars"
+     }
+   }
+   ```
+
+**Publisher Implementation (Bearer):**
+```javascript
+const config = pushNotificationConfig;
+const scheme = config.authentication.schemes[0];
+
+if (scheme === 'Bearer') {
+  await axios.post(config.url, payload, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${config.authentication.credentials}`
+    }
+  });
+}
+```
+
+**Publisher Implementation (HMAC-SHA256):**
+```javascript
+if (scheme === 'HMAC-SHA256') {
+  const timestamp = new Date().toISOString();
+  const signature = crypto
+    .createHmac('sha256', config.authentication.credentials)
+    .update(timestamp + JSON.stringify(payload))
+    .digest('hex');
+
+  await axios.post(config.url, payload, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-ADCP-Signature': `sha256=${signature}`,
+      'X-ADCP-Timestamp': timestamp
+    }
+  });
+}
+```
+
+**Buyer Implementation (Bearer):**
+```javascript
+app.post('/webhooks/adcp', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing Authorization header' });
+  }
+
+  const token = authHeader.substring(7);
+  if (token !== process.env.ADCP_WEBHOOK_TOKEN) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  await processWebhook(req.body);
+  res.status(200).json({ status: 'processed' });
+});
+```
+
+**Buyer Implementation (HMAC-SHA256):**
+```javascript
+app.post('/webhooks/adcp', async (req, res) => {
+  const signature = req.headers['x-adcp-signature'];
+  const timestamp = req.headers['x-adcp-timestamp'];
+
+  if (!signature || !timestamp) {
+    return res.status(401).json({ error: 'Missing signature headers' });
+  }
+
+  // Reject old webhooks (prevent replay attacks)
+  const eventTime = new Date(timestamp);
+  if (Date.now() - eventTime > 5 * 60 * 1000) {
+    return res.status(401).json({ error: 'Webhook too old' });
+  }
+
+  // Verify signature
+  const expectedSig = crypto
+    .createHmac('sha256', process.env.ADCP_WEBHOOK_SECRET)
+    .update(timestamp + JSON.stringify(req.body))
+    .digest('hex');
+
+  if (signature !== `sha256=${expectedSig}`) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  await processWebhook(req.body);
+  res.status(200).json({ status: 'processed' });
+});
+```
+
+**Authentication Best Practices:**
+- **Bearer tokens**: Simple, good for development and testing
+- **HMAC signatures**: Prevents replay attacks, recommended for production
+- Credentials exchanged out-of-band (during publisher onboarding)
+- Minimum 32 characters for all credentials
+- Store securely (environment variables, secret management)
+- Support credential rotation (accept old and new during transition)
+
+### Retry and Circuit Breaker Patterns
+
+Publishers MUST implement retry logic with circuit breakers to handle temporary buyer endpoint failures without overwhelming systems or accumulating unbounded queues.
+
+#### Retry Strategy
+
+Publishers SHOULD use exponential backoff with jitter for webhook delivery retries:
+
+```javascript
+class WebhookDelivery {
+  constructor() {
+    this.maxRetries = 3;
+    this.baseDelay = 1000; // 1 second
+    this.maxDelay = 60000; // 1 minute
+  }
+
+  async deliverWithRetry(url, payload, attempt = 0) {
+    try {
+      const response = await this.sendWebhook(url, payload);
+
+      if (response.status >= 200 && response.status < 300) {
+        return { success: true, attempts: attempt + 1 };
+      }
+
+      // Retry on 5xx errors and timeouts
+      if (response.status >= 500 && attempt < this.maxRetries) {
+        await this.delayWithJitter(attempt);
+        return this.deliverWithRetry(url, payload, attempt + 1);
+      }
+
+      // Don't retry 4xx errors (client errors)
+      return { success: false, error: 'Client error', attempts: attempt + 1 };
+
+    } catch (error) {
+      if (attempt < this.maxRetries) {
+        await this.delayWithJitter(attempt);
+        return this.deliverWithRetry(url, payload, attempt + 1);
+      }
+      return { success: false, error: error.message, attempts: attempt + 1 };
+    }
+  }
+
+  async delayWithJitter(attempt) {
+    const exponentialDelay = Math.min(
+      this.baseDelay * Math.pow(2, attempt),
+      this.maxDelay
+    );
+    // Add ±25% jitter to prevent thundering herd
+    const jitter = exponentialDelay * (0.75 + Math.random() * 0.5);
+    await new Promise(resolve => setTimeout(resolve, jitter));
+  }
+
+  async sendWebhook(url, payload) {
+    return axios.post(url, payload, {
+      timeout: 10000, // 10 second timeout
+      headers: {
+        'Content-Type': 'application/json',
+        'X-ADCP-Signature': this.signPayload(payload),
+        'X-ADCP-Timestamp': new Date().toISOString()
+      }
+    });
+  }
+}
+```
+
+**Retry Schedule:**
+- Attempt 1: Immediate
+- Attempt 2: After ~1 second (with jitter)
+- Attempt 3: After ~2 seconds (with jitter)
+- Attempt 4: After ~4 seconds (with jitter)
+- Give up after 4 total attempts
+
+#### Circuit Breaker Pattern
+
+Publishers MUST implement circuit breakers to prevent webhook queues from growing unbounded when buyer endpoints are down:
+
+```javascript
+class CircuitBreaker {
+  constructor(endpoint) {
+    this.endpoint = endpoint;
+    this.state = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
+    this.failureCount = 0;
+    this.failureThreshold = 5;
+    this.successThreshold = 2;
+    this.timeout = 60000; // 1 minute
+    this.halfOpenTime = null;
+    this.successCount = 0;
+  }
+
+  async execute(fn) {
+    if (this.state === 'OPEN') {
+      // Check if circuit should move to HALF_OPEN
+      if (Date.now() - this.halfOpenTime > this.timeout) {
+        this.state = 'HALF_OPEN';
+        this.successCount = 0;
+      } else {
+        throw new Error('Circuit breaker is OPEN');
+      }
+    }
+
+    try {
+      const result = await fn();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      throw error;
+    }
+  }
+
+  onSuccess() {
+    this.failureCount = 0;
+
+    if (this.state === 'HALF_OPEN') {
+      this.successCount++;
+      if (this.successCount >= this.successThreshold) {
+        this.state = 'CLOSED';
+        console.log(`Circuit breaker CLOSED for ${this.endpoint}`);
+      }
+    }
+  }
+
+  onFailure() {
+    this.failureCount++;
+
+    if (this.failureCount >= this.failureThreshold) {
+      this.state = 'OPEN';
+      this.halfOpenTime = Date.now();
+      console.error(`Circuit breaker OPEN for ${this.endpoint}`);
+
+      // Alert monitoring system
+      this.alertMonitoring();
+    }
+  }
+
+  alertMonitoring() {
+    // Notify operations team that endpoint is down
+    console.error(`ALERT: Webhook endpoint ${this.endpoint} is unreachable`);
+    // Send to monitoring system (e.g., PagerDuty, Datadog)
+  }
+
+  isOpen() {
+    return this.state === 'OPEN';
+  }
+}
+
+// Usage with webhook delivery
+class WebhookManager {
+  constructor() {
+    this.circuitBreakers = new Map();
+    this.maxQueueSize = 1000; // Per endpoint
+    this.queues = new Map();
+  }
+
+  getCircuitBreaker(endpoint) {
+    if (!this.circuitBreakers.has(endpoint)) {
+      this.circuitBreakers.set(endpoint, new CircuitBreaker(endpoint));
+    }
+    return this.circuitBreakers.get(endpoint);
+  }
+
+  async sendWebhook(endpoint, payload) {
+    const breaker = this.getCircuitBreaker(endpoint);
+
+    // Check circuit breaker before queuing
+    if (breaker.isOpen()) {
+      console.warn(`Dropping webhook for ${endpoint} - circuit breaker OPEN`);
+      return { success: false, reason: 'circuit_breaker_open' };
+    }
+
+    // Check queue size limit
+    const queue = this.queues.get(endpoint) || [];
+    if (queue.length >= this.maxQueueSize) {
+      console.error(`Dropping webhook for ${endpoint} - queue full (${queue.length})`);
+      return { success: false, reason: 'queue_full' };
+    }
+
+    // Attempt delivery through circuit breaker
+    try {
+      return await breaker.execute(async () => {
+        const delivery = new WebhookDelivery();
+        return await delivery.deliverWithRetry(endpoint, payload);
+      });
+    } catch (error) {
+      return { success: false, reason: error.message };
+    }
+  }
+}
+```
+
+**Circuit Breaker States:**
+- **CLOSED**: Normal operation, webhooks delivered
+- **OPEN**: Endpoint is down, webhooks are dropped (not queued)
+- **HALF_OPEN**: Testing if endpoint recovered, limited webhooks sent
+
+**Why Circuit Breakers Matter:**
+At Yahoo scale with thousands of campaigns, a single buyer endpoint being down could queue millions of webhooks. Circuit breakers prevent this by failing fast and dropping webhooks when endpoints are unreachable.
+
+#### Queue Management
+
+Publishers SHOULD implement bounded queues with overflow policies:
+
+```javascript
+class BoundedWebhookQueue {
+  constructor(maxSize = 1000) {
+    this.maxSize = maxSize;
+    this.queue = [];
+    this.droppedCount = 0;
+  }
+
+  enqueue(webhook) {
+    if (this.queue.length >= this.maxSize) {
+      // Overflow policy: drop oldest webhooks
+      const dropped = this.queue.shift();
+      this.droppedCount++;
+      console.warn(`Dropped webhook ${dropped.id} due to queue overflow`);
+    }
+    this.queue.push(webhook);
+  }
+
+  dequeue() {
+    return this.queue.shift();
+  }
+
+  size() {
+    return this.queue.length;
+  }
+
+  getDroppedCount() {
+    return this.droppedCount;
+  }
+}
+```
+
+**Best Practices:**
+- Set max queue size based on available memory and recovery time
+- Monitor queue depth and dropped webhook counts
+- Alert operations when queues are consistently full
+- Use dead letter queues for manual investigation of persistent failures
+- Implement queue per buyer endpoint (not global queue)
 
 ### Implementation Requirements
 

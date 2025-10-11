@@ -94,6 +94,10 @@
         "promoted-products": {
           "$ref": "/schemas/v1/core/promoted-products.json",
           "description": "Product selection schema for creative campaigns"
+        },
+        "start-timing": {
+          "$ref": "/schemas/v1/core/start-timing.json",
+          "description": "Campaign start timing: 'asap' or ISO 8601 date-time"
         }
       }
     },
