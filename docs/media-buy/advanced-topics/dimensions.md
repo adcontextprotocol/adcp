@@ -144,16 +144,19 @@ Products use dimensions to describe their inventory:
 
 ### In Targeting
 
-Targeting uses dimensions with any_of/none_of operators:
+**Note**: Most targeting should be expressed in briefs, not as technical overlays. See [Targeting](./targeting) for details on AdCP's brief-first approach.
+
+When targeting overlays are used (rare cases like RCT testing), they use dimensions with any_of/none_of operators:
 
 ```json
 {
   "geo_country_any_of": ["US", "CA"],
   "geo_region_any_of": ["NY", "CA"],
-  "device_type_any_of": ["mobile", "tablet"],
-  "content_category_none_of": ["IAB7", "IAB14"]
+  "geo_metro_any_of": ["501", "803"]
 }
 ```
+
+Dimensions like `device_type`, `browser`, `os`, `content_category`, and audience segments should be specified in briefs rather than as targeting overlays.
 
 ### In Reporting
 

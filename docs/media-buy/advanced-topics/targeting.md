@@ -128,32 +128,71 @@ When publishers return products, they include targeting information buyers need:
 }
 ```
 
-## When to Use Technical Targeting
+## When to Use Targeting Overlays
 
-Technical targeting overlays should be rare and used only for:
+Targeting overlays in `create_media_buy` and `update_media_buy` are **rare** and should only be used for:
 
-### Minor Adjustments
-- **Frequency capping**: Basic impression suppression
-- **Dayparting**: Simple time-of-day restrictions  
-- **Exclusions**: Brand safety or competitive exclusions
+### Geographic Restrictions
+Use geo fields **only** for:
+- **RCT testing**: Randomized control trials requiring specific geographic splits
+- **Regulatory compliance**: Legal requirements for geographic restrictions
+- **Product refinement**: When a product spans multiple regions and you need to restrict to a subset
 
-### Platform Integration
-- **Custom fields**: Platform-specific requirements not covered by briefs
-- **Compliance**: Legal or regulatory targeting requirements
+**Available fields**:
+- `geo_country_any_of`: ISO country codes
+- `geo_region_any_of`: State/region identifiers
+- `geo_metro_any_of`: DMA codes
+- `geo_postal_code_any_of`: ZIP/postal codes
 
-### Example Technical Overlay
+### Frequency Capping
+Basic impression frequency controls:
 ```json
 {
   "targeting_overlay": {
     "frequency_cap": {
-      "suppress_minutes": 60
-    },
-    "dayparting": {
-      "exclude_hours": [0, 1, 2, 3, 4, 5]  // Exclude overnight hours
+      "max_impressions": 3,
+      "time_window_hours": 24
     }
   }
 }
 ```
+
+### Example Geographic Overlay (RCT Testing)
+```json
+{
+  "packages": [
+    {
+      "buyer_ref": "test_group_a",
+      "product_id": "national_video",
+      "targeting_overlay": {
+        "geo_metro_any_of": ["501", "602", "803"]  // Test DMAs
+      }
+    },
+    {
+      "buyer_ref": "test_group_b",
+      "product_id": "national_video",
+      "targeting_overlay": {
+        "geo_metro_any_of": ["504", "505", "506"]  // Control DMAs
+      }
+    }
+  ]
+}
+```
+
+## What NOT to Use Targeting Overlays For
+
+**❌ Removed from targeting overlays:**
+- **Demographics** (age, gender) - Express in brief
+- **Device types** - Use product filtering with `list_creative_formats`
+- **Browser/OS** - Not applicable for most channels, express in brief if needed
+- **Content categories** - Express in brief
+- **Audience segments** - Express in brief or use AXE for real-time decisioning
+
+**Why removed?**
+- These are better expressed in natural language briefs
+- Publishers know their inventory and can target more effectively
+- Reduces channel-specific complexity (e.g., DOOH doesn't have browsers)
+- Simpler, cleaner API with fewer edge cases
 
 ## Integration with Dimensions
 
