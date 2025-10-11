@@ -143,7 +143,20 @@ The `inputs` array allows you to request multiple preview variants in a single c
     name: string;                // Variant name (from request or auto-generated)
     macros?: object;             // Macro values applied
     context_description?: string; // Context description applied
-  }
+  };
+  hints?: {                      // OPTIONAL: Optimization hints (HTML still works without these)
+    primary_media_type?: "image" | "video" | "audio" | "interactive";
+    estimated_dimensions?: {width: number, height: number};
+    estimated_duration_seconds?: number;
+    contains_audio?: boolean;
+    requires_interaction?: boolean;
+  };
+  embedding?: {                  // OPTIONAL: Security/embedding metadata
+    recommended_sandbox?: string;  // e.g., "allow-scripts allow-same-origin"
+    requires_https?: boolean;
+    supports_fullscreen?: boolean;
+    csp_policy?: string;
+  };
 }
 ```
 
@@ -152,6 +165,10 @@ The `inputs` array allows you to request multiple preview variants in a single c
 - The HTML page handles all rendering complexity (video players, audio players, images, interactive content)
 - No client-side logic needed to determine how to render different preview types
 - The `input` field echoes back the parameters used, making it easy to understand what each preview shows
+
+**Optional Fields:**
+- **hints**: Optimization hints for better UX (preload video codec, size iframe appropriately). Clients MUST support HTML regardless of hints.
+- **embedding**: Security metadata for safe iframe integration (sandbox policies, HTTPS requirements, CSP)
 
 ## Examples
 
@@ -605,11 +622,91 @@ Response:
 }
 ```
 
+### Example 5: Video Preview with Optimization Hints
+
+Response showing optional hints and embedding metadata:
+
+```json
+{
+  "adcp_version": "1.0.0",
+  "previews": [
+    {
+      "preview_url": "https://creative-agent.example.com/preview/video789",
+      "input": {
+        "name": "CTV Video",
+        "macros": {
+          "DEVICE_TYPE": "ctv"
+        }
+      },
+      "hints": {
+        "primary_media_type": "video",
+        "estimated_dimensions": {
+          "width": 1920,
+          "height": 1080
+        },
+        "estimated_duration_seconds": 30,
+        "contains_audio": true,
+        "requires_interaction": false
+      },
+      "embedding": {
+        "recommended_sandbox": "allow-scripts allow-same-origin",
+        "requires_https": true,
+        "supports_fullscreen": true,
+        "csp_policy": "default-src 'self' https://cdn.example.com"
+      }
+    }
+  ],
+  "expires_at": "2025-02-15T18:00:00Z"
+}
+```
+
+**Using hints for optimization:**
+
+```javascript
+// Client can use hints to optimize iframe setup
+const preview = response.previews[0];
+
+if (preview.hints?.primary_media_type === "video") {
+  // Preload video codec
+  document.createElement('link').rel = 'preload';
+}
+
+if (preview.hints?.estimated_dimensions) {
+  // Size iframe appropriately
+  iframe.width = preview.hints.estimated_dimensions.width;
+  iframe.height = preview.hints.estimated_dimensions.height;
+}
+
+if (preview.hints?.contains_audio) {
+  // Warn user about autoplay policies
+  showAutoplayWarning();
+}
+```
+
+**Using embedding metadata for security:**
+
+```javascript
+// Apply recommended security policies
+if (preview.embedding?.recommended_sandbox) {
+  iframe.sandbox = preview.embedding.recommended_sandbox;
+}
+
+if (preview.embedding?.requires_https && !preview.preview_url.startsWith('https:')) {
+  console.warn('Preview should be served over HTTPS');
+}
+
+if (preview.embedding?.supports_fullscreen) {
+  iframe.allowFullscreen = true;
+}
+```
+
 ## Usage Notes
 
 - **Preview URLs are Always HTML**: Every `preview_url` returns an HTML page that can be embedded in an iframe - no client-side rendering logic needed
 - **One Preview per Input**: If you provide 3 inputs, you get 3 previews. If you provide no inputs, you get 1 default preview.
 - **Input Echo**: The `input` field echoes back the parameters used to generate each preview, making it clear what each variant represents
+- **Optional Hints**: Creative agents MAY provide optimization hints. Clients MUST support HTML rendering regardless of whether hints are present.
+- **Optional Embedding Metadata**: Provides guidance for secure iframe integration, but clients should apply their own security policies as needed.
 - **Preview Expiration**: Preview links typically expire within 24-48 hours
 - **Macro Defaults**: If macro values aren't provided, creative agents use sensible defaults
 - **Interactive Testing Page**: The optional `interactive_url` provides advanced testing with controls to modify macros in real-time
@@ -682,15 +779,72 @@ Test creative behavior with different privacy settings:
 
 Creative agents implementing `preview_creative` should:
 
-1. **Return HTML Pages**: Every `preview_url` must return a complete HTML page that renders the creative
-2. **Handle All Media Types**: Embed appropriate players (video, audio) or render static content (images) within the HTML page
-3. **Echo Input Parameters**: Return the exact `input` object (with defaults filled in) so consumers understand what each preview shows
+#### Required Implementation
+
+1. **Return HTML Pages**: Every `preview_url` MUST return a complete HTML page that renders the creative
+   ```html
+   <!DOCTYPE html>
+   <html>
+     <head>
+       <meta charset="UTF-8">
+       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+       <title>Preview: {variant_name}</title>
+     </head>
+     <body style="margin:0; padding:0;">
+       <!-- Creative rendering here -->
+     </body>
+   </html>
+   ```
+
+2. **Handle All Media Types**: Embed appropriate players within the HTML page
+   - **Images**: Use `<img>` tags with appropriate sizing
+   - **Video**: Embed `<video>` player or iframe VAST player
+   - **Audio**: Embed `<audio>` player with controls
+   - **Interactive**: Embed canvas, WebGL, or interactive HTML
+
+3. **Echo Input Parameters**: Return the exact `input` object (with defaults filled in)
+
 4. **One Preview per Input**: Generate exactly one preview variant per input set provided. If no inputs, generate one default preview.
+
 5. **Validate Manifest**: Ensure all required assets for the format are present before rendering
+
 6. **Apply Macros**: Replace macro placeholders with provided or default values
+
 7. **Security**: Sandbox creative rendering to prevent malicious code execution
+   - Implement Content Security Policy headers
+   - Sanitize user-provided creative content
+   - Isolate preview rendering from internal systems
+
 8. **Performance**: Generate previews quickly (< 10 seconds for multiple variants)
-9. **Expiration**: Set reasonable expiration times and clean up old previews
+
+9. **Expiration**: Set reasonable expiration times (24-48 hours recommended) and clean up old previews
+
+#### Optional Enhancements
+
+10. **Provide Hints**: Include `hints` object for client optimization
+    ```json
+    "hints": {
+      "primary_media_type": "video",
+      "estimated_dimensions": {"width": 1920, "height": 1080},
+      "estimated_duration_seconds": 30,
+      "contains_audio": true,
+      "requires_interaction": false
+    }
+    ```
+
+11. **Provide Embedding Metadata**: Include `embedding` object for security guidance
+    ```json
+    "embedding": {
+      "recommended_sandbox": "allow-scripts allow-same-origin",
+      "requires_https": true,
+      "supports_fullscreen": true,
+      "csp_policy": "default-src 'self' https://cdn.example.com"
+    }
+    ```
+
+12. **Responsive Design**: HTML pages SHOULD adapt gracefully to different iframe sizes
+
+13. **Accessibility**: Include ARIA labels and semantic HTML where feasible (WCAG 2.1 Level AA)
 
 ### For Buyers
 

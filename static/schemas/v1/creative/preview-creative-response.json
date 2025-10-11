@@ -42,6 +42,67 @@
               }
             },
             "required": ["name"]
+          },
+          "hints": {
+            "type": "object",
+            "description": "Optional optimization hints for clients. Clients MUST support HTML rendering regardless of hints. These enable optimizations like preloading appropriate codecs or sizing iframes.",
+            "properties": {
+              "primary_media_type": {
+                "type": "string",
+                "enum": ["image", "video", "audio", "interactive"],
+                "description": "Primary media type contained in the preview (for optimization only)"
+              },
+              "estimated_dimensions": {
+                "type": "object",
+                "description": "Estimated rendered dimensions (may differ from actual responsive rendering)",
+                "properties": {
+                  "width": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": ["width", "height"]
+              },
+              "estimated_duration_seconds": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Estimated duration for video/audio content (for optimization only)"
+              },
+              "contains_audio": {
+                "type": "boolean",
+                "description": "Whether the preview contains audio (helps with autoplay policies)"
+              },
+              "requires_interaction": {
+                "type": "boolean",
+                "description": "Whether the preview requires user interaction to fully experience"
+              }
+            }
+          },
+          "embedding": {
+            "type": "object",
+            "description": "Optional security and embedding metadata for safe iframe integration",
+            "properties": {
+              "recommended_sandbox": {
+                "type": "string",
+                "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+              },
+              "requires_https": {
+                "type": "boolean",
+                "description": "Whether the preview requires HTTPS for secure embedding"
+              },
+              "supports_fullscreen": {
+                "type": "boolean",
+                "description": "Whether the preview supports fullscreen mode"
+              },
+              "csp_policy": {
+                "type": "string",
+                "description": "Content Security Policy requirements for embedding"
+              }
+            }
           }
         },
         "required": ["preview_url", "input"]
