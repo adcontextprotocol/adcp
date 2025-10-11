@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/creative/preview-creative-response.json",
   "title": "Preview Creative Response",
-  "description": "Response containing preview links and renderings of a creative",
+  "description": "Response containing preview links for a creative. Each preview URL returns an HTML page that can be embedded in an iframe to display the rendered creative.",
   "type": "object",
   "properties": {
     "adcp_version": {
@@ -12,70 +12,107 @@
     },
     "previews": {
       "type": "array",
-      "description": "Array of preview variants generated for the creative. May include multiple variants for different contexts, devices, or input sets.",
+      "description": "Array of preview variants. Each preview corresponds to an input set from the request. If no inputs were provided, returns a single default preview.",
       "items": {
         "type": "object",
         "properties": {
-          "name": {
-            "type": "string",
-            "description": "Human-readable name for this variant (matches input name or auto-generated like 'Mobile', 'Desktop', 'Dark mode')"
-          },
           "preview_url": {
             "type": "string",
             "format": "uri",
-            "description": "URL to rendered preview (may be static image, video, audio sample, or interactive page)"
+            "description": "URL to an HTML page that renders this preview variant. Can be embedded in an iframe. Handles all rendering complexity internally (images, video players, audio players, interactive content, etc.)."
           },
-          "preview_type": {
-            "type": "string",
-            "enum": ["image", "video", "audio", "interactive", "html"],
-            "description": "Type of preview rendering"
-          },
-          "description": {
-            "type": "string",
-            "description": "Description of this variant (e.g., 'Shows creative on mobile device in dark mode', 'AI-generated host read for podcast about weather')"
-          },
-          "dimensions": {
+          "input": {
             "type": "object",
-            "description": "Dimensions for image/video previews",
+            "description": "The input parameters that generated this preview variant. Echoes back the request input or shows defaults used.",
             "properties": {
-              "width": {
-                "type": "number",
-                "description": "Preview width in pixels",
-                "minimum": 0
+              "name": {
+                "type": "string",
+                "description": "Human-readable name for this variant"
               },
-              "height": {
-                "type": "number",
-                "description": "Preview height in pixels",
-                "minimum": 0
+              "macros": {
+                "type": "object",
+                "description": "Macro values applied to this variant",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "context_description": {
+                "type": "string",
+                "description": "Context description applied to this variant"
               }
             },
-            "required": ["width", "height"]
+            "required": ["name"]
           },
-          "duration_seconds": {
-            "type": "number",
-            "description": "Duration for video/audio previews in seconds",
-            "minimum": 0
-          },
-          "macros_used": {
+          "hints": {
             "type": "object",
-            "description": "Actual macro values used in rendering this variant (including defaults)",
-            "additionalProperties": {
-              "type": "string"
+            "description": "Optional optimization hints for clients. Clients MUST support HTML rendering regardless of hints. These enable optimizations like preloading appropriate codecs or sizing iframes.",
+            "properties": {
+              "primary_media_type": {
+                "type": "string",
+                "enum": ["image", "video", "audio", "interactive"],
+                "description": "Primary media type contained in the preview (for optimization only)"
+              },
+              "estimated_dimensions": {
+                "type": "object",
+                "description": "Estimated rendered dimensions (may differ from actual responsive rendering)",
+                "properties": {
+                  "width": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": ["width", "height"]
+              },
+              "estimated_duration_seconds": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Estimated duration for video/audio content (for optimization only)"
+              },
+              "contains_audio": {
+                "type": "boolean",
+                "description": "Whether the preview contains audio (helps with autoplay policies)"
+              },
+              "requires_interaction": {
+                "type": "boolean",
+                "description": "Whether the preview requires user interaction to fully experience"
+              }
             }
           },
-          "context_applied": {
-            "type": "string",
-            "description": "Description of the context that was applied (from context_description or inferred from macros)"
+          "embedding": {
+            "type": "object",
+            "description": "Optional security and embedding metadata for safe iframe integration",
+            "properties": {
+              "recommended_sandbox": {
+                "type": "string",
+                "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+              },
+              "requires_https": {
+                "type": "boolean",
+                "description": "Whether the preview requires HTTPS for secure embedding"
+              },
+              "supports_fullscreen": {
+                "type": "boolean",
+                "description": "Whether the preview supports fullscreen mode"
+              },
+              "csp_policy": {
+                "type": "string",
+                "description": "Content Security Policy requirements for embedding"
+              }
+            }
           }
         },
-        "required": ["name", "preview_url", "preview_type"]
+        "required": ["preview_url", "input"]
       },
       "minItems": 1
     },
     "interactive_url": {
       "type": "string",
       "format": "uri",
-      "description": "Optional URL to interactive preview page showing all variants with ability to switch between them"
+      "description": "Optional URL to an interactive testing page that shows all preview variants with controls to switch between them, modify macro values, and test different scenarios."
     },
     "expires_at": {
       "type": "string",
