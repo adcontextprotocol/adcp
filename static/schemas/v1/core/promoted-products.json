@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/promoted-products.json",
   "title": "Promoted Products",
-  "description": "Specification of products or offerings being promoted in a campaign. Supports multiple selection methods that can be combined: direct SKUs, tag-based filtering, category selection, natural language queries, and inline offering definitions for non-commerce campaigns.",
+  "description": "Specification of products or offerings being promoted in a campaign. Supports multiple selection methods that can be combined using UNION (OR) logic: direct SKUs, tag-based filtering, category selection, natural language queries, and inline offering definitions for non-commerce campaigns. When multiple selection methods are provided, products matching ANY of the criteria are selected (logical OR, not AND).",
   "type": "object",
   "properties": {
     "skus": {
@@ -113,7 +113,7 @@
     {
       "tags": ["organic", "sauces"],
       "category": "food/condiments",
-      "description": "Combine tags and category for refined selection"
+      "description": "UNION selection: products tagged 'organic' OR 'sauces' OR in 'food/condiments' category"
     },
     {
       "query": "all Kraft Heinz pasta sauces under $5",
