@@ -38,7 +38,8 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `format_ids` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by the product |
 | `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
-| `creative_ids` | string[] | No | Creative IDs to assign to this package at creation time |
+| `creative_ids` | string[] | No | Creative IDs to assign to this package at creation time (references existing library creatives) |
+| `creatives` | CreativeAsset[] | No | Full creative objects to upload and assign to this package at creation time (alternative to creative_ids - creatives will be added to library, max 100 per package) |
 
 \* Either `product_id` or `products` is required. Use `product_id` for new implementations.
 
@@ -588,6 +589,60 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
 
 ## Scenarios
 
+### Media Buy with Inline Creatives (Single Call)
+```json
+{
+  "buyer_ref": "nike_q1_campaign_2024",
+  "packages": [
+    {
+      "buyer_ref": "nike_ctv_sports_package",
+      "product_id": "ctv_sports_premium",
+      "format_ids": ["video_standard_30s", "video_standard_15s"],
+      "budget": {
+        "total": 60000,
+        "currency": "USD",
+        "pacing": "even"
+      },
+      "targeting_overlay": {
+        "geo_country_any_of": ["US"],
+        "geo_region_any_of": ["CA", "NY"]
+      },
+      "creatives": [
+        {
+          "creative_id": "hero_video_30s",
+          "name": "Nike Air Max Hero 30s",
+          "format": "video_standard_30s",
+          "snippet": "https://vast.example.com/nike/hero-30s",
+          "snippet_type": "vast_url",
+          "click_url": "https://nike.com/air-max-2024",
+          "tags": ["q1_2024", "video", "hero"]
+        },
+        {
+          "creative_id": "product_video_15s",
+          "name": "Nike Air Max Product 15s",
+          "format": "video_standard_15s",
+          "snippet": "https://vast.example.com/nike/product-15s",
+          "snippet_type": "vast_url",
+          "click_url": "https://nike.com/air-max-2024",
+          "tags": ["q1_2024", "video", "product"]
+        }
+      ]
+    }
+  ],
+  "promoted_offering": "Nike Air Max 2024 - premium running shoes",
+  "po_number": "PO-2024-Q1-001",
+  "start_time": "2024-02-01T00:00:00Z",
+  "end_time": "2024-03-31T23:59:59Z",
+  "budget": {
+    "total": 60000,
+    "currency": "USD",
+    "pacing": "even"
+  }
+}
+```
+
+**Note**: Using inline `creatives` eliminates the need for a separate `sync_creatives` call. Creatives are uploaded to the library and automatically assigned to the package. This is ideal for simple workflows where you want to create the campaign and upload creatives in a single atomic operation.
+
 ### Standard Media Buy Request
 ```json
 {
@@ -1041,6 +1096,10 @@ If validation fails, return an error:
 - Each package is based on a single product with specific targeting, budget allocation, and format requirements
 - **Deprecation Notice**: The `products` array field is deprecated. Use `product_id` instead. If `products` is provided, only the first product will be used. This change reflects how ad servers work - each package (line item) targets a single product.
 - **Format specification is required** for each package - this enables placeholder creation and validation
+- **Creative upload options**: You can either:
+  - Use `creative_ids` to reference existing library creatives (requires prior `sync_creatives` call)
+  - Use `creatives` to upload and assign creatives in a single atomic operation (max 100 per package)
+  - Combine both approaches within the same package
 - Both media buys and packages have `buyer_ref` fields for the buyer's reference tracking
 - The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted (see [Brief Expectations](../product-discovery/brief-expectations) for guidance)
 - Publishers will validate the promoted offering against their policies before creating the media buy
