@@ -160,7 +160,40 @@ All asset types share these common properties:
 
 - `asset_id`: Unique identifier for this asset within the format (e.g., "hero_image", "video_file", "headline")
 - `asset_type`: The type of asset (video, image, text, url, audio, html)
+- `asset_role`: Semantic purpose of the asset (e.g., "hero_video", "logo", "cta_button")
 - `required`: Boolean indicating if the asset is mandatory
+
+### Asset ID vs Asset Role
+
+**`asset_id`**: A unique identifier for this asset within the format specification. Used as the key when constructing manifests.
+
+**`asset_role`**: Describes the semantic purpose or function of the asset in the creative. Helps buyers, AI systems, and publishers understand what the asset is for.
+
+**Example**:
+```json
+{
+  "asset_id": "main_video",
+  "asset_type": "video",
+  "asset_role": "hero_video",
+  "required": true
+}
+```
+
+In this example:
+- `asset_id` = "main_video" (the unique identifier for manifests)
+- `asset_role` = "hero_video" (indicates this is the primary video content)
+
+**Common asset roles**:
+- `hero_image` / `hero_video` - Primary visual content
+- `logo` - Brand logo
+- `headline` - Main headline text
+- `description` - Body copy or description text
+- `cta_button` - Call-to-action button
+- `background_image` - Background visual
+- `thumbnail` - Preview image
+- `companion_banner` - Secondary display ad
+
+Asset roles enable AI systems to generate appropriate content and help publishers understand how to render each asset in the creative.
 
 ### Asset ID Usage
 
@@ -207,46 +240,9 @@ Creative formats specify their required assets using these standardized types:
 }
 ```
 
-## Frame-Based Formats
+## Repeatable Asset Groups
 
-For formats with multiple frames (like carousels), assets are defined within a `frame_schema`:
-
-```json
-{
-  "min_frames": 3,
-  "max_frames": 10,
-  "frame_schema": {
-    "assets": [
-      {
-        "asset_id": "product_image",
-        "asset_type": "image",
-        "required": true,
-        "width": 600,
-        "height": 600,
-        "acceptable_formats": ["jpg", "png"]
-      },
-      {
-        "asset_id": "product_headline",
-        "asset_type": "text",
-        "required": true,
-        "text_type": "headline",
-        "max_length": 50
-      }
-    ]
-  },
-  "global_assets": [
-    {
-      "asset_id": "brand_logo",
-      "asset_type": "image",
-      "required": true,
-      "width": 200,
-      "height": 50,
-      "acceptable_formats": ["png", "svg"],
-      "notes": "Brand logo"
-    }
-  ]
-}
-```
+For formats with asset sequences (like carousels, slideshows, stories), see the [Carousel & Multi-Asset Formats guide](./channels/carousels.md) for complete documentation on repeatable asset group patterns.
 
 ## Validation
 

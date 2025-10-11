@@ -54,7 +54,8 @@ The Media Buy protocol provides these essential operations:
 
 - **Natural Language Discovery**: Find advertising inventory using plain English briefs
 - **Unified Targeting**: Consistent targeting dimensions across all platforms
-- **Standard Formats**: Pre-defined creative specifications that work everywhere
+- **Standard Formats**: Pre-defined creative specifications powered by the Standard Creative Agent
+- **Creative Agents**: AI-powered agents for building, validating, and previewing creatives
 - **Creative Flexibility**: Support for standard IAB and custom publisher formats
 - **Real-time Optimization**: Continuous performance monitoring and adjustment
 - **Human-in-the-Loop**: Optional manual approval workflows where needed
@@ -211,7 +212,7 @@ Natural language approach to finding inventory, including brief structure, produ
 Complete campaign lifecycle management from creation through optimization, including asynchronous operations, human-in-the-loop workflows, performance monitoring, and data-driven campaign optimization.
 
 ### [Creatives](./creatives/) 🎨
-Creative asset management including library management, asset lifecycle, and cross-platform synchronization.
+Creative asset management including library management, asset lifecycle, and cross-platform synchronization. Works in conjunction with the [Creative Protocol](../creative/) for building and managing creative content.
 
 ### [Advanced Topics](./advanced-topics/) 🛠️
 Advanced features including targeting dimensions, security models, design rationale, and development tools.
@@ -234,7 +235,7 @@ Choose your path based on your role and needs:
 
 ### **For Publishers/Sales Agents**
 1. **Learn [Authorized Properties](./capability-discovery/authorized-properties)** - Understand authorization requirements
-2. **Review [Creative Formats](./capability-discovery/creative-formats)** - See supported creative specifications
+2. **Review [Creative Formats](../creative/formats)** - See supported creative specifications
 3. **Study [Advanced Topics](./advanced-topics/)** - Deep dive into technical implementation
 
 ### **For Technical Implementers**

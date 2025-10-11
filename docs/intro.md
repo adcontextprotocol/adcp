@@ -176,7 +176,7 @@ Curate media inventory based on context and brand safety.
 
 Execute and optimize media buys programmatically.
 
-### 🎨 [Creative Protocol](./creative-protocol/)
+### 🎨 [Creative Protocol](./creative/)
 **Status**: RFC/v0.1
 
 Generate and optimize creative assets using AI-powered agents.

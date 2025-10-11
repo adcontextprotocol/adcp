@@ -1,0 +1,239 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/creative/asset-types/vast_tag.json",
+  "title": "VAST Tag Asset Type Schema",
+  "description": "Schema for VAST XML tags for third-party video ad serving",
+  "type": "object",
+  "properties": {
+    "asset_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Unique identifier for this asset within the format"
+    },
+    "asset_type": {
+      "type": "string",
+      "const": "vast_tag"
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether this asset is mandatory for the format"
+    },
+    "vast_versions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["2.0", "3.0", "4.0", "4.1", "4.2"]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Supported VAST specification versions"
+    },
+    "vpaid_support": {
+      "type": "boolean",
+      "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
+    },
+    "vpaid_versions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["1.0", "2.0"]
+      },
+      "uniqueItems": true,
+      "description": "Supported VPAID versions (if vpaid_support is true)"
+    },
+    "max_wrapper_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5,
+      "default": 3,
+      "description": "Maximum number of VAST wrapper redirects allowed"
+    },
+    "wrapper_timeout_ms": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 10000,
+      "default": 5000,
+      "description": "Timeout for VAST wrapper resolution in milliseconds"
+    },
+    "required_features": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "linear",
+          "non-linear",
+          "companion",
+          "tracking_events",
+          "click_tracking",
+          "error_tracking",
+          "quartile_events",
+          "skip_offset",
+          "ad_parameters",
+          "extensions"
+        ]
+      },
+      "uniqueItems": true,
+      "description": "VAST features that must be present"
+    },
+    "allowed_media_files": {
+      "type": "object",
+      "properties": {
+        "mime_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(video|application)/.+$"
+          },
+          "description": "Allowed MIME types for MediaFiles"
+        },
+        "delivery_methods": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["progressive", "streaming"]
+          },
+          "description": "Allowed delivery methods"
+        },
+        "codecs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["h264", "h265", "vp8", "vp9", "av1"]
+          },
+          "description": "Allowed video codecs"
+        },
+        "max_file_size_mb": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 500,
+          "description": "Maximum file size for MediaFiles in megabytes"
+        },
+        "max_bitrate_mbps": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 100,
+          "description": "Maximum bitrate in megabits per second"
+        }
+      },
+      "description": "Constraints on MediaFile elements within VAST"
+    },
+    "companion_ad_requirements": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Whether companion ads are required"
+        },
+        "sizes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": ["width", "height"]
+          },
+          "description": "Accepted companion ad dimensions"
+        },
+        "resource_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["StaticResource", "IFrameResource", "HTMLResource"]
+          },
+          "description": "Allowed companion resource types"
+        }
+      },
+      "description": "Requirements for companion ads within VAST"
+    },
+    "tracking_requirements": {
+      "type": "object",
+      "properties": {
+        "impression_required": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether impression tracking pixel is required"
+        },
+        "quartile_events_required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether quartile tracking (start, firstQuartile, midpoint, thirdQuartile, complete) is required"
+        },
+        "click_tracking_required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether click tracking is required"
+        },
+        "error_tracking_required": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether error tracking pixel is required"
+        }
+      },
+      "description": "Tracking event requirements"
+    },
+    "supported_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "description": "List of VAST macros that can be used (e.g., [TIMESTAMP], [CACHEBUSTING], [CONTENTPLAYHEAD])"
+    },
+    "required_macros": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "description": "List of VAST macros that must be provided for the tag to function"
+    },
+    "ssl_required": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether all VAST URLs must use HTTPS"
+    },
+    "validation": {
+      "type": "object",
+      "properties": {
+        "strict_xml": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether strict XML validation is enforced"
+        },
+        "max_redirect_time_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Maximum time allowed for all VAST redirects"
+        }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Additional requirements or restrictions for VAST implementation"
+    }
+  },
+  "required": ["asset_id", "asset_type", "required", "vast_versions"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "vpaid_support": { "const": true }
+        }
+      },
+      "then": {
+        "required": ["vpaid_versions"]
+      }
+    }
+  ]
+}

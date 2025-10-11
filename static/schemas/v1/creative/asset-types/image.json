@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/v1/standard-formats/asset-types/image.json",
+  "$id": "/schemas/v1/creative/asset-types/image.json",
   "title": "Image Asset Type Schema",
   "description": "Schema for static image assets in AdCP creative formats",
   "oneOf": [

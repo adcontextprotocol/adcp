@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/v1/media-buy/list-creative-formats-response.json",
-  "title": "List Creative Formats Response",
-  "description": "Response payload for list_creative_formats task",
+  "$id": "/schemas/v1/creative/list-creative-formats-response.json",
+  "title": "List Creative Formats Response (Creative Agent)",
+  "description": "Response payload for list_creative_formats task from creative agent - returns full format definitions",
   "type": "object",
   "properties": {
     "adcp_version": {
@@ -52,7 +52,7 @@
     },
     "errors": {
       "type": "array",
-      "description": "Task-specific errors and warnings (e.g., format availability issues)",
+      "description": "Task-specific errors and warnings",
       "items": {
         "$ref": "/schemas/v1/core/error.json"
       }

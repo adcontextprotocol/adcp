@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/creative/preview-creative-request.json",
+  "title": "Preview Creative Request",
+  "description": "Request to generate a preview of a creative manifest in a specific format",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
+    "format_id": {
+      "type": "string",
+      "description": "Format identifier for rendering the preview"
+    },
+    "creative_manifest": {
+      "$ref": "/schemas/v1/core/creative-manifest.json",
+      "description": "Complete creative manifest with all required assets"
+    },
+    "inputs": {
+      "type": "array",
+      "description": "Array of input sets for generating multiple preview variants. Each input set defines macros and context values for one preview rendering. If not provided, creative agent will generate default previews.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evening podcast ad', 'Desktop dark mode')"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to use for this preview. Supports all universal macros from the format's supported_macros list. See docs/media-buy/creatives/universal-macros.md for available macros.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content (e.g., 'User just searched for running shoes', 'Podcast discussing weather patterns', 'Article about electric vehicles')"
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    "template_id": {
+      "type": "string",
+      "description": "Specific template ID for custom format rendering"
+    },
+    "brand_card": {
+      "$ref": "/schemas/v1/core/brand-card.json",
+      "description": "Brand information manifest providing context for preview generation. Used when creative manifest includes dynamic elements that need brand context."
+    },
+    "promoted_products": {
+      "$ref": "/schemas/v1/core/promoted-products.json",
+      "description": "Products or offerings being promoted in this creative. Provides product-specific context for dynamic creative previews."
+    },
+    "asset_filters": {
+      "type": "object",
+      "description": "Filters to select specific assets from the brand card's asset library for preview variants",
+      "properties": {
+        "tags": {
+          "type": "array",
+          "description": "Select assets matching any of these tags (e.g., ['holiday', 'winter'])",
+          "items": {
+            "type": "string"
+          }
+        },
+        "asset_types": {
+          "type": "array",
+          "description": "Limit to specific asset types",
+          "items": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "text"]
+          }
+        },
+        "exclude_tags": {
+          "type": "array",
+          "description": "Exclude assets with these tags",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["format_id", "creative_manifest"],
+  "additionalProperties": false
+}

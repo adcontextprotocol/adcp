@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/creative/asset-types/audio.json",
+  "title": "Audio Asset Type Schema",
+  "description": "Schema for audio file assets in AdCP creative formats",
+  "type": "object",
+  "properties": {
+    "asset_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Unique identifier for this asset within the format"
+    },
+    "asset_type": {
+      "type": "string",
+      "const": "audio"
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether this asset is mandatory for the format"
+    },
+    "duration_seconds": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 180,
+      "description": "Expected duration in seconds"
+    },
+    "min_duration_seconds": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "Minimum allowed duration in seconds"
+    },
+    "max_duration_seconds": {
+      "type": "number",
+      "maximum": 180,
+      "description": "Maximum allowed duration in seconds"
+    },
+    "acceptable_formats": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["mp3", "aac", "m4a", "wav", "ogg", "flac"]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "List of acceptable audio file formats"
+    },
+    "acceptable_codecs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["mp3", "aac", "opus", "vorbis", "flac", "pcm"]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "List of acceptable audio codecs"
+    },
+    "sample_rate_hz": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "enum": [22050, 44100, 48000, 96000]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Acceptable sample rates in Hz"
+    },
+    "bit_depth": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "enum": [8, 16, 24, 32]
+      },
+      "uniqueItems": true,
+      "description": "Acceptable bit depths"
+    },
+    "min_bitrate_kbps": {
+      "type": "number",
+      "minimum": 32,
+      "description": "Minimum bitrate in kilobits per second"
+    },
+    "max_bitrate_kbps": {
+      "type": "number",
+      "minimum": 32,
+      "maximum": 320,
+      "description": "Maximum bitrate in kilobits per second"
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["mono", "stereo", "5.1", "7.1"]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Acceptable audio channel configurations"
+    },
+    "max_file_size_mb": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 50,
+      "description": "Maximum file size in megabytes"
+    },
+    "normalization": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Whether audio normalization is required"
+        },
+        "standard": {
+          "type": "string",
+          "enum": ["LUFS", "RMS", "peak"],
+          "description": "Normalization standard to use"
+        },
+        "target_level": {
+          "type": "number",
+          "description": "Target normalization level (e.g., -16 LUFS)"
+        },
+        "true_peak_limit": {
+          "type": "number",
+          "description": "True peak limit in dBFS (e.g., -1.0)"
+        }
+      },
+      "description": "Audio normalization requirements"
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "voice_only",
+          "music_only",
+          "voice_and_music",
+          "background_music",
+          "sound_effects",
+          "silence_detection",
+          "fade_in",
+          "fade_out"
+        ]
+      },
+      "uniqueItems": true,
+      "description": "Audio content features and requirements"
+    },
+    "transcoding_allowed": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the publisher can transcode the audio to meet their technical requirements"
+    },
+    "companion_requirements": {
+      "type": "object",
+      "properties": {
+        "image_required": {
+          "type": "boolean",
+          "description": "Whether a companion image is required"
+        },
+        "image_dimensions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "width": { "type": "integer", "minimum": 1 },
+              "height": { "type": "integer", "minimum": 1 }
+            },
+            "required": ["width", "height"]
+          },
+          "description": "Acceptable companion image sizes"
+        }
+      },
+      "description": "Requirements for companion assets (e.g., album art, banner)"
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Additional requirements or restrictions"
+    }
+  },
+  "required": ["asset_id", "asset_type", "required"],
+  "additionalProperties": false
+}
