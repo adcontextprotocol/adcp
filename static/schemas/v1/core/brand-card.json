@@ -273,12 +273,29 @@
       }
     }
   },
-  "required": ["url"],
+  "anyOf": [
+    {
+      "required": ["url"]
+    },
+    {
+      "required": ["name"]
+    }
+  ],
   "additionalProperties": false,
   "examples": [
     {
       "url": "https://bobsfunburgers.com",
-      "name": "Bob's Fun Burgers"
+      "name": "Bob's Fun Burgers",
+      "description": "Example with both URL and name"
+    },
+    {
+      "name": "Great Value",
+      "description": "Example: white-label brand without dedicated URL",
+      "colors": {
+        "primary": "#0071CE",
+        "secondary": "#FFC220"
+      },
+      "tone": "affordable and trustworthy"
     },
     {
       "url": "https://acmecorp.com",

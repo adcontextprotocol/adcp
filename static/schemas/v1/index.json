@@ -71,10 +71,6 @@
           "$ref": "/schemas/v1/core/creative-assignment.json",
           "description": "Assignment of a creative asset to a package"
         },
-        "creative-library-item": {
-          "$ref": "/schemas/v1/core/creative-library-item.json",
-          "description": "Creative asset as it appears in the centralized library"
-        },
         "creative-manifest": {
           "$ref": "/schemas/v1/core/creative-manifest.json",
           "description": "Complete specification of a creative with all assets needed for rendering"
@@ -89,15 +85,19 @@
         },
         "brand-card": {
           "$ref": "/schemas/v1/core/brand-card.json",
-          "description": "Brand information manifest for creative generation context"
+          "description": "Standardized brand information manifest for creative generation and media buying"
         },
         "promoted-products": {
           "$ref": "/schemas/v1/core/promoted-products.json",
-          "description": "Product selection schema for creative campaigns"
+          "description": "Product or offering selection for campaigns with multiple selection methods"
         },
         "start-timing": {
           "$ref": "/schemas/v1/core/start-timing.json",
           "description": "Campaign start timing: 'asap' or ISO 8601 date-time"
+        },
+        "creative-manifest": {
+          "$ref": "/schemas/v1/core/creative-manifest.json",
+          "description": "Complete specification of a creative with all assets needed for rendering"
         }
       }
     },
@@ -258,16 +258,6 @@
           "response": {
             "$ref": "/schemas/v1/media-buy/build-creative-response.json",
             "description": "Response payload for build_creative task"
-          }
-        },
-        "manage-creative-library": {
-          "request": {
-            "$ref": "/schemas/v1/media-buy/manage-creative-library-request.json",
-            "description": "Request parameters for managing creative library assets"
-          },
-          "response": {
-            "$ref": "/schemas/v1/media-buy/manage-creative-library-response.json",
-            "description": "Response payload for manage_creative_library task"
           }
         },
         "preview-creative": {
