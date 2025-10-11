@@ -6,16 +6,23 @@ keywords: [brand card, brand manifest, creative generation, brand guidelines]
 
 # Brand Card
 
-The **Brand Card** is a standardized manifest format for sharing brand information across AdCP workflows. It enables low-friction creative generation by providing brand context that can be easily cached and reused across multiple requests.
+The **Brand Card** is a standardized manifest format that serves as the **namespace and identity** for brands in AdCP. It provides brand context, assets, and product catalogs that can be cached and reused across all media buys and creative generation requests.
 
 ## Overview
 
-Brand cards solve a key problem identified in creative agent workflows: how to efficiently provide brand context without requiring complex authorization flows or repeated data entry. The format supports both simple use cases (just a URL) and enterprise scenarios (comprehensive brand assets and guidelines).
+Brand cards solve a key problem: how to efficiently provide brand context without requiring complex authorization flows or repeated data entry. By making the brand card the central identifier for all advertising activity, AdCP enables:
+
+- **Natural grouping**: All media buys and creatives for a brand reference the same card
+- **Consistent identity**: Brand guidelines automatically travel with every request
+- **Better caching**: Fetch once, use everywhere
+- **Simplified queries**: "Show me all campaigns for this brand"
+- **Asset discovery**: Creative requests automatically access brand assets
 
 ### Key Benefits
 
-- **Minimal Friction**: Start with just a URL, expand as needed
-- **Cacheable**: Same brand card can be reused across requests
+- **Namespace**: Brand card serves as the primary identifier for all advertising activity
+- **Minimal Friction**: Start with just a name or URL, expand as needed
+- **Cacheable**: Same brand card reused across all requests
 - **Standardized**: Consistent format across all AdCP implementations
 - **Flexible**: Supports SMB to enterprise use cases
 - **AI-Optimized**: Structured for easy ingestion by creative agents
@@ -83,10 +90,9 @@ Large retailers can provide product feeds and asset libraries:
 {
   "url": "https://bigretail.com",
   "name": "BigRetail",
-  "product_feed": "https://bigretail.com/catalog.json",
-  "asset_library": {
-    "images": "https://assets.bigretail.com/api/images",
-    "videos": "https://assets.bigretail.com/api/videos"
+  "product_catalog": {
+    "feed_url": "https://bigretail.com/catalog.xml",
+    "feed_format": "google_merchant_center"
   },
   "disclaimers": [
     {
@@ -98,15 +104,39 @@ Large retailers can provide product feeds and asset libraries:
 }
 ```
 
+### Brands Without URLs
+
+Some brands don't have dedicated URLs (white-label products, local businesses, B2B brands). Brand cards support name-only identification:
+
+```json
+{
+  "name": "Great Value",
+  "colors": {
+    "primary": "#0071CE",
+    "secondary": "#FFC220"
+  },
+  "tone": "affordable and trustworthy"
+}
+```
+
+**Common cases for name-only brands:**
+- White-label/store brands (e.g., "Great Value", "Kirkland")
+- Local businesses without websites
+- B2B brands without public sites
+- Sub-brands under parent company URLs
+
 ## Brand Card Schema
 
 **Schema URL**: [/schemas/v1/core/brand-card.json](/schemas/v1/core/brand-card.json)
 
 ### Required Fields
 
+**Either `url` OR `name` is required** (both can be provided):
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `url` | string (uri) | Primary brand URL for context and asset discovery |
+| `name` | string | Brand or business name (required if no URL provided) |
 
 ### Optional Fields
 

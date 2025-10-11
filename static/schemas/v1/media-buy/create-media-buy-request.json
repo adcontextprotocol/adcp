@@ -22,13 +22,13 @@
         "$ref": "/schemas/v1/media-buy/package-request.json"
       }
     },
-    "promoted_offering": {
-      "type": "string",
-      "description": "Description of advertiser and what is being promoted"
-    },
     "brand_card": {
       "$ref": "/schemas/v1/core/brand-card.json",
-      "description": "Optional brand information manifest for creative generation and campaign context. Can be cached and reused across multiple requests."
+      "description": "Brand information manifest serving as the namespace and identity for this media buy. Provides brand context, assets, and product catalog. Can be cached and reused across multiple requests."
+    },
+    "promoted_offering": {
+      "type": "string",
+      "description": "DEPRECATED: Use brand_card with promoted_products instead. Legacy field for describing what is being promoted."
     },
     "promoted_products": {
       "$ref": "/schemas/v1/core/promoted-products.json",
@@ -88,6 +88,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["buyer_ref", "packages", "promoted_offering", "start_time", "end_time", "budget"],
+  "required": ["buyer_ref", "packages", "brand_card", "start_time", "end_time", "budget"],
   "additionalProperties": false
 }

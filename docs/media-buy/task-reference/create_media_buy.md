@@ -21,8 +21,9 @@ Create a media buy from selected packages. This task handles the complete workfl
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this media buy |
 | `packages` | Package[] | Yes | Array of package configurations (see Package Object below) |
-| `promoted_offering` | string | Yes | Description of advertiser and what is being promoted |
-| `brand_card` | BrandCard | No | Optional brand information manifest for creative generation and campaign context. Can be cached and reused across multiple requests. See [Brand Card](../../reference/brand-card) for details. |
+| `brand_card` | BrandCard | Yes | Brand information manifest serving as the namespace and identity for this media buy. Provides brand context, assets, and product catalog. Can be cached and reused across multiple requests. See [Brand Card](../../reference/brand-card) for details. |
+| `promoted_products` | PromotedProducts | No | Products or offerings being promoted in this media buy. Supports SKU selection from brand card's product catalog, or inline offerings for non-commerce campaigns. |
+| `promoted_offering` | string | No | **DEPRECATED**: Use `brand_card` with `promoted_products` instead. Legacy field for describing what is being promoted. |
 | `po_number` | string | No | Purchase order number for tracking |
 | `start_time` | string | Yes | Campaign start date/time in ISO 8601 format (UTC unless timezone specified) |
 | `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
