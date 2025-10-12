@@ -23,7 +23,7 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Array of format IDs that will be used for this package - must be supported by the product",
+      "description": "Array of format IDs that will be used for this package - must be supported by the product. If omitted, defaults to all formats supported by the product.",
       "items": {
         "type": "string",
         "description": "Format ID referencing a format from list_creative_formats"
@@ -31,9 +31,7 @@
       "minItems": 1
     },
     "budget": {
-      "type": "number",
-      "description": "Budget allocation for this package in the media buy's currency",
-      "minimum": 0
+      "$ref": "/schemas/v1/core/budget.json"
     },
     "pacing": {
       "$ref": "/schemas/v1/enums/pacing.json"
@@ -44,7 +42,7 @@
     },
     "bid_price": {
       "type": "number",
-      "description": "Bid price for auction-based pricing (required if the selected pricing_option has is_fixed: false)",
+      "description": "Bid price for auction-based CPM pricing (required if using cpm-auction-option)",
       "minimum": 0
     },
     "targeting_overlay": {
@@ -59,8 +57,8 @@
     }
   },
   "anyOf": [
-    {"required": ["buyer_ref", "product_id", "format_ids", "budget", "pricing_option_id"]},
-    {"required": ["buyer_ref", "products", "format_ids", "budget", "pricing_option_id"]}
+    {"required": ["buyer_ref", "product_id", "budget", "pricing_option_id"]},
+    {"required": ["buyer_ref", "products", "budget", "pricing_option_id"]}
   ],
   "additionalProperties": false
 }

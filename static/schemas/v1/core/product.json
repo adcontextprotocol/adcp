@@ -54,39 +54,9 @@
       },
       "minItems": 1
     },
-    "is_fixed_price": {
-      "type": "boolean",
-      "description": "DEPRECATED: Use pricing_options instead. Whether this product has fixed pricing (true) or uses auction (false)"
-    },
-    "cpm": {
-      "type": "number",
-      "description": "DEPRECATED: Use pricing_options instead. Cost per thousand impressions",
-      "minimum": 0
-    },
-    "currency": {
-      "type": "string",
-      "description": "ISO 4217 currency code (for products using legacy cpm field)",
-      "pattern": "^[A-Z]{3}$",
-      "examples": ["USD", "EUR", "GBP"]
-    },
-    "min_spend": {
-      "type": "number",
-      "description": "DEPRECATED: Use pricing_options[].min_spend_per_package instead. Minimum budget requirement",
-      "minimum": 0
-    },
     "estimated_exposures": {
       "type": "integer",
       "description": "Estimated exposures/impressions for guaranteed products",
-      "minimum": 0
-    },
-    "floor_cpm": {
-      "type": "number",
-      "description": "DEPRECATED: Use pricing_options with price_guidance instead. Minimum CPM for non-guaranteed products",
-      "minimum": 0
-    },
-    "recommended_cpm": {
-      "type": "number",
-      "description": "DEPRECATED: Use pricing_options with price_guidance instead. Recommended CPM to achieve exposures target",
       "minimum": 0
     },
     "measurement": {
@@ -127,26 +97,12 @@
       "description": "Expiration timestamp for custom products"
     }
   },
-  "allOf": [
+  "oneOf": [
     {
-      "oneOf": [
-        {
-          "required": ["properties"]
-        },
-        {
-          "required": ["property_tags"]
-        }
-      ]
+      "required": ["properties"]
     },
     {
-      "oneOf": [
-        {
-          "required": ["pricing_options"]
-        },
-        {
-          "required": ["is_fixed_price"]
-        }
-      ]
+      "required": ["property_tags"]
     }
   ],
   "required": [
@@ -155,7 +111,8 @@
     "description",
     "format_ids",
     "delivery_type",
-    "delivery_measurement"
+    "delivery_measurement",
+    "pricing_options"
   ],
   "additionalProperties": false
 }
