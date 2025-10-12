@@ -1,22 +1,22 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/v1/pricing-options/cpc-option.json",
-  "title": "CPC Pricing Option",
-  "description": "Cost Per Click fixed-rate pricing for performance-driven advertising campaigns",
+  "$id": "/schemas/v1/pricing-options/cpm-fixed-option.json",
+  "title": "CPM Fixed Rate Pricing Option",
+  "description": "Cost Per Mille (cost per 1,000 impressions) with guaranteed fixed rate - common for direct/guaranteed deals",
   "type": "object",
   "properties": {
     "pricing_option_id": {
       "type": "string",
-      "description": "Unique identifier for this pricing option within the product (e.g., 'cpc_usd_fixed')"
+      "description": "Unique identifier for this pricing option within the product (e.g., 'cpm_usd_guaranteed')"
     },
     "pricing_model": {
       "type": "string",
-      "const": "cpc",
-      "description": "Cost per click"
+      "const": "cpm",
+      "description": "Cost per 1,000 impressions"
     },
     "rate": {
       "type": "number",
-      "description": "Fixed CPC rate (cost per click)",
+      "description": "Fixed CPM rate (cost per 1,000 impressions)",
       "minimum": 0
     },
     "currency": {

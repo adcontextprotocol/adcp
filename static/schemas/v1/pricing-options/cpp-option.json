@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/pricing-options/cpp-option.json",
   "title": "CPP Pricing Option",
-  "description": "Cost Per Point (Gross Rating Point) pricing for TV and audio campaigns requiring demographic measurement",
+  "description": "Cost Per Point (Gross Rating Point) fixed-rate pricing for TV and audio campaigns requiring demographic measurement",
   "type": "object",
   "properties": {
     "pricing_option_id": {
@@ -16,7 +16,7 @@
     },
     "rate": {
       "type": "number",
-      "description": "CPP rate (cost per rating point)",
+      "description": "Fixed CPP rate (cost per rating point)",
       "minimum": 0
     },
     "currency": {
@@ -24,42 +24,6 @@
       "description": "ISO 4217 currency code",
       "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP", "JPY"]
-    },
-    "is_fixed": {
-      "type": "boolean",
-      "description": "Whether this is a fixed rate (true) or auction-based (false)"
-    },
-    "price_guidance": {
-      "type": "object",
-      "description": "Pricing guidance for auction-based pricing (required if is_fixed is false)",
-      "properties": {
-        "floor": {
-          "type": "number",
-          "description": "Minimum bid price - publisher will reject bids under this value",
-          "minimum": 0
-        },
-        "p25": {
-          "type": "number",
-          "description": "25th percentile winning price",
-          "minimum": 0
-        },
-        "p50": {
-          "type": "number",
-          "description": "Median winning price",
-          "minimum": 0
-        },
-        "p75": {
-          "type": "number",
-          "description": "75th percentile winning price",
-          "minimum": 0
-        },
-        "p90": {
-          "type": "number",
-          "description": "90th percentile winning price",
-          "minimum": 0
-        }
-      },
-      "required": ["floor"]
     },
     "parameters": {
       "type": "object",
@@ -85,24 +49,6 @@
       "minimum": 0
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "currency", "is_fixed", "parameters"],
-  "allOf": [
-    {
-      "if": {
-        "properties": { "is_fixed": { "const": true } }
-      },
-      "then": {
-        "required": ["rate"]
-      }
-    },
-    {
-      "if": {
-        "properties": { "is_fixed": { "const": false } }
-      },
-      "then": {
-        "required": ["price_guidance"]
-      }
-    }
-  ],
+  "required": ["pricing_option_id", "pricing_model", "rate", "currency", "parameters"],
   "additionalProperties": false
 }

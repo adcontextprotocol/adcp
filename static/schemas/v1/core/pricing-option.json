@@ -5,7 +5,10 @@
   "description": "A pricing model option offered by a publisher for a product. Each pricing model has its own schema with model-specific requirements.",
   "oneOf": [
     {
-      "$ref": "/schemas/v1/pricing-options/cpm-option.json"
+      "$ref": "/schemas/v1/pricing-options/cpm-fixed-option.json"
+    },
+    {
+      "$ref": "/schemas/v1/pricing-options/cpm-auction-option.json"
     },
     {
       "$ref": "/schemas/v1/pricing-options/cpc-option.json"

@@ -159,31 +159,35 @@
       }
     },
     "pricing-options": {
-      "description": "Individual pricing model schemas with model-specific validation",
+      "description": "Individual pricing model schemas with model-specific validation. CPM supports both fixed and auction pricing; all other models are fixed-rate only.",
       "schemas": {
-        "cpm-option": {
-          "$ref": "/schemas/v1/pricing-options/cpm-option.json",
-          "description": "Cost Per Mille (CPM) pricing option for display advertising"
+        "cpm-fixed-option": {
+          "$ref": "/schemas/v1/pricing-options/cpm-fixed-option.json",
+          "description": "Cost Per Mille (CPM) fixed-rate pricing for direct/guaranteed deals"
+        },
+        "cpm-auction-option": {
+          "$ref": "/schemas/v1/pricing-options/cpm-auction-option.json",
+          "description": "Cost Per Mille (CPM) auction-based pricing for programmatic/non-guaranteed inventory"
         },
         "cpc-option": {
           "$ref": "/schemas/v1/pricing-options/cpc-option.json",
-          "description": "Cost Per Click (CPC) pricing option for performance campaigns"
+          "description": "Cost Per Click (CPC) fixed-rate pricing for performance campaigns"
         },
         "cpcv-option": {
           "$ref": "/schemas/v1/pricing-options/cpcv-option.json",
-          "description": "Cost Per Completed View (CPCV) pricing option for video/audio"
+          "description": "Cost Per Completed View (CPCV) fixed-rate pricing for video/audio"
         },
         "cpv-option": {
           "$ref": "/schemas/v1/pricing-options/cpv-option.json",
-          "description": "Cost Per View (CPV) pricing option with threshold"
+          "description": "Cost Per View (CPV) fixed-rate pricing with threshold"
         },
         "cpp-option": {
           "$ref": "/schemas/v1/pricing-options/cpp-option.json",
-          "description": "Cost Per Point (CPP) pricing option for TV/audio with demographic measurement"
+          "description": "Cost Per Point (CPP) fixed-rate pricing for TV/audio with demographic measurement"
         },
         "flat-rate-option": {
           "$ref": "/schemas/v1/pricing-options/flat-rate-option.json",
-          "description": "Flat rate pricing option for DOOH and sponsorships"
+          "description": "Flat rate pricing for DOOH and sponsorships"
         }
       }
     },

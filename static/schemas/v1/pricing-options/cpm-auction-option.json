@@ -1,23 +1,18 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/v1/pricing-options/cpm-option.json",
-  "title": "CPM Pricing Option",
-  "description": "Cost Per Mille (cost per 1,000 impressions) pricing for display and banner advertising",
+  "$id": "/schemas/v1/pricing-options/cpm-auction-option.json",
+  "title": "CPM Auction Pricing Option",
+  "description": "Cost Per Mille (cost per 1,000 impressions) with auction-based pricing - common for programmatic/non-guaranteed inventory",
   "type": "object",
   "properties": {
     "pricing_option_id": {
       "type": "string",
-      "description": "Unique identifier for this pricing option within the product (e.g., 'cpm_usd_guaranteed')"
+      "description": "Unique identifier for this pricing option within the product (e.g., 'cpm_usd_auction')"
     },
     "pricing_model": {
       "type": "string",
       "const": "cpm",
       "description": "Cost per 1,000 impressions"
-    },
-    "rate": {
-      "type": "number",
-      "description": "CPM rate (cost per 1,000 impressions)",
-      "minimum": 0
     },
     "currency": {
       "type": "string",
@@ -25,13 +20,9 @@
       "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP", "JPY"]
     },
-    "is_fixed": {
-      "type": "boolean",
-      "description": "Whether this is a fixed rate (true) or auction-based (false)"
-    },
     "price_guidance": {
       "type": "object",
-      "description": "Pricing guidance for auction-based pricing (required if is_fixed is false)",
+      "description": "Pricing guidance for auction-based CPM bidding",
       "properties": {
         "floor": {
           "type": "number",
@@ -67,24 +58,6 @@
       "minimum": 0
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "currency", "is_fixed"],
-  "allOf": [
-    {
-      "if": {
-        "properties": { "is_fixed": { "const": true } }
-      },
-      "then": {
-        "required": ["rate"]
-      }
-    },
-    {
-      "if": {
-        "properties": { "is_fixed": { "const": false } }
-      },
-      "then": {
-        "required": ["price_guidance"]
-      }
-    }
-  ],
+  "required": ["pricing_option_id", "pricing_model", "price_guidance", "currency"],
   "additionalProperties": false
 }
