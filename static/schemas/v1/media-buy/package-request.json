@@ -31,7 +31,9 @@
       "minItems": 1
     },
     "budget": {
-      "$ref": "/schemas/v1/core/budget.json"
+      "type": "number",
+      "description": "Budget allocation for this package in the media buy's currency",
+      "minimum": 0
     },
     "pacing": {
       "$ref": "/schemas/v1/enums/pacing.json"
