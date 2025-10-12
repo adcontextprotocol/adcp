@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/media-buy/sync-creatives-approval-request.json",
+  "title": "Sync Creatives Approval Request",
+  "description": "Approve or refine generative creatives after reviewing previews. Uses context_id from initial sync_creatives response to continue the conversation.",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "AdCP schema version for this request",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.6.0"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Context ID from the initial sync_creatives response that returned previews"
+    },
+    "approve": {
+      "type": "array",
+      "description": "Array of creative_ids to approve and save to library",
+      "items": {
+        "type": "string"
+      }
+    },
+    "refine": {
+      "type": "array",
+      "description": "Array of creatives to regenerate with new instructions",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Creative ID to refine"
+          },
+          "assets": {
+            "type": "object",
+            "description": "Updated assets (typically just generation_prompt with new message)",
+            "patternProperties": {
+              "^[a-zA-Z0-9_-]+$": {
+                "type": "object",
+                "properties": {
+                  "asset_type": {
+                    "type": "string",
+                    "enum": ["text", "brand_card"]
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "New message/prompt for regeneration"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Updated brand card URL"
+                  }
+                },
+                "required": ["asset_type"]
+              }
+            }
+          },
+          "inputs": {
+            "type": "array",
+            "description": "Optional: New preview contexts to test with refined creative",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string"},
+                "macros": {
+                  "type": "object",
+                  "additionalProperties": {"type": "string"}
+                },
+                "context_description": {"type": "string"}
+              },
+              "required": ["name"]
+            }
+          }
+        },
+        "required": ["creative_id", "assets"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["context_id"],
+  "anyOf": [
+    {"required": ["approve"]},
+    {"required": ["refine"]}
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Approve one creative, refine another",
+      "data": {
+        "context_id": "ctx_abc123",
+        "approve": ["banner_001"],
+        "refine": [
+          {
+            "creative_id": "banner_002",
+            "assets": {
+              "generation_prompt": {
+                "asset_type": "text",
+                "content": "Make it more vibrant with a stronger CTA"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "description": "Approve all creatives",
+      "data": {
+        "context_id": "ctx_abc123",
+        "approve": ["banner_001", "banner_002", "banner_003"]
+      }
+    }
+  ]
+}

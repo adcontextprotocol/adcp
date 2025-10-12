@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/creative-asset.json",
   "title": "Creative Asset",
-  "description": "Creative asset for upload to library - supports both hosted assets and third-party snippets",
+  "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party snippets",
   "type": "object",
   "properties": {
     "creative_id": {
@@ -13,42 +13,99 @@
       "type": "string",
       "description": "Human-readable creative name"
     },
-    "format": {
+    "format_id": {
       "type": "string",
-      "description": "Creative format type (e.g., video, audio, display)"
+      "description": "Format identifier (e.g., display_300x250_static, display_300x250_generative)"
     },
-    "media_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "URL of the creative file (for hosted assets)"
+    "assets": {
+      "type": "object",
+      "description": "Assets required by the format, keyed by asset_role",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "object",
+          "description": "Asset definition",
+          "properties": {
+            "asset_type": {
+              "type": "string",
+              "enum": ["image", "video", "audio", "text", "html", "css", "javascript", "brand_card", "url"],
+              "description": "Type of this asset"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL for image/video/audio assets or brand_card URL"
+            },
+            "content": {
+              "type": "string",
+              "description": "Content for text/html/css/javascript assets"
+            },
+            "width": {
+              "type": "integer",
+              "description": "Width in pixels (for images/video)",
+              "minimum": 1
+            },
+            "height": {
+              "type": "integer",
+              "description": "Height in pixels (for images/video)",
+              "minimum": 1
+            },
+            "duration_ms": {
+              "type": "integer",
+              "description": "Duration in milliseconds (for video/audio)",
+              "minimum": 0
+            },
+            "format": {
+              "type": "string",
+              "description": "File format (jpg, png, mp4, etc.)"
+            },
+            "colors": {
+              "type": "object",
+              "description": "Brand colors (for brand_card asset type)",
+              "properties": {
+                "primary": {"type": "string"},
+                "secondary": {"type": "string"},
+                "accent": {"type": "string"}
+              }
+            },
+            "fonts": {
+              "type": "array",
+              "description": "Brand fonts (for brand_card asset type)",
+              "items": {"type": "string"}
+            },
+            "tone": {
+              "type": "string",
+              "description": "Brand tone/voice (for brand_card asset type)"
+            }
+          },
+          "required": ["asset_type"],
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
     },
-    "snippet": {
-      "type": "string",
-      "description": "Third-party tag, VAST XML, or code snippet (for third-party served assets)"
-    },
-    "snippet_type": {
-      "$ref": "/schemas/v1/enums/snippet-type.json",
-      "description": "Type of snippet content"
-    },
-    "click_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "Landing page URL for the creative"
-    },
-    "duration": {
-      "type": "number",
-      "description": "Duration in milliseconds (for video/audio)",
-      "minimum": 0
-    },
-    "width": {
-      "type": "number",
-      "description": "Width in pixels (for video/display)",
-      "minimum": 0
-    },
-    "height": {
-      "type": "number",
-      "description": "Height in pixels (for video/display)",
-      "minimum": 0
+    "inputs": {
+      "type": "array",
+      "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this preview variant"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to apply for this preview",
+            "additionalProperties": {"type": "string"}
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content"
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
     },
     "tags": {
       "type": "array",
@@ -56,34 +113,8 @@
       "items": {
         "type": "string"
       }
-    },
-    "assets": {
-      "type": "array",
-      "description": "Sub-assets for multi-asset formats like carousels",
-      "items": {
-        "$ref": "/schemas/v1/core/sub-asset.json"
-      }
     }
   },
-  "required": ["creative_id", "name", "format"],
-  "oneOf": [
-    {
-      "description": "Hosted asset - requires media_url",
-      "required": ["media_url"],
-      "not": {
-        "anyOf": [
-          { "required": ["snippet"] },
-          { "required": ["snippet_type"] }
-        ]
-      }
-    },
-    {
-      "description": "Third-party asset - requires snippet and snippet_type",
-      "required": ["snippet", "snippet_type"],
-      "not": {
-        "required": ["media_url"]
-      }
-    }
-  ],
+  "required": ["creative_id", "name", "format_id", "assets"],
   "additionalProperties": false
 }

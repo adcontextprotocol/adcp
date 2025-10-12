@@ -147,6 +147,53 @@
               "required": ["adaptation_id", "format_id", "name", "description"],
               "additionalProperties": false
             }
+          },
+          "previews": {
+            "type": "array",
+            "description": "Preview URLs for generative creatives - one preview per input provided in request",
+            "items": {
+              "type": "object",
+              "properties": {
+                "preview_url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL to HTML page that renders this preview variant"
+                },
+                "input": {
+                  "type": "object",
+                  "description": "Echo of input parameters used to generate this preview",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Name of this preview variant"
+                    },
+                    "macros": {
+                      "type": "object",
+                      "description": "Macro values applied",
+                      "additionalProperties": {"type": "string"}
+                    },
+                    "context_description": {
+                      "type": "string",
+                      "description": "Context description applied"
+                    }
+                  },
+                  "required": ["name"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["preview_url", "input"],
+              "additionalProperties": false
+            }
+          },
+          "interactive_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional URL to interactive testing page with controls to switch between preview variants"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when preview links expire"
           }
         },
         "required": ["creative_id", "action"],
