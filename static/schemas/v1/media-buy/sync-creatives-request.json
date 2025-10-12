@@ -63,15 +63,25 @@
   "additionalProperties": false,
   "examples": [
     {
-      "description": "Full sync with new and updated creatives",
+      "description": "Full sync with hosted video creative",
       "data": {
         "creatives": [
           {
             "creative_id": "hero_video_30s",
             "name": "Brand Hero Video 30s",
-            "format": "video_30s_vast",
-            "snippet": "https://vast.example.com/video/123",
-            "snippet_type": "vast_url",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_standard_30s"
+            },
+            "assets": {
+              "video": {
+                "asset_type": "video",
+                "url": "https://cdn.example.com/hero-video.mp4",
+                "width": 1920,
+                "height": 1080,
+                "duration_ms": 30000
+              }
+            },
             "tags": ["q1_2024", "video"]
           }
         ],
@@ -81,29 +91,33 @@
       }
     },
     {
-      "description": "Patch update - only update click URLs",
+      "description": "Generative creative with approval",
       "data": {
         "creatives": [
           {
-            "creative_id": "hero_video_30s",
-            "click_url": "https://example.com/new-landing"
+            "creative_id": "holiday_hero",
+            "name": "Holiday Campaign Hero",
+            "format_id": {
+              "agent_url": "https://publisher.com/.well-known/adcp/sales",
+              "id": "premium_bespoke_display"
+            },
+            "assets": {
+              "promoted_offerings": {
+                "asset_type": "promoted_offerings",
+                "url": "https://retailer.com",
+                "colors": {
+                  "primary": "#C41E3A",
+                  "secondary": "#165B33"
+                }
+              },
+              "generation_prompt": {
+                "asset_type": "text",
+                "content": "Create a warm, festive holiday campaign featuring winter products"
+              }
+            },
+            "tags": ["holiday", "q4_2024"]
           }
-        ],
-        "patch": true
-      }
-    },
-    {
-      "description": "Dry run to preview changes",
-      "data": {
-        "creatives": [
-          {
-            "creative_id": "new_banner",
-            "name": "Test Banner",
-            "format": "display_300x250",
-            "media_url": "https://cdn.example.com/banner.jpg"
-          }
-        ],
-        "dry_run": true
+        ]
       }
     }
   ]

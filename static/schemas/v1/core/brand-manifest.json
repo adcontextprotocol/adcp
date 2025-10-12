@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/v1/core/brand-card.json",
-  "title": "Brand Card",
+  "$id": "/schemas/v1/core/brand-manifest.json",
+  "title": "Brand Manifest",
   "description": "Standardized brand information manifest for creative generation and media buying. Enables low-friction creative workflows by providing brand context that can be easily cached and shared across requests.",
   "type": "object",
   "properties": {
@@ -259,12 +259,12 @@
         "created_date": {
           "type": "string",
           "format": "date-time",
-          "description": "When this brand card was created"
+          "description": "When this brand manifest was created"
         },
         "updated_date": {
           "type": "string",
           "format": "date-time",
-          "description": "When this brand card was last updated"
+          "description": "When this brand manifest was last updated"
         },
         "version": {
           "type": "string",
@@ -284,23 +284,29 @@
   "additionalProperties": false,
   "examples": [
     {
-      "url": "https://bobsfunburgers.com",
-      "name": "Bob's Fun Burgers",
-      "description": "Example with both URL and name"
+      "description": "Example with both URL and name",
+      "data": {
+        "url": "https://bobsfunburgers.com",
+        "name": "Bob's Fun Burgers"
+      }
     },
     {
-      "name": "Great Value",
       "description": "Example: white-label brand without dedicated URL",
-      "colors": {
-        "primary": "#0071CE",
-        "secondary": "#FFC220"
-      },
-      "tone": "affordable and trustworthy"
+      "data": {
+        "name": "Great Value",
+        "colors": {
+          "primary": "#0071CE",
+          "secondary": "#FFC220"
+        },
+        "tone": "affordable and trustworthy"
+      }
     },
     {
-      "url": "https://acmecorp.com",
-      "name": "ACME Corporation",
-      "logos": [
+      "description": "Full brand manifest with all fields",
+      "data": {
+        "url": "https://acmecorp.com",
+        "name": "ACME Corporation",
+        "logos": [
         {
           "url": "https://cdn.acmecorp.com/logo-square-dark.png",
           "tags": ["dark", "square"],
@@ -366,6 +372,7 @@
       ],
       "industry": "technology",
       "target_audience": "business decision-makers aged 35-55"
+      }
     }
   ]
 }

@@ -82,6 +82,37 @@ The creative agent at that URL is the definitive source for:
 
 Buyers query the agent_url for full format details, validation, and preview capabilities.
 
+## Referencing Formats
+
+When referencing a format in API requests (e.g., in `sync_creatives`, `build_creative`), use a structured format ID object that combines the agent URL and format identifier:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  }
+}
+```
+
+**Why structured objects?**
+- **No parsing needed**: Components are explicit
+- **Unambiguous**: Clear separation of namespace and identifier
+- **Extensible**: Can add version or other metadata later
+- **Validation-friendly**: Easy to validate with JSON Schema
+
+**When formats are referenced as strings:**
+In some contexts like product responses, format IDs appear as simple strings for compactness:
+
+```json
+{
+  "product_id": "ctv_premium",
+  "format_ids": ["video_30s_hosted", "video_15s_hosted"]
+}
+```
+
+These strings are shorthand references. To get the full format specification, use `list_creative_formats` which returns the complete format objects with `agent_url` and all details.
+
 ## Format Structure
 
 Formats are JSON objects with the following key fields:

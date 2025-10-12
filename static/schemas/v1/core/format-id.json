@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/format-id.json",
+  "title": "Format ID",
+  "description": "Structured format identifier with agent URL and format name",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Format identifier within the agent's namespace (e.g., 'display_300x250', 'video_standard_30s')"
+    }
+  },
+  "required": ["agent_url", "id"],
+  "additionalProperties": false
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/assets/text-asset.json",
+  "title": "Text Asset",
+  "description": "Text content asset",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "text"
+    },
+    "content": {
+      "type": "string",
+      "description": "Text content"
+    },
+    "max_length": {
+      "type": "integer",
+      "description": "Maximum character length constraint",
+      "minimum": 1
+    },
+    "language": {
+      "type": "string",
+      "description": "Language code (e.g., 'en', 'es', 'fr')"
+    }
+  },
+  "required": ["asset_type", "content"],
+  "additionalProperties": false
+}
