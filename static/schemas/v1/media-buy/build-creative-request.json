@@ -15,14 +15,13 @@
       "type": "string",
       "description": "Natural language description of the creative brief or requirements"
     },
-    "format_source": {
+    "source_format_id": {
       "type": "string",
-      "description": "Source URL for format lookup (sales agent URL) or null for standard AdCP formats",
-      "format": "uri"
+      "description": "Format ID of existing creative to transform (optional - omit when creating from scratch). Supports namespaced IDs like 'display_300x250' (standard) or 'https://publisher.com/.well-known/adcp/sales:custom_format' (custom)"
     },
-    "format_id": {
-      "type": "string", 
-      "description": "Format identifier to look up from the format source"
+    "target_format_id": {
+      "type": "string",
+      "description": "Format ID to generate. Supports namespaced IDs like 'display_300x250' (standard) or 'https://publisher.com/.well-known/adcp/sales:custom_format' (custom). The format definition specifies whether output is manifest-based or code-based."
     },
     "context_id": {
       "type": "string",
@@ -34,12 +33,6 @@
       "items": {
         "$ref": "/schemas/v1/core/creative-asset.json"
       }
-    },
-    "output_mode": {
-      "type": "string",
-      "enum": ["manifest", "code"],
-      "default": "manifest",
-      "description": "Output format - 'manifest' for asset-based creatives, 'code' for executable creative code"
     },
     "brand_manifest": {
       "$ref": "/schemas/v1/core/brand-manifest.json",
@@ -79,6 +72,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["message", "format_id"],
+  "required": ["message", "target_format_id"],
   "additionalProperties": false
 }
