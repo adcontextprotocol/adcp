@@ -14,8 +14,8 @@
       "description": "Human-readable creative name"
     },
     "format_id": {
-      "type": "string",
-      "description": "Format identifier (e.g., display_300x250_static, display_300x250_generative)"
+      "$ref": "/schemas/v1/core/format-id.json",
+      "description": "Format identifier specifying which format this creative conforms to"
     },
     "assets": {
       "type": "object",

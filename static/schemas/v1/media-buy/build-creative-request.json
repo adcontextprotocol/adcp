@@ -16,12 +16,12 @@
       "description": "Natural language description of the creative brief or requirements"
     },
     "source_format_id": {
-      "type": "string",
-      "description": "Format ID of existing creative to transform (optional - omit when creating from scratch). Uses {agent_url:format_id} pattern, e.g., 'https://creatives.adcontextprotocol.org:display_300x250' or 'https://publisher.com/.well-known/adcp/sales:custom_format'"
+      "$ref": "/schemas/v1/core/format-id.json",
+      "description": "Format ID of existing creative to transform (optional - omit when creating from scratch)"
     },
     "target_format_id": {
-      "type": "string",
-      "description": "Format ID to generate. Uses {agent_url:format_id} pattern, e.g., 'https://creatives.adcontextprotocol.org:display_native' or 'https://publisher.com/.well-known/adcp/sales:custom_format'. The format definition specifies whether output is manifest-based or code-based."
+      "$ref": "/schemas/v1/core/format-id.json",
+      "description": "Format ID to generate. The format definition specifies whether output is manifest-based or code-based."
     },
     "context_id": {
       "type": "string",
