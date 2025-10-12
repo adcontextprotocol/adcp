@@ -63,7 +63,6 @@ To test multiple scenarios, provide an `inputs` array - you'll get one preview p
 | `creative_manifest` | object | Yes | Complete creative manifest with all required assets (brand_manifest should be included in the manifest for dynamic creatives) |
 | `inputs` | array | No | Array of input sets for generating multiple preview variants |
 | `template_id` | string | No | Specific template for custom format rendering |
-| `asset_selectors` | object | No | Selectors to choose specific assets from the creative manifest (tags, asset_types, exclude_tags) |
 
 ### Creative Manifest Structure
 
@@ -522,9 +521,9 @@ Response:
 
 Each `preview_url` returns an HTML page with an embedded video player showing the geo-specific variant.
 
-### Example 4: Using Brand Manifest for Dynamic Previews
+### Example 4: Dynamic Creative with Template Variables
 
-Preview creative variants using brand context and product information:
+Preview a dynamic creative that uses template variables for personalization:
 
 ```json
 {
@@ -534,11 +533,15 @@ Preview creative variants using brand context and product information:
     "assets": {
       "headline": {
         "asset_type": "text",
-        "content": "{PRODUCT_NAME} - {TAGLINE}"
+        "content": "Discover {PRODUCT_NAME}"
+      },
+      "description": {
+        "asset_type": "text",
+        "content": "{PRODUCT_DESCRIPTION}"
       },
       "main_image": {
         "asset_type": "image",
-        "url": "{BRAND_ASSET_URL}"
+        "url": "https://cdn.acmecorp.com/hero.jpg"
       },
       "cta": {
         "asset_type": "text",
@@ -546,37 +549,20 @@ Preview creative variants using brand context and product information:
       }
     }
   },
-  "brand_manifest": {
-    "url": "https://acmecorp.com",
-    "assets": [
-      {
-        "asset_id": "hero_holiday",
-        "asset_type": "image",
-        "url": "https://cdn.acmecorp.com/holiday-hero.jpg",
-        "tags": ["holiday", "winter", "hero"]
-      }
-    ]
-  },
-  "promoted_products": {
-    "skus": ["WIDGET-PRO-2024"]
-  },
-  "asset_filters": {
-    "tags": ["holiday", "winter"]
-  },
   "inputs": [
     {
-      "name": "Holiday Desktop",
+      "name": "Product A",
       "macros": {
-        "DEVICE_TYPE": "desktop"
-      },
-      "context_description": "Holiday shopping season, premium product showcase"
+        "PRODUCT_NAME": "Widget Pro 2024",
+        "PRODUCT_DESCRIPTION": "Premium quality you can trust"
+      }
     },
     {
-      "name": "Holiday Mobile",
+      "name": "Product B",
       "macros": {
-        "DEVICE_TYPE": "mobile"
-      },
-      "context_description": "Mobile browsing during holiday sales"
+        "PRODUCT_NAME": "Widget Lite",
+        "PRODUCT_DESCRIPTION": "Affordable excellence for everyone"
+      }
     }
   ]
 }
@@ -589,33 +575,27 @@ Response:
   "adcp_version": "1.0.0",
   "previews": [
     {
-      "preview_url": "https://creative-agent.example.com/preview/brand123/desktop",
+      "preview_url": "https://creative-agent.example.com/preview/dynamic123/a",
       "input": {
-        "name": "Holiday Desktop",
+        "name": "Product A",
         "macros": {
-          "DEVICE_TYPE": "desktop",
           "PRODUCT_NAME": "Widget Pro 2024",
-          "TAGLINE": "Premium Quality You Can Trust",
-          "BRAND_ASSET_URL": "https://cdn.acmecorp.com/holiday-hero.jpg"
-        },
-        "context_description": "Holiday shopping season, premium product showcase"
+          "PRODUCT_DESCRIPTION": "Premium quality you can trust"
+        }
       }
     },
     {
-      "preview_url": "https://creative-agent.example.com/preview/brand123/mobile",
+      "preview_url": "https://creative-agent.example.com/preview/dynamic123/b",
       "input": {
-        "name": "Holiday Mobile",
+        "name": "Product B",
         "macros": {
-          "DEVICE_TYPE": "mobile",
-          "PRODUCT_NAME": "Widget Pro 2024",
-          "TAGLINE": "Premium Quality You Can Trust",
-          "BRAND_ASSET_URL": "https://cdn.acmecorp.com/holiday-hero.jpg"
-        },
-        "context_description": "Mobile browsing during holiday sales"
+          "PRODUCT_NAME": "Widget Lite",
+          "PRODUCT_DESCRIPTION": "Affordable excellence for everyone"
+        }
       }
     }
   ],
-  "interactive_url": "https://creative-agent.example.com/preview/brand123/interactive",
+  "interactive_url": "https://creative-agent.example.com/preview/dynamic123/interactive",
   "expires_at": "2025-02-15T18:00:00Z"
 }
 ```
