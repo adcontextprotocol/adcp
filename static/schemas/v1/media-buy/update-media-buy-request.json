@@ -32,7 +32,9 @@
       "description": "New end date/time in ISO 8601 format"
     },
     "budget": {
-      "$ref": "/schemas/v1/core/budget.json"
+      "type": "number",
+      "description": "Updated total budget for this media buy. Currency is determined by the pricing_option_id selected in each package.",
+      "minimum": 0
     },
     "packages": {
       "type": "array",
@@ -49,7 +51,9 @@
             "description": "Buyer's reference for the package to update"
           },
           "budget": {
-            "$ref": "/schemas/v1/core/budget.json"
+            "type": "number",
+            "description": "Updated budget allocation for this package in the currency specified by the pricing option",
+            "minimum": 0
           },
           "active": {
             "type": "boolean",

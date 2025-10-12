@@ -276,8 +276,7 @@ async function runTests() {
       'media-buy.json': ['media_buy_id', 'status', 'promoted_offering', 'total_budget', 'packages'],
       'package.json': ['package_id', 'status'],
       'creative-asset.json': ['creative_id', 'name', 'format'],
-      'error.json': ['code', 'message'],
-      'budget.json': ['total', 'currency']  // Budget is always a monetary amount
+      'error.json': ['code', 'message']
     };
 
     for (const [schemaPath, schema] of coreSchemas) {

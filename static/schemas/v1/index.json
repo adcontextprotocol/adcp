@@ -35,10 +35,6 @@
           "$ref": "/schemas/v1/core/targeting.json",
           "description": "Audience targeting criteria"
         },
-        "budget": {
-          "$ref": "/schemas/v1/core/budget.json",
-          "description": "Budget configuration for a media buy or package"
-        },
         "frequency-cap": {
           "$ref": "/schemas/v1/core/frequency-cap.json",
           "description": "Frequency capping settings"

@@ -21,7 +21,6 @@ schemas/
 │   │   ├── package.json
 │   │   ├── creative-asset.json
 │   │   ├── targeting.json
-│   │   ├── budget.json
 │   │   ├── frequency-cap.json
 │   │   ├── format.json
 │   │   ├── measurement.json
