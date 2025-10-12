@@ -94,7 +94,7 @@
     },
     "delivery_measurement": {
       "type": "object",
-      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy.",
+      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy. REQUIRED for all products.",
       "properties": {
         "provider": {
           "type": "string",
@@ -104,7 +104,8 @@
           "type": "string",
           "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly')"
         }
-      }
+      },
+      "required": ["provider"]
     },
     "reporting_capabilities": {
       "$ref": "/schemas/v1/core/reporting-capabilities.json"
@@ -153,7 +154,8 @@
     "name",
     "description",
     "format_ids",
-    "delivery_type"
+    "delivery_type",
+    "delivery_measurement"
   ],
   "additionalProperties": false
 }

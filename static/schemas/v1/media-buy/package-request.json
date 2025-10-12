@@ -40,9 +40,9 @@
         "pacing": {
           "$ref": "/schemas/v1/enums/pacing.json"
         },
-        "pricing_model": {
-          "$ref": "/schemas/v1/enums/pricing-model.json",
-          "description": "Selected pricing model from the product's available pricing_options (must be available in the media buy's currency)"
+        "pricing_option_id": {
+          "type": "string",
+          "description": "ID of the selected pricing option from the product's pricing_options array"
         },
         "bid_price": {
           "type": "number",
@@ -61,8 +61,8 @@
         }
       },
       "anyOf": [
-        {"required": ["buyer_ref", "product_id", "format_ids", "budget", "pricing_model"]},
-        {"required": ["buyer_ref", "products", "format_ids", "budget", "pricing_model"]}
+        {"required": ["buyer_ref", "product_id", "format_ids", "budget", "pricing_option_id"]},
+        {"required": ["buyer_ref", "products", "format_ids", "budget", "pricing_option_id"]}
       ],
       "not": {
         "required": ["format_selection"]
@@ -101,9 +101,9 @@
         "pacing": {
           "$ref": "/schemas/v1/enums/pacing.json"
         },
-        "pricing_model": {
-          "$ref": "/schemas/v1/enums/pricing-model.json",
-          "description": "Selected pricing model from the product's available pricing_options (must be available in the media buy's currency)"
+        "pricing_option_id": {
+          "type": "string",
+          "description": "ID of the selected pricing option from the product's pricing_options array"
         },
         "bid_price": {
           "type": "number",
@@ -122,8 +122,8 @@
         }
       },
       "anyOf": [
-        {"required": ["buyer_ref", "product_id", "format_selection", "budget", "pricing_model"]},
-        {"required": ["buyer_ref", "products", "format_selection", "budget", "pricing_model"]}
+        {"required": ["buyer_ref", "product_id", "format_selection", "budget", "pricing_option_id"]},
+        {"required": ["buyer_ref", "products", "format_selection", "budget", "pricing_option_id"]}
       ],
       "not": {
         "required": ["format_ids"]

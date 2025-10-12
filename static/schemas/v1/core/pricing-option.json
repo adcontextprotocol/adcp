@@ -5,6 +5,10 @@
   "description": "A pricing model option offered by a publisher for a product",
   "type": "object",
   "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product (e.g., 'cpm_usd_guaranteed', 'cpcv_usd_auction')"
+    },
     "pricing_model": {
       "$ref": "/schemas/v1/enums/pricing-model.json"
     },
@@ -61,7 +65,8 @@
       "properties": {
         "demographic": {
           "type": "string",
-          "description": "Target demographic for CPP pricing (e.g., 'A18-49', 'W25-54')"
+          "pattern": "^[PMWAC][0-9]{2}(-[0-9]{2}|\\+)$",
+          "description": "Target demographic for CPP pricing in Nielsen format: P/M/W/A/C + age range. Examples: P18-49 (Persons 18-49), M25-54 (Men 25-54), W35+ (Women 35+), A18-34 (Adults 18-34), C2-11 (Children 2-11)"
         },
         "min_points": {
           "type": "number",
@@ -69,10 +74,27 @@
           "minimum": 0
         },
         "view_threshold": {
-          "type": "number",
-          "description": "Percentage of video/audio that must be viewed for CPV pricing (0.0 to 1.0)",
-          "minimum": 0,
-          "maximum": 1
+          "oneOf": [
+            {
+              "type": "number",
+              "description": "Percentage completion threshold for CPV pricing (0.0 to 1.0, e.g., 0.5 = 50% completion)",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "object",
+              "description": "Time-based view threshold for CPV pricing",
+              "properties": {
+                "duration_seconds": {
+                  "type": "integer",
+                  "description": "Seconds of viewing required (e.g., 30 for YouTube-style '30 seconds = view')",
+                  "minimum": 1
+                }
+              },
+              "required": ["duration_seconds"],
+              "additionalProperties": false
+            }
+          ]
         },
         "action_type": {
           "type": "string",
@@ -125,7 +147,7 @@
       "minimum": 0
     }
   },
-  "required": ["pricing_model", "currency", "is_fixed"],
+  "required": ["pricing_option_id", "pricing_model", "currency", "is_fixed"],
   "allOf": [
     {
       "if": {

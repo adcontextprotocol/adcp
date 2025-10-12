@@ -49,6 +49,7 @@ Publishers declare which pricing models they support for each product. Buyers se
 Each pricing option includes:
 ```json
 {
+  "pricing_option_id": "cpcv_usd_guaranteed",
   "pricing_model": "cpcv",
   "rate": 0.15,
   "currency": "USD",
@@ -56,13 +57,14 @@ Each pricing option includes:
   "parameters": {
     "view_threshold": 1.0
   },
-  "min_spend": 5000
+  "min_spend_per_package": 5000
 }
 ```
 
 For auction-based pricing (`is_fixed: false`), include `price_guidance`:
 ```json
 {
+  "pricing_option_id": "cpm_usd_auction",
   "pricing_model": "cpm",
   "currency": "USD",
   "is_fixed": false,
@@ -75,6 +77,25 @@ For auction-based pricing (`is_fixed: false`), include `price_guidance`:
   }
 }
 ```
+
+#### Delivery Measurement (Required)
+
+All products MUST declare their measurement provider:
+```json
+{
+  "delivery_measurement": {
+    "provider": "Google Ad Manager with IAS viewability verification",
+    "notes": "MRC-accredited viewability. 50% in-view for 1s display / 2s video."
+  }
+}
+```
+
+Common provider examples:
+- `"Google Ad Manager with IAS viewability"`
+- `"Nielsen DAR for P18-49 demographic measurement"`
+- `"Geopath DOOH traffic counts updated monthly"`
+- `"Comscore vCE for video completion tracking"`
+- `"Self-reported impressions from proprietary ad server"`
 
 ### Measurement Object
 
@@ -117,31 +138,38 @@ A server can offer a general catalog, but it can also return:
   "delivery_type": "guaranteed",
   "pricing_options": [
     {
+      "pricing_option_id": "cpm_usd_guaranteed",
       "pricing_model": "cpm",
       "rate": 45.00,
       "currency": "USD",
       "is_fixed": true,
-      "min_spend": 10000
+      "min_spend_per_package": 10000
     },
     {
+      "pricing_option_id": "cpcv_usd_guaranteed",
       "pricing_model": "cpcv",
       "rate": 0.18,
       "currency": "USD",
       "is_fixed": true,
-      "min_spend": 10000
+      "min_spend_per_package": 10000
     },
     {
+      "pricing_option_id": "cpp_usd_p18-49",
       "pricing_model": "cpp",
       "rate": 250.00,
       "currency": "USD",
       "is_fixed": true,
       "parameters": {
-        "demographic": "A18-49",
+        "demographic": "P18-49",
         "min_points": 50
       },
-      "min_spend": 12500
+      "min_spend_per_package": 12500
     }
-  ]
+  ],
+  "delivery_measurement": {
+    "provider": "Nielsen DAR for P18-49 demographic measurement",
+    "notes": "Panel-based measurement for GRP delivery. Impressions measured via Comscore vCE."
+  }
 }
 ```
 
@@ -155,6 +183,7 @@ A server can offer a general catalog, but it can also return:
   "delivery_type": "non_guaranteed",
   "pricing_options": [
     {
+      "pricing_option_id": "cpm_usd_auction",
       "pricing_model": "cpm",
       "currency": "USD",
       "is_fixed": false,
@@ -165,6 +194,7 @@ A server can offer a general catalog, but it can also return:
       }
     },
     {
+      "pricing_option_id": "cpc_usd_auction",
       "pricing_model": "cpc",
       "currency": "USD",
       "is_fixed": false,
@@ -175,6 +205,10 @@ A server can offer a general catalog, but it can also return:
       }
     }
   ],
+  "delivery_measurement": {
+    "provider": "Google Ad Manager with IAS viewability",
+    "notes": "MRC-accredited viewability. 50% in-view for 1s display."
+  },
   "is_custom": true,
   "expires_at": "2025-02-15T00:00:00Z"
 }
@@ -194,24 +228,18 @@ A server can offer a general catalog, but it can also return:
   "delivery_type": "guaranteed",
   "pricing_options": [
     {
+      "pricing_option_id": "cpm_usd_guaranteed",
       "pricing_model": "cpm",
       "rate": 13.50,
       "currency": "USD",
       "is_fixed": true,
-      "min_spend": 10000
-    },
-    {
-      "pricing_model": "cpa",
-      "rate": 15.00,
-      "currency": "USD",
-      "is_fixed": true,
-      "parameters": {
-        "action_type": "purchase",
-        "attribution_window_days": 30
-      },
-      "min_spend": 10000
+      "min_spend_per_package": 10000
     }
   ],
+  "delivery_measurement": {
+    "provider": "Self-reported impressions from proprietary ad server",
+    "notes": "Impressions counted per IAB guidelines. Viewability measured via IAS."
+  },
   "measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",

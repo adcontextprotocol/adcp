@@ -12,10 +12,10 @@ AdCP supports multiple pricing models to accommodate different advertising chann
 
 ### How It Works
 
-1. **Publishers declare pricing options** in their products via `pricing_options` array
+1. **Publishers declare pricing options** in their products via `pricing_options` array (each with unique `pricing_option_id`)
 2. **Buyers discover available options** through `get_products`
-3. **Buyers select a pricing model** when creating a media buy via `pricing_selection`
-4. **Delivery is measured** according to the selected pricing model
+3. **Buyers select a specific option** when creating a media buy via `pricing_option_id`
+4. **Delivery is measured** according to the declared `delivery_measurement` provider
 
 ### Key Benefits
 
@@ -73,6 +73,7 @@ By accepting the product, buyers agree to use the declared measurement provider 
 **Example**:
 ```json
 {
+  "pricing_option_id": "cpm_usd_guaranteed",
   "pricing_model": "cpm",
   "rate": 12.50,
   "currency": "USD",
@@ -93,6 +94,7 @@ By accepting the product, buyers agree to use the declared measurement provider 
 **Example**:
 ```json
 {
+  "pricing_option_id": "cpcv_usd_guaranteed",
   "pricing_model": "cpcv",
   "rate": 0.15,
   "currency": "USD",
