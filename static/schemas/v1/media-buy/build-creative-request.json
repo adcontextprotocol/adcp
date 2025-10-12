@@ -17,11 +17,11 @@
     },
     "source_format_id": {
       "type": "string",
-      "description": "Format ID of existing creative to transform (optional - omit when creating from scratch). Supports namespaced IDs like 'display_300x250' (standard) or 'https://publisher.com/.well-known/adcp/sales:custom_format' (custom)"
+      "description": "Format ID of existing creative to transform (optional - omit when creating from scratch). Uses {agent_url:format_id} pattern, e.g., 'https://creatives.adcontextprotocol.org:display_300x250' or 'https://publisher.com/.well-known/adcp/sales:custom_format'"
     },
     "target_format_id": {
       "type": "string",
-      "description": "Format ID to generate. Supports namespaced IDs like 'display_300x250' (standard) or 'https://publisher.com/.well-known/adcp/sales:custom_format' (custom). The format definition specifies whether output is manifest-based or code-based."
+      "description": "Format ID to generate. Uses {agent_url:format_id} pattern, e.g., 'https://creatives.adcontextprotocol.org:display_native' or 'https://publisher.com/.well-known/adcp/sales:custom_format'. The format definition specifies whether output is manifest-based or code-based."
     },
     "context_id": {
       "type": "string",

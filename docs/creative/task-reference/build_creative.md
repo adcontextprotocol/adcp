@@ -9,31 +9,33 @@ Build creative content for a specific format using a creative agent that can gen
 
 ## Format Identification
 
-Format IDs support namespacing to distinguish between standard and custom formats:
+All format IDs use the `{agent_url:format_id}` namespacing pattern:
 
-1. **Standard AdCP Formats**: Simple ID like `"display_native"` or `"video_standard_30s"`
+1. **Standard AdCP Formats**: Use the standard creative agent URL
+   - Pattern: `https://creatives.adcontextprotocol.org` + `:` + `display_300x250`
 
-2. **Publisher-Specific Formats**: Namespaced with URL like `"https://publisher.com/.well-known/adcp/sales:premium_video_30s"`
+2. **Publisher-Specific Formats**: Use the publisher's sales agent URL
+   - Pattern: `https://publisher.com/.well-known/adcp/sales` + `:` + `premium_video_30s`
 
-3. **Format Discovery**: Use `list_creative_formats` to discover available formats and their requirements
+3. **Format Discovery**: Use `list_creative_formats` on the agent URL to discover available formats and their requirements
 
 ### Format ID Examples
 
 ```json
 // Standard AdCP format
 {
-  "target_format_id": "display_native"
+  "target_format_id": "https://creatives.adcontextprotocol.org\:display_native"
 }
 
-// Publisher-specific format (namespaced)
+// Publisher-specific format
 {
-  "target_format_id": "https://publisher.com/.well-known/adcp/sales:premium_video_30s"
+  "target_format_id": "https://publisher.com/.well-known/adcp/sales\:premium_video_30s"
 }
 
 // Transform existing creative to new format
 {
-  "source_format_id": "display_300x250",
-  "target_format_id": "display_native"
+  "source_format_id": "https://creatives.adcontextprotocol.org\:display_300x250",
+  "target_format_id": "https://creatives.adcontextprotocol.org\:display_native"
 }
 ```
 
@@ -42,8 +44,8 @@ Format IDs support namespacing to distinguish between standard and custom format
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `message` | string | Yes | The request message (initial brief or refinement instructions) |
-| `source_format_id` | string | No | Format ID of existing creative to transform (optional - omit when creating from scratch). Supports namespaced IDs. |
-| `target_format_id` | string | Yes | Format ID to generate (e.g., 'display_native', 'video_30s'). Supports namespaced IDs like 'https://publisher.com/.well-known/adcp/sales:custom_format'. The format definition specifies whether output is manifest-based or code-based. |
+| `source_format_id` | string | No | Format ID of existing creative to transform (optional - omit when creating from scratch). Uses `{agent_url:format_id}` pattern (e.g., 'https://creatives.adcontextprotocol.org\:display_300x250'). |
+| `target_format_id` | string | Yes | Format ID to generate. Uses `{agent_url:format_id}` pattern (e.g., 'https://creatives.adcontextprotocol.org\:display_native' or 'https://publisher.com/.well-known/adcp/sales\:custom_format'). The format definition specifies whether output is manifest-based or code-based. |
 | `context_id` | string | No | Session context from previous message for continuity |
 | `brand_manifest` | BrandManifest | No | Brand information manifest containing all assets, themes, and information necessary to ensure creatives are aligned with the brand's goals and that the publisher is comfortable with what's being advertised. See [Brand Manifest](../../reference/brand-manifest) for details. |
 | `assets` | array | No | References to asset libraries and specific assets |
@@ -114,7 +116,7 @@ The format definition determines whether the output is a creative manifest (asse
 ```json
 {
   "type": "creative_manifest",
-  "target_format_id": "display_native",
+  "target_format_id": "https://creatives.adcontextprotocol.org\:display_native",
   "assets": {
     "headline": "Premium Dog Nutrition",
     "description": "Veterinarian recommended formula with real salmon",
@@ -145,7 +147,7 @@ The format definition determines whether the output is a creative manifest (asse
 ```json
 {
   "type": "creative_code",
-  "target_format_id": "html5",
+  "target_format_id": "https://creatives.adcontextprotocol.org\:html5",
   "code": "<div id='adcp-creative'>\n  <script>\n    (function() {\n      // Dynamic creative logic\n      const context = window.ADCP_CONTEXT || {};\n      const assets = {\n        sunny: 'outdoor-dog.jpg',\n        rainy: 'indoor-cozy.jpg'\n      };\n      \n      // Select asset based on weather\n      const heroImage = assets[context.weather] || assets.sunny;\n      \n      // Render creative\n      document.getElementById('adcp-creative').innerHTML = `\n        <img src=\"${heroImage}\" />\n        <h2>${context.time === 'morning' ? 'Start Their Day Right' : 'Premium Nutrition'}</h2>\n        <button>Shop Now</button>\n      `;\n    })();\n  </script>\n</div>",
   "dependencies": {
     "context_required": ["weather", "time"],
@@ -186,7 +188,7 @@ The format definition determines whether the output is a creative manifest (asse
 ```json
 {
   "message": "Create a native ad for Yahoo promoting Purina Pro Plan. Focus on the veterinarian recommendation and that real salmon is the #1 ingredient.",
-  "target_format_id": "display_native",
+  "target_format_id": "https://creatives.adcontextprotocol.org\:display_native",
   "brand_manifest": {
     "url": "https://purina.com",
     "name": "Purina Pro Plan",
@@ -218,7 +220,7 @@ The format definition determines whether the output is a creative manifest (asse
 ```json
 {
   "message": "Create a native ad for Yahoo promoting Purina Pro Plan. Focus on the veterinarian recommendation and that real salmon is the #1 ingredient. Use an informative and trustworthy tone with 'Learn More' as the CTA.",
-  "target_format_id": "display_native",
+  "target_format_id": "https://creatives.adcontextprotocol.org\:display_native",
   "brand_manifest": {
     "url": "https://purina.com"
   },
@@ -239,7 +241,7 @@ The format definition determines whether the output is a creative manifest (asse
   "status": "draft",
   "creative_output": {
     "type": "creative_manifest",
-    "target_format_id": "display_native",
+    "target_format_id": "https://creatives.adcontextprotocol.org\:display_native",
     "assets": {
       "headline": "Veterinarian Recommended Nutrition",
       "description": "Pro Plan with real salmon as the #1 ingredient provides complete nutrition for your dog's sensitive skin and stomach.",
@@ -310,7 +312,7 @@ The format definition determines whether the output is a creative manifest (asse
   "status": "ready",
   "creative_output": {
     "type": "creative_manifest",
-    "target_format_id": "display_native",
+    "target_format_id": "https://creatives.adcontextprotocol.org\:display_native",
     "assets": {
       "headline": "Veterinarian Recommended Grain-Free Nutrition",
       "description": "Pro Plan's grain-free formula with real salmon as the #1 ingredient provides complete nutrition without grains that can upset sensitive stomachs.",
@@ -342,7 +344,7 @@ The format definition determines whether the output is a creative manifest (asse
   "status": "ready",
   "creative_output": {
     "type": "creative_manifest",
-    "target_format_id": "display_native",
+    "target_format_id": "https://creatives.adcontextprotocol.org\:display_native",
     "assets": {
       "headline": "Veterinarian Recommended Grain-Free Nutrition",
       "description": "Pro Plan's grain-free formula with real salmon as the #1 ingredient provides complete nutrition without grains that can upset sensitive stomachs.",
@@ -368,7 +370,7 @@ The format definition determines whether the output is a creative manifest (asse
 ```json
 {
   "message": "I need a dynamic 30-second video for Purina that adapts based on viewer context. It should be upbeat and personalized, focusing on premium nutrition tailored for each dog's needs. The CTA should be 'Find Your Formula'.",
-  "target_format_id": "video_standard_30s",
+  "target_format_id": "https://creatives.adcontextprotocol.org\:video_standard_30s",
   "assets": [
     {
       "library_id": "purina_video_library",
@@ -433,7 +435,7 @@ The format definition determines whether the output is a creative manifest (asse
 ```json
 {
   "message": "Create a short-form video ad featuring user-generated content style. Keep it authentic and fun, focusing on real pet parents and their transformation stories. Use 'See Their Story' as the CTA.",
-  "target_format_id": "custom_short_form_video",
+  "target_format_id": "https://publisher.com/.well-known/adcp/sales\:custom_short_form_video",
   "format_source": "https://videoplatform.com/.well-known/adcp/sales",
 }
 ```
@@ -443,7 +445,7 @@ The format definition determines whether the output is a creative manifest (asse
 {
   "context_id": "ctx-video-123",
   "creative": {
-    "target_format_id": "custom_short_form_video",
+    "target_format_id": "https://publisher.com/.well-known/adcp/sales\:custom_short_form_video",
   "format_source": "https://videoplatform.com/.well-known/adcp/sales",
       "id": "custom_short_form_video",
       "name": "Short Form Video Ad",
