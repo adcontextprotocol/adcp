@@ -179,12 +179,12 @@
               },
               "conversions": {
                 "type": "number",
-                "description": "Total conversions (for CPA)",
+                "description": "Total conversions (reserved for future CPA pricing support)",
                 "minimum": 0
               },
               "leads": {
                 "type": "number",
-                "description": "Total leads generated (for CPL)",
+                "description": "Total leads generated (reserved for future CPL pricing support)",
                 "minimum": 0
               },
               "grps": {
@@ -227,6 +227,98 @@
                     "minimum": 0
                   }
                 }
+              },
+              "dooh_metrics": {
+                "type": "object",
+                "description": "DOOH-specific delivery metrics (only included for DOOH campaigns)",
+                "properties": {
+                  "loop_plays": {
+                    "type": "integer",
+                    "description": "Number of times ad played in rotation across all screens",
+                    "minimum": 0
+                  },
+                  "screens_used": {
+                    "type": "integer",
+                    "description": "Number of unique screens displaying the ad",
+                    "minimum": 0
+                  },
+                  "screen_time_seconds": {
+                    "type": "integer",
+                    "description": "Total time ad was displayed across all screens in seconds",
+                    "minimum": 0
+                  },
+                  "sov_achieved": {
+                    "type": "number",
+                    "description": "Actual share of voice delivered as decimal (0.0 to 1.0, e.g., 0.15 = 15%)",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "calculation_basis": {
+                    "type": "object",
+                    "description": "Transparency into how DOOH metrics were calculated",
+                    "properties": {
+                      "total_loop_opportunities": {
+                        "type": "integer",
+                        "description": "Total number of loop plays available during campaign period",
+                        "minimum": 0
+                      },
+                      "venue_traffic_estimate": {
+                        "type": "integer",
+                        "description": "Estimated number of people who passed by screens",
+                        "minimum": 0
+                      },
+                      "impression_multiplier": {
+                        "type": "number",
+                        "description": "Average impressions per loop play based on venue traffic",
+                        "minimum": 0
+                      },
+                      "data_source": {
+                        "type": "string",
+                        "description": "Source of audience measurement data with date",
+                        "examples": ["geopath_december_2024", "vistar_q4_2024"]
+                      }
+                    }
+                  },
+                  "venue_breakdown": {
+                    "type": "array",
+                    "description": "Per-venue performance breakdown",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "venue_id": {
+                          "type": "string",
+                          "description": "Venue identifier"
+                        },
+                        "venue_name": {
+                          "type": "string",
+                          "description": "Human-readable venue name"
+                        },
+                        "venue_type": {
+                          "type": "string",
+                          "description": "Venue type (e.g., 'airport', 'transit', 'retail', 'billboard')"
+                        },
+                        "impressions": {
+                          "type": "integer",
+                          "description": "Impressions delivered at this venue",
+                          "minimum": 0
+                        },
+                        "loop_plays": {
+                          "type": "integer",
+                          "description": "Loop plays at this venue",
+                          "minimum": 0
+                        },
+                        "screens_used": {
+                          "type": "integer",
+                          "description": "Number of screens used at this venue",
+                          "minimum": 0
+                        }
+                      },
+                      "required": ["venue_id", "impressions"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "required": ["spend"],
@@ -278,12 +370,12 @@
                 },
                 "conversions": {
                   "type": "number",
-                  "description": "Package conversions (for CPA)",
+                  "description": "Package conversions (reserved for future CPA pricing support)",
                   "minimum": 0
                 },
                 "leads": {
                   "type": "number",
-                  "description": "Package leads (for CPL)",
+                  "description": "Package leads (reserved for future CPL pricing support)",
                   "minimum": 0
                 },
                 "grps": {
@@ -295,6 +387,34 @@
                   "type": "number",
                   "description": "Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)",
                   "minimum": 0
+                },
+                "dooh_metrics": {
+                  "type": "object",
+                  "description": "DOOH-specific metrics for this package (only included for DOOH campaigns)",
+                  "properties": {
+                    "loop_plays": {
+                      "type": "integer",
+                      "description": "Loop plays for this package",
+                      "minimum": 0
+                    },
+                    "screens_used": {
+                      "type": "integer",
+                      "description": "Screens used for this package",
+                      "minimum": 0
+                    },
+                    "screen_time_seconds": {
+                      "type": "integer",
+                      "description": "Screen time for this package in seconds",
+                      "minimum": 0
+                    },
+                    "sov_achieved": {
+                      "type": "number",
+                      "description": "Actual SOV for this package (0.0 to 1.0)",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "additionalProperties": false
                 }
               },
               "required": ["package_id", "spend"],

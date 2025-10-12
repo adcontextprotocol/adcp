@@ -30,17 +30,11 @@ Classification of signals as "marketplace" (third-party), "owned" (first-party),
 
 ## C
 
-**CPA (Cost Per Action/Acquisition)**
-Pricing model based on cost per conversion or acquisition event (e.g., purchase, sign-up).
-
 **CPC (Cost Per Click)**
 Pricing model based on cost per click on the advertisement.
 
 **CPCV (Cost Per Completed View)**
 Pricing model based on cost per 100% video or audio completion.
-
-**CPL (Cost Per Lead)**
-Pricing model based on cost per qualified lead generated.
 
 **CPM (Cost Per Mille)**
 Pricing model based on cost per thousand impressions. Traditional display advertising pricing.
@@ -62,16 +56,22 @@ Direct advertiser or agency account with specific seat access and negotiated rat
 
 ## D
 
-**Deployment** (Signals Protocol)  
+**Daypart**
+Specific time-of-day segment for time-based advertising, commonly used in DOOH (e.g., morning_commute, evening_prime, overnight).
+
+**Deployment** (Signals Protocol)
 The availability status of a signal on specific platforms, including activation state and timing.
 
-**Devices** (Signals Protocol)  
+**Devices** (Signals Protocol)
 Size unit representing unique device identifiers (cookies, mobile IDs) - typically the largest reach metric.
 
-**Device Type** (Media Buy Protocol)  
+**Device Type** (Media Buy Protocol)
 Targeting dimension for platform types: mobile, desktop, tablet, CTV, audio, DOOH.
 
-**DSP (Demand-Side Platform)**  
+**DOOH (Digital Out-of-Home)**
+Digital advertising displayed on screens in public spaces such as billboards, transit stations, airports, and retail locations. Uses CPM or flat_rate pricing with parameters for SOV, duration, and venue targeting.
+
+**DSP (Demand-Side Platform)**
 Technology platform that allows advertisers to buy advertising inventory programmatically.
 
 ## E
@@ -164,24 +164,44 @@ Pricing model based on a percentage of media spend rather than fixed CPM.
 
 ## S
 
-**Seat**  
+**Screen Time**
+Total duration an ad was displayed across all DOOH screens, measured in seconds. Used for DOOH delivery reporting.
+
+**Seat**
 A specific advertising account within a platform, typically representing a brand or campaign.
 
-**Segment ID**  
+**Segment ID**
 The specific identifier used for signal activation, may differ from signal_id.
 
-**Size Unit** (Signals Protocol)  
+**Share of Voice (SOV)**
+Percentage of available ad inventory allocated to a specific advertiser in DOOH loops. Expressed as 0.0-1.0 (e.g., 0.15 = 15% SOV).
+
+**Size Unit** (Signals Protocol)
 The measurement type for signal size: individuals, devices, or households.
 
 ## T
 
-**Third-Party Signal**  
+**Takeover**
+Exclusive 100% share of voice placement on DOOH inventory for a specific time period. Priced as flat_rate with sov_percentage: 100.
+
+**Third-Party Signal**
 Signal data licensed from external providers, also known as marketplace signals.
+
+**Time-Based Pricing**
+Pricing structure based on duration (hourly, daily, or daypart) rather than impressions. Common in DOOH advertising using flat_rate model.
 
 ## U
 
-**Usage Reporting**  
+**Usage Reporting**
 Daily reporting of signal utilization for billing and optimization purposes.
+
+## V
+
+**Venue**
+Physical location where DOOH advertising is displayed (e.g., airport terminal, transit station, retail store). Used for DOOH targeting and delivery reporting.
+
+**Venue Package**
+Named collection of DOOH screens across specific venues (e.g., 'times_square_network', 'airport_terminals'). Used in DOOH pricing parameters.
 
 ## B
 
@@ -203,8 +223,14 @@ Protocol feature allowing publishers to require manual approval for operations.
 
 ## L
 
-**Line Item**  
+**Line Item**
 The basic unit of inventory in ad servers like Google Ad Manager, represented as packages in AdCP.
+
+**Loop Duration**
+The length of time for a complete rotation of ads in a DOOH display, measured in seconds. Used to calculate frequency and share of voice.
+
+**Loop Plays**
+The number of times an ad was displayed in a DOOH loop rotation. Key metric for DOOH delivery reporting.
 
 ## M
 

@@ -82,6 +82,40 @@
           "type": "integer",
           "description": "Attribution window in days for CPA/CPL pricing",
           "minimum": 1
+        },
+        "duration_hours": {
+          "type": "number",
+          "description": "Duration in hours for time-based flat rate pricing (DOOH)",
+          "minimum": 0
+        },
+        "sov_percentage": {
+          "type": "number",
+          "description": "Guaranteed share of voice as percentage (DOOH, 0-100)",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "loop_duration_seconds": {
+          "type": "integer",
+          "description": "Duration of ad loop rotation in seconds (DOOH)",
+          "minimum": 1
+        },
+        "min_plays_per_hour": {
+          "type": "integer",
+          "description": "Minimum number of times ad plays per hour (DOOH frequency guarantee)",
+          "minimum": 0
+        },
+        "venue_package": {
+          "type": "string",
+          "description": "Named venue package identifier for DOOH (e.g., 'times_square_network', 'airport_terminals')"
+        },
+        "estimated_impressions": {
+          "type": "integer",
+          "description": "Estimated impressions for this pricing option (informational, commonly used with SOV or time-based DOOH)",
+          "minimum": 0
+        },
+        "daypart": {
+          "type": "string",
+          "description": "Specific daypart for time-based pricing (e.g., 'morning_commute', 'evening_prime', 'overnight')"
         }
       }
     },

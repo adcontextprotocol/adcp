@@ -9,8 +9,6 @@
     "cpc",
     "cpcv",
     "cpv",
-    "cpa",
-    "cpl",
     "cpp",
     "flat_rate"
   ],
@@ -19,8 +17,6 @@
     "cpc": "Cost Per Click - cost per click on the ad",
     "cpcv": "Cost Per Completed View - cost per 100% video/audio completion",
     "cpv": "Cost Per View - cost per view at publisher-defined threshold (e.g., 50% completion)",
-    "cpa": "Cost Per Action/Acquisition - cost per conversion or acquisition event",
-    "cpl": "Cost Per Lead - cost per lead generated",
     "cpp": "Cost Per Point - cost per Gross Rating Point or Target Rating Point (TV/audio)",
     "flat_rate": "Flat Rate - fixed cost regardless of delivery volume (sponsorships, takeovers)"
   }

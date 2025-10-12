@@ -92,6 +92,83 @@
     "measurement": {
       "$ref": "/schemas/v1/core/measurement.json"
     },
+    "delivery_measurement": {
+      "type": "object",
+      "description": "Methodology for measuring basic delivery metrics (impressions, views, etc.)",
+      "properties": {
+        "impression_methodology": {
+          "type": "string",
+          "enum": ["served", "viewable_mrc", "viewable_groupm", "viewable_custom"],
+          "description": "How impressions are counted: served (ad request), viewable_mrc (50% pixels 1s display/2s video), viewable_groupm (100% pixels), or viewable_custom (publisher-defined)"
+        },
+        "viewability_threshold": {
+          "type": "object",
+          "description": "Custom viewability threshold (required if impression_methodology is viewable_custom)",
+          "properties": {
+            "pixel_percentage": {
+              "type": "number",
+              "description": "Percentage of pixels that must be visible (0.0 to 1.0)",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "duration_seconds": {
+              "type": "number",
+              "description": "Minimum duration in seconds",
+              "minimum": 0
+            }
+          }
+        },
+        "viewability_provider": {
+          "type": "string",
+          "description": "Third-party viewability measurement provider",
+          "examples": ["ias", "double_verify", "moat", "publisher"]
+        },
+        "dooh_calculation": {
+          "type": "object",
+          "description": "DOOH-specific impression calculation methodology",
+          "properties": {
+            "data_source": {
+              "type": "string",
+              "description": "Audience measurement data source",
+              "examples": ["geopath", "place_exchange", "vistar", "proprietary"]
+            },
+            "audience_measurement": {
+              "type": "string",
+              "description": "How venue audience is measured",
+              "examples": ["venue_traffic_avg", "sensor_based", "mobile_data"]
+            },
+            "update_frequency": {
+              "type": "string",
+              "description": "How often audience data is updated",
+              "examples": ["real_time", "daily", "weekly", "monthly", "quarterly"]
+            }
+          }
+        },
+        "third_party_verification": {
+          "type": "object",
+          "description": "Third-party verification options available to buyers",
+          "properties": {
+            "available": {
+              "type": "boolean",
+              "description": "Whether third-party verification is available"
+            },
+            "providers": {
+              "type": "array",
+              "description": "Available verification providers",
+              "items": {
+                "type": "string",
+                "examples": ["ias", "double_verify", "moat"]
+              }
+            },
+            "cost_basis": {
+              "type": "string",
+              "description": "How verification costs are charged",
+              "examples": ["included", "cpm_addon", "flat_fee"]
+            }
+          }
+        }
+      }
+    },
     "reporting_capabilities": {
       "$ref": "/schemas/v1/core/reporting-capabilities.json"
     },

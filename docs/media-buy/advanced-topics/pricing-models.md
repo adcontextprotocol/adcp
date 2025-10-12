@@ -1,7 +1,7 @@
 ---
 title: Pricing Models
-description: Comprehensive guide to AdCP's flexible pricing models including CPM, CPCV, CPP, CPA, and more
-keywords: [pricing models, CPM, CPCV, CPP, CPA, CPL, CPC, GRP, video pricing, performance pricing]
+description: Comprehensive guide to AdCP's flexible pricing models including CPM, CPCV, CPP, CPC, and DOOH support
+keywords: [pricing models, CPM, CPCV, CPP, CPC, CPV, GRP, video pricing, DOOH, share of voice, measurement]
 ---
 
 # Pricing Models
@@ -23,6 +23,82 @@ AdCP supports multiple pricing models to accommodate different advertising chann
 - **Currency Support**: Publishers specify supported currencies; buyers must match
 - **Market Standards**: Each channel (TV, video, display, performance) can use its natural pricing unit
 - **Clear Expectations**: Both parties agree on pricing before campaign launch
+
+## Measurement & Source of Truth
+
+### Publisher Authority
+
+In AdCP's direct publisher-buyer relationship model, **publishers are the authoritative source for delivery metrics** unless otherwise specified in the product's measurement declaration. This differs from programmatic advertising where multiple systems independently track metrics.
+
+**Key Principles:**
+
+1. **Publisher Measurement**: Publishers report impressions, views, clicks, GRPs, and other delivery metrics through `get_media_buy_delivery`
+2. **Methodology Transparency**: Publishers should declare measurement methodology in `delivery_measurement` field
+3. **Audit Rights**: Buyers should negotiate audit access and verification rights in contracts
+4. **Third-Party Verification**: Publishers may optionally support third-party measurement providers (IAS, DoubleVerify, MOAT)
+
+### Measurement Methodologies
+
+Publishers declare how they count impressions via the `delivery_measurement` field in products:
+
+```json
+{
+  "product_id": "premium_video",
+  "delivery_measurement": {
+    "impression_methodology": "viewable_mrc",
+    "viewability_provider": "ias",
+    "third_party_verification": {
+      "available": true,
+      "providers": ["ias", "double_verify"],
+      "cost_basis": "cpm_addon"
+    }
+  }
+}
+```
+
+**Impression Methodologies:**
+- **served**: Ad request sent (traditional ad server counting)
+- **viewable_mrc**: MRC standard (50% pixels, 1s display / 2s video)
+- **viewable_groupm**: GroupM standard (100% pixels in view)
+- **viewable_custom**: Publisher-defined threshold
+
+### DOOH Measurement Transparency
+
+For DOOH campaigns, publishers should provide calculation transparency via `calculation_basis`:
+
+```json
+{
+  "dooh_metrics": {
+    "loop_plays": 4800,
+    "screens_used": 20,
+    "impressions": 75000,
+    "calculation_basis": {
+      "total_loop_opportunities": 32000,
+      "venue_traffic_estimate": 250000,
+      "impression_multiplier": 15.625,
+      "data_source": "geopath_december_2024"
+    }
+  }
+}
+```
+
+**Formula**: `impressions = loop_plays × impression_multiplier`
+
+This transparency allows buyers to understand and validate impression calculations.
+
+### Best Practices
+
+**For Publishers:**
+- Declare measurement methodology clearly in products
+- Provide calculation transparency for DOOH
+- Consider offering third-party verification for premium inventory
+- Maintain detailed audit logs for potential disputes
+
+**For Buyers:**
+- Review publisher measurement methodology before committing budget
+- Negotiate audit rights in contracts
+- Request third-party verification for large campaigns
+- For DOOH, validate impression calculations using `calculation_basis`
 
 ## Supported Pricing Models
 
@@ -150,55 +226,6 @@ AdCP supports multiple pricing models to accommodate different advertising chann
 
 ---
 
-### CPA (Cost Per Action/Acquisition)
-**Cost per conversion** - Payment based on completed actions or acquisitions.
-
-**Use Cases**: E-commerce, lead generation, app installs, performance marketing
-
-**Example**:
-```json
-{
-  "pricing_model": "cpa",
-  "rate": 25.00,
-  "currency": "USD",
-  "is_fixed": true,
-  "parameters": {
-    "action_type": "purchase",
-    "attribution_window_days": 30
-  }
-}
-```
-
-**Billing**: Charged per conversion/acquisition event
-
-**Parameters**:
-- `action_type`: Type of action (e.g., "purchase", "sign_up", "download", "add_to_cart")
-- `attribution_window_days`: Attribution window (e.g., 7, 14, 30 days)
-
----
-
-### CPL (Cost Per Lead)
-**Cost per lead generated** - Payment for qualified leads.
-
-**Use Cases**: B2B marketing, form fills, newsletter signups, quote requests
-
-**Example**:
-```json
-{
-  "pricing_model": "cpl",
-  "rate": 50.00,
-  "currency": "USD",
-  "is_fixed": true,
-  "parameters": {
-    "attribution_window_days": 7
-  }
-}
-```
-
-**Billing**: Charged per qualified lead generated
-
----
-
 ### Flat Rate
 **Fixed cost** - Single payment regardless of delivery volume.
 
@@ -215,6 +242,155 @@ AdCP supports multiple pricing models to accommodate different advertising chann
 ```
 
 **Billing**: Fixed cost for the entire campaign period
+
+---
+
+## Digital Out-of-Home (DOOH) Pricing
+
+DOOH advertising uses existing pricing models (CPM, flat_rate) enhanced with DOOH-specific parameters. Common buying modes like Share of Voice (SOV), time-based buying, and takeovers are **inventory allocation mechanisms**, not separate pricing models.
+
+### Key Concept: Inventory Allocation vs. Pricing
+
+- **Share of Voice**: Percentage of loop plays → Priced as CPM or flat_rate with `sov_percentage` parameter
+- **Time-based**: Hourly/daily/daypart booking → Priced as flat_rate with `duration_hours` parameter
+- **Takeover**: 100% exclusive placement → Priced as flat_rate with `sov_percentage: 100`
+
+### DOOH Use Case: Times Square Takeover
+
+**24-hour exclusive takeover of premium billboard:**
+
+```json
+{
+  "product_id": "times_square_digital_takeover",
+  "name": "Times Square Digital Takeover",
+  "description": "Exclusive 24-hour takeover of premium Times Square digital billboard",
+  "format_ids": ["dooh_portrait_1920x1080"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_model": "flat_rate",
+      "rate": 50000.00,
+      "currency": "USD",
+      "is_fixed": true,
+      "parameters": {
+        "duration_hours": 24,
+        "sov_percentage": 100,
+        "loop_duration_seconds": 300,
+        "min_plays_per_hour": 12,
+        "venue_package": "times_square_premium"
+      }
+    }
+  ]
+}
+```
+
+**Buyer selection:**
+```json
+{
+  "packages": [{
+    "buyer_ref": "pkg_launch_takeover",
+    "products": ["times_square_digital_takeover"],
+    "format_ids": ["dooh_portrait_1920x1080"],
+    "budget": 50000,
+    "pricing_model": "flat_rate"
+  }]
+}
+```
+
+### DOOH Use Case: Airport SOV Package
+
+**15% share of voice during morning commute with dual pricing options:**
+
+```json
+{
+  "product_id": "airport_morning_commute",
+  "name": "Airport Morning Commute Package",
+  "description": "15% share of voice during morning rush (5am-9am)",
+  "format_ids": ["dooh_portrait_1080x1920"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_model": "cpm",
+      "rate": 25.00,
+      "currency": "USD",
+      "is_fixed": true,
+      "parameters": {
+        "sov_percentage": 15,
+        "loop_duration_seconds": 180,
+        "daypart": "morning_commute",
+        "estimated_impressions": 75000
+      },
+      "min_spend": 1875
+    },
+    {
+      "pricing_model": "flat_rate",
+      "rate": 2000.00,
+      "currency": "USD",
+      "is_fixed": true,
+      "parameters": {
+        "duration_hours": 4,
+        "sov_percentage": 15,
+        "loop_duration_seconds": 180,
+        "daypart": "morning_commute"
+      }
+    }
+  ]
+}
+```
+
+**Notice:** Same inventory, two pricing options. Buyers choose based on whether they prefer impression-based (CPM) or time-based (flat_rate) pricing.
+
+### DOOH Use Case: Transit Network Hourly
+
+**Hourly pricing for retail transit locations:**
+
+```json
+{
+  "product_id": "retail_transit_hourly",
+  "name": "Retail Transit Network - Hourly",
+  "description": "Hourly booking across 50 retail transit locations",
+  "format_ids": ["dooh_landscape_1920x1080"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_model": "flat_rate",
+      "rate": 500.00,
+      "currency": "USD",
+      "is_fixed": true,
+      "parameters": {
+        "duration_hours": 1,
+        "venue_package": "retail_transit_50_screens",
+        "loop_duration_seconds": 240,
+        "min_plays_per_hour": 15
+      }
+    }
+  ]
+}
+```
+
+### DOOH Parameters Reference
+
+| Parameter | Type | Description | Use With |
+|-----------|------|-------------|----------|
+| `duration_hours` | number | Duration for time-based pricing | flat_rate |
+| `sov_percentage` | number | Share of voice (0-100) | cpm, flat_rate |
+| `loop_duration_seconds` | integer | Ad loop rotation duration | cpm, flat_rate |
+| `min_plays_per_hour` | integer | Minimum frequency guarantee | cpm, flat_rate |
+| `venue_package` | string | Named venue package ID | any |
+| `estimated_impressions` | integer | Expected impressions | cpm, flat_rate |
+| `daypart` | string | Specific daypart targeting | any |
+
+### DOOH Delivery Metrics
+
+When reporting on DOOH campaigns, publishers should include DOOH-specific metrics:
+
+- `loop_plays`: Number of times ad played in rotation
+- `screens_used`: Number of unique screens displaying the ad
+- `screen_time_seconds`: Total display time across all screens
+- `sov_achieved`: Actual share of voice delivered (0.0-1.0)
+- `venue_breakdown`: Per-venue performance data
+
+See [Delivery Reporting](../task-reference/get_media_buy_delivery.md) for full metric definitions.
 
 ---
 
@@ -325,8 +501,6 @@ Different pricing models report different primary metrics:
 | CPV | views | impressions, quartile_data, spend |
 | CPP | grps | reach, frequency, spend |
 | CPC | clicks | impressions, ctr, spend |
-| CPA | conversions | impressions, clicks, spend |
-| CPL | leads | impressions, clicks, spend |
 | Flat Rate | N/A | impressions, reach, frequency |
 
 ## Example: Multi-Model CTV Product
