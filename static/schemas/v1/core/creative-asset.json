@@ -27,13 +27,13 @@
           "properties": {
             "asset_type": {
               "type": "string",
-              "enum": ["image", "video", "audio", "text", "html", "css", "javascript", "brand_manifest", "url"],
+              "enum": ["image", "video", "audio", "text", "html", "css", "javascript", "promoted_offerings", "url"],
               "description": "Type of this asset"
             },
             "url": {
               "type": "string",
               "format": "uri",
-              "description": "URL for image/video/audio assets or brand_manifest URL"
+              "description": "URL for image/video/audio assets or promoted_offerings URL reference"
             },
             "content": {
               "type": "string",
@@ -60,7 +60,7 @@
             },
             "colors": {
               "type": "object",
-              "description": "Brand colors (for brand_manifest asset type)",
+              "description": "Brand colors (for promoted_offerings asset type)",
               "properties": {
                 "primary": {"type": "string"},
                 "secondary": {"type": "string"},
@@ -69,12 +69,12 @@
             },
             "fonts": {
               "type": "array",
-              "description": "Brand fonts (for brand_manifest asset type)",
+              "description": "Brand fonts (for promoted_offerings asset type)",
               "items": {"type": "string"}
             },
             "tone": {
               "type": "string",
-              "description": "Brand tone/voice (for brand_manifest asset type)"
+              "description": "Brand tone/voice (for promoted_offerings asset type)"
             }
           },
           "required": ["asset_type"],
@@ -113,6 +113,10 @@
       "items": {
         "type": "string"
       }
+    },
+    "approved": {
+      "type": "boolean",
+      "description": "For generative creatives: set to true to approve and finalize, false to request regeneration with updated assets/message. Omit for non-generative creatives."
     }
   },
   "required": ["creative_id", "name", "format_id", "assets"],

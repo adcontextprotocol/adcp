@@ -11,7 +11,35 @@
     },
     "product_selectors": {
       "$ref": "/schemas/v1/core/promoted-products.json",
-      "description": "Selectors to choose which products/offerings from the brand manifest to promote"
+      "description": "Selectors to choose which products/offerings from the brand manifest product catalog to promote"
+    },
+    "offerings": {
+      "type": "array",
+      "description": "Inline offerings for campaigns without a product catalog. Each offering has a name, description, and associated assets.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Offering name (e.g., 'Winter Sale', 'New Product Launch')"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of what's being offered"
+          },
+          "assets": {
+            "type": "array",
+            "description": "Assets specific to this offering",
+            "items": {
+              "type": "object",
+              "description": "Asset definition using standard asset structure",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
     },
     "asset_selectors": {
       "type": "object",

@@ -29,47 +29,10 @@
     },
     "assets": {
       "type": "array",
-      "description": "Available assets to use in creative generation",
+      "description": "Available assets to use in creative generation - this is where promoted_offerings should be included as an asset",
       "items": {
         "$ref": "/schemas/v1/core/creative-asset.json"
       }
-    },
-    "brand_manifest": {
-      "$ref": "/schemas/v1/core/brand-manifest.json",
-      "description": "Brand information manifest providing context for creative generation. Replaces brand_guidelines with a more comprehensive and standardized format."
-    },
-    "promoted_products": {
-      "$ref": "/schemas/v1/core/promoted-products.json",
-      "description": "Products or offerings being promoted in this creative. Supports SKU selection from brand manifest's product catalog, or inline offerings for non-commerce campaigns."
-    },
-    "asset_filters": {
-      "type": "object",
-      "description": "Filters to select specific assets from the brand manifest's asset library",
-      "properties": {
-        "tags": {
-          "type": "array",
-          "description": "Select assets matching any of these tags (e.g., ['holiday', 'winter'])",
-          "items": {
-            "type": "string"
-          }
-        },
-        "asset_types": {
-          "type": "array",
-          "description": "Limit to specific asset types",
-          "items": {
-            "type": "string",
-            "enum": ["image", "video", "audio", "text"]
-          }
-        },
-        "exclude_tags": {
-          "type": "array",
-          "description": "Exclude assets with these tags",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "additionalProperties": false
     }
   },
   "required": ["message", "target_format_id"],

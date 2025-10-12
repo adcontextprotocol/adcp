@@ -11,6 +11,10 @@
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "default": "1.6.0"
     },
+    "context_id": {
+      "type": "string",
+      "description": "Context ID from a previous sync_creatives response. Used for conversational refinement of generative creatives - allows approving or requesting changes to previously generated creatives."
+    },
     "creatives": {
       "type": "array",
       "description": "Array of creative assets to sync (create or update)",

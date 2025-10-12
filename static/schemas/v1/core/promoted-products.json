@@ -26,15 +26,6 @@
     "manifest_query": {
       "type": "string",
       "description": "Natural language query to select products from the brand manifest (e.g., 'all Kraft Heinz pasta sauces', 'organic products under $20')"
-    },
-    "additional_assets": {
-      "type": "array",
-      "description": "Campaign-specific assets to supplement brand manifest assets for promoted products",
-      "items": {
-        "type": "object",
-        "description": "Additional asset definition - uses standard asset structure",
-        "additionalProperties": true
-      }
     }
   },
   "additionalProperties": false,
