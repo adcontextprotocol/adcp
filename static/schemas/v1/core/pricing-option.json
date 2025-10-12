@@ -29,7 +29,7 @@
       "properties": {
         "floor": {
           "type": "number",
-          "description": "Minimum bid price",
+          "description": "Minimum bid price - publisher will reject bids under this value",
           "minimum": 0
         },
         "p25": {

@@ -127,276 +127,52 @@
             "description": "Pricing model used for this media buy"
           },
           "totals": {
-            "type": "object",
-            "description": "Aggregate metrics for this media buy across all packages",
-            "properties": {
-              "impressions": {
-                "type": "number",
-                "description": "Total impressions delivered",
-                "minimum": 0
+            "allOf": [
+              {
+                "$ref": "/schemas/v1/core/delivery-metrics.json"
               },
-              "spend": {
-                "type": "number",
-                "description": "Total amount spent",
-                "minimum": 0
-              },
-              "effective_rate": {
-                "type": "number",
-                "description": "Effective rate paid per unit based on pricing_model (e.g., actual CPM for 'cpm', actual cost per completed view for 'cpcv', actual cost per point for 'cpp')",
-                "minimum": 0
-              },
-              "clicks": {
-                "type": "number",
-                "description": "Total clicks (for CPC or general reporting)",
-                "minimum": 0
-              },
-              "ctr": {
-                "type": "number",
-                "description": "Click-through rate (clicks/impressions)",
-                "minimum": 0,
-                "maximum": 1
-              },
-              "views": {
-                "type": "number",
-                "description": "Total views at threshold (for CPV)",
-                "minimum": 0
-              },
-              "completed_views": {
-                "type": "number",
-                "description": "Total 100% completions (for CPCV)",
-                "minimum": 0
-              },
-              "video_completions": {
-                "type": "number",
-                "description": "DEPRECATED: Use completed_views instead",
-                "minimum": 0
-              },
-              "completion_rate": {
-                "type": "number",
-                "description": "Completion rate (completed_views/impressions)",
-                "minimum": 0,
-                "maximum": 1
-              },
-              "conversions": {
-                "type": "number",
-                "description": "Total conversions (reserved for future CPA pricing support)",
-                "minimum": 0
-              },
-              "leads": {
-                "type": "number",
-                "description": "Total leads generated (reserved for future CPL pricing support)",
-                "minimum": 0
-              },
-              "grps": {
-                "type": "number",
-                "description": "Gross Rating Points delivered (for CPP)",
-                "minimum": 0
-              },
-              "reach": {
-                "type": "number",
-                "description": "Unique individuals reached",
-                "minimum": 0
-              },
-              "frequency": {
-                "type": "number",
-                "description": "Average frequency per individual",
-                "minimum": 0
-              },
-              "quartile_data": {
+              {
                 "type": "object",
-                "description": "Video quartile completion data",
+                "description": "Aggregate metrics for this media buy across all packages",
                 "properties": {
-                  "q1_views": {
+                  "effective_rate": {
                     "type": "number",
-                    "description": "25% completion views",
+                    "description": "Effective rate paid per unit based on pricing_model (e.g., actual CPM for 'cpm', actual cost per completed view for 'cpcv', actual cost per point for 'cpp')",
                     "minimum": 0
-                  },
-                  "q2_views": {
-                    "type": "number",
-                    "description": "50% completion views",
-                    "minimum": 0
-                  },
-                  "q3_views": {
-                    "type": "number",
-                    "description": "75% completion views",
-                    "minimum": 0
-                  },
-                  "q4_views": {
-                    "type": "number",
-                    "description": "100% completion views",
-                    "minimum": 0
-                  }
-                }
-              },
-              "dooh_metrics": {
-                "type": "object",
-                "description": "DOOH-specific delivery metrics (only included for DOOH campaigns)",
-                "properties": {
-                  "loop_plays": {
-                    "type": "integer",
-                    "description": "Number of times ad played in rotation across all screens",
-                    "minimum": 0
-                  },
-                  "screens_used": {
-                    "type": "integer",
-                    "description": "Number of unique screens displaying the ad",
-                    "minimum": 0
-                  },
-                  "screen_time_seconds": {
-                    "type": "integer",
-                    "description": "Total time ad was displayed across all screens in seconds",
-                    "minimum": 0
-                  },
-                  "sov_achieved": {
-                    "type": "number",
-                    "description": "Actual share of voice delivered as decimal (0.0 to 1.0, e.g., 0.15 = 15%)",
-                    "minimum": 0,
-                    "maximum": 1
-                  },
-                  "calculation_notes": {
-                    "type": "string",
-                    "description": "Explanation of how DOOH impressions were calculated (e.g., 'Impressions based on Geopath December 2024 venue traffic data. 4,800 loop plays × 15.6 avg impressions per play = 75,000 total impressions.')"
-                  },
-                  "venue_breakdown": {
-                    "type": "array",
-                    "description": "Per-venue performance breakdown",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "venue_id": {
-                          "type": "string",
-                          "description": "Venue identifier"
-                        },
-                        "venue_name": {
-                          "type": "string",
-                          "description": "Human-readable venue name"
-                        },
-                        "venue_type": {
-                          "type": "string",
-                          "description": "Venue type (e.g., 'airport', 'transit', 'retail', 'billboard')"
-                        },
-                        "impressions": {
-                          "type": "integer",
-                          "description": "Impressions delivered at this venue",
-                          "minimum": 0
-                        },
-                        "loop_plays": {
-                          "type": "integer",
-                          "description": "Loop plays at this venue",
-                          "minimum": 0
-                        },
-                        "screens_used": {
-                          "type": "integer",
-                          "description": "Number of screens used at this venue",
-                          "minimum": 0
-                        }
-                      },
-                      "required": ["venue_id", "impressions"],
-                      "additionalProperties": false
-                    }
                   }
                 },
-                "additionalProperties": false
+                "required": ["spend"]
               }
-            },
-            "required": ["spend"],
-            "additionalProperties": true
+            ]
           },
           "by_package": {
             "type": "array",
             "description": "Metrics broken down by package",
             "items": {
-              "type": "object",
-              "properties": {
-                "package_id": {
-                  "type": "string",
-                  "description": "Publisher's package identifier"
+              "allOf": [
+                {
+                  "$ref": "/schemas/v1/core/delivery-metrics.json"
                 },
-                "buyer_ref": {
-                  "type": "string",
-                  "description": "Buyer's reference identifier for this package"
-                },
-                "impressions": {
-                  "type": "number",
-                  "description": "Package impressions",
-                  "minimum": 0
-                },
-                "spend": {
-                  "type": "number",
-                  "description": "Package spend",
-                  "minimum": 0
-                },
-                "clicks": {
-                  "type": "number",
-                  "description": "Package clicks",
-                  "minimum": 0
-                },
-                "views": {
-                  "type": "number",
-                  "description": "Package views (for CPV)",
-                  "minimum": 0
-                },
-                "completed_views": {
-                  "type": "number",
-                  "description": "Package completed views (for CPCV)",
-                  "minimum": 0
-                },
-                "video_completions": {
-                  "type": "number",
-                  "description": "DEPRECATED: Use completed_views instead",
-                  "minimum": 0
-                },
-                "conversions": {
-                  "type": "number",
-                  "description": "Package conversions (reserved for future CPA pricing support)",
-                  "minimum": 0
-                },
-                "leads": {
-                  "type": "number",
-                  "description": "Package leads (reserved for future CPL pricing support)",
-                  "minimum": 0
-                },
-                "grps": {
-                  "type": "number",
-                  "description": "Package GRPs (for CPP)",
-                  "minimum": 0
-                },
-                "pacing_index": {
-                  "type": "number",
-                  "description": "Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)",
-                  "minimum": 0
-                },
-                "dooh_metrics": {
+                {
                   "type": "object",
-                  "description": "DOOH-specific metrics for this package (only included for DOOH campaigns)",
                   "properties": {
-                    "loop_plays": {
-                      "type": "integer",
-                      "description": "Loop plays for this package",
-                      "minimum": 0
+                    "package_id": {
+                      "type": "string",
+                      "description": "Publisher's package identifier"
                     },
-                    "screens_used": {
-                      "type": "integer",
-                      "description": "Screens used for this package",
-                      "minimum": 0
+                    "buyer_ref": {
+                      "type": "string",
+                      "description": "Buyer's reference identifier for this package"
                     },
-                    "screen_time_seconds": {
-                      "type": "integer",
-                      "description": "Screen time for this package in seconds",
-                      "minimum": 0
-                    },
-                    "sov_achieved": {
+                    "pacing_index": {
                       "type": "number",
-                      "description": "Actual SOV for this package (0.0 to 1.0)",
-                      "minimum": 0,
-                      "maximum": 1
+                      "description": "Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)",
+                      "minimum": 0
                     }
                   },
-                  "additionalProperties": false
+                  "required": ["package_id", "spend"]
                 }
-              },
-              "required": ["package_id", "spend"],
-              "additionalProperties": true
+              ]
             }
           },
           "daily_breakdown": {

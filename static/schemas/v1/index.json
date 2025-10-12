@@ -51,6 +51,10 @@
           "$ref": "/schemas/v1/core/measurement.json",
           "description": "Measurement capabilities included with a product"
         },
+        "delivery-metrics": {
+          "$ref": "/schemas/v1/core/delivery-metrics.json",
+          "description": "Standard delivery metrics for reporting"
+        },
         "creative-policy": {
           "$ref": "/schemas/v1/core/creative-policy.json",
           "description": "Creative requirements and restrictions for a product"
