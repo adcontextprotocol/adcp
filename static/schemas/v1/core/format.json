@@ -161,6 +161,13 @@
       "items": {
         "type": "string"
       }
+    },
+    "output_format_ids": {
+      "type": "array",
+      "description": "For generative formats: array of format IDs that this format can generate. When a format accepts inputs like brand_manifest and message, this specifies what concrete output formats can be produced (e.g., a generative banner format might output standard image banner formats).",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": ["format_id", "name", "type"],

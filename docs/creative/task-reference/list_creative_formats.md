@@ -38,7 +38,7 @@ Buyers can recursively query creative_agents to discover all available formats. 
 
 ```json
 {
-  "adcp_version": "1.6.0",
+  "adcp_version": "1.7.0",
   "agent_url": "https://creative.adcontextprotocol.org",
   "agent_name": "AdCP Reference Creative Agent",
   "capabilities": ["validation", "assembly", "preview"],
@@ -99,7 +99,7 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.6.0",
+  "adcp_version": "1.7.0",
   "agent_url": "https://creative.adcontextprotocol.org",
   "agent_name": "AdCP Reference Creative Agent",
   "capabilities": ["validation", "assembly", "preview"],
@@ -142,7 +142,7 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.6.0",
+  "adcp_version": "1.7.0",
   "agent_url": "https://dco.example.com",
   "agent_name": "Custom DCO Platform",
   "capabilities": ["validation", "assembly", "generation", "preview"],
@@ -182,6 +182,79 @@ Response:
 ```
 
 Response returns all formats with "vertical" in the name.
+
+## Example 4: Generative Format with Output Formats
+
+"What generative formats do you support for 300x250 banners?"
+
+```json
+{
+  "dimensions": "300x250"
+}
+```
+
+Response:
+
+```json
+{
+  "adcp_version": "1.7.0",
+  "agent_url": "https://creative.adcontextprotocol.org",
+  "agent_name": "AdCP Reference Creative Agent",
+  "capabilities": ["validation", "assembly", "generation", "preview"],
+  "formats": [
+    {
+      "format_id": "300x250_banner_generative",
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "name": "300x250 Generative Banner",
+      "type": "display",
+      "category": "custom",
+      "accepts_3p_tags": false,
+      "assets_required": [
+        {
+          "asset_type": "brand_manifest",
+          "asset_role": "brand_context",
+          "required": true
+        },
+        {
+          "asset_type": "text",
+          "asset_role": "message",
+          "required": true,
+          "requirements": {
+            "description": "Natural language description of the creative to generate"
+          }
+        }
+      ],
+      "output_format_ids": ["300x250_banner_image"],
+      "description": "Accepts a brand manifest and message, generates a complete 300x250 banner creative"
+    },
+    {
+      "format_id": "300x250_banner_image",
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "name": "300x250 Standard Banner",
+      "type": "display",
+      "category": "standard",
+      "is_standard": true,
+      "accepts_3p_tags": false,
+      "assets_required": [
+        {
+          "asset_type": "image",
+          "asset_role": "banner_creative",
+          "required": true,
+          "requirements": {
+            "width": 300,
+            "height": 250,
+            "formats": ["jpg", "png", "gif"],
+            "max_file_size_kb": 150
+          }
+        }
+      ],
+      "description": "Standard 300x250 banner accepting a complete creative image"
+    }
+  ]
+}
+```
+
+**Usage**: Sales agents can provide the generative format `300x250_banner_generative` to buyers who submit brand manifests and messages. The creative agent generates creatives in the `300x250_banner_image` format that can be trafficked.
 
 ## Usage Workflow
 
