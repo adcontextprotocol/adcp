@@ -3,132 +3,64 @@
   "$id": "/schemas/v1/media-buy/package-request.json",
   "title": "Package Request",
   "description": "Package configuration for media buy creation",
-  "oneOf": [
-    {
-      "type": "object",
-      "description": "Package with explicit format IDs",
-      "properties": {
-        "buyer_ref": {
-          "type": "string",
-          "description": "Buyer's reference identifier for this package"
-        },
-        "product_id": {
-          "type": "string",
-          "description": "Product ID for this package (recommended - replaces deprecated products array)"
-        },
-        "products": {
-          "type": "array",
-          "description": "DEPRECATED: Use product_id instead. Array of product IDs - only first product will be used",
-          "deprecated": true,
-          "items": {
-            "type": "string"
-          }
-        },
-        "format_ids": {
-          "type": "array",
-          "description": "Array of format IDs that will be used for this package - must be supported by the product",
-          "items": {
-            "type": "string",
-            "description": "Format ID referencing a format from list_creative_formats"
-          }
-        },
-        "budget": {
-          "type": "number",
-          "description": "Budget allocation for this package in the media buy's currency",
-          "minimum": 0
-        },
-        "pacing": {
-          "$ref": "/schemas/v1/enums/pacing.json"
-        },
-        "pricing_option_id": {
-          "type": "string",
-          "description": "ID of the selected pricing option from the product's pricing_options array"
-        },
-        "bid_price": {
-          "type": "number",
-          "description": "Bid price for auction-based pricing (required if the selected pricing_option has is_fixed: false)",
-          "minimum": 0
-        },
-        "targeting_overlay": {
-          "$ref": "/schemas/v1/core/targeting.json"
-        },
-        "creative_ids": {
-          "type": "array",
-          "description": "Creative IDs to assign to this package at creation time",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "anyOf": [
-        {"required": ["buyer_ref", "product_id", "format_ids", "budget", "pricing_option_id"]},
-        {"required": ["buyer_ref", "products", "format_ids", "budget", "pricing_option_id"]}
-      ],
-      "not": {
-        "required": ["format_selection"]
-      },
-      "additionalProperties": false
+  "type": "object",
+  "properties": {
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for this package"
     },
-    {
-      "type": "object",
-      "description": "Package with dynamic format selection",
-      "properties": {
-        "buyer_ref": {
-          "type": "string",
-          "description": "Buyer's reference identifier for this package"
-        },
-        "product_id": {
-          "type": "string",
-          "description": "Product ID for this package (recommended - replaces deprecated products array)"
-        },
-        "products": {
-          "type": "array",
-          "description": "DEPRECATED: Use product_id instead. Array of product IDs - only first product will be used",
-          "deprecated": true,
-          "items": {
-            "type": "string"
-          }
-        },
-        "format_selection": {
-          "type": "object",
-          "description": "Dynamic format selection criteria"
-        },
-        "budget": {
-          "type": "number",
-          "description": "Budget allocation for this package in the media buy's currency",
-          "minimum": 0
-        },
-        "pacing": {
-          "$ref": "/schemas/v1/enums/pacing.json"
-        },
-        "pricing_option_id": {
-          "type": "string",
-          "description": "ID of the selected pricing option from the product's pricing_options array"
-        },
-        "bid_price": {
-          "type": "number",
-          "description": "Bid price for auction-based pricing (required if the selected pricing_option has is_fixed: false)",
-          "minimum": 0
-        },
-        "targeting_overlay": {
-          "$ref": "/schemas/v1/core/targeting.json"
-        },
-        "creative_ids": {
-          "type": "array",
-          "description": "Creative IDs to assign to this package at creation time",
-          "items": {
-            "type": "string"
-          }
-        }
+    "product_id": {
+      "type": "string",
+      "description": "Product ID for this package (recommended - replaces deprecated products array)"
+    },
+    "products": {
+      "type": "array",
+      "description": "DEPRECATED: Use product_id instead. Array of product IDs - only first product will be used",
+      "deprecated": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Array of format IDs that will be used for this package - must be supported by the product",
+      "items": {
+        "type": "string",
+        "description": "Format ID referencing a format from list_creative_formats"
       },
-      "anyOf": [
-        {"required": ["buyer_ref", "product_id", "format_selection", "budget", "pricing_option_id"]},
-        {"required": ["buyer_ref", "products", "format_selection", "budget", "pricing_option_id"]}
-      ],
-      "not": {
-        "required": ["format_ids"]
-      },
-      "additionalProperties": false
+      "minItems": 1
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget allocation for this package in the media buy's currency",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/v1/enums/pacing.json"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "ID of the selected pricing option from the product's pricing_options array"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Bid price for auction-based pricing (required if the selected pricing_option has is_fixed: false)",
+      "minimum": 0
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/v1/core/targeting.json"
+    },
+    "creative_ids": {
+      "type": "array",
+      "description": "Creative IDs to assign to this package at creation time",
+      "items": {
+        "type": "string"
+      }
     }
-  ]
+  },
+  "anyOf": [
+    {"required": ["buyer_ref", "product_id", "format_ids", "budget", "pricing_option_id"]},
+    {"required": ["buyer_ref", "products", "format_ids", "budget", "pricing_option_id"]}
+  ],
+  "additionalProperties": false
 }
