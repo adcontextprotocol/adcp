@@ -77,12 +77,10 @@ The message is returned differently in each protocol:
       "description": "Premium tier inventory across all property types"
     }
   },
-  "summary": {
-    "primary_channels": ["dooh"],
-    "primary_markets": ["US", "CA", "MX"],
-    "total_properties": 125,
-    "description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification."
-  }
+  "primary_channels": ["dooh"],
+  "primary_markets": ["US", "CA", "MX"],
+  "portfolio_size": 125,
+  "portfolio_description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification."
 }
 ```
 
@@ -92,11 +90,10 @@ The message is returned differently in each protocol:
 - **tags**: Metadata for each tag used by properties
   - **name**: Human-readable name for the tag
   - **description**: Description of what the tag represents and optionally how many properties it includes
-- **summary** *(optional)*: High-level portfolio summary for quick relevance filtering
-  - **primary_channels**: Main advertising channels (display, video, dooh, ctv, etc.)
-  - **primary_markets**: Main geographic markets (ISO country codes)
-  - **total_properties**: Total number of properties
-  - **description**: Markdown description of the property portfolio
+- **primary_channels** *(optional)*: Main advertising channels (display, video, dooh, ctv, etc.)
+- **primary_markets** *(optional)*: Main geographic markets (ISO country codes)
+- **portfolio_size** *(optional)*: Total count of properties in portfolio (not pagination-related)
+- **portfolio_description** *(optional)*: Markdown description of the property portfolio
 
 ## Integration with get_products
 
@@ -268,11 +265,11 @@ await a2a.send({
 }
 ```
 
-## Property Portfolio Summary
+## Property Portfolio Metadata
 
-The optional `summary` field provides high-level metadata about the property portfolio to help buying agents quickly determine relevance without examining every property.
+Optional top-level fields provide high-level metadata about the property portfolio to help buying agents quickly determine relevance without examining every property.
 
-### Why Summaries?
+### Why Portfolio Metadata?
 
 **The core insight**: This isn't about what the agent *can do* (that's in A2A skills) - it's about what properties the agent *represents*. Properties change over time as inventory is added or removed.
 
@@ -281,8 +278,8 @@ The optional `summary` field provides high-level metadata about the property por
 // Quick filtering before detailed analysis
 const response = await agent.send({ skill: 'list_authorized_properties' });
 
-if (response.summary?.primary_channels?.includes('dooh') &&
-    response.summary?.primary_markets?.includes('US')) {
+if (response.primary_channels?.includes('dooh') &&
+    response.primary_markets?.includes('US')) {
   // Relevant! Now examine detailed properties
   const airportProperties = response.properties.filter(p =>
     p.tags?.includes('airports')
@@ -290,7 +287,7 @@ if (response.summary?.primary_channels?.includes('dooh') &&
 }
 ```
 
-### Summary Fields
+### Portfolio Fields
 
 **`primary_channels`** *(optional)*: Main advertising channels in this portfolio
 - `"display"`, `"video"`, `"dooh"`, `"ctv"`, `"podcast"`, `"retail"`, etc.
@@ -300,50 +297,44 @@ if (response.summary?.primary_channels?.includes('dooh') &&
 - Where the bulk of properties are concentrated
 - Helps filter "Do you have US inventory?" before examining properties
 
-**`total_properties`** *(optional)*: Total number of properties
-- Context for portfolio size
+**`portfolio_size`** *(optional)*: Total count of properties (not pagination-related)
+- Context for portfolio scale
 - "1847 radio stations" vs "5 premium properties"
 
-**`description`** *(optional)*: Markdown description of the portfolio
+**`portfolio_description`** *(optional)*: Markdown description of the portfolio
 - Inventory types and characteristics
 - Audience profiles
 - Special features or capabilities
 
-### Example Summaries
+### Example Portfolio Metadata
 
 **DOOH Network**:
 ```json
 {
-  "summary": {
-    "primary_channels": ["dooh"],
-    "primary_markets": ["US", "CA"],
-    "total_properties": 125,
-    "description": "Premium digital out-of-home across airports and transit. Business traveler focus with proof-of-play."
-  }
+  "primary_channels": ["dooh"],
+  "primary_markets": ["US", "CA"],
+  "portfolio_size": 125,
+  "portfolio_description": "Premium digital out-of-home across airports and transit. Business traveler focus with proof-of-play."
 }
 ```
 
 **Multi-Channel Publisher**:
 ```json
 {
-  "summary": {
-    "primary_channels": ["display", "video", "native"],
-    "primary_markets": ["US", "GB", "AU"],
-    "total_properties": 45,
-    "description": "News and business publisher network. Desktop and mobile web properties with professional audience."
-  }
+  "primary_channels": ["display", "video", "native"],
+  "primary_markets": ["US", "GB", "AU"],
+  "portfolio_size": 45,
+  "portfolio_description": "News and business publisher network. Desktop and mobile web properties with professional audience."
 }
 ```
 
 **Large Radio Network**:
 ```json
 {
-  "summary": {
-    "primary_channels": ["audio"],
-    "primary_markets": ["US"],
-    "total_properties": 1847,
-    "description": "National radio network covering all US DMAs. Mix of news, talk, and music formats."
-  }
+  "primary_channels": ["audio"],
+  "primary_markets": ["US"],
+  "portfolio_size": 1847,
+  "portfolio_description": "National radio network covering all US DMAs. Mix of news, talk, and music formats."
 }
 ```
 

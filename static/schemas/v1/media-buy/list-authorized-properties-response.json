@@ -36,41 +36,34 @@
         "additionalProperties": false
       }
     },
-    "summary": {
-      "type": "object",
-      "description": "High-level summary of the property portfolio to help buying agents quickly determine relevance before examining full property details",
-      "properties": {
-        "primary_channels": {
-          "type": "array",
-          "description": "Primary advertising channels represented in this property portfolio",
-          "items": {
-            "type": "string",
-            "enum": ["display", "video", "audio", "native", "dooh", "ctv", "podcast", "retail", "social"]
-          },
-          "minItems": 1
-        },
-        "primary_markets": {
-          "type": "array",
-          "description": "Primary geographic markets (ISO 3166-1 alpha-2 country codes) where properties are concentrated",
-          "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
-          },
-          "minItems": 1
-        },
-        "total_properties": {
-          "type": "integer",
-          "description": "Total number of properties in this portfolio",
-          "minimum": 0
-        },
-        "description": {
-          "type": "string",
-          "description": "Markdown-formatted description of the property portfolio, including inventory types, audience characteristics, and special features",
-          "minLength": 1,
-          "maxLength": 5000
-        }
+    "primary_channels": {
+      "type": "array",
+      "description": "Primary advertising channels represented in this property portfolio. Helps buying agents quickly filter relevance.",
+      "items": {
+        "type": "string",
+        "enum": ["display", "video", "audio", "native", "dooh", "ctv", "podcast", "retail", "social"]
       },
-      "additionalProperties": false
+      "minItems": 1
+    },
+    "primary_markets": {
+      "type": "array",
+      "description": "Primary geographic markets (ISO 3166-1 alpha-2 country codes) where properties are concentrated. Helps buying agents quickly filter relevance.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "portfolio_size": {
+      "type": "integer",
+      "description": "Total number of properties in this portfolio (not related to pagination). Provides context like '1847 radio stations' vs '5 premium properties'.",
+      "minimum": 0
+    },
+    "portfolio_description": {
+      "type": "string",
+      "description": "Markdown-formatted description of the property portfolio, including inventory types, audience characteristics, and special features.",
+      "minLength": 1,
+      "maxLength": 5000
     },
     "errors": {
       "type": "array",

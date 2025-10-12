@@ -141,17 +141,18 @@ Use geo fields **only** for:
 **Available fields**:
 - `geo_country_any_of`: ISO country codes
 - `geo_region_any_of`: State/region identifiers
-- `geo_metro_any_of`: DMA codes
-- `geo_postal_code_any_of`: ZIP/postal codes
+- `geo_metro_any_of`: DMA codes (not all publishers support metro-level targeting)
+- `geo_postal_code_any_of`: ZIP/postal codes (not all publishers support postal-level targeting)
+
+**Note**: Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
 
 ### Frequency Capping
-Basic impression frequency controls:
+Basic impression suppression controls:
 ```json
 {
   "targeting_overlay": {
     "frequency_cap": {
-      "max_impressions": 3,
-      "time_window_hours": 24
+      "suppress_minutes": 60  // Suppress for 60 minutes after impression
     }
   }
 }
@@ -181,18 +182,18 @@ Basic impression frequency controls:
 
 ## What NOT to Use Targeting Overlays For
 
-**❌ Removed from targeting overlays:**
-- **Demographics** (age, gender) - Express in brief
-- **Device types** - Use product filtering with `list_creative_formats`
-- **Browser/OS** - Not applicable for most channels, express in brief if needed
-- **Content categories** - Express in brief
-- **Audience segments** - Express in brief or use AXE for real-time decisioning
+**Express these in briefs instead:**
+- **Demographics** (age, gender) - "Target adults 25-54" in brief text
+- **Device types** - "Mobile users" or "CTV viewers" in brief text
+- **Browser/OS** - Rarely relevant; mention in brief if truly needed
+- **Content categories** - "Sports content" or "News sites" in brief text
+- **Audience segments** - "Auto intenders" or "Luxury shoppers" in brief text
 
-**Why removed?**
-- These are better expressed in natural language briefs
-- Publishers know their inventory and can target more effectively
-- Reduces channel-specific complexity (e.g., DOOH doesn't have browsers)
-- Simpler, cleaner API with fewer edge cases
+**Why briefs work better:**
+- Natural language captures intent more clearly
+- Publishers know their inventory and can target effectively
+- Avoids channel-specific complexity (DOOH has no browsers)
+- Simpler API with fewer edge cases
 
 ## Integration with Dimensions
 
