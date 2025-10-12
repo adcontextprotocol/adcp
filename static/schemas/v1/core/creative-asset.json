@@ -22,63 +22,17 @@
       "description": "Assets required by the format, keyed by asset_role",
       "patternProperties": {
         "^[a-zA-Z0-9_-]+$": {
-          "type": "object",
-          "description": "Asset definition",
-          "properties": {
-            "asset_type": {
-              "type": "string",
-              "enum": ["image", "video", "audio", "text", "html", "css", "javascript", "promoted_offerings", "url"],
-              "description": "Type of this asset"
-            },
-            "url": {
-              "type": "string",
-              "format": "uri",
-              "description": "URL for image/video/audio assets or promoted_offerings URL reference"
-            },
-            "content": {
-              "type": "string",
-              "description": "Content for text/html/css/javascript assets"
-            },
-            "width": {
-              "type": "integer",
-              "description": "Width in pixels (for images/video)",
-              "minimum": 1
-            },
-            "height": {
-              "type": "integer",
-              "description": "Height in pixels (for images/video)",
-              "minimum": 1
-            },
-            "duration_ms": {
-              "type": "integer",
-              "description": "Duration in milliseconds (for video/audio)",
-              "minimum": 0
-            },
-            "format": {
-              "type": "string",
-              "description": "File format (jpg, png, mp4, etc.)"
-            },
-            "colors": {
-              "type": "object",
-              "description": "Brand colors (for promoted_offerings asset type)",
-              "properties": {
-                "primary": {"type": "string"},
-                "secondary": {"type": "string"},
-                "accent": {"type": "string"}
-              }
-            },
-            "fonts": {
-              "type": "array",
-              "description": "Brand fonts (for promoted_offerings asset type)",
-              "items": {"type": "string"}
-            },
-            "tone": {
-              "type": "string",
-              "description": "Brand tone/voice (for promoted_offerings asset type)"
-            }
-          },
-          "required": ["asset_type"],
-          "additionalProperties": true
+          "oneOf": [
+            {"$ref": "/schemas/v1/core/assets/image-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/video-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/audio-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/text-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/html-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/css-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/javascript-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/promoted-offerings-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/url-asset.json"}
+          ]
         }
       },
       "additionalProperties": false

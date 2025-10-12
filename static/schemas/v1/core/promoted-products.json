@@ -31,28 +31,29 @@
   "additionalProperties": false,
   "examples": [
     {
-      "manifest_skus": ["SKU-12345", "SKU-67890"],
-      "description": "Direct SKU selection for specific products from brand manifest"
+      "description": "Direct SKU selection for specific products from brand manifest",
+      "data": {
+        "manifest_skus": ["SKU-12345", "SKU-67890"]
+      }
     },
     {
-      "manifest_tags": ["organic", "sauces"],
-      "manifest_category": "food/condiments",
-      "description": "UNION selection: products tagged 'organic' OR 'sauces' OR in 'food/condiments' category from brand manifest"
+      "description": "UNION selection: products tagged 'organic' OR 'sauces' OR in 'food/condiments' category from brand manifest",
+      "data": {
+        "manifest_tags": ["organic", "sauces"],
+        "manifest_category": "food/condiments"
+      }
     },
     {
-      "manifest_query": "all Kraft Heinz pasta sauces under $5",
-      "description": "Natural language product selection from brand manifest"
+      "description": "Natural language product selection from brand manifest",
+      "data": {
+        "manifest_query": "all Kraft Heinz pasta sauces under $5"
+      }
     },
     {
-      "manifest_tags": ["holiday"],
-      "additional_assets": [
-        {
-          "asset_id": "holiday_hero",
-          "asset_type": "image",
-          "url": "https://cdn.brand.com/holiday-hero.jpg"
-        }
-      ],
-      "description": "Select products from manifest and add campaign-specific assets"
+      "description": "Select products by tags",
+      "data": {
+        "manifest_tags": ["holiday"]
+      }
     }
   ]
 }

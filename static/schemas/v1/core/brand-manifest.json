@@ -284,23 +284,29 @@
   "additionalProperties": false,
   "examples": [
     {
-      "url": "https://bobsfunburgers.com",
-      "name": "Bob's Fun Burgers",
-      "description": "Example with both URL and name"
+      "description": "Example with both URL and name",
+      "data": {
+        "url": "https://bobsfunburgers.com",
+        "name": "Bob's Fun Burgers"
+      }
     },
     {
-      "name": "Great Value",
       "description": "Example: white-label brand without dedicated URL",
-      "colors": {
-        "primary": "#0071CE",
-        "secondary": "#FFC220"
-      },
-      "tone": "affordable and trustworthy"
+      "data": {
+        "name": "Great Value",
+        "colors": {
+          "primary": "#0071CE",
+          "secondary": "#FFC220"
+        },
+        "tone": "affordable and trustworthy"
+      }
     },
     {
-      "url": "https://acmecorp.com",
-      "name": "ACME Corporation",
-      "logos": [
+      "description": "Full brand manifest with all fields",
+      "data": {
+        "url": "https://acmecorp.com",
+        "name": "ACME Corporation",
+        "logos": [
         {
           "url": "https://cdn.acmecorp.com/logo-square-dark.png",
           "tags": ["dark", "square"],
@@ -366,6 +372,7 @@
       ],
       "industry": "technology",
       "target_audience": "business decision-makers aged 35-55"
+      }
     }
   ]
 }

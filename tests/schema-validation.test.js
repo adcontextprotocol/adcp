@@ -279,17 +279,57 @@ async function runTests() {
       'error.json': ['code', 'message'],
       'budget.json': ['total', 'currency']
     };
-    
+
     for (const [schemaPath, schema] of coreSchemas) {
       const filename = path.basename(schemaPath);
       const expectedRequired = requiredFieldChecks[filename];
-      
+
       if (expectedRequired) {
         const actualRequired = schema.required || [];
         const missing = expectedRequired.filter(field => !actualRequired.includes(field));
-        
+
         if (missing.length > 0) {
           return `${filename}: Missing required fields: ${missing.join(', ')}`;
+        }
+      }
+    }
+    return true;
+  });
+
+  // Test 7: Validate schema examples against their schemas
+  await test('Schema examples validate against their own schemas', async () => {
+    const schemasWithExamples = schemas.filter(([_, schema]) => schema.examples && schema.examples.length > 0);
+
+    for (const [schemaPath, schema] of schemasWithExamples) {
+      const filename = path.basename(schemaPath);
+
+      // Compile the schema
+      const testAjv = new Ajv({
+        allErrors: true,
+        verbose: true,
+        strict: false,
+        loadSchema: loadExternalSchema
+      });
+      addFormats(testAjv);
+
+      let validate;
+      try {
+        validate = await testAjv.compileAsync(schema);
+      } catch (error) {
+        return `${filename}: Failed to compile schema for example validation: ${error.message}`;
+      }
+
+      // Validate each example
+      for (let i = 0; i < schema.examples.length; i++) {
+        const example = schema.examples[i];
+        const exampleData = example.data || example;
+
+        const valid = validate(exampleData);
+        if (!valid) {
+          const errors = validate.errors.map(err =>
+            `${err.instancePath} ${err.message}`
+          ).join('; ');
+          return `${filename}: Example ${i + 1} ${example.description ? `"${example.description}" ` : ''}failed validation: ${errors}`;
         }
       }
     }

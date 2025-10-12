@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/assets/url-asset.json",
+  "title": "URL Asset",
+  "description": "URL reference asset",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "url"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL reference"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what this URL points to"
+    }
+  },
+  "required": ["asset_type", "url"],
+  "additionalProperties": false
+}

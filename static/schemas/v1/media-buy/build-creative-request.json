@@ -23,10 +23,6 @@
       "$ref": "/schemas/v1/core/format-id.json",
       "description": "Format ID to generate. The format definition specifies whether output is manifest-based or code-based."
     },
-    "context_id": {
-      "type": "string",
-      "description": "Optional context ID for iterative creative refinement"
-    },
     "assets": {
       "type": "array",
       "description": "Available assets to use in creative generation - this is where promoted_offerings should be included as an asset",
