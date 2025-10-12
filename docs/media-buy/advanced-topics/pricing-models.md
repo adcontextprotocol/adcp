@@ -280,18 +280,21 @@ Publishers can offer the same product in multiple currencies:
   "product_id": "premium_video",
   "pricing_options": [
     {
+      "pricing_option_id": "cpm_usd_guaranteed",
       "pricing_model": "cpm",
       "rate": 45.00,
       "currency": "USD",
       "is_fixed": true
     },
     {
+      "pricing_option_id": "cpm_eur_guaranteed",
       "pricing_model": "cpm",
       "rate": 40.00,
       "currency": "EUR",
       "is_fixed": true
     },
     {
+      "pricing_option_id": "cpm_gbp_guaranteed",
       "pricing_model": "cpm",
       "rate": 35.00,
       "currency": "GBP",
@@ -320,6 +323,7 @@ Publishers can offer the same product in multiple currencies:
 **Auction Example**:
 ```json
 {
+  "pricing_option_id": "cpcv_usd_auction",
   "pricing_model": "cpcv",
   "currency": "USD",
   "is_fixed": false,
@@ -335,7 +339,7 @@ Publishers can offer the same product in multiple currencies:
 
 ## Buyer Selection Process
 
-Currency is set at the **media buy level**, packages specify their pricing model and budget allocation:
+Currency is set at the **media buy level**, packages specify their pricing option and budget allocation:
 
 ```json
 {
@@ -353,7 +357,7 @@ Currency is set at the **media buy level**, packages specify their pricing model
     "format_ids": ["video_15s", "video_30s"],
     "budget": 50000,
     "pacing": "even",
-    "pricing_model": "cpcv",
+    "pricing_option_id": "cpcv_usd_auction",
     "bid_price": 0.16
   }]
 }
@@ -361,11 +365,11 @@ Currency is set at the **media buy level**, packages specify their pricing model
 
 **How it works:**
 1. Media buy sets overall `budget.currency` (e.g., "USD") - applies to all packages
-2. Each package selects a `pricing_model` (e.g., "cpcv")
-3. Currency + pricing_model identify which pricing option from the product applies
+2. Each package selects a specific `pricing_option_id` from the product (e.g., "cpcv_usd_auction")
+3. The pricing option ID fully specifies the pricing model, currency, and whether it's fixed or auction
 4. Package sets its budget allocation as a number in the media buy's currency
 5. Package can specify `pacing` strategy (even, frontload, etc.)
-6. If auction-based, package includes `bid_price`
+6. If the selected pricing option is auction-based (`is_fixed: false`), package must include `bid_price`
 
 ## Reporting Metrics by Pricing Model
 
@@ -393,6 +397,7 @@ A publisher offering Connected TV inventory with multiple pricing options:
   "delivery_type": "guaranteed",
   "pricing_options": [
     {
+      "pricing_option_id": "cpm_usd_guaranteed",
       "pricing_model": "cpm",
       "rate": 55.00,
       "currency": "USD",
@@ -400,6 +405,7 @@ A publisher offering Connected TV inventory with multiple pricing options:
       "min_spend_per_package": 15000
     },
     {
+      "pricing_option_id": "cpcv_usd_guaranteed",
       "pricing_model": "cpcv",
       "rate": 0.22,
       "currency": "USD",
@@ -407,6 +413,7 @@ A publisher offering Connected TV inventory with multiple pricing options:
       "min_spend_per_package": 15000
     },
     {
+      "pricing_option_id": "cpp_usd_m18-49",
       "pricing_model": "cpp",
       "rate": 300.00,
       "currency": "USD",
@@ -459,6 +466,7 @@ For backward compatibility, products can still use the deprecated `is_fixed_pric
 {
   "product_id": "display_standard",
   "pricing_options": [{
+    "pricing_option_id": "cpm_usd_guaranteed",
     "pricing_model": "cpm",
     "rate": 12.50,
     "currency": "USD",
