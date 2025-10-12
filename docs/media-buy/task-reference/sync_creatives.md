@@ -16,9 +16,10 @@ The `sync_creatives` task provides a powerful, efficient approach to creative li
 - **Bulk Operations**: Process up to 100 creatives per request
 - **Upsert Semantics**: Automatic create-or-update behavior
 - **Patch Mode**: Update only specified fields while preserving others
-- **Assignment Management**: Bulk assign creatives to packages in the same request  
+- **Assignment Management**: Bulk assign creatives to packages in the same request
 - **Validation Modes**: Choose between strict (fail-fast) or lenient (process-valid) validation
 - **Dry Run**: Preview changes before applying them
+- **Generative Creatives**: Submit brand manifest and generation prompts for AI or human-created creatives
 - **Comprehensive Reporting**: Detailed results for each creative processed
 
 ## Request Parameters
@@ -56,10 +57,16 @@ Each creative in the `creatives` array follows the [Creative Asset schema](/sche
 - `click_url`, `width`, `height`, `duration`, `tags` (optional)
 
 **Native Ad Templates:**
-- `creative_id`, `name`, `format` (required)
+- `creative_id`, `name`, `format_id` (required)
 - `snippet` (HTML template with variables like `[%Headline%]`)
 - `snippet_type: "html"`
 - `assets` array with sub-assets for template variables
+
+**Generative Creatives:**
+- `creative_id`, `name`, `format_id` (required - references a generative format)
+- `assets` object with `brand_manifest` and `generation_prompt`
+- Publisher creates the creative (AI or human - buyer doesn't know or care)
+- Response includes `preview_url` when ready for review
 
 ## Webhook Configuration (Task-Specific)
 
@@ -118,6 +125,34 @@ The response provides comprehensive details about the sync operation:
   ]
 }
 ```
+
+## Generative Creative Workflow
+
+For generative formats, buyers submit a creative manifest (brand information + generation instructions) rather than finished assets. The publisher then creates the creative - either through AI generation, human designers, or a hybrid approach.
+
+**Key Characteristics:**
+
+1. **Implementation Agnostic**: Buyer submits the same request whether the publisher uses AI, human designers, or both
+2. **Async by Default**: Response time ranges from seconds (AI) to days (human review)
+3. **Preview-First**: Publisher returns `preview_url` for buyer approval before campaign launch
+4. **Conversational Refinement**: Buyer can request changes using the `context_id` from the response
+
+**Workflow Steps:**
+
+```
+1. Buyer submits creative with brand_manifest + generation_prompt
+2. Publisher responds with status: "submitted" or "working"
+3. Publisher creates creative (AI/human/hybrid - buyer doesn't know)
+4. Publisher responds with status: "completed" + preview_url
+5. Buyer reviews preview and approves or requests changes
+```
+
+**Example Generative Formats:**
+- `premium_bespoke_display` - Custom-designed display ad (human designer, 24-48h)
+- `ai_native_responsive` - AI-generated native ad (automated, under 60s)
+- `hybrid_video_30s` - AI draft + human polish (hybrid, 2-4h)
+
+The format definition specifies expected turnaround time, but the buyer's workflow is identical regardless of implementation.
 
 ## Usage Examples
 
@@ -213,7 +248,80 @@ Upload a native ad template with variable substitution:
 }
 ```
 
-### Example 4: Dry Run Preview
+### Example 4: Generative Creative Submission
+
+Submit a creative manifest for publisher to create (AI or human):
+
+**Request:**
+```json
+{
+  "creatives": [
+    {
+      "creative_id": "holiday_hero_display",
+      "name": "Holiday Campaign Hero Display",
+      "format_id": {
+        "agent_url": "https://publisher.com/.well-known/adcp/sales",
+        "id": "premium_bespoke_display"
+      },
+      "assets": {
+        "brand_manifest": {
+          "asset_type": "brand_manifest",
+          "url": "https://retailer.com",
+          "colors": {
+            "primary": "#C41E3A",
+            "secondary": "#165B33",
+            "accent": "#FFD700"
+          },
+          "tone": "Warm, festive, family-oriented"
+        },
+        "generation_prompt": {
+          "asset_type": "text",
+          "content": "Create a holiday campaign featuring our winter collection. Emphasize warmth, family togetherness, and quality. Include subtle holiday elements without being overtly religious."
+        }
+      },
+      "tags": ["holiday", "q4_2024", "hero"]
+    }
+  ]
+}
+```
+
+**Initial Response (Async):**
+```json
+{
+  "status": "submitted",
+  "message": "Creative submitted for creation",
+  "context_id": "ctx_abc123",
+  "creatives": [
+    {
+      "creative_id": "holiday_hero_display",
+      "action": "created",
+      "platform_id": "pub_creative_789"
+    }
+  ]
+}
+```
+
+**Later Response (When Ready):**
+```json
+{
+  "status": "completed",
+  "message": "Creative ready for review",
+  "context_id": "ctx_abc123",
+  "creatives": [
+    {
+      "creative_id": "holiday_hero_display",
+      "action": "created",
+      "platform_id": "pub_creative_789",
+      "preview_url": "https://publisher.com/preview/pub_creative_789",
+      "expires_at": "2024-12-20T00:00:00Z"
+    }
+  ]
+}
+```
+
+The buyer doesn't know if this creative was generated by AI in 20 seconds or designed by a human team over 2 days. The workflow is identical either way.
+
+### Example 5: Dry Run Preview
 
 Preview changes before applying them:
 
@@ -232,7 +340,7 @@ Preview changes before applying them:
 }
 ```
 
-### Example 5: Library Replacement (Advanced)
+### Example 6: Library Replacement (Advanced)
 
 Replace entire creative library with new set (use with extreme caution):
 
