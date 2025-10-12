@@ -27,13 +27,13 @@
           "properties": {
             "asset_type": {
               "type": "string",
-              "enum": ["image", "video", "audio", "text", "html", "css", "javascript", "brand_card", "url"],
+              "enum": ["image", "video", "audio", "text", "html", "css", "javascript", "brand_manifest", "url"],
               "description": "Type of this asset"
             },
             "url": {
               "type": "string",
               "format": "uri",
-              "description": "URL for image/video/audio assets or brand_card URL"
+              "description": "URL for image/video/audio assets or brand_manifest URL"
             },
             "content": {
               "type": "string",
@@ -60,7 +60,7 @@
             },
             "colors": {
               "type": "object",
-              "description": "Brand colors (for brand_card asset type)",
+              "description": "Brand colors (for brand_manifest asset type)",
               "properties": {
                 "primary": {"type": "string"},
                 "secondary": {"type": "string"},
@@ -69,12 +69,12 @@
             },
             "fonts": {
               "type": "array",
-              "description": "Brand fonts (for brand_card asset type)",
+              "description": "Brand fonts (for brand_manifest asset type)",
               "items": {"type": "string"}
             },
             "tone": {
               "type": "string",
-              "description": "Brand tone/voice (for brand_card asset type)"
+              "description": "Brand tone/voice (for brand_manifest asset type)"
             }
           },
           "required": ["asset_type"],

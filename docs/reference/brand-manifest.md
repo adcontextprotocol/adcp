@@ -1,16 +1,16 @@
 ---
-title: Brand Card
+title: Brand Manifest
 description: Standardized brand information manifest for creative generation and media buying
-keywords: [brand card, brand manifest, creative generation, brand guidelines]
+keywords: [brand manifest, brand manifest, creative generation, brand guidelines]
 ---
 
-# Brand Card
+# Brand Manifest
 
-The **Brand Card** is a standardized manifest format that serves as the **namespace and identity** for brands in AdCP. It provides brand context, assets, and product catalogs that can be cached and reused across all media buys and creative generation requests.
+The **Brand Manifest** is a standardized manifest format that serves as the **namespace and identity** for brands in AdCP. It provides brand context, assets, and product catalogs that can be cached and reused across all media buys and creative generation requests.
 
 ## Overview
 
-Brand cards solve a key problem: how to efficiently provide brand context without requiring complex authorization flows or repeated data entry. By making the brand card the central identifier for all advertising activity, AdCP enables:
+Brand cards solve a key problem: how to efficiently provide brand context without requiring complex authorization flows or repeated data entry. By making the brand manifest the central identifier for all advertising activity, AdCP enables:
 
 - **Natural grouping**: All media buys and creatives for a brand reference the same card
 - **Consistent identity**: Brand guidelines automatically travel with every request
@@ -22,7 +22,7 @@ Brand cards solve a key problem: how to efficiently provide brand context withou
 
 - **Namespace**: Brand card serves as the primary identifier for all advertising activity
 - **Minimal Friction**: Start with just a name or URL, expand as needed
-- **Cacheable**: Same brand card reused across all requests
+- **Cacheable**: Same brand manifest reused across all requests
 - **Standardized**: Consistent format across all AdCP implementations
 - **Flexible**: Supports SMB to enterprise use cases
 - **AI-Optimized**: Structured for easy ingestion by creative agents
@@ -31,7 +31,7 @@ Brand cards solve a key problem: how to efficiently provide brand context withou
 
 ### SMB / Ad Hoc Creative Generation
 
-For small businesses or one-off campaigns, a minimal brand card provides enough context:
+For small businesses or one-off campaigns, a minimal brand manifest provides enough context:
 
 ```json
 {
@@ -43,7 +43,7 @@ Creative agents can infer brand information from the URL, pulling logos, colors,
 
 ### Enterprise / Established Brand
 
-For established brands with defined guidelines, the brand card provides comprehensive context:
+For established brands with defined guidelines, the brand manifest provides comprehensive context:
 
 ```json
 {
@@ -125,9 +125,9 @@ Some brands don't have dedicated URLs (white-label products, local businesses, B
 - B2B brands without public sites
 - Sub-brands under parent company URLs
 
-## Brand Card Schema
+## Brand Manifest Schema
 
-**Schema URL**: [/schemas/v1/core/brand-card.json](/schemas/v1/core/brand-card.json)
+**Schema URL**: [/schemas/v1/core/brand-manifest.json](/schemas/v1/core/brand-manifest.json)
 
 ### Required Fields
 
@@ -215,13 +215,13 @@ Some brands don't have dedicated URLs (white-label products, local businesses, B
 
 ### create_media_buy
 
-Include brand card in media buy creation to provide context for creative generation:
+Include brand manifest in media buy creation to provide context for creative generation:
 
 ```json
 {
   "buyer_ref": "campaign_2024_q1",
   "promoted_offering": "ACME Pro Widget",
-  "brand_card": {
+  "brand_manifest": {
     "url": "https://acmecorp.com",
     "name": "ACME Corporation",
     "tone": "professional and innovative"
@@ -233,13 +233,13 @@ Include brand card in media buy creation to provide context for creative generat
 
 ### build_creative
 
-Use brand card to inform creative generation:
+Use brand manifest to inform creative generation:
 
 ```json
 {
   "message": "Create a native ad highlighting our new product launch",
   "format_id": "display_native",
-  "brand_card": {
+  "brand_manifest": {
     "url": "https://acmecorp.com",
     "logos": [
       {
@@ -291,12 +291,12 @@ Tags help creative agents select appropriate logo variants:
 }
 ```
 
-### 3. Cache and Reuse Brand Cards
+### 3. Cache and Reuse Brand Manifests
 
 Brand cards are designed to be cached:
 
 ```javascript
-// Cache brand card once
+// Cache brand manifest once
 const brandCard = {
   url: "https://acmecorp.com",
   colors: {...},
@@ -304,9 +304,9 @@ const brandCard = {
 };
 
 // Reuse across requests
-await createMediaBuy({ brand_card: brandCard, ... });
-await buildCreative({ brand_card: brandCard, ... });
-await buildCreative({ brand_card: brandCard, ... }); // Same card, different creative
+await createMediaBuy({ brand_manifest: brandCard, ... });
+await buildCreative({ brand_manifest: brandCard, ... });
+await buildCreative({ brand_manifest: brandCard, ... }); // Same card, different creative
 ```
 
 ### 4. Product Feeds for Multi-SKU
@@ -369,10 +369,10 @@ For implementations using the legacy `brand_guidelines` field in `build_creative
 }
 ```
 
-**After (Brand Card)**:
+**After (Brand Manifest)**:
 ```json
 {
-  "brand_card": {
+  "brand_manifest": {
     "url": "https://brand.com",
     "colors": {
       "primary": "#FF6B35",

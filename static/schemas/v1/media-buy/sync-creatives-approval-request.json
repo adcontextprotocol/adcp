@@ -41,7 +41,7 @@
                 "properties": {
                   "asset_type": {
                     "type": "string",
-                    "enum": ["text", "brand_card"]
+                    "enum": ["text", "brand_manifest"]
                   },
                   "content": {
                     "type": "string",
@@ -50,7 +50,7 @@
                   "url": {
                     "type": "string",
                     "format": "uri",
-                    "description": "Updated brand card URL"
+                    "description": "Updated brand manifest URL"
                   }
                 },
                 "required": ["asset_type"]

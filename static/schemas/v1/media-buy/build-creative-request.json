@@ -41,17 +41,17 @@
       "default": "manifest",
       "description": "Output format - 'manifest' for asset-based creatives, 'code' for executable creative code"
     },
-    "brand_card": {
-      "$ref": "/schemas/v1/core/brand-card.json",
+    "brand_manifest": {
+      "$ref": "/schemas/v1/core/brand-manifest.json",
       "description": "Brand information manifest providing context for creative generation. Replaces brand_guidelines with a more comprehensive and standardized format."
     },
     "promoted_products": {
       "$ref": "/schemas/v1/core/promoted-products.json",
-      "description": "Products or offerings being promoted in this creative. Supports SKU selection from brand card's product catalog, or inline offerings for non-commerce campaigns."
+      "description": "Products or offerings being promoted in this creative. Supports SKU selection from brand manifest's product catalog, or inline offerings for non-commerce campaigns."
     },
     "asset_filters": {
       "type": "object",
-      "description": "Filters to select specific assets from the brand card's asset library",
+      "description": "Filters to select specific assets from the brand manifest's asset library",
       "properties": {
         "tags": {
           "type": "array",
@@ -80,7 +80,7 @@
     },
     "brand_guidelines": {
       "type": "object",
-      "description": "DEPRECATED: Use brand_card instead. Legacy brand-specific guidelines and constraints.",
+      "description": "DEPRECATED: Use brand_manifest instead. Legacy brand-specific guidelines and constraints.",
       "properties": {
         "colors": {
           "type": "array",

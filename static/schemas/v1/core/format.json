@@ -67,7 +67,7 @@
               "asset_type": {
                 "type": "string",
                 "description": "Type of asset",
-                "enum": ["image", "video", "audio", "text", "html", "javascript", "url", "brand_card"]
+                "enum": ["image", "video", "audio", "text", "html", "javascript", "url", "brand_manifest"]
               },
               "asset_role": {
                 "type": "string",
@@ -121,7 +121,7 @@
                     "asset_type": {
                       "type": "string",
                       "description": "Type of asset",
-                      "enum": ["image", "video", "audio", "text", "html", "javascript", "url", "brand_card"]
+                      "enum": ["image", "video", "audio", "text", "html", "javascript", "url", "brand_manifest"]
                     },
                     "asset_role": {
                       "type": "string",

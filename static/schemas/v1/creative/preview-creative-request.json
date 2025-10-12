@@ -49,8 +49,8 @@
       "type": "string",
       "description": "Specific template ID for custom format rendering"
     },
-    "brand_card": {
-      "$ref": "/schemas/v1/core/brand-card.json",
+    "brand_manifest": {
+      "$ref": "/schemas/v1/core/brand-manifest.json",
       "description": "Brand information manifest providing context for preview generation. Used when creative manifest includes dynamic elements that need brand context."
     },
     "promoted_products": {
@@ -59,7 +59,7 @@
     },
     "asset_filters": {
       "type": "object",
-      "description": "Filters to select specific assets from the brand card's asset library for preview variants",
+      "description": "Filters to select specific assets from the brand manifest's asset library for preview variants",
       "properties": {
         "tags": {
           "type": "array",

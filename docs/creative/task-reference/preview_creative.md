@@ -63,9 +63,9 @@ To test multiple scenarios, provide an `inputs` array - you'll get one preview p
 | `creative_manifest` | object | Yes | Complete creative manifest with all required assets |
 | `inputs` | array | No | Array of input sets for generating multiple preview variants |
 | `template_id` | string | No | Specific template for custom format rendering |
-| `brand_card` | object | No | Brand information manifest providing context for dynamic previews |
+| `brand_manifest` | object | No | Brand information manifest providing context for dynamic previews |
 | `promoted_products` | object | No | Products/offerings being promoted - provides product context for previews |
-| `asset_filters` | object | No | Filters to select specific assets from brand card (tags, asset_types, exclude_tags) |
+| `asset_filters` | object | No | Filters to select specific assets from brand manifest (tags, asset_types, exclude_tags) |
 
 ### Creative Manifest Structure
 
@@ -524,7 +524,7 @@ Response:
 
 Each `preview_url` returns an HTML page with an embedded video player showing the geo-specific variant.
 
-### Example 4: Using Brand Card for Dynamic Previews
+### Example 4: Using Brand Manifest for Dynamic Previews
 
 Preview creative variants using brand context and product information:
 
@@ -548,7 +548,7 @@ Preview creative variants using brand context and product information:
       }
     }
   },
-  "brand_card": {
+  "brand_manifest": {
     "url": "https://acmecorp.com",
     "assets": [
       {

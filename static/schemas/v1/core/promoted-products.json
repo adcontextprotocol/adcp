@@ -56,7 +56,7 @@
           },
           "assets": {
             "type": "array",
-            "description": "Campaign-specific assets for this offering (in addition to brand card assets)",
+            "description": "Campaign-specific assets for this offering (in addition to brand manifest assets)",
             "items": {
               "type": "object",
               "properties": {
