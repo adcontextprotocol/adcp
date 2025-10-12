@@ -61,7 +61,7 @@
     },
     "parameters": {
       "type": "object",
-      "description": "Additional parameters specific to this pricing model",
+      "description": "Additional parameters specific to this pricing model. Expected parameters by model: CPV (view_threshold), CPP (demographic, min_points), DOOH/flat_rate (duration_hours, sov_percentage, venue_package, daypart). See pricing models documentation for full details.",
       "properties": {
         "demographic": {
           "type": "string",

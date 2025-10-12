@@ -64,12 +64,12 @@
     },
     "reach": {
       "type": "number",
-      "description": "Unique individuals reached",
+      "description": "Unique reach - units depend on measurement provider (e.g., individuals, households, devices, cookies). See delivery_measurement.provider for methodology.",
       "minimum": 0
     },
     "frequency": {
       "type": "number",
-      "description": "Average frequency per individual",
+      "description": "Average frequency per individual (typically measured over campaign duration, but can vary by measurement provider)",
       "minimum": 0
     },
     "quartile_data": {
