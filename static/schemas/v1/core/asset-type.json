@@ -11,7 +11,7 @@
     },
     "type": {
       "type": "string",
-      "enum": ["image", "video", "audio", "text", "html", "css", "javascript"],
+      "enum": ["image", "video", "audio", "text", "html", "css", "javascript", "promoted_offerings", "url"],
       "description": "Type of asset"
     },
     "required": {

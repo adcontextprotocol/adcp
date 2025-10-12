@@ -18,6 +18,20 @@
       "type": "string",
       "description": "Human-readable format name"
     },
+    "description": {
+      "type": "string",
+      "description": "Plain text explanation of what this format does and what assets it requires"
+    },
+    "preview_image": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional preview image URL for format browsing/discovery UI"
+    },
+    "example_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional URL to showcase page with examples and interactive demos of this format"
+    },
     "type": {
       "type": "string",
       "description": "Media type of this format - determines rendering method and asset requirements",
@@ -53,7 +67,7 @@
               "asset_type": {
                 "type": "string",
                 "description": "Type of asset",
-                "enum": ["image", "video", "audio", "text", "html", "javascript", "url"]
+                "enum": ["image", "video", "audio", "text", "html", "javascript", "url", "brand_manifest"]
               },
               "asset_role": {
                 "type": "string",
@@ -107,7 +121,7 @@
                     "asset_type": {
                       "type": "string",
                       "description": "Type of asset",
-                      "enum": ["image", "video", "audio", "text", "html", "javascript", "url"]
+                      "enum": ["image", "video", "audio", "text", "html", "javascript", "url", "brand_manifest"]
                     },
                     "asset_role": {
                       "type": "string",
@@ -144,6 +158,13 @@
     "supported_macros": {
       "type": "array",
       "description": "List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUSTER, DEVICE_ID). Used for validation and developer tooling.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "output_format_ids": {
+      "type": "array",
+      "description": "For generative formats: array of format IDs that this format can generate. When a format accepts inputs like brand_manifest and message, this specifies what concrete output formats can be produced (e.g., a generative banner format might output standard image banner formats).",
       "items": {
         "type": "string"
       }

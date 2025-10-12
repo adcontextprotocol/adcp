@@ -284,6 +284,37 @@ For major version changes:
 
 **Schema Validation**: All schemas must follow this convention. Tests will fail if format fields don't match the expected naming pattern.
 
+### Format ID Structure
+
+**CRITICAL**: Format IDs are structured objects, not strings, to avoid parsing issues and provide clear namespacing.
+
+**Structured Format ID**:
+```json
+{
+  "agent_url": "https://creatives.adcontextprotocol.org",
+  "id": "display_300x250"
+}
+```
+
+**When to use structured format IDs**:
+- **Request parameters** that accept a format ID (e.g., `target_format_id` in `build_creative`)
+- **Creative asset objects** that specify which format they conform to
+- Anywhere a format is being **referenced for action**
+
+**When to use string format IDs**:
+- **Product responses** listing supported formats (for compactness)
+- **Format definition objects** themselves (they have separate `format_id` and `agent_url` fields)
+- Lists where verbosity is a concern
+
+**Schema reference**:
+```json
+{
+  "target_format_id": {
+    "$ref": "/schemas/v1/core/format-id.json"
+  }
+}
+```
+
 ## Common Tasks
 
 ### Before Making Changes

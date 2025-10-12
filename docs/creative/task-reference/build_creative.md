@@ -7,45 +7,71 @@ sidebar_position: 13
 
 Build creative content for a specific format using a creative agent that can generate either a creative manifest (static mode) or executable code (dynamic mode). This tool supports conversational refinement through a series of messages.
 
-## Format Lookup
-
-Creative agents need to understand format requirements to generate appropriate creatives. The format lookup process works as follows:
-
-1. **Standard AdCP Formats**: If `format_source` is omitted or null, the `format_id` refers to a standard AdCP format (e.g., "display_native", "video_standard_30s")
-
-2. **Publisher-Specific Formats**: If `format_source` is provided, the creative agent calls `list_creative_formats` on that sales agent URL to discover the format definition
-
-3. **Format Discovery**: Sales agents should make `list_creative_formats` accessible without authentication for creative agents to discover format requirements
-
-### Format Source Examples
-
-```json
-// Standard AdCP format
-{
-  "format_id": "display_native"
-  // format_source omitted = standard format
-}
-
-// Publisher-specific format
-{
-  "format_id": "premium_video_30s",
-  "format_source": "https://publisher.com/.well-known/adcp/sales"
-}
-```
+For information about format IDs and how to reference formats, see [Creative Formats - Referencing Formats](../formats.md#referencing-formats).
 
 ## Request Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `message` | string | Yes | The request message (initial brief or refinement instructions) |
-| `format_source` | string | No | Source URL for format lookup (sales agent URL). If null/omitted, assumes standard AdCP format |
-| `format_id` | string | Yes | Format identifier to look up from the format source |
+| `source_format_id` | object | No | Format ID of existing creative to transform (optional - omit when creating from scratch). Object with `agent_url` and `id` fields. |
+| `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. For generative formats, this should be the input format (e.g., `300x250_banner_generative`). The creative agent will return a manifest in one of the `output_format_ids`. |
 | `context_id` | string | No | Session context from previous message for continuity |
-| `brand_card` | BrandCard | No | Brand information manifest for creative generation context. See [Brand Card](../../reference/brand-card) for details. Replaces legacy `brand_guidelines`. |
+| `brand_manifest` | BrandManifest | No | Brand information manifest containing all assets, themes, and information necessary to ensure creatives are aligned with the brand's goals and that the publisher is comfortable with what's being advertised. See [Brand Manifest](../../reference/brand-manifest) for details. |
 | `assets` | array | No | References to asset libraries and specific assets |
-| `output_mode` | string | No | `"manifest"` for creative manifest or `"code"` for executable (default: `"manifest"`) |
 | `preview_options` | object | No | Options for generating preview |
 | `finalize` | boolean | No | Set to true to finalize the creative (default: false) |
+
+## Generative Formats
+
+Generative formats accept high-level inputs (like brand manifests and natural language messages) and produce concrete creative assets in a traffickable output format.
+
+### How It Works
+
+1. **Sales agent** advertises both input and output formats via `list_creative_formats`:
+   - Input format: `300x250_banner_generative` (accepts `brand_manifest` + `message`)
+   - Output format: `300x250_banner_image` (produces actual image asset)
+
+2. **Buyer** calls `build_creative` with the **input format**:
+   ```json
+   {
+     "message": "Create a banner promoting our winter sale",
+     "target_format_id": {
+       "agent_url": "https://creative.adcontextprotocol.org",
+       "id": "300x250_banner_generative"
+     },
+     "brand_manifest": {
+       "url": "https://mybrand.com",
+       "colors": {"primary": "#FF0000"}
+     }
+   }
+   ```
+
+3. **Creative agent** returns a manifest in the **output format**:
+   ```json
+   {
+     "creative_output": {
+       "type": "creative_manifest",
+       "target_format_id": {
+         "agent_url": "https://creative.adcontextprotocol.org",
+         "id": "300x250_banner_image"
+       },
+       "assets": {
+         "banner_creative": {
+           "url": "https://cdn.example.com/generated-banner.png",
+           "width": 300,
+           "height": 250
+         }
+       }
+     }
+   }
+   ```
+
+### Benefits
+
+- **Simpler buyer experience**: Submit brand context instead of designing assets
+- **Format flexibility**: One generative format can output multiple standard formats
+- **Automated creative generation**: AI handles asset creation and composition
 
 ### Message Examples
 
@@ -105,11 +131,16 @@ Creative agents need to understand format requirements to generate appropriate c
 
 ### Creative Output Formats
 
-#### Manifest Mode (Static Creative)
+The format definition determines whether the output is a creative manifest (asset-based) or executable code (dynamic). Both types are shown below.
+
+#### Creative Manifest (Asset-Based)
 ```json
 {
   "type": "creative_manifest",
-  "format_id": "display_native",
+  "target_format_id": {
+    "agent_url": "https://creatives.adcontextprotocol.org",
+    "id": "display_native"
+  },
   "assets": {
     "headline": "Premium Dog Nutrition",
     "description": "Veterinarian recommended formula with real salmon",
@@ -136,11 +167,14 @@ Creative agents need to understand format requirements to generate appropriate c
 }
 ```
 
-#### Code Mode (Dynamic Creative)
+#### Creative Code (Dynamic)
 ```json
 {
   "type": "creative_code",
-  "format_id": "html5",
+  "target_format_id": {
+    "agent_url": "https://creatives.adcontextprotocol.org",
+    "id": "html5"
+  },
   "code": "<div id='adcp-creative'>\n  <script>\n    (function() {\n      // Dynamic creative logic\n      const context = window.ADCP_CONTEXT || {};\n      const assets = {\n        sunny: 'outdoor-dog.jpg',\n        rainy: 'indoor-cozy.jpg'\n      };\n      \n      // Select asset based on weather\n      const heroImage = assets[context.weather] || assets.sunny;\n      \n      // Render creative\n      document.getElementById('adcp-creative').innerHTML = `\n        <img src=\"${heroImage}\" />\n        <h2>${context.time === 'morning' ? 'Start Their Day Right' : 'Premium Nutrition'}</h2>\n        <button>Shop Now</button>\n      `;\n    })();\n  </script>\n</div>",
   "dependencies": {
     "context_required": ["weather", "time"],
@@ -175,15 +209,17 @@ Creative agents need to understand format requirements to generate appropriate c
 
 ## Examples
 
-### Example 1: Building a Native Ad with Brand Card (Manifest Mode)
+### Example 1: Building a Native Ad with Brand Manifest
 
-#### Initial Request with Brand Card
+#### Initial Request with Brand Manifest
 ```json
 {
   "message": "Create a native ad for Yahoo promoting Purina Pro Plan. Focus on the veterinarian recommendation and that real salmon is the #1 ingredient.",
-  "format_id": "display_native",
-  "output_mode": "manifest",
-  "brand_card": {
+  "target_format_id": {
+    "agent_url": "https://creatives.adcontextprotocol.org",
+    "id": "display_native"
+  },
+  "brand_manifest": {
     "url": "https://purina.com",
     "name": "Purina Pro Plan",
     "logos": [
@@ -210,13 +246,15 @@ Creative agents need to understand format requirements to generate appropriate c
 }
 ```
 
-#### Simple Request (Minimal Brand Card)
+#### Simple Request (Minimal Brand Manifest)
 ```json
 {
   "message": "Create a native ad for Yahoo promoting Purina Pro Plan. Focus on the veterinarian recommendation and that real salmon is the #1 ingredient. Use an informative and trustworthy tone with 'Learn More' as the CTA.",
-  "format_id": "display_native",
-  "output_mode": "manifest",
-  "brand_card": {
+  "target_format_id": {
+    "agent_url": "https://creatives.adcontextprotocol.org",
+    "id": "display_native"
+  },
+  "brand_manifest": {
     "url": "https://purina.com"
   },
   "assets": [
@@ -236,7 +274,10 @@ Creative agents need to understand format requirements to generate appropriate c
   "status": "draft",
   "creative_output": {
     "type": "creative_manifest",
-    "format_id": "display_native",
+    "target_format_id": {
+    "agent_url": "https://creatives.adcontextprotocol.org",
+    "id": "display_native"
+  },
     "assets": {
       "headline": "Veterinarian Recommended Nutrition",
       "description": "Pro Plan with real salmon as the #1 ingredient provides complete nutrition for your dog's sensitive skin and stomach.",
@@ -307,7 +348,10 @@ Creative agents need to understand format requirements to generate appropriate c
   "status": "ready",
   "creative_output": {
     "type": "creative_manifest",
-    "format_id": "display_native",
+    "target_format_id": {
+    "agent_url": "https://creatives.adcontextprotocol.org",
+    "id": "display_native"
+  },
     "assets": {
       "headline": "Veterinarian Recommended Grain-Free Nutrition",
       "description": "Pro Plan's grain-free formula with real salmon as the #1 ingredient provides complete nutrition without grains that can upset sensitive stomachs.",
@@ -339,7 +383,10 @@ Creative agents need to understand format requirements to generate appropriate c
   "status": "ready",
   "creative_output": {
     "type": "creative_manifest",
-    "format_id": "display_native",
+    "target_format_id": {
+    "agent_url": "https://creatives.adcontextprotocol.org",
+    "id": "display_native"
+  },
     "assets": {
       "headline": "Veterinarian Recommended Grain-Free Nutrition",
       "description": "Pro Plan's grain-free formula with real salmon as the #1 ingredient provides complete nutrition without grains that can upset sensitive stomachs.",
@@ -359,14 +406,16 @@ Creative agents need to understand format requirements to generate appropriate c
 }
 ```
 
-### Example 2: Building Dynamic Video Creative (Code Mode)
+### Example 2: Building Dynamic Video Creative
 
 #### Initial Conversation
 ```json
 {
   "message": "I need a dynamic 30-second video for Purina that adapts based on viewer context. It should be upbeat and personalized, focusing on premium nutrition tailored for each dog's needs. The CTA should be 'Find Your Formula'.",
-  "format_id": "video_standard_30s",
-  "output_mode": "code",
+  "target_format_id": {
+    "agent_url": "https://creatives.adcontextprotocol.org",
+    "id": "video_standard_30s"
+  },
   "assets": [
     {
       "library_id": "purina_video_library",
@@ -431,9 +480,11 @@ Creative agents need to understand format requirements to generate appropriate c
 ```json
 {
   "message": "Create a short-form video ad featuring user-generated content style. Keep it authentic and fun, focusing on real pet parents and their transformation stories. Use 'See Their Story' as the CTA.",
-  "format_id": "custom_short_form_video",
+  "target_format_id": {
+    "agent_url": "https://publisher.com/.well-known/adcp/sales",
+    "id": "custom_short_form_video"
+  },
   "format_source": "https://videoplatform.com/.well-known/adcp/sales",
-  "output_mode": "manifest"
 }
 ```
 
@@ -442,7 +493,10 @@ Creative agents need to understand format requirements to generate appropriate c
 {
   "context_id": "ctx-video-123",
   "creative": {
-    "format_id": "custom_short_form_video",
+    "target_format_id": {
+    "agent_url": "https://publisher.com/.well-known/adcp/sales",
+    "id": "custom_short_form_video"
+  },
   "format_source": "https://videoplatform.com/.well-known/adcp/sales",
       "id": "custom_short_form_video",
       "name": "Short Form Video Ad",
@@ -502,8 +556,9 @@ Creative agents need to understand format requirements to generate appropriate c
 
 ## Usage Notes
 
-- **Manifest Mode**: Returns structured data that can be used with any ad server
-- **Code Mode**: Returns executable HTML/JS that handles its own rendering
+- **Creative Manifest**: Returns structured asset data that can be used with any ad server
+- **Creative Code**: Returns executable HTML/JS that handles its own rendering
+- **Output Type**: Determined by the format definition, not a parameter
 - **Previews**: Always check previews to ensure creative meets expectations
 - **Custom Formats**: Publishers should provide preview templates for non-standard formats
 - **Conversations**: Use natural language messages to guide the creative process

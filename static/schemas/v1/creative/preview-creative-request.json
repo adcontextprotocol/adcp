@@ -49,42 +49,9 @@
       "type": "string",
       "description": "Specific template ID for custom format rendering"
     },
-    "brand_card": {
-      "$ref": "/schemas/v1/core/brand-card.json",
-      "description": "Brand information manifest providing context for preview generation. Used when creative manifest includes dynamic elements that need brand context."
-    },
-    "promoted_products": {
-      "$ref": "/schemas/v1/core/promoted-products.json",
-      "description": "Products or offerings being promoted in this creative. Provides product-specific context for dynamic creative previews."
-    },
-    "asset_filters": {
-      "type": "object",
-      "description": "Filters to select specific assets from the brand card's asset library for preview variants",
-      "properties": {
-        "tags": {
-          "type": "array",
-          "description": "Select assets matching any of these tags (e.g., ['holiday', 'winter'])",
-          "items": {
-            "type": "string"
-          }
-        },
-        "asset_types": {
-          "type": "array",
-          "description": "Limit to specific asset types",
-          "items": {
-            "type": "string",
-            "enum": ["image", "video", "audio", "text"]
-          }
-        },
-        "exclude_tags": {
-          "type": "array",
-          "description": "Exclude assets with these tags",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "additionalProperties": false
+    "promoted_offerings": {
+      "$ref": "/schemas/v1/core/promoted-offerings.json",
+      "description": "Complete offering specification for dynamic creative previews - includes brand manifest, product selectors, inline offerings, and asset filters"
     }
   },
   "required": ["format_id", "creative_manifest"],

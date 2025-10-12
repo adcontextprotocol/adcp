@@ -12,7 +12,7 @@ The Creative Protocol provides AI-powered creative generation:
 - **`preview_creative`**: Generate previews of creative manifests
 - **`list_creative_formats`**: Discover supported creative formats
 
-Assets are provided via [Brand Card](../reference/brand-card) - no separate asset library management needed.
+Assets are provided via [Brand Manifest](../reference/brand-manifest) - no separate asset library management needed.
 
 ## Quick Start: Generate Your First Creative
 
@@ -81,7 +81,7 @@ Use the `context_id` to make improvements:
 
 ## Common Patterns
 
-### Using Brand Cards
+### Using Brand Manifests
 
 Provide brand context for better creative generation:
 
@@ -89,7 +89,7 @@ Provide brand context for better creative generation:
 {
   "message": "Create a display ad for our coffee shop promotion",
   "format_id": "display_300x250",
-  "brand_card": {
+  "brand_manifest": {
     "url": "https://mycoffeeshop.com",
     "name": "Brew & Co",
     "colors": {
@@ -102,19 +102,19 @@ Provide brand context for better creative generation:
 }
 ```
 
-**Minimal Brand Card**: Start with just a URL for low-friction creative generation:
+**Minimal Brand Manifest**: Start with just a URL for low-friction creative generation:
 
 ```json
 {
   "message": "Create a coffee shop ad",
   "format_id": "display_native",
-  "brand_card": {
+  "brand_manifest": {
     "url": "https://mycoffeeshop.com"
   }
 }
 ```
 
-See [Brand Card Reference](../reference/brand-card) for comprehensive examples.
+See [Brand Manifest Reference](../reference/brand-manifest) for comprehensive examples.
 
 ### Using Your Own Assets
 
@@ -124,7 +124,7 @@ Provide existing assets to incorporate into the creative:
 {
   "message": "Create a display ad featuring our signature latte",
   "format_id": "display_300x250",
-  "brand_card": {
+  "brand_manifest": {
     "url": "https://mycoffeeshop.com"
   },
   "assets": [
@@ -191,12 +191,12 @@ If you get a format error, the publisher may not support that format. Try:
 ### Creative Quality Issues
 To improve creative output:
 1. Be more specific in your message: "Create a minimalist coffee ad with earth tones"
-2. Provide comprehensive brand card with assets and guidelines
+2. Provide comprehensive brand manifest with assets and guidelines
 3. Use the conversational refinement feature to iterate (via `context_id`)
 
 ### Asset Management
-Assets are provided via [Brand Card](../reference/brand-card):
-1. Include assets in brand card with descriptive tags
+Assets are provided via [Brand Manifest](../reference/brand-manifest):
+1. Include assets in brand manifest with descriptive tags
 2. Use `asset_filters` in requests to select specific assets
 3. Reference product catalogs for large inventories
 

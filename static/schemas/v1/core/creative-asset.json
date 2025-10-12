@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/creative-asset.json",
   "title": "Creative Asset",
-  "description": "Creative asset for upload to library - supports both hosted assets and third-party snippets",
+  "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party snippets",
   "type": "object",
   "properties": {
     "creative_id": {
@@ -13,42 +13,53 @@
       "type": "string",
       "description": "Human-readable creative name"
     },
-    "format": {
-      "type": "string",
-      "description": "Creative format type (e.g., video, audio, display)"
+    "format_id": {
+      "$ref": "/schemas/v1/core/format-id.json",
+      "description": "Format identifier specifying which format this creative conforms to"
     },
-    "media_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "URL of the creative file (for hosted assets)"
+    "assets": {
+      "type": "object",
+      "description": "Assets required by the format, keyed by asset_role",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "oneOf": [
+            {"$ref": "/schemas/v1/core/assets/image-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/video-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/audio-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/text-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/html-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/css-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/javascript-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/promoted-offerings-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/url-asset.json"}
+          ]
+        }
+      },
+      "additionalProperties": false
     },
-    "snippet": {
-      "type": "string",
-      "description": "Third-party tag, VAST XML, or code snippet (for third-party served assets)"
-    },
-    "snippet_type": {
-      "$ref": "/schemas/v1/enums/snippet-type.json",
-      "description": "Type of snippet content"
-    },
-    "click_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "Landing page URL for the creative"
-    },
-    "duration": {
-      "type": "number",
-      "description": "Duration in milliseconds (for video/audio)",
-      "minimum": 0
-    },
-    "width": {
-      "type": "number",
-      "description": "Width in pixels (for video/display)",
-      "minimum": 0
-    },
-    "height": {
-      "type": "number",
-      "description": "Height in pixels (for video/display)",
-      "minimum": 0
+    "inputs": {
+      "type": "array",
+      "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this preview variant"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to apply for this preview",
+            "additionalProperties": {"type": "string"}
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content"
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
     },
     "tags": {
       "type": "array",
@@ -57,33 +68,11 @@
         "type": "string"
       }
     },
-    "assets": {
-      "type": "array",
-      "description": "Sub-assets for multi-asset formats like carousels",
-      "items": {
-        "$ref": "/schemas/v1/core/sub-asset.json"
-      }
+    "approved": {
+      "type": "boolean",
+      "description": "For generative creatives: set to true to approve and finalize, false to request regeneration with updated assets/message. Omit for non-generative creatives."
     }
   },
-  "required": ["creative_id", "name", "format"],
-  "oneOf": [
-    {
-      "description": "Hosted asset - requires media_url",
-      "required": ["media_url"],
-      "not": {
-        "anyOf": [
-          { "required": ["snippet"] },
-          { "required": ["snippet_type"] }
-        ]
-      }
-    },
-    {
-      "description": "Third-party asset - requires snippet and snippet_type",
-      "required": ["snippet", "snippet_type"],
-      "not": {
-        "required": ["media_url"]
-      }
-    }
-  ],
+  "required": ["creative_id", "name", "format_id", "assets"],
   "additionalProperties": false
 }

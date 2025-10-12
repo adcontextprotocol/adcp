@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/media-buy/sync-creatives-response.json",
   "title": "Sync Creatives Response",
-  "description": "Response from creative sync operation with detailed results and bulk operation summary",
+  "description": "Response from creative sync operation with results for each creative",
   "type": "object",
   "properties": {
     "adcp_version": {
@@ -12,11 +12,11 @@
     },
     "message": {
       "type": "string",
-      "description": "Human-readable result message summarizing the sync operation"
+      "description": "Human-readable result message (e.g., 'Synced 3 creatives: 2 created, 1 updated')"
     },
     "context_id": {
       "type": "string",
-      "description": "Context ID for tracking async operations"
+      "description": "Context ID for tracking async operations and conversational approval workflows"
     },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
@@ -31,47 +31,9 @@
       "type": "boolean",
       "description": "Whether this was a dry run (no actual changes made)"
     },
-    "summary": {
-      "type": "object",
-      "description": "High-level summary of sync operation results",
-      "properties": {
-        "total_processed": {
-          "type": "integer",
-          "description": "Total number of creatives processed",
-          "minimum": 0
-        },
-        "created": {
-          "type": "integer",
-          "description": "Number of new creatives created",
-          "minimum": 0
-        },
-        "updated": {
-          "type": "integer",
-          "description": "Number of existing creatives updated",
-          "minimum": 0
-        },
-        "unchanged": {
-          "type": "integer",
-          "description": "Number of creatives that were already up-to-date",
-          "minimum": 0
-        },
-        "failed": {
-          "type": "integer",
-          "description": "Number of creatives that failed validation or processing",
-          "minimum": 0
-        },
-        "deleted": {
-          "type": "integer",
-          "description": "Number of creatives deleted/archived (when delete_missing=true)",
-          "minimum": 0
-        }
-      },
-      "required": ["total_processed", "created", "updated", "unchanged", "failed"],
-      "additionalProperties": false
-    },
-    "results": {
+    "creatives": {
       "type": "array",
-      "description": "Detailed results for each creative processed",
+      "description": "Results for each creative processed",
       "items": {
         "type": "object",
         "properties": {
@@ -84,24 +46,20 @@
             "enum": ["created", "updated", "unchanged", "failed", "deleted"],
             "description": "Action taken for this creative"
           },
-          "status": {
-            "$ref": "/schemas/v1/enums/creative-status.json",
-            "description": "Current approval status of the creative"
-          },
           "platform_id": {
             "type": "string",
             "description": "Platform-specific ID assigned to the creative"
           },
           "changes": {
             "type": "array",
-            "description": "List of field names that were modified (for 'updated' action)",
+            "description": "Field names that were modified (only present when action='updated')",
             "items": {
               "type": "string"
             }
           },
           "errors": {
             "type": "array",
-            "description": "Validation or processing errors (for 'failed' action)",
+            "description": "Validation or processing errors (only present when action='failed')",
             "items": {
               "type": "string"
             }
@@ -113,123 +71,40 @@
               "type": "string"
             }
           },
-          "review_feedback": {
+          "preview_url": {
             "type": "string",
-            "description": "Feedback from platform review process"
+            "format": "uri",
+            "description": "Preview URL for generative creatives (only present for generative formats)"
           },
-          "suggested_adaptations": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when preview link expires (only present when preview_url exists)"
+          },
+          "assigned_to": {
             "type": "array",
-            "description": "Recommended creative adaptations for better performance",
+            "description": "Package IDs this creative was successfully assigned to (only present when assignments were requested)",
             "items": {
-              "type": "object",
-              "properties": {
-                "adaptation_id": {
-                  "type": "string",
-                  "description": "Unique identifier for this adaptation"
-                },
-                "format_id": {
-                  "type": "string",
-                  "description": "Target format ID for the adaptation"
-                },
-                "name": {
-                  "type": "string",
-                  "description": "Suggested name for the adapted creative"
-                },
-                "description": {
-                  "type": "string",
-                  "description": "What this adaptation does"
-                },
-                "estimated_performance_lift": {
-                  "type": "number",
-                  "description": "Expected performance improvement (percentage)"
-                }
-              },
-              "required": ["adaptation_id", "format_id", "name", "description"],
-              "additionalProperties": false
+              "type": "string"
             }
+          },
+          "assignment_errors": {
+            "type": "object",
+            "description": "Assignment errors by package ID (only present when assignment failures occurred)",
+            "patternProperties": {
+              "^[a-zA-Z0-9_-]+$": {
+                "type": "string",
+                "description": "Error message for this package assignment"
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": ["creative_id", "action"],
         "additionalProperties": false
       }
-    },
-    "assignments_summary": {
-      "type": "object",
-      "description": "Summary of assignment operations (when assignments were included in request)",
-      "properties": {
-        "total_assignments_processed": {
-          "type": "integer",
-          "description": "Total number of creative-package assignment operations processed",
-          "minimum": 0
-        },
-        "assigned": {
-          "type": "integer",
-          "description": "Number of successful creative-package assignments",
-          "minimum": 0
-        },
-        "unassigned": {
-          "type": "integer",
-          "description": "Number of creative-package unassignments",
-          "minimum": 0
-        },
-        "failed": {
-          "type": "integer",
-          "description": "Number of assignment operations that failed",
-          "minimum": 0
-        }
-      },
-      "required": ["total_assignments_processed", "assigned", "unassigned", "failed"],
-      "additionalProperties": false
-    },
-    "assignment_results": {
-      "type": "array",
-      "description": "Detailed assignment results (when assignments were included in request)",
-      "items": {
-        "type": "object",
-        "properties": {
-          "creative_id": {
-            "type": "string",
-            "description": "Creative that was assigned/unassigned"
-          },
-          "assigned_packages": {
-            "type": "array",
-            "description": "Packages successfully assigned to this creative",
-            "items": {
-              "type": "string"
-            }
-          },
-          "unassigned_packages": {
-            "type": "array",
-            "description": "Packages successfully unassigned from this creative",
-            "items": {
-              "type": "string"
-            }
-          },
-          "failed_packages": {
-            "type": "array",
-            "description": "Packages that failed to assign/unassign",
-            "items": {
-              "type": "object",
-              "properties": {
-                "package_id": {
-                  "type": "string",
-                  "description": "Package ID that failed"
-                },
-                "error": {
-                  "type": "string",
-                  "description": "Error message for the failed assignment"
-                }
-              },
-              "required": ["package_id", "error"],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": ["creative_id"],
-        "additionalProperties": false
-      }
     }
   },
-  "required": ["adcp_version", "message", "status"],
+  "required": ["adcp_version", "message", "status", "creatives"],
   "additionalProperties": false
 }

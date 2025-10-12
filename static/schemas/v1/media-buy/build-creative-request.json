@@ -15,96 +15,22 @@
       "type": "string",
       "description": "Natural language description of the creative brief or requirements"
     },
-    "format_source": {
-      "type": "string",
-      "description": "Source URL for format lookup (sales agent URL) or null for standard AdCP formats",
-      "format": "uri"
+    "source_format_id": {
+      "$ref": "/schemas/v1/core/format-id.json",
+      "description": "Format ID of existing creative to transform (optional - omit when creating from scratch)"
     },
-    "format_id": {
-      "type": "string", 
-      "description": "Format identifier to look up from the format source"
-    },
-    "context_id": {
-      "type": "string",
-      "description": "Optional context ID for iterative creative refinement"
+    "target_format_id": {
+      "$ref": "/schemas/v1/core/format-id.json",
+      "description": "Format ID to generate. The format definition specifies whether output is manifest-based or code-based."
     },
     "assets": {
       "type": "array",
-      "description": "Available assets to use in creative generation",
+      "description": "Available assets to use in creative generation - this is where promoted_offerings should be included as an asset",
       "items": {
         "$ref": "/schemas/v1/core/creative-asset.json"
       }
-    },
-    "output_mode": {
-      "type": "string",
-      "enum": ["manifest", "code"],
-      "default": "manifest",
-      "description": "Output format - 'manifest' for asset-based creatives, 'code' for executable creative code"
-    },
-    "brand_card": {
-      "$ref": "/schemas/v1/core/brand-card.json",
-      "description": "Brand information manifest providing context for creative generation. Replaces brand_guidelines with a more comprehensive and standardized format."
-    },
-    "promoted_products": {
-      "$ref": "/schemas/v1/core/promoted-products.json",
-      "description": "Products or offerings being promoted in this creative. Supports SKU selection from brand card's product catalog, or inline offerings for non-commerce campaigns."
-    },
-    "asset_filters": {
-      "type": "object",
-      "description": "Filters to select specific assets from the brand card's asset library",
-      "properties": {
-        "tags": {
-          "type": "array",
-          "description": "Select assets matching any of these tags (e.g., ['holiday', 'winter'])",
-          "items": {
-            "type": "string"
-          }
-        },
-        "asset_types": {
-          "type": "array",
-          "description": "Limit to specific asset types",
-          "items": {
-            "type": "string",
-            "enum": ["image", "video", "audio", "text"]
-          }
-        },
-        "exclude_tags": {
-          "type": "array",
-          "description": "Exclude assets with these tags",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    "brand_guidelines": {
-      "type": "object",
-      "description": "DEPRECATED: Use brand_card instead. Legacy brand-specific guidelines and constraints.",
-      "properties": {
-        "colors": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Brand color palette (hex codes)"
-        },
-        "fonts": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Approved brand fonts"
-        },
-        "tone": {
-          "type": "string",
-          "description": "Brand tone and voice guidelines"
-        },
-        "restrictions": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Content restrictions or requirements"
-        }
-      },
-      "additionalProperties": false
     }
   },
-  "required": ["message", "format_id"],
+  "required": ["message", "target_format_id"],
   "additionalProperties": false
 }
