@@ -7,50 +7,7 @@ sidebar_position: 13
 
 Build creative content for a specific format using a creative agent that can generate either a creative manifest (static mode) or executable code (dynamic mode). This tool supports conversational refinement through a series of messages.
 
-## Format Identification
-
-Format IDs are structured objects with two fields:
-
-1. **agent_url**: The URL of the agent that defines the format
-   - Standard formats: `https://creatives.adcontextprotocol.org`
-   - Custom formats: `https://publisher.com/.well-known/adcp/sales`
-
-2. **id**: The format identifier within that agent's namespace
-   - Examples: `display_300x250`, `video_standard_30s`, `premium_video_30s`
-
-3. **Format Discovery**: Use `list_creative_formats` on the agent URL to discover available formats
-
-### Format ID Examples
-
-```json
-// Standard AdCP format
-{
-  "target_format_id": {
-    "agent_url": "https://creatives.adcontextprotocol.org",
-    "id": "display_native"
-  }
-}
-
-// Publisher-specific format
-{
-  "target_format_id": {
-    "agent_url": "https://publisher.com/.well-known/adcp/sales",
-    "id": "premium_video_30s"
-  }
-}
-
-// Transform existing creative to new format
-{
-  "source_format_id": {
-    "agent_url": "https://creatives.adcontextprotocol.org",
-    "id": "display_300x250"
-  },
-  "target_format_id": {
-    "agent_url": "https://creatives.adcontextprotocol.org",
-    "id": "display_native"
-  }
-}
-```
+For information about format IDs and how to reference formats, see [Creative Formats - Referencing Formats](../formats.md#referencing-formats).
 
 ## Request Parameters
 
