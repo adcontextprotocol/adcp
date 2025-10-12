@@ -158,6 +158,35 @@
         }
       }
     },
+    "pricing-options": {
+      "description": "Individual pricing model schemas with model-specific validation",
+      "schemas": {
+        "cpm-option": {
+          "$ref": "/schemas/v1/pricing-options/cpm-option.json",
+          "description": "Cost Per Mille (CPM) pricing option for display advertising"
+        },
+        "cpc-option": {
+          "$ref": "/schemas/v1/pricing-options/cpc-option.json",
+          "description": "Cost Per Click (CPC) pricing option for performance campaigns"
+        },
+        "cpcv-option": {
+          "$ref": "/schemas/v1/pricing-options/cpcv-option.json",
+          "description": "Cost Per Completed View (CPCV) pricing option for video/audio"
+        },
+        "cpv-option": {
+          "$ref": "/schemas/v1/pricing-options/cpv-option.json",
+          "description": "Cost Per View (CPV) pricing option with threshold"
+        },
+        "cpp-option": {
+          "$ref": "/schemas/v1/pricing-options/cpp-option.json",
+          "description": "Cost Per Point (CPP) pricing option for TV/audio with demographic measurement"
+        },
+        "flat-rate-option": {
+          "$ref": "/schemas/v1/pricing-options/flat-rate-option.json",
+          "description": "Flat rate pricing option for DOOH and sponsorships"
+        }
+      }
+    },
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {

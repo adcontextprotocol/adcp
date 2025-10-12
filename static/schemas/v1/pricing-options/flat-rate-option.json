@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/pricing-options/flat-rate-option.json",
+  "title": "Flat Rate Pricing Option",
+  "description": "Flat rate pricing for DOOH, sponsorships, and time-based campaigns - fixed cost regardless of delivery volume",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product (e.g., 'flat_rate_usd_24h_takeover')"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "flat_rate",
+      "description": "Fixed cost regardless of delivery volume"
+    },
+    "rate": {
+      "type": "number",
+      "description": "Flat rate cost",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "is_fixed": {
+      "type": "boolean",
+      "description": "Whether this is a fixed rate (true) or auction-based (false)",
+      "const": true
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Flat rate parameters for DOOH and time-based campaigns",
+      "properties": {
+        "duration_hours": {
+          "type": "number",
+          "description": "Duration in hours for time-based flat rate pricing (DOOH)",
+          "minimum": 0
+        },
+        "sov_percentage": {
+          "type": "number",
+          "description": "Guaranteed share of voice as percentage (DOOH, 0-100)",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "loop_duration_seconds": {
+          "type": "integer",
+          "description": "Duration of ad loop rotation in seconds (DOOH)",
+          "minimum": 1
+        },
+        "min_plays_per_hour": {
+          "type": "integer",
+          "description": "Minimum number of times ad plays per hour (DOOH frequency guarantee)",
+          "minimum": 0
+        },
+        "venue_package": {
+          "type": "string",
+          "description": "Named venue package identifier for DOOH (e.g., 'times_square_network', 'airport_terminals')"
+        },
+        "estimated_impressions": {
+          "type": "integer",
+          "description": "Estimated impressions for this flat rate option (informational, commonly used with SOV or time-based DOOH)",
+          "minimum": 0
+        },
+        "daypart": {
+          "type": "string",
+          "description": "Specific daypart for time-based pricing (e.g., 'morning_commute', 'evening_prime', 'overnight')"
+        }
+      },
+      "additionalProperties": false
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_option_id", "pricing_model", "currency", "is_fixed", "rate"],
+  "additionalProperties": false
+}
