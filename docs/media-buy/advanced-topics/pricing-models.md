@@ -45,7 +45,7 @@ Publishers specify their measurement provider in the product:
 **Common Measurement Providers:**
 - **Ad Servers**: Google Ad Manager, Freewheel, SpringServe
 - **Attention Metrics**: Adelaide, Lumen, TVision
-- **Third-Party Verification**: IAS, DoubleVerify, MOAT
+- **Third-Party Verification**: IAS, DoubleVerify, Scope3
 - **TV/Audio Measurement**: Nielsen, Comscore, iSpot.tv, Triton Digital
 - **DOOH**: Geopath, Vistar, Place Exchange
 
@@ -96,14 +96,11 @@ By accepting the product, buyers agree to use the declared measurement provider 
   "pricing_model": "cpcv",
   "rate": 0.15,
   "currency": "USD",
-  "is_fixed": true,
-  "parameters": {
-    "view_threshold": 1.0
-  }
+  "is_fixed": true
 }
 ```
 
-**Billing**: Charged only when viewer completes 100% of the video/audio ad
+**Billing**: Charged only when viewer completes 100% of the video/audio ad. Completion is measured by the declared measurement provider.
 
 ---
 
@@ -233,150 +230,42 @@ Buyers should verify the measurement provider meets their campaign requirements 
 
 ## Digital Out-of-Home (DOOH) Pricing
 
-DOOH advertising uses existing pricing models (CPM, flat_rate) enhanced with DOOH-specific parameters. Common buying modes like Share of Voice (SOV), time-based buying, and takeovers are **inventory allocation mechanisms**, not separate pricing models.
+DOOH advertising uses existing pricing models—typically **CPM** or **flat_rate**—with optional parameters to describe the inventory allocation.
 
-### Key Concept: Inventory Allocation vs. Pricing
+### Basic Concepts
 
-- **Share of Voice**: Percentage of loop plays → Priced as CPM or flat_rate with `sov_percentage` parameter
-- **Time-based**: Hourly/daily/daypart booking → Priced as flat_rate with `duration_hours` parameter
-- **Takeover**: 100% exclusive placement → Priced as flat_rate with `sov_percentage: 100`
+- **CPM for DOOH**: Priced per thousand impressions, where impressions are calculated based on venue traffic (e.g., Geopath data)
+- **Flat rate for DOOH**: Fixed cost for specific duration or allocation (hourly, daily, or exclusive takeover)
 
-### DOOH Use Case: Times Square Takeover
-
-**24-hour exclusive takeover of premium billboard:**
+### Simple Example: Billboard Takeover
 
 ```json
 {
-  "product_id": "times_square_digital_takeover",
-  "name": "Times Square Digital Takeover",
-  "description": "Exclusive 24-hour takeover of premium Times Square digital billboard",
-  "format_ids": ["dooh_portrait_1920x1080"],
-  "delivery_type": "guaranteed",
-  "pricing_options": [
-    {
-      "pricing_model": "flat_rate",
-      "rate": 50000.00,
-      "currency": "USD",
-      "is_fixed": true,
-      "parameters": {
-        "duration_hours": 24,
-        "sov_percentage": 100,
-        "loop_duration_seconds": 300,
-        "min_plays_per_hour": 12,
-        "venue_package": "times_square_premium"
-      }
-    }
-  ]
+  "product_id": "billboard_takeover",
+  "name": "Premium Billboard - 24 Hour Takeover",
+  "pricing_options": [{
+    "pricing_model": "flat_rate",
+    "rate": 50000.00,
+    "currency": "USD",
+    "is_fixed": true
+  }],
+  "delivery_measurement": {
+    "provider": "Geopath",
+    "notes": "Venue traffic data updated monthly. Estimated 2.5M impressions over 24 hours."
+  }
 }
 ```
 
-**Buyer selection:**
-```json
-{
-  "packages": [{
-    "buyer_ref": "pkg_launch_takeover",
-    "products": ["times_square_digital_takeover"],
-    "format_ids": ["dooh_portrait_1920x1080"],
-    "budget": 50000,
-    "pricing_model": "flat_rate"
-  }]
-}
-```
+### DOOH Parameters (Optional)
 
-### DOOH Use Case: Airport SOV Package
+Publishers may include additional parameters to describe DOOH inventory allocation:
 
-**15% share of voice during morning commute with dual pricing options:**
+- `duration_hours`: Duration for time-based pricing
+- `sov_percentage`: Share of voice (% of available plays)
+- `daypart`: Specific time periods (e.g., "morning_commute")
+- `venue_package`: Named collection of screens
 
-```json
-{
-  "product_id": "airport_morning_commute",
-  "name": "Airport Morning Commute Package",
-  "description": "15% share of voice during morning rush (5am-9am)",
-  "format_ids": ["dooh_portrait_1080x1920"],
-  "delivery_type": "guaranteed",
-  "pricing_options": [
-    {
-      "pricing_model": "cpm",
-      "rate": 25.00,
-      "currency": "USD",
-      "is_fixed": true,
-      "parameters": {
-        "sov_percentage": 15,
-        "loop_duration_seconds": 180,
-        "daypart": "morning_commute",
-        "estimated_impressions": 75000
-      },
-      "min_spend": 1875
-    },
-    {
-      "pricing_model": "flat_rate",
-      "rate": 2000.00,
-      "currency": "USD",
-      "is_fixed": true,
-      "parameters": {
-        "duration_hours": 4,
-        "sov_percentage": 15,
-        "loop_duration_seconds": 180,
-        "daypart": "morning_commute"
-      }
-    }
-  ]
-}
-```
-
-**Notice:** Same inventory, two pricing options. Buyers choose based on whether they prefer impression-based (CPM) or time-based (flat_rate) pricing.
-
-### DOOH Use Case: Transit Network Hourly
-
-**Hourly pricing for retail transit locations:**
-
-```json
-{
-  "product_id": "retail_transit_hourly",
-  "name": "Retail Transit Network - Hourly",
-  "description": "Hourly booking across 50 retail transit locations",
-  "format_ids": ["dooh_landscape_1920x1080"],
-  "delivery_type": "guaranteed",
-  "pricing_options": [
-    {
-      "pricing_model": "flat_rate",
-      "rate": 500.00,
-      "currency": "USD",
-      "is_fixed": true,
-      "parameters": {
-        "duration_hours": 1,
-        "venue_package": "retail_transit_50_screens",
-        "loop_duration_seconds": 240,
-        "min_plays_per_hour": 15
-      }
-    }
-  ]
-}
-```
-
-### DOOH Parameters Reference
-
-| Parameter | Type | Description | Use With |
-|-----------|------|-------------|----------|
-| `duration_hours` | number | Duration for time-based pricing | flat_rate |
-| `sov_percentage` | number | Share of voice (0-100) | cpm, flat_rate |
-| `loop_duration_seconds` | integer | Ad loop rotation duration | cpm, flat_rate |
-| `min_plays_per_hour` | integer | Minimum frequency guarantee | cpm, flat_rate |
-| `venue_package` | string | Named venue package ID | any |
-| `estimated_impressions` | integer | Expected impressions | cpm, flat_rate |
-| `daypart` | string | Specific daypart targeting | any |
-
-### DOOH Delivery Metrics
-
-When reporting on DOOH campaigns, publishers should include DOOH-specific metrics:
-
-- `loop_plays`: Number of times ad played in rotation
-- `screens_used`: Number of unique screens displaying the ad
-- `screen_time_seconds`: Total display time across all screens
-- `sov_achieved`: Actual share of voice delivered (0.0-1.0)
-- `venue_breakdown`: Per-venue performance data
-
-See [Delivery Reporting](../task-reference/get_media_buy_delivery.md) for full metric definitions.
+**Note**: DOOH measurement and buying practices vary by market. Publishers should clearly explain their measurement methodology and inventory allocation in the product description and `delivery_measurement` field.
 
 ---
 

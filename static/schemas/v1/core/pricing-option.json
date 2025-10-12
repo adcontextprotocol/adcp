@@ -121,7 +121,7 @@
     },
     "min_spend": {
       "type": "number",
-      "description": "Minimum spend requirement for this pricing option in the specified currency",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
       "minimum": 0
     }
   },
