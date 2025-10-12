@@ -78,8 +78,7 @@ The message is returned differently in each protocol:
     }
   },
   "primary_channels": ["dooh"],
-  "primary_markets": ["US", "CA", "MX"],
-  "portfolio_size": 125,
+  "primary_countries": ["US", "CA", "MX"],
   "portfolio_description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification."
 }
 ```
@@ -90,9 +89,8 @@ The message is returned differently in each protocol:
 - **tags**: Metadata for each tag used by properties
   - **name**: Human-readable name for the tag
   - **description**: Description of what the tag represents and optionally how many properties it includes
-- **primary_channels** *(optional)*: Main advertising channels (display, video, dooh, ctv, etc.)
-- **primary_markets** *(optional)*: Main geographic markets (ISO country codes)
-- **portfolio_size** *(optional)*: Total count of properties in portfolio (not pagination-related)
+- **primary_channels** *(optional)*: Main advertising channels (see [Channels enum](/schemas/v1/enums/channels.json))
+- **primary_countries** *(optional)*: Main countries (ISO 3166-1 alpha-2 codes)
 - **portfolio_description** *(optional)*: Markdown description of the property portfolio
 
 ## Integration with get_products
@@ -279,7 +277,7 @@ Optional top-level fields provide high-level metadata about the property portfol
 const response = await agent.send({ skill: 'list_authorized_properties' });
 
 if (response.primary_channels?.includes('dooh') &&
-    response.primary_markets?.includes('US')) {
+    response.primary_countries?.includes('US')) {
   // Relevant! Now examine detailed properties
   const airportProperties = response.properties.filter(p =>
     p.tags?.includes('airports')
@@ -290,16 +288,13 @@ if (response.primary_channels?.includes('dooh') &&
 ### Portfolio Fields
 
 **`primary_channels`** *(optional)*: Main advertising channels in this portfolio
-- `"display"`, `"video"`, `"dooh"`, `"ctv"`, `"podcast"`, `"retail"`, etc.
+- Values: `"display"`, `"video"`, `"dooh"`, `"ctv"`, `"podcast"`, `"retail"`, etc.
+- See [Channels enum](/schemas/v1/enums/channels.json) for full list
 - Helps filter "Do you have DOOH?" before examining properties
 
-**`primary_markets`** *(optional)*: Main geographic markets (ISO country codes)
+**`primary_countries`** *(optional)*: Main countries (ISO 3166-1 alpha-2 codes)
 - Where the bulk of properties are concentrated
 - Helps filter "Do you have US inventory?" before examining properties
-
-**`portfolio_size`** *(optional)*: Total count of properties (not pagination-related)
-- Context for portfolio scale
-- "1847 radio stations" vs "5 premium properties"
 
 **`portfolio_description`** *(optional)*: Markdown description of the portfolio
 - Inventory types and characteristics
@@ -312,8 +307,7 @@ if (response.primary_channels?.includes('dooh') &&
 ```json
 {
   "primary_channels": ["dooh"],
-  "primary_markets": ["US", "CA"],
-  "portfolio_size": 125,
+  "primary_countries": ["US", "CA"],
   "portfolio_description": "Premium digital out-of-home across airports and transit. Business traveler focus with proof-of-play."
 }
 ```
@@ -322,8 +316,7 @@ if (response.primary_channels?.includes('dooh') &&
 ```json
 {
   "primary_channels": ["display", "video", "native"],
-  "primary_markets": ["US", "GB", "AU"],
-  "portfolio_size": 45,
+  "primary_countries": ["US", "GB", "AU"],
   "portfolio_description": "News and business publisher network. Desktop and mobile web properties with professional audience."
 }
 ```
@@ -332,8 +325,7 @@ if (response.primary_channels?.includes('dooh') &&
 ```json
 {
   "primary_channels": ["audio"],
-  "primary_markets": ["US"],
-  "portfolio_size": 1847,
+  "primary_countries": ["US"],
   "portfolio_description": "National radio network covering all US DMAs. Mix of news, talk, and music formats."
 }
 ```

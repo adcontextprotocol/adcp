@@ -40,24 +40,18 @@
       "type": "array",
       "description": "Primary advertising channels represented in this property portfolio. Helps buying agents quickly filter relevance.",
       "items": {
-        "type": "string",
-        "enum": ["display", "video", "audio", "native", "dooh", "ctv", "podcast", "retail", "social"]
+        "$ref": "/schemas/v1/enums/channels.json"
       },
       "minItems": 1
     },
-    "primary_markets": {
+    "primary_countries": {
       "type": "array",
-      "description": "Primary geographic markets (ISO 3166-1 alpha-2 country codes) where properties are concentrated. Helps buying agents quickly filter relevance.",
+      "description": "Primary countries (ISO 3166-1 alpha-2 codes) where properties are concentrated. Helps buying agents quickly filter relevance.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}$"
       },
       "minItems": 1
-    },
-    "portfolio_size": {
-      "type": "integer",
-      "description": "Total number of properties in this portfolio (not related to pagination). Provides context like '1847 radio stations' vs '5 premium properties'.",
-      "minimum": 0
     },
     "portfolio_description": {
       "type": "string",
