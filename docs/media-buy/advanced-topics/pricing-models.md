@@ -200,6 +200,31 @@ This transparency allows buyers to understand and validate impression calculatio
 - `reach`: Unique individuals reached
 - `frequency`: Average frequency per individual
 
+**Measurement Requirements**:
+
+CPP pricing requires **certified demographic measurement**. Publishers should declare their GRP measurement source via `delivery_measurement`:
+
+```json
+{
+  "pricing_model": "cpp",
+  "rate": 250.00,
+  "delivery_measurement": {
+    "source": "nielsen_dar",
+    "demographic_measurement": "panel_based",
+    "reporting_cadence": "weekly"
+  }
+}
+```
+
+**Accepted Measurement Sources**:
+- **Nielsen DAR/TV**: Industry-standard TV measurement
+- **Comscore**: Campaign Ratings for CTV
+- **iSpot.tv**: Advanced TV analytics
+- **Triton Digital**: Audio/streaming measurement
+- **Publisher-certified panels**: Large platforms with certified audience measurement
+
+Buyers should verify publisher's measurement certification before accepting CPP deals. Without certified measurement, GRP claims are not credible.
+
 ---
 
 ### CPC (Cost Per Click)

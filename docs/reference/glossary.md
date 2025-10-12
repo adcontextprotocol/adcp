@@ -90,7 +90,7 @@ The average number of times an individual is exposed to an advertisement during 
 ## G
 
 **GRP (Gross Rating Point)**
-A unit of measurement for television and radio advertising representing 1% of the target audience. Used in CPP pricing models. Total GRPs = Reach % × Average Frequency.
+A unit of measurement for television and radio advertising representing 1% of the target audience. Used in CPP pricing models. Total GRPs = Reach % × Average Frequency. Measured by third-party providers such as Nielsen, Comscore, iSpot.tv, or Triton Digital.
 
 ## H
 
