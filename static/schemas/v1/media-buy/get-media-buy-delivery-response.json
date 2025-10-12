@@ -253,31 +253,9 @@
                     "minimum": 0,
                     "maximum": 1
                   },
-                  "calculation_basis": {
-                    "type": "object",
-                    "description": "Transparency into how DOOH metrics were calculated",
-                    "properties": {
-                      "total_loop_opportunities": {
-                        "type": "integer",
-                        "description": "Total number of loop plays available during campaign period",
-                        "minimum": 0
-                      },
-                      "venue_traffic_estimate": {
-                        "type": "integer",
-                        "description": "Estimated number of people who passed by screens",
-                        "minimum": 0
-                      },
-                      "impression_multiplier": {
-                        "type": "number",
-                        "description": "Average impressions per loop play based on venue traffic",
-                        "minimum": 0
-                      },
-                      "data_source": {
-                        "type": "string",
-                        "description": "Source of audience measurement data with date",
-                        "examples": ["geopath_december_2024", "vistar_q4_2024"]
-                      }
-                    }
+                  "calculation_notes": {
+                    "type": "string",
+                    "description": "Explanation of how DOOH impressions were calculated (e.g., 'Impressions based on Geopath December 2024 venue traffic data. 4,800 loop plays × 15.6 avg impressions per play = 75,000 total impressions.')"
                   },
                   "venue_breakdown": {
                     "type": "array",

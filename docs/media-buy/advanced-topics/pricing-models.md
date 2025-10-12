@@ -26,79 +26,42 @@ AdCP supports multiple pricing models to accommodate different advertising chann
 
 ## Measurement & Source of Truth
 
-### Publisher Authority
+### Measurement Provider as Source of Truth
 
-In AdCP's direct publisher-buyer relationship model, **publishers are the authoritative source for delivery metrics** unless otherwise specified in the product's measurement declaration. This differs from programmatic advertising where multiple systems independently track metrics.
+**The product declares the measurement provider, and the buyer accepts that provider as the source of truth for the buy.**
 
-**Key Principles:**
-
-1. **Publisher Measurement**: Publishers report impressions, views, clicks, GRPs, and other delivery metrics through `get_media_buy_delivery`
-2. **Methodology Transparency**: Publishers should declare measurement methodology in `delivery_measurement` field
-3. **Audit Rights**: Buyers should negotiate audit access and verification rights in contracts
-4. **Third-Party Verification**: Publishers may optionally support third-party measurement providers (IAS, DoubleVerify, MOAT)
-
-### Measurement Methodologies
-
-Publishers declare how they count impressions via the `delivery_measurement` field in products:
+Publishers specify their measurement provider in the product:
 
 ```json
 {
   "product_id": "premium_video",
   "delivery_measurement": {
-    "impression_methodology": "viewable_mrc",
-    "viewability_provider": "ias",
-    "third_party_verification": {
-      "available": true,
-      "providers": ["ias", "double_verify"],
-      "cost_basis": "cpm_addon"
-    }
+    "provider": "Google Ad Manager with IAS viewability verification",
+    "notes": "MRC-accredited viewability measurement. 50% in-view for 1 second (display) or 2 seconds (video)."
   }
 }
 ```
 
-**Impression Methodologies:**
-- **served**: Ad request sent (traditional ad server counting)
-- **viewable_mrc**: MRC standard (50% pixels, 1s display / 2s video)
-- **viewable_groupm**: GroupM standard (100% pixels in view)
-- **viewable_custom**: Publisher-defined threshold
+**Common Measurement Providers:**
+- **Ad Servers**: Google Ad Manager, Freewheel, SpringServe
+- **Attention Metrics**: Adelaide, Lumen, TVision
+- **Third-Party Verification**: IAS, DoubleVerify, MOAT
+- **TV/Audio Measurement**: Nielsen, Comscore, iSpot.tv, Triton Digital
+- **DOOH**: Geopath, Vistar, Place Exchange
 
-### DOOH Measurement Transparency
-
-For DOOH campaigns, publishers should provide calculation transparency via `calculation_basis`:
-
-```json
-{
-  "dooh_metrics": {
-    "loop_plays": 4800,
-    "screens_used": 20,
-    "impressions": 75000,
-    "calculation_basis": {
-      "total_loop_opportunities": 32000,
-      "venue_traffic_estimate": 250000,
-      "impression_multiplier": 15.625,
-      "data_source": "geopath_december_2024"
-    }
-  }
-}
-```
-
-**Formula**: `impressions = loop_plays × impression_multiplier`
-
-This transparency allows buyers to understand and validate impression calculations.
+By accepting the product, buyers agree to use the declared measurement provider as the authoritative source for delivery metrics.
 
 ### Best Practices
 
 **For Publishers:**
-- Declare measurement methodology clearly in products
-- Provide calculation transparency for DOOH
-- Consider offering third-party verification for premium inventory
-- Maintain detailed audit logs for potential disputes
+- Clearly identify your measurement provider (ad server and any third-party verification)
+- Explain your measurement methodology in plain language
+- For DOOH, specify your audience measurement source (e.g., Geopath, venue sensors)
 
 **For Buyers:**
-- Review publisher measurement methodology before committing budget
-- Negotiate audit rights in contracts
-- Request third-party verification for large campaigns
-- For DOOH, validate impression calculations using `calculation_basis`
+- Review the measurement provider before committing budget
+- Ensure the provider meets your campaign requirements
+- Negotiate audit rights in contracts if needed
 
 ## Supported Pricing Models
 
@@ -202,28 +165,26 @@ This transparency allows buyers to understand and validate impression calculatio
 
 **Measurement Requirements**:
 
-CPP pricing requires **certified demographic measurement**. Publishers should declare their GRP measurement source via `delivery_measurement`:
+CPP pricing requires **certified demographic measurement**. Publishers should declare their measurement provider:
 
 ```json
 {
   "pricing_model": "cpp",
   "rate": 250.00,
   "delivery_measurement": {
-    "source": "nielsen_dar",
-    "demographic_measurement": "panel_based",
-    "reporting_cadence": "weekly"
+    "provider": "Nielsen DAR",
+    "notes": "Panel-based demographic measurement for A18-49. GRP reports available weekly."
   }
 }
 ```
 
-**Accepted Measurement Sources**:
+**Common Measurement Providers for CPP**:
 - **Nielsen DAR/TV**: Industry-standard TV measurement
 - **Comscore**: Campaign Ratings for CTV
 - **iSpot.tv**: Advanced TV analytics
 - **Triton Digital**: Audio/streaming measurement
-- **Publisher-certified panels**: Large platforms with certified audience measurement
 
-Buyers should verify publisher's measurement certification before accepting CPP deals. Without certified measurement, GRP claims are not credible.
+Buyers should verify the measurement provider meets their campaign requirements before accepting CPP deals.
 
 ---
 
