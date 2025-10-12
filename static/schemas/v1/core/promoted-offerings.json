@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/promoted-offerings.json",
+  "title": "Promoted Offerings",
+  "description": "Complete offering specification combining brand manifest, product selectors, and asset filters. Provides all context needed for creative generation about what is being promoted.",
+  "type": "object",
+  "properties": {
+    "brand_manifest": {
+      "$ref": "/schemas/v1/core/brand-manifest.json",
+      "description": "Brand information manifest containing assets, themes, and guidelines"
+    },
+    "product_selectors": {
+      "$ref": "/schemas/v1/core/promoted-products.json",
+      "description": "Selectors to choose which products/offerings from the brand manifest to promote"
+    },
+    "asset_selectors": {
+      "type": "object",
+      "description": "Selectors to choose specific assets from the brand manifest",
+      "properties": {
+        "tags": {
+          "type": "array",
+          "description": "Select assets with specific tags (e.g., ['holiday', 'premium'])",
+          "items": {
+            "type": "string"
+          }
+        },
+        "asset_types": {
+          "type": "array",
+          "description": "Filter by asset type (e.g., ['image', 'video'])",
+          "items": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "text", "html", "css", "javascript"]
+          }
+        },
+        "exclude_tags": {
+          "type": "array",
+          "description": "Exclude assets with these tags",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["brand_manifest"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "brand_manifest": {
+        "url": "https://brand.com"
+      },
+      "product_selectors": {
+        "manifest_skus": ["SKU-123", "SKU-456"]
+      },
+      "asset_selectors": {
+        "tags": ["holiday"],
+        "asset_types": ["image", "video"]
+      }
+    }
+  ]
+}

@@ -77,32 +77,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "brand_guidelines": {
-      "type": "object",
-      "description": "DEPRECATED: Use brand_manifest instead. Legacy brand-specific guidelines and constraints.",
-      "properties": {
-        "colors": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Brand color palette (hex codes)"
-        },
-        "fonts": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Approved brand fonts"
-        },
-        "tone": {
-          "type": "string",
-          "description": "Brand tone and voice guidelines"
-        },
-        "restrictions": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Content restrictions or requirements"
-        }
-      },
-      "additionalProperties": false
     }
   },
   "required": ["message", "format_id"],

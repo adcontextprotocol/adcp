@@ -60,12 +60,10 @@ To test multiple scenarios, provide an `inputs` array - you'll get one preview p
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `format_id` | string | Yes | Format identifier for rendering |
-| `creative_manifest` | object | Yes | Complete creative manifest with all required assets |
+| `creative_manifest` | object | Yes | Complete creative manifest with all required assets (brand_manifest should be included in the manifest for dynamic creatives) |
 | `inputs` | array | No | Array of input sets for generating multiple preview variants |
 | `template_id` | string | No | Specific template for custom format rendering |
-| `brand_manifest` | object | No | Brand information manifest providing context for dynamic previews |
-| `promoted_products` | object | No | Products/offerings being promoted - provides product context for previews |
-| `asset_filters` | object | No | Filters to select specific assets from brand manifest (tags, asset_types, exclude_tags) |
+| `asset_selectors` | object | No | Selectors to choose specific assets from the creative manifest (tags, asset_types, exclude_tags) |
 
 ### Creative Manifest Structure
 

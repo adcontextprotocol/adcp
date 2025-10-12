@@ -41,7 +41,7 @@ Creative agents need to understand format requirements to generate appropriate c
 | `format_source` | string | No | Source URL for format lookup (sales agent URL). If null/omitted, assumes standard AdCP format |
 | `format_id` | string | Yes | Format identifier to look up from the format source |
 | `context_id` | string | No | Session context from previous message for continuity |
-| `brand_manifest` | BrandCard | No | Brand information manifest for creative generation context. See [Brand Manifest](../../reference/brand-manifest) for details. Replaces legacy `brand_guidelines`. |
+| `brand_manifest` | BrandCard | No | Brand information manifest containing all assets, themes, and information necessary to ensure creatives are aligned with the brand's goals and that the publisher is comfortable with what's being advertised. See [Brand Manifest](../../reference/brand-manifest) for details. |
 | `assets` | array | No | References to asset libraries and specific assets |
 | `output_mode` | string | No | `"manifest"` for creative manifest or `"code"` for executable (default: `"manifest"`) |
 | `preview_options` | object | No | Options for generating preview |
