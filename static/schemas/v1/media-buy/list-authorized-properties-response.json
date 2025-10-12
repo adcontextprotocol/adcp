@@ -36,6 +36,29 @@
         "additionalProperties": false
       }
     },
+    "primary_channels": {
+      "type": "array",
+      "description": "Primary advertising channels represented in this property portfolio. Helps buying agents quickly filter relevance.",
+      "items": {
+        "$ref": "/schemas/v1/enums/channels.json"
+      },
+      "minItems": 1
+    },
+    "primary_countries": {
+      "type": "array",
+      "description": "Primary countries (ISO 3166-1 alpha-2 codes) where properties are concentrated. Helps buying agents quickly filter relevance.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "portfolio_description": {
+      "type": "string",
+      "description": "Markdown-formatted description of the property portfolio, including inventory types, audience characteristics, and special features.",
+      "minLength": 1,
+      "maxLength": 5000
+    },
     "errors": {
       "type": "array",
       "description": "Task-specific errors and warnings (e.g., property availability issues)",

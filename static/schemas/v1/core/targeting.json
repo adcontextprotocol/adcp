@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/targeting.json",
-  "title": "Targeting",
-  "description": "Audience targeting criteria",
+  "title": "Targeting Overlay",
+  "description": "Optional geographic refinements for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are primarily for geographic restrictions (RCT testing, regulatory compliance).",
   "type": "object",
   "properties": {
     "geo_country_any_of": {
       "type": "array",
-      "description": "Target specific countries (ISO codes)",
+      "description": "Restrict delivery to specific countries (ISO codes). Use for regulatory compliance or RCT testing.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}$"
@@ -15,69 +15,23 @@
     },
     "geo_region_any_of": {
       "type": "array",
-      "description": "Target specific regions/states",
+      "description": "Restrict delivery to specific regions/states. Use for regulatory compliance or RCT testing.",
       "items": {
         "type": "string"
       }
     },
     "geo_metro_any_of": {
       "type": "array",
-      "description": "Target specific metro areas (DMA codes)",
+      "description": "Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing.",
       "items": {
         "type": "string"
       }
     },
     "geo_postal_code_any_of": {
       "type": "array",
-      "description": "Target specific postal/ZIP codes",
+      "description": "Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing.",
       "items": {
         "type": "string"
-      }
-    },
-    "audience_segment_any_of": {
-      "type": "array",
-      "description": "Audience segment IDs to target",
-      "items": {
-        "type": "string"
-      }
-    },
-    "axe_include_segment": {
-      "type": "string",
-      "description": "AXE segment ID to include for targeting"
-    },
-    "axe_exclude_segment": {
-      "type": "string",
-      "description": "AXE segment ID to exclude from targeting"
-    },
-    "signals": {
-      "type": "array",
-      "description": "Signal IDs from get_signals",
-      "items": {
-        "type": "string"
-      }
-    },
-    "device_type_any_of": {
-      "type": "array",
-      "description": "Target specific device types",
-      "items": {
-        "type": "string",
-        "enum": ["desktop", "mobile", "tablet", "connected_tv", "smart_speaker"]
-      }
-    },
-    "os_any_of": {
-      "type": "array",
-      "description": "Target specific operating systems",
-      "items": {
-        "type": "string",
-        "enum": ["windows", "macos", "ios", "android", "linux", "roku", "tvos", "other"]
-      }
-    },
-    "browser_any_of": {
-      "type": "array",
-      "description": "Target specific browsers",
-      "items": {
-        "type": "string",
-        "enum": ["chrome", "firefox", "safari", "edge", "other"]
       }
     },
     "frequency_cap": {

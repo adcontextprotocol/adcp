@@ -61,7 +61,7 @@ The message is returned differently in each protocol:
   ],
   "tags": {
     "local_radio": {
-      "name": "Local Radio Stations", 
+      "name": "Local Radio Stations",
       "description": "1847 local radio stations across US markets"
     },
     "sports_network": {
@@ -76,7 +76,10 @@ The message is returned differently in each protocol:
       "name": "Premium Inventory",
       "description": "Premium tier inventory across all property types"
     }
-  }
+  },
+  "primary_channels": ["dooh"],
+  "primary_countries": ["US", "CA", "MX"],
+  "portfolio_description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification."
 }
 ```
 
@@ -86,6 +89,9 @@ The message is returned differently in each protocol:
 - **tags**: Metadata for each tag used by properties
   - **name**: Human-readable name for the tag
   - **description**: Description of what the tag represents and optionally how many properties it includes
+- **primary_channels** *(optional)*: Main advertising channels (see [Channels enum](/schemas/v1/enums/channels.json))
+- **primary_countries** *(optional)*: Main countries (ISO 3166-1 alpha-2 codes)
+- **portfolio_description** *(optional)*: Markdown description of the property portfolio
 
 ## Integration with get_products
 
@@ -254,6 +260,73 @@ await a2a.send({
       }
     ]
   }]
+}
+```
+
+## Property Portfolio Metadata
+
+Optional top-level fields provide high-level metadata about the property portfolio to help buying agents quickly determine relevance without examining every property.
+
+### Why Portfolio Metadata?
+
+**The core insight**: This isn't about what the agent *can do* (that's in A2A skills) - it's about what properties the agent *represents*. Properties change over time as inventory is added or removed.
+
+**Use case**: Orchestrator needs to route brief "DOOH in US airports" to relevant agents:
+```javascript
+// Quick filtering before detailed analysis
+const response = await agent.send({ skill: 'list_authorized_properties' });
+
+if (response.primary_channels?.includes('dooh') &&
+    response.primary_countries?.includes('US')) {
+  // Relevant! Now examine detailed properties
+  const airportProperties = response.properties.filter(p =>
+    p.tags?.includes('airports')
+  );
+}
+```
+
+### Portfolio Fields
+
+**`primary_channels`** *(optional)*: Main advertising channels in this portfolio
+- Values: `"display"`, `"video"`, `"dooh"`, `"ctv"`, `"podcast"`, `"retail"`, etc.
+- See [Channels enum](/schemas/v1/enums/channels.json) for full list
+- Helps filter "Do you have DOOH?" before examining properties
+
+**`primary_countries`** *(optional)*: Main countries (ISO 3166-1 alpha-2 codes)
+- Where the bulk of properties are concentrated
+- Helps filter "Do you have US inventory?" before examining properties
+
+**`portfolio_description`** *(optional)*: Markdown description of the portfolio
+- Inventory types and characteristics
+- Audience profiles
+- Special features or capabilities
+
+### Example Portfolio Metadata
+
+**DOOH Network**:
+```json
+{
+  "primary_channels": ["dooh"],
+  "primary_countries": ["US", "CA"],
+  "portfolio_description": "Premium digital out-of-home across airports and transit. Business traveler focus with proof-of-play."
+}
+```
+
+**Multi-Channel Publisher**:
+```json
+{
+  "primary_channels": ["display", "video", "native"],
+  "primary_countries": ["US", "GB", "AU"],
+  "portfolio_description": "News and business publisher network. Desktop and mobile web properties with professional audience."
+}
+```
+
+**Large Radio Network**:
+```json
+{
+  "primary_channels": ["audio"],
+  "primary_countries": ["US"],
+  "portfolio_description": "National radio network covering all US DMAs. Mix of news, talk, and music formats."
 }
 ```
 
