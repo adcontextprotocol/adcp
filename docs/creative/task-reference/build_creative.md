@@ -15,12 +15,63 @@ For information about format IDs and how to reference formats, see [Creative For
 |-----------|------|----------|-------------|
 | `message` | string | Yes | The request message (initial brief or refinement instructions) |
 | `source_format_id` | object | No | Format ID of existing creative to transform (optional - omit when creating from scratch). Object with `agent_url` and `id` fields. |
-| `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies whether output is manifest-based or code-based. |
+| `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. For generative formats, this should be the input format (e.g., `300x250_banner_generative`). The creative agent will return a manifest in one of the `output_format_ids`. |
 | `context_id` | string | No | Session context from previous message for continuity |
 | `brand_manifest` | BrandManifest | No | Brand information manifest containing all assets, themes, and information necessary to ensure creatives are aligned with the brand's goals and that the publisher is comfortable with what's being advertised. See [Brand Manifest](../../reference/brand-manifest) for details. |
 | `assets` | array | No | References to asset libraries and specific assets |
 | `preview_options` | object | No | Options for generating preview |
 | `finalize` | boolean | No | Set to true to finalize the creative (default: false) |
+
+## Generative Formats
+
+Generative formats accept high-level inputs (like brand manifests and natural language messages) and produce concrete creative assets in a traffickable output format.
+
+### How It Works
+
+1. **Sales agent** advertises both input and output formats via `list_creative_formats`:
+   - Input format: `300x250_banner_generative` (accepts `brand_manifest` + `message`)
+   - Output format: `300x250_banner_image` (produces actual image asset)
+
+2. **Buyer** calls `build_creative` with the **input format**:
+   ```json
+   {
+     "message": "Create a banner promoting our winter sale",
+     "target_format_id": {
+       "agent_url": "https://creative.adcontextprotocol.org",
+       "id": "300x250_banner_generative"
+     },
+     "brand_manifest": {
+       "url": "https://mybrand.com",
+       "colors": {"primary": "#FF0000"}
+     }
+   }
+   ```
+
+3. **Creative agent** returns a manifest in the **output format**:
+   ```json
+   {
+     "creative_output": {
+       "type": "creative_manifest",
+       "target_format_id": {
+         "agent_url": "https://creative.adcontextprotocol.org",
+         "id": "300x250_banner_image"
+       },
+       "assets": {
+         "banner_creative": {
+           "url": "https://cdn.example.com/generated-banner.png",
+           "width": 300,
+           "height": 250
+         }
+       }
+     }
+   }
+   ```
+
+### Benefits
+
+- **Simpler buyer experience**: Submit brand context instead of designing assets
+- **Format flexibility**: One generative format can output multiple standard formats
+- **Automated creative generation**: AI handles asset creation and composition
 
 ### Message Examples
 
