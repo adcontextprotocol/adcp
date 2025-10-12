@@ -71,7 +71,7 @@
     },
     "min_spend": {
       "type": "number",
-      "description": "DEPRECATED: Use pricing_options[].min_spend instead. Minimum budget requirement",
+      "description": "DEPRECATED: Use pricing_options[].min_spend_per_package instead. Minimum budget requirement",
       "minimum": 0
     },
     "estimated_exposures": {

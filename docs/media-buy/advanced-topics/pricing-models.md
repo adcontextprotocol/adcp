@@ -77,7 +77,7 @@ By accepting the product, buyers agree to use the declared measurement provider 
   "rate": 12.50,
   "currency": "USD",
   "is_fixed": true,
-  "min_spend": 5000
+  "min_spend_per_package": 5000
 }
 ```
 
@@ -145,7 +145,7 @@ By accepting the product, buyers agree to use the declared measurement provider 
     "demographic": "A18-49",
     "min_points": 50
   },
-  "min_spend": 12500
+  "min_spend_per_package": 12500
 }
 ```
 
@@ -395,14 +395,14 @@ A publisher offering Connected TV inventory with multiple pricing options:
       "rate": 55.00,
       "currency": "USD",
       "is_fixed": true,
-      "min_spend": 15000
+      "min_spend_per_package": 15000
     },
     {
       "pricing_model": "cpcv",
       "rate": 0.22,
       "currency": "USD",
       "is_fixed": true,
-      "min_spend": 15000
+      "min_spend_per_package": 15000
     },
     {
       "pricing_model": "cpp",
@@ -413,7 +413,7 @@ A publisher offering Connected TV inventory with multiple pricing options:
         "demographic": "M18-49",
         "min_points": 50
       },
-      "min_spend": 15000
+      "min_spend_per_package": 15000
     }
   ]
 }
@@ -426,7 +426,7 @@ A buyer could choose CPP pricing if they're planning TV buys, CPCV if optimizing
 ### For Publishers
 
 1. **Offer relevant pricing models** - Match pricing to your inventory type and buyer expectations
-2. **Set appropriate minimums** - Use `min_spend` to ensure campaign viability
+2. **Set appropriate minimums** - Use `min_spend_per_package` to ensure campaign viability
 3. **Provide price guidance** - For auction pricing, give realistic floor and percentile data
 4. **Consider multi-currency** - Support currencies of your target markets
 5. **Document parameters** - Clearly explain thresholds, demographics, and action types

@@ -119,7 +119,7 @@
         }
       }
     },
-    "min_spend": {
+    "min_spend_per_package": {
       "type": "number",
       "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
       "minimum": 0
