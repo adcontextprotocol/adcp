@@ -31,7 +31,11 @@ Buyers can recursively query creative_agents to discover all available formats. 
 | `format_ids` | string[] | No | Return only these specific format IDs |
 | `type` | string | No | Filter by format type: `"audio"`, `"video"`, `"display"`, `"dooh"` (technical categories with distinct requirements) |
 | `asset_types` | string[] | No | Filter to formats that include these asset types. For third-party tags, search for `["html"]` or `["javascript"]`. E.g., `["image", "text"]` returns formats with images and text, `["javascript"]` returns formats accepting JavaScript tags. Values: `image`, `video`, `audio`, `text`, `html`, `javascript`, `url` |
-| `dimensions` | string | No | Filter to formats with specific dimensions (e.g., `"300x250"`, `"728x90"`). Combine with `asset_types` to find specific sizes like "300x250 JavaScript" |
+| `max_width` | integer | No | Maximum width in pixels (inclusive). Returns formats with width ≤ this value. |
+| `max_height` | integer | No | Maximum height in pixels (inclusive). Returns formats with height ≤ this value. |
+| `min_width` | integer | No | Minimum width in pixels (inclusive). Returns formats with width ≥ this value. |
+| `min_height` | integer | No | Minimum height in pixels (inclusive). Returns formats with height ≥ this value. |
+| `is_responsive` | boolean | No | Filter for responsive formats that adapt to container size. When `true`, returns formats without fixed dimensions. |
 | `name_search` | string | No | Search for formats by name (case-insensitive partial match, e.g., `"mobile"` or `"vertical"`) |
 
 ## Response Structure
@@ -171,7 +175,50 @@ Response:
 }
 ```
 
-## Example 3: Search by Name
+## Example 3: Find Formats by Size
+
+"What formats can accept HTML, JavaScript, or images up to 970x250?"
+
+**Important**: The `asset_types` parameter uses OR logic - formats matching ANY of the specified asset types will be returned.
+
+Query the reference creative agent:
+
+```json
+{
+  "asset_types": ["html", "javascript", "image"],
+  "max_width": 970,
+  "max_height": 250,
+  "type": "display"
+}
+```
+
+This returns all display formats at or below 970×250 that accept any of those asset types - both third-party tag formats and image-based formats (e.g., 300×250, 728×90, 970×250).
+
+**Example: Find specific dimensions**
+
+```json
+{
+  "min_width": 970,
+  "max_width": 970,
+  "min_height": 250,
+  "max_height": 250
+}
+```
+
+Returns only formats at exactly 970×250.
+
+**Example: Find responsive formats**
+
+```json
+{
+  "is_responsive": true,
+  "type": "display"
+}
+```
+
+Returns formats that adapt to container width (native ads, fluid layouts, full-width banners).
+
+## Example 4: Search by Name
 
 "Show me your vertical or mobile formats"
 
@@ -183,7 +230,7 @@ Response:
 
 Response returns all formats with "vertical" in the name.
 
-## Example 4: Generative Format with Output Formats
+## Example 5: Generative Format with Output Formats
 
 "What generative formats do you support for 300x250 banners?"
 
