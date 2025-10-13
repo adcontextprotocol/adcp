@@ -5,12 +5,6 @@
   "description": "Request payload for provide_performance_feedback task",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.0.0"
-    },
     "media_buy_id": {
       "type": "string",
       "description": "Publisher's media buy identifier",
@@ -27,11 +21,14 @@
         },
         "end": {
           "type": "string",
-          "format": "date-time", 
+          "format": "date-time",
           "description": "ISO 8601 end timestamp for measurement period"
         }
       },
-      "required": ["start", "end"],
+      "required": [
+        "start",
+        "end"
+      ],
       "additionalProperties": false
     },
     "performance_index": {
@@ -45,7 +42,7 @@
       "minLength": 1
     },
     "creative_id": {
-      "type": "string", 
+      "type": "string",
       "description": "Specific creative asset (if feedback is creative-specific)",
       "minLength": 1
     },
@@ -54,7 +51,7 @@
       "description": "The business metric being measured",
       "enum": [
         "overall_performance",
-        "conversion_rate", 
+        "conversion_rate",
         "brand_lift",
         "click_through_rate",
         "completion_rate",
@@ -69,7 +66,7 @@
       "description": "Source of the performance data",
       "enum": [
         "buyer_attribution",
-        "third_party_measurement", 
+        "third_party_measurement",
         "platform_analytics",
         "verification_partner"
       ],

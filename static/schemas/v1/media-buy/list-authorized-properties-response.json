@@ -5,11 +5,6 @@
   "description": "Response payload for list_authorized_properties task",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "properties": {
       "type": "array",
       "description": "Array of all properties this agent is authorized to represent",
@@ -32,7 +27,10 @@
             "description": "Description of what this tag represents"
           }
         },
-        "required": ["name", "description"],
+        "required": [
+          "name",
+          "description"
+        ],
         "additionalProperties": false
       }
     },
@@ -67,6 +65,8 @@
       }
     }
   },
-  "required": ["adcp_version", "properties"],
+  "required": [
+    "properties"
+  ],
   "additionalProperties": false
 }

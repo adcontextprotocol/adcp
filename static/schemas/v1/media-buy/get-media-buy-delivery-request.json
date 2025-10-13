@@ -5,12 +5,6 @@
   "description": "Request parameters for retrieving comprehensive delivery metrics",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "media_buy_ids": {
       "type": "array",
       "description": "Array of publisher media buy IDs to get delivery data for",
@@ -29,13 +23,26 @@
       "oneOf": [
         {
           "type": "string",
-          "enum": ["active", "pending", "paused", "completed", "failed", "all"]
+          "enum": [
+            "active",
+            "pending",
+            "paused",
+            "completed",
+            "failed",
+            "all"
+          ]
         },
         {
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["active", "pending", "paused", "completed", "failed"]
+            "enum": [
+              "active",
+              "pending",
+              "paused",
+              "completed",
+              "failed"
+            ]
           }
         }
       ],

@@ -5,12 +5,6 @@
   "description": "Request parameters for retrieving a specific task by ID with optional conversation history across all AdCP domains",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "task_id": {
       "type": "string",
       "description": "Unique identifier of the task to retrieve"

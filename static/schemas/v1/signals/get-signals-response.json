@@ -5,11 +5,6 @@
   "description": "Response payload for get_signals task",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "message": {
       "type": "string",
       "description": "Human-readable summary of the signal discovery results"
@@ -39,7 +34,11 @@
           "signal_type": {
             "type": "string",
             "description": "Type of signal",
-            "enum": ["marketplace", "custom", "owned"]
+            "enum": [
+              "marketplace",
+              "custom",
+              "owned"
+            ]
           },
           "data_provider": {
             "type": "string",
@@ -62,7 +61,10 @@
                   "description": "Platform name"
                 },
                 "account": {
-                  "type": ["string", "null"],
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "description": "Specific account if applicable"
                 },
                 "is_live": {
@@ -72,7 +74,10 @@
                 "scope": {
                   "type": "string",
                   "description": "Deployment scope",
-                  "enum": ["platform-wide", "account-specific"]
+                  "enum": [
+                    "platform-wide",
+                    "account-specific"
+                  ]
                 },
                 "decisioning_platform_segment_id": {
                   "type": "string",
@@ -84,7 +89,11 @@
                   "minimum": 0
                 }
               },
-              "required": ["platform", "is_live", "scope"],
+              "required": [
+                "platform",
+                "is_live",
+                "scope"
+              ],
               "additionalProperties": false
             }
           },
@@ -103,11 +112,23 @@
                 "pattern": "^[A-Z]{3}$"
               }
             },
-            "required": ["cpm", "currency"],
+            "required": [
+              "cpm",
+              "currency"
+            ],
             "additionalProperties": false
           }
         },
-        "required": ["signal_agent_segment_id", "name", "description", "signal_type", "data_provider", "coverage_percentage", "deployments", "pricing"],
+        "required": [
+          "signal_agent_segment_id",
+          "name",
+          "description",
+          "signal_type",
+          "data_provider",
+          "coverage_percentage",
+          "deployments",
+          "pricing"
+        ],
         "additionalProperties": false
       }
     },
@@ -119,6 +140,10 @@
       }
     }
   },
-  "required": ["adcp_version", "message", "context_id", "signals"],
+  "required": [
+    "message",
+    "context_id",
+    "signals"
+  ],
   "additionalProperties": false
 }

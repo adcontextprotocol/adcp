@@ -5,12 +5,6 @@
   "description": "Request to generate a preview of a creative manifest in a specific format",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.0.0"
-    },
     "format_id": {
       "type": "string",
       "description": "Format identifier for rendering the preview"
@@ -41,7 +35,9 @@
             "description": "Natural language description of the context for AI-generated content (e.g., 'User just searched for running shoes', 'Podcast discussing weather patterns', 'Article about electric vehicles')"
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": false
       }
     },
@@ -54,6 +50,9 @@
       "description": "Complete offering specification for dynamic creative previews - includes brand manifest, product selectors, inline offerings, and asset filters"
     }
   },
-  "required": ["format_id", "creative_manifest"],
+  "required": [
+    "format_id",
+    "creative_manifest"
+  ],
   "additionalProperties": false
 }

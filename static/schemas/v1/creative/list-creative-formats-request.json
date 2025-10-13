@@ -5,12 +5,6 @@
   "description": "Request parameters for discovering creative formats provided by this creative agent",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "format_ids": {
       "type": "array",
       "description": "Return only these specific format IDs",
@@ -21,14 +15,27 @@
     "type": {
       "type": "string",
       "description": "Filter by format type (technical categories with distinct requirements)",
-      "enum": ["audio", "video", "display", "dooh"]
+      "enum": [
+        "audio",
+        "video",
+        "display",
+        "dooh"
+      ]
     },
     "asset_types": {
       "type": "array",
       "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
       "items": {
         "type": "string",
-        "enum": ["image", "video", "audio", "text", "html", "javascript", "url"]
+        "enum": [
+          "image",
+          "video",
+          "audio",
+          "text",
+          "html",
+          "javascript",
+          "url"
+        ]
       }
     },
     "max_width": {

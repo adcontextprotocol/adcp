@@ -5,11 +5,6 @@
   "description": "Response from task listing query with filtered results and state reconciliation data across all AdCP domains",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "message": {
       "type": "string",
       "description": "Human-readable result message summarizing task query results"
@@ -73,14 +68,23 @@
             },
             "direction": {
               "type": "string",
-              "enum": ["asc", "desc"]
+              "enum": [
+                "asc",
+                "desc"
+              ]
             }
           },
-          "required": ["field", "direction"],
+          "required": [
+            "field",
+            "direction"
+          ],
           "additionalProperties": false
         }
       },
-      "required": ["total_matching", "returned"],
+      "required": [
+        "total_matching",
+        "returned"
+      ],
       "additionalProperties": false
     },
     "tasks": {
@@ -96,12 +100,21 @@
           "task_type": {
             "type": "string",
             "description": "Type of AdCP operation",
-            "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal", "get_signals"]
+            "enum": [
+              "create_media_buy",
+              "update_media_buy",
+              "sync_creatives",
+              "activate_signal",
+              "get_signals"
+            ]
           },
           "domain": {
             "type": "string",
             "description": "AdCP domain this task belongs to",
-            "enum": ["media-buy", "signals"]
+            "enum": [
+              "media-buy",
+              "signals"
+            ]
           },
           "status": {
             "$ref": "/schemas/v1/enums/task-status.json",
@@ -131,7 +144,15 @@
             "description": "Whether this task has webhook configuration"
           }
         },
-        "required": ["task_id", "task_type", "domain", "status", "created_at", "updated_at", "message"],
+        "required": [
+          "task_id",
+          "task_type",
+          "domain",
+          "status",
+          "created_at",
+          "updated_at",
+          "message"
+        ],
         "additionalProperties": false
       }
     },
@@ -145,7 +166,7 @@
           "minimum": 1
         },
         "offset": {
-          "type": "integer", 
+          "type": "integer",
           "description": "Offset that was applied to this query",
           "minimum": 0
         },
@@ -159,10 +180,19 @@
           "minimum": 0
         }
       },
-      "required": ["limit", "offset", "has_more"],
+      "required": [
+        "limit",
+        "offset",
+        "has_more"
+      ],
       "additionalProperties": false
     }
   },
-  "required": ["adcp_version", "message", "query_summary", "tasks", "pagination"],
+  "required": [
+    "message",
+    "query_summary",
+    "tasks",
+    "pagination"
+  ],
   "additionalProperties": false
 }

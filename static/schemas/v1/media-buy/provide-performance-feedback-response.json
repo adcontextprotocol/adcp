@@ -5,11 +5,6 @@
   "description": "Response payload for provide_performance_feedback task",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "success": {
       "type": "boolean",
       "description": "Whether the performance feedback was successfully received"
@@ -27,7 +22,6 @@
     }
   },
   "required": [
-    "adcp_version",
     "success"
   ],
   "additionalProperties": false

@@ -5,12 +5,6 @@
   "description": "Request parameters for updating campaign and package settings",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "media_buy_id": {
       "type": "string",
       "description": "Publisher's ID of the media buy to update"
@@ -72,10 +66,14 @@
         },
         "oneOf": [
           {
-            "required": ["package_id"]
+            "required": [
+              "package_id"
+            ]
           },
           {
-            "required": ["buyer_ref"]
+            "required": [
+              "buyer_ref"
+            ]
           }
         ],
         "additionalProperties": false
@@ -88,10 +86,14 @@
   },
   "oneOf": [
     {
-      "required": ["media_buy_id"]
+      "required": [
+        "media_buy_id"
+      ]
     },
     {
-      "required": ["buyer_ref"]
+      "required": [
+        "buyer_ref"
+      ]
     }
   ],
   "additionalProperties": false

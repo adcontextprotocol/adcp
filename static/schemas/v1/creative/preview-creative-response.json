@@ -5,11 +5,6 @@
   "description": "Response containing preview links for a creative. Each preview URL returns an HTML page that can be embedded in an iframe to display the rendered creative.",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "previews": {
       "type": "array",
       "description": "Array of preview variants. Each preview corresponds to an input set from the request. If no inputs were provided, returns a single default preview.",
@@ -41,7 +36,9 @@
                 "description": "Context description applied to this variant"
               }
             },
-            "required": ["name"]
+            "required": [
+              "name"
+            ]
           },
           "hints": {
             "type": "object",
@@ -49,7 +46,12 @@
             "properties": {
               "primary_media_type": {
                 "type": "string",
-                "enum": ["image", "video", "audio", "interactive"],
+                "enum": [
+                  "image",
+                  "video",
+                  "audio",
+                  "interactive"
+                ],
                 "description": "Primary media type contained in the preview (for optimization only)"
               },
               "estimated_dimensions": {
@@ -65,7 +67,10 @@
                     "minimum": 0
                   }
                 },
-                "required": ["width", "height"]
+                "required": [
+                  "width",
+                  "height"
+                ]
               },
               "estimated_duration_seconds": {
                 "type": "number",
@@ -105,7 +110,10 @@
             }
           }
         },
-        "required": ["preview_url", "input"]
+        "required": [
+          "preview_url",
+          "input"
+        ]
       },
       "minItems": 1
     },
@@ -120,6 +128,9 @@
       "description": "ISO 8601 timestamp when preview links expire"
     }
   },
-  "required": ["adcp_version", "previews", "expires_at"],
+  "required": [
+    "previews",
+    "expires_at"
+  ],
   "additionalProperties": false
 }

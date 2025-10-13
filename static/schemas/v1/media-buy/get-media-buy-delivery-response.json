@@ -5,14 +5,14 @@
   "description": "Response payload for get_media_buy_delivery task",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "notification_type": {
       "type": "string",
-      "enum": ["scheduled", "final", "delayed", "adjusted"],
+      "enum": [
+        "scheduled",
+        "final",
+        "delayed",
+        "adjusted"
+      ],
       "description": "Type of webhook notification (only present in webhook deliveries): scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = resending period with updated data"
     },
     "partial_data": {
@@ -49,7 +49,10 @@
           "description": "ISO 8601 end timestamp in UTC (e.g., 2024-02-05T23:59:59Z)"
         }
       },
-      "required": ["start", "end"],
+      "required": [
+        "start",
+        "end"
+      ],
       "additionalProperties": false
     },
     "currency": {
@@ -87,7 +90,11 @@
           "minimum": 0
         }
       },
-      "required": ["impressions", "spend", "media_buy_count"],
+      "required": [
+        "impressions",
+        "spend",
+        "media_buy_count"
+      ],
       "additionalProperties": false
     },
     "media_buy_deliveries": {
@@ -107,7 +114,14 @@
           "status": {
             "type": "string",
             "description": "Current media buy status. In webhook context, reporting_delayed indicates data temporarily unavailable.",
-            "enum": ["pending", "active", "paused", "completed", "failed", "reporting_delayed"]
+            "enum": [
+              "pending",
+              "active",
+              "paused",
+              "completed",
+              "failed",
+              "reporting_delayed"
+            ]
           },
           "message": {
             "type": "string",
@@ -141,7 +155,9 @@
                     "minimum": 0
                   }
                 },
-                "required": ["spend"]
+                "required": [
+                  "spend"
+                ]
               }
             ]
           },
@@ -170,7 +186,10 @@
                       "minimum": 0
                     }
                   },
-                  "required": ["package_id", "spend"]
+                  "required": [
+                    "package_id",
+                    "spend"
+                  ]
                 }
               ]
             }
@@ -197,12 +216,21 @@
                   "minimum": 0
                 }
               },
-              "required": ["date", "impressions", "spend"],
+              "required": [
+                "date",
+                "impressions",
+                "spend"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["media_buy_id", "status", "totals", "by_package"],
+        "required": [
+          "media_buy_id",
+          "status",
+          "totals",
+          "by_package"
+        ],
         "additionalProperties": false
       }
     },
@@ -214,6 +242,10 @@
       }
     }
   },
-  "required": ["adcp_version", "reporting_period", "currency", "media_buy_deliveries"],
+  "required": [
+    "reporting_period",
+    "currency",
+    "media_buy_deliveries"
+  ],
   "additionalProperties": false
 }

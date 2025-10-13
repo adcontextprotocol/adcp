@@ -5,11 +5,6 @@
   "description": "Response payload for build_creative task",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "context_id": {
       "type": "string",
       "description": "Context identifier for iterative refinement"
@@ -22,15 +17,28 @@
           "type": "object",
           "description": "Format specification used for this creative",
           "properties": {
-            "id": {"type": "string"},
-            "name": {"type": "string"},
-            "type": {"type": "string"}
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
           },
-          "required": ["id", "name", "type"]
+          "required": [
+            "id",
+            "name",
+            "type"
+          ]
         },
         "output_mode": {
           "type": "string",
-          "enum": ["manifest", "code"],
+          "enum": [
+            "manifest",
+            "code"
+          ],
           "description": "Type of creative output generated"
         },
         "security_requirements": {
@@ -43,7 +51,9 @@
             },
             "sandbox_attributes": {
               "type": "array",
-              "items": {"type": "string"},
+              "items": {
+                "type": "string"
+              },
               "description": "Required iframe sandbox attributes"
             },
             "xss_protection": {
@@ -51,14 +61,19 @@
               "description": "XSS protection must be enabled"
             }
           },
-          "required": ["content_security_policy", "xss_protection"]
+          "required": [
+            "content_security_policy",
+            "xss_protection"
+          ]
         }
       },
       "allOf": [
         {
           "if": {
             "properties": {
-              "output_mode": {"const": "manifest"}
+              "output_mode": {
+                "const": "manifest"
+              }
             }
           },
           "then": {
@@ -74,19 +89,29 @@
                 "type": "object",
                 "description": "Creative layout and composition instructions",
                 "properties": {
-                  "composition": {"type": "string"},
-                  "positioning": {"type": "object"},
-                  "animations": {"type": "array"}
+                  "composition": {
+                    "type": "string"
+                  },
+                  "positioning": {
+                    "type": "object"
+                  },
+                  "animations": {
+                    "type": "array"
+                  }
                 }
               }
             },
-            "required": ["assets"]
+            "required": [
+              "assets"
+            ]
           }
         },
         {
           "if": {
             "properties": {
-              "output_mode": {"const": "code"}
+              "output_mode": {
+                "const": "code"
+              }
             }
           },
           "then": {
@@ -95,10 +120,18 @@
                 "type": "object",
                 "description": "Executable creative code",
                 "properties": {
-                  "html": {"type": "string"},
-                  "css": {"type": "string"},
-                  "javascript": {"type": "string"},
-                  "preview_url": {"type": "string"}
+                  "html": {
+                    "type": "string"
+                  },
+                  "css": {
+                    "type": "string"
+                  },
+                  "javascript": {
+                    "type": "string"
+                  },
+                  "preview_url": {
+                    "type": "string"
+                  }
                 }
               },
               "dynamic_elements": {
@@ -107,18 +140,29 @@
                 "items": {
                   "type": "object",
                   "properties": {
-                    "element_id": {"type": "string"},
-                    "type": {"type": "string"},
-                    "data_source": {"type": "string"}
+                    "element_id": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "data_source": {
+                      "type": "string"
+                    }
                   }
                 }
               }
             },
-            "required": ["code"]
+            "required": [
+              "code"
+            ]
           }
         }
       ],
-      "required": ["format", "output_mode"]
+      "required": [
+        "format",
+        "output_mode"
+      ]
     },
     "suggestions": {
       "type": "array",
@@ -128,26 +172,44 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["variation", "improvement", "format_adaptation"]
+            "enum": [
+              "variation",
+              "improvement",
+              "format_adaptation"
+            ]
           },
-          "description": {"type": "string"},
-          "prompt": {"type": "string"}
+          "description": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          }
         },
-        "required": ["type", "description", "prompt"]
+        "required": [
+          "type",
+          "description",
+          "prompt"
+        ]
       }
     },
     "performance_insights": {
       "type": "object",
       "description": "AI-generated insights about creative performance potential",
       "properties": {
-        "predicted_ctr": {"type": "number"},
+        "predicted_ctr": {
+          "type": "number"
+        },
         "engagement_factors": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         },
         "optimization_opportunities": {
           "type": "array",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -159,6 +221,9 @@
       }
     }
   },
-  "required": ["adcp_version", "context_id", "creative"],
+  "required": [
+    "context_id",
+    "creative"
+  ],
   "additionalProperties": false
 }

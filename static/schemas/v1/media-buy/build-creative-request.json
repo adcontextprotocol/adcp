@@ -5,12 +5,6 @@
   "description": "Request parameters for building creative assets using AI-powered creative generation",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "message": {
       "type": "string",
       "description": "Natural language description of the creative brief or requirements"
@@ -31,6 +25,9 @@
       }
     }
   },
-  "required": ["message", "target_format_id"],
+  "required": [
+    "message",
+    "target_format_id"
+  ],
   "additionalProperties": false
 }

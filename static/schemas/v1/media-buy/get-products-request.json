@@ -5,12 +5,6 @@
   "description": "Request parameters for discovering available advertising products",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "brief": {
       "type": "string",
       "description": "Natural language description of campaign requirements"
@@ -39,7 +33,11 @@
           "description": "Filter by format types",
           "items": {
             "type": "string",
-            "enum": ["video", "display", "audio"]
+            "enum": [
+              "video",
+              "display",
+              "audio"
+            ]
           }
         },
         "format_ids": {
@@ -64,10 +62,14 @@
   },
   "oneOf": [
     {
-      "required": ["promoted_offering"]
+      "required": [
+        "promoted_offering"
+      ]
     },
     {
-      "required": ["brand_manifest"]
+      "required": [
+        "brand_manifest"
+      ]
     }
   ],
   "additionalProperties": false

@@ -5,11 +5,6 @@
   "description": "Response containing detailed information about a specific task including status and optional conversation history across all AdCP domains",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "message": {
       "type": "string",
       "description": "Human-readable status message for this task"
@@ -146,6 +141,6 @@
       }
     }
   },
-  "required": ["adcp_version", "message", "task_id", "task_type", "domain", "status", "created_at", "updated_at"],
+  "required": ["message", "task_id", "task_type", "domain", "status", "created_at", "updated_at"],
   "additionalProperties": false
 }
