@@ -5,12 +5,6 @@
   "description": "Request parameters for discovering all properties this agent is authorized to represent",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.0.0"
-    },
     "tags": {
       "type": "array",
       "description": "Filter properties by specific tags (optional)",

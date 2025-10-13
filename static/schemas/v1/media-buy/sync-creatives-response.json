@@ -5,11 +5,6 @@
   "description": "Response from creative sync operation with results for each creative",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "message": {
       "type": "string",
       "description": "Human-readable result message (e.g., 'Synced 3 creatives: 2 created, 1 updated')"
@@ -20,8 +15,7 @@
     },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
-      "description": "Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running operations",
-      "default": "completed"
+      "description": "Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running operations"
     },
     "task_id": {
       "type": "string",
@@ -43,7 +37,13 @@
           },
           "action": {
             "type": "string",
-            "enum": ["created", "updated", "unchanged", "failed", "deleted"],
+            "enum": [
+              "created",
+              "updated",
+              "unchanged",
+              "failed",
+              "deleted"
+            ],
             "description": "Action taken for this creative"
           },
           "platform_id": {
@@ -100,11 +100,18 @@
             "additionalProperties": false
           }
         },
-        "required": ["creative_id", "action"],
+        "required": [
+          "creative_id",
+          "action"
+        ],
         "additionalProperties": false
       }
     }
   },
-  "required": ["adcp_version", "message", "status", "creatives"],
+  "required": [
+    "message",
+    "status",
+    "creatives"
+  ],
   "additionalProperties": false
 }

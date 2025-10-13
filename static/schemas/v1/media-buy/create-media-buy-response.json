@@ -5,12 +5,6 @@
   "description": "Response payload for create_media_buy task",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.1"
-    },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
       "description": "Current task state - 'completed' for immediate success, 'working' for operations under 120s, 'submitted' for long-running operations, 'input-required' if approval needed"
@@ -47,7 +41,10 @@
             "description": "Buyer's reference identifier for the package"
           }
         },
-        "required": ["package_id", "buyer_ref"],
+        "required": [
+          "package_id",
+          "buyer_ref"
+        ],
         "additionalProperties": false
       }
     },
@@ -59,6 +56,9 @@
       }
     }
   },
-  "required": ["adcp_version", "status", "buyer_ref"],
+  "required": [
+    "status",
+    "buyer_ref"
+  ],
   "additionalProperties": false
 }

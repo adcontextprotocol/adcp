@@ -5,11 +5,6 @@
   "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
-    },
     "message": {
       "type": "string",
       "description": "Human-readable result message"
@@ -48,12 +43,18 @@
             },
             "direction": {
               "type": "string",
-              "enum": ["asc", "desc"]
+              "enum": [
+                "asc",
+                "desc"
+              ]
             }
           }
         }
       },
-      "required": ["total_matching", "returned"],
+      "required": [
+        "total_matching",
+        "returned"
+      ],
       "additionalProperties": false
     },
     "pagination": {
@@ -85,7 +86,11 @@
           "minimum": 1
         }
       },
-      "required": ["limit", "offset", "has_more"],
+      "required": [
+        "limit",
+        "offset",
+        "has_more"
+      ],
       "additionalProperties": false
     },
     "creatives": {
@@ -190,16 +195,26 @@
                     },
                     "status": {
                       "type": "string",
-                      "enum": ["active", "paused", "ended"],
+                      "enum": [
+                        "active",
+                        "paused",
+                        "ended"
+                      ],
                       "description": "Status of this specific assignment"
                     }
                   },
-                  "required": ["package_id", "assigned_date", "status"],
+                  "required": [
+                    "package_id",
+                    "assigned_date",
+                    "status"
+                  ],
                   "additionalProperties": false
                 }
               }
             },
-            "required": ["assignment_count"],
+            "required": [
+              "assignment_count"
+            ],
             "additionalProperties": false
           },
           "performance": {
@@ -240,7 +255,9 @@
                 "description": "When performance data was last updated"
               }
             },
-            "required": ["last_updated"],
+            "required": [
+              "last_updated"
+            ],
             "additionalProperties": false
           },
           "sub_assets": {
@@ -251,7 +268,14 @@
             }
           }
         },
-        "required": ["creative_id", "name", "format", "status", "created_date", "updated_date"],
+        "required": [
+          "creative_id",
+          "name",
+          "format",
+          "status",
+          "created_date",
+          "updated_date"
+        ],
         "additionalProperties": false
       }
     },
@@ -295,19 +319,26 @@
       "additionalProperties": false
     }
   },
-  "required": ["adcp_version", "message", "query_summary", "pagination", "creatives"],
+  "required": [
+    "message",
+    "query_summary",
+    "pagination",
+    "creatives"
+  ],
   "additionalProperties": false,
   "examples": [
     {
       "description": "Successful library query with results",
       "data": {
-        "adcp_version": "1.5.0",
         "message": "Found 3 creatives matching your query",
         "context_id": "ctx_list_456789",
         "query_summary": {
           "total_matching": 3,
           "returned": 3,
-          "filters_applied": ["format=video", "status=approved"],
+          "filters_applied": [
+            "format=video",
+            "status=approved"
+          ],
           "sort_applied": {
             "field": "created_date",
             "direction": "desc"
@@ -334,7 +365,11 @@
             "duration": 30000,
             "width": 1920,
             "height": 1080,
-            "tags": ["q1_2024", "video", "brand_awareness"]
+            "tags": [
+              "q1_2024",
+              "video",
+              "brand_awareness"
+            ]
           }
         ],
         "format_summary": {
@@ -352,7 +387,6 @@
     {
       "description": "Query with assignments and performance data",
       "data": {
-        "adcp_version": "1.5.0",
         "message": "Found 1 creative with performance data",
         "query_summary": {
           "total_matching": 1,

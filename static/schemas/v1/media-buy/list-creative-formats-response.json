@@ -5,16 +5,9 @@
   "description": "Response payload for list_creative_formats task",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
-      "description": "Current task state",
-      "default": "completed"
+      "description": "Current task state"
     },
     "formats": {
       "type": "array",
@@ -43,11 +36,18 @@
             "description": "Capabilities this creative agent provides",
             "items": {
               "type": "string",
-              "enum": ["validation", "assembly", "generation", "preview"]
+              "enum": [
+                "validation",
+                "assembly",
+                "generation",
+                "preview"
+              ]
             }
           }
         },
-        "required": ["agent_url"]
+        "required": [
+          "agent_url"
+        ]
       }
     },
     "errors": {
@@ -58,6 +58,8 @@
       }
     }
   },
-  "required": ["adcp_version", "formats"],
+  "required": [
+    "formats"
+  ],
   "additionalProperties": false
 }

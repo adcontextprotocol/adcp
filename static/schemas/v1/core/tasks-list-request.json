@@ -5,12 +5,6 @@
   "description": "Request parameters for listing and filtering async tasks across all AdCP domains with state reconciliation capabilities",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "filters": {
       "type": "object",
       "description": "Filter criteria for querying tasks",
@@ -18,14 +12,20 @@
         "domain": {
           "type": "string",
           "description": "Filter by single AdCP domain",
-          "enum": ["media-buy", "signals"]
+          "enum": [
+            "media-buy",
+            "signals"
+          ]
         },
         "domains": {
           "type": "array",
           "description": "Filter by multiple AdCP domains",
           "items": {
             "type": "string",
-            "enum": ["media-buy", "signals"]
+            "enum": [
+              "media-buy",
+              "signals"
+            ]
           }
         },
         "status": {
@@ -42,14 +42,26 @@
         "task_type": {
           "type": "string",
           "description": "Filter by single task type",
-          "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal", "get_signals"]
+          "enum": [
+            "create_media_buy",
+            "update_media_buy",
+            "sync_creatives",
+            "activate_signal",
+            "get_signals"
+          ]
         },
         "task_types": {
           "type": "array",
           "description": "Filter by multiple task types",
           "items": {
             "type": "string",
-            "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal", "get_signals"]
+            "enum": [
+              "create_media_buy",
+              "update_media_buy",
+              "sync_creatives",
+              "activate_signal",
+              "get_signals"
+            ]
           }
         },
         "created_after": {
@@ -97,13 +109,22 @@
       "properties": {
         "field": {
           "type": "string",
-          "enum": ["created_at", "updated_at", "status", "task_type", "domain"],
+          "enum": [
+            "created_at",
+            "updated_at",
+            "status",
+            "task_type",
+            "domain"
+          ],
           "default": "created_at",
           "description": "Field to sort by"
         },
         "direction": {
           "type": "string",
-          "enum": ["asc", "desc"],
+          "enum": [
+            "asc",
+            "desc"
+          ],
           "default": "desc",
           "description": "Sort direction"
         }
@@ -142,7 +163,11 @@
       "description": "List all pending tasks across domains",
       "data": {
         "filters": {
-          "statuses": ["submitted", "working", "input-required"]
+          "statuses": [
+            "submitted",
+            "working",
+            "input-required"
+          ]
         }
       }
     },
@@ -151,7 +176,10 @@
       "data": {
         "filters": {
           "domain": "media-buy",
-          "statuses": ["input-required", "failed"]
+          "statuses": [
+            "input-required",
+            "failed"
+          ]
         },
         "sort": {
           "field": "updated_at",

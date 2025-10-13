@@ -5,16 +5,9 @@
   "description": "Response payload for get_products task",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version used for this response",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
-      "description": "Current task state",
-      "default": "completed"
+      "description": "Current task state"
     },
     "products": {
       "type": "array",
@@ -31,6 +24,8 @@
       }
     }
   },
-  "required": ["adcp_version", "products"],
+  "required": [
+    "products"
+  ],
   "additionalProperties": false
 }

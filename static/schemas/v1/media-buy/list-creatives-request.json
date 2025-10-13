@@ -5,12 +5,6 @@
   "description": "Request parameters for querying creative assets from the centralized library with filtering, sorting, and pagination",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.0"
-    },
     "filters": {
       "type": "object",
       "description": "Filter criteria for querying creatives",
@@ -70,7 +64,7 @@
         },
         "created_before": {
           "type": "string",
-          "format": "date-time", 
+          "format": "date-time",
           "description": "Filter creatives created before this date (ISO 8601)"
         },
         "updated_after": {
@@ -115,13 +109,23 @@
       "properties": {
         "field": {
           "type": "string",
-          "enum": ["created_date", "updated_date", "name", "status", "assignment_count", "performance_score"],
+          "enum": [
+            "created_date",
+            "updated_date",
+            "name",
+            "status",
+            "assignment_count",
+            "performance_score"
+          ],
           "default": "created_date",
           "description": "Field to sort by"
         },
         "direction": {
           "type": "string",
-          "enum": ["asc", "desc"],
+          "enum": [
+            "asc",
+            "desc"
+          ],
           "default": "desc",
           "description": "Sort direction"
         }
@@ -129,7 +133,7 @@
       "additionalProperties": false
     },
     "pagination": {
-      "type": "object", 
+      "type": "object",
       "description": "Pagination parameters",
       "properties": {
         "limit": {
@@ -168,7 +172,18 @@
       "description": "Specific fields to include in response (omit for all fields)",
       "items": {
         "type": "string",
-        "enum": ["creative_id", "name", "format", "status", "created_date", "updated_date", "tags", "assignments", "performance", "sub_assets"]
+        "enum": [
+          "creative_id",
+          "name",
+          "format",
+          "status",
+          "created_date",
+          "updated_date",
+          "tags",
+          "assignments",
+          "performance",
+          "sub_assets"
+        ]
       }
     }
   },
@@ -211,7 +226,11 @@
     {
       "description": "Lightweight list with minimal fields",
       "data": {
-        "fields": ["creative_id", "name", "status"],
+        "fields": [
+          "creative_id",
+          "name",
+          "status"
+        ],
         "include_assignments": false
       }
     }

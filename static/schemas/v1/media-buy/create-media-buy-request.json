@@ -5,12 +5,6 @@
   "description": "Request parameters for creating a media buy",
   "type": "object",
   "properties": {
-    "adcp_version": {
-      "type": "string",
-      "description": "AdCP schema version for this request",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "default": "1.6.1"
-    },
     "buyer_ref": {
       "type": "string",
       "description": "Buyer's reference identifier for this media buy"
@@ -58,7 +52,11 @@
           "properties": {
             "reporting_frequency": {
               "type": "string",
-              "enum": ["hourly", "daily", "monthly"],
+              "enum": [
+                "hourly",
+                "daily",
+                "monthly"
+              ],
               "description": "Frequency for automated reporting delivery. Must be supported by all products in the media buy."
             },
             "requested_metrics": {
@@ -66,23 +64,45 @@
               "description": "Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included. Must be subset of product's available_metrics.",
               "items": {
                 "type": "string",
-                "enum": ["impressions", "spend", "clicks", "ctr", "video_completions", "completion_rate", "conversions", "viewability", "engagement_rate"]
+                "enum": [
+                  "impressions",
+                  "spend",
+                  "clicks",
+                  "ctr",
+                  "video_completions",
+                  "completion_rate",
+                  "conversions",
+                  "viewability",
+                  "engagement_rate"
+                ]
               },
               "uniqueItems": true
             }
           },
-          "required": ["reporting_frequency"]
+          "required": [
+            "reporting_frequency"
+          ]
         }
       ]
     }
   },
-  "required": ["buyer_ref", "packages", "start_time", "end_time", "budget"],
+  "required": [
+    "buyer_ref",
+    "packages",
+    "start_time",
+    "end_time",
+    "budget"
+  ],
   "oneOf": [
     {
-      "required": ["promoted_offering"]
+      "required": [
+        "promoted_offering"
+      ]
     },
     {
-      "required": ["brand_manifest"]
+      "required": [
+        "brand_manifest"
+      ]
     }
   ],
   "additionalProperties": false
