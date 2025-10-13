@@ -52,10 +52,18 @@
     },
     "creative_ids": {
       "type": "array",
-      "description": "Creative IDs to assign to this package at creation time",
+      "description": "Creative IDs to assign to this package at creation time (references existing library creatives)",
       "items": {
         "type": "string"
       }
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Full creative objects to upload and assign to this package at creation time (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives.",
+      "items": {
+        "$ref": "/schemas/v1/core/creative-asset.json"
+      },
+      "maxItems": 100
     }
   },
   "anyOf": [
