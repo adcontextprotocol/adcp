@@ -4,12 +4,12 @@
   "title": "AdCP Schema Registry v1",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "1.7.0",
+  "adcp_version": "1.8.0",
   "standard_formats_version": "1.0.0",
   "versioning": {
     "note": "All request/response schemas include adcp_version field. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2025-10-08",
+  "lastUpdated": "2025-10-12",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
@@ -35,10 +35,6 @@
           "$ref": "/schemas/v1/core/targeting.json",
           "description": "Audience targeting criteria"
         },
-        "budget": {
-          "$ref": "/schemas/v1/core/budget.json",
-          "description": "Budget configuration for a media buy or package"
-        },
         "frequency-cap": {
           "$ref": "/schemas/v1/core/frequency-cap.json",
           "description": "Frequency capping settings"
@@ -50,6 +46,10 @@
         "measurement": {
           "$ref": "/schemas/v1/core/measurement.json",
           "description": "Measurement capabilities included with a product"
+        },
+        "delivery-metrics": {
+          "$ref": "/schemas/v1/core/delivery-metrics.json",
+          "description": "Standard delivery metrics for reporting"
         },
         "creative-policy": {
           "$ref": "/schemas/v1/core/creative-policy.json",
@@ -98,12 +98,20 @@
         "creative-manifest": {
           "$ref": "/schemas/v1/core/creative-manifest.json",
           "description": "Complete specification of a creative with all assets needed for rendering"
+        },
+        "pricing-option": {
+          "$ref": "/schemas/v1/core/pricing-option.json",
+          "description": "A pricing model option offered by a publisher for a product"
         }
       }
     },
     "enums": {
       "description": "Enumerated types and constants",
       "schemas": {
+        "pricing-model": {
+          "$ref": "/schemas/v1/enums/pricing-model.json",
+          "description": "Supported pricing models for advertising products"
+        },
         "delivery-type": {
           "$ref": "/schemas/v1/enums/delivery-type.json",
           "description": "Type of inventory delivery"
@@ -143,6 +151,39 @@
         "task-status": {
           "$ref": "/schemas/v1/enums/task-status.json",
           "description": "Standardized task status values based on A2A TaskState enum"
+        }
+      }
+    },
+    "pricing-options": {
+      "description": "Individual pricing model schemas with model-specific validation. CPM supports both fixed and auction pricing; all other models are fixed-rate only.",
+      "schemas": {
+        "cpm-fixed-option": {
+          "$ref": "/schemas/v1/pricing-options/cpm-fixed-option.json",
+          "description": "Cost Per Mille (CPM) fixed-rate pricing for direct/guaranteed deals"
+        },
+        "cpm-auction-option": {
+          "$ref": "/schemas/v1/pricing-options/cpm-auction-option.json",
+          "description": "Cost Per Mille (CPM) auction-based pricing for programmatic/non-guaranteed inventory"
+        },
+        "cpc-option": {
+          "$ref": "/schemas/v1/pricing-options/cpc-option.json",
+          "description": "Cost Per Click (CPC) fixed-rate pricing for performance campaigns"
+        },
+        "cpcv-option": {
+          "$ref": "/schemas/v1/pricing-options/cpcv-option.json",
+          "description": "Cost Per Completed View (CPCV) fixed-rate pricing for video/audio"
+        },
+        "cpv-option": {
+          "$ref": "/schemas/v1/pricing-options/cpv-option.json",
+          "description": "Cost Per View (CPV) fixed-rate pricing with threshold"
+        },
+        "cpp-option": {
+          "$ref": "/schemas/v1/pricing-options/cpp-option.json",
+          "description": "Cost Per Point (CPP) fixed-rate pricing for TV/audio with demographic measurement"
+        },
+        "flat-rate-option": {
+          "$ref": "/schemas/v1/pricing-options/flat-rate-option.json",
+          "description": "Flat rate pricing for DOOH and sponsorships"
         }
       }
     },

@@ -46,43 +46,36 @@
     "delivery_type": {
       "$ref": "/schemas/v1/enums/delivery-type.json"
     },
-    "is_fixed_price": {
-      "type": "boolean",
-      "description": "Whether this product has fixed pricing (true) or uses auction (false)"
-    },
-    "cpm": {
-      "type": "number",
-      "description": "Cost per thousand impressions",
-      "minimum": 0
-    },
-    "currency": {
-      "type": "string",
-      "description": "ISO 4217 currency code",
-      "pattern": "^[A-Z]{3}$",
-      "examples": ["USD", "EUR", "GBP"]
-    },
-    "min_spend": {
-      "type": "number",
-      "description": "Minimum budget requirement",
-      "minimum": 0
+    "pricing_options": {
+      "type": "array",
+      "description": "Available pricing models for this product",
+      "items": {
+        "$ref": "/schemas/v1/core/pricing-option.json"
+      },
+      "minItems": 1
     },
     "estimated_exposures": {
       "type": "integer",
       "description": "Estimated exposures/impressions for guaranteed products",
       "minimum": 0
     },
-    "floor_cpm": {
-      "type": "number",
-      "description": "Minimum CPM for non-guaranteed products (bids below this are rejected)",
-      "minimum": 0
-    },
-    "recommended_cpm": {
-      "type": "number",
-      "description": "Recommended CPM to achieve min_exposures target for non-guaranteed products",
-      "minimum": 0
-    },
     "measurement": {
       "$ref": "/schemas/v1/core/measurement.json"
+    },
+    "delivery_measurement": {
+      "type": "object",
+      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy. REQUIRED for all products.",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Measurement provider(s) used for this product (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions')"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly')"
+        }
+      },
+      "required": ["provider"]
     },
     "reporting_capabilities": {
       "$ref": "/schemas/v1/core/reporting-capabilities.json"
@@ -118,7 +111,8 @@
     "description",
     "format_ids",
     "delivery_type",
-    "is_fixed_price"
+    "delivery_measurement",
+    "pricing_options"
   ],
   "additionalProperties": false
 }

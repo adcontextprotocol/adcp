@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/pricing-options/cpc-option.json",
+  "title": "CPC Pricing Option",
+  "description": "Cost Per Click fixed-rate pricing for performance-driven advertising campaigns",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product (e.g., 'cpc_usd_fixed')"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "cpc",
+      "description": "Cost per click"
+    },
+    "rate": {
+      "type": "number",
+      "description": "Fixed CPC rate (cost per click)",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_option_id", "pricing_model", "rate", "currency"],
+  "additionalProperties": false
+}

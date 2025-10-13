@@ -122,88 +122,57 @@
             "type": "boolean",
             "description": "Indicates this delivery contains updated data for a previously reported period. Buyer should replace previous period data with these totals."
           },
+          "pricing_model": {
+            "$ref": "/schemas/v1/enums/pricing-model.json",
+            "description": "Pricing model used for this media buy"
+          },
           "totals": {
-            "type": "object",
-            "description": "Aggregate metrics for this media buy across all packages",
-            "properties": {
-              "impressions": {
-                "type": "number",
-                "description": "Total impressions delivered",
-                "minimum": 0
+            "allOf": [
+              {
+                "$ref": "/schemas/v1/core/delivery-metrics.json"
               },
-              "spend": {
-                "type": "number",
-                "description": "Total amount spent",
-                "minimum": 0
-              },
-              "clicks": {
-                "type": "number",
-                "description": "Total clicks (if applicable)",
-                "minimum": 0
-              },
-              "ctr": {
-                "type": "number",
-                "description": "Click-through rate (clicks/impressions)",
-                "minimum": 0,
-                "maximum": 1
-              },
-              "video_completions": {
-                "type": "number",
-                "description": "Total video completions (if applicable)",
-                "minimum": 0
-              },
-              "completion_rate": {
-                "type": "number",
-                "description": "Video completion rate (completions/impressions)",
-                "minimum": 0,
-                "maximum": 1
+              {
+                "type": "object",
+                "description": "Aggregate metrics for this media buy across all packages",
+                "properties": {
+                  "effective_rate": {
+                    "type": "number",
+                    "description": "Effective rate paid per unit based on pricing_model (e.g., actual CPM for 'cpm', actual cost per completed view for 'cpcv', actual cost per point for 'cpp')",
+                    "minimum": 0
+                  }
+                },
+                "required": ["spend"]
               }
-            },
-            "required": ["impressions", "spend"],
-            "additionalProperties": false
+            ]
           },
           "by_package": {
             "type": "array",
             "description": "Metrics broken down by package",
             "items": {
-              "type": "object",
-              "properties": {
-                "package_id": {
-                  "type": "string",
-                  "description": "Publisher's package identifier"
+              "allOf": [
+                {
+                  "$ref": "/schemas/v1/core/delivery-metrics.json"
                 },
-                "buyer_ref": {
-                  "type": "string",
-                  "description": "Buyer's reference identifier for this package"
-                },
-                "impressions": {
-                  "type": "number",
-                  "description": "Package impressions",
-                  "minimum": 0
-                },
-                "spend": {
-                  "type": "number",
-                  "description": "Package spend",
-                  "minimum": 0
-                },
-                "clicks": {
-                  "type": "number",
-                  "description": "Package clicks",
-                  "minimum": 0
-                },
-                "video_completions": {
-                  "type": "number",
-                  "description": "Package video completions",
-                  "minimum": 0
-                },
-                "pacing_index": {
-                  "type": "number",
-                  "description": "Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)",
-                  "minimum": 0
+                {
+                  "type": "object",
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "description": "Publisher's package identifier"
+                    },
+                    "buyer_ref": {
+                      "type": "string",
+                      "description": "Buyer's reference identifier for this package"
+                    },
+                    "pacing_index": {
+                      "type": "number",
+                      "description": "Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)",
+                      "minimum": 0
+                    }
+                  },
+                  "required": ["package_id", "spend"]
                 }
-              },
-              "required": ["package_id", "impressions", "spend"],
-              "additionalProperties": false
+              ]
             }
           },
           "daily_breakdown": {

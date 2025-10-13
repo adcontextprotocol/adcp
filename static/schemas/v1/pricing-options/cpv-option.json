@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/pricing-options/cpv-option.json",
+  "title": "CPV Pricing Option",
+  "description": "Cost Per View (at publisher-defined threshold) fixed-rate pricing for video/audio",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product (e.g., 'cpv_usd_50pct')"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "cpv",
+      "description": "Cost per view at threshold"
+    },
+    "rate": {
+      "type": "number",
+      "description": "Fixed CPV rate (cost per view)",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "parameters": {
+      "type": "object",
+      "description": "CPV-specific parameters defining the view threshold",
+      "properties": {
+        "view_threshold": {
+          "oneOf": [
+            {
+              "type": "number",
+              "description": "Percentage completion threshold for CPV pricing (0.0 to 1.0, e.g., 0.5 = 50% completion)",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "object",
+              "description": "Time-based view threshold for CPV pricing",
+              "properties": {
+                "duration_seconds": {
+                  "type": "integer",
+                  "description": "Seconds of viewing required (e.g., 30 for YouTube-style '30 seconds = view')",
+                  "minimum": 1
+                }
+              },
+              "required": ["duration_seconds"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": ["view_threshold"],
+      "additionalProperties": false
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_option_id", "pricing_model", "rate", "currency", "parameters"],
+  "additionalProperties": false
+}

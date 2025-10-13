@@ -18,7 +18,9 @@
       "description": "ID of the product this package is based on"
     },
     "budget": {
-      "$ref": "/schemas/v1/core/budget.json"
+      "type": "number",
+      "description": "Budget allocation for this package in the currency specified by the pricing option",
+      "minimum": 0
     },
     "impressions": {
       "type": "number",

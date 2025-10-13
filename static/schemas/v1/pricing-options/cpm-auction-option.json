@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/pricing-options/cpm-auction-option.json",
+  "title": "CPM Auction Pricing Option",
+  "description": "Cost Per Mille (cost per 1,000 impressions) with auction-based pricing - common for programmatic/non-guaranteed inventory",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product (e.g., 'cpm_usd_auction')"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "cpm",
+      "description": "Cost per 1,000 impressions"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "price_guidance": {
+      "type": "object",
+      "description": "Pricing guidance for auction-based CPM bidding",
+      "properties": {
+        "floor": {
+          "type": "number",
+          "description": "Minimum bid price - publisher will reject bids under this value",
+          "minimum": 0
+        },
+        "p25": {
+          "type": "number",
+          "description": "25th percentile winning price",
+          "minimum": 0
+        },
+        "p50": {
+          "type": "number",
+          "description": "Median winning price",
+          "minimum": 0
+        },
+        "p75": {
+          "type": "number",
+          "description": "75th percentile winning price",
+          "minimum": 0
+        },
+        "p90": {
+          "type": "number",
+          "description": "90th percentile winning price",
+          "minimum": 0
+        }
+      },
+      "required": ["floor"]
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_option_id", "pricing_model", "price_guidance", "currency"],
+  "additionalProperties": false
+}

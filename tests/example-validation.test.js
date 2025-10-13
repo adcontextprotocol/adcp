@@ -354,14 +354,6 @@ test('Targeting example validates against schema', () => {
   );
 });
 
-test('Budget example validates against schema', () => {
-  return validateAgainstSchema(
-    exampleData.budget, 
-    '/schemas/v1/core/budget.json', 
-    'Budget example'
-  );
-});
-
 test('Frequency Cap example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.frequencyCap, 

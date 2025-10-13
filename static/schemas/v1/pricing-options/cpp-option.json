@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/pricing-options/cpp-option.json",
+  "title": "CPP Pricing Option",
+  "description": "Cost Per Point (Gross Rating Point) fixed-rate pricing for TV and audio campaigns requiring demographic measurement",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product (e.g., 'cpp_usd_p18-49')"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "cpp",
+      "description": "Cost per Gross Rating Point"
+    },
+    "rate": {
+      "type": "number",
+      "description": "Fixed CPP rate (cost per rating point)",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "parameters": {
+      "type": "object",
+      "description": "CPP-specific parameters for demographic targeting and GRP requirements",
+      "properties": {
+        "demographic": {
+          "type": "string",
+          "pattern": "^[PMWAC][0-9]{2}(-[0-9]{2}|\\+)$",
+          "description": "Target demographic in Nielsen format: P/M/W/A/C + age range. Examples: P18-49 (Persons 18-49), M25-54 (Men 25-54), W35+ (Women 35+), A18-34 (Adults 18-34), C2-11 (Children 2-11)"
+        },
+        "min_points": {
+          "type": "number",
+          "description": "Minimum GRPs/TRPs required for this pricing option",
+          "minimum": 0
+        }
+      },
+      "required": ["demographic"],
+      "additionalProperties": false
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_option_id", "pricing_model", "rate", "currency", "parameters"],
+  "additionalProperties": false
+}
