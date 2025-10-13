@@ -17,7 +17,11 @@
     },
     "promoted_offering": {
       "type": "string",
-      "description": "Description of advertiser and what is being promoted"
+      "description": "DEPRECATED: Use brand_manifest instead. Legacy field for describing what is being promoted."
+    },
+    "brand_manifest": {
+      "$ref": "/schemas/v1/core/brand-manifest-ref.json",
+      "description": "Brand information manifest providing brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest."
     },
     "filters": {
       "type": "object",
@@ -58,6 +62,13 @@
       "additionalProperties": false
     }
   },
-  "required": ["promoted_offering"],
+  "oneOf": [
+    {
+      "required": ["promoted_offering"]
+    },
+    {
+      "required": ["brand_manifest"]
+    }
+  ],
   "additionalProperties": false
 }
