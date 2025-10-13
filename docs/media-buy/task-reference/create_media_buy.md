@@ -40,7 +40,8 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `format_ids` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by the product |
 | `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
-| `creative_ids` | string[] | No | Creative IDs to assign to this package at creation time |
+| `creative_ids` | string[] | No | Creative IDs to assign to this package at creation time (references existing library creatives) |
+| `creatives` | CreativeAsset[] | No | Full creative objects to upload and assign to this package at creation time (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives. Max 100 per package. |
 
 \* Either `product_id` or `products` is required. Use `product_id` for new implementations.
 
@@ -585,6 +586,106 @@ data: {"status": {"state": "completed"}, "artifacts": [...]}
 ```
 
 ## Scenarios
+
+### Media Buy with Inline Creatives (Single Atomic Operation)
+
+Create a media buy and upload creatives in a single API call. This eliminates the need for a separate `sync_creatives` call and ensures creatives and campaign are created together atomically.
+
+```json
+{
+  "buyer_ref": "nike_q1_campaign_2024",
+  "brand_manifest": {
+    "brand": {
+      "name": "Nike",
+      "website": "https://nike.com"
+    },
+    "products": [
+      {
+        "sku": "AIR_MAX_2024",
+        "name": "Air Max 2024",
+        "category": "athletic footwear",
+        "price": {"amount": 150, "currency": "USD"}
+      }
+    ]
+  },
+  "promoted_products": {
+    "skus": ["AIR_MAX_2024"]
+  },
+  "packages": [
+    {
+      "buyer_ref": "nike_ctv_package",
+      "product_id": "ctv_sports_premium",
+      "format_ids": ["video_standard_30s"],
+      "budget": 50000,
+      "pricing_option_id": "cpm-fixed-sports",
+      "creatives": [
+        {
+          "creative_id": "hero_video_30s",
+          "name": "Air Max Hero Video",
+          "format_id": {
+            "agent_url": "https://creative.adcontextprotocol.org",
+            "id": "video_standard_30s"
+          },
+          "assets": {
+            "video": {
+              "asset_type": "video",
+              "url": "https://cdn.nike.com/hero-30s.mp4",
+              "width": 1920,
+              "height": 1080,
+              "duration_ms": 30000
+            }
+          },
+          "tags": ["q1_2024", "hero"]
+        }
+      ]
+    },
+    {
+      "buyer_ref": "nike_display_package",
+      "product_id": "display_premium",
+      "format_ids": ["premium_bespoke_display"],
+      "budget": 30000,
+      "pricing_option_id": "cpm-fixed-display",
+      "creatives": [
+        {
+          "creative_id": "holiday_hero_display",
+          "name": "Air Max Holiday Display (Generative)",
+          "format_id": {
+            "agent_url": "https://publisher.com/.well-known/adcp/sales",
+            "id": "premium_bespoke_display"
+          },
+          "assets": {
+            "promoted_offerings": {
+              "asset_type": "promoted_offerings",
+              "url": "https://nike.com/air-max",
+              "colors": {
+                "primary": "#111111",
+                "secondary": "#FFFFFF"
+              }
+            },
+            "generation_prompt": {
+              "asset_type": "text",
+              "content": "Create a bold, athletic display ad emphasizing innovation and performance. Target runners aged 25-45."
+            }
+          },
+          "tags": ["q1_2024", "generative"]
+        }
+      ]
+    }
+  ],
+  "start_time": "asap",
+  "end_time": "2024-03-31T23:59:59Z",
+  "budget": 80000
+}
+```
+
+**Benefits:**
+- **Single API call** - Creates media buy and uploads both static and generative creatives atomically
+- **Simplified workflow** - No need to manage creative library separately for new campaigns
+- **Atomic operation** - If media buy fails, creatives aren't orphaned in library
+- **Mixed creative types** - Combine static assets (video) with generative formats (display) in same request
+- **Brand context** - Generative creatives leverage brand_manifest for creation
+
+**Note:** Creatives are still added to the library for reuse. Use `creative_ids` to reference existing library creatives, or `creatives` to upload new ones.
 
 ### Standard Media Buy Request
 ```json
