@@ -8,6 +8,8 @@ keywords: [brand manifest, brand manifest, creative generation, brand guidelines
 
 The **Brand Manifest** is a standardized manifest format that serves as the **namespace and identity** for brands in AdCP. It provides brand context, assets, and product catalogs that can be cached and reused across all media buys and creative generation requests.
 
+Brand manifests can be provided either **inline as a JSON object** or **by URL reference** to a hosted manifest file.
+
 ## Overview
 
 Brand cards solve a key problem: how to efficiently provide brand context without requiring complex authorization flows or repeated data entry. By making the brand manifest the central identifier for all advertising activity, AdCP enables:
@@ -27,6 +29,43 @@ Brand cards solve a key problem: how to efficiently provide brand context withou
 - **Flexible**: Supports SMB to enterprise use cases
 - **AI-Optimized**: Structured for easy ingestion by creative agents
 
+## Providing Brand Manifests
+
+### Inline JSON Object
+
+Provide the brand manifest directly in the request:
+
+```json
+{
+  "brand_manifest": {
+    "url": "https://bobsfunburgers.com",
+    "name": "Bob's Fun Burgers",
+    "colors": {
+      "primary": "#FF6B35"
+    }
+  }
+}
+```
+
+### URL String
+
+Reference a hosted brand manifest file with a URL string:
+
+```json
+{
+  "brand_manifest": "https://cdn.acmecorp.com/brand-manifest.json"
+}
+```
+
+The manifest at the URL must conform to the brand-manifest.json schema.
+
+**Benefits of URL references:**
+- **Centralized management**: Update brand information in one place
+- **Version control**: Track changes to brand guidelines over time
+- **Reduced payload size**: Large manifests don't bloat every request
+- **CDN caching**: Leverage edge caching for faster access
+- **Consistency**: Same manifest across all campaigns and platforms
+
 ## Use Cases
 
 ### SMB / Ad Hoc Creative Generation
@@ -39,12 +78,19 @@ For small businesses or one-off campaigns, a minimal brand manifest provides eno
 }
 ```
 
+Or reference a hosted manifest with a URL string:
+
+```json
+"https://bobsfunburgers.com/.well-known/brand-manifest.json"
+```
+
 Creative agents can infer brand information from the URL, pulling logos, colors, and style from the website.
 
 ### Enterprise / Established Brand
 
-For established brands with defined guidelines, the brand manifest provides comprehensive context:
+For established brands with defined guidelines, host the manifest on a CDN:
 
+**Hosted at `https://cdn.acmecorp.com/brand-manifest.json`:**
 ```json
 {
   "url": "https://acmecorp.com",
@@ -76,9 +122,19 @@ For established brands with defined guidelines, the brand manifest provides comp
   },
   "tone": "professional and trustworthy",
   "tagline": "Innovation You Can Trust",
-  "product_feed": "https://acmecorp.com/products.rss",
+  "product_catalog": {
+    "feed_url": "https://acmecorp.com/products.rss",
+    "feed_format": "google_merchant_center"
+  },
   "industry": "technology",
   "target_audience": "business decision-makers aged 35-55"
+}
+```
+
+**Reference in requests:**
+```json
+{
+  "brand_manifest": "https://cdn.acmecorp.com/brand-manifest.json"
 }
 ```
 
@@ -125,9 +181,21 @@ Some brands don't have dedicated URLs (white-label products, local businesses, B
 - B2B brands without public sites
 - Sub-brands under parent company URLs
 
-## Brand Manifest Schema
+## Brand Manifest Schemas
+
+### Brand Manifest Reference (Union Type)
+
+**Schema URL**: [/schemas/v1/core/brand-manifest-ref.json](/schemas/v1/core/brand-manifest-ref.json)
+
+The brand manifest reference is a union type that accepts either:
+1. **Inline object**: Full brand manifest JSON object
+2. **URL reference**: Object with `manifest_url` field pointing to hosted manifest
+
+### Brand Manifest Object
 
 **Schema URL**: [/schemas/v1/core/brand-manifest.json](/schemas/v1/core/brand-manifest.json)
+
+The structure of the brand manifest object itself (whether provided inline or hosted at a URL).
 
 ### Required Fields
 
@@ -293,20 +361,31 @@ Tags help creative agents select appropriate logo variants:
 
 ### 3. Cache and Reuse Brand Manifests
 
-Brand cards are designed to be cached:
+Brand cards are designed to be cached. Use URL strings for automatic caching:
 
 ```javascript
-// Cache brand manifest once
-const brandCard = {
+// Reference hosted manifest (cacheable by URL)
+const brandManifestUrl = "https://cdn.acmecorp.com/brand-manifest.json";
+
+// Reuse across requests - agents can cache the manifest
+await createMediaBuy({ brand_manifest: brandManifestUrl, ... });
+await buildCreative({ brand_manifest: brandManifestUrl, ... });
+await buildCreative({ brand_manifest: brandManifestUrl, ... }); // Same manifest, different creative
+```
+
+Or cache inline manifests yourself:
+
+```javascript
+// Cache inline manifest once
+const brandManifest = {
   url: "https://acmecorp.com",
   colors: {...},
   logos: [...]
 };
 
 // Reuse across requests
-await createMediaBuy({ brand_manifest: brandCard, ... });
-await buildCreative({ brand_manifest: brandCard, ... });
-await buildCreative({ brand_manifest: brandCard, ... }); // Same card, different creative
+await createMediaBuy({ brand_manifest: brandManifest, ... });
+await buildCreative({ brand_manifest: brandManifest, ... });
 ```
 
 ### 4. Product Feeds for Multi-SKU

@@ -21,7 +21,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this media buy |
 | `packages` | Package[] | Yes | Array of package configurations (see Package Object below) |
-| `brand_manifest` | BrandCard | Yes | Brand information manifest serving as the namespace and identity for this media buy. Provides brand context, assets, and product catalog. Can be cached and reused across multiple requests. See [Brand Manifest](../../reference/brand-manifest) for details. |
+| `brand_manifest` | BrandManifestRef | Yes | Brand information manifest serving as the namespace and identity for this media buy. Provides brand context, assets, and product catalog. Can be provided as an inline object or URL reference to a hosted manifest. Can be cached and reused across multiple requests. See [Brand Manifest](../../reference/brand-manifest) for details. |
 | `promoted_products` | PromotedProducts | No | Products or offerings being promoted in this media buy. Useful for campaign-level reporting, policy compliance, and publisher understanding of what's being advertised. Selects from brand manifest's product catalog using SKUs, tags, categories, or natural language queries. |
 | `promoted_offering` | string | No | **DEPRECATED**: Use `brand_manifest` with `promoted_products` instead. Legacy field for describing what is being promoted. |
 | `po_number` | string | No | Purchase order number for tracking |

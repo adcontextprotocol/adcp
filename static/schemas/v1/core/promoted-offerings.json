@@ -6,8 +6,8 @@
   "type": "object",
   "properties": {
     "brand_manifest": {
-      "$ref": "/schemas/v1/core/brand-manifest.json",
-      "description": "Brand information manifest containing assets, themes, and guidelines"
+      "$ref": "/schemas/v1/core/brand-manifest-ref.json",
+      "description": "Brand information manifest containing assets, themes, and guidelines. Can be provided inline or as a URL reference to a hosted manifest."
     },
     "product_selectors": {
       "$ref": "/schemas/v1/core/promoted-products.json",

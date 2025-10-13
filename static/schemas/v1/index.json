@@ -87,6 +87,10 @@
           "$ref": "/schemas/v1/core/brand-manifest.json",
           "description": "Standardized brand information manifest for creative generation and media buying"
         },
+        "brand-manifest-ref": {
+          "$ref": "/schemas/v1/core/brand-manifest-ref.json",
+          "description": "Brand manifest reference (inline object or URL)"
+        },
         "promoted-products": {
           "$ref": "/schemas/v1/core/promoted-products.json",
           "description": "Product or offering selection for campaigns with multiple selection methods"

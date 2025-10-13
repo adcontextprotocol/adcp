@@ -17,7 +17,7 @@ For information about format IDs and how to reference formats, see [Creative For
 | `source_format_id` | object | No | Format ID of existing creative to transform (optional - omit when creating from scratch). Object with `agent_url` and `id` fields. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. For generative formats, this should be the input format (e.g., `300x250_banner_generative`). The creative agent will return a manifest in one of the `output_format_ids`. |
 | `context_id` | string | No | Session context from previous message for continuity |
-| `brand_manifest` | BrandManifest | No | Brand information manifest containing all assets, themes, and information necessary to ensure creatives are aligned with the brand's goals and that the publisher is comfortable with what's being advertised. See [Brand Manifest](../../reference/brand-manifest) for details. |
+| `brand_manifest` | BrandManifestRef | No | Brand information manifest containing all assets, themes, and information necessary to ensure creatives are aligned with the brand's goals and that the publisher is comfortable with what's being advertised. Can be provided as an inline object or URL reference to a hosted manifest. See [Brand Manifest](../../reference/brand-manifest) for details. |
 | `assets` | array | No | References to asset libraries and specific assets |
 | `preview_options` | object | No | Options for generating preview |
 | `finalize` | boolean | No | Set to true to finalize the creative (default: false) |
@@ -33,6 +33,8 @@ Generative formats accept high-level inputs (like brand manifests and natural la
    - Output format: `300x250_banner_image` (produces actual image asset)
 
 2. **Buyer** calls `build_creative` with the **input format**:
+
+   **Option A: Inline brand manifest**
    ```json
    {
      "message": "Create a banner promoting our winter sale",
@@ -44,6 +46,18 @@ Generative formats accept high-level inputs (like brand manifests and natural la
        "url": "https://mybrand.com",
        "colors": {"primary": "#FF0000"}
      }
+   }
+   ```
+
+   **Option B: URL string to hosted manifest**
+   ```json
+   {
+     "message": "Create a banner promoting our winter sale",
+     "target_format_id": {
+       "agent_url": "https://creative.adcontextprotocol.org",
+       "id": "300x250_banner_generative"
+     },
+     "brand_manifest": "https://cdn.mybrand.com/brand-manifest.json"
    }
    ```
 
