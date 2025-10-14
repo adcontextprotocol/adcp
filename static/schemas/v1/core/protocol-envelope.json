@@ -26,9 +26,9 @@
       "format": "date-time",
       "description": "ISO 8601 timestamp when the response was generated. Useful for debugging, logging, cache validation, and tracking async operation progress."
     },
-    "webhook_config": {
+    "push_notification_config": {
       "$ref": "/schemas/v1/core/push-notification-config.json",
-      "description": "Webhook configuration for async task updates. Echoed from the request to confirm notification settings. Specifies URL, authentication scheme (Bearer or HMAC-SHA256), and credentials for secure webhook delivery."
+      "description": "Push notification configuration for async task updates (A2A and REST protocols). Echoed from the request to confirm webhook settings. Specifies URL, authentication scheme (Bearer or HMAC-SHA256), and credentials. MCP uses progress notifications instead of webhooks."
     },
     "payload": {
       "type": "object",
@@ -73,7 +73,7 @@
         "status": "submitted",
         "message": "Media buy creation submitted. Processing will take approximately 5-10 minutes. You'll receive updates via webhook.",
         "timestamp": "2025-10-14T14:30:00Z",
-        "webhook_config": {
+        "push_notification_config": {
           "url": "https://buyer.example.com/webhooks/adcp",
           "authentication": {
             "schemes": ["HMAC-SHA256"],
