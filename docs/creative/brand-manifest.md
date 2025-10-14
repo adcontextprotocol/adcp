@@ -468,6 +468,6 @@ For implementations using the legacy `brand_guidelines` field in `build_creative
 ## Related Documentation
 
 - **[create_media_buy](../media-buy/task-reference/create_media_buy)** - Media buy creation with brand context
-- **[build_creative](../creative/task-reference/build_creative)** - AI-powered creative generation
+- **[build_creative](./task-reference/build_creative)** - AI-powered creative generation
 - **[Creative Lifecycle](../media-buy/creatives/)** - Managing creative assets
-- **[Data Models](./data-models)** - Core AdCP data structures
+- **[Data Models](../reference/data-models)** - Core AdCP data structures

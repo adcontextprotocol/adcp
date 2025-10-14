@@ -12,7 +12,7 @@ The Creative Protocol provides AI-powered creative generation:
 - **`preview_creative`**: Generate previews of creative manifests
 - **`list_creative_formats`**: Discover supported creative formats
 
-Assets are provided via [Brand Manifest](../reference/brand-manifest) - no separate asset library management needed.
+Assets are provided via [Brand Manifest](./brand-manifest) - no separate asset library management needed.
 
 ## Quick Start: Generate Your First Creative
 
@@ -113,7 +113,7 @@ Provide brand context for better creative generation:
 }
 ```
 
-See [Brand Manifest Reference](../reference/brand-manifest) for comprehensive examples.
+See [Brand Manifest Reference](./brand-manifest) for comprehensive examples.
 
 ### Using Your Own Assets
 
@@ -194,7 +194,7 @@ To improve creative output:
 3. Use the conversational refinement feature to iterate (via `context_id`)
 
 ### Asset Management
-Assets are provided via [Brand Manifest](../reference/brand-manifest):
+Assets are provided via [Brand Manifest](./brand-manifest):
 1. Include assets in brand manifest with descriptive tags
 2. Use `asset_filters` in requests to select specific assets
 3. Reference product catalogs for large inventories
