@@ -5,10 +5,6 @@
   "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
   "type": "object",
   "properties": {
-    "context_id": {
-      "type": "string",
-      "description": "Context ID for tracking related operations"
-    },
     "query_summary": {
       "type": "object",
       "description": "Summary of the query that was executed",
@@ -338,7 +334,6 @@
     {
       "description": "Successful library query with results",
       "data": {
-        "context_id": "ctx_list_456789",
         "query_summary": {
           "total_matching": 3,
           "returned": 3,

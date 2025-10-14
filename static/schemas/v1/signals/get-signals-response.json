@@ -5,10 +5,6 @@
   "description": "Response payload for get_signals task",
   "type": "object",
   "properties": {
-    "context_id": {
-      "type": "string",
-      "description": "Session continuity identifier for follow-up requests"
-    },
     "signals": {
       "type": "array",
       "description": "Array of matching signals",
@@ -137,7 +133,6 @@
     }
   },
   "required": [
-    "context_id",
     "signals"
   ],
   "additionalProperties": false
