@@ -30,7 +30,6 @@ const sidebars: SidebarsConfig = {
         },
         'protocols/protocol-comparison',
         'protocols/context-management',
-        'protocols/message-field-pattern',
       ],
     },
     {
