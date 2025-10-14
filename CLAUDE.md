@@ -48,6 +48,44 @@ Implementation details can be mentioned as:
 
 **GOLDEN RULE**: Documentation and JSON schemas MUST always be synchronized.
 
+### Protocol vs Task Response Separation
+
+**CRITICAL PRINCIPLE**: Task response schemas should contain ONLY domain-specific data. Protocol-level concerns are handled by the transport layer (MCP, A2A, REST).
+
+**Protocol-level fields (DO NOT include in task responses)**:
+- `message` - Human-readable summaries (handled by MCP content field, A2A assistant messages)
+- `context_id` - Session/conversation tracking (handled by protocol)
+- `task_id` - Async operation tracking (handled by protocol)
+- `status` - Task state management (handled by protocol)
+- `webhook_url` / `webhook_secret` - Callback configuration (handled by protocol)
+
+**Task response fields (DO include)**:
+- Domain-specific results (signals, creatives, products, delivery metrics)
+- Operation-specific metadata (dry_run flag, estimated durations)
+- Task-specific errors and warnings
+- Resource identifiers (decisioning_platform_segment_id, platform_id, etc.)
+
+**Example - What a task response should look like**:
+```json
+{
+  "signals": [...],           // ✅ Domain data
+  "errors": [...]             // ✅ Task-specific errors
+}
+```
+
+**NOT like this**:
+```json
+{
+  "message": "Found 3 signals",     // ❌ Protocol concern
+  "context_id": "ctx_123",          // ❌ Protocol concern
+  "task_id": "task_456",            // ❌ Protocol concern
+  "status": "completed",            // ❌ Protocol concern
+  "signals": [...]                  // ✅ Domain data
+}
+```
+
+This separation ensures AdCP tasks work identically across different protocol implementations (MCP, A2A, REST, future protocols).
+
 ### When to Update Schemas
 
 Update JSON schemas whenever you:
