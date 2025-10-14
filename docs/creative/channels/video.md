@@ -466,7 +466,6 @@ VPAID (Video Player Ad-Serving Interface Definition) enables interactive video a
 ```json
 {
   "format_id": "video_30s_vpaid",
-  "accepts_3p_tags": true,
   "assets_required": [
     {
       "asset_id": "vpaid_tag",

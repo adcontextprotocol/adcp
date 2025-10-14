@@ -13,10 +13,6 @@
       "type": "string",
       "const": "native"
     },
-    "category": {
-      "type": "string",
-      "const": "standard"
-    },
     "name": {
       "type": "string",
       "default": "Responsive Native Ad"
@@ -28,10 +24,6 @@
     "iab_specification": {
       "type": "string",
       "const": "OpenRTB Native 1.2"
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "openrtb_compliance": {
       "type": "object",
@@ -324,6 +316,6 @@
       }
     }
   },
-  "required": ["format_id", "type", "category", "is_standard", "iab_specification", "is_3p_served", "assets_required", "openrtb_compliance"],
+  "required": ["format_id", "type", "is_standard", "iab_specification", "assets_required", "openrtb_compliance"],
   "additionalProperties": false
 }

@@ -13,10 +13,6 @@
       "type": "string",
       "const": "video"
     },
-    "category": {
-      "type": "string",
-      "const": "standard"
-    },
     "name": {
       "type": "string",
       "default": "15-second Skippable Video"
@@ -34,10 +30,6 @@
       "type": "integer",
       "const": 5,
       "description": "Seconds before skip button appears"
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "placement_contexts": {
       "type": "array",
@@ -187,6 +179,6 @@
       ]
     }
   },
-  "required": ["format_id", "type", "category", "duration_seconds", "skippable", "skip_delay_seconds", "is_3p_served", "assets_required"],
+  "required": ["format_id", "type", "duration_seconds", "skippable", "skip_delay_seconds", "assets_required"],
   "additionalProperties": false
 }

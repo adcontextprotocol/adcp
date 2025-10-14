@@ -37,15 +37,6 @@
       "description": "Media type of this format - determines rendering method and asset requirements",
       "enum": ["audio", "video", "display", "native", "dooh", "rich_media", "universal"]
     },
-    "category": {
-      "type": "string",
-      "description": "Format category",
-      "enum": ["standard", "custom"]
-    },
-    "is_standard": {
-      "type": "boolean",
-      "description": "Whether this format follows IAB specifications or AdCP standard format definitions (found in /schemas/v1/standard-formats/)"
-    },
     "requirements": {
       "type": "object",
       "description": "Technical specifications for this format (e.g., dimensions, duration, file size limits, codecs)",
@@ -150,10 +141,6 @@
       "type": "object",
       "description": "Delivery method specifications (e.g., hosted, VAST, third-party tags)",
       "additionalProperties": true
-    },
-    "accepts_3p_tags": {
-      "type": "boolean",
-      "description": "Whether this format can accept third-party served creative tags as an alternative to hosted assets"
     },
     "supported_macros": {
       "type": "array",

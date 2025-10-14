@@ -299,6 +299,23 @@ For major version changes:
 
 **Legacy handling**: If supporting legacy clients sending strings, you MAY auto-upgrade during a deprecation period (max 6 months), but MUST log warnings and fail on unknown format strings. Recommended approach is strict rejection from day one.
 
+### Removed Format Fields
+
+**IMPORTANT**: The following fields have been removed from the format schema and should NOT be used:
+
+#### `accepts_3p_tags` (Removed in v1.9.0)
+- **Why removed**: Redundant with HTML and JavaScript asset types
+- **Migration**: Filter formats by `asset_types: ["html"]` or `asset_types: ["javascript"]` to find formats that accept third-party tags
+- **Rationale**: Third-party tags ARE HTML/JavaScript assets. If a format accepts these asset types, it implicitly supports third-party tags.
+
+#### `category` and `is_standard` (Removed in v1.10.0)
+- **Why removed**: Information is redundant with source location
+- **Migration**:
+  - Standard formats are defined in `/schemas/v1/standard-formats/` directory
+  - Custom formats have an `agent_url` pointing to a non-standard creative agent
+  - Format location/source already indicates whether it's standard or custom
+- **Rationale**: These fields carried information already expressed by the format's authoritative source. Adding explicit fields was redundant and increased maintenance burden.
+
 ## Common Tasks
 
 ### Before Making Changes

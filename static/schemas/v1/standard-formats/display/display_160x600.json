@@ -13,10 +13,6 @@
       "type": "string",
       "const": "display"
     },
-    "category": {
-      "type": "string",
-      "const": "standard"
-    },
     "name": {
       "type": "string",
       "default": "Wide Skyscraper"
@@ -32,10 +28,6 @@
     "iab_specification": {
       "type": "string",
       "const": "Wide Skyscraper"
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "viewability_optimized": {
       "type": "boolean",
@@ -116,6 +108,6 @@
       ]
     }
   },
-  "required": ["format_id", "type", "category", "dimensions", "is_3p_served", "assets_required"],
+  "required": ["format_id", "type", "dimensions", "assets_required"],
   "additionalProperties": false
 }
