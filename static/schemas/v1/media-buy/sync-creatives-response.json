@@ -25,6 +25,45 @@
       "type": "boolean",
       "description": "Whether this was a dry run (no actual changes made)"
     },
+    "summary": {
+      "type": "object",
+      "description": "Aggregate counts for the sync operation",
+      "properties": {
+        "total_processed": {
+          "type": "integer",
+          "description": "Total number of creatives processed"
+        },
+        "created": {
+          "type": "integer",
+          "description": "Number of creatives created"
+        },
+        "updated": {
+          "type": "integer",
+          "description": "Number of creatives updated"
+        },
+        "unchanged": {
+          "type": "integer",
+          "description": "Number of creatives that were unchanged"
+        },
+        "failed": {
+          "type": "integer",
+          "description": "Number of creatives that failed validation or processing"
+        },
+        "deleted": {
+          "type": "integer",
+          "description": "Number of creatives deleted (only when delete_missing=true)"
+        }
+      },
+      "required": [
+        "total_processed",
+        "created",
+        "updated",
+        "unchanged",
+        "failed",
+        "deleted"
+      ],
+      "additionalProperties": false
+    },
     "creatives": {
       "type": "array",
       "description": "Results for each creative processed",
