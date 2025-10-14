@@ -134,7 +134,7 @@ Audio files for audio ads and podcasts.
 
 ### HTML Asset
 
-HTML5 creative assets for rich media formats.
+HTML5 creative assets for rich media formats and third-party display tags.
 
 ```json
 {
@@ -148,18 +148,76 @@ HTML5 creative assets for rich media formats.
 ```
 
 **Properties:**
+- `content`: Inline HTML content
+- `url`: URL to externally hosted HTML file (alternative to inline content)
 - `format`: HTML format type (html5, amphtml)
 - `max_initial_load_kb`: Maximum initial load size
 - `max_total_size_kb`: Maximum total size including all assets
 - `allowed_features`: Allowed HTML5 features
 - `restricted_features`: Features that must not be used
 
+### VAST Asset
+
+VAST (Video Ad Serving Template) tags for third-party video ad serving.
+
+```json
+{
+  "asset_type": "vast",
+  "required": true,
+  "url": "https://vast.example.com/video/123",
+  "vast_version": "4.1",
+  "vpaid_enabled": false
+}
+```
+
+**Properties:**
+- `url`: URL endpoint that returns VAST XML
+- `content`: Inline VAST XML content (alternative to URL)
+- `vast_version`: VAST specification version (2.0, 3.0, 4.0, 4.1, 4.2)
+- `vpaid_enabled`: Whether VPAID (Video Player-Ad Interface Definition) is supported
+- `max_wrapper_depth`: Maximum allowed wrapper/redirect depth
+- `duration_ms`: Expected video duration in milliseconds (if known)
+- `tracking_events`: Array of supported tracking events
+
+**Use Cases:**
+- Third-party video ad servers
+- Programmatic video buying
+- Video ad networks
+- VPAID interactive video ads
+
+### DAAST Asset
+
+DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
+
+```json
+{
+  "asset_type": "daast",
+  "required": true,
+  "url": "https://daast.example.com/audio/456",
+  "daast_version": "1.0"
+}
+```
+
+**Properties:**
+- `url`: URL endpoint that returns DAAST XML
+- `content`: Inline DAAST XML content (alternative to URL)
+- `daast_version`: DAAST specification version (1.0, 1.1)
+- `duration_ms`: Expected audio duration in milliseconds (if known)
+- `tracking_events`: Array of supported tracking events
+- `companion_ads`: Whether companion display ads are included
+
+**Use Cases:**
+- Third-party audio ad servers
+- Podcast advertising networks
+- Streaming audio platforms
+- Radio-style digital audio ads
+
 ## Common Properties
 
 All asset types share these common properties:
 
 - `asset_id`: Unique identifier for this asset within the format (e.g., "hero_image", "video_file", "headline")
-- `asset_type`: The type of asset (video, image, text, url, audio, html)
+- `asset_type`: The type of asset (image, video, audio, text, html, css, javascript, vast, daast, url, promoted_offerings)
 - `asset_role`: Semantic purpose of the asset (e.g., "hero_video", "logo", "cta_button")
 - `required`: Boolean indicating if the asset is mandatory
 

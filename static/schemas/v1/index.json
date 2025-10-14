@@ -29,7 +29,7 @@
         },
         "creative-asset": {
           "$ref": "/schemas/v1/core/creative-asset.json",
-          "description": "Creative asset for upload to library - supports both hosted assets and third-party snippets"
+          "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party ad serving (VAST, DAAST, HTML, JavaScript)"
         },
         "targeting": {
           "$ref": "/schemas/v1/core/targeting.json",
@@ -143,10 +143,6 @@
         "standard-format-ids": {
           "$ref": "/schemas/v1/enums/standard-format-ids.json",
           "description": "Enumeration of all standard creative format identifiers"
-        },
-        "snippet-type": {
-          "$ref": "/schemas/v1/enums/snippet-type.json",
-          "description": "Types of third-party creative snippets (VAST, HTML, JavaScript, etc.)"
         },
         "identifier-types": {
           "$ref": "/schemas/v1/enums/identifier-types.json",

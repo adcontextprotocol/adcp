@@ -103,12 +103,11 @@ The `list_creatives` task provides comprehensive search and filtering capabiliti
 }
 ```
 
-### Third-Party and Performance Filtering
+### Performance Filtering
 
 ```json
 {
   "filters": {
-    "snippet_type": "vast_url",           // Filter by snippet type
     "has_performance_data": true          // Only creatives with performance data
   }
 }
@@ -321,8 +320,7 @@ Find native ad templates with sub-assets:
 ```json
 {
   "filters": {
-    "formats": ["display_native_sponsored_post", "display_native_article"],
-    "snippet_type": "html"
+    "formats": ["display_native_sponsored_post", "display_native_article"]
   },
   "include_sub_assets": true,
   "sort": {
@@ -423,7 +421,7 @@ When filters contain invalid values, specific errors are returned:
 {
   "message": "Query validation failed",
   "errors": [
-    "Invalid snippet_type: 'invalid_type' must be one of [vast_xml, vast_url, html, javascript, iframe, daast_url]",
+    "Invalid format: 'invalid_format' does not match any known format",
     "Invalid sort field: 'invalid_field' must be one of [created_date, updated_date, name, status, assignment_count, performance_score]"
   ]
 }

@@ -30,6 +30,8 @@
             {"$ref": "/schemas/v1/core/assets/html-asset.json"},
             {"$ref": "/schemas/v1/core/assets/css-asset.json"},
             {"$ref": "/schemas/v1/core/assets/javascript-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/vast-asset.json"},
+            {"$ref": "/schemas/v1/core/assets/daast-asset.json"},
             {"$ref": "/schemas/v1/core/assets/promoted-offerings-asset.json"},
             {"$ref": "/schemas/v1/core/assets/url-asset.json"}
           ]

@@ -92,10 +92,6 @@
           "type": "boolean",
           "description": "Filter for unassigned creatives when true, assigned creatives when false"
         },
-        "snippet_type": {
-          "$ref": "/schemas/v1/enums/snippet-type.json",
-          "description": "Filter by third-party snippet type"
-        },
         "has_performance_data": {
           "type": "boolean",
           "description": "Filter creatives that have performance data when true"

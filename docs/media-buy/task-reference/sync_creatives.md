@@ -47,20 +47,14 @@ The `sync_creatives` task provides a powerful, efficient approach to creative li
 Each creative in the `creatives` array follows the [Creative Asset schema](/schemas/v1/core/creative-asset.json) with support for:
 
 **Hosted Assets:**
-- `creative_id`, `name`, `format` (required)
-- `media_url` (required for hosted assets)
-- `click_url`, `width`, `height`, `duration`, `tags` (optional)
-
-**Third-Party Assets:**  
-- `creative_id`, `name`, `format` (required)
-- `snippet`, `snippet_type` (required for third-party assets)
-- `click_url`, `width`, `height`, `duration`, `tags` (optional)
-
-**Native Ad Templates:**
 - `creative_id`, `name`, `format_id` (required)
-- `snippet` (HTML template with variables like `[%Headline%]`)
-- `snippet_type: "html"`
-- `assets` array with sub-assets for template variables
+- `assets` object with asset types like `image`, `video`, `audio` (required)
+- `tags` (optional)
+
+**Third-Party Served Assets:**
+- `creative_id`, `name`, `format_id` (required)
+- `assets` object with `vast`, `daast`, `html`, or `javascript` asset types (required)
+- `tags` (optional)
 
 **Generative Creatives:**
 - `creative_id`, `name`, `format_id` (required - references a generative format)
@@ -174,21 +168,36 @@ Upload new creatives with automatic assignment:
     {
       "creative_id": "hero_video_30s",
       "name": "Brand Hero Video 30s",
-      "format": "video_30s_vast",
-      "snippet": "https://vast.example.com/video/123",
-      "snippet_type": "vast_url",
-      "click_url": "https://example.com/products",
-      "duration": 30000,
+      "format_id": {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "video_30s_vast"
+      },
+      "assets": {
+        "vast_tag": {
+          "asset_type": "vast",
+          "url": "https://vast.example.com/video/123",
+          "vast_version": "4.1",
+          "duration_ms": 30000
+        }
+      },
       "tags": ["q1_2024", "video", "hero"]
     },
     {
       "creative_id": "banner_300x250",
       "name": "Standard Banner",
-      "format": "display_300x250",
-      "media_url": "https://cdn.example.com/banner.jpg",
-      "click_url": "https://example.com/products",
-      "width": 300,
-      "height": 250,
+      "format_id": {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.example.com/banner.jpg",
+          "width": 300,
+          "height": 250,
+          "format": "jpg"
+        }
+      },
       "tags": ["q1_2024", "display"]
     }
   ],
@@ -199,58 +208,59 @@ Upload new creatives with automatic assignment:
 }
 ```
 
-### Example 2: Patch Update - Click URLs Only
+### Example 2: Patch Update - Asset URLs Only
 
-Update click URLs without affecting other creative properties:
+Update asset URLs without affecting other creative properties:
 
 ```json
 {
   "creatives": [
     {
       "creative_id": "hero_video_30s",
-      "click_url": "https://example.com/new-landing-page"
+      "assets": {
+        "vast_tag": {
+          "asset_type": "vast",
+          "url": "https://vast.example.com/video/new-campaign"
+        }
+      }
     },
     {
-      "creative_id": "banner_300x250", 
-      "click_url": "https://example.com/new-promo"
+      "creative_id": "banner_300x250",
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.example.com/new-banner.jpg"
+        }
+      }
     }
   ],
   "patch": true
 }
 ```
 
-### Example 3: Native Ad Template Upload
+### Example 3: Third-Party HTML Tag Upload
 
-Upload a native ad template with variable substitution:
+Upload a creative with third-party HTML tag:
 
 ```json
 {
   "creatives": [
     {
-      "creative_id": "native_sponsored_post",
-      "name": "Sponsored Social Post",
-      "format": "display_native_sponsored_post",
-      "snippet": "<div class='sponsored-post'><h2>[%Headline%]</h2><p>[%BodyText%]</p><img src='[%ImageUrl%]' alt='[%ImageAlt%]'></div>",
-      "snippet_type": "html",
-      "click_url": "https://example.com/native-landing",
-      "assets": [
-        {
-          "asset_id": "headline_var",
-          "type": "text",
-          "content": "Discover Our New Product Line"
-        },
-        {
-          "asset_id": "body_var", 
-          "type": "text",
-          "content": "Innovative solutions for modern challenges"
-        },
-        {
-          "asset_id": "image_var",
-          "type": "image",
-          "media_uri": "https://cdn.example.com/native-hero.jpg"
+      "creative_id": "programmatic_display",
+      "name": "Programmatic Display Ad",
+      "format_id": {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "assets": {
+        "ad_tag": {
+          "asset_type": "html",
+          "content": "<div id='ad-container'><script src='https://ads.example.com/serve?id=12345'></script></div>",
+          "width": 300,
+          "height": 250
         }
-      ],
-      "tags": ["native", "sponsored_content"]
+      },
+      "tags": ["programmatic", "display"]
     }
   ]
 }
@@ -373,8 +383,18 @@ Preview changes before applying them:
     {
       "creative_id": "test_banner",
       "name": "Test Banner Creative",
-      "format": "display_300x250",
-      "media_url": "https://cdn.example.com/test-banner.jpg"
+      "format_id": {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.example.com/test-banner.jpg",
+          "width": 300,
+          "height": 250
+        }
+      }
     }
   ],
   "dry_run": true,
@@ -435,8 +455,9 @@ Common validation scenarios and their handling:
       "creative_id": "invalid_creative",
       "action": "failed",
       "errors": [
-        "Missing required field: format",
-        "Invalid snippet_type: must be one of [vast_xml, vast_url, html, javascript, iframe, daast_url]"
+        "Missing required field: format_id",
+        "Missing required field: assets",
+        "Asset 'vast_tag' has invalid asset_type: must be one of [image, video, audio, text, html, css, javascript, vast, daast, promoted_offerings, url]"
       ]
     }
   ]
