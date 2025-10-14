@@ -45,7 +45,6 @@ AdCP distinguishes between two types of task-level issues:
 ```json
 {
   "message": "Signal discovery completed with partial results",
-  "adcp_version": "1.0.0",
   "context_id": "ctx-123",
   "signals": [/* available signals */],
   "errors": [
@@ -69,7 +68,6 @@ AdCP distinguishes between two types of task-level issues:
 ```json
 {
   "message": "Signal activation successful. Note that your account frequency cap settings are set conservatively and may limit reach. Contact your account manager to review frequency cap settings for optimal performance.",
-  "adcp_version": "1.0.0", 
   "context_id": "ctx-456",
   "task_id": "activation_789",
   "status": "deployed",

@@ -27,7 +27,6 @@ The `list_creatives` task provides comprehensive search and filtering capabiliti
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `adcp_version` | string | No | AdCP schema version (default: "1.5.0") |
 | `filters` | object | No | Filter criteria for querying creatives |
 | `sort` | object | No | Sorting parameters |
 | `pagination` | object | No | Pagination controls |
@@ -153,7 +152,6 @@ The response provides comprehensive creative data with optional enrichment:
 
 ```json
 {
-  "adcp_version": "1.5.0",
   "message": "Found 25 creatives matching your query",
   "context_id": "ctx_list_789012",
   "query_summary": {

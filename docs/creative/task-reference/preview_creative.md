@@ -22,7 +22,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/abc123",
@@ -121,7 +120,6 @@ The `inputs` array allows you to request multiple preview variants in a single c
 
 ```json
 {
-  "adcp_version": "string",
   "previews": "array",
   "interactive_url": "string",
   "expires_at": "string"
@@ -230,7 +228,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/abc123/desktop",
@@ -326,7 +323,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/xyz789/nyc-mobile",
@@ -405,7 +401,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/audio123/weather",
@@ -490,7 +485,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/video456/us-ne",
@@ -575,7 +569,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/dynamic123/a",
@@ -609,7 +602,6 @@ Response showing optional hints and embedding metadata:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/video789",

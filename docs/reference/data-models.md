@@ -168,47 +168,43 @@ type Pacing = 'even' | 'asap' | 'front_loaded';
 
 ## Schema Versioning
 
-All AdCP requests and responses include an `adcp_version` field for version negotiation and backward compatibility.
+AdCP uses **path-based versioning** where the schema URL indicates the version, not individual fields in requests or responses.
 
-### Version Field
+### Version in Schema Paths
 
-**In Requests** (optional, defaults to latest):
-```json
-{
-  "adcp_version": "1.0.0",
-  "buyer_ref": "campaign-123",
-  // ... other request fields
-}
+The version is embedded in the schema URL path:
+```
+/schemas/v1/media-buy/create-media-buy-request.json
+/schemas/v2/media-buy/create-media-buy-request.json
 ```
 
-**In Responses** (required):
-```json
-{
-  "adcp_version": "1.0.0", 
-  "media_buy_id": "mb-789",
-  // ... other response fields
-}
-```
+**Single Source of Truth**: The schema registry at `/schemas/v1/index.json` contains the current version number.
 
 ### Version Format
 
 AdCP uses [semantic versioning](https://semver.org/):
 - **Major** (X.y.z): Breaking changes
-- **Minor** (x.Y.z): Backward-compatible additions  
+- **Minor** (x.Y.z): Backward-compatible additions
 - **Patch** (x.y.Z): Bug fixes and clarifications
+
+### Why Path-Based Versioning?
+
+- **No redundancy**: Version doesn't need to be repeated in every request/response
+- **Simpler maintenance**: No need to update version fields in 30+ schema files
+- **Clearer semantics**: The schema you reference IS the version you use
+- **Standard practice**: Follows REST/HTTP conventions (version in path, not payload)
 
 ### Version Negotiation
 
 **Client Behavior:**
-- Include `adcp_version` to request a specific schema version
-- Omit `adcp_version` to use server's latest supported version
-- Check `adcp_version` in responses to confirm compatibility
+- Reference the desired schema version in your implementation (e.g., `/schemas/v1/`)
+- The schema path you use determines the version you're implementing
+- Check the schema registry's `adcp_version` field to confirm compatibility
 
-**Server Behavior:**  
-- Honor the requested version if supported
-- Use latest version if no version specified
-- Return error if requested version is unsupported
-- Always include `adcp_version` in responses
+**Server Behavior:**
+- Implement the version indicated by the schema path
+- Support multiple versions simultaneously by serving different schema paths
+- Return errors that reference the appropriate schema version
 
 ### Migration Strategy
 

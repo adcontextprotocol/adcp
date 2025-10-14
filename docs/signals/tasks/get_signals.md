@@ -138,7 +138,6 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 {
   "message": "Found 1 luxury segment matching your criteria. Available on The Trade Desk, pending activation on Amazon DSP.",
   "context_id": "ctx-signals-123",
-  "adcp_version": "1.0.0",
   "signals": [
     {
       "signal_agent_segment_id": "luxury_auto_intenders",
@@ -227,8 +226,7 @@ A2A returns results as artifacts with the same data structure:
           "kind": "data",
           "data": {
             "context_id": "ctx-signals-123",
-            "adcp_version": "1.0.0",
-            "signals": [
+                      "signals": [
               {
                 "signal_agent_segment_id": "luxury_auto_intenders",
                 "name": "Luxury Automotive Intenders",
@@ -390,7 +388,6 @@ Discover all available deployments across platforms:
 {
   "message": "I found 3 signals matching your luxury goods criteria. The best option is 'Affluent Shoppers' with 22% coverage, already live across all requested platforms. 'High Income Households' offers broader reach (35%) but requires activation on OpenX. All signals are priced between $2-4 CPM.",
   "context_id": "ctx-signals-abc123",
-  "adcp_version": "1.0.0",
   "signals": [
     {
       "signal_agent_segment_id": "acme_affluent_shoppers",
@@ -431,7 +428,6 @@ Discover all available deployments across platforms:
 {
   "message": "Found 2 luxury signals, but encountered some platform limitations. The 'Premium Auto Shoppers' signal has limited reach due to data restrictions, and pricing data is unavailable for one platform. Review the warnings below for optimization suggestions.",
   "context_id": "ctx-signals-abc123",
-  "adcp_version": "1.0.0",
   "signals": [
     {
       "signal_agent_segment_id": "premium_auto_shoppers",
@@ -487,7 +483,6 @@ Discover all available deployments across platforms:
 {
   "message": "I couldn't find any signals matching 'underwater basket weavers' in the requested platforms. This appears to be a very niche audience. Consider broadening your criteria to 'craft enthusiasts' or 'hobby communities' for better results. Alternatively, we could create a custom signal for this specific audience.",
   "context_id": "ctx-signals-abc123",
-  "adcp_version": "1.0.0",
   "signals": []
 }
 ```

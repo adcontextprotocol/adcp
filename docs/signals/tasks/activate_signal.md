@@ -100,7 +100,6 @@ Initial response:
 {
   "message": "Initiating activation of 'Luxury Auto Intenders' on The Trade Desk",
   "context_id": "ctx-signals-123",
-  "adcp_version": "1.0.0",
   "task_id": "activation_789",
   "status": "pending",
   "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
@@ -112,8 +111,7 @@ After polling for completion:
 ```json
 {
   "message": "Signal successfully activated on The Trade Desk",
-  "context_id": "ctx-signals-123", 
-  "adcp_version": "1.0.0",
+  "context_id": "ctx-signals-123",
   "task_id": "activation_789",
   "status": "deployed",
   "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
@@ -174,7 +172,6 @@ data: {"status": {"state": "completed"}, "artifacts": [{
     {"kind": "text", "text": "Signal successfully activated on The Trade Desk"},
     {"kind": "data", "data": {
       "context_id": "ctx-signals-123",
-      "adcp_version": "1.0.0",
       "task_id": "activation_789",
       "status": "deployed",
       "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
@@ -215,7 +212,6 @@ Content-Type: application/json
 Authorization: Bearer secret-token
 
 {
-  "adcp_version": "1.0.0",
   "status": "deployed",
   "task_id": "activation_789",
   "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
@@ -235,7 +231,6 @@ See **[Task Management: Webhook Integration](../../protocols/task-management.md#
 {
   "message": "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use.",
   "context_id": "ctx-signals-def456",
-  "adcp_version": "1.0.0",
   "task_id": "activation_12345",
   "status": "pending",
   "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
@@ -251,7 +246,6 @@ See **[Task Management: Webhook Integration](../../protocols/task-management.md#
 {
   "message": "Good progress on the activation. Access permissions validated successfully. Now configuring the signal deployment on PubMatic's platform. About 45 minutes remaining.",
   "context_id": "ctx-signals-def456",
-  "adcp_version": "1.0.0",
   "task_id": "activation_12345",
   "status": "processing"
 }
@@ -265,7 +259,6 @@ See **[Task Management: Webhook Integration](../../protocols/task-management.md#
 {
   "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately in your campaigns with the ID 'pm_brand456_peer39_lux_auto'. The activation completed faster than expected - just 52 minutes.",
   "context_id": "ctx-signals-def456",
-  "adcp_version": "1.0.0",
   "task_id": "activation_12345",
   "status": "deployed",
   "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
@@ -281,7 +274,6 @@ See **[Task Management: Webhook Integration](../../protocols/task-management.md#
 {
   "message": "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated.",
   "context_id": "ctx-signals-def456",
-  "adcp_version": "1.0.0",
   "task_id": "activation_12345",
   "status": "deployed",
   "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
@@ -305,7 +297,6 @@ See **[Task Management: Webhook Integration](../../protocols/task-management.md#
 {
   "message": "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again.",
   "context_id": "ctx-signals-def456",
-  "adcp_version": "1.0.0",
   "task_id": "activation_12345",
   "status": "failed",
   "errors": [

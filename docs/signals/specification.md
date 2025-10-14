@@ -249,7 +249,6 @@ All AdCP Signals responses follow a consistent structure across both MCP and A2A
 ### Core Response Fields
 - **message**: Human-readable summary of the operation result
 - **context_id**: Session continuity identifier for follow-up requests
-- **adcp_version**: Schema version used for this response
 - **data**: Task-specific payload (varies by task)
 
 ### Protocol Transport

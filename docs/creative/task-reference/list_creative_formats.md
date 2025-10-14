@@ -42,7 +42,6 @@ Buyers can recursively query creative_agents to discover all available formats. 
 
 ```json
 {
-  "adcp_version": "1.7.0",
   "agent_url": "https://creative.adcontextprotocol.org",
   "agent_name": "AdCP Reference Creative Agent",
   "capabilities": ["validation", "assembly", "preview"],
@@ -100,7 +99,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.7.0",
   "agent_url": "https://creative.adcontextprotocol.org",
   "agent_name": "AdCP Reference Creative Agent",
   "capabilities": ["validation", "assembly", "preview"],
@@ -142,7 +140,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.7.0",
   "agent_url": "https://dco.example.com",
   "agent_name": "Custom DCO Platform",
   "capabilities": ["validation", "assembly", "generation", "preview"],
@@ -240,7 +237,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.7.0",
   "agent_url": "https://creative.adcontextprotocol.org",
   "agent_name": "AdCP Reference Creative Agent",
   "capabilities": ["validation", "assembly", "generation", "preview"],
