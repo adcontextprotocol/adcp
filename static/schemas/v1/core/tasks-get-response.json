@@ -5,10 +5,6 @@
   "description": "Response containing detailed information about a specific task including status and optional conversation history across all AdCP domains",
   "type": "object",
   "properties": {
-    "message": {
-      "type": "string",
-      "description": "Human-readable status message for this task"
-    },
     "context_id": {
       "type": "string",
       "description": "Context ID for tracking related operations"
@@ -141,6 +137,6 @@
       }
     }
   },
-  "required": ["message", "task_id", "task_type", "domain", "status", "created_at", "updated_at"],
+  "required": ["task_id", "task_type", "domain", "status", "created_at", "updated_at"],
   "additionalProperties": false
 }

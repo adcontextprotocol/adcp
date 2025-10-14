@@ -5,10 +5,6 @@
   "description": "Response payload for activate_signal task",
   "type": "object",
   "properties": {
-    "message": {
-      "type": "string",
-      "description": "Human-readable summary of the activation status"
-    },
     "context_id": {
       "type": "string",
       "description": "Session continuity identifier for tracking progress"
@@ -44,7 +40,6 @@
     }
   },
   "required": [
-    "message",
     "context_id",
     "task_id",
     "status"

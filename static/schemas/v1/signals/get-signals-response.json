@@ -5,10 +5,6 @@
   "description": "Response payload for get_signals task",
   "type": "object",
   "properties": {
-    "message": {
-      "type": "string",
-      "description": "Human-readable summary of the signal discovery results"
-    },
     "context_id": {
       "type": "string",
       "description": "Session continuity identifier for follow-up requests"
@@ -141,7 +137,6 @@
     }
   },
   "required": [
-    "message",
     "context_id",
     "signals"
   ],
