@@ -262,9 +262,9 @@ For major version changes:
 
 ### Format ID Structure
 
-**CRITICAL**: Format IDs are structured objects, not strings, to avoid parsing issues and provide clear namespacing.
+**CRITICAL**: Format IDs are ALWAYS structured objects, never strings, to avoid parsing ambiguity and handle namespace collisions.
 
-**Structured Format ID**:
+**Structured Format ID (REQUIRED EVERYWHERE)**:
 ```json
 {
   "agent_url": "https://creatives.adcontextprotocol.org",
@@ -272,24 +272,32 @@ For major version changes:
 }
 ```
 
-**When to use structured format IDs**:
-- **Request parameters** that accept a format ID (e.g., `target_format_id` in `build_creative`)
-- **Creative asset objects** that specify which format they conform to
-- Anywhere a format is being **referenced for action**
+**Where structured format IDs are used (everywhere)**:
+- **All request parameters** accepting format_id (sync_creatives, build_creative, preview_creative, etc.)
+- **All response fields** containing format_id (list_creatives, get_products, list_creative_formats, etc.)
+- **Creative asset objects** specifying which format they conform to
+- **Product responses** listing supported formats
+- **Filter parameters** in list operations (format_ids plural = array of objects)
+- **Creative manifests** specifying the format
 
-**When to use string format IDs**:
-- **Product responses** listing supported formats (for compactness)
-- **Format definition objects** themselves (they have separate `format_id` and `agent_url` fields)
-- Lists where verbosity is a concern
+**Why structured objects everywhere?**
+- No parsing ambiguity - components are explicit
+- Handles format ID collisions between different creative agents
+- Simpler mental model - one pattern, no exceptions
+- Future-proof for versioning and extensions
 
 **Schema reference**:
 ```json
 {
-  "target_format_id": {
+  "format_id": {
     "$ref": "/schemas/v1/core/format-id.json"
   }
 }
 ```
+
+**Validation rule**: All AdCP agents MUST reject string format_ids in ALL contexts with clear error messages. No exceptions.
+
+**Legacy handling**: If supporting legacy clients sending strings, you MAY auto-upgrade during a deprecation period (max 6 months), but MUST log warnings and fail on unknown format strings. Recommended approach is strict rejection from day one.
 
 ## Common Tasks
 

@@ -37,10 +37,9 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Array of supported creative format IDs - use list_creative_formats to get full format details",
+      "description": "Array of supported creative format IDs - structured format_id objects with agent_url and id",
       "items": {
-        "type": "string",
-        "description": "Format ID referencing a format from list_creative_formats"
+        "$ref": "/schemas/v1/core/format-id.json"
       }
     },
     "delivery_type": {

@@ -84,7 +84,11 @@ Buyers query the agent_url for full format details, validation, and preview capa
 
 ## Referencing Formats
 
-When referencing a format in API requests (e.g., in `sync_creatives`, `build_creative`), use a structured format ID object that combines the agent URL and format identifier:
+**CRITICAL**: AdCP uses structured format ID objects everywhere to avoid parsing ambiguity and handle namespace collisions.
+
+### Structured Format IDs (Required Everywhere)
+
+**ALL format references** use structured format ID objects:
 
 ```json
 {
@@ -95,23 +99,64 @@ When referencing a format in API requests (e.g., in `sync_creatives`, `build_cre
 }
 ```
 
-**Why structured objects?**
+**Why structured objects everywhere?**
 - **No parsing needed**: Components are explicit
 - **Unambiguous**: Clear separation of namespace and identifier
-- **Extensible**: Can add version or other metadata later
+- **Handles collisions**: Same format ID from different agents are distinct
+- **No exceptions**: Simpler mental model - one format_id pattern everywhere
 - **Validation-friendly**: Easy to validate with JSON Schema
+- **Extensible**: Can add version or other metadata later
 
-**When formats are referenced as strings:**
-In some contexts like product responses, format IDs appear as simple strings for compactness:
+### Where Structured Format IDs Are Used
 
+**Requests:**
+- `sync_creatives` - Uploading creative assets
+- `build_creative` - Generating creatives via creative agents
+- `preview_creative` - Preview generation
+- `create_media_buy` - When specifying format requirements
+
+**Responses:**
+- `list_creatives` - Returning creative details
+- `get_products` - Product format capabilities
+- `list_creative_formats` - Format definitions
+- Any response containing creative or format details
+
+**Filter parameters:**
+- `format_ids` (plural) in request filters - Array of structured format_id objects
+
+### Validation Rules
+
+**All AdCP agents MUST:**
+1. ✅ Accept structured `format_id` objects in ALL contexts
+2. ✅ Return structured `format_id` objects in ALL responses
+3. ❌ Reject string format_ids with clear error messages
+4. ❌ Never use string format_ids in any API contract
+
+**Error handling for invalid format_id:**
 ```json
 {
-  "product_id": "ctv_premium",
-  "format_ids": ["video_30s_hosted", "video_15s_hosted"]
+  "error": "invalid_format_id",
+  "message": "format_id must be a structured object with 'agent_url' and 'id' fields",
+  "received": "display_300x250",
+  "required_structure": {
+    "agent_url": "https://creative-agent-url.com",
+    "id": "display_300x250"
+  }
 }
 ```
 
-These strings are shorthand references. To get the full format specification, use `list_creative_formats` which returns the complete format objects with `agent_url` and all details.
+### Legacy Considerations
+
+Some legacy systems may send string format_ids. Implementers have two options:
+
+1. **Strict validation** (recommended): Reject strings immediately with clear error
+2. **Auto-upgrade with deprecation**: Accept strings temporarily, log warnings, set removal timeline
+
+If auto-upgrading, you MUST:
+- Only accept strings for well-known formats you can map to agent URLs
+- Fail loudly for unknown format strings
+- Log deprecation warnings on every request
+- Set and communicate a removal date (recommend 6 months maximum)
 
 ## Format Structure
 
