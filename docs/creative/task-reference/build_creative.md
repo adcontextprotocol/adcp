@@ -17,7 +17,7 @@ For information about format IDs and how to reference formats, see [Creative For
 | `source_format_id` | object | No | Format ID of existing creative to transform (optional - omit when creating from scratch). Object with `agent_url` and `id` fields. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. For generative formats, this should be the input format (e.g., `300x250_banner_generative`). The creative agent will return a manifest in one of the `output_format_ids`. |
 | `context_id` | string | No | Session context from previous message for continuity |
-| `brand_manifest` | BrandManifestRef | No | Brand information manifest containing all assets, themes, and information necessary to ensure creatives are aligned with the brand's goals and that the publisher is comfortable with what's being advertised. Can be provided as an inline object or URL reference to a hosted manifest. See [Brand Manifest](../../reference/brand-manifest) for details. |
+| `brand_manifest` | BrandManifestRef | No | Brand information manifest containing all assets, themes, and information necessary to ensure creatives are aligned with the brand's goals and that the publisher is comfortable with what's being advertised. Can be provided as an inline object or URL reference to a hosted manifest. See [Brand Manifest](../brand-manifest) for details. |
 | `assets` | array | No | References to asset libraries and specific assets |
 | `preview_options` | object | No | Options for generating preview |
 | `finalize` | boolean | No | Set to true to finalize the creative (default: false) |

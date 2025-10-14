@@ -133,6 +133,7 @@ const sidebars: SidebarsConfig = {
         'creative/formats',
         'creative/asset-types',
         'creative/creative-manifests',
+        'creative/brand-manifest',
         'creative/universal-macros',
         'creative/implementing-creative-agents',
         'creative/generative-creative',

@@ -126,7 +126,7 @@ AdCP uses a centralized creative library where assets are uploaded once and assi
 - Reuse creatives across multiple media buys
 - Track performance across all assignments
 
-Asset management is handled through [Brand Manifests](../../reference/brand-manifest), which provide brand-level assets with tags for discovery.
+Asset management is handled through [Brand Manifests](../../creative/brand-manifest), which provide brand-level assets with tags for discovery.
 
 ## Platform Considerations
 
@@ -170,7 +170,7 @@ Creative operations have varying response times:
 - **[`sync_creatives`](../task-reference/sync_creatives)** - Bulk creative management with upsert semantics
 - **[`list_creatives`](../task-reference/list_creatives)** - Advanced creative library querying and filtering
 - **[`list_creative_formats`](../task-reference/list_creative_formats)** - Understanding format requirements
-- **[Brand Manifest](../../reference/brand-manifest)** - Brand identity and asset management
+- **[Brand Manifest](../../creative/brand-manifest)** - Brand identity and asset management
 - **[Creative Formats](../../creative/formats)** - Understanding format specifications and discovery
 - **[Creative Channel Guides](../../creative/channels/video)** - Format examples across video, display, audio, DOOH, and carousels
 - **[Asset Types](../../creative/asset-types)** - Understanding asset roles and specifications
