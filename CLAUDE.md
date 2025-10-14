@@ -86,6 +86,8 @@ Implementation details can be mentioned as:
 
 This separation ensures AdCP tasks work identically across different protocol implementations (MCP, A2A, REST, future protocols).
 
+**Protocol Envelope Schema**: The standard wrapper structure is documented in `/schemas/v1/core/protocol-envelope.json`. This schema shows how protocol layers wrap task response payloads with protocol-level fields.
+
 ### When to Update Schemas
 
 Update JSON schemas whenever you:
