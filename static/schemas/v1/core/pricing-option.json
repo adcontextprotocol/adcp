@@ -11,6 +11,12 @@
       "$ref": "/schemas/v1/pricing-options/cpm-auction-option.json"
     },
     {
+      "$ref": "/schemas/v1/pricing-options/vcpm-fixed-option.json"
+    },
+    {
+      "$ref": "/schemas/v1/pricing-options/vcpm-auction-option.json"
+    },
+    {
       "$ref": "/schemas/v1/pricing-options/cpc-option.json"
     },
     {
