@@ -92,6 +92,7 @@ The message is returned differently in each protocol:
 - **primary_channels** *(optional)*: Main advertising channels (see [Channels enum](/schemas/v1/enums/channels.json))
 - **primary_countries** *(optional)*: Main countries (ISO 3166-1 alpha-2 codes)
 - **portfolio_description** *(optional)*: Markdown description of the property portfolio
+- **advertising_policies** *(optional)*: Publisher's advertising content policies, restrictions, and guidelines in natural language. May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, or links to full policy documentation.
 
 ## Integration with get_products
 

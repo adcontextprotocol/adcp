@@ -57,6 +57,12 @@
       "minLength": 1,
       "maxLength": 5000
     },
+    "advertising_policies": {
+      "type": "string",
+      "description": "Publisher's advertising content policies, restrictions, and guidelines in natural language. May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, or links to full policy documentation.",
+      "minLength": 1,
+      "maxLength": 10000
+    },
     "errors": {
       "type": "array",
       "description": "Task-specific errors and warnings (e.g., property availability issues)",

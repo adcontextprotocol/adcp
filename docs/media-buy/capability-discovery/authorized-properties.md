@@ -114,7 +114,7 @@ Sales agents use the [`list_authorized_properties`](../task-reference/list_autho
     },
     {
       "property_type": "radio",
-      "name": "WXYZ-FM Chicago", 
+      "name": "WXYZ-FM Chicago",
       "identifiers": [
         {"type": "call_sign", "value": "WXYZ-FM"},
         {"type": "market", "value": "chicago"}
@@ -132,7 +132,8 @@ Sales agents use the [`list_authorized_properties`](../task-reference/list_autho
       "name": "Local Radio Stations",
       "description": "1847 local radio stations across US markets"
     }
-  }
+  },
+  "advertising_policies": "We maintain strict brand safety standards. Prohibited categories include: tobacco and vaping products, online gambling and sports betting, cannabis and CBD products, political advertising, and speculative financial products (crypto, NFTs, penny stocks).\n\nWe also prohibit misleading tactics such as clickbait headlines, false scarcity claims, hidden pricing, and ads targeting vulnerable populations.\n\nCompetitor brands in the streaming media space are blocked by policy.\n\nFull advertising guidelines: https://publisher.com/advertising-policies"
 }
 ```
 
