@@ -5,14 +5,6 @@
   "description": "Response from task listing query with filtered results and state reconciliation data across all AdCP domains",
   "type": "object",
   "properties": {
-    "message": {
-      "type": "string",
-      "description": "Human-readable result message summarizing task query results"
-    },
-    "context_id": {
-      "type": "string",
-      "description": "Context ID for tracking related operations"
-    },
     "query_summary": {
       "type": "object",
       "description": "Summary of the query that was executed",
@@ -135,10 +127,6 @@
             "format": "date-time",
             "description": "When the task completed (ISO 8601, only for completed/failed/canceled tasks)"
           },
-          "message": {
-            "type": "string",
-            "description": "Current human-readable status message"
-          },
           "has_webhook": {
             "type": "boolean",
             "description": "Whether this task has webhook configuration"
@@ -150,8 +138,7 @@
           "domain",
           "status",
           "created_at",
-          "updated_at",
-          "message"
+          "updated_at"
         ],
         "additionalProperties": false
       }
@@ -189,7 +176,6 @@
     }
   },
   "required": [
-    "message",
     "query_summary",
     "tasks",
     "pagination"

@@ -5,14 +5,6 @@
   "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
   "type": "object",
   "properties": {
-    "message": {
-      "type": "string",
-      "description": "Human-readable result message"
-    },
-    "context_id": {
-      "type": "string",
-      "description": "Context ID for tracking related operations"
-    },
     "query_summary": {
       "type": "object",
       "description": "Summary of the query that was executed",
@@ -333,7 +325,6 @@
     }
   },
   "required": [
-    "message",
     "query_summary",
     "pagination",
     "creatives"
@@ -343,8 +334,6 @@
     {
       "description": "Successful library query with results",
       "data": {
-        "message": "Found 3 creatives matching your query",
-        "context_id": "ctx_list_456789",
         "query_summary": {
           "total_matching": 3,
           "returned": 3,
@@ -408,7 +397,6 @@
     {
       "description": "Query with assignments and performance data",
       "data": {
-        "message": "Found 1 creative with performance data",
         "query_summary": {
           "total_matching": 1,
           "returned": 1

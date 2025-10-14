@@ -5,10 +5,6 @@
   "description": "Response payload for list_creative_formats task from creative agent - returns full format definitions",
   "type": "object",
   "properties": {
-    "status": {
-      "$ref": "/schemas/v1/enums/task-status.json",
-      "description": "Current task state"
-    },
     "formats": {
       "type": "array",
       "description": "Full format definitions for all formats this agent supports. Each format's authoritative source is indicated by its agent_url field.",

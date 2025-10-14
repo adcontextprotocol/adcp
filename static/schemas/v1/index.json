@@ -106,6 +106,10 @@
         "pricing-option": {
           "$ref": "/schemas/v1/core/pricing-option.json",
           "description": "A pricing model option offered by a publisher for a product"
+        },
+        "protocol-envelope": {
+          "$ref": "/schemas/v1/core/protocol-envelope.json",
+          "description": "Standard envelope structure added by protocol layer (MCP, A2A, REST) that wraps task response payloads with protocol-level fields like status, context_id, task_id, and message"
         }
       }
     },

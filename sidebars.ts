@@ -29,8 +29,8 @@ const sidebars: SidebarsConfig = {
           ],
         },
         'protocols/protocol-comparison',
+        'protocols/envelope-examples',
         'protocols/context-management',
-        'protocols/message-field-pattern',
       ],
     },
     {
