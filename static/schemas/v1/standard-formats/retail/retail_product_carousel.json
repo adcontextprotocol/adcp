@@ -13,10 +13,6 @@
       "type": "string",
       "const": "retail"
     },
-    "category": {
-      "type": "string",
-      "const": "standard"
-    },
     "name": {
       "type": "string",
       "default": "Product Carousel"
@@ -24,10 +20,6 @@
     "is_standard": {
       "type": "boolean",
       "const": true
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "min_products": {
       "type": "integer",
@@ -305,6 +297,6 @@
       }
     }
   },
-  "required": ["format_id", "type", "category", "is_3p_served", "min_products", "max_products", "product_schema"],
+  "required": ["format_id", "type", "min_products", "max_products", "product_schema"],
   "additionalProperties": false
 }

@@ -13,10 +13,6 @@
       "type": "string",
       "const": "display"
     },
-    "category": {
-      "type": "string",
-      "const": "standard"
-    },
     "name": {
       "type": "string",
       "default": "Mobile Interstitial"
@@ -32,10 +28,6 @@
     "iab_specification": {
       "type": "string",
       "const": "Mobile Interstitial"
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "assets_required": {
       "type": "array",
@@ -165,6 +157,6 @@
       }
     }
   },
-  "required": ["format_id", "type", "category", "dimensions", "is_3p_served", "assets_required"],
+  "required": ["format_id", "type", "dimensions", "assets_required"],
   "additionalProperties": false
 }

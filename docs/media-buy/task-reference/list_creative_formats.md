@@ -49,7 +49,6 @@ Buyers can recursively query creative_agents to discover all available formats. 
       "agent_url": "https://sales-agent.example.com",
       "name": "Standard Video - 30 seconds",
       "type": "video",
-      "category": "standard",
       "requirements": { /* ... */ },
       "assets_required": [ /* ... */ ]
     },
@@ -57,8 +56,7 @@ Buyers can recursively query creative_agents to discover all available formats. 
       "format_id": "display_300x250",
       "agent_url": "https://sales-agent.example.com",
       "name": "Medium Rectangle Banner",
-      "type": "display",
-      "category": "standard"
+      "type": "display"
       // ... full format details
     }
   ],
@@ -117,7 +115,6 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "name": "Medium Rectangle",
       "type": "display",
       "dimensions": "300x250",
-      "accepts_3p_tags": false,
       "assets_required": [
         {
           "asset_id": "banner_image",
@@ -143,7 +140,6 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "agent_url": "https://sales-agent.example.com",
       "name": "Responsive Native Ad",
       "type": "display",
-      "accepts_3p_tags": false,
       "assets_required": [
         {
           "asset_id": "primary_image",
@@ -277,7 +273,6 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
       "name": "15-Second Vertical Video",
       "type": "video",
       "duration": "15s",
-      "accepts_3p_tags": false,
       "assets_required": [
         {
           "asset_id": "video_file",
@@ -298,8 +293,7 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
       "agent_url": "https://sales-agent.example.com",
       "name": "Vertical Mobile Banner",
       "type": "display",
-      "dimensions": "320x480",
-      "accepts_3p_tags": false
+      "dimensions": "320x480"
     }
   ]
 }
@@ -329,7 +323,6 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
       "name": "15-Second Hosted Video",
       "type": "video",
       "duration": "15s",
-      "accepts_3p_tags": false,
       "assets_required": [
         {
           "asset_id": "video_file",
@@ -351,7 +344,6 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
       "name": "Medium Rectangle",
       "type": "display",
       "dimensions": "300x250",
-      "accepts_3p_tags": false,
       "assets_required": [
         {
           "asset_id": "banner_image",
@@ -382,9 +374,8 @@ I found 2 audio formats available. The standard 30-second format is recommended 
   "formats": [
     {
       "format_id": "audio_standard_30s",
-      "name": "Standard Audio - 30 seconds", 
+      "name": "Standard Audio - 30 seconds",
       "type": "audio",
-      "is_standard": true,
       "iab_specification": "DAAST 1.0",
       "requirements": {
         "duration": 30,
@@ -397,7 +388,6 @@ I found 2 audio formats available. The standard 30-second format is recommended 
       "format_id": "display_carousel_5",
       "name": "Product Carousel - 5 Items",
       "type": "display",
-      "is_standard": false,
       "assets_required": [
         {
           "asset_type": "product_image",
@@ -482,7 +472,6 @@ await a2a.send({
               "format_id": "video_standard_30s",
               "name": "Standard Video - 30 seconds",
               "type": "video",
-              "is_standard": true,
               "iab_specification": "VAST 4.2",
               "requirements": {
                 "duration": 30,
@@ -528,7 +517,6 @@ Found 8 standard video formats following IAB VAST specifications. The 30-second 
       "format_id": "video_standard_30s",
       "name": "Standard Video - 30 seconds",
       "type": "video",
-      "is_standard": true,
       "iab_specification": "VAST 4.2",
       "requirements": {
         "duration": 30,
@@ -542,7 +530,6 @@ Found 8 standard video formats following IAB VAST specifications. The 30-second 
       "format_id": "video_standard_15s",
       "name": "Standard Video - 15 seconds",
       "type": "video",
-      "is_standard": true,
       "iab_specification": "VAST 4.2",
       "requirements": {
         "duration": 15,
@@ -579,7 +566,6 @@ I found 15 display formats including standard IAB sizes and innovative formats l
       "format_id": "display_carousel_5",
       "name": "Product Carousel - 5 Items",
       "type": "display",
-      "is_standard": false,
       "assets_required": [
         {
           "asset_type": "product_image",

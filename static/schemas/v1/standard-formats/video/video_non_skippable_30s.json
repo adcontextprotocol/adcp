@@ -13,10 +13,6 @@
       "type": "string",
       "const": "video"
     },
-    "category": {
-      "type": "string",
-      "const": "standard"
-    },
     "name": {
       "type": "string",
       "default": "30-second Non-Skippable Video"
@@ -29,10 +25,6 @@
       "type": "boolean",
       "const": false,
       "description": "User cannot skip this ad"
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "placement_contexts": {
       "type": "array",
@@ -171,6 +163,6 @@
       }
     }
   },
-  "required": ["format_id", "type", "category", "duration_seconds", "skippable", "is_3p_served", "assets_required"],
+  "required": ["format_id", "type", "duration_seconds", "skippable", "assets_required"],
   "additionalProperties": false
 }

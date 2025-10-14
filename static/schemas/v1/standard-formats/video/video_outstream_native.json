@@ -13,10 +13,6 @@
       "type": "string",
       "const": "video"
     },
-    "category": {
-      "type": "string",
-      "const": "standard"
-    },
     "name": {
       "type": "string",
       "default": "Outstream Native Video"
@@ -32,10 +28,6 @@
     "iab_specification": {
       "type": "string",
       "const": "Outstream Video"
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "playback_method": {
       "type": "object",
@@ -231,6 +223,6 @@
       }
     }
   },
-  "required": ["format_id", "type", "category", "placement_type", "is_3p_served", "playback_method", "assets_required"],
+  "required": ["format_id", "type", "placement_type", "playback_method", "assets_required"],
   "additionalProperties": false
 }
