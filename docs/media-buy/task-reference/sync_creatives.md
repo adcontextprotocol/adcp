@@ -106,20 +106,24 @@ The response provides comprehensive details about the sync operation:
   "adcp_version": "1.5.0",
   "message": "Sync completed: 3 created, 2 updated, 1 unchanged",
   "context_id": "ctx_sync_123456",
+  "status": "completed",
   "dry_run": false,
-  "summary": {
-    "total_processed": 6,
-    "created": 3,
-    "updated": 2, 
-    "unchanged": 1,
-    "failed": 0,
-    "deleted": 0
-  },
   "creatives": [
     {
       "creative_id": "hero_video_30s",
       "action": "created",
       "platform_id": "plt_123456"
+    },
+    {
+      "creative_id": "banner_300x250",
+      "action": "updated",
+      "platform_id": "plt_789012",
+      "changes": ["click_url"]
+    },
+    {
+      "creative_id": "native_ad_01",
+      "action": "unchanged",
+      "platform_id": "plt_345678"
     }
   ]
 }
