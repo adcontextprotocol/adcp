@@ -172,8 +172,11 @@ The response provides comprehensive creative data with optional enrichment:
   "creatives": [
     {
       "creative_id": "hero_video_30s",
-      "name": "Brand Hero Video 30s", 
-      "format": "video_30s_vast",
+      "name": "Brand Hero Video 30s",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_30s_vast"
+      },
       "status": "approved",
       "created_date": "2024-01-15T10:30:00Z",
       "updated_date": "2024-01-15T14:20:00Z",

@@ -107,9 +107,9 @@
             "type": "string",
             "description": "Human-readable creative name"
           },
-          "format": {
-            "type": "string",
-            "description": "Creative format type"
+          "format_id": {
+            "$ref": "/schemas/v1/core/format-id.json",
+            "description": "Format identifier specifying which format this creative conforms to"
           },
           "status": {
             "$ref": "/schemas/v1/enums/creative-status.json",
@@ -271,7 +271,7 @@
         "required": [
           "creative_id",
           "name",
-          "format",
+          "format_id",
           "status",
           "created_date",
           "updated_date"
@@ -355,7 +355,10 @@
           {
             "creative_id": "hero_video_30s",
             "name": "Brand Hero Video 30s",
-            "format": "video_30s_vast",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_30s_vast"
+            },
             "status": "approved",
             "created_date": "2024-01-15T10:30:00Z",
             "updated_date": "2024-01-15T14:20:00Z",
@@ -401,7 +404,10 @@
           {
             "creative_id": "hero_video_30s",
             "name": "Brand Hero Video 30s",
-            "format": "video_30s_vast",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_30s_vast"
+            },
             "status": "approved",
             "created_date": "2024-01-15T10:30:00Z",
             "updated_date": "2024-01-15T14:20:00Z",

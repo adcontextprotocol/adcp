@@ -16,7 +16,10 @@ For an overview of how formats, manifests, and creative agents work together, se
 
 ```typescript
 {
-  format_id: string;           // Format this manifest is for
+  format_id: {                 // Format this manifest is for
+    agent_url: string;         // Creative agent URL
+    id: string;                // Format identifier
+  };
   promoted_offering?: string;  // Product being advertised (maps to create_media_buy)
   assets: {
     [asset_role: string]: {    // Keyed by asset role from format spec

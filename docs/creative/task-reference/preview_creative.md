@@ -59,7 +59,7 @@ To test multiple scenarios, provide an `inputs` array - you'll get one preview p
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `format_id` | string | Yes | Format identifier for rendering |
+| `format_id` | FormatID | Yes | Format identifier for rendering (structured object with agent_url and id) |
 | `creative_manifest` | object | Yes | Complete creative manifest with all required assets (brand_manifest should be included in the manifest for dynamic creatives) |
 | `inputs` | array | No | Array of input sets for generating multiple preview variants |
 | `template_id` | string | No | Specific template for custom format rendering |
@@ -70,7 +70,10 @@ The creative manifest must include all assets required by the format. See [Creat
 
 ```typescript
 {
-  format_id: string;           // Must match format_id parameter
+  format_id: {                 // Must match format_id parameter
+    agent_url: string;         // Creative agent URL
+    id: string;                // Format identifier
+  };
   assets: {
     [asset_role: string]: {    // Asset role from format spec (e.g., 'hero_image', 'logo')
       asset_type: string;      // Type: image, video, audio, vast_tag, text, url, etc.

@@ -67,7 +67,12 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
           "publisher_domain": "string"
         }
       ],
-      "format_ids": ["format_id_string"],
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_30s_hosted"
+        }
+      ],
       "delivery_type": "string",
       "is_fixed_price": "boolean",
       "cpm": "number",
@@ -99,7 +104,16 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
       "name": "Midwest Radio Network",
       "description": "500+ local radio stations across midwest markets",
       "property_tags": ["local_radio", "midwest"],
-      "format_ids": ["audio_30s", "audio_60s"],
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "audio_30s"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "audio_60s"
+        }
+      ],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 25.00,
@@ -346,7 +360,12 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
           "publisher_domain": "sportsnetwork.com"
         }
       ],
-      "format_ids": ["video_16x9_30s"],
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_16x9_30s"
+        }
+      ],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
@@ -419,7 +438,12 @@ A2A returns results as artifacts with text and data parts:
               "product_id": "ctv_sports_premium",
               "name": "CTV Sports Premium",
               "description": "Premium CTV inventory on sports content",
-              "format_ids": ["video_16x9_30s"],
+              "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_16x9_30s"
+        }
+      ],
               "delivery_type": "guaranteed",
               "is_fixed_price": true,
               "cpm": 45.00,
@@ -540,7 +564,12 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
       "product_id": "open_exchange_video",
       "name": "Open Exchange - Video",
       "description": "Programmatic video inventory across all publishers",
-      "format_ids": ["video_standard"],
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_standard"
+        }
+      ],
       "delivery_type": "non_guaranteed",
       "is_fixed_price": false,
       "currency": "USD",
@@ -565,7 +594,12 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
       "product_id": "connected_tv_prime",
       "name": "Connected TV - Prime Time",
       "description": "Premium CTV inventory 8PM-11PM",
-      "format_ids": ["video_standard"],
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_standard"
+        }
+      ],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
       "cpm": 45.00,
@@ -590,8 +624,14 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
       "name": "Pet Category Shoppers - Syndicated",
       "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days across offsite display and video inventory.",
       "format_ids": [
-        "display_300x250",
-        "video_15s_vast"
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_15s_vast"
+        }
       ],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
@@ -624,8 +664,14 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
       "name": "Custom: Competitive Dog Food Buyers",
       "description": "Custom audience of Albertsons shoppers who buy competitive dog food brands. Higher precision targeting for conquest campaigns.",
       "format_ids": [
-        "display_300x250",
-        "display_728x90"
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_728x90"
+        }
       ],
       "delivery_type": "guaranteed",
       "is_fixed_price": true,
