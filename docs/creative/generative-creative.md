@@ -34,7 +34,6 @@ You'll receive a structured creative manifest:
 
 ```json
 {
-  "adcp_version": "1.6.0",
   "context_id": "ctx-coffee-123",
   "creative": {
     "format": {

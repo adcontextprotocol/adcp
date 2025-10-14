@@ -213,9 +213,8 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 ```json
 {
   "message": "Media buy created but some packages had issues. Review targeting for best performance.",
-  "adcp_version": "1.0.0",
   "media_buy_id": "mb_12346",
-  "buyer_ref": "nike_q1_campaign_2024", 
+  "buyer_ref": "nike_q1_campaign_2024",
   "creative_deadline": "2024-01-30T23:59:59Z",
   "packages": [
     {
@@ -957,7 +956,6 @@ Authorization: Bearer bearer-token-xyz
 Content-Type: application/json
 
 {
-  "adcp_version": "1.6.0",
   "status": "input-required",
   "task_id": "task_456",
   "buyer_ref": "campaign_2024",
@@ -973,7 +971,6 @@ Authorization: Bearer bearer-token-xyz
 Content-Type: application/json
 
 {
-  "adcp_version": "1.6.0",
   "status": "completed",
   "media_buy_id": "mb_12345",
   "buyer_ref": "campaign_2024",

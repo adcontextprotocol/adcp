@@ -28,7 +28,6 @@ The `sync_creatives` task provides a powerful, efficient approach to creative li
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `adcp_version` | string | No | AdCP schema version (default: "1.5.0") |
 | `creatives` | array | Yes | Array of creative assets to sync (max 100) |
 | `patch` | boolean | No | Partial update mode (default: false) |
 | `dry_run` | boolean | No | Preview changes without applying (default: false) |
@@ -103,7 +102,6 @@ The response provides comprehensive details about the sync operation:
 
 ```json
 {
-  "adcp_version": "1.5.0",
   "message": "Sync completed: 3 created, 2 updated, 1 unchanged",
   "context_id": "ctx_sync_123456",
   "status": "completed",

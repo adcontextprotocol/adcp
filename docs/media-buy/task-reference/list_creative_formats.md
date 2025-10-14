@@ -42,7 +42,6 @@ Buyers can recursively query creative_agents to discover all available formats. 
 
 ```json
 {
-  "adcp_version": "1.6.0",
   "formats": [
     {
       "format_id": "video_standard_30s",

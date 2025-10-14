@@ -78,7 +78,6 @@ List and filter async tasks across your account to enable state reconciliation a
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `adcp_version` | string | No | AdCP schema version (default: "1.6.0") |
 | `filters` | object | No | Filter criteria for querying tasks |
 | `sort` | object | No | Sorting parameters |
 | `pagination` | object | No | Pagination controls |
@@ -133,7 +132,6 @@ List and filter async tasks across your account to enable state reconciliation a
 
 ```json
 {
-  "adcp_version": "1.6.0",
   "message": "Found 27 tasks matching your criteria. 15 are pending and may need attention.",
   "context_id": "ctx-123",
   "query_summary": {
@@ -252,7 +250,6 @@ Poll a specific task by ID to check status, progress, and retrieve results when 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `adcp_version` | string | No | AdCP schema version (default: "1.6.0") |
 | `task_id` | string | Yes | Unique identifier of the task to retrieve |
 | `include_history` | boolean | No | Include full conversation history for this task (default: false) |
 
@@ -261,7 +258,6 @@ Poll a specific task by ID to check status, progress, and retrieve results when 
 #### Basic Task Information
 ```json
 {
-  "adcp_version": "1.6.0",
   "message": "Media buy creation is 75% complete. Currently validating inventory availability.",
   "context_id": "ctx-123",
   "task_id": "task_456",
@@ -490,7 +486,6 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
-  "adcp_version": "1.6.0",
   "status": "input-required",
   "task_id": "task_456",
   "buyer_ref": "nike_q1_campaign_2024",
@@ -506,7 +501,6 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
-  "adcp_version": "1.6.0",
   "status": "completed",
   "media_buy_id": "mb_12345",
   "buyer_ref": "nike_q1_campaign_2024",
