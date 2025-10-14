@@ -81,6 +81,9 @@ Packages are the building blocks of media buys:
 - **Creative formats** to be provided for this package
 - **Targeting overlays** for audience refinement beyond product defaults
 - **Budget allocation** as portion of overall media buy budget
+- **Pricing option** selection from product's available pricing models
+- **Pacing strategy** for budget delivery (even, asap, or front_loaded)
+- **Bid price** for auction-based pricing models (when applicable)
 
 ### Lifecycle States
 Media buys progress through predictable states:
