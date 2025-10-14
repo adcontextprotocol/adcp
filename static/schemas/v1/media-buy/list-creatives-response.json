@@ -130,13 +130,26 @@
             "format": "uri",
             "description": "URL of the creative file (for hosted assets)"
           },
-          "snippet": {
-            "type": "string",
-            "description": "Third-party tag, VAST XML, or code snippet (for third-party assets)"
-          },
-          "snippet_type": {
-            "$ref": "/schemas/v1/enums/snippet-type.json",
-            "description": "Type of snippet content"
+          "assets": {
+            "type": "object",
+            "description": "Assets for this creative, keyed by asset_role",
+            "patternProperties": {
+              "^[a-zA-Z0-9_-]+$": {
+                "oneOf": [
+                  {"$ref": "/schemas/v1/core/assets/image-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/video-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/audio-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/text-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/html-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/css-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/javascript-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/vast-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/daast-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/promoted-offerings-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/url-asset.json"}
+                ]
+              }
+            }
           },
           "click_url": {
             "type": "string",
@@ -362,8 +375,13 @@
             "status": "approved",
             "created_date": "2024-01-15T10:30:00Z",
             "updated_date": "2024-01-15T14:20:00Z",
-            "snippet": "https://vast.example.com/video/123",
-            "snippet_type": "vast_url",
+            "assets": {
+              "vast_tag": {
+                "asset_type": "vast",
+                "url": "https://vast.example.com/video/123",
+                "vast_version": "4.1"
+              }
+            },
             "click_url": "https://example.com/products",
             "duration": 30000,
             "width": 1920,
