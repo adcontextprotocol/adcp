@@ -159,7 +159,7 @@
       }
     },
     "pricing-options": {
-      "description": "Individual pricing model schemas with model-specific validation. CPM supports both fixed and auction pricing; all other models are fixed-rate only.",
+      "description": "Individual pricing model schemas with model-specific validation. CPM and vCPM support both fixed and auction pricing; all other models are fixed-rate only.",
       "schemas": {
         "cpm-fixed-option": {
           "$ref": "/schemas/v1/pricing-options/cpm-fixed-option.json",
@@ -168,6 +168,14 @@
         "cpm-auction-option": {
           "$ref": "/schemas/v1/pricing-options/cpm-auction-option.json",
           "description": "Cost Per Mille (CPM) auction-based pricing for programmatic/non-guaranteed inventory"
+        },
+        "vcpm-fixed-option": {
+          "$ref": "/schemas/v1/pricing-options/vcpm-fixed-option.json",
+          "description": "Viewable Cost Per Mille (vCPM) fixed-rate pricing for viewability-guaranteed deals"
+        },
+        "vcpm-auction-option": {
+          "$ref": "/schemas/v1/pricing-options/vcpm-auction-option.json",
+          "description": "Viewable Cost Per Mille (vCPM) auction-based pricing for programmatic inventory with viewability guarantee"
         },
         "cpc-option": {
           "$ref": "/schemas/v1/pricing-options/cpc-option.json",

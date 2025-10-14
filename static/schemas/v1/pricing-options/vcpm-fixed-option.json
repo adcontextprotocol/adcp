@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/pricing-options/vcpm-fixed-option.json",
+  "title": "vCPM Fixed Rate Pricing Option",
+  "description": "Viewable Cost Per Mille (cost per 1,000 viewable impressions) with guaranteed fixed rate - impressions meeting MRC viewability standard (50% pixels in-view for 1 second for display, 2 seconds for video)",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product (e.g., 'vcpm_usd_guaranteed')"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "vcpm",
+      "description": "Cost per 1,000 viewable impressions (MRC standard)"
+    },
+    "rate": {
+      "type": "number",
+      "description": "Fixed vCPM rate (cost per 1,000 viewable impressions)",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_option_id", "pricing_model", "rate", "currency"],
+  "additionalProperties": false
+}

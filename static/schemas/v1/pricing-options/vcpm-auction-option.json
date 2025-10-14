@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/pricing-options/vcpm-auction-option.json",
+  "title": "vCPM Auction Pricing Option",
+  "description": "Viewable Cost Per Mille (cost per 1,000 viewable impressions) with auction-based pricing - impressions meeting MRC viewability standard (50% pixels in-view for 1 second for display, 2 seconds for video)",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product (e.g., 'vcpm_usd_auction')"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "vcpm",
+      "description": "Cost per 1,000 viewable impressions (MRC standard)"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "price_guidance": {
+      "type": "object",
+      "description": "Statistical guidance for auction pricing",
+      "properties": {
+        "floor": {
+          "type": "number",
+          "description": "Minimum acceptable bid price",
+          "minimum": 0
+        },
+        "p25": {
+          "type": "number",
+          "description": "25th percentile of recent winning bids",
+          "minimum": 0
+        },
+        "p50": {
+          "type": "number",
+          "description": "Median of recent winning bids",
+          "minimum": 0
+        },
+        "p75": {
+          "type": "number",
+          "description": "75th percentile of recent winning bids",
+          "minimum": 0
+        },
+        "p90": {
+          "type": "number",
+          "description": "90th percentile of recent winning bids",
+          "minimum": 0
+        }
+      },
+      "required": ["floor"]
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_option_id", "pricing_model", "currency", "price_guidance"],
+  "additionalProperties": false
+}
