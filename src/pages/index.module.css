@@ -445,30 +445,111 @@
 }
 
 
+/* Members Sections */
+.membersSection {
+  padding: 5rem 0;
+  background: var(--ifm-color-emphasis-50);
+}
+
+.memberGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 3rem;
+  align-items: center;
+  justify-items: center;
+  margin: 3rem auto 0;
+  max-width: 1200px;
+}
+
+.memberLogo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  min-height: 80px;
+}
+
+.memberLogo img {
+  max-width: 180px;
+  max-height: 80px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  filter: grayscale(0%);
+  opacity: 0.8;
+  transition: all 0.3s ease;
+}
+
+.memberLogo img:hover {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+.launchMembersSection {
+  padding: 5rem 0;
+  background: var(--ifm-background-color);
+}
+
+.launchMemberList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: center;
+  max-width: 1000px;
+  margin: 3rem auto 0;
+}
+
+.launchMember {
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  color: var(--ifm-color-emphasis-700);
+  white-space: nowrap;
+  background: var(--ifm-color-emphasis-100);
+  border-radius: 4px;
+}
+
 /* Responsive adjustments */
 @media screen and (max-width: 768px) {
   .comparisonTable {
     grid-template-columns: 1fr;
   }
-  
+
   .demoComparison {
     grid-template-columns: 1fr;
   }
-  
+
   .audienceCards {
     grid-template-columns: 1fr;
   }
-  
+
   .logoGrid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .step {
     flex-direction: column;
     text-align: center;
   }
-  
+
   .stepNumber {
     margin: 0 auto;
+  }
+
+  .memberGrid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 2rem;
+  }
+
+  .memberLogo img {
+    max-width: 140px;
+    max-height: 60px;
+  }
+
+  .launchMemberList {
+    gap: 1rem;
+  }
+
+  .launchMember {
+    font-size: 0.9rem;
   }
 }
