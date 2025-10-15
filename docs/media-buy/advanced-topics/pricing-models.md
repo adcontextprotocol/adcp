@@ -494,33 +494,6 @@ A buyer could choose CPP pricing if they're planning TV buys, CPCV if optimizing
 4. **Align goals with pricing** - Set delivery goals that match your pricing model
 5. **Monitor relevant metrics** - Focus on the metrics that matter for your pricing model
 
-## Migration from CPM-Only
-
-For backward compatibility, products can still use the deprecated `is_fixed_price` and `cpm` fields. However, new implementations should use `pricing_options`.
-
-**Old Format** (deprecated):
-```json
-{
-  "product_id": "display_standard",
-  "is_fixed_price": true,
-  "cpm": 12.50
-}
-```
-
-**New Format**:
-```json
-{
-  "product_id": "display_standard",
-  "pricing_options": [{
-    "pricing_option_id": "cpm_usd_guaranteed",
-    "pricing_model": "cpm",
-    "rate": 12.50,
-    "currency": "USD",
-    "is_fixed": true
-  }]
-}
-```
-
 ## Related Documentation
 
 - [Media Products](../product-discovery/media-products.md) - Product model reference

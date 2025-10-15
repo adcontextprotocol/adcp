@@ -9,10 +9,6 @@
       "type": "string",
       "description": "Human-readable summary"
     },
-    "status": {
-      "$ref": "/schemas/v1/enums/task-status.json",
-      "description": "Current task state (optional for backwards compatibility during transition period)"
-    },
     "context_id": {
       "type": "string",
       "description": "Session continuity identifier"

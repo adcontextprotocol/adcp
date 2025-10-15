@@ -19,12 +19,6 @@ A **Product** is the core sellable unit in AdCP. This document details the Produ
 - `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
 - `expires_at` (datetime, optional): If `is_custom`, the time the product is no longer valid.
 
-### Deprecated Fields
-
-- `is_fixed_price` (bool): **DEPRECATED in v1.7.0** - Use `pricing_options` instead.
-- `cpm` (float): **DEPRECATED in v1.7.0** - Use `pricing_options` instead.
-- `min_spend` (float): **DEPRECATED in v1.7.0** - Use `pricing_options[].min_spend` instead.
-
 ### Pricing Models
 
 Publishers declare which pricing models they support for each product. Buyers select from the available options when creating a media buy. This approach supports:

@@ -20,10 +20,6 @@
       "$ref": "/schemas/v1/core/brand-manifest-ref.json",
       "description": "Brand information manifest serving as the namespace and identity for this media buy. Provides brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest. Can be cached and reused across multiple requests."
     },
-    "promoted_offering": {
-      "type": "string",
-      "description": "DEPRECATED: Use brand_manifest instead. Legacy field for describing what is being promoted."
-    },
     "po_number": {
       "type": "string",
       "description": "Purchase order number for tracking"
@@ -89,21 +85,10 @@
   "required": [
     "buyer_ref",
     "packages",
+    "brand_manifest",
     "start_time",
     "end_time",
     "budget"
-  ],
-  "oneOf": [
-    {
-      "required": [
-        "promoted_offering"
-      ]
-    },
-    {
-      "required": [
-        "brand_manifest"
-      ]
-    }
   ],
   "additionalProperties": false
 }
