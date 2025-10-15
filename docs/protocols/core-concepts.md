@@ -408,7 +408,6 @@ const response = await session.call('create_media_buy', params, {
 
 // Response indicates long-running async operation
 {
-  "adcp_version": "1.6.0",
   "status": "submitted",
   "task_id": "task_456",
   "buyer_ref": "nike_q1_campaign_2024",
@@ -418,7 +417,6 @@ const response = await session.call('create_media_buy', params, {
 // Later: Webhook POST when approval is needed
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 {
-  "adcp_version": "1.6.0",
   "status": "input-required",
   "task_id": "task_456",
   "buyer_ref": "nike_q1_campaign_2024",
@@ -428,7 +426,6 @@ POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 // Later: Webhook POST when approved and completed (full create_media_buy response)
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 {
-  "adcp_version": "1.6.0",
   "status": "completed",
   "media_buy_id": "mb_12345",
   "buyer_ref": "nike_q1_campaign_2024",
@@ -476,7 +473,6 @@ Every webhook POST contains the complete task response for that status, matching
 **`input-required` webhook (human needs to respond):**
 ```json
 {
-  "adcp_version": "1.6.0",
   "status": "input-required",
   "task_id": "task_456",
   "buyer_ref": "nike_q1_campaign_2024",
@@ -487,7 +483,6 @@ Every webhook POST contains the complete task response for that status, matching
 **`completed` webhook (operation finished - full create_media_buy response):**
 ```json
 {
-  "adcp_version": "1.6.0",
   "status": "completed",
   "media_buy_id": "mb_12345",
   "buyer_ref": "nike_q1_campaign_2024",
@@ -504,7 +499,6 @@ Every webhook POST contains the complete task response for that status, matching
 **`failed` webhook (operation failed):**
 ```json
 {
-  "adcp_version": "1.6.0",
   "status": "failed",
   "task_id": "task_456",
   "buyer_ref": "nike_q1_campaign_2024",

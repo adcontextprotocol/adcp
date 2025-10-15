@@ -9,10 +9,6 @@
       "type": "boolean",
       "description": "Whether the performance feedback was successfully received"
     },
-    "message": {
-      "type": "string",
-      "description": "Optional human-readable message about the feedback processing"
-    },
     "errors": {
       "type": "array",
       "description": "Task-specific errors and warnings (e.g., invalid measurement period, missing campaign data)",

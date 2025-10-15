@@ -13,10 +13,6 @@
       "type": "string",
       "const": "video"
     },
-    "category": {
-      "type": "string",
-      "const": "standard"
-    },
     "name": {
       "type": "string",
       "default": "Vertical Story Video"
@@ -24,10 +20,6 @@
     "is_standard": {
       "type": "boolean",
       "const": true
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "aspect_ratio": {
       "type": "string",
@@ -200,6 +192,6 @@
       }
     }
   },
-  "required": ["format_id", "type", "category", "aspect_ratio", "is_3p_served", "assets_required"],
+  "required": ["format_id", "type", "aspect_ratio", "assets_required"],
   "additionalProperties": false
 }

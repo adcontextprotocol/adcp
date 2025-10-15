@@ -5,11 +5,11 @@ All notable changes to the AdCP specification will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2025-10-15
+## [2.0.0] - 2025-10-15
 
 ### Added
 
-- **First Stable Release**: AdCP v1.0.0 is the first stable release of the Advertising Context Protocol
+- **Production Release**: AdCP v2.0.0 is the first production-ready release of the Advertising Context Protocol
 - **Media Buy Tasks**: Core tasks for advertising workflow
   - `get_products` - Discover advertising inventory
   - `list_creative_formats` - Discover supported creative formats
@@ -59,18 +59,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Details
 
-- **Schema Version**: 1.0.0
+- **Schema Version**: 2.0.0
 - **Standard Formats Version**: 1.0.0
 - **Protocol Support**: MCP, A2A
 - **Node Version**: >=18.0
 
 ### Notes
 
-This is the first stable release of AdCP, marking it as production-ready. Future releases will follow semantic versioning:
-- **Patch versions** (1.0.x): Bug fixes and clarifications
-- **Minor versions** (1.x.0): New features and enhancements (backward compatible)
+This is the first production-ready release of AdCP. Future releases will follow semantic versioning:
+- **Patch versions** (2.0.x): Bug fixes and clarifications
+- **Minor versions** (2.x.0): New features and enhancements (backward compatible)
 - **Major versions** (x.0.0): Breaking changes
 
 We use [Changesets](https://github.com/changesets/changesets) for version management. All changes should include a changeset file.
 
-[1.0.0]: https://github.com/adcontextprotocol/adcp/releases/tag/v1.0.0
+[2.0.0]: https://github.com/adcontextprotocol/adcp/releases/tag/v2.0.0

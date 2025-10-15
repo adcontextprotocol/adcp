@@ -44,7 +44,7 @@
           "type": "array",
           "description": "Filter by specific format IDs",
           "items": {
-            "type": "string"
+            "$ref": "/schemas/v1/core/format-id.json"
           }
         },
         "standard_formats_only": {

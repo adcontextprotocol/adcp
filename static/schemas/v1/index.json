@@ -4,12 +4,33 @@
   "title": "AdCP Schema Registry v1",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "1.0.0",
-  "standard_formats_version": "1.0.0",
+  "adcp_version": "2.0.0",
+  "standard_formats_version": "2.0.0",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/v1/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2025-10-13",
+  "changelog": {
+    "2.0.0": {
+      "date": "2025-10-14",
+      "breaking_changes": [
+        "Added structured render_dimensions field to Format schema (required for display/dooh/native formats)",
+        "Removed string dimensions field from standard display formats",
+        "Removed unstructured requirements field from Format schema (use render_dimensions for format-level specs, assets_required[].requirements for asset specs)",
+        "Renamed preview response 'outputs' to 'renders' to avoid confusion with generative format output_format_ids",
+        "Removed format_id from preview renders (all renders are from the same format)",
+        "Removed hints object from preview renders (use render_dimensions from format lookup instead)",
+        "Changed preview render field names: output_id→render_id, output_role→role, added dimensions field"
+      ],
+      "rationale": "Structured dimensions eliminate parsing ambiguity. Multi-render preview support enables companion ads and adaptive formats. Terminology changes prevent confusion between preview rendering and generative format outputs. Simplified schema removes redundant fields."
+    },
+    "1.8.0": {
+      "date": "2025-10-13",
+      "changes": [
+        "Previous version with string-based dimensions"
+      ]
+    }
+  },
+  "lastUpdated": "2025-10-14",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
@@ -29,7 +50,7 @@
         },
         "creative-asset": {
           "$ref": "/schemas/v1/core/creative-asset.json",
-          "description": "Creative asset for upload to library - supports both hosted assets and third-party snippets"
+          "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party ad serving (VAST, DAAST, HTML, JavaScript)"
         },
         "targeting": {
           "$ref": "/schemas/v1/core/targeting.json",
@@ -106,6 +127,10 @@
         "pricing-option": {
           "$ref": "/schemas/v1/core/pricing-option.json",
           "description": "A pricing model option offered by a publisher for a product"
+        },
+        "protocol-envelope": {
+          "$ref": "/schemas/v1/core/protocol-envelope.json",
+          "description": "Standard envelope structure added by protocol layer (MCP, A2A, REST) that wraps task response payloads with protocol-level fields like status, context_id, task_id, and message"
         }
       }
     },
@@ -144,10 +169,6 @@
           "$ref": "/schemas/v1/enums/standard-format-ids.json",
           "description": "Enumeration of all standard creative format identifiers"
         },
-        "snippet-type": {
-          "$ref": "/schemas/v1/enums/snippet-type.json",
-          "description": "Types of third-party creative snippets (VAST, HTML, JavaScript, etc.)"
-        },
         "identifier-types": {
           "$ref": "/schemas/v1/enums/identifier-types.json",
           "description": "Valid identifier types for property identification across different media types"
@@ -159,7 +180,7 @@
       }
     },
     "pricing-options": {
-      "description": "Individual pricing model schemas with model-specific validation. CPM supports both fixed and auction pricing; all other models are fixed-rate only.",
+      "description": "Individual pricing model schemas with model-specific validation. CPM and vCPM support both fixed and auction pricing; all other models are fixed-rate only.",
       "schemas": {
         "cpm-fixed-option": {
           "$ref": "/schemas/v1/pricing-options/cpm-fixed-option.json",
@@ -168,6 +189,14 @@
         "cpm-auction-option": {
           "$ref": "/schemas/v1/pricing-options/cpm-auction-option.json",
           "description": "Cost Per Mille (CPM) auction-based pricing for programmatic/non-guaranteed inventory"
+        },
+        "vcpm-fixed-option": {
+          "$ref": "/schemas/v1/pricing-options/vcpm-fixed-option.json",
+          "description": "Viewable Cost Per Mille (vCPM) fixed-rate pricing for viewability-guaranteed deals"
+        },
+        "vcpm-auction-option": {
+          "$ref": "/schemas/v1/pricing-options/vcpm-auction-option.json",
+          "description": "Viewable Cost Per Mille (vCPM) auction-based pricing for programmatic inventory with viewability guarantee"
         },
         "cpc-option": {
           "$ref": "/schemas/v1/pricing-options/cpc-option.json",

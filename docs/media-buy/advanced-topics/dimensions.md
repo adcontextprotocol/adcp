@@ -1,219 +1,154 @@
 ---
-title: Dimensions
+title: Targeting
 ---
 
-# Dimensions
+# Targeting
 
-Dimensions are the fundamental building blocks of the AdCP system. They represent attributes that can be used across three key areas:
+AdCP follows a **brief-first targeting philosophy**: most targeting should be expressed in natural language briefs that publishers interpret using their expertise. Technical targeting overlays are minimized to only geographic restrictions needed for specific use cases.
 
-1. **Product Definition**: What inventory is being offered
-2. **Targeting**: Who should see the ads
-3. **Reporting**: How delivery is analyzed
+## Targeting Philosophy
 
-By using a unified dimension system, AdCP ensures consistency and enables powerful cross-functional capabilities like "report on the same dimensions you targeted."
+### Brief-First Approach
 
-## Dimension Categories
+When creating a media buy, buyers provide a **brief** that describes:
+- Who the campaign is trying to reach (demographics, interests, behaviors)
+- What the campaign goals are
+- Any content preferences or requirements
 
-### Required Dimensions
+Publishers use their expertise to interpret these briefs and deliver against them. This approach:
+- Leverages publisher knowledge of their inventory and audiences
+- Reduces cross-platform targeting complexity
+- Enables inclusive pricing (targeting costs built into rates)
+- Simplifies cross-platform campaign management
 
-All AdCP implementations MUST support these dimensions with standardized values:
+**Example brief:**
+```
+Reach coffee enthusiasts aged 25-45 in urban areas who are interested in
+sustainability and premium brands. Looking for morning dayparts when
+users are most likely to be planning their day.
+```
 
-#### geo_country
-- **Description**: ISO 3166-1 alpha-2 country codes
-- **Examples**: `"US"`, `"CA"`, `"GB"`, `"FR"`
-- **Usage**: Universal geographic targeting and reporting
+### Technical Targeting Overlays
 
-#### media_type
-- **Description**: The format of advertising inventory
-- **Values**: `"video"`, `"audio"`, `"display"`, `"native"`, `"dooh"`
-- **Usage**: Fundamental to product definition and creative compatibility
+Technical targeting parameters are available but should be used sparingly, primarily for:
 
-#### date_time
-- **Description**: Temporal dimension for scheduling and reporting
-- **Format**: ISO 8601 timestamps
-- **Usage**: Campaign scheduling, dayparting, historical reporting
+1. **Regulatory compliance** - Geographic restrictions required by law
+2. **RCT testing** - Randomized control trial geographic splits
+3. **Geographic restrictions** - Hard requirements for specific locations
 
-### Standard Optional Dimensions
+### Real-Time Targeting Signals
 
-These dimensions are optional, but if supported, MUST use these standardized definitions:
+Orchestrators can provide **real-time targeting signals** to publishers for dynamic, high-cardinality targeting beyond what can be expressed in static overlays. These signals enable:
 
-#### geo_region
-- **Description**: Sub-national administrative divisions
-- **Format**: Two-letter codes without country prefix
-- **Examples**: `"NY"`, `"CA"`, `"ON"`, `"BC"`
-- **Note**: Interpretation depends on geo_country context
+- **Brand safety** - Real-time content filtering and adjacency controls
+- **Brand suitability** - Contextual alignment with brand values
+- **Audience targeting** - Dynamic audience segments updated in real-time
+- **Contextual targeting** - Page-level or moment-level targeting decisions
 
-#### geo_metro
-- **Description**: Metropolitan/DMA areas
-- **Format**: Numeric strings (US uses DMA codes)
-- **Examples**: `"501"` (New York), `"803"` (Los Angeles)
+Real-time signals are provided through the AdCP Signals Extension, which allows orchestrators to supply targeting data at impression time. See [Signals Overview](../../signals/overview) for implementation details.
 
-#### geo_city
-- **Description**: City names
-- **Format**: Plain text city name
-- **Examples**: `"New York"`, `"Los Angeles"`, `"Toronto"`
+**Key differences from overlays:**
+- Signals are **evaluated at impression time**, not campaign setup
+- Signals support **higher cardinality** (thousands of values vs. dozens)
+- Signals can be **updated continuously** without modifying the media buy
+- Signals enable **sophisticated contextual targeting** that briefs cannot express
 
-#### geo_postal
-- **Description**: Postal/ZIP codes
+## Available Targeting Parameters
+
+All targeting parameters use the `any_of` operator pattern for inclusive targeting.
+
+### geo_country_any_of
+- **Description**: Restrict delivery to specific countries
+- **Format**: ISO 3166-1 alpha-2 country codes
+- **Examples**: `["US", "CA"]`, `["GB", "FR", "DE"]`
+- **Use cases**: Regulatory compliance, country-specific campaigns
+
+### geo_region_any_of
+- **Description**: Restrict delivery to specific regions/states
+- **Format**: Region codes (interpretation depends on country)
+- **Examples**: `["NY", "CA"]`, `["ON", "BC"]`
+- **Use cases**: State-level compliance, regional testing
+
+### geo_metro_any_of
+- **Description**: Restrict delivery to specific metro areas
+- **Format**: DMA codes (US) or metro identifiers
+- **Examples**: `["501", "803"]` (New York, Los Angeles DMAs)
+- **Use cases**: Local campaigns, metro-level RCT testing
+
+### geo_postal_code_any_of
+- **Description**: Restrict delivery to specific postal/ZIP codes
 - **Format**: Country-specific postal codes
-- **Examples**: `"10001"`, `"90210"`, `"M5H 2N2"`
+- **Examples**: `["10001", "10002"]`, `["90210"]`
+- **Use cases**: Hyper-local campaigns, ZIP-level restrictions
 
-#### device_type
-- **Description**: Device categories
-- **Values**: `"mobile"`, `"desktop"`, `"tablet"`, `"ctv"`, `"audio"`, `"dooh"`, `"wearable"`
-- **Note**: Some overlap with media_type is intentional
+### frequency_cap
+- **Description**: Limit ad exposure frequency per user
+- **Format**: Frequency cap object with impressions, duration, and scope
+- **Use cases**: Brand safety, user experience management
+- **Example**: `{"impressions": 5, "duration_seconds": 86400, "scope": "creative"}`
 
-#### os
-- **Description**: Operating systems
-- **Format**: Capitalized common names
-- **Examples**: `"iOS"`, `"Android"`, `"Windows"`, `"macOS"`, `"Linux"`
-
-#### browser
-- **Description**: Web browsers
-- **Format**: Capitalized common names
-- **Examples**: `"Chrome"`, `"Safari"`, `"Firefox"`, `"Edge"`
-
-#### content_category
-- **Description**: IAB Content Taxonomy categories
-- **Format**: IAB category IDs
-- **Examples**: `"IAB17"` (Sports), `"IAB19"` (Technology)
-
-#### audience_segment
-- **Description**: Audience targeting segments
-- **Format**: Provider-prefixed identifiers
-- **Examples**: `"1p:loyalty_members"`, `"3p:auto_intenders"`
-
-#### language
-- **Description**: ISO 639-1 language codes
-- **Examples**: `"en"`, `"es"`, `"fr"`
-
-#### day_part
-- **Description**: Time-of-day segments
-- **Standard Values**: 
-  - `"early_morning"` (5-8am)
-  - `"morning"` (8-12pm)
-  - `"afternoon"` (12-5pm)
-  - `"evening"` (5-8pm)
-  - `"prime_time"` (8-11pm)
-  - `"late_night"` (11pm-2am)
-  - `"overnight"` (2-5am)
-- **Note**: Publishers may define custom values
-
-#### content_rating
-- **Description**: Content maturity ratings
-- **Examples**: `"G"`, `"PG"`, `"PG-13"`, `"R"`, `"TV-Y"`, `"TV-14"`
-
-#### content_genre
-- **Description**: Content genres
-- **Examples**: `"news"`, `"sports"`, `"drama"`, `"comedy"`, `"music"`
-
-#### connection_type
-- **Description**: Network connection types
-- **Values**: `"ethernet"`, `"wifi"`, `"cellular"`, `"unknown"`
-
-### Platform-Specific Dimensions
-
-Platforms may define additional dimensions prefixed with their identifier:
+## Targeting Overlay Example
 
 ```json
 {
-  "gam:custom_key": ["value1", "value2"],
-  "kevel:zone_id": ["123", "456"],
-  "triton:station_id": ["WABC-FM", "WXYZ-AM"]
-}
-```
-
-## Dimension Usage
-
-### In Product Definition
-
-Products use dimensions to describe their inventory:
-
-```json
-{
-  "product_id": "mobile_sports_video",
-  "name": "Mobile Sports Video",
-  "media_type": "video",
-  "dimensions": {
-    "content_category": ["IAB17"],
-    "device_type": ["mobile"],
-    "content_genre": ["sports"]
+  "brief": "Reach coffee enthusiasts aged 25-45...",
+  "targeting": {
+    "geo_country_any_of": ["US", "CA"],
+    "geo_region_any_of": ["NY", "CA", "ON"],
+    "frequency_cap": {
+      "impressions": 5,
+      "duration_seconds": 86400,
+      "scope": "creative"
+    }
   }
 }
 ```
 
-### In Targeting
+## What Goes in Briefs vs Technical Overlays vs Signals
 
-**Note**: Most targeting should be expressed in briefs, not as technical overlays. See [Targeting](./targeting) for details on AdCP's brief-first approach.
+### ✅ Express in Briefs
+- Demographic targeting (age, gender, income)
+- Interest and behavior targeting
+- Device preferences (mobile, desktop, CTV)
+- Content preferences (genres, categories, ratings)
+- Daypart preferences (morning, evening, prime time)
+- General audience segments (loyalty members, in-market audiences)
+- Operating systems and browsers
+- Language preferences
 
-When targeting overlays are used (rare cases like RCT testing), they use dimensions with any_of/none_of operators:
+### ✅ Use Technical Overlays For
+- Geographic restrictions (country, region, metro, postal)
+- Frequency caps
+- RCT test cell assignments
 
-```json
-{
-  "geo_country_any_of": ["US", "CA"],
-  "geo_region_any_of": ["NY", "CA"],
-  "geo_metro_any_of": ["501", "803"]
-}
-```
-
-Dimensions like `device_type`, `browser`, `os`, `content_category`, and audience segments should be specified in briefs rather than as targeting overlays.
-
-### In Reporting
-
-Reports aggregate metrics by dimensions:
-
-```json
-{
-  "dimensions": ["date", "geo_metro", "device_type"],
-  "metrics": ["impressions", "spend", "ctr"],
-  "filters": {
-    "geo_country_any_of": ["US"]
-  }
-}
-```
-
-## Implementation Requirements
-
-### Adapters MUST:
-
-1. **Translate Values**: Convert between AdCP standard values and platform-specific values
-2. **Validate Support**: Reject operations using unsupported dimensions
-3. **Document Mappings**: Clearly document how AdCP dimensions map to platform concepts
-4. **Preserve Fidelity**: Maintain dimension granularity in reporting
-
-### Example Adapter Mapping
-
-```python
-class MyAdapter:
-    # Dimension support declaration
-    SUPPORTED_DIMENSIONS = {
-        "geo_country": True,
-        "geo_region": True,
-        "geo_metro": True,
-        "device_type": ["mobile", "desktop", "tablet"],  # Subset
-        "media_type": ["display", "video"],
-        "day_part": False  # Not supported
-    }
-    
-    # Value mappings
-    DEVICE_TYPE_MAP = {
-        "mobile": "MOBILE_PHONE",
-        "tablet": "TABLET_DEVICE",
-        "desktop": "PERSONAL_COMPUTER"
-    }
-```
+### ✅ Use Real-Time Signals For
+- Brand safety filtering (block unsafe content)
+- Brand suitability scoring (prefer suitable contexts)
+- Dynamic audience targeting (real-time segment membership)
+- Contextual targeting (page-level or moment-level decisions)
+- High-cardinality targeting (thousands of values)
+- Targeting that changes during campaign flight
 
 ## Best Practices
 
-1. **Start with Products**: Let product definitions drive which dimensions matter
-2. **Validate Early**: Check dimension support before creating media buys
-3. **Report Consistently**: Use the same dimension values in reporting as in targeting
-4. **Document Custom**: Clearly document any platform-specific dimensions
-5. **Prefer Standard**: Use standard dimensions over custom when possible
+1. **Default to briefs** - Start with natural language descriptions
+2. **Minimize overlays** - Only add technical targeting when absolutely necessary
+3. **Use signals for dynamic targeting** - Real-time signals handle complex, high-cardinality targeting better than overlays
+4. **Trust publisher expertise** - Publishers know their inventory and audiences best
+5. **Inclusive pricing** - Expect targeting costs to be built into product rates
 
-## Future Considerations
+## Implementation Requirements
 
-- **Dimension Discovery**: API to query supported dimensions and values
-- **Dimension Hierarchies**: Define relationships (city → metro → region → country)
-- **Cross-Dimension Rules**: Express dependencies between dimensions
-- **Dynamic Values**: Support for real-time value discovery (e.g., available audiences)
+### Publishers MUST:
+
+1. **Support Geographic Targeting**: Handle all four geographic dimensions (country, region, metro, postal)
+2. **Interpret Briefs**: Use briefs to determine appropriate audience and content targeting
+3. **Validate Targeting**: Reject media buys with targeting that cannot be supported
+4. **Document Limitations**: Clearly communicate any geographic targeting limitations in product descriptions
+
+### Buyers SHOULD:
+
+1. **Use Briefs First**: Express most targeting needs in natural language briefs
+2. **Minimize Overlays**: Only use technical targeting for geographic restrictions or RCT testing
+3. **Trust Publishers**: Let publishers apply their inventory knowledge to brief interpretation
+4. **Validate Early**: Check product capabilities before applying technical targeting

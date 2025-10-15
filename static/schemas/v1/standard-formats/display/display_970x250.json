@@ -13,17 +13,9 @@
       "type": "string",
       "const": "display"
     },
-    "category": {
-      "type": "string",
-      "const": "standard"
-    },
     "name": {
       "type": "string",
       "default": "Billboard"
-    },
-    "dimensions": {
-      "type": "string",
-      "const": "970x250"
     },
     "is_standard": {
       "type": "boolean",
@@ -32,10 +24,6 @@
     "iab_specification": {
       "type": "string",
       "const": "Billboard"
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "assets_required": {
       "type": "array",
@@ -69,9 +57,19 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": ["jpg", "png", "gif", "webp"]
+                "enum": [
+                  "jpg",
+                  "png",
+                  "gif",
+                  "webp"
+                ]
               },
-              "const": ["jpg", "png", "gif", "webp"]
+              "const": [
+                "jpg",
+                "png",
+                "gif",
+                "webp"
+              ]
             },
             "max_file_size_kb": {
               "type": "number",
@@ -82,7 +80,15 @@
               "const": true
             }
           },
-          "required": ["asset_id", "asset_type", "required", "width", "height", "acceptable_formats", "max_file_size_kb"],
+          "required": [
+            "asset_id",
+            "asset_type",
+            "required",
+            "width",
+            "height",
+            "acceptable_formats",
+            "max_file_size_kb"
+          ],
           "additionalProperties": false
         },
         {
@@ -109,12 +115,81 @@
               "const": true
             }
           },
-          "required": ["asset_id", "asset_type", "required", "url_type", "must_be_https"],
+          "required": [
+            "asset_id",
+            "asset_type",
+            "required",
+            "url_type",
+            "must_be_https"
+          ],
           "additionalProperties": false
         }
       ]
+    },
+    "renders": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "const": "primary"
+          },
+          "dimensions": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number",
+                "const": 970
+              },
+              "height": {
+                "type": "number",
+                "const": 250
+              },
+              "responsive": {
+                "type": "object",
+                "properties": {
+                  "width": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "height": {
+                    "type": "boolean",
+                    "const": false
+                  }
+                },
+                "required": [
+                  "width",
+                  "height"
+                ]
+              },
+              "unit": {
+                "type": "string",
+                "const": "px"
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "responsive",
+              "unit"
+            ]
+          }
+        },
+        "required": [
+          "role",
+          "dimensions"
+        ]
+      }
     }
   },
-  "required": ["format_id", "type", "category", "dimensions", "is_3p_served", "assets_required"],
+  "required": [
+    "format_id",
+    "type",
+    "renders",
+    "assets_required"
+  ],
   "additionalProperties": false
 }

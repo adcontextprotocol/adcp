@@ -48,6 +48,46 @@ Implementation details can be mentioned as:
 
 **GOLDEN RULE**: Documentation and JSON schemas MUST always be synchronized.
 
+### Protocol vs Task Response Separation
+
+**CRITICAL PRINCIPLE**: Task response schemas should contain ONLY domain-specific data. Protocol-level concerns are handled by the transport layer (MCP, A2A, REST).
+
+**Protocol-level fields (DO NOT include in task responses)**:
+- `message` - Human-readable summaries (handled by MCP content field, A2A assistant messages)
+- `context_id` - Session/conversation tracking (handled by protocol)
+- `task_id` - Async operation tracking (handled by protocol)
+- `status` - Task state management (handled by protocol)
+- `webhook_url` / `webhook_secret` - Callback configuration (handled by protocol)
+
+**Task response fields (DO include)**:
+- Domain-specific results (signals, creatives, products, delivery metrics)
+- Operation-specific metadata (dry_run flag, estimated durations)
+- Task-specific errors and warnings
+- Resource identifiers (decisioning_platform_segment_id, platform_id, etc.)
+
+**Example - What a task response should look like**:
+```json
+{
+  "signals": [...],           // ✅ Domain data
+  "errors": [...]             // ✅ Task-specific errors
+}
+```
+
+**NOT like this**:
+```json
+{
+  "message": "Found 3 signals",     // ❌ Protocol concern
+  "context_id": "ctx_123",          // ❌ Protocol concern
+  "task_id": "task_456",            // ❌ Protocol concern
+  "status": "completed",            // ❌ Protocol concern
+  "signals": [...]                  // ✅ Domain data
+}
+```
+
+This separation ensures AdCP tasks work identically across different protocol implementations (MCP, A2A, REST, future protocols).
+
+**Protocol Envelope Schema**: The standard wrapper structure is documented in `/schemas/v1/core/protocol-envelope.json`. This schema shows how protocol layers wrap task response payloads with protocol-level fields.
+
 ### When to Update Schemas
 
 Update JSON schemas whenever you:
@@ -262,9 +302,9 @@ For major version changes:
 
 ### Format ID Structure
 
-**CRITICAL**: Format IDs are structured objects, not strings, to avoid parsing issues and provide clear namespacing.
+**CRITICAL**: Format IDs are ALWAYS structured objects, never strings, to avoid parsing ambiguity and handle namespace collisions.
 
-**Structured Format ID**:
+**Structured Format ID (REQUIRED EVERYWHERE)**:
 ```json
 {
   "agent_url": "https://creatives.adcontextprotocol.org",
@@ -272,24 +312,112 @@ For major version changes:
 }
 ```
 
-**When to use structured format IDs**:
-- **Request parameters** that accept a format ID (e.g., `target_format_id` in `build_creative`)
-- **Creative asset objects** that specify which format they conform to
-- Anywhere a format is being **referenced for action**
+**Where structured format IDs are used (everywhere)**:
+- **All request parameters** accepting format_id (sync_creatives, build_creative, preview_creative, etc.)
+- **All response fields** containing format_id (list_creatives, get_products, list_creative_formats, etc.)
+- **Creative asset objects** specifying which format they conform to
+- **Product responses** listing supported formats
+- **Filter parameters** in list operations (format_ids plural = array of objects)
+- **Creative manifests** specifying the format
 
-**When to use string format IDs**:
-- **Product responses** listing supported formats (for compactness)
-- **Format definition objects** themselves (they have separate `format_id` and `agent_url` fields)
-- Lists where verbosity is a concern
+**Why structured objects everywhere?**
+- No parsing ambiguity - components are explicit
+- Handles format ID collisions between different creative agents
+- Simpler mental model - one pattern, no exceptions
+- Future-proof for versioning and extensions
 
 **Schema reference**:
 ```json
 {
-  "target_format_id": {
+  "format_id": {
     "$ref": "/schemas/v1/core/format-id.json"
   }
 }
 ```
+
+**Validation rule**: All AdCP agents MUST reject string format_ids in ALL contexts with clear error messages. No exceptions.
+
+**Legacy handling**: If supporting legacy clients sending strings, you MAY auto-upgrade during a deprecation period (max 6 months), but MUST log warnings and fail on unknown format strings. Recommended approach is strict rejection from day one.
+
+### Structured Rendering Dimensions
+
+**IMPORTANT**: Visual formats (display, dooh, native) now use structured `render_dimensions` instead of string-based dimensions.
+
+**Schema field** (`render_dimensions`):
+```json
+{
+  "width": 300,
+  "height": 250,
+  "responsive": {
+    "width": false,
+    "height": false
+  },
+  "unit": "px"
+}
+```
+
+**Why structured dimensions:**
+- Eliminates string parsing ("300x250" → structured object)
+- Schema-validated with proper typing
+- Supports responsive dimensions (min/max width/height)
+- Supports aspect ratio constraints
+- Enables physical units for DOOH (inches, cm)
+- Proper preview rendering without custom parsing
+
+**Migration from string dimensions:**
+- Old: `"dimensions": "300x250"` (string in requirements)
+- New: `"render_dimensions": {width: 300, height: 250, responsive: {width: false, height: false}, unit: "px"}`
+
+### Multi-Render Preview Support
+
+**IMPORTANT**: Preview responses now support multiple rendered pieces per variant (companion ads, multi-placement formats).
+
+**Schema structure** (`preview-creative-response.json`):
+```json
+{
+  "previews": [{
+    "preview_id": "variant_1",
+    "renders": [{
+      "render_id": "primary_video",
+      "preview_url": "https://...",
+      "role": "primary",
+      "dimensions": {"width": 1920, "height": 1080}
+    }, {
+      "render_id": "companion_banner",
+      "preview_url": "https://...",
+      "role": "companion",
+      "dimensions": {"width": 300, "height": 250}
+    }]
+  }]
+}
+```
+
+**Why multi-render previews:**
+- Companion ads (video + display banner)
+- Adaptive formats (desktop/mobile/tablet variants)
+- Multi-placement formats (multiple sizes from one creative)
+- DOOH installations (multiple screens)
+
+**Key insight**: All renders are from the SAME format (e.g., `video_with_companion_300x250`). The format specification defines multiple rendered pieces. Each render includes `dimensions` for iframe sizing.
+
+**Terminology**: Use "renders" not "outputs" to avoid confusion with `output_format_ids` in generative creative formats.
+
+### Removed Format Fields
+
+**IMPORTANT**: The following fields have been removed from the format schema and should NOT be used:
+
+#### `accepts_3p_tags` (Removed in v1.9.0)
+- **Why removed**: Redundant with HTML and JavaScript asset types
+- **Migration**: Filter formats by `asset_types: ["html"]` or `asset_types: ["javascript"]` to find formats that accept third-party tags
+- **Rationale**: Third-party tags ARE HTML/JavaScript assets. If a format accepts these asset types, it implicitly supports third-party tags.
+
+#### `category` and `is_standard` (Removed in v1.10.0)
+- **Why removed**: Information is redundant with source location
+- **Migration**:
+  - Standard formats are defined in `/schemas/v1/standard-formats/` directory
+  - Custom formats have an `agent_url` pointing to a non-standard creative agent
+  - Format location/source already indicates whether it's standard or custom
+- **Rationale**: These fields carried information already expressed by the format's authoritative source. Adding explicit fields was redundant and increased maintenance burden.
 
 ## Common Tasks
 
@@ -389,7 +517,7 @@ Through the standard formats implementation, we've learned key principles for sc
 
 4. **Better Field Naming**
    - `accepts_3p_tags` instead of `is_3p_served` (indicates optionality)
-   - `formats_to_provide` instead of `selected_formats` (clearer intent)
+   - `format_ids` instead of ambiguous or verbose alternatives (clear and consistent)
    - Field names should indicate purpose, not state
 
 ### Testing Considerations

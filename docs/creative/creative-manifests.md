@@ -16,21 +16,27 @@ For an overview of how formats, manifests, and creative agents work together, se
 
 ```typescript
 {
-  format_id: string;           // Format this manifest is for
+  format_id: {                 // Format this manifest is for
+    agent_url: string;         // Creative agent URL
+    id: string;                // Format identifier
+  };
   promoted_offering?: string;  // Product being advertised (maps to create_media_buy)
   assets: {
     [asset_role: string]: {    // Keyed by asset role from format spec
-      asset_type: string;      // Type: image, video, audio, vast_tag, text, url, html, javascript, webhook
+      asset_type: string;      // Type: image, video, audio, text, url, html, css, javascript, vast, daast, promoted_offerings, webhook
 
       // Type-specific fields - see asset type schemas for details
       // Image: url, width, height, format, file_size, alt
-      // Video: url, width, height, duration_seconds, format, codec, bitrate_mbps, file_size
-      // Audio: url, duration_seconds, format, codec, bitrate_kbps, sample_rate_hz, channels
-      // VAST: content, vast_version, vpaid_enabled, duration_seconds
+      // Video: url, width, height, duration_ms, format, codec, bitrate_kbps, file_size
+      // Audio: url, duration_ms, format, codec, bitrate_kbps, sample_rate_hz, channels
       // Text: content, length, format (plain/html/markdown)
       // URL: url, purpose (clickthrough/tracking/etc)
-      // HTML: content or url, width, height, file_size (for client-side tags)
-      // JavaScript: content or url, inline (for client-side tags)
+      // HTML: content or url, width, height, file_size
+      // CSS: content or url
+      // JavaScript: content or url
+      // VAST: url or content, vast_version, vpaid_enabled, duration_ms, tracking_events
+      // DAAST: url or content, daast_version, duration_ms, tracking_events, companion_ads
+      // Promoted Offerings: url, colors, tone (for generative creatives)
       // Webhook: url, method, timeout_ms, response_type, security, supported_macros (server-side)
     }
   };

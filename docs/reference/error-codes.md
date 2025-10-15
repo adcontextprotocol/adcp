@@ -18,7 +18,7 @@ Use the optional `errors` array in successful responses for warnings and non-blo
 ```json
 {
   "message": "Operation completed with warnings",
-  "adcp_version": "1.0.0", 
+ 
   "context_id": "ctx-123",
   // ... task-specific success data ...
   "errors": [

@@ -13,10 +13,6 @@
       "type": "string",
       "const": "rich_media"
     },
-    "category": {
-      "type": "string",
-      "const": "foundational"
-    },
     "name": {
       "type": "string",
       "default": "Premium Immersive Canvas"
@@ -24,10 +20,6 @@
     "publisher_coverage": {
       "type": "string",
       "const": "8+ major publishers"
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "assets_required": {
       "type": "array",
@@ -238,6 +230,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["format_id", "type", "category", "publisher_coverage", "is_3p_served", "assets_required"],
+  "required": ["format_id", "type", "publisher_coverage", "assets_required"],
   "additionalProperties": false
 }

@@ -13,9 +13,9 @@ function ReleaseBanner() {
     <div className={styles.releaseBanner}>
       <div className="container">
         <div className={styles.releaseBannerContent}>
-          <span className={styles.releaseTag}>v1.0.0 Released</span>
+          <span className={styles.releaseTag}>v2.0.0 Released</span>
           <span className={styles.releaseText}>
-            AdCP is now production-ready! Unified advertising workflows across all platforms.
+            Major update with structured dimensions and enhanced preview support!
           </span>
           <Link className={styles.releaseLink} to="/docs/intro">
             Read the docs →
@@ -34,36 +34,34 @@ function HomepageHeader() {
         <div className="row">
           <div className="col col--8 col--offset-2">
             <Heading as="h1" className={styles.heroTitle}>
-              Open Standard for Advertising Automation
+              AdCP: The Open Standard for Agentic Advertising
             </Heading>
             <p className={styles.heroSubtitle}>
-              Stop jumping between dozens of different advertising platform APIs.
-              <br />
-              <strong>AdCP unifies programmatic advertising workflows with a single, AI-powered protocol.</strong>
+              From brief to buy, helping agents advertise anywhere: from CTV to chat, from tiny blog to the World Cup.
             </p>
             <div className={styles.heroPoints}>
               <div className={styles.point}>
-                <div className={styles.pointIcon}>🔌</div>
+                <div className={styles.pointIcon}>🎯</div>
                 <div className={styles.pointText}>
-                  <strong>Unified Advertising API</strong>
+                  <strong>Built for outcomes</strong>
                   <br />
-                  Connect once, automate everywhere
+                  Buy the way you want to grow
                 </div>
               </div>
               <div className={styles.point}>
-                <div className={styles.pointIcon}>💬</div>
+                <div className={styles.pointIcon}>🤖</div>
                 <div className={styles.pointText}>
-                  <strong>AI-Powered Workflows</strong>
+                  <strong>Built for agents</strong>
                   <br />
-                  Built on Model Context Protocol (MCP)
+                  Supports MCP and A2A protocols
                 </div>
               </div>
               <div className={styles.point}>
-                <div className={styles.pointIcon}>🔓</div>
+                <div className={styles.pointIcon}>🌍</div>
                 <div className={styles.pointText}>
-                  <strong>Open Advertising Standard</strong>
+                  <strong>Built for everyone</strong>
                   <br />
-                  No vendor lock-in, complete flexibility
+                  A diverse ecosystem of tech and content
                 </div>
               </div>
             </div>
@@ -230,7 +228,7 @@ function KeyFeatures() {
               Everything you need, production-ready
             </Heading>
             <p className={styles.sectionSubtitle}>
-              AdCP v1.0.0 includes a complete suite of capabilities for modern advertising workflows.
+              AdCP v2.0.0 includes a complete suite of capabilities for modern advertising workflows.
             </p>
 
             <div className={styles.featureGrid}>
@@ -427,6 +425,72 @@ function GetStarted() {
   );
 }
 
+function FoundingMembers() {
+  const members = [
+    { name: 'Optable', logo: '/img/members/optable.png' },
+    { name: 'PubMatic', logo: '/img/members/pubmatic.png' },
+    { name: 'Scope3', logo: '/img/members/scope3-bright.png' },
+    { name: 'Swivel', logo: '/img/members/swivel.png' },
+    { name: 'Triton Digital', logo: '/img/members/triton-digital.png' },
+    { name: 'Yahoo', logo: '/img/members/yahoo-purple.png' },
+  ];
+
+  return (
+    <section className={styles.membersSection}>
+      <div className="container">
+        <div className="row">
+          <div className="col col--10 col--offset-1 text--center">
+            <Heading as="h2" className={styles.sectionTitle}>
+              Founding Members
+            </Heading>
+            <p className={styles.sectionSubtitle}>
+              AdCP is supported by leading advertising technology companies committed to open standards
+            </p>
+            <div className={styles.memberGrid}>
+              {members.map((member, idx) => (
+                <div key={idx} className={styles.memberLogo}>
+                  <img src={member.logo} alt={member.name} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LaunchMembers() {
+  const members = [
+    'Accuweather', 'Adgent', 'Bidcliq', 'Butler/Till', 'Classify', 'HYPD',
+    'Kargo', 'Kiln', 'LG Ad Solutions', 'Locala', 'Magnite', 'Media.net',
+    'MiQ', 'Nativo', 'Newton Research', 'OpenAds', 'Raptive', 'Samba TV',
+    'Scribd', 'The Product Counsel', 'The Weather Company'
+  ];
+
+  return (
+    <section className={styles.launchMembersSection}>
+      <div className="container">
+        <div className="row">
+          <div className="col col--10 col--offset-1 text--center">
+            <Heading as="h2" className={styles.sectionTitle}>
+              Launch Members
+            </Heading>
+            <p className={styles.sectionSubtitle}>
+              AdCP is proud to welcome these launch members to the ecosystem
+            </p>
+            <div className={styles.launchMemberList}>
+              {members.map((member, idx) => (
+                <span key={idx} className={styles.launchMember}>{member}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CommunityAndSupport() {
   return (
     <section className={styles.communitySection}>
@@ -437,34 +501,34 @@ function CommunityAndSupport() {
               Join the conversation
             </Heading>
             <p className={styles.communityDescription}>
-              AdCP is an open standard developed in collaboration with the advertising 
+              AdCP is an open standard developed in collaboration with the advertising
               community. We're building this together, and your input matters.
             </p>
-            
+
             <div className={styles.communityFeatures}>
               <div className={styles.communityFeature}>
                 <h3>Open Development</h3>
                 <p>
-                  All development happens in the open on GitHub. 
+                  All development happens in the open on GitHub.
                   Watch progress, submit issues, and contribute code.
                 </p>
               </div>
               <div className={styles.communityFeature}>
                 <h3>Working Group</h3>
                 <p>
-                  Join monthly meetings to discuss protocol evolution, 
+                  Join monthly meetings to discuss protocol evolution,
                   implementation challenges, and future directions.
                 </p>
               </div>
               <div className={styles.communityFeature}>
                 <h3>Implementation Support</h3>
                 <p>
-                  Get help implementing AdCP for your platform or 
+                  Get help implementing AdCP for your platform or
                   building tools that use the protocol.
                 </p>
               </div>
             </div>
-            
+
             <div className={styles.communityActions}>
               <Link className="button button--primary button--lg margin-right--md" to="https://github.com/adcontextprotocol/adcp">
                 Star on GitHub
@@ -551,6 +615,8 @@ export default function Home(): ReactNode {
         <main>
           <ReleaseBanner />
           <TheProblem />
+          <FoundingMembers />
+          <LaunchMembers />
           <TheSolution />
           <KeyFeatures />
           <HowItWorks />

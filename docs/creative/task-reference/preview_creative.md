@@ -22,7 +22,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/abc123",
@@ -59,7 +58,7 @@ To test multiple scenarios, provide an `inputs` array - you'll get one preview p
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `format_id` | string | Yes | Format identifier for rendering |
+| `format_id` | FormatID | Yes | Format identifier for rendering (structured object with agent_url and id) |
 | `creative_manifest` | object | Yes | Complete creative manifest with all required assets (brand_manifest should be included in the manifest for dynamic creatives) |
 | `inputs` | array | No | Array of input sets for generating multiple preview variants |
 | `template_id` | string | No | Specific template for custom format rendering |
@@ -70,7 +69,10 @@ The creative manifest must include all assets required by the format. See [Creat
 
 ```typescript
 {
-  format_id: string;           // Must match format_id parameter
+  format_id: {                 // Must match format_id parameter
+    agent_url: string;         // Creative agent URL
+    id: string;                // Format identifier
+  };
   assets: {
     [asset_role: string]: {    // Asset role from format spec (e.g., 'hero_image', 'logo')
       asset_type: string;      // Type: image, video, audio, vast_tag, text, url, etc.
@@ -118,7 +120,6 @@ The `inputs` array allows you to request multiple preview variants in a single c
 
 ```json
 {
-  "adcp_version": "string",
   "previews": "array",
   "interactive_url": "string",
   "expires_at": "string"
@@ -135,37 +136,53 @@ The `inputs` array allows you to request multiple preview variants in a single c
 
 ```typescript
 {
-  preview_url: string;           // URL to HTML page - can be embedded in iframe
+  preview_id: string;            // Unique identifier for this preview variant
+  renders: [{                    // Array of rendered pieces (most formats have one)
+    render_id: string;           // Unique identifier for this rendered piece
+    preview_url: string;         // URL to HTML page - can be embedded in iframe
+    role: string;                // Semantic role: "primary", "companion", or descriptive custom string
+    dimensions?: {               // Dimensions for this rendered piece (enables iframe sizing)
+      width: number;             // Width in pixels
+      height: number;            // Height in pixels
+    };
+    embedding?: {                // OPTIONAL: Security/embedding metadata
+      recommended_sandbox?: string;  // e.g., "allow-scripts allow-same-origin"
+      requires_https?: boolean;
+      supports_fullscreen?: boolean;
+      csp_policy?: string;
+    };
+  }];
   input: {                       // Input parameters that generated this variant
     name: string;                // Variant name (from request or auto-generated)
     macros?: object;             // Macro values applied
     context_description?: string; // Context description applied
   };
-  hints?: {                      // OPTIONAL: Optimization hints (HTML still works without these)
-    primary_media_type?: "image" | "video" | "audio" | "interactive";
-    estimated_dimensions?: {width: number, height: number};
-    estimated_duration_seconds?: number;
-    contains_audio?: boolean;
-    requires_interaction?: boolean;
-  };
-  embedding?: {                  // OPTIONAL: Security/embedding metadata
-    recommended_sandbox?: string;  // e.g., "allow-scripts allow-same-origin"
-    requires_https?: boolean;
-    supports_fullscreen?: boolean;
-    csp_policy?: string;
-  };
 }
 ```
 
 **Key Design Points:**
+- Each preview variant can have **multiple rendered pieces** (for companion ads, multi-placement formats, adaptive formats)
+- Most formats render as a single piece - the `renders` array will have one item
 - Every `preview_url` returns an **HTML page** that can be embedded in an `<iframe>`
 - The HTML page handles all rendering complexity (video players, audio players, images, interactive content)
 - No client-side logic needed to determine how to render different preview types
 - The `input` field echoes back the parameters used, making it easy to understand what each preview shows
 
+**Multi-Piece Formats:**
+Some formats render as multiple pieces in a single preview variant:
+- **Companion ads**: Video + display banner (e.g., 30s video with 300x250 companion)
+- **Adaptive formats**: Desktop + mobile + tablet variants from one manifest
+- **Multi-placement**: Multiple sizes generated from a single creative
+- **DOOH installations**: Multiple screens in a venue
+
+Each rendered piece has:
+- **role**: Semantic role (`"primary"`, `"companion"`, or descriptive strings for device variants)
+- **dimensions**: Width and height for iframe sizing (especially important when multiple pieces have different sizes)
+- **preview_url**: Separate iframe URL for rendering this piece
+
 **Optional Fields:**
-- **hints**: Optimization hints for better UX (preload video codec, size iframe appropriately). Clients MUST support HTML regardless of hints.
 - **embedding**: Security metadata for safe iframe integration (sandbox policies, HTTPS requirements, CSP)
+- **dimensions**: May be omitted for responsive formats where dimensions vary by viewport
 
 ## Examples
 
@@ -227,7 +244,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/abc123/desktop",
@@ -323,7 +339,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/xyz789/nyc-mobile",
@@ -402,7 +417,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/audio123/weather",
@@ -487,7 +501,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/video456/us-ne",
@@ -572,7 +585,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/dynamic123/a",
@@ -606,7 +618,6 @@ Response showing optional hints and embedding metadata:
 
 ```json
 {
-  "adcp_version": "1.0.0",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/video789",

@@ -5,14 +5,6 @@
   "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
   "type": "object",
   "properties": {
-    "message": {
-      "type": "string",
-      "description": "Human-readable result message"
-    },
-    "context_id": {
-      "type": "string",
-      "description": "Context ID for tracking related operations"
-    },
     "query_summary": {
       "type": "object",
       "description": "Summary of the query that was executed",
@@ -107,9 +99,9 @@
             "type": "string",
             "description": "Human-readable creative name"
           },
-          "format": {
-            "type": "string",
-            "description": "Creative format type"
+          "format_id": {
+            "$ref": "/schemas/v1/core/format-id.json",
+            "description": "Format identifier specifying which format this creative conforms to"
           },
           "status": {
             "$ref": "/schemas/v1/enums/creative-status.json",
@@ -130,13 +122,26 @@
             "format": "uri",
             "description": "URL of the creative file (for hosted assets)"
           },
-          "snippet": {
-            "type": "string",
-            "description": "Third-party tag, VAST XML, or code snippet (for third-party assets)"
-          },
-          "snippet_type": {
-            "$ref": "/schemas/v1/enums/snippet-type.json",
-            "description": "Type of snippet content"
+          "assets": {
+            "type": "object",
+            "description": "Assets for this creative, keyed by asset_role",
+            "patternProperties": {
+              "^[a-zA-Z0-9_-]+$": {
+                "oneOf": [
+                  {"$ref": "/schemas/v1/core/assets/image-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/video-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/audio-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/text-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/html-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/css-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/javascript-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/vast-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/daast-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/promoted-offerings-asset.json"},
+                  {"$ref": "/schemas/v1/core/assets/url-asset.json"}
+                ]
+              }
+            }
           },
           "click_url": {
             "type": "string",
@@ -271,7 +276,7 @@
         "required": [
           "creative_id",
           "name",
-          "format",
+          "format_id",
           "status",
           "created_date",
           "updated_date"
@@ -320,7 +325,6 @@
     }
   },
   "required": [
-    "message",
     "query_summary",
     "pagination",
     "creatives"
@@ -330,8 +334,6 @@
     {
       "description": "Successful library query with results",
       "data": {
-        "message": "Found 3 creatives matching your query",
-        "context_id": "ctx_list_456789",
         "query_summary": {
           "total_matching": 3,
           "returned": 3,
@@ -355,12 +357,20 @@
           {
             "creative_id": "hero_video_30s",
             "name": "Brand Hero Video 30s",
-            "format": "video_30s_vast",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_30s_vast"
+            },
             "status": "approved",
             "created_date": "2024-01-15T10:30:00Z",
             "updated_date": "2024-01-15T14:20:00Z",
-            "snippet": "https://vast.example.com/video/123",
-            "snippet_type": "vast_url",
+            "assets": {
+              "vast_tag": {
+                "asset_type": "vast",
+                "url": "https://vast.example.com/video/123",
+                "vast_version": "4.1"
+              }
+            },
             "click_url": "https://example.com/products",
             "duration": 30000,
             "width": 1920,
@@ -387,7 +397,6 @@
     {
       "description": "Query with assignments and performance data",
       "data": {
-        "message": "Found 1 creative with performance data",
         "query_summary": {
           "total_matching": 1,
           "returned": 1
@@ -401,7 +410,10 @@
           {
             "creative_id": "hero_video_30s",
             "name": "Brand Hero Video 30s",
-            "format": "video_30s_vast",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_30s_vast"
+            },
             "status": "approved",
             "created_date": "2024-01-15T10:30:00Z",
             "updated_date": "2024-01-15T14:20:00Z",

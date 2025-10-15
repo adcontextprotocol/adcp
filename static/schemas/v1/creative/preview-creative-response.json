@@ -11,10 +11,70 @@
       "items": {
         "type": "object",
         "properties": {
-          "preview_url": {
+          "preview_id": {
             "type": "string",
-            "format": "uri",
-            "description": "URL to an HTML page that renders this preview variant. Can be embedded in an iframe. Handles all rendering complexity internally (images, video players, audio players, interactive content, etc.)."
+            "description": "Unique identifier for this preview variant"
+          },
+          "renders": {
+            "type": "array",
+            "description": "Array of rendered pieces for this preview variant. Most formats render as a single piece. Companion ad formats (video + banner), multi-placement formats, and adaptive formats render as multiple pieces.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "render_id": {
+                  "type": "string",
+                  "description": "Unique identifier for this rendered piece within the variant"
+                },
+                "preview_url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe. Handles all rendering complexity internally (images, video players, audio players, interactive content, etc.)."
+                },
+                "role": {
+                  "type": "string",
+                  "description": "Semantic role of this rendered piece. Use 'primary' for main content, 'companion' for associated banners, descriptive strings for device variants or custom roles."
+                },
+                "dimensions": {
+                  "type": "object",
+                  "description": "Dimensions for this rendered piece. For companion ads with multiple sizes, this specifies which size this piece is.",
+                  "properties": {
+                    "width": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "height": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": ["width", "height"]
+                },
+                "embedding": {
+                  "type": "object",
+                  "description": "Optional security and embedding metadata for safe iframe integration",
+                  "properties": {
+                    "recommended_sandbox": {
+                      "type": "string",
+                      "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+                    },
+                    "requires_https": {
+                      "type": "boolean",
+                      "description": "Whether this output requires HTTPS for secure embedding"
+                    },
+                    "supports_fullscreen": {
+                      "type": "boolean",
+                      "description": "Whether this output supports fullscreen mode"
+                    },
+                    "csp_policy": {
+                      "type": "string",
+                      "description": "Content Security Policy requirements for embedding"
+                    }
+                  }
+                }
+              },
+              "required": ["render_id", "preview_url", "role"]
+            },
+            "minItems": 1
           },
           "input": {
             "type": "object",
@@ -36,84 +96,10 @@
                 "description": "Context description applied to this variant"
               }
             },
-            "required": [
-              "name"
-            ]
-          },
-          "hints": {
-            "type": "object",
-            "description": "Optional optimization hints for clients. Clients MUST support HTML rendering regardless of hints. These enable optimizations like preloading appropriate codecs or sizing iframes.",
-            "properties": {
-              "primary_media_type": {
-                "type": "string",
-                "enum": [
-                  "image",
-                  "video",
-                  "audio",
-                  "interactive"
-                ],
-                "description": "Primary media type contained in the preview (for optimization only)"
-              },
-              "estimated_dimensions": {
-                "type": "object",
-                "description": "Estimated rendered dimensions (may differ from actual responsive rendering)",
-                "properties": {
-                  "width": {
-                    "type": "number",
-                    "minimum": 0
-                  },
-                  "height": {
-                    "type": "number",
-                    "minimum": 0
-                  }
-                },
-                "required": [
-                  "width",
-                  "height"
-                ]
-              },
-              "estimated_duration_seconds": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Estimated duration for video/audio content (for optimization only)"
-              },
-              "contains_audio": {
-                "type": "boolean",
-                "description": "Whether the preview contains audio (helps with autoplay policies)"
-              },
-              "requires_interaction": {
-                "type": "boolean",
-                "description": "Whether the preview requires user interaction to fully experience"
-              }
-            }
-          },
-          "embedding": {
-            "type": "object",
-            "description": "Optional security and embedding metadata for safe iframe integration",
-            "properties": {
-              "recommended_sandbox": {
-                "type": "string",
-                "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
-              },
-              "requires_https": {
-                "type": "boolean",
-                "description": "Whether the preview requires HTTPS for secure embedding"
-              },
-              "supports_fullscreen": {
-                "type": "boolean",
-                "description": "Whether the preview supports fullscreen mode"
-              },
-              "csp_policy": {
-                "type": "string",
-                "description": "Content Security Policy requirements for embedding"
-              }
-            }
+            "required": ["name"]
           }
         },
-        "required": [
-          "preview_url",
-          "input"
-        ]
+        "required": ["preview_id", "renders", "input"]
       },
       "minItems": 1
     },

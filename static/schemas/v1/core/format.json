@@ -25,7 +25,7 @@
     "preview_image": {
       "type": "string",
       "format": "uri",
-      "description": "Optional preview image URL for format browsing/discovery UI"
+      "description": "Optional preview image URL for format browsing/discovery UI. Should be 400x300px (4:3 aspect ratio) PNG or JPG. Used as thumbnail/card image in format browsers."
     },
     "example_url": {
       "type": "string",
@@ -37,19 +37,77 @@
       "description": "Media type of this format - determines rendering method and asset requirements",
       "enum": ["audio", "video", "display", "native", "dooh", "rich_media", "universal"]
     },
-    "category": {
-      "type": "string",
-      "description": "Format category",
-      "enum": ["standard", "custom"]
-    },
-    "is_standard": {
-      "type": "boolean",
-      "description": "Whether this format follows IAB specifications or AdCP standard format definitions (found in /schemas/v1/standard-formats/)"
-    },
-    "requirements": {
-      "type": "object",
-      "description": "Technical specifications for this format (e.g., dimensions, duration, file size limits, codecs)",
-      "additionalProperties": true
+    "renders": {
+      "type": "array",
+      "description": "Specification of rendered pieces for this format. Most formats produce a single render. Companion ad formats (video + banner), adaptive formats, and multi-placement formats produce multiple renders. Each render specifies its role and dimensions.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Semantic role of this rendered piece (e.g., 'primary', 'companion', 'mobile_variant')"
+          },
+          "dimensions": {
+            "type": "object",
+            "description": "Dimensions for this rendered piece",
+            "properties": {
+              "width": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Fixed width in specified units"
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Fixed height in specified units"
+              },
+              "min_width": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Minimum width for responsive renders"
+              },
+              "min_height": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Minimum height for responsive renders"
+              },
+              "max_width": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Maximum width for responsive renders"
+              },
+              "max_height": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Maximum height for responsive renders"
+              },
+              "responsive": {
+                "type": "object",
+                "description": "Indicates which dimensions are responsive/fluid",
+                "properties": {
+                  "width": {"type": "boolean"},
+                  "height": {"type": "boolean"}
+                },
+                "required": ["width", "height"]
+              },
+              "aspect_ratio": {
+                "type": "string",
+                "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1')",
+                "pattern": "^\\d+:\\d+$"
+              },
+              "unit": {
+                "type": "string",
+                "enum": ["px", "dp", "inches", "cm"],
+                "default": "px",
+                "description": "Unit of measurement for dimensions"
+              }
+            },
+            "required": ["unit"]
+          }
+        },
+        "required": ["role", "dimensions"]
+      },
+      "minItems": 1
     },
     "assets_required": {
       "type": "array",
@@ -150,10 +208,6 @@
       "type": "object",
       "description": "Delivery method specifications (e.g., hosted, VAST, third-party tags)",
       "additionalProperties": true
-    },
-    "accepts_3p_tags": {
-      "type": "boolean",
-      "description": "Whether this format can accept third-party served creative tags as an alternative to hosted assets"
     },
     "supported_macros": {
       "type": "array",

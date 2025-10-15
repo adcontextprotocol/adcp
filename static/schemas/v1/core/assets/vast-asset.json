@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/assets/vast-asset.json",
+  "title": "VAST Asset",
+  "description": "VAST (Video Ad Serving Template) tag for third-party video ad serving",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "vast"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL endpoint that returns VAST XML"
+    },
+    "content": {
+      "type": "string",
+      "description": "Inline VAST XML content"
+    },
+    "vast_version": {
+      "type": "string",
+      "enum": ["2.0", "3.0", "4.0", "4.1", "4.2"],
+      "description": "VAST specification version"
+    },
+    "vpaid_enabled": {
+      "type": "boolean",
+      "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
+    },
+    "max_wrapper_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "description": "Maximum allowed wrapper/redirect depth"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "Expected video duration in milliseconds (if known)",
+      "minimum": 0
+    },
+    "tracking_events": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "start",
+          "firstQuartile",
+          "midpoint",
+          "thirdQuartile",
+          "complete",
+          "impression",
+          "click",
+          "pause",
+          "resume",
+          "skip",
+          "mute",
+          "unmute",
+          "fullscreen",
+          "exitFullscreen",
+          "playerExpand",
+          "playerCollapse"
+        ]
+      },
+      "description": "Tracking events supported by this VAST tag"
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["asset_type", "url"],
+      "not": {
+        "required": ["content"]
+      }
+    },
+    {
+      "required": ["asset_type", "content"],
+      "not": {
+        "required": ["url"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

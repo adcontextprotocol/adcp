@@ -6,6 +6,7 @@
   "type": "string",
   "enum": [
     "cpm",
+    "vcpm",
     "cpc",
     "cpcv",
     "cpv",
@@ -14,6 +15,7 @@
   ],
   "enumDescriptions": {
     "cpm": "Cost Per Mille - cost per 1,000 impressions",
+    "vcpm": "Viewable Cost Per Mille - cost per 1,000 viewable impressions (MRC standard)",
     "cpc": "Cost Per Click - cost per click on the ad",
     "cpcv": "Cost Per Completed View - cost per 100% video/audio completion",
     "cpv": "Cost Per View - cost per view at publisher-defined threshold (e.g., 50% completion)",

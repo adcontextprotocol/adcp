@@ -9,7 +9,7 @@
       "type": "array",
       "description": "Return only these specific format IDs (e.g., from get_products response)",
       "items": {
-        "type": "string"
+        "$ref": "/schemas/v1/core/format-id.json"
       }
     },
     "type": {
@@ -40,19 +40,19 @@
     },
     "max_width": {
       "type": "integer",
-      "description": "Maximum width in pixels (inclusive). Returns formats with width <= this value. Omit for responsive/fluid formats."
+      "description": "Maximum width in pixels (inclusive). Returns formats where ANY render has width <= this value. For multi-render formats, matches if at least one render fits."
     },
     "max_height": {
       "type": "integer",
-      "description": "Maximum height in pixels (inclusive). Returns formats with height <= this value. Omit for responsive/fluid formats."
+      "description": "Maximum height in pixels (inclusive). Returns formats where ANY render has height <= this value. For multi-render formats, matches if at least one render fits."
     },
     "min_width": {
       "type": "integer",
-      "description": "Minimum width in pixels (inclusive). Returns formats with width >= this value."
+      "description": "Minimum width in pixels (inclusive). Returns formats where ANY render has width >= this value."
     },
     "min_height": {
       "type": "integer",
-      "description": "Minimum height in pixels (inclusive). Returns formats with height >= this value."
+      "description": "Minimum height in pixels (inclusive). Returns formats where ANY render has height >= this value."
     },
     "is_responsive": {
       "type": "boolean",

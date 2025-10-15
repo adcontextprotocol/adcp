@@ -25,8 +25,7 @@
       "type": "array",
       "description": "Array of format IDs that will be used for this package - must be supported by the product. If omitted, defaults to all formats supported by the product.",
       "items": {
-        "type": "string",
-        "description": "Format ID referencing a format from list_creative_formats"
+        "$ref": "/schemas/v1/core/format-id.json"
       },
       "minItems": 1
     },

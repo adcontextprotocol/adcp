@@ -86,6 +86,33 @@ By accepting the product, buyers agree to use the declared measurement provider 
 
 ---
 
+### vCPM (Viewable Cost Per Mille)
+**Cost per 1,000 viewable impressions** - Payment only for impressions meeting MRC viewability standard.
+
+**Use Cases**: Display, native, video advertising with viewability guarantee
+
+**Viewability Standard**: MRC (Media Rating Council) standard requires:
+- **Display ads**: 50% of pixels in-view for at least 1 continuous second
+- **Video ads**: 50% of pixels in-view for at least 2 continuous seconds
+
+**Example**:
+```json
+{
+  "pricing_option_id": "vcpm_usd_guaranteed",
+  "pricing_model": "vcpm",
+  "rate": 18.50,
+  "currency": "USD",
+  "is_fixed": true,
+  "min_spend_per_package": 5000
+}
+```
+
+**Billing**: Charged per 1,000 viewable impressions (impressions meeting MRC viewability threshold). Viewability is measured by the declared measurement provider.
+
+**Measurement Requirements**: Publishers should declare their viewability measurement provider in the product's `delivery_measurement` field. Common providers include IAS (Integral Ad Science), DoubleVerify, MOAT, and Google Active View.
+
+---
+
 ### CPCV (Cost Per Completed View)
 **Cost per 100% video/audio completion** - Payment only for fully completed views.
 
@@ -354,7 +381,16 @@ Currency is set at the **media buy level**, packages specify their pricing optio
   "packages": [{
     "buyer_ref": "pkg_ctv",
     "products": ["premium_ctv"],
-    "format_ids": ["video_15s", "video_30s"],
+    "format_ids": [
+      {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "video_15s"
+      },
+      {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "video_30s"
+      }
+    ],
     "budget": 50000,
     "pacing": "even",
     "pricing_option_id": "cpcv_usd_auction",
@@ -378,6 +414,7 @@ Different pricing models report different primary metrics:
 | Pricing Model | Primary Metric | Secondary Metrics |
 |---------------|----------------|-------------------|
 | CPM | impressions | clicks, ctr, spend |
+| vCPM | viewable_impressions | impressions, viewability_rate, spend |
 | CPCV | completed_views | impressions, completion_rate, spend |
 | CPV | views | impressions, quartile_data, spend |
 | CPP | grps | reach, frequency, spend |
@@ -393,7 +430,16 @@ A publisher offering Connected TV inventory with multiple pricing options:
   "product_id": "ctv_premium_sports",
   "name": "Premium Sports CTV",
   "description": "High-engagement sports content on CTV devices",
-  "format_ids": ["video_15s", "video_30s"],
+  "format_ids": [
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "video_15s"
+    },
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "video_30s"
+    }
+  ],
   "delivery_type": "guaranteed",
   "pricing_options": [
     {

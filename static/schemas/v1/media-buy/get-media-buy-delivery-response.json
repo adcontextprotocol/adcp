@@ -123,10 +123,6 @@
               "reporting_delayed"
             ]
           },
-          "message": {
-            "type": "string",
-            "description": "Human-readable message (typically present when status is reporting_delayed or failed)"
-          },
           "expected_availability": {
             "type": "string",
             "format": "date-time",

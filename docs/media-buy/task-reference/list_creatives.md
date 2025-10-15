@@ -27,7 +27,6 @@ The `list_creatives` task provides comprehensive search and filtering capabiliti
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `adcp_version` | string | No | AdCP schema version (default: "1.5.0") |
 | `filters` | object | No | Filter criteria for querying creatives |
 | `sort` | object | No | Sorting parameters |
 | `pagination` | object | No | Pagination controls |
@@ -103,12 +102,11 @@ The `list_creatives` task provides comprehensive search and filtering capabiliti
 }
 ```
 
-### Third-Party and Performance Filtering
+### Performance Filtering
 
 ```json
 {
   "filters": {
-    "snippet_type": "vast_url",           // Filter by snippet type
     "has_performance_data": true          // Only creatives with performance data
   }
 }
@@ -154,7 +152,6 @@ The response provides comprehensive creative data with optional enrichment:
 
 ```json
 {
-  "adcp_version": "1.5.0",
   "message": "Found 25 creatives matching your query",
   "context_id": "ctx_list_789012",
   "query_summary": {
@@ -172,8 +169,11 @@ The response provides comprehensive creative data with optional enrichment:
   "creatives": [
     {
       "creative_id": "hero_video_30s",
-      "name": "Brand Hero Video 30s", 
-      "format": "video_30s_vast",
+      "name": "Brand Hero Video 30s",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_30s_vast"
+      },
       "status": "approved",
       "created_date": "2024-01-15T10:30:00Z",
       "updated_date": "2024-01-15T14:20:00Z",
@@ -318,8 +318,7 @@ Find native ad templates with sub-assets:
 ```json
 {
   "filters": {
-    "formats": ["display_native_sponsored_post", "display_native_article"],
-    "snippet_type": "html"
+    "formats": ["display_native_sponsored_post", "display_native_article"]
   },
   "include_sub_assets": true,
   "sort": {
@@ -420,7 +419,7 @@ When filters contain invalid values, specific errors are returned:
 {
   "message": "Query validation failed",
   "errors": [
-    "Invalid snippet_type: 'invalid_type' must be one of [vast_xml, vast_url, html, javascript, iframe, daast_url]",
+    "Invalid format: 'invalid_format' does not match any known format",
     "Invalid sort field: 'invalid_field' must be one of [created_date, updated_date, name, status, assignment_count, performance_score]"
   ]
 }

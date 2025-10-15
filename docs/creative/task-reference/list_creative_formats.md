@@ -42,7 +42,6 @@ Buyers can recursively query creative_agents to discover all available formats. 
 
 ```json
 {
-  "adcp_version": "1.7.0",
   "agent_url": "https://creative.adcontextprotocol.org",
   "agent_name": "AdCP Reference Creative Agent",
   "capabilities": ["validation", "assembly", "preview"],
@@ -51,10 +50,7 @@ Buyers can recursively query creative_agents to discover all available formats. 
       "format_id": "video_standard_30s",
       "name": "Standard Video - 30 seconds",
       "type": "video",
-      "category": "standard",
-      "is_standard": true,
       "iab_specification": "https://iabtechlab.com/standards/video-ad-serving-template-vast/",
-      "accepts_3p_tags": true,
       "supported_macros": ["MEDIA_BUY_ID", "CREATIVE_ID", "CACHEBUSTER", "DEVICE_TYPE"],
       "requirements": {
         "duration_seconds": 30,
@@ -103,7 +99,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.7.0",
   "agent_url": "https://creative.adcontextprotocol.org",
   "agent_name": "AdCP Reference Creative Agent",
   "capabilities": ["validation", "assembly", "preview"],
@@ -113,7 +108,6 @@ Response:
       "agent_url": "https://creative.adcontextprotocol.org",
       "name": "Medium Rectangle",
       "type": "display",
-      "accepts_3p_tags": false,
       "assets_required": [
         {
           "asset_type": "image",
@@ -146,7 +140,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.7.0",
   "agent_url": "https://dco.example.com",
   "agent_name": "Custom DCO Platform",
   "capabilities": ["validation", "assembly", "generation", "preview"],
@@ -244,7 +237,6 @@ Response:
 
 ```json
 {
-  "adcp_version": "1.7.0",
   "agent_url": "https://creative.adcontextprotocol.org",
   "agent_name": "AdCP Reference Creative Agent",
   "capabilities": ["validation", "assembly", "generation", "preview"],
@@ -254,8 +246,6 @@ Response:
       "agent_url": "https://creative.adcontextprotocol.org",
       "name": "300x250 Generative Banner",
       "type": "display",
-      "category": "custom",
-      "accepts_3p_tags": false,
       "assets_required": [
         {
           "asset_type": "brand_manifest",
@@ -279,9 +269,6 @@ Response:
       "agent_url": "https://creative.adcontextprotocol.org",
       "name": "300x250 Standard Banner",
       "type": "display",
-      "category": "standard",
-      "is_standard": true,
-      "accepts_3p_tags": false,
       "assets_required": [
         {
           "asset_type": "image",

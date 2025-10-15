@@ -5,10 +5,6 @@
   "description": "Response payload for get_products task",
   "type": "object",
   "properties": {
-    "status": {
-      "$ref": "/schemas/v1/enums/task-status.json",
-      "description": "Current task state"
-    },
     "products": {
       "type": "array",
       "description": "Array of matching products",

@@ -134,7 +134,16 @@ A server can offer a general catalog, but it can also return:
   "product_id": "connected_tv_prime",
   "name": "Connected TV - Prime Time",
   "description": "Premium CTV inventory 8PM-11PM",
-  "format_ids": ["video_15s", "video_30s"],
+  "format_ids": [
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "video_15s"
+    },
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "video_30s"
+    }
+  ],
   "delivery_type": "guaranteed",
   "pricing_options": [
     {
@@ -179,7 +188,16 @@ A server can offer a general catalog, but it can also return:
   "product_id": "custom_abc123",
   "name": "Custom - Gaming Enthusiasts",
   "description": "Custom audience package for gaming campaign",
-  "format_ids": ["display_300x250", "display_728x90"],
+  "format_ids": [
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "display_300x250"
+    },
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "display_728x90"
+    }
+  ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
     {
@@ -221,9 +239,18 @@ A server can offer a general catalog, but it can also return:
   "name": "Pet Category Shoppers - Offsite Display & Video",
   "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days. Reach them across premium display and video inventory.",
   "format_ids": [
-    "display_300x250",
-    "display_728x90",
-    "video_15s"
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "display_300x250"
+    },
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "display_728x90"
+    },
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "video_15s"
+    }
   ],
   "delivery_type": "guaranteed",
   "pricing_options": [

@@ -13,10 +13,6 @@
       "type": "string",
       "const": "video"
     },
-    "category": {
-      "type": "string",
-      "const": "foundational"
-    },
     "name": {
       "type": "string",
       "default": "Universal 15-second Video"
@@ -28,10 +24,6 @@
     "publisher_coverage": {
       "type": "string",
       "const": "All publishers"
-    },
-    "is_3p_served": {
-      "type": "boolean",
-      "const": false
     },
     "delivery": {
       "type": "object",
@@ -142,6 +134,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["format_id", "type", "category", "duration", "publisher_coverage", "is_3p_served", "delivery", "assets_required"],
+  "required": ["format_id", "type", "duration", "publisher_coverage", "delivery", "assets_required"],
   "additionalProperties": false
 }
