@@ -23,7 +23,6 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `packages` | Package[] | Yes | Array of package configurations (see Package Object below) |
 | `brand_manifest` | BrandManifestRef | Yes | Brand information manifest serving as the namespace and identity for this media buy. Provides brand context, assets, and product catalog. Can be provided as an inline object or URL reference to a hosted manifest. Can be cached and reused across multiple requests. See [Brand Manifest](../../creative/brand-manifest) for details. |
 | `promoted_products` | PromotedProducts | No | Products or offerings being promoted in this media buy. Useful for campaign-level reporting, policy compliance, and publisher understanding of what's being advertised. Selects from brand manifest's product catalog using SKUs, tags, categories, or natural language queries. |
-| `promoted_offering` | string | No | **DEPRECATED**: Use `brand_manifest` with `promoted_products` instead. Legacy field for describing what is being promoted. |
 | `po_number` | string | No | Purchase order number for tracking |
 | `start_time` | string | Yes | Campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
 | `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
@@ -35,15 +34,12 @@ Create a media buy from selected packages. This task handles the complete workfl
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this package |
-| `product_id` | string | Yes* | Product ID for this package (recommended - use instead of deprecated `products`) |
-| `products` | string[] | Yes* | **DEPRECATED**: Use `product_id` instead. Array of product IDs - only first product will be used |
+| `product_id` | string | Yes | Product ID for this package |
 | `format_ids` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by the product |
 | `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
 | `creative_ids` | string[] | No | Creative IDs to assign to this package at creation time (references existing library creatives) |
 | `creatives` | CreativeAsset[] | No | Full creative objects to upload and assign to this package at creation time (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives. Max 100 per package. |
-
-\* Either `product_id` or `products` is required. Use `product_id` for new implementations.
 
 ### Targeting Overlay Object
 
@@ -139,7 +135,16 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       {
         "buyer_ref": "nike_ctv_sports_package",
         "product_id": "ctv_sports_premium",
-        "format_ids": ["video_standard_30s", "video_standard_15s"],
+        "format_ids": [
+          {
+            "agent_url": "https://creatives.adcontextprotocol.org",
+            "id": "video_standard_30s"
+          },
+          {
+            "agent_url": "https://creatives.adcontextprotocol.org",
+            "id": "video_standard_15s"
+          }
+        ],
         "budget": {
           "total": 60000,
           "currency": "USD",
@@ -155,7 +160,12 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       {
         "buyer_ref": "nike_audio_drive_package",
         "product_id": "audio_drive_time",
-        "format_ids": ["audio_standard_30s"],
+        "format_ids": [
+          {
+            "agent_url": "https://creatives.adcontextprotocol.org",
+            "id": "audio_standard_30s"
+          }
+        ],
         "budget": {
           "total": 40000,
           "currency": "USD",
@@ -281,7 +291,16 @@ await a2a.send({
               {
                 "buyer_ref": "nike_ctv_sports_package",
                 "product_id": "ctv_sports_premium",
-                "format_ids": ["video_standard_30s", "video_standard_15s"],
+                "format_ids": [
+                  {
+                    "agent_url": "https://creatives.adcontextprotocol.org",
+                    "id": "video_standard_30s"
+                  },
+                  {
+                    "agent_url": "https://creatives.adcontextprotocol.org",
+                    "id": "video_standard_15s"
+                  }
+                ],
                 "budget": {
                   "total": 60000,
                   "currency": "USD",
@@ -297,7 +316,12 @@ await a2a.send({
               {
                 "buyer_ref": "nike_audio_drive_package",
                 "product_id": "audio_drive_time",
-                "format_ids": ["audio_standard_30s"],
+                "format_ids": [
+                  {
+                    "agent_url": "https://creatives.adcontextprotocol.org",
+                    "id": "audio_standard_30s"
+                  }
+                ],
                 "budget": {
                   "total": 40000,
                   "currency": "USD",
@@ -614,7 +638,12 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     {
       "buyer_ref": "nike_ctv_package",
       "product_id": "ctv_sports_premium",
-      "format_ids": ["video_standard_30s"],
+      "format_ids": [
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        }
+      ],
       "budget": 50000,
       "pricing_option_id": "cpm-fixed-sports",
       "creatives": [
@@ -641,7 +670,12 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     {
       "buyer_ref": "nike_display_package",
       "product_id": "display_premium",
-      "format_ids": ["premium_bespoke_display"],
+      "format_ids": [
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "premium_bespoke_display"
+        }
+      ],
       "budget": 30000,
       "pricing_option_id": "cpm-fixed-display",
       "creatives": [
@@ -694,7 +728,12 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     {
       "buyer_ref": "purina_ctv_package",
       "product_id": "ctv_prime_time",
-      "format_ids": ["video_standard_30s"],
+      "format_ids": [
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        }
+      ],
       "budget": {
         "total": 30000,
         "currency": "USD",
@@ -713,7 +752,12 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     {
       "buyer_ref": "purina_audio_package",
       "product_id": "audio_drive_time",
-      "format_ids": ["audio_standard_30s"],
+      "format_ids": [
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "audio_standard_30s"
+        }
+      ],
       "budget": {
         "total": 20000,
         "currency": "USD"
@@ -744,7 +788,16 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     {
       "buyer_ref": "purina_albertsons_conquest",
       "product_id": "albertsons_competitive_conquest",
-      "format_ids": ["display_300x250", "display_728x90"],
+      "format_ids": [
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "display_300x250"
+        },
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "display_728x90"
+        }
+      ],
       "budget": {
         "total": 75000,
         "currency": "USD",
@@ -1135,10 +1188,9 @@ If validation fails, return an error:
 
 - A media buy represents a complete advertising campaign with one or more packages
 - Each package is based on a single product with specific targeting, budget allocation, and format requirements
-- **Deprecation Notice**: The `products` array field is deprecated. Use `product_id` instead. If `products` is provided, only the first product will be used. This change reflects how ad servers work - each package (line item) targets a single product.
 - **Format specification is required** for each package - this enables placeholder creation and validation
 - Both media buys and packages have `buyer_ref` fields for the buyer's reference tracking
-- The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted (see [Brief Expectations](../product-discovery/brief-expectations) for guidance)
+- The `brand_manifest` field is required and provides brand identity, context, and product catalog (see [Brand Manifest](../../creative/brand-manifest) for guidance)
 - Publishers will validate the promoted offering against their policies before creating the media buy
 - Package-level targeting overlay applies additional criteria on top of product-level targeting
 - The total budget is distributed across packages based on their individual `budget` settings (or proportionally if not specified)

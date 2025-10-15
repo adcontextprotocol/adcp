@@ -381,7 +381,16 @@ Currency is set at the **media buy level**, packages specify their pricing optio
   "packages": [{
     "buyer_ref": "pkg_ctv",
     "products": ["premium_ctv"],
-    "format_ids": ["video_15s", "video_30s"],
+    "format_ids": [
+      {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "video_15s"
+      },
+      {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "video_30s"
+      }
+    ],
     "budget": 50000,
     "pacing": "even",
     "pricing_option_id": "cpcv_usd_auction",
@@ -421,7 +430,16 @@ A publisher offering Connected TV inventory with multiple pricing options:
   "product_id": "ctv_premium_sports",
   "name": "Premium Sports CTV",
   "description": "High-engagement sports content on CTV devices",
-  "format_ids": ["video_15s", "video_30s"],
+  "format_ids": [
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "video_15s"
+    },
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "video_30s"
+    }
+  ],
   "delivery_type": "guaranteed",
   "pricing_options": [
     {
@@ -475,33 +493,6 @@ A buyer could choose CPP pricing if they're planning TV buys, CPCV if optimizing
 3. **Set realistic budgets** - Account for minimum spend requirements
 4. **Align goals with pricing** - Set delivery goals that match your pricing model
 5. **Monitor relevant metrics** - Focus on the metrics that matter for your pricing model
-
-## Migration from CPM-Only
-
-For backward compatibility, products can still use the deprecated `is_fixed_price` and `cpm` fields. However, new implementations should use `pricing_options`.
-
-**Old Format** (deprecated):
-```json
-{
-  "product_id": "display_standard",
-  "is_fixed_price": true,
-  "cpm": 12.50
-}
-```
-
-**New Format**:
-```json
-{
-  "product_id": "display_standard",
-  "pricing_options": [{
-    "pricing_option_id": "cpm_usd_guaranteed",
-    "pricing_model": "cpm",
-    "rate": 12.50,
-    "currency": "USD",
-    "is_fixed": true
-  }]
-}
-```
 
 ## Related Documentation
 

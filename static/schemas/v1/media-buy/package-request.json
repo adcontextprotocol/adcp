@@ -11,22 +11,13 @@
     },
     "product_id": {
       "type": "string",
-      "description": "Product ID for this package (recommended - replaces deprecated products array)"
-    },
-    "products": {
-      "type": "array",
-      "description": "DEPRECATED: Use product_id instead. Array of product IDs - only first product will be used",
-      "deprecated": true,
-      "items": {
-        "type": "string"
-      }
+      "description": "Product ID for this package"
     },
     "format_ids": {
       "type": "array",
       "description": "Array of format IDs that will be used for this package - must be supported by the product. If omitted, defaults to all formats supported by the product.",
       "items": {
-        "type": "string",
-        "description": "Format ID referencing a format from list_creative_formats"
+        "$ref": "/schemas/v1/core/format-id.json"
       },
       "minItems": 1
     },
@@ -66,9 +57,6 @@
       "maxItems": 100
     }
   },
-  "anyOf": [
-    {"required": ["buyer_ref", "product_id", "budget", "pricing_option_id"]},
-    {"required": ["buyer_ref", "products", "budget", "pricing_option_id"]}
-  ],
+  "required": ["buyer_ref", "product_id", "budget", "pricing_option_id"],
   "additionalProperties": false
 }

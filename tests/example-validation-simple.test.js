@@ -124,7 +124,9 @@ async function runTests() {
   // Test request/response examples
   await validateExample(
     {
-      "promoted_offering": "Nike Air Max 2024",
+      "brand_manifest": {
+        "url": "https://brand.nike.com/manifest.json"
+      },
       "brief": "Premium video inventory"
     },
     '/schemas/v1/media-buy/get-products-request.json',
