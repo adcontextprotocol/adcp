@@ -30,7 +30,6 @@ function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
   return (
     <header className={clsx('hero', styles.heroBanner)}>
-      <ReleaseBanner />
       <div className="container">
         <div className="row">
           <div className="col col--8 col--offset-2">
@@ -550,6 +549,7 @@ export default function Home(): ReactNode {
         description="AdCP is an open protocol that unifies advertising platforms through a single interface, enabling natural language interactions and automated workflows.">
         <HomepageHeader />
         <main>
+          <ReleaseBanner />
           <TheProblem />
           <TheSolution />
           <KeyFeatures />
