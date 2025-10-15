@@ -37,7 +37,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this package |
 | `product_id` | string | Yes* | Product ID for this package (recommended - use instead of deprecated `products`) |
 | `products` | string[] | Yes* | **DEPRECATED**: Use `product_id` instead. Array of product IDs - only first product will be used |
-| `format_ids` | string[] | Yes | Array of format IDs that will be used for this package - must be supported by the product |
+| `format_ids` | FormatID[] | Yes | Array of structured format ID objects that will be used for this package - must be supported by the product |
 | `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
 | `creative_ids` | string[] | No | Creative IDs to assign to this package at creation time (references existing library creatives) |

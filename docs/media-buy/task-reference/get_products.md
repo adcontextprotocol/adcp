@@ -27,7 +27,7 @@ Discover available advertising products based on campaign requirements, using na
 | `delivery_type` | string | No | Filter by delivery type: `"guaranteed"` or `"non_guaranteed"` |
 | `is_fixed_price` | boolean | No | Filter for fixed price vs auction products |
 | `format_types` | string[] | No | Filter by format types (e.g., `["video", "display"]`) |
-| `format_ids` | string[] | No | Filter by specific format IDs (e.g., `["video_standard_30s"]`) |
+| `format_ids` | FormatID[] | No | Filter by specific structured format ID objects |
 | `standard_formats_only` | boolean | No | Only return products accepting IAB standard formats |
 | `min_exposures` | integer | No | Minimum exposures/impressions needed for measurement validity |
 ## Response (Message)
