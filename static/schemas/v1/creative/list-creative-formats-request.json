@@ -9,7 +9,7 @@
       "type": "array",
       "description": "Return only these specific format IDs",
       "items": {
-        "type": "string"
+        "$ref": "/schemas/v1/core/format-id.json"
       }
     },
     "type": {

@@ -139,7 +139,16 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       {
         "buyer_ref": "nike_ctv_sports_package",
         "product_id": "ctv_sports_premium",
-        "format_ids": ["video_standard_30s", "video_standard_15s"],
+        "format_ids": [
+          {
+            "agent_url": "https://creatives.adcontextprotocol.org",
+            "id": "video_standard_30s"
+          },
+          {
+            "agent_url": "https://creatives.adcontextprotocol.org",
+            "id": "video_standard_15s"
+          }
+        ],
         "budget": {
           "total": 60000,
           "currency": "USD",
@@ -155,7 +164,12 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       {
         "buyer_ref": "nike_audio_drive_package",
         "product_id": "audio_drive_time",
-        "format_ids": ["audio_standard_30s"],
+        "format_ids": [
+          {
+            "agent_url": "https://creatives.adcontextprotocol.org",
+            "id": "audio_standard_30s"
+          }
+        ],
         "budget": {
           "total": 40000,
           "currency": "USD",
@@ -281,7 +295,16 @@ await a2a.send({
               {
                 "buyer_ref": "nike_ctv_sports_package",
                 "product_id": "ctv_sports_premium",
-                "format_ids": ["video_standard_30s", "video_standard_15s"],
+                "format_ids": [
+                  {
+                    "agent_url": "https://creatives.adcontextprotocol.org",
+                    "id": "video_standard_30s"
+                  },
+                  {
+                    "agent_url": "https://creatives.adcontextprotocol.org",
+                    "id": "video_standard_15s"
+                  }
+                ],
                 "budget": {
                   "total": 60000,
                   "currency": "USD",
@@ -297,7 +320,12 @@ await a2a.send({
               {
                 "buyer_ref": "nike_audio_drive_package",
                 "product_id": "audio_drive_time",
-                "format_ids": ["audio_standard_30s"],
+                "format_ids": [
+                  {
+                    "agent_url": "https://creatives.adcontextprotocol.org",
+                    "id": "audio_standard_30s"
+                  }
+                ],
                 "budget": {
                   "total": 40000,
                   "currency": "USD",
@@ -614,7 +642,12 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     {
       "buyer_ref": "nike_ctv_package",
       "product_id": "ctv_sports_premium",
-      "format_ids": ["video_standard_30s"],
+      "format_ids": [
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        }
+      ],
       "budget": 50000,
       "pricing_option_id": "cpm-fixed-sports",
       "creatives": [
@@ -641,7 +674,12 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     {
       "buyer_ref": "nike_display_package",
       "product_id": "display_premium",
-      "format_ids": ["premium_bespoke_display"],
+      "format_ids": [
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "premium_bespoke_display"
+        }
+      ],
       "budget": 30000,
       "pricing_option_id": "cpm-fixed-display",
       "creatives": [
@@ -694,7 +732,12 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     {
       "buyer_ref": "purina_ctv_package",
       "product_id": "ctv_prime_time",
-      "format_ids": ["video_standard_30s"],
+      "format_ids": [
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        }
+      ],
       "budget": {
         "total": 30000,
         "currency": "USD",
@@ -713,7 +756,12 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     {
       "buyer_ref": "purina_audio_package",
       "product_id": "audio_drive_time",
-      "format_ids": ["audio_standard_30s"],
+      "format_ids": [
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "audio_standard_30s"
+        }
+      ],
       "budget": {
         "total": 20000,
         "currency": "USD"
@@ -744,7 +792,16 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     {
       "buyer_ref": "purina_albertsons_conquest",
       "product_id": "albertsons_competitive_conquest",
-      "format_ids": ["display_300x250", "display_728x90"],
+      "format_ids": [
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "display_300x250"
+        },
+        {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "display_728x90"
+        }
+      ],
       "budget": {
         "total": 75000,
         "currency": "USD",

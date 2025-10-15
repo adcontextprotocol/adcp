@@ -317,7 +317,16 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
 {
   "tool": "list_creative_formats",
   "arguments": {
-    "format_ids": ["video_15s_hosted", "display_300x250"]
+    "format_ids": [
+      {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "video_15s_hosted"
+      },
+      {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "display_300x250"
+      }
+    ]
   }
 }
 ```

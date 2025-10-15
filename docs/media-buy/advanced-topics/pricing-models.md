@@ -381,7 +381,16 @@ Currency is set at the **media buy level**, packages specify their pricing optio
   "packages": [{
     "buyer_ref": "pkg_ctv",
     "products": ["premium_ctv"],
-    "format_ids": ["video_15s", "video_30s"],
+    "format_ids": [
+      {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "video_15s"
+      },
+      {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "video_30s"
+      }
+    ],
     "budget": 50000,
     "pacing": "even",
     "pricing_option_id": "cpcv_usd_auction",
@@ -421,7 +430,16 @@ A publisher offering Connected TV inventory with multiple pricing options:
   "product_id": "ctv_premium_sports",
   "name": "Premium Sports CTV",
   "description": "High-engagement sports content on CTV devices",
-  "format_ids": ["video_15s", "video_30s"],
+  "format_ids": [
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "video_15s"
+    },
+    {
+      "agent_url": "https://creatives.adcontextprotocol.org",
+      "id": "video_30s"
+    }
+  ],
   "delivery_type": "guaranteed",
   "pricing_options": [
     {
