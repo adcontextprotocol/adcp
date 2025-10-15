@@ -28,7 +28,7 @@ Buyers can recursively query creative_agents to discover all available formats. 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `format_ids` | string[] | No | Return only these specific format IDs (e.g., from `get_products` response) |
+| `format_ids` | FormatID[] | No | Return only these specific structured format ID objects (e.g., from `get_products` response) |
 | `type` | string | No | Filter by format type: `"audio"`, `"video"`, `"display"`, `"dooh"` (technical categories with distinct requirements) |
 | `asset_types` | string[] | No | Filter to formats that include these asset types. For third-party tags, search for `["html"]` or `["javascript"]`. E.g., `["image", "text"]` returns formats with images and text, `["javascript"]` returns formats accepting JavaScript tags. Values: `image`, `video`, `audio`, `text`, `html`, `javascript`, `url` |
 | `max_width` | integer | No | Maximum width in pixels (inclusive). Returns formats where **any render** has width ≤ this value. For multi-render formats (e.g., video with companion banner), matches if at least one render fits. |

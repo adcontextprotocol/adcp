@@ -6,8 +6,8 @@
   "type": "object",
   "properties": {
     "format_id": {
-      "type": "string",
-      "description": "Unique identifier for the format"
+      "$ref": "/schemas/v1/core/format-id.json",
+      "description": "Structured format identifier with agent URL and format name"
     },
     "agent_url": {
       "type": "string",
@@ -220,7 +220,7 @@
       "type": "array",
       "description": "For generative formats: array of format IDs that this format can generate. When a format accepts inputs like brand_manifest and message, this specifies what concrete output formats can be produced (e.g., a generative banner format might output standard image banner formats).",
       "items": {
-        "type": "string"
+        "$ref": "/schemas/v1/core/format-id.json"
       }
     }
   },
