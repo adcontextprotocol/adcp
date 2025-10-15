@@ -25,7 +25,7 @@
     "preview_image": {
       "type": "string",
       "format": "uri",
-      "description": "Optional preview image URL for format browsing/discovery UI"
+      "description": "Optional preview image URL for format browsing/discovery UI. Should be 400x300px (4:3 aspect ratio) PNG or JPG. Used as thumbnail/card image in format browsers."
     },
     "example_url": {
       "type": "string",

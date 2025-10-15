@@ -31,12 +31,22 @@ Buyers can recursively query creative_agents to discover all available formats. 
 | `format_ids` | string[] | No | Return only these specific format IDs (e.g., from `get_products` response) |
 | `type` | string | No | Filter by format type: `"audio"`, `"video"`, `"display"`, `"dooh"` (technical categories with distinct requirements) |
 | `asset_types` | string[] | No | Filter to formats that include these asset types. For third-party tags, search for `["html"]` or `["javascript"]`. E.g., `["image", "text"]` returns formats with images and text, `["javascript"]` returns formats accepting JavaScript tags. Values: `image`, `video`, `audio`, `text`, `html`, `javascript`, `url` |
-| `max_width` | integer | No | Maximum width in pixels (inclusive). Returns formats with width ≤ this value. |
-| `max_height` | integer | No | Maximum height in pixels (inclusive). Returns formats with height ≤ this value. |
-| `min_width` | integer | No | Minimum width in pixels (inclusive). Returns formats with width ≥ this value. |
-| `min_height` | integer | No | Minimum height in pixels (inclusive). Returns formats with height ≥ this value. |
+| `max_width` | integer | No | Maximum width in pixels (inclusive). Returns formats where **any render** has width ≤ this value. For multi-render formats (e.g., video with companion banner), matches if at least one render fits. |
+| `max_height` | integer | No | Maximum height in pixels (inclusive). Returns formats where **any render** has height ≤ this value. For multi-render formats, matches if at least one render fits. |
+| `min_width` | integer | No | Minimum width in pixels (inclusive). Returns formats where **any render** has width ≥ this value. |
+| `min_height` | integer | No | Minimum height in pixels (inclusive). Returns formats where **any render** has height ≥ this value. |
 | `is_responsive` | boolean | No | Filter for responsive formats that adapt to container size. When `true`, returns formats without fixed dimensions. |
 | `name_search` | string | No | Search for formats by name (case-insensitive partial match, e.g., `"mobile"` or `"vertical"`) |
+
+### Multi-Render Dimension Filtering
+
+Formats may produce multiple rendered pieces (e.g., video + companion banner, desktop + mobile variants). Dimension filters use **"any render fits"** logic:
+
+- **`max_width: 300, max_height: 250`** - Returns formats where AT LEAST ONE render is ≤ 300×250
+- **Use case**: "Find formats that can render into my 300×250 ad slot"
+- **Example**: A format with primary video (1920×1080) + companion banner (300×250) **matches** because the companion fits
+
+This ensures you discover all formats capable of rendering into your available placement dimensions, even if they also include larger companion pieces.
 
 ## Response Structure
 

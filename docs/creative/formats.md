@@ -82,6 +82,45 @@ The creative agent at that URL is the definitive source for:
 
 Buyers query the agent_url for full format details, validation, and preview capabilities.
 
+## Format Visual Presentation
+
+Formats include two optional fields for visual presentation in format browsing UIs:
+
+### Preview Image
+**Field**: `preview_image`
+**Purpose**: Thumbnail/card image for format browsing
+**Specifications**:
+- **Dimensions**: 400×300px (4:3 aspect ratio)
+- **Format**: PNG or JPG
+- **Use case**: Quick visual identification in format lists/grids
+
+### Example Showcase
+**Field**: `example_url`
+**Purpose**: Link to full interactive demo/showcase page
+**Content**: Publisher-controlled page showing:
+- Video walkthroughs of the format
+- Interactive demos
+- Multiple creative examples
+- Technical specifications
+- Best practices
+
+**Why this approach?**
+- Publishers control how to best showcase complex formats
+- No schema limitations on presentation methods
+- Handles video, interactive demos, DOOH installations, etc.
+- Structured card (preview_image) + deep link (example_url) pattern
+
+**Example**:
+```json
+{
+  "format_id": "homepage_takeover_premium",
+  "name": "Premium Homepage Takeover",
+  "description": "Full-screen immersive experience with video, carousel, and companion units",
+  "preview_image": "https://publisher.com/format-cards/homepage-takeover.png",
+  "example_url": "https://publisher.com/formats/homepage-takeover-demo"
+}
+```
+
 ## Referencing Formats
 
 **CRITICAL**: AdCP uses structured format ID objects everywhere to avoid parsing ambiguity and handle namespace collisions.
