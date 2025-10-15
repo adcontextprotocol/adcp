@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": major
 ---
 
-Initial release of AdCP v0.5.0 - The Advertising Context Protocol specification with comprehensive documentation, JSON schemas, and automated version management system.
+First stable release of AdCP v1.0.0 - Production-ready Advertising Context Protocol specification with comprehensive documentation, JSON schemas, and automated version management system.
