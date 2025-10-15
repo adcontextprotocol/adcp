@@ -17,9 +17,52 @@
       "type": "string",
       "default": "Medium Rectangle Banner"
     },
-    "dimensions": {
-      "type": "string",
-      "const": "300x250"
+    "renders": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "const": "primary"
+          },
+          "dimensions": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number",
+                "const": 300
+              },
+              "height": {
+                "type": "number",
+                "const": 250
+              },
+              "responsive": {
+                "type": "object",
+                "properties": {
+                  "width": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "height": {
+                    "type": "boolean",
+                    "const": false
+                  }
+                },
+                "required": ["width", "height"]
+              },
+              "unit": {
+                "type": "string",
+                "const": "px"
+              }
+            },
+            "required": ["width", "height", "responsive", "unit"]
+          }
+        },
+        "required": ["role", "dimensions"]
+      }
     },
     "assets_required": {
       "type": "array",
@@ -95,6 +138,6 @@
       ]
     }
   },
-  "required": ["format_id", "type", "dimensions", "assets_required"],
+  "required": ["format_id", "type", "renders", "assets_required"],
   "additionalProperties": false
 }
