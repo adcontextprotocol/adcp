@@ -16,36 +16,34 @@ function HomepageHeader() {
         <div className="row">
           <div className="col col--8 col--offset-2">
             <Heading as="h1" className={styles.heroTitle}>
-              Open Standard for Advertising Automation
+              AdCP: The Open Standard for Agentic Advertising
             </Heading>
             <p className={styles.heroSubtitle}>
-              Stop jumping between dozens of different advertising platform APIs.
-              <br />
-              <strong>AdCP unifies programmatic advertising workflows with a single, AI-powered protocol.</strong>
+              From brief to buy, helping agents advertise anywhere: from CTV to chat, from tiny blog to the World Cup.
             </p>
             <div className={styles.heroPoints}>
               <div className={styles.point}>
-                <div className={styles.pointIcon}>🔌</div>
+                <div className={styles.pointIcon}>🎯</div>
                 <div className={styles.pointText}>
-                  <strong>Unified Advertising API</strong>
+                  <strong>Built for outcomes</strong>
                   <br />
-                  Connect once, automate everywhere
+                  Buy the way you want to grow
                 </div>
               </div>
               <div className={styles.point}>
-                <div className={styles.pointIcon}>💬</div>
+                <div className={styles.pointIcon}>🤖</div>
                 <div className={styles.pointText}>
-                  <strong>AI-Powered Workflows</strong>
+                  <strong>Built for agents</strong>
                   <br />
-                  Built on Model Context Protocol (MCP)
+                  Supports MCP and A2A protocols
                 </div>
               </div>
               <div className={styles.point}>
-                <div className={styles.pointIcon}>🔓</div>
+                <div className={styles.pointIcon}>🌍</div>
                 <div className={styles.pointText}>
-                  <strong>Open Advertising Standard</strong>
+                  <strong>Built for everyone</strong>
                   <br />
-                  No vendor lock-in, complete flexibility
+                  A diverse ecosystem of tech and content
                 </div>
               </div>
             </div>
@@ -533,11 +531,11 @@ export default function Home(): ReactNode {
         <HomepageHeader />
         <main>
           <TheProblem />
+          <FoundingMembers />
+          <LaunchMembers />
           <TheSolution />
           <HowItWorks />
           <GetStarted />
-          <FoundingMembers />
-          <LaunchMembers />
           <CommunityAndSupport />
         </main>
       </Layout>
