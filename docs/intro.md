@@ -210,6 +210,59 @@ AdCP's task-first architecture means you can access the same functionality throu
 
 Learn more in the [Protocols section](./protocols/getting-started).
 
+## Founding Members
+
+AdCP is supported by leading advertising technology companies committed to open standards:
+
+<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '3rem', alignItems: 'center', justifyItems: 'center', margin: '3rem auto', maxWidth: '1200px'}}>
+  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'}}>
+    <img src="/img/members/optable.png" alt="Optable" style={{maxWidth: '180px', maxHeight: '80px', objectFit: 'contain'}} />
+  </div>
+  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'}}>
+    <img src="/img/members/pubmatic.png" alt="PubMatic" style={{maxWidth: '180px', maxHeight: '80px', objectFit: 'contain'}} />
+  </div>
+  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'}}>
+    <img src="/img/members/scope3-bright.png" alt="Scope3" style={{maxWidth: '180px', maxHeight: '80px', objectFit: 'contain'}} />
+  </div>
+  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'}}>
+    <img src="/img/members/swivel.png" alt="Swivel" style={{maxWidth: '180px', maxHeight: '80px', objectFit: 'contain'}} />
+  </div>
+  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'}}>
+    <img src="/img/members/triton-digital.png" alt="Triton Digital" style={{maxWidth: '180px', maxHeight: '80px', objectFit: 'contain'}} />
+  </div>
+  <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'}}>
+    <img src="/img/members/yahoo-purple.png" alt="Yahoo" style={{maxWidth: '180px', maxHeight: '80px', objectFit: 'contain'}} />
+  </div>
+</div>
+
+## Launch Members
+
+AdCP is proud to welcome these launch members to the ecosystem:
+
+<div style={{display: 'flex', flexWrap: 'wrap', gap: '1.5rem', justifyContent: 'center', maxWidth: '1000px', margin: '2rem auto'}}>
+  <span style={{padding: '0.5rem 1rem'}}>Accuweather</span>
+  <span style={{padding: '0.5rem 1rem'}}>Adgent</span>
+  <span style={{padding: '0.5rem 1rem'}}>Bidcliq</span>
+  <span style={{padding: '0.5rem 1rem'}}>Butler/Till</span>
+  <span style={{padding: '0.5rem 1rem'}}>Classify</span>
+  <span style={{padding: '0.5rem 1rem'}}>HYPD</span>
+  <span style={{padding: '0.5rem 1rem'}}>Kargo</span>
+  <span style={{padding: '0.5rem 1rem'}}>Kiln</span>
+  <span style={{padding: '0.5rem 1rem'}}>LG Ad Solutions</span>
+  <span style={{padding: '0.5rem 1rem'}}>Locala</span>
+  <span style={{padding: '0.5rem 1rem'}}>Magnite</span>
+  <span style={{padding: '0.5rem 1rem'}}>Media.net</span>
+  <span style={{padding: '0.5rem 1rem'}}>MiQ</span>
+  <span style={{padding: '0.5rem 1rem'}}>Nativo</span>
+  <span style={{padding: '0.5rem 1rem'}}>Newton Research</span>
+  <span style={{padding: '0.5rem 1rem'}}>OpenAds</span>
+  <span style={{padding: '0.5rem 1rem'}}>Raptive</span>
+  <span style={{padding: '0.5rem 1rem'}}>Samba TV</span>
+  <span style={{padding: '0.5rem 1rem'}}>Scribd</span>
+  <span style={{padding: '0.5rem 1rem'}}>The Product Counsel</span>
+  <span style={{padding: '0.5rem 1rem'}}>The Weather Company</span>
+</div>
+
 ## Next Steps
 
 - **Platform Providers**: Start with the [Signals Protocol Specification](./signals/specification)
