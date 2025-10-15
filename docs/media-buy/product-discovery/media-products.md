@@ -193,7 +193,7 @@ When creating a media buy, buyers can assign different creatives to different pl
 }
 ```
 
-See [Creative Assignment and Placement Targeting](../media-buys/index.md#creative-placement-targeting) for more details.
+See [Creative Assignment and Placement Targeting](../media-buys/index.md#creative-assignment-and-placement-targeting) for more details.
 
 ### Custom & Principal-Specific Products
 
