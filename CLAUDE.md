@@ -517,7 +517,7 @@ Through the standard formats implementation, we've learned key principles for sc
 
 4. **Better Field Naming**
    - `accepts_3p_tags` instead of `is_3p_served` (indicates optionality)
-   - `formats_to_provide` instead of `selected_formats` (clearer intent)
+   - `format_ids` instead of ambiguous or verbose alternatives (clear and consistent)
    - Field names should indicate purpose, not state
 
 ### Testing Considerations
