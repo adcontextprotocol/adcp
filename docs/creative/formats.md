@@ -190,6 +190,78 @@ Formats are JSON objects with the following key fields:
 - **type**: Category (video, display, audio, native, dooh, rich_media)
 - **assets_required**: Array of asset specifications
 - **asset_role**: Identifies asset purpose (hero_image, logo, cta_button, etc.)
+- **render_dimensions**: Structured dimensions for visual formats (display, dooh, native) - see below
+
+### Structured Rendering Dimensions
+
+Visual formats (display, dooh, native) include structured `render_dimensions` for proper preview rendering and format filtering:
+
+```json
+{
+  "format_id": "display_300x250",
+  "type": "display",
+  "render_dimensions": {
+    "width": 300,
+    "height": 250,
+    "responsive": {
+      "width": false,
+      "height": false
+    },
+    "unit": "px"
+  }
+}
+```
+
+**Dimension types:**
+
+**Fixed dimensions** (standard display ads):
+```json
+{
+  "width": 300,
+  "height": 250,
+  "responsive": {"width": false, "height": false},
+  "unit": "px"
+}
+```
+
+**Responsive width** (fluid banners):
+```json
+{
+  "min_width": 300,
+  "max_width": 970,
+  "height": 250,
+  "responsive": {"width": true, "height": false},
+  "unit": "px"
+}
+```
+
+**Aspect ratio constrained** (native formats):
+```json
+{
+  "aspect_ratio": "16:9",
+  "min_width": 300,
+  "responsive": {"width": true, "height": true},
+  "unit": "px"
+}
+```
+
+**Physical dimensions** (DOOH):
+```json
+{
+  "width": 48,
+  "height": 14,
+  "responsive": {"width": false, "height": false},
+  "unit": "inches"
+}
+```
+
+**Benefits of structured dimensions:**
+- No string parsing required
+- Schema-validated dimensions
+- Supports responsive and fixed formats equally
+- Enables proper preview rendering
+- Allows dimension-based filtering
+- Supports physical units for DOOH
 
 ## Format Categories
 

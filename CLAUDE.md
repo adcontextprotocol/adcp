@@ -339,6 +339,69 @@ For major version changes:
 
 **Legacy handling**: If supporting legacy clients sending strings, you MAY auto-upgrade during a deprecation period (max 6 months), but MUST log warnings and fail on unknown format strings. Recommended approach is strict rejection from day one.
 
+### Structured Rendering Dimensions
+
+**IMPORTANT**: Visual formats (display, dooh, native) now use structured `render_dimensions` instead of string-based dimensions.
+
+**Schema field** (`render_dimensions`):
+```json
+{
+  "width": 300,
+  "height": 250,
+  "responsive": {
+    "width": false,
+    "height": false
+  },
+  "unit": "px"
+}
+```
+
+**Why structured dimensions:**
+- Eliminates string parsing ("300x250" → structured object)
+- Schema-validated with proper typing
+- Supports responsive dimensions (min/max width/height)
+- Supports aspect ratio constraints
+- Enables physical units for DOOH (inches, cm)
+- Proper preview rendering without custom parsing
+
+**Migration from string dimensions:**
+- Old: `"dimensions": "300x250"` (string in requirements)
+- New: `"render_dimensions": {width: 300, height: 250, responsive: {width: false, height: false}, unit: "px"}`
+
+### Multi-Render Preview Support
+
+**IMPORTANT**: Preview responses now support multiple rendered pieces per variant (companion ads, multi-placement formats).
+
+**Schema structure** (`preview-creative-response.json`):
+```json
+{
+  "previews": [{
+    "preview_id": "variant_1",
+    "renders": [{
+      "render_id": "primary_video",
+      "preview_url": "https://...",
+      "role": "primary",
+      "dimensions": {"width": 1920, "height": 1080}
+    }, {
+      "render_id": "companion_banner",
+      "preview_url": "https://...",
+      "role": "companion",
+      "dimensions": {"width": 300, "height": 250}
+    }]
+  }]
+}
+```
+
+**Why multi-render previews:**
+- Companion ads (video + display banner)
+- Adaptive formats (desktop/mobile/tablet variants)
+- Multi-placement formats (multiple sizes from one creative)
+- DOOH installations (multiple screens)
+
+**Key insight**: All renders are from the SAME format (e.g., `video_with_companion_300x250`). The format specification defines multiple rendered pieces. Each render includes `dimensions` for iframe sizing.
+
+**Terminology**: Use "renders" not "outputs" to avoid confusion with `output_format_ids` in generative creative formats.
+
 ### Removed Format Fields
 
 **IMPORTANT**: The following fields have been removed from the format schema and should NOT be used:
