@@ -8,6 +8,24 @@ import SEO from '@site/src/components/SEO';
 
 import styles from './index.module.css';
 
+function ReleaseBanner() {
+  return (
+    <div className={styles.releaseBanner}>
+      <div className="container">
+        <div className={styles.releaseBannerContent}>
+          <span className={styles.releaseTag}>v2.0.0 Released</span>
+          <span className={styles.releaseText}>
+            Major update with structured dimensions and enhanced preview support!
+          </span>
+          <Link className={styles.releaseLink} to="/docs/intro">
+            Read the docs →
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
   return (
@@ -200,6 +218,71 @@ function TheSolution() {
   );
 }
 
+function KeyFeatures() {
+  return (
+    <section className={styles.featuresSection}>
+      <div className="container">
+        <div className="row">
+          <div className="col col--10 col--offset-1">
+            <Heading as="h2" className={styles.sectionTitle}>
+              Everything you need, production-ready
+            </Heading>
+            <p className={styles.sectionSubtitle}>
+              AdCP v2.0.0 includes a complete suite of capabilities for modern advertising workflows.
+            </p>
+
+            <div className={styles.featureGrid}>
+              <div className={styles.featureCard}>
+                <h3>🛒 Media Buy Protocol</h3>
+                <p>Complete campaign lifecycle management with 9 core tasks:</p>
+                <ul>
+                  <li><code>get_products</code> - Discover inventory with natural language</li>
+                  <li><code>create_media_buy</code> - Launch campaigns across platforms</li>
+                  <li><code>get_media_buy_delivery</code> - Real-time performance metrics</li>
+                  <li>Plus sync, update, feedback, and more</li>
+                </ul>
+              </div>
+
+              <div className={styles.featureCard}>
+                <h3>🎨 Creative Protocol</h3>
+                <p>AI-powered creative generation and management:</p>
+                <ul>
+                  <li><code>build_creative</code> - Generate creatives from briefs</li>
+                  <li><code>preview_creative</code> - Visual preview generation</li>
+                  <li><code>list_creative_formats</code> - Discover format specs</li>
+                  <li>Standard formats library included</li>
+                </ul>
+              </div>
+
+              <div className={styles.featureCard}>
+                <h3>📊 Signals Protocol</h3>
+                <p>First-party data integration:</p>
+                <ul>
+                  <li><code>get_signals</code> - Discover available signals</li>
+                  <li><code>activate_signal</code> - Activate for campaigns</li>
+                  <li>Privacy-first audience building</li>
+                  <li>Platform-agnostic data sharing</li>
+                </ul>
+              </div>
+
+              <div className={styles.featureCard}>
+                <h3>⚡ Protocol Features</h3>
+                <p>Enterprise-ready infrastructure:</p>
+                <ul>
+                  <li>MCP & A2A protocol support</li>
+                  <li>Async workflows with webhooks</li>
+                  <li>Human-in-the-loop approval</li>
+                  <li>JSON Schema validation</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function HowItWorks() {
   return (
     <section className={styles.howItWorksSection}>
@@ -210,7 +293,7 @@ function HowItWorks() {
               How AdCP works
             </Heading>
             <p className={styles.sectionSubtitle}>
-              Built on the Model Context Protocol (MCP), AdCP provides a unified interface 
+              Built on the Model Context Protocol (MCP), AdCP provides a unified interface
               for advertising operations across any platform.
             </p>
             
@@ -530,10 +613,12 @@ export default function Home(): ReactNode {
         description="AdCP is an open protocol that unifies advertising platforms through a single interface, enabling natural language interactions and automated workflows.">
         <HomepageHeader />
         <main>
+          <ReleaseBanner />
           <TheProblem />
           <FoundingMembers />
           <LaunchMembers />
           <TheSolution />
+          <KeyFeatures />
           <HowItWorks />
           <GetStarted />
           <CommunityAndSupport />
