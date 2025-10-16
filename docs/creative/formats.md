@@ -22,15 +22,16 @@ Pre-defined, industry-standard specifications provided by the **AdCP Reference C
 
 Standard formats include common IAB ad units (300x250, 728x90), standard video specs (15s, 30s pre-roll), audio formats, DOOH, and more. See the [Creative Channel Guides](./channels/video.md) for format documentation.
 
-**For sales agents:** See [Implementing Standard Format Support](../media-buy/capability-discovery/implementing-standard-formats.md) for guidance on referencing the reference creative agent. If your inventory accepts standard IAB formats, you **SHOULD** include `https://creative.adcontextprotocol.org` in your `list_creative_formats` response.
+**For sales agents:** Before creating custom format definitions, check the reference creative agent to see if your formats already exist. Most publishers support some standard formats and should reference `https://creative.adcontextprotocol.org`. See [Implementing Standard Format Support](../media-buy/capability-discovery/implementing-standard-formats.md) for detailed guidance.
 
 ### Custom Formats
-Publisher-specific formats for unique inventory:
-- **Unique**: Truly differentiated experiences
-- **Specialized**: Platform-specific capabilities
-- **Extended**: Often based on standard formats
-- **Documented**: Clear specifications required
-- **Powered by Creative Agents**: Publishers provide creative agents that understand and support their custom formats
+Publisher-specific formats for unique inventory that doesn't match standard specifications:
+- **Unique requirements**: Custom dimensions, special asset needs, or unique technical specs
+- **Specialized capabilities**: Platform-specific features not available in standard formats
+- **Premium experiences**: Differentiated ad products like takeovers, rich media, or immersive units
+- **Custom validation**: Publisher-specific creative review or assembly logic
+
+**When to create custom formats:** Only when you have truly unique requirements that aren't covered by standard formats. Most publishers will reference standard formats for common ad units (300x250, video pre-roll, etc.) and only define custom formats for premium or specialized inventory.
 
 ## Discovering Formats
 
