@@ -8,7 +8,7 @@
     "agent_url": {
       "type": "string",
       "format": "uri",
-      "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+      "description": "URL of the agent that defines this format (e.g., 'https://publisher.com/.well-known/adcp/sales')"
     },
     "id": {
       "type": "string",

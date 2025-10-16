@@ -80,7 +80,6 @@ const sidebars: SidebarsConfig = {
           label: 'Capability Discovery',
           items: [
             'media-buy/capability-discovery/index',
-            'media-buy/capability-discovery/implementing-standard-formats',
             'media-buy/capability-discovery/authorized-properties',
             'media-buy/capability-discovery/adagents',
           ],

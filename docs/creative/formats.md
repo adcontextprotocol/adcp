@@ -8,37 +8,25 @@ Creative formats define the structure, requirements, and delivery methods for ad
 
 For an overview of how formats, manifests, and creative agents work together, see the [Creative Protocol Overview](./index.md).
 
-## Standard vs Custom Formats
+## Creative Formats
 
-AdCP defines two categories of formats:
+Formats in AdCP are defined by publishers and creative agents. Each format specifies:
+- Required and optional assets
+- Technical requirements (dimensions, duration, file types)
+- Asset roles and purposes
+- Rendering instructions
 
-### Standard Formats
-Pre-defined, industry-standard specifications that work consistently across publishers:
-- **Simplified**: No platform-specific complexity
-- **Portable**: One creative works everywhere
-- **Validated**: Pre-tested specifications
-- **Discoverable**: Available via `list_creative_formats`
+Publishers provide format definitions through `list_creative_formats`. Formats can range from simple IAB standard sizes to complex multi-asset experiences:
+- **Simple formats**: Standard banner sizes, basic video specs
+- **Complex formats**: Rich media, multi-asset carousels, DOOH installations
+- **Generative formats**: AI-powered creative generation
+- **Third-party formats**: VAST, DAAST, HTML/JavaScript ad serving
 
 See the [Creative Channel Guides](./channels/video.md) for format documentation across video, display, audio, DOOH, and carousels.
-
-**For sales agents:** See [Implementing Standard Format Support](../media-buy/capability-discovery/implementing-standard-formats.md) for guidance on referencing the reference creative agent at `https://creative.adcontextprotocol.org`.
-
-### Custom Formats
-Publisher-specific formats for unique inventory:
-- **Unique**: Truly differentiated experiences
-- **Specialized**: Platform-specific capabilities
-- **Extended**: Often based on standard formats
-- **Documented**: Clear specifications required
-- **Powered by Creative Agents**: Publishers provide creative agents that understand and support their custom formats
 
 ## Discovering Formats
 
 Buyers discover available formats using the `list_creative_formats` task, which returns formats supported by a sales agent.
-
-**Formats can come from two sources:**
-
-1. **Directly from the sales agent** - Custom formats defined by the publisher
-2. **Referenced creative agents** - The sales agent points to other creative agents (like the reference agent) for additional format support
 
 **Example discovery response:**
 
@@ -46,31 +34,44 @@ Buyers discover available formats using the `list_creative_formats` task, which 
 {
   "formats": [
     {
-      "format_id": "homepage_takeover_2024",
-      "agent_url": "https://youragent.com",
+      "format_id": {
+        "agent_url": "https://youragent.com",
+        "id": "homepage_takeover_2024"
+      },
       "name": "Homepage Takeover",
-      "type": "rich_media"
+      "type": "rich_media",
+      "assets_required": [...]
+    },
+    {
+      "format_id": {
+        "agent_url": "https://youragent.com",
+        "id": "display_300x250"
+      },
+      "name": "Medium Rectangle",
+      "type": "display",
+      "render_dimensions": {
+        "width": 300,
+        "height": 250,
+        "responsive": {"width": false, "height": false},
+        "unit": "px"
+      },
+      "assets_required": [...]
     }
-  ],
-  "creative_agents": [
-    "https://creative.adcontextprotocol.org"
   ]
 }
 ```
 
-This tells buyers: "We support our custom homepage takeover format, PLUS all standard formats from the reference creative agent."
-
-**For sales agents implementing format support:** See [Implementing Standard Format Support](../media-buy/capability-discovery/implementing-standard-formats.md).
-
 ## Format Authority
 
-Each format includes an `agent_url` field pointing to its authoritative source:
+Each format includes an `agent_url` in its structured format_id, pointing to the authoritative source:
 
 ```json
 {
-  "format_id": "video_30s_hosted",
-  "agent_url": "https://creative.adcontextprotocol.org",
-  "name": "Standard 30-Second Video"
+  "format_id": {
+    "agent_url": "https://youragent.com",
+    "id": "video_30s_hosted"
+  },
+  "name": "30-Second Hosted Video"
 }
 ```
 
@@ -80,7 +81,7 @@ The creative agent at that URL is the definitive source for:
 - Preview generation
 - Format documentation
 
-Buyers query the agent_url for full format details, validation, and preview capabilities.
+Buyers use the agent_url from the format_id to query for full format details, validation, and preview capabilities.
 
 ## Format Visual Presentation
 
@@ -356,5 +357,4 @@ Some formats like carousels, slideshows, and stories use repeatable asset groups
 - [Creative Manifests](./creative-manifests.md) - Pairing assets with formats
 - [Asset Types](./asset-types.md) - Understanding asset specifications
 - [Channel Guides](./channels/video.md) - Detailed format documentation by media type
-- [Implementing Standard Format Support](../media-buy/capability-discovery/implementing-standard-formats.md) - For sales agents
 - [list_creative_formats Task](../media-buy/task-reference/list_creative_formats.md) - API reference for format discovery

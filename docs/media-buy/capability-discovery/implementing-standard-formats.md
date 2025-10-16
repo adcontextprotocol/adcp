@@ -4,7 +4,9 @@ title: Implementing Standard Format Support
 
 # Implementing Standard Format Support
 
-This guide is for **sales agents** implementing creative format support. Rather than requiring every sales agent to replicate IAB format definitions, AdCP provides a **reference creative agent** that centrally hosts standard formats.
+> **DEPRECATED**: This guide describes an approach that is no longer recommended. Standard formats are no longer part of the AdCP specification. Publishers should define and provide their own formats via `list_creative_formats`.
+
+This guide is for **sales agents** implementing creative format support. Rather than requiring every sales agent to replicate IAB format definitions, AdCP previously provided a **reference creative agent** that centrally hosted standard formats. This approach has been deprecated.
 
 ## The Reference Creative Agent
 
