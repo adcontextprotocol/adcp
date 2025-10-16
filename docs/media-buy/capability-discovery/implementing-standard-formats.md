@@ -10,7 +10,11 @@ This guide is for **sales agents** implementing creative format support. Rather 
 
 **URL:** `https://creative.adcontextprotocol.org`
 
-The reference creative agent provides authoritative definitions for industry-standard creative formats based on IAB specifications and common advertising practices. Sales agents can reference these formats instead of replicating them.
+**Status:** Production service - this is a real, working AdCP creative agent
+
+The reference creative agent provides authoritative definitions for industry-standard creative formats based on IAB specifications and common advertising practices. Sales agents **should** reference these formats instead of replicating them.
+
+**Key point:** Sales agents should include `https://creative.adcontextprotocol.org` in their `list_creative_formats` response to indicate support for all IAB standard formats. This is the recommended approach for supporting common banner sizes, standard video formats, and other widely-used creative specifications.
 
 ## Why Use Standard Formats?
 
@@ -26,9 +30,11 @@ The reference creative agent provides authoritative definitions for industry-sta
 
 ## How Sales Agents Reference Standard Formats
 
-When implementing `list_creative_formats`, sales agents can reference the standard formats by including the reference creative agent in their response:
+When implementing `list_creative_formats`, sales agents reference the standard formats by including the reference creative agent in their response.
 
-### Option 1: Reference Only Standard Formats
+**IMPORTANT:** This is not optional - if your inventory accepts standard IAB formats (like 300x250 banners or 30-second pre-roll video), you **SHOULD** include the reference creative agent URL in your response. This enables creative portability across the ecosystem.
+
+### Option 1: Reference Only Standard Formats (Recommended for Most Publishers)
 
 If you only support standard IAB formats with no custom requirements:
 
@@ -41,7 +47,7 @@ If you only support standard IAB formats with no custom requirements:
 }
 ```
 
-Buyers will query the reference agent to discover all standard formats you support.
+Buyers will query the reference agent to discover all standard formats you support. This is the recommended approach for most publishers who accept standard IAB ad units.
 
 ### Option 2: Custom + Standard Formats
 
