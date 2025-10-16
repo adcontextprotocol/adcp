@@ -1,0 +1,257 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/standard-formats/display/mobile_interstitial_320x480.json",
+  "title": "Mobile Interstitial (320x480)",
+  "description": "Full-screen mobile interstitial format for mobile app monetization",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "type": "string",
+      "const": "mobile_interstitial_320x480"
+    },
+    "type": {
+      "type": "string",
+      "const": "display"
+    },
+    "name": {
+      "type": "string",
+      "default": "Mobile Interstitial"
+    },
+    "is_standard": {
+      "type": "boolean",
+      "const": true
+    },
+    "iab_specification": {
+      "type": "string",
+      "const": "Mobile Interstitial"
+    },
+    "assets_required": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": [
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "interstitial_image"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "image"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "width": {
+              "type": "integer",
+              "const": 320
+            },
+            "height": {
+              "type": "integer",
+              "const": 480
+            },
+            "acceptable_formats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "jpg",
+                  "png",
+                  "webp"
+                ]
+              },
+              "const": [
+                "jpg",
+                "png",
+                "webp"
+              ]
+            },
+            "max_file_size_kb": {
+              "type": "number",
+              "const": 300
+            }
+          },
+          "required": [
+            "asset_id",
+            "asset_type",
+            "required",
+            "width",
+            "height",
+            "acceptable_formats",
+            "max_file_size_kb"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "clickthrough_url"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "url"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "url_type": {
+              "type": "string",
+              "const": "clickthrough"
+            },
+            "must_be_https": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "asset_id",
+            "asset_type",
+            "required",
+            "url_type",
+            "must_be_https"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "close_button"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "button"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "requirements": {
+              "type": "object",
+              "properties": {
+                "position": {
+                  "type": "string",
+                  "enum": [
+                    "top-left",
+                    "top-right"
+                  ],
+                  "default": "top-right"
+                },
+                "delay_seconds": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 5,
+                  "default": 0
+                }
+              }
+            }
+          },
+          "required": [
+            "asset_id",
+            "asset_type",
+            "required"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "technical_requirements": {
+      "type": "object",
+      "properties": {
+        "mraid_version": {
+          "type": "string",
+          "enum": [
+            "2.0",
+            "3.0"
+          ],
+          "default": "3.0"
+        },
+        "skippable_after": {
+          "type": "number",
+          "default": 5
+        },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "portrait",
+            "landscape",
+            "both"
+          ],
+          "default": "portrait"
+        }
+      }
+    },
+    "renders": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "const": "primary"
+          },
+          "dimensions": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number",
+                "const": 320
+              },
+              "height": {
+                "type": "number",
+                "const": 480
+              },
+              "responsive": {
+                "type": "object",
+                "properties": {
+                  "width": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "height": {
+                    "type": "boolean",
+                    "const": false
+                  }
+                },
+                "required": [
+                  "width",
+                  "height"
+                ]
+              },
+              "unit": {
+                "type": "string",
+                "const": "px"
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "responsive",
+              "unit"
+            ]
+          }
+        },
+        "required": [
+          "role",
+          "dimensions"
+        ]
+      }
+    }
+  },
+  "required": [
+    "format_id",
+    "type",
+    "renders",
+    "assets_required"
+  ],
+  "additionalProperties": false
+}

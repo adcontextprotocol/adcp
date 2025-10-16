@@ -1,0 +1,235 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/standard-formats/foundational/foundational_immersive_canvas.json",
+  "title": "Foundational Immersive Canvas",
+  "description": "Premium responsive canvas format adaptable across publishers",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "type": "string",
+      "const": "foundational_immersive_canvas"
+    },
+    "type": {
+      "type": "string",
+      "const": "rich_media"
+    },
+    "name": {
+      "type": "string",
+      "default": "Premium Immersive Canvas"
+    },
+    "publisher_coverage": {
+      "type": "string",
+      "const": "8+ major publishers"
+    },
+    "assets_required": {
+      "type": "array",
+      "minItems": 4,
+      "items": [
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "hero_image"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "image"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "width": {
+              "type": "integer",
+              "const": 1200
+            },
+            "height": {
+              "type": "integer",
+              "const": 627
+            },
+            "acceptable_formats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["jpg", "png", "webp"]
+              },
+              "const": ["jpg", "png", "webp"]
+            },
+            "max_file_size_kb": {
+              "type": "number",
+              "const": 500
+            }
+          },
+          "required": ["asset_id", "asset_type", "required", "width", "height", "acceptable_formats", "max_file_size_kb"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "brand_logo"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "image"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "width": {
+              "type": "integer",
+              "const": 250
+            },
+            "height": {
+              "type": "integer",
+              "const": 150
+            },
+            "acceptable_formats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["png", "svg"]
+              },
+              "const": ["png", "svg"]
+            },
+            "transparency": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": ["asset_id", "asset_type", "required", "width", "height", "acceptable_formats", "transparency"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "headline"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "text"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "text_type": {
+              "type": "string",
+              "const": "headline"
+            },
+            "max_length": {
+              "type": "integer",
+              "const": 80
+            }
+          },
+          "required": ["asset_id", "asset_type", "required", "text_type", "max_length"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "const": "description"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "text"
+            },
+            "required": {
+              "type": "boolean",
+              "const": true
+            },
+            "text_type": {
+              "type": "string",
+              "const": "description"
+            },
+            "max_length": {
+              "type": "integer",
+              "const": 200
+            }
+          },
+          "required": ["asset_id", "asset_type", "required", "text_type", "max_length"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "optional_assets": {
+      "type": "array",
+      "items": [
+        {
+          "type": "object",
+          "properties": {
+            "asset_id": {
+              "type": "string", 
+              "const": "video_content"
+            },
+            "asset_type": {
+              "type": "string",
+              "const": "video"
+            },
+            "required": {
+              "type": "boolean",
+              "const": false
+            },
+            "min_duration_seconds": {
+              "type": "number",
+              "const": 15
+            },
+            "max_duration_seconds": {
+              "type": "number",
+              "const": 30
+            },
+            "acceptable_formats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["mp4"]
+              },
+              "const": ["mp4"]
+            },
+            "acceptable_codecs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["h264"]
+              },
+              "const": ["h264"]
+            },
+            "max_file_size_mb": {
+              "type": "number",
+              "const": 50
+            }
+          },
+          "required": ["asset_id", "asset_type", "required", "min_duration_seconds", "max_duration_seconds", "acceptable_formats", "acceptable_codecs", "max_file_size_mb"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "extension_points": {
+      "type": "object",
+      "properties": {
+        "additional_placements": {
+          "type": "string",
+          "const": "Publishers may offer hero, mid-article, or newsletter placements"
+        },
+        "custom_interactions": {
+          "type": "string",
+          "const": "Publishers may add scroll effects, parallax, or custom animations"
+        },
+        "measurement_integrations": {
+          "type": "string",
+          "const": "Publishers may require specific viewability or engagement measurement"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["format_id", "type", "publisher_coverage", "assets_required"],
+  "additionalProperties": false
+}

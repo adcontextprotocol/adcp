@@ -11,6 +11,17 @@ Before you can effectively buy advertising through AdCP, you need to understand 
 
 ## What You'll Learn
 
+### [Implementing Standard Format Support](./implementing-standard-formats) 🎨
+Learn how sales agents can support standard creative formats through the reference creative agent. Learn how to:
+
+- Reference standard IAB formats without replicating them
+- Implement custom formats for unique inventory
+- Use format ID namespacing to prevent conflicts
+- Combine standard and custom format support
+- Validate format compatibility with advertising products
+- Leverage the Standard Creative Agent for standard formats
+- Work with publisher-specific creative agents for custom formats
+
 ### [Authorized Properties](./authorized-properties) 🔐
 Learn how AdCP prevents unauthorized resale and ensures sales agents are legitimate. Understand:
 

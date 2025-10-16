@@ -1,0 +1,279 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/standard-formats/display/display_dynamic_300x250.json",
+  "title": "Display Dynamic 300x250 (DCO)",
+  "description": "Medium rectangle banner with dynamic creative optimization via endpoint",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "type": "string",
+      "const": "display_dynamic_300x250"
+    },
+    "type": {
+      "type": "string",
+      "const": "display"
+    },
+    "name": {
+      "type": "string",
+      "default": "Dynamic Creative Banner 300x250"
+    },
+    "is_dynamic": {
+      "type": "boolean",
+      "const": true,
+      "description": "Indicates this format uses dynamic creative optimization"
+    },
+    "assets_required": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "const": "dynamic_creative"
+          },
+          "asset_type": {
+            "type": "string",
+            "const": "dynamic_endpoint"
+          },
+          "required": {
+            "type": "boolean",
+            "const": true
+          },
+          "endpoint_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Endpoint that returns creative HTML/JSON at render time"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST"
+            ],
+            "default": "POST"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "default": 200
+          },
+          "request_payload": {
+            "type": "object",
+            "properties": {
+              "includes_context": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "user_id",
+                    "placement_id",
+                    "geo",
+                    "device",
+                    "time",
+                    "weather",
+                    "audience_segments"
+                  ]
+                },
+                "default": [
+                  "placement_id",
+                  "geo",
+                  "device"
+                ]
+              }
+            }
+          },
+          "response_format": {
+            "type": "string",
+            "enum": [
+              "html",
+              "json"
+            ],
+            "default": "html"
+          },
+          "width": {
+            "type": "integer",
+            "const": 300
+          },
+          "height": {
+            "type": "integer",
+            "const": 250
+          }
+        },
+        "required": [
+          "asset_id",
+          "asset_type",
+          "required",
+          "endpoint_url",
+          "response_format",
+          "width",
+          "height"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "optional_assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "const": "fallback_image"
+          },
+          "asset_type": {
+            "type": "string",
+            "const": "image"
+          },
+          "required": {
+            "type": "boolean",
+            "const": false
+          },
+          "width": {
+            "type": "integer",
+            "const": 300
+          },
+          "height": {
+            "type": "integer",
+            "const": 250
+          },
+          "acceptable_formats": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "jpg",
+                "png",
+                "webp"
+              ]
+            },
+            "default": [
+              "jpg",
+              "png",
+              "webp"
+            ]
+          },
+          "max_file_size_kb": {
+            "type": "number",
+            "const": 200
+          },
+          "description": {
+            "type": "string",
+            "const": "Static fallback if dynamic endpoint fails"
+          }
+        }
+      }
+    },
+    "dco_requirements": {
+      "type": "object",
+      "properties": {
+        "personalization_signals": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "location",
+              "weather",
+              "time_of_day",
+              "device_type",
+              "audience_segment",
+              "browsing_history"
+            ]
+          },
+          "description": "Available signals for personalization"
+        },
+        "dynamic_elements": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "headline",
+              "description",
+              "image",
+              "cta_text",
+              "background_color",
+              "product_feed"
+            ]
+          },
+          "description": "Elements that can be dynamically changed"
+        },
+        "optimization_goal": {
+          "type": "string",
+          "enum": [
+            "ctr",
+            "conversion",
+            "engagement",
+            "brand_awareness"
+          ],
+          "default": "ctr"
+        }
+      }
+    },
+    "renders": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "const": "primary"
+          },
+          "dimensions": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "number",
+                "const": 300
+              },
+              "height": {
+                "type": "number",
+                "const": 250
+              },
+              "responsive": {
+                "type": "object",
+                "properties": {
+                  "width": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "height": {
+                    "type": "boolean",
+                    "const": false
+                  }
+                },
+                "required": [
+                  "width",
+                  "height"
+                ]
+              },
+              "unit": {
+                "type": "string",
+                "const": "px"
+              }
+            },
+            "required": [
+              "width",
+              "height",
+              "responsive",
+              "unit"
+            ]
+          }
+        },
+        "required": [
+          "role",
+          "dimensions"
+        ]
+      }
+    }
+  },
+  "required": [
+    "format_id",
+    "type",
+    "renders",
+    "is_dynamic",
+    "assets_required"
+  ],
+  "additionalProperties": false
+}
