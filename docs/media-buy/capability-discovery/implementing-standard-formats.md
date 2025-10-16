@@ -4,13 +4,36 @@ title: Implementing Standard Format Support
 
 # Implementing Standard Format Support
 
-This guide is for **sales agents** implementing creative format support. Rather than requiring every sales agent to replicate IAB format definitions, AdCP provides a **reference creative agent** that centrally hosts standard formats.
+This guide is for **sales agents** implementing creative format support. Before creating custom format definitions, you should check what formats are already available in the AdCP ecosystem.
+
+## Implementation Philosophy: Check First, Then Extend
+
+Most publishers support some combination of standard formats - whether IAB standard sizes, common video specs, or widely-used native formats. Rather than defining these yourself:
+
+1. **Check the reference creative agent** to see if your formats are already defined
+2. **Reference the formats** if they match your needs
+3. **Only create custom formats** when you have truly unique requirements
+
+This approach:
+- **Reduces maintenance burden** - No need to maintain format definitions that already exist
+- **Enables creative portability** - Buyers can reuse creatives across publishers
+- **Improves ecosystem consistency** - Everyone uses the same specifications for common formats
 
 ## The Reference Creative Agent
 
 **URL:** `https://creative.adcontextprotocol.org`
 
-The reference creative agent provides authoritative definitions for industry-standard creative formats based on IAB specifications and common advertising practices. Sales agents can reference these formats instead of replicating them.
+**Status:** Production service - this is a real, working AdCP creative agent
+
+The reference creative agent provides authoritative definitions for common creative formats used across the advertising industry:
+- IAB standard display sizes (300x250, 728x90, 320x50, etc.)
+- Standard video formats (15s, 30s, 60s pre-roll, etc.)
+- Audio formats for streaming and podcast insertion
+- DOOH formats for digital out-of-home
+- Native formats for responsive placements
+- Carousel formats for multi-product displays
+
+**Before creating custom formats,** query the reference creative agent to see if the formats you need already exist.
 
 ## Why Use Standard Formats?
 
@@ -24,13 +47,43 @@ The reference creative agent provides authoritative definitions for industry-sta
 - **Predictability**: Format requirements are consistent
 - **Faster launches**: No custom creative production per publisher
 
-## How Sales Agents Reference Standard Formats
+## Implementation Steps
 
-When implementing `list_creative_formats`, sales agents can reference the standard formats by including the reference creative agent in their response:
+### Step 1: Discover What Formats You Need
 
-### Option 1: Reference Only Standard Formats
+List the creative formats your inventory accepts. For example:
+- Display: 300x250, 728x90, 320x50
+- Video: 15-second pre-roll, 30-second pre-roll
+- Native: Responsive native format
 
-If you only support standard IAB formats with no custom requirements:
+### Step 2: Check the Reference Creative Agent
+
+Query `https://creative.adcontextprotocol.org` using `list_creative_formats` to see which of your formats already exist. The reference agent maintains formats for:
+- All IAB standard display sizes
+- Common video durations and aspect ratios
+- Standard audio formats
+- DOOH specifications
+- Native ad formats
+
+### Step 3: Decide What to Reference vs Define
+
+**Reference formats when:**
+- The format matches your technical requirements exactly
+- You accept creatives built to standard IAB specifications
+- You want creative portability across publishers
+
+**Define custom formats when:**
+- You have unique technical requirements (custom dimensions, special asset needs)
+- You need publisher-specific validation or assembly logic
+- You offer premium, differentiated ad experiences
+
+### Step 4: Implement Your Response
+
+When implementing `list_creative_formats`, include the reference creative agent if you support any standard formats:
+
+**Most Common: Reference Standard Formats**
+
+If your inventory accepts standard formats (which most publishers do):
 
 ```json
 {
@@ -41,19 +94,21 @@ If you only support standard IAB formats with no custom requirements:
 }
 ```
 
-Buyers will query the reference agent to discover all standard formats you support.
+This tells buyers: "We support all standard formats from the reference creative agent."
 
-### Option 2: Custom + Standard Formats
+**With Custom Formats: Combine Both**
 
-If you have custom formats plus standard format support:
+If you have unique formats PLUS standard format support:
 
 ```json
 {
   "formats": [
     {
-      "format_id": "publisher_takeover",
+      "format_id": {
+        "agent_url": "https://youragent.com",
+        "id": "homepage_takeover"
+      },
       "name": "Homepage Takeover",
-      "agent_url": "https://youragent.com",
       "type": "rich_media",
       "assets_required": [...]
     }
@@ -64,25 +119,29 @@ If you have custom formats plus standard format support:
 }
 ```
 
-### Option 3: Standard Formats with Customization
+This tells buyers: "We support our custom homepage takeover format, PLUS all standard formats from the reference creative agent."
 
-If you support standard formats but need to validate or customize delivery:
+**Only Custom Formats: Skip the Reference**
+
+If you ONLY support custom formats with truly unique requirements (rare):
 
 ```json
 {
   "formats": [
     {
-      "format_id": "display_300x250",
-      "name": "Medium Rectangle",
-      "agent_url": "https://youragent.com",
-      "type": "display",
+      "format_id": {
+        "agent_url": "https://youragent.com",
+        "id": "custom_holographic_display"
+      },
+      "name": "Holographic Display Format",
+      "type": "dooh",
       "assets_required": [...]
     }
   ]
 }
 ```
 
-Use your own `agent_url` when you need format-specific validation, preview, or assembly logic beyond the standard spec.
+**Note:** This is uncommon. Most publishers accept at least some standard formats (300x250, etc.) and should include the reference creative agent URL.
 
 ## What Standard Formats Are Included?
 
