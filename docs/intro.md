@@ -233,8 +233,8 @@ Learn more in the [Protocols section](./protocols/getting-started).
 - 📚 **Building an integration?** Choose [MCP](./protocols/mcp-guide) or [A2A](./protocols/a2a-guide) protocol guide
 
 ### By Role
-- **Platform Providers**: Start with the [Signals Protocol Specification](./signals/specification) or [Media Buy Protocol](./media-buy/index)
-- **Developers**: Review the [Protocol Comparison](./protocols/protocol-comparison) and [Task Reference](./media-buy/task-reference/index)
+- **Platform Providers**: Start with the [Signals Protocol Specification](./signals/specification) or [Media Buy Protocol](./media-buy/)
+- **Developers**: Review the [Protocol Comparison](./protocols/protocol-comparison) and [Task Reference](./media-buy/task-reference/)
 - **Everyone**: Join the [Slack Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
 
 ## Need Help?
