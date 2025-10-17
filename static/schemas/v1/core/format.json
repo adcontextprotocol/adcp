@@ -9,11 +9,6 @@
       "$ref": "/schemas/v1/core/format-id.json",
       "description": "Structured format identifier with agent URL and format name"
     },
-    "agent_url": {
-      "type": "string",
-      "format": "uri",
-      "description": "Base URL of the agent that provides this format (authoritative source). E.g., 'https://reference.adcp.org', 'https://dco.example.com'"
-    },
     "name": {
       "type": "string",
       "description": "Human-readable format name"

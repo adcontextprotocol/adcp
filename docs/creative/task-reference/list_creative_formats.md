@@ -111,7 +111,6 @@ Response:
         "agent_url": "https://creative.adcontextprotocol.org",
         "id": "display_300x250"
       },
-      "agent_url": "https://creative.adcontextprotocol.org",
       "name": "Medium Rectangle",
       "type": "display",
       "assets_required": [
@@ -155,7 +154,6 @@ Response:
         "agent_url": "https://dco.example.com",
         "id": "display_728x90_3p"
       },
-      "agent_url": "https://dco.example.com",
       "name": "Leaderboard - Third Party",
       "type": "display",
       "dimensions": "728x90",
@@ -251,8 +249,10 @@ Response:
   "capabilities": ["validation", "assembly", "generation", "preview"],
   "formats": [
     {
-      "format_id": "300x250_banner_generative",
-      "agent_url": "https://creative.adcontextprotocol.org",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "300x250_banner_generative"
+      },
       "name": "300x250 Generative Banner",
       "type": "display",
       "assets_required": [
@@ -274,8 +274,10 @@ Response:
       "description": "Accepts a brand manifest and message, generates a complete 300x250 banner creative"
     },
     {
-      "format_id": "300x250_banner_image",
-      "agent_url": "https://creative.adcontextprotocol.org",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "300x250_banner_image"
+      },
       "name": "300x250 Standard Banner",
       "type": "display",
       "assets_required": [

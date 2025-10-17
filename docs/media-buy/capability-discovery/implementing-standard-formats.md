@@ -196,7 +196,6 @@ The buyer tracks which URLs they've queried to avoid infinite loops.
         "agent_url": "https://youragent.com",
         "id": "native_feed_card"
       },
-      "agent_url": "https://youragent.com",
       "type": "native"
     }
   ]
@@ -212,9 +211,9 @@ The buyer tracks which URLs they've queried to avoid infinite loops.
 ```json
 {
   "formats": [
-    {"format_id": {"agent_url": "https://youragent.com", "id": "display_300x250"}, "agent_url": "https://youragent.com"},
-    {"format_id": {"agent_url": "https://youragent.com", "id": "display_728x90"}, "agent_url": "https://youragent.com"},
-    {"format_id": {"agent_url": "https://youragent.com", "id": "display_320x50"}, "agent_url": "https://youragent.com"},
+    {"format_id": {"agent_url": "https://youragent.com", "id": "display_300x250"}},
+    {"format_id": {"agent_url": "https://youragent.com", "id": "display_728x90"}},
+    {"format_id": {"agent_url": "https://youragent.com", "id": "display_320x50"}},
     // ... copying 50+ standard formats
   ]
 }
@@ -295,7 +294,6 @@ This ensures the domain in the namespace is a valid, discoverable agent that can
         "agent_url": "https://youragent.com",
         "id": "homepage_takeover"
       },
-      "agent_url": "https://youragent.com",
       "name": "Homepage Takeover",
       "type": "rich_media"
     }
@@ -317,8 +315,7 @@ This ensures the domain in the namespace is a valid, discoverable agent that can
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250"
-  },
-  "agent_url": "https://creative.adcontextprotocol.org"
+  }
 }
 ```
 
@@ -328,8 +325,7 @@ This ensures the domain in the namespace is a valid, discoverable agent that can
   "format_id": {
     "agent_url": "https://youragent.com",
     "id": "custom_format"
-  },
-  "agent_url": "https://youragent.com"
+  }
 }
 ```
 
@@ -339,8 +335,7 @@ This ensures the domain in the namespace is a valid, discoverable agent that can
   "format_id": {
     "agent_url": "https://dco.example",
     "id": "dynamic_creative_v2"
-  },
-  "agent_url": "https://dco.example"
+  }
 }
 ```
 
@@ -355,15 +350,13 @@ With namespaced format_ids, conflicts **cannot occur** - each domain controls it
   "format_id": {
     "agent_url": "https://publisher-a.com",
     "id": "video_30s"
-  },
-  "agent_url": "https://publisher-a.com"
+  }
 }
 {
   "format_id": {
     "agent_url": "https://publisher-b.com",
     "id": "video_30s"
-  },
-  "agent_url": "https://publisher-b.com"
+  }
 }
 ```
 
@@ -378,8 +371,7 @@ If a buyer encounters the same namespaced format_id from multiple sources, they 
      "format_id": {
        "agent_url": "https://youragent.com",
        "id": "format_x"
-     },
-     "agent_url": "https://youragent.com"
+     }
    }
 
    // ❌ Invalid - domain mismatch
@@ -387,8 +379,7 @@ If a buyer encounters the same namespaced format_id from multiple sources, they 
      "format_id": {
        "agent_url": "https://otheragent.com",
        "id": "format_x"
-     },
-     "agent_url": "https://youragent.com"
+     }
    }
    ```
 
@@ -412,8 +403,7 @@ If you previously used simple IDs like `display_300x250`, migrate to namespaced 
   "format_id": {
     "agent_url": "https://youragent.com",
     "id": "display_300x250_old"
-  },
-  "agent_url": "https://youragent.com"
+  }
 }
 ```
 
@@ -423,8 +413,7 @@ If you previously used simple IDs like `display_300x250`, migrate to namespaced 
   "format_id": {
     "agent_url": "https://youragent.com",
     "id": "display_300x250"
-  },
-  "agent_url": "https://youragent.com"
+  }
 }
 ```
 
@@ -432,7 +421,7 @@ Support both during transition if needed, but new implementations should use nam
 
 ## Reference Agent as Format Authority
 
-Each format includes an `agent_url` field indicating its authoritative source:
+Each format includes a `format_id` field with an `agent_url` indicating its authoritative source:
 
 ```json
 {
@@ -440,7 +429,6 @@ Each format includes an `agent_url` field indicating its authoritative source:
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250"
   },
-  "agent_url": "https://creative.adcontextprotocol.org",
   "name": "Medium Rectangle",
   "type": "display"
 }

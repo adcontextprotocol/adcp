@@ -58,7 +58,6 @@ This ensures you discover all formats capable of rendering into your available p
         "agent_url": "https://sales-agent.example.com",
         "id": "video_standard_30s"
       },
-      "agent_url": "https://sales-agent.example.com",
       "name": "Standard Video - 30 seconds",
       "type": "video",
       "requirements": { /* ... */ },
@@ -69,7 +68,6 @@ This ensures you discover all formats capable of rendering into your available p
         "agent_url": "https://sales-agent.example.com",
         "id": "display_300x250"
       },
-      "agent_url": "https://sales-agent.example.com",
       "name": "Medium Rectangle Banner",
       "type": "display"
       // ... full format details
@@ -129,7 +127,6 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
         "agent_url": "https://sales-agent.example.com",
         "id": "display_300x250"
       },
-      "agent_url": "https://sales-agent.example.com",
       "name": "Medium Rectangle",
       "type": "display",
       "dimensions": "300x250",
@@ -158,7 +155,6 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
         "agent_url": "https://sales-agent.example.com",
         "id": "native_responsive"
       },
-      "agent_url": "https://sales-agent.example.com",
       "name": "Responsive Native Ad",
       "type": "display",
       "assets_required": [
@@ -212,7 +208,6 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
         "agent_url": "https://sales-agent.example.com",
         "id": "display_300x250_3p"
       },
-      "agent_url": "https://sales-agent.example.com",
       "name": "Medium Rectangle - Third Party",
       "type": "display",
       "dimensions": "300x250",
@@ -296,7 +291,6 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
         "agent_url": "https://sales-agent.example.com",
         "id": "video_vertical_15s"
       },
-      "agent_url": "https://sales-agent.example.com",
       "name": "15-Second Vertical Video",
       "type": "video",
       "duration": "15s",
@@ -320,7 +314,6 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
         "agent_url": "https://sales-agent.example.com",
         "id": "display_vertical_mobile"
       },
-      "agent_url": "https://sales-agent.example.com",
       "name": "Vertical Mobile Banner",
       "type": "display",
       "dimensions": "320x480"
@@ -361,7 +354,6 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
         "agent_url": "https://sales-agent.example.com",
         "id": "video_15s_hosted"
       },
-      "agent_url": "https://sales-agent.example.com",
       "name": "15-Second Hosted Video",
       "type": "video",
       "duration": "15s",
@@ -385,7 +377,6 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
         "agent_url": "https://sales-agent.example.com",
         "id": "display_300x250"
       },
-      "agent_url": "https://sales-agent.example.com",
       "name": "Medium Rectangle",
       "type": "display",
       "dimensions": "300x250",
