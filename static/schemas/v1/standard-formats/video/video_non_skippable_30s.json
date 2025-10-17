@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "format_id": {
-      "type": "string",
-      "const": "video_non_skippable_30s"
+      "$ref": "/schemas/v1/core/format-id.json"
     },
     "type": {
       "type": "string",
