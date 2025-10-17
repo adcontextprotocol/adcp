@@ -359,4 +359,4 @@ def get_metric_type(campaign_objective):
 
 - [`get_media_buy_delivery`](./get_media_buy_delivery) - Retrieve delivery metrics
 - [Optimization & Reporting](../media-buys/optimization-reporting) - Performance feedback concepts
-- [Dimensions](../advanced-topics/dimensions) - Understanding the dimension system for targeting optimization
+- [Targeting](../advanced-topics/targeting) - Understanding targeting for optimization

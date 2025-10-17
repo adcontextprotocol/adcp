@@ -8,7 +8,7 @@ keywords: [campaign optimization, performance reporting, delivery analytics, med
 
 Continuous improvement through data-driven monitoring and optimization. AdCP provides comprehensive reporting tools and optimization features to help you track performance, analyze delivery, and improve campaign outcomes.
 
-Reporting in AdCP leverages the same [Dimensions](../advanced-topics/dimensions.md) system used for targeting, enabling consistent analysis across the campaign lifecycle. This unified approach means you can report on exactly what you targeted.
+Reporting in AdCP aligns with the [Targeting](../advanced-topics/targeting.md) system used for campaign setup, enabling consistent analysis across the campaign lifecycle. This unified approach means you can report on exactly what you targeted.
 
 Performance data feeds into AdCP's [Accountability & Trust Framework](../index.md#accountability--trust-framework), enabling publishers to build reputation through consistent delivery and helping buyers make data-driven allocation decisions.
 
@@ -703,17 +703,17 @@ Publishers can leverage performance indices to:
 
 Future implementations may support dimensional performance feedback, allowing optimization at the intersection of multiple dimensions (e.g., "mobile users in NYC perform 80% above baseline").
 
-## Dimensional Consistency
-Reporting uses the same [Dimensions](../advanced-topics/dimensions) system as targeting, enabling:
+## Targeting Consistency
+Reporting aligns with AdCP's [Targeting](../advanced-topics/targeting) approach, enabling:
 - **Consistent analysis** across campaign lifecycle
-- **Granular breakdowns** by any targeting dimension
+- **Granular breakdowns** by targeting parameters
 - **Cross-campaign insights** for portfolio optimization
 
 ### Target → Measure → Optimize
-The power of the unified dimension system creates a virtuous cycle:
+The power of consistent targeting and reporting creates a virtuous cycle:
 
-1. **Target**: Define your audience using dimensions (e.g., "Mobile users in major metros")
-2. **Measure**: Report on the same dimensions (Track performance by device type and geography)
+1. **Target**: Define your audience using briefs and overlays (e.g., "Mobile users in major metros")
+2. **Measure**: Report on the same attributes (Track performance by device type and geography)
 3. **Optimize**: Feed performance back to improve delivery (Shift budget to high-performing segments)
 
 ## Standard Metrics
@@ -786,5 +786,4 @@ Optimization and reporting is the ongoing phase that runs throughout active camp
 - **[`get_media_buy_delivery`](../task-reference/get_media_buy_delivery)** - Retrieve delivery reports
 - **[`update_media_buy`](../task-reference/update_media_buy)** - Modify campaigns based on performance
 - **[Media Buy Lifecycle](./index.md)** - Complete campaign management workflow
-- **[Dimensions](../advanced-topics/dimensions)** - Understanding the dimension system
-- **[Targeting](../advanced-topics/targeting)** - How dimensions enable targeting
+- **[Targeting](../advanced-topics/targeting)** - Brief-based targeting and overlays

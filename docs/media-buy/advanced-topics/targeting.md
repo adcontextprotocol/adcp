@@ -188,6 +188,9 @@ Basic impression suppression controls:
 - **Browser/OS** - Rarely relevant; mention in brief if truly needed
 - **Content categories** - "Sports content" or "News sites" in brief text
 - **Audience segments** - "Auto intenders" or "Luxury shoppers" in brief text
+- **Operating systems and browsers** - Mention in brief if needed
+- **Language preferences** - "Spanish language content" in brief text
+- **Daypart preferences** - "Morning commute hours" or "prime time evening" in brief text
 
 **Why briefs work better:**
 - Natural language captures intent more clearly
@@ -195,13 +198,42 @@ Basic impression suppression controls:
 - Avoids channel-specific complexity (DOOH has no browsers)
 - Simpler API with fewer edge cases
 
-## Integration with Dimensions
+## Available Targeting Overlay Parameters
 
-AdCP's [Dimensions](./dimensions) system provides the underlying structure for targeting, but briefs are the primary interface:
+All targeting parameters use the `any_of` operator pattern for inclusive targeting.
 
-- **Dimensions define possibilities**: What targeting options exist
-- **Briefs specify requirements**: What the buyer actually needs
-- **Products deliver capabilities**: How publishers meet those requirements
+### geo_country_any_of
+- **Description**: Restrict delivery to specific countries
+- **Format**: ISO 3166-1 alpha-2 country codes
+- **Examples**: `["US", "CA"]`, `["GB", "FR", "DE"]`
+- **Use cases**: Regulatory compliance, country-specific campaigns
+
+### geo_region_any_of
+- **Description**: Restrict delivery to specific regions/states
+- **Format**: Region codes (interpretation depends on country)
+- **Examples**: `["NY", "CA"]`, `["ON", "BC"]`
+- **Use cases**: State-level compliance, regional testing
+- **Note**: Not all publishers support all region formats
+
+### geo_metro_any_of
+- **Description**: Restrict delivery to specific metro areas
+- **Format**: DMA codes (US) or metro identifiers
+- **Examples**: `["501", "803"]` (New York, Los Angeles DMAs)
+- **Use cases**: Local campaigns, metro-level RCT testing
+- **Note**: Not all publishers support metro-level targeting
+
+### geo_postal_code_any_of
+- **Description**: Restrict delivery to specific postal/ZIP codes
+- **Format**: Country-specific postal codes
+- **Examples**: `["10001", "10002"]`, `["90210"]`
+- **Use cases**: Hyper-local campaigns, ZIP-level restrictions
+- **Note**: Not all publishers support postal-level targeting
+
+### frequency_cap
+- **Description**: Limit ad exposure frequency per user
+- **Format**: Frequency cap object with impressions, duration, and scope
+- **Use cases**: Brand safety, user experience management
+- **Example**: `{"impressions": 5, "duration_seconds": 86400, "scope": "creative"}`
 
 ## Benefits for Different Stakeholders
 
@@ -222,23 +254,70 @@ AdCP's [Dimensions](./dimensions) system provides the underlying structure for t
 - **Cleaner implementation**: Less complex targeting logic required
 - **Better performance**: Optimized for publisher inventory characteristics
 
+## Real-Time Targeting Signals
+
+Orchestrators can provide **real-time targeting signals** to publishers for dynamic, high-cardinality targeting beyond what can be expressed in static overlays. These signals enable:
+
+- **Brand safety** - Real-time content filtering and adjacency controls
+- **Brand suitability** - Contextual alignment with brand values
+- **Audience targeting** - Dynamic audience segments updated in real-time
+- **Contextual targeting** - Page-level or moment-level targeting decisions
+
+Real-time signals are provided through the [AdCP Signals Protocol](../../signals/overview), which allows orchestrators to supply targeting data at impression time.
+
+### Key Differences: Signals vs Overlays
+
+- Signals are **evaluated at impression time**, not campaign setup
+- Signals support **higher cardinality** (thousands of values vs. dozens)
+- Signals can be **updated continuously** without modifying the media buy
+- Signals enable **sophisticated contextual targeting** that briefs cannot express
+
+### When to Use Real-Time Signals
+
+✅ **Use Real-Time Signals For:**
+- Brand safety filtering (block unsafe content)
+- Brand suitability scoring (prefer suitable contexts)
+- Dynamic audience targeting (real-time segment membership)
+- Contextual targeting (page-level or moment-level decisions)
+- High-cardinality targeting (thousands of values)
+- Targeting that changes during campaign flight
+
+## Implementation Requirements
+
+### Publishers MUST:
+
+1. **Support Geographic Targeting**: Handle all four geographic parameters (country, region, metro, postal) to the extent your platform supports them
+2. **Interpret Briefs**: Use briefs to determine appropriate audience and content targeting
+3. **Validate Targeting**: Reject media buys with targeting that cannot be supported
+4. **Document Limitations**: Clearly communicate any geographic targeting limitations in product descriptions
+
+### Buyers SHOULD:
+
+1. **Use Briefs First**: Express most targeting needs in natural language briefs
+2. **Minimize Overlays**: Only use technical targeting for geographic restrictions or RCT testing
+3. **Trust Publishers**: Let publishers apply their inventory knowledge to brief interpretation
+4. **Validate Early**: Check product capabilities before applying technical targeting
+
 ## Best Practices
 
-1. **Write Clear Briefs**: Be specific about audience and context requirements
-2. **Trust Publisher Expertise**: Publishers know their inventory capabilities best
-3. **Include AXE for Advanced Needs**: Use real-time decisioning for sophisticated targeting
-4. **Minimize Technical Overlays**: Use only for simple adjustments or compliance
-5. **Validate Audience Fit**: Ensure product descriptions match campaign goals
+1. **Default to briefs** - Start with natural language descriptions
+2. **Write Clear Briefs**: Be specific about audience and context requirements
+3. **Trust Publisher Expertise**: Publishers know their inventory capabilities best
+4. **Use signals for dynamic targeting** - Real-time signals handle complex, high-cardinality targeting better than overlays
+5. **Minimize Technical Overlays**: Use only for geographic restrictions or compliance
+6. **Validate Audience Fit**: Ensure product descriptions match campaign goals
+7. **Inclusive pricing** - Expect targeting costs to be built into product rates
 
 ## Future Evolution
 
 - **Enhanced Brief Processing**: More sophisticated natural language understanding
 - **Audience Discovery**: Better tools for exploring available audiences
-- **AXE Integration**: Deeper real-time targeting capabilities
+- **Deeper Signal Integration**: More sophisticated real-time targeting capabilities
 - **Performance Optimization**: AI-driven audience refinement based on campaign results
 
 ## Related Documentation
 
-- **[Dimensions](./dimensions)** - Understanding the underlying targeting structure
+- **[Signals Protocol](../../signals/overview)** - Real-time targeting signals for brand safety and contextual targeting
 - **[Product Discovery](../product-discovery/)** - How briefs lead to targeted product recommendations
 - **[Example Briefs](../product-discovery/example-briefs)** - Real examples of effective targeting briefs
+- **[Policy Compliance](../media-buys/policy-compliance)** - Automated compliance checking and enforcement
