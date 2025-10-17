@@ -21,7 +21,10 @@ Display formats in AdCP include:
 
 ```json
 {
-  "format_id": "display_300x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
   "type": "display",
   "assets_required": [
     {
@@ -44,7 +47,10 @@ Display formats in AdCP include:
 
 ```json
 {
-  "format_id": "display_728x90",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_728x90"
+  },
   "type": "display",
   "assets_required": [
     {
@@ -67,7 +73,10 @@ Display formats in AdCP include:
 
 ```json
 {
-  "format_id": "display_160x600",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_160x600"
+  },
   "type": "display",
   "assets_required": [
     {
@@ -90,7 +99,10 @@ Display formats in AdCP include:
 
 ```json
 {
-  "format_id": "display_970x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_970x250"
+  },
   "type": "display",
   "assets_required": [
     {
@@ -113,7 +125,10 @@ Display formats in AdCP include:
 
 ```json
 {
-  "format_id": "mobile_banner_320x50",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "mobile_banner_320x50"
+  },
   "type": "display",
   "assets_required": [
     {
@@ -136,7 +151,10 @@ Display formats in AdCP include:
 
 ```json
 {
-  "format_id": "mobile_interstitial_320x480",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "mobile_interstitial_320x480"
+  },
   "type": "display",
   "assets_required": [
     {
@@ -161,7 +179,10 @@ Display formats in AdCP include:
 
 ```json
 {
-  "format_id": "display_300x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
   "assets": {
     "banner_image": {
       "asset_type": "image",
@@ -187,7 +208,10 @@ Display formats in AdCP include:
 
 ```json
 {
-  "format_id": "display_300x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
   "assets": {
     "banner_image": {
       "asset_type": "image",
@@ -212,7 +236,10 @@ Display formats in AdCP include:
 
 ```json
 {
-  "format_id": "display_300x250_3p",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_3p"
+  },
   "type": "display",
   "assets_required": [
     {
@@ -235,7 +262,10 @@ JavaScript tag manifest:
 
 ```json
 {
-  "format_id": "display_300x250_3p",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_3p"
+  },
   "assets": {
     "tag": {
       "asset_type": "javascript",
@@ -249,7 +279,10 @@ JavaScript tag manifest:
 
 ```json
 {
-  "format_id": "display_728x90_html",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_728x90_html"
+  },
   "type": "display",
   "assets_required": [
     {
@@ -272,7 +305,10 @@ HTML tag manifest:
 
 ```json
 {
-  "format_id": "display_728x90_html",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_728x90_html"
+  },
   "assets": {
     "tag": {
       "asset_type": "html",
@@ -290,7 +326,10 @@ HTML5 formats specify multiple assets that the publisher's ad server assembles i
 
 ```json
 {
-  "format_id": "display_300x250_html5",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_html5"
+  },
   "type": "display",
   "assets_required": [
     {
@@ -341,7 +380,10 @@ HTML5 manifest:
 
 ```json
 {
-  "format_id": "display_300x250_html5",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_html5"
+  },
   "assets": {
     "background_image": {
       "asset_type": "image",
@@ -380,7 +422,10 @@ Responsive formats adapt to multiple sizes based on placement context.
 
 ```json
 {
-  "format_id": "display_responsive",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_responsive"
+  },
   "type": "display",
   "responsive": true,
   "supported_sizes": ["300x250", "728x90", "320x50"],
@@ -422,7 +467,10 @@ Responsive formats adapt to multiple sizes based on placement context.
 
 ```json
 {
-  "format_id": "display_970x250_expandable",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_970x250_expandable"
+  },
   "type": "display",
   "expandable": true,
   "collapsed_size": "970x250",

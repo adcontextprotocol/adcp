@@ -21,7 +21,10 @@ DOOH formats differ from other digital formats:
 
 ```json
 {
-  "format_id": "dooh_billboard_1920x1080",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_billboard_1920x1080"
+  },
   "type": "dooh",
   "assets_required": [
     {
@@ -50,7 +53,10 @@ DOOH formats differ from other digital formats:
 
 ```json
 {
-  "format_id": "dooh_transit_1080x1920",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_transit_1080x1920"
+  },
   "type": "dooh",
   "assets_required": [
     {
@@ -79,7 +85,10 @@ DOOH formats differ from other digital formats:
 
 ```json
 {
-  "format_id": "dooh_video_15s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_video_15s"
+  },
   "type": "dooh",
   "assets_required": [
     {
@@ -135,7 +144,10 @@ The mechanics are identical to digital impression tracking - it's just a URL tha
 
 ```json
 {
-  "format_id": "dooh_billboard_1920x1080",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_billboard_1920x1080"
+  },
   "assets": {
     "billboard_image": {
       "asset_type": "image",
@@ -156,7 +168,10 @@ The mechanics are identical to digital impression tracking - it's just a URL tha
 
 ```json
 {
-  "format_id": "dooh_video_15s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_video_15s"
+  },
   "assets": {
     "video_file": {
       "asset_type": "video",

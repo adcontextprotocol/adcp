@@ -23,7 +23,10 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
 #### 15-Second Video
 ```json
 {
-  "format_id": "video_15s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_15s"
+  },
   "type": "video",
   "assets_required": [
     {
@@ -49,7 +52,10 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
 #### 30-Second Video
 ```json
 {
-  "format_id": "video_30s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s"
+  },
   "type": "video",
   "assets_required": [
     {
@@ -75,7 +81,10 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
 #### 6-Second Bumper
 ```json
 {
-  "format_id": "video_6s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_6s"
+  },
   "type": "video",
   "assets_required": [
     {
@@ -101,7 +110,10 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
 
 ```json
 {
-  "format_id": "video_vertical_15s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_vertical_15s"
+  },
   "type": "video",
   "assets_required": [
     {
@@ -126,7 +138,10 @@ Video ads play before (pre-roll), during (mid-roll), or after (post-roll) video 
 
 ```json
 {
-  "format_id": "video_30s_ctv",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_ctv"
+  },
   "type": "video",
   "assets_required": [
     {
@@ -156,7 +171,10 @@ For third-party ad servers:
 
 ```json
 {
-  "format_id": "video_30s_vast",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_vast"
+  },
   "type": "video",
   "assets_required": [
     {
@@ -177,7 +195,10 @@ For third-party ad servers:
 
 ```json
 {
-  "format_id": "video_30s_vpaid",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_vpaid"
+  },
   "type": "video",
   "assets_required": [
     {
@@ -201,7 +222,10 @@ For third-party ad servers:
 
 ```json
 {
-  "format_id": "video_30s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s"
+  },
   "assets": {
     "video_file": {
       "asset_type": "video",
@@ -231,7 +255,10 @@ For third-party ad servers:
 
 ```json
 {
-  "format_id": "video_30s_vast",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_vast"
+  },
   "assets": {
     "vast_tag": {
       "asset_type": "url",
@@ -246,7 +273,10 @@ For third-party ad servers:
 
 ```json
 {
-  "format_id": "video_30s_vast",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_vast"
+  },
   "assets": {
     "vast_xml": {
       "asset_type": "vast_xml",
@@ -260,7 +290,10 @@ For third-party ad servers:
 
 ```json
 {
-  "format_id": "video_30s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s"
+  },
   "assets": {
     "video_1080p": {
       "asset_type": "video",
@@ -340,7 +373,10 @@ https://track.brand.com/imp?
 
 ```json
 {
-  "format_id": "video_30s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s"
+  },
   "assets": {
     "video_file": {
       "asset_type": "video",
@@ -465,7 +501,10 @@ VPAID (Video Player Ad-Serving Interface Definition) enables interactive video a
 
 ```json
 {
-  "format_id": "video_30s_vpaid",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_vpaid"
+  },
   "assets_required": [
     {
       "asset_id": "vpaid_tag",

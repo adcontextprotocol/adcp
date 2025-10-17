@@ -54,16 +54,20 @@ This ensures you discover all formats capable of rendering into your available p
 {
   "formats": [
     {
-      "format_id": "video_standard_30s",
-      "agent_url": "https://sales-agent.example.com",
+      "format_id": {
+        "agent_url": "https://sales-agent.example.com",
+        "id": "video_standard_30s"
+      },
       "name": "Standard Video - 30 seconds",
       "type": "video",
       "requirements": { /* ... */ },
       "assets_required": [ /* ... */ ]
     },
     {
-      "format_id": "display_300x250",
-      "agent_url": "https://sales-agent.example.com",
+      "format_id": {
+        "agent_url": "https://sales-agent.example.com",
+        "id": "display_300x250"
+      },
       "name": "Medium Rectangle Banner",
       "type": "display"
       // ... full format details
@@ -119,8 +123,10 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 {
   "formats": [
     {
-      "format_id": "display_300x250",
-      "agent_url": "https://sales-agent.example.com",
+      "format_id": {
+        "agent_url": "https://sales-agent.example.com",
+        "id": "display_300x250"
+      },
       "name": "Medium Rectangle",
       "type": "display",
       "dimensions": "300x250",
@@ -145,8 +151,10 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       ]
     },
     {
-      "format_id": "native_responsive",
-      "agent_url": "https://sales-agent.example.com",
+      "format_id": {
+        "agent_url": "https://sales-agent.example.com",
+        "id": "native_responsive"
+      },
       "name": "Responsive Native Ad",
       "type": "display",
       "assets_required": [
@@ -196,8 +204,10 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 {
   "formats": [
     {
-      "format_id": "display_300x250_3p",
-      "agent_url": "https://sales-agent.example.com",
+      "format_id": {
+        "agent_url": "https://sales-agent.example.com",
+        "id": "display_300x250_3p"
+      },
       "name": "Medium Rectangle - Third Party",
       "type": "display",
       "dimensions": "300x250",
@@ -277,8 +287,10 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
 {
   "formats": [
     {
-      "format_id": "video_vertical_15s",
-      "agent_url": "https://sales-agent.example.com",
+      "format_id": {
+        "agent_url": "https://sales-agent.example.com",
+        "id": "video_vertical_15s"
+      },
       "name": "15-Second Vertical Video",
       "type": "video",
       "duration": "15s",
@@ -298,8 +310,10 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
       ]
     },
     {
-      "format_id": "display_vertical_mobile",
-      "agent_url": "https://sales-agent.example.com",
+      "format_id": {
+        "agent_url": "https://sales-agent.example.com",
+        "id": "display_vertical_mobile"
+      },
       "name": "Vertical Mobile Banner",
       "type": "display",
       "dimensions": "320x480"
@@ -336,8 +350,10 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
 {
   "formats": [
     {
-      "format_id": "video_15s_hosted",
-      "agent_url": "https://sales-agent.example.com",
+      "format_id": {
+        "agent_url": "https://sales-agent.example.com",
+        "id": "video_15s_hosted"
+      },
       "name": "15-Second Hosted Video",
       "type": "video",
       "duration": "15s",
@@ -357,8 +373,10 @@ Returns formats that adapt to container width (native ads, fluid layouts, full-w
       ]
     },
     {
-      "format_id": "display_300x250",
-      "agent_url": "https://sales-agent.example.com",
+      "format_id": {
+        "agent_url": "https://sales-agent.example.com",
+        "id": "display_300x250"
+      },
       "name": "Medium Rectangle",
       "type": "display",
       "dimensions": "300x250",
@@ -391,7 +409,10 @@ I found 2 audio formats available. The standard 30-second format is recommended 
 {
   "formats": [
     {
-      "format_id": "audio_standard_30s",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "audio_standard_30s"
+      },
       "name": "Standard Audio - 30 seconds",
       "type": "audio",
       "iab_specification": "DAAST 1.0",
@@ -403,7 +424,10 @@ I found 2 audio formats available. The standard 30-second format is recommended 
       }
     },
     {
-      "format_id": "display_carousel_5",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_carousel_5"
+      },
       "name": "Product Carousel - 5 Items",
       "type": "display",
       "assets_required": [
@@ -487,7 +511,10 @@ await a2a.send({
         "data": {
           "formats": [
             {
-              "format_id": "video_standard_30s",
+              "format_id": {
+                "agent_url": "https://creative.adcontextprotocol.org",
+                "id": "video_standard_30s"
+              },
               "name": "Standard Video - 30 seconds",
               "type": "video",
               "iab_specification": "VAST 4.2",
@@ -532,7 +559,10 @@ Found 8 standard video formats following IAB VAST specifications. The 30-second 
 {
   "formats": [
     {
-      "format_id": "video_standard_30s",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_standard_30s"
+      },
       "name": "Standard Video - 30 seconds",
       "type": "video",
       "iab_specification": "VAST 4.2",
@@ -545,7 +575,10 @@ Found 8 standard video formats following IAB VAST specifications. The 30-second 
       }
     },
     {
-      "format_id": "video_standard_15s",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_standard_15s"
+      },
       "name": "Standard Video - 15 seconds",
       "type": "video",
       "iab_specification": "VAST 4.2",
@@ -581,7 +614,10 @@ I found 15 display formats including standard IAB sizes and innovative formats l
 {
   "formats": [
     {
-      "format_id": "display_carousel_5",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_carousel_5"
+      },
       "name": "Product Carousel - 5 Items",
       "type": "display",
       "assets_required": [

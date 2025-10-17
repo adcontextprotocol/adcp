@@ -22,7 +22,10 @@ Audio ads are typically non-skippable and play during natural content breaks.
 
 ```json
 {
-  "format_id": "audio_30s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "audio_30s"
+  },
   "type": "audio",
   "assets_required": [
     {
@@ -45,7 +48,10 @@ Audio ads are typically non-skippable and play during natural content breaks.
 
 ```json
 {
-  "format_id": "audio_30s_companion",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "audio_30s_companion"
+  },
   "type": "audio",
   "assets_required": [
     {
@@ -79,7 +85,10 @@ Audio ads are typically non-skippable and play during natural content breaks.
 
 ```json
 {
-  "format_id": "podcast_midroll_60s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "podcast_midroll_60s"
+  },
   "type": "audio",
   "assets_required": [
     {
@@ -104,7 +113,10 @@ Multi-segment audio assembled dynamically:
 
 ```json
 {
-  "format_id": "audio_dynamic_30s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "audio_dynamic_30s"
+  },
   "type": "audio",
   "assets_required": [
     {
@@ -150,7 +162,10 @@ Multi-segment audio assembled dynamically:
 
 ```json
 {
-  "format_id": "audio_30s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "audio_30s"
+  },
   "assets": {
     "audio_file": {
       "asset_type": "audio",
@@ -176,7 +191,10 @@ Multi-segment audio assembled dynamically:
 
 ```json
 {
-  "format_id": "audio_30s_vast",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "audio_30s_vast"
+  },
   "assets": {
     "vast_url": {
       "asset_type": "url",
@@ -191,7 +209,10 @@ Multi-segment audio assembled dynamically:
 
 ```json
 {
-  "format_id": "audio_30s_companion",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "audio_30s_companion"
+  },
   "assets": {
     "audio_file": {
       "asset_type": "audio",

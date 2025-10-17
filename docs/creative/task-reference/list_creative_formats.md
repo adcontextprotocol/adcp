@@ -47,7 +47,10 @@ Buyers can recursively query creative_agents to discover all available formats. 
   "capabilities": ["validation", "assembly", "preview"],
   "formats": [
     {
-      "format_id": "video_standard_30s",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_standard_30s"
+      },
       "name": "Standard Video - 30 seconds",
       "type": "video",
       "iab_specification": "https://iabtechlab.com/standards/video-ad-serving-template-vast/",
@@ -104,8 +107,10 @@ Response:
   "capabilities": ["validation", "assembly", "preview"],
   "formats": [
     {
-      "format_id": "display_300x250",
-      "agent_url": "https://creative.adcontextprotocol.org",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
       "name": "Medium Rectangle",
       "type": "display",
       "assets_required": [
@@ -145,8 +150,10 @@ Response:
   "capabilities": ["validation", "assembly", "generation", "preview"],
   "formats": [
     {
-      "format_id": "display_728x90_3p",
-      "agent_url": "https://dco.example.com",
+      "format_id": {
+        "agent_url": "https://dco.example.com",
+        "id": "display_728x90_3p"
+      },
       "name": "Leaderboard - Third Party",
       "type": "display",
       "dimensions": "728x90",
@@ -242,8 +249,10 @@ Response:
   "capabilities": ["validation", "assembly", "generation", "preview"],
   "formats": [
     {
-      "format_id": "300x250_banner_generative",
-      "agent_url": "https://creative.adcontextprotocol.org",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "300x250_banner_generative"
+      },
       "name": "300x250 Generative Banner",
       "type": "display",
       "assets_required": [
@@ -265,8 +274,10 @@ Response:
       "description": "Accepts a brand manifest and message, generates a complete 300x250 banner creative"
     },
     {
-      "format_id": "300x250_banner_image",
-      "agent_url": "https://creative.adcontextprotocol.org",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "300x250_banner_image"
+      },
       "name": "300x250 Standard Banner",
       "type": "display",
       "assets_required": [

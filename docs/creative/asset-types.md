@@ -263,7 +263,10 @@ When submitting creative assets, the orchestrator uses `asset_id` to map files:
 
 ```json
 {
-  "format_id": "foundational_immersive_canvas",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "foundational_immersive_canvas"
+  },
   "assets": {
     "hero_image": "https://cdn.example.com/campaign123/hero.jpg",
     "brand_logo": "https://cdn.example.com/brand/logo.png",
@@ -282,7 +285,10 @@ Creative formats specify their required assets using these standardized types:
 
 ```json
 {
-  "format_id": "video_15s_hosted",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_15s_hosted"
+  },
   "assets": [
     {
       "asset_id": "video_file",
