@@ -5,12 +5,21 @@ sidebar_position: 1
 # get_products
 Discover available advertising products based on campaign requirements, using natural language briefs or structured filters.
 
+**Authentication**: Optional (returns limited results without credentials - see [Authentication](../../reference/authentication.md#when-authentication-is-required))
+
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
 
 **Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications. **See [Creative Lifecycle](../creatives/index.md) for the complete workflow.**
 
 **Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](/schemas/v1/media-buy/get-products-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/get-products-response.json`](/schemas/v1/media-buy/get-products-response.json)
+
+## Authentication Behavior
+
+- **Without credentials**: Returns limited catalog (run-of-network products), no pricing information, no custom offerings
+- **With credentials**: Returns complete catalog, pricing details (CPM), custom products, and full targeting options
+
+See the [Quickstart Guide](../../quickstart.md#understanding-authentication) for details on getting credentials.
 
 ## Request Parameters
 

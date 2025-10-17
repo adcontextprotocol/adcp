@@ -148,7 +148,22 @@ Each AdCP protocol operates within this ecosystem:
 - **Integration**: Builds creative assets and executable code for campaigns
 - **Workflow**: Define brief → Generate creative → Refine and deploy
 
-## Quick Example
+## Quick Start
+
+Want to try AdCP right now?
+
+### 🚀 [**Interactive Testing Platform**](https://testing.adcontextprotocol.org)
+Test all AdCP tasks in your browser - no code required.
+
+### 📖 [**Quickstart Guide**](./quickstart)
+Get started in 5 minutes with authentication, testing, and your first request.
+
+### 💻 **Install the NPM Client**
+```bash
+npm install @adcp/client
+```
+
+## Example: Natural Language Advertising
 
 Instead of navigating multiple platforms, you can now say:
 
@@ -212,9 +227,15 @@ Learn more in the [Protocols section](./protocols/getting-started).
 
 ## Next Steps
 
-- **Platform Providers**: Start with the [Signals Protocol Specification](./signals/specification)
-- **Developers**: Review the [Protocol Support](./protocols/getting-started) options
-- **Everyone**: Join the [community discussion](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
+### Getting Started
+- 🚀 **New to AdCP?** Start with the [**Quickstart Guide**](./quickstart)
+- 🧪 **Want to test?** Try the [**Interactive Testing Platform**](https://testing.adcontextprotocol.org)
+- 📚 **Building an integration?** Choose [MCP](./protocols/mcp-guide) or [A2A](./protocols/a2a-guide) protocol guide
+
+### By Role
+- **Platform Providers**: Start with the [Signals Protocol Specification](./signals/specification) or [Media Buy Protocol](./media-buy/index)
+- **Developers**: Review the [Protocol Comparison](./protocols/protocol-comparison) and [Task Reference](./media-buy/task-reference/index)
+- **Everyone**: Join the [Slack Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
 
 ## Need Help?
 
