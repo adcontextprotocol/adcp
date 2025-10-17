@@ -5,9 +5,43 @@ title: Authentication
 
 # Authentication Specification
 
-AdCP supports multiple authentication methods for secure access to the protocol.
+AdCP uses a tiered authentication model where some operations are publicly accessible while others require authentication.
+
+## When Authentication is Required
+
+### Public Operations (No Authentication Required)
+
+These operations work without credentials to enable discovery and evaluation:
+
+- **`list_creative_formats`** - Browse available creative formats
+- **`list_authorized_properties`** - See which properties an agent represents
+- **`get_products`** - Discover inventory (returns limited results without auth)
+
+**Rationale**: Publishers want potential buyers to discover their capabilities before establishing a business relationship.
+
+**Important**: Unauthenticated `get_products` may return:
+- Partial catalog (run-of-network products only)
+- No pricing information or CPM details
+- No custom product offerings
+- Generic format support only
+
+### Authenticated Operations (Credentials Required)
+
+These operations require valid credentials:
+
+- **`get_products`** (full access) - Complete catalog with pricing and custom products
+- **`create_media_buy`** - Create advertising campaigns
+- **`update_media_buy`** - Modify existing campaigns
+- **`sync_creatives`** - Upload creative assets
+- **`list_creatives`** - View your creative library
+- **`get_media_buy_delivery`** - Monitor campaign performance and metrics
+- **`provide_performance_feedback`** - Submit optimization signals
+
+**Rationale**: These operations involve financial commitments, access to proprietary data, or modifications to active campaigns.
 
 ## Authentication Methods
+
+AdCP supports multiple authentication methods. Implementations must support at least one method:
 
 ### JWT Bearer Token
 ```http
@@ -78,3 +112,96 @@ Authorization: Bearer <token>
 # OR
 X-API-Key: <api_key>
 ```
+
+## Obtaining Credentials
+
+### Account Setup Process
+
+To access authenticated operations, you must establish an account with each sales agent:
+
+1. **Identify Sales Agents**: Discover sales agents via publisher `adagents.json` files
+2. **Contact Sales Team**: Reach out to the agent's sales or partnerships team
+3. **Complete Onboarding**: Provide business information, sign agreements, configure billing
+4. **Receive Credentials**: Get API keys or OAuth client credentials
+
+**Note**: Each sales agent manages their own accounts independently. You need separate credentials for each agent you work with.
+
+### Dynamic Registration (Optional)
+
+Some sales agents support OAuth 2.0 dynamic client registration:
+
+```http
+POST /oauth/register
+Content-Type: application/json
+
+{
+  "client_name": "Your Company Name",
+  "redirect_uris": ["https://yourapp.com/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "scope": "adcp:products adcp:media_buys adcp:creatives"
+}
+```
+
+Check the sales agent's documentation or `adagents.json` for dynamic registration support.
+
+### Aggregation Platforms
+
+Consider using aggregation platforms (like Scope3) that manage credentials and relationships with multiple sales agents on your behalf. This simplifies:
+- Credential management
+- Financial relationships
+- Legal agreements
+- Compliance monitoring
+
+## Error Responses
+
+### Unauthenticated Request to Protected Operation
+
+```json
+{
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "Authentication required for this operation"
+  }
+}
+```
+
+### Invalid or Expired Credentials
+
+```json
+{
+  "error": {
+    "code": "AUTH_INVALID",
+    "message": "Invalid or expired credentials"
+  }
+}
+```
+
+### Insufficient Permissions
+
+```json
+{
+  "error": {
+    "code": "INSUFFICIENT_PERMISSIONS",
+    "message": "Principal does not have required permissions for this operation"
+  }
+}
+```
+
+## Best Practices
+
+1. **Secure Storage**: Store credentials securely (environment variables, secret managers)
+2. **Rotation**: Implement credential rotation policies
+3. **Scope Limitation**: Request minimum required permissions
+4. **Token Refresh**: Implement automatic token refresh for JWT tokens
+5. **Error Handling**: Handle authentication errors gracefully with retry logic
+
+## Testing Authentication
+
+Use dry run mode to test authenticated operations without affecting production:
+
+```http
+X-Dry-Run: true
+Authorization: Bearer <token>
+```
+
+See [Testing & Development Guide](../media-buy/advanced-topics/testing.md) for complete testing capabilities.

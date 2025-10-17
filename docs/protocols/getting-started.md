@@ -5,6 +5,8 @@ title: Getting Started
 
 # Getting Started with AdCP Protocols
 
+> **New to AdCP?** Start with the [**Quickstart Guide**](../quickstart) for a complete introduction including authentication, testing, and your first request.
+
 ## Quick Overview
 
 AdCP works with multiple protocols, but you only need to learn one. Both protocols provide access to the same advertising tasks - choose based on your technical needs.
