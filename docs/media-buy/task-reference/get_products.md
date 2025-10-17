@@ -138,7 +138,7 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
 - **property_tags**: Array of tags referencing groups of properties (alternative to `properties` array)
   - Use [`list_authorized_properties`](./list_authorized_properties) to resolve tags to actual property objects
   - Recommended for products with large property sets (e.g., radio networks with 1000+ stations)
-- **format_ids**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
+- **format_ids**: Array of supported creative format ID objects (structured with `agent_url` and `id` fields) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
 - **is_fixed_price**: Whether this product has fixed pricing (true) or uses auction (false)
 - **cpm**: Cost per thousand impressions (for guaranteed/fixed price products)

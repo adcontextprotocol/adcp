@@ -48,8 +48,10 @@ Buyers discover available formats using the `list_creative_formats` task, which 
 {
   "formats": [
     {
-      "format_id": "homepage_takeover_2024",
-      "agent_url": "https://youragent.com",
+      "format_id": {
+        "agent_url": "https://youragent.com",
+        "id": "homepage_takeover_2024"
+      },
       "name": "Homepage Takeover",
       "type": "rich_media"
     }
@@ -70,8 +72,10 @@ Each format includes an `agent_url` field pointing to its authoritative source:
 
 ```json
 {
-  "format_id": "video_30s_hosted",
-  "agent_url": "https://creative.adcontextprotocol.org",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_hosted"
+  },
   "name": "Standard 30-Second Video"
 }
 ```
@@ -115,7 +119,10 @@ Formats include two optional fields for visual presentation in format browsing U
 **Example**:
 ```json
 {
-  "format_id": "homepage_takeover_premium",
+  "format_id": {
+    "agent_url": "https://publisher.com",
+    "id": "homepage_takeover_premium"
+  },
   "name": "Premium Homepage Takeover",
   "description": "Full-screen immersive experience with video, carousel, and companion units",
   "preview_image": "https://publisher.com/format-cards/homepage-takeover.png",
@@ -205,8 +212,10 @@ Formats are JSON objects with the following key fields:
 
 ```json
 {
-  "format_id": "video_30s_hosted",
-  "agent_url": "https://creative.adcontextprotocol.org",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_hosted"
+  },
   "name": "30-Second Hosted Video",
   "type": "video",
   "assets_required": [
@@ -239,7 +248,10 @@ Visual formats (display, dooh, native) include structured `render_dimensions` fo
 
 ```json
 {
-  "format_id": "display_300x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
   "type": "display",
   "render_dimensions": {
     "width": 300,

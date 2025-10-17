@@ -13,7 +13,10 @@ The simplest preview request returns a single URL you can iframe:
 
 ```json
 {
-  "format_id": "native_responsive",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "native_responsive"
+  },
   "creative_manifest": { /* your creative */ }
 }
 ```
@@ -192,9 +195,15 @@ Request previews for desktop, mobile, and tablet:
 
 ```json
 {
-  "format_id": "native_responsive",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "native_responsive"
+  },
   "creative_manifest": {
-    "format_id": "native_responsive",
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "native_responsive"
+    },
     "assets": {
       "hero_image": {
         "asset_type": "image",
@@ -294,9 +303,15 @@ Preview a dynamic creative with different geographic and device contexts:
 
 ```json
 {
-  "format_id": "display_dynamic_300x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_dynamic_300x250"
+  },
   "creative_manifest": {
-    "format_id": "display_dynamic_300x250",
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_dynamic_300x250"
+    },
     "assets": {
       "dynamic_endpoint": {
         "asset_type": "dynamic_endpoint",
@@ -378,9 +393,15 @@ Preview an audio ad with AI-generated host reads for different podcast contexts:
 
 ```json
 {
-  "format_id": "audio_host_read_30s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "audio_host_read_30s"
+  },
   "creative_manifest": {
-    "format_id": "audio_host_read_30s",
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "audio_host_read_30s"
+    },
     "assets": {
       "script_template": {
         "asset_type": "text",
@@ -465,9 +486,15 @@ Preview a video creative with geo-specific end cards:
 
 ```json
 {
-  "format_id": "video_30s_vast",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_vast"
+  },
   "creative_manifest": {
-    "format_id": "video_30s_vast",
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_30s_vast"
+    },
     "assets": {
       "vast_tag": {
         "asset_type": "vast_tag",
@@ -540,9 +567,15 @@ Preview a dynamic creative that uses template variables for personalization:
 
 ```json
 {
-  "format_id": "native_responsive",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "native_responsive"
+  },
   "creative_manifest": {
-    "format_id": "native_responsive",
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "native_responsive"
+    },
     "assets": {
       "headline": {
         "asset_type": "text",

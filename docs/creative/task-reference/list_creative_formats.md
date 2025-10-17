@@ -47,7 +47,10 @@ Buyers can recursively query creative_agents to discover all available formats. 
   "capabilities": ["validation", "assembly", "preview"],
   "formats": [
     {
-      "format_id": "video_standard_30s",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_standard_30s"
+      },
       "name": "Standard Video - 30 seconds",
       "type": "video",
       "iab_specification": "https://iabtechlab.com/standards/video-ad-serving-template-vast/",
@@ -104,7 +107,10 @@ Response:
   "capabilities": ["validation", "assembly", "preview"],
   "formats": [
     {
-      "format_id": "display_300x250",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
       "agent_url": "https://creative.adcontextprotocol.org",
       "name": "Medium Rectangle",
       "type": "display",
@@ -145,7 +151,10 @@ Response:
   "capabilities": ["validation", "assembly", "generation", "preview"],
   "formats": [
     {
-      "format_id": "display_728x90_3p",
+      "format_id": {
+        "agent_url": "https://dco.example.com",
+        "id": "display_728x90_3p"
+      },
       "agent_url": "https://dco.example.com",
       "name": "Leaderboard - Third Party",
       "type": "display",

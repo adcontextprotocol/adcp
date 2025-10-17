@@ -163,7 +163,10 @@ For video ads in commercial breaks:
 ```json
 {
   "creative_id": "cr_video_30s",
-  "format_id": "video_30s_vast",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_vast"
+  },
   "assets": [
     {
       "asset_id": "vast_xml",
@@ -185,7 +188,10 @@ For video ads in commercial breaks:
 ```json
 {
   "creative_id": "cr_banner_300x250",
-  "format_id": "display_banner_300x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_banner_300x250"
+  },
   "assets": [
     {
       "asset_id": "banner_image",
@@ -213,7 +219,10 @@ For video ads in commercial breaks:
 ```json
 {
   "creative_id": "cr_audio_30s",
-  "format_id": "audio_streaming_30s",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "audio_streaming_30s"
+  },
   "assets": [
     {
       "asset_id": "audio_file",
@@ -303,7 +312,10 @@ Query `list_creative_formats` to see which macros each format supports:
 
 ```json
 {
-  "format_id": "video_30s_vast",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_vast"
+  },
   "type": "video",
   "supported_macros": [
     {

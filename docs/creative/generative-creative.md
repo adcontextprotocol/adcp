@@ -23,7 +23,10 @@ Here's the simplest possible request to generate a native display ad:
 ```json
 {
   "message": "Create a simple ad for a coffee shop promotion - 20% off all drinks this week",
-  "format_id": "display_native",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_native"
+  },
   "output_mode": "manifest"
 }
 ```
@@ -36,10 +39,9 @@ You'll receive a structured creative manifest:
 {
   "context_id": "ctx-coffee-123",
   "creative": {
-    "format": {
-      "id": "display_native",
-      "name": "Native Display Ad",
-      "type": "display"
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_native"
     },
     "output_mode": "manifest",
     "assets": [
@@ -87,7 +89,10 @@ Provide brand context for better creative generation:
 ```json
 {
   "message": "Create a display ad for our coffee shop promotion",
-  "format_id": "display_300x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
   "brand_manifest": {
     "url": "https://mycoffeeshop.com",
     "name": "Brew & Co",
@@ -106,7 +111,10 @@ Provide brand context for better creative generation:
 ```json
 {
   "message": "Create a coffee shop ad",
-  "format_id": "display_native",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_native"
+  },
   "brand_manifest": {
     "url": "https://mycoffeeshop.com"
   }
@@ -122,7 +130,10 @@ Provide existing assets to incorporate into the creative:
 ```json
 {
   "message": "Create a display ad featuring our signature latte",
-  "format_id": "display_300x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
   "brand_manifest": {
     "url": "https://mycoffeeshop.com"
   },
@@ -145,7 +156,10 @@ For real-time personalization, use code mode:
 ```json
 {
   "message": "Create a weather-responsive coffee ad that shows hot drinks when cold, iced drinks when warm",
-  "format_id": "display_native",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_native"
+  },
   "output_mode": "code"
 }
 ```
@@ -166,8 +180,10 @@ For custom publisher formats, specify the source:
 ```json
 {
   "message": "Create a premium video ad",
-  "format_source": "https://premium-publisher.com/.well-known/adcp/sales",
-  "format_id": "premium_video_15s",
+  "format_id": {
+    "agent_url": "https://premium-publisher.com",
+    "id": "premium_video_15s"
+  },
   "output_mode": "manifest"
 }
 ```

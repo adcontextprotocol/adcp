@@ -69,7 +69,10 @@ Static manifests contain all assets ready for immediate rendering. These are pro
 
 ```json
 {
-  "format_id": "native_responsive",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "native_responsive"
+  },
   "assets": {
     "hero_image": {
       "asset_type": "image",
@@ -114,7 +117,10 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
 
 ```json
 {
-  "format_id": "display_dynamic_300x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_dynamic_300x250"
+  },
   "assets": {
     "dynamic_content": {
       "asset_type": "webhook",
@@ -156,7 +162,10 @@ Digital Out-of-Home (DOOH) creatives use impression tracking just like other for
 
 ```json
 {
-  "format_id": "dooh_billboard_1920x1080",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "dooh_billboard_1920x1080"
+  },
   "promoted_offering": "Premium Coffee Blend",
   "assets": {
     "billboard_image": {
@@ -196,7 +205,10 @@ Construct manifests directly by pairing format requirements with your assets:
 
 ```json
 {
-  "format_id": "native_responsive",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "native_responsive"
+  },
   "promoted_offering": "Premium Salmon Formula",
   "assets": {
     "hero_image": {
@@ -234,9 +246,15 @@ Use the `preview_creative` task to see how a manifest will render:
 
 ```json
 {
-  "format_id": "native_responsive",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "native_responsive"
+  },
   "creative_manifest": {
-    "format_id": "native_responsive",
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "native_responsive"
+    },
     "assets": {
       "hero_image": {
         "url": "https://cdn.example.com/hero.jpg",
@@ -267,9 +285,15 @@ Manifests are submitted to the creative library using `sync_creatives`, then ref
       {
         "creative_id": "native-salmon-v1",
         "name": "Salmon Special Native Ad",
-        "format_id": "native_responsive",
+        "format_id": {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "native_responsive"
+        },
         "manifest": {
-          "format_id": "native_responsive",
+          "format_id": {
+            "agent_url": "https://creative.adcontextprotocol.org",
+            "id": "native_responsive"
+          },
           "promoted_offering": "Fresh Pacific Salmon",
           "assets": {
             "headline": {
