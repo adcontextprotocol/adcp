@@ -38,8 +38,10 @@ The `sync_creatives` task provides a powerful, efficient approach to creative li
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `assignments` | object | No | Bulk creative-to-package assignments |
+| `assignments` | object | No | Bulk creative-to-package assignments (simple package-level only - see note below) |
 | `delete_missing` | boolean | No | Archive creatives not in this sync (default: false) |
+
+**Note on Placement Targeting:** The `assignments` field only supports package-level assignments without placement targeting. To assign creatives to specific placements within a product, use [`create_media_buy`](./create_media_buy.md) or [`update_media_buy`](./update_media_buy.md) with `creative_assignments[].placement_ids`.
 
 ### Creative Asset Structure
 

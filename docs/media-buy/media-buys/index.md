@@ -77,13 +77,81 @@ A media buy contains:
 
 ### Package Model
 Packages are the building blocks of media buys:
-- **Single product** selection from discovery results
+- **Single product** selection from discovery results - when you buy a product, you buy the entire product
 - **Creative formats** to be provided for this package
 - **Targeting overlays** for audience refinement beyond product defaults
 - **Budget allocation** as portion of overall media buy budget
 - **Pricing option** selection from product's available pricing models
 - **Pacing strategy** for budget delivery (even, asap, or front_loaded)
 - **Bid price** for auction-based pricing models (when applicable)
+
+### Creative Assignment and Placement Targeting
+
+When a product defines multiple placements, buyers can assign different creatives to different placements while still purchasing the entire product.
+
+**Key Points:**
+- **Packages buy the entire product** - you cannot target individual placements at the package level
+- Placement targeting happens **only at the creative assignment level**
+- Creatives without `placement_ids` run on **all placements** in the product
+
+**Example Workflow:**
+
+1. **Product defines placements:**
+```json
+{
+  "product_id": "news_site_premium",
+  "placements": [
+    {
+      "placement_id": "homepage_banner",
+      "name": "Homepage Banner",
+      "format_ids": [{"agent_url": "...", "id": "display_728x90"}]
+    },
+    {
+      "placement_id": "article_sidebar",
+      "name": "Article Sidebar",
+      "format_ids": [{"agent_url": "...", "id": "display_300x250"}]
+    }
+  ]
+}
+```
+
+2. **Buyer creates package (buys entire product) and assigns different creatives to each placement:**
+```json
+{
+  "product_id": "news_site_premium",
+  "creative_assignments": [
+    {
+      "creative_id": "creative_homepage",
+      "placement_ids": ["homepage_banner"]
+    },
+    {
+      "creative_id": "creative_article",
+      "placement_ids": ["article_sidebar"]
+    }
+  ]
+}
+```
+
+3. **Or assign one creative to all placements (omit placement_ids):**
+```json
+{
+  "product_id": "news_site_premium",
+  "creative_assignments": [
+    {
+      "creative_id": "creative_universal"
+      // No placement_ids = runs on all placements in the product
+    }
+  ]
+}
+```
+
+**Use Cases:**
+- **Format-specific placements**: Homepage takes 728x90, sidebar takes 300x250
+- **A/B testing**: Test different creatives on different placements
+- **Geo-targeting**: Different creatives for different DOOH screen locations
+- **Dayparting**: Different creatives for morning vs evening placements
+
+See [Media Products - Placements](../product-discovery/media-products.md#placements) for complete placement documentation.
 
 ### Lifecycle States
 Media buys progress through predictable states:

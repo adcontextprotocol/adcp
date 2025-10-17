@@ -42,6 +42,14 @@
         "$ref": "/schemas/v1/core/format-id.json"
       }
     },
+    "placements": {
+      "type": "array",
+      "description": "Optional array of specific placements within this product. When provided, buyers can target specific placements when assigning creatives.",
+      "items": {
+        "$ref": "/schemas/v1/core/placement.json"
+      },
+      "minItems": 1
+    },
     "delivery_type": {
       "$ref": "/schemas/v1/enums/delivery-type.json"
     },
