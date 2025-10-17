@@ -117,7 +117,6 @@ const sidebars: SidebarsConfig = {
           items: [
             'media-buy/advanced-topics/index',
             'media-buy/advanced-topics/targeting',
-            'media-buy/advanced-topics/dimensions',
             'media-buy/advanced-topics/principals-and-security',
             'media-buy/advanced-topics/testing',
             'media-buy/advanced-topics/orchestrator-design',

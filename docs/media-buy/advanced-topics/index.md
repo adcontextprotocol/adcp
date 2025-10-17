@@ -18,13 +18,12 @@ Advanced topics include:
 
 ## Core Advanced Concepts
 
-### Targeting & Dimensions
-AdCP uses a sophisticated dimensional system for consistent targeting and reporting:
+### Targeting
+AdCP uses a brief-first targeting philosophy with technical overlays for specific needs:
 
-- **[Targeting](./targeting)** - Layered targeting approach using dimensional attributes
-- **[Dimensions](./dimensions)** - Unified system for categorizing products, targeting, and reporting
+- **[Targeting](./targeting)** - Brief-based targeting with geographic overlays and real-time signals
 
-This system ensures you can report on exactly what you targeted, with consistent terminology across discovery, targeting, and analytics.
+This approach enables natural language targeting specifications while supporting technical requirements for compliance and testing.
 
 ### Security & Access Control
 Enterprise-grade security features for multi-tenant environments:
@@ -76,13 +75,14 @@ AdCP's targeting system supports multiple layers of refinement:
 3. **Real-time signals** - Dynamic targeting adjustments
 4. **Frequency management** - Cross-campaign frequency control
 
-### Dimensional Consistency
-The same dimensional vocabulary used for:
-- **Product categorization** during discovery
-- **Targeting specification** during campaign creation
-- **Performance reporting** during optimization
+### Targeting Consistency
+AdCP's targeting approach ensures consistency across the campaign lifecycle:
+- **Briefs** communicate targeting intent during discovery
+- **Products** include targeting capabilities in their definitions
+- **Overlays** add geographic restrictions when needed
+- **Signals** enable real-time targeting decisions
 
-This ensures perfect alignment between intent and measurement.
+This ensures alignment between targeting intent and campaign delivery.
 
 ## Enterprise Features
 
