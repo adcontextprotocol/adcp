@@ -22,7 +22,7 @@ For an overview of how formats, manifests, and creative agents work together, se
   };
   promoted_offering?: string;  // Product being advertised (maps to create_media_buy)
   assets: {
-    [asset_role: string]: {    // Keyed by asset role from format spec
+    [asset_id: string]: {      // Keyed by asset_id from format's assets_required
       asset_type: string;      // Type: image, video, audio, text, url, html, css, javascript, vast, daast, promoted_offerings, webhook
 
       // Type-specific fields - see asset type schemas for details
@@ -43,21 +43,58 @@ For an overview of how formats, manifests, and creative agents work together, se
 }
 ```
 
-### Asset Roles
+### Asset IDs
 
-Asset roles identify the purpose of each asset and map directly to format requirements:
+Each asset in a manifest is keyed by its `asset_id`, which must match an `asset_id` defined in the format's `assets_required` array. The asset ID serves as a semantic identifier for the asset's purpose in the creative.
 
-**Common Asset Roles**:
-- `hero_image`: Primary visual asset
+**How Asset IDs Work**:
+
+When a format defines required assets:
+```json
+{
+  "assets_required": [
+    {
+      "asset_id": "banner_image",
+      "asset_type": "image",
+      "required": true
+    },
+    {
+      "asset_id": "clickthrough_url",
+      "asset_type": "url",
+      "required": true
+    }
+  ]
+}
+```
+
+Your manifest **must use those exact asset IDs** as keys:
+```json
+{
+  "assets": {
+    "banner_image": {        // ← Matches asset_id from format
+      "asset_type": "image",
+      "url": "https://cdn.example.com/banner.jpg",
+      "width": 300,
+      "height": 250
+    },
+    "clickthrough_url": {    // ← Matches asset_id from format
+      "asset_type": "url",
+      "url": "https://example.com/landing"
+    }
+  }
+}
+```
+
+**Common Asset IDs** (vary by format):
+- `banner_image`, `hero_image`: Primary visual assets
 - `logo`: Brand logo
-- `headline`: Main headline text
-- `description`: Body copy
+- `headline`, `description`: Text content
 - `cta_text`: Call-to-action button text
 - `video_file`: Video content
 - `vast_tag`: VAST XML for video delivery
-- `dynamic_endpoint`: URL for real-time creative generation
+- `clickthrough_url`: Landing page URL
 
-Asset roles are defined by the format specification and vary by format type.
+Always check the specific format's `assets_required` to see which asset IDs are required.
 
 ## Types of Creative Manifests
 
@@ -74,7 +111,7 @@ Static manifests contain all assets ready for immediate rendering. These are pro
     "id": "native_responsive"
   },
   "assets": {
-    "hero_image": {
+    "hero_image": {              // asset_id from format spec
       "asset_type": "image",
       "url": "https://cdn.example.com/hero.jpg",
       "width": 1200,
@@ -82,22 +119,22 @@ Static manifests contain all assets ready for immediate rendering. These are pro
       "format": "jpg",
       "alt": "Product image"
     },
-    "logo": {
+    "logo": {                    // asset_id from format spec
       "asset_type": "image",
       "url": "https://cdn.example.com/logo.png",
       "width": 100,
       "height": 100,
       "format": "png"
     },
-    "headline": {
+    "headline": {                // asset_id from format spec
       "asset_type": "text",
       "content": "Premium Quality You Can Trust"
     },
-    "description": {
+    "description": {             // asset_id from format spec
       "asset_type": "text",
       "content": "Discover why veterinarians recommend our formula"
     },
-    "cta_text": {
+    "cta_text": {                // asset_id from format spec
       "asset_type": "text",
       "content": "Learn More"
     }
