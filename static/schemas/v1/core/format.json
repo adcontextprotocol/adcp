@@ -106,7 +106,7 @@
     },
     "assets_required": {
       "type": "array",
-      "description": "Array of required assets or asset groups for this format. Can contain individual assets or repeatable asset sequences (e.g., carousel products, slideshow frames).",
+      "description": "Array of required assets or asset groups for this format. Each asset is identified by its asset_id, which must be used as the key in creative manifests. Can contain individual assets or repeatable asset sequences (e.g., carousel products, slideshow frames).",
       "items": {
         "oneOf": [
           {
@@ -115,7 +115,7 @@
             "properties": {
               "asset_id": {
                 "type": "string",
-                "description": "Identifier for this asset in the format"
+                "description": "Unique identifier for this asset. Creative manifests MUST use this exact value as the key in the assets object."
               },
               "asset_type": {
                 "type": "string",
@@ -124,7 +124,7 @@
               },
               "asset_role": {
                 "type": "string",
-                "description": "Purpose of this asset (e.g., 'hero_image', 'logo', 'headline', 'cta_button')"
+                "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
               },
               "required": {
                 "type": "boolean",
@@ -178,7 +178,7 @@
                     },
                     "asset_role": {
                       "type": "string",
-                      "description": "Purpose of this asset"
+                      "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
                     },
                     "required": {
                       "type": "boolean",

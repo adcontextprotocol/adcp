@@ -15,7 +15,7 @@
     },
     "assets": {
       "type": "object",
-      "description": "Map of asset roles (from format spec) to actual asset content. Each key is an asset_role defined by the format (e.g., 'hero_image', 'logo', 'headline', 'video_file', 'vast_tag').",
+      "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets_required array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id is the technical identifier used to match assets to format requirements.",
       "patternProperties": {
         "^[a-z0-9_]+$": {
           "oneOf": [

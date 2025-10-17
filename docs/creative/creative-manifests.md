@@ -22,7 +22,7 @@ For an overview of how formats, manifests, and creative agents work together, se
   };
   promoted_offering?: string;  // Product being advertised (maps to create_media_buy)
   assets: {
-    [asset_role: string]: {    // Keyed by asset role from format spec
+    [asset_id: string]: {      // Keyed by asset_id from format's assets_required
       asset_type: string;      // Type: image, video, audio, text, url, html, css, javascript, vast, daast, promoted_offerings, webhook
 
       // Type-specific fields - see asset type schemas for details
@@ -43,21 +43,58 @@ For an overview of how formats, manifests, and creative agents work together, se
 }
 ```
 
-### Asset Roles
+### Asset IDs
 
-Asset roles identify the purpose of each asset and map directly to format requirements:
+Each asset in a manifest is keyed by its `asset_id`, which must match an `asset_id` defined in the format's `assets_required` array. The asset ID serves as the technical identifier for referencing the asset requirement in the format specification.
 
-**Common Asset Roles**:
-- `hero_image`: Primary visual asset
+**How Asset IDs Work**:
+
+When a format defines required assets:
+```json
+{
+  "assets_required": [
+    {
+      "asset_id": "banner_image",
+      "asset_type": "image",
+      "required": true
+    },
+    {
+      "asset_id": "clickthrough_url",
+      "asset_type": "url",
+      "required": true
+    }
+  ]
+}
+```
+
+Your manifest **must use those exact asset IDs** as keys:
+```json
+{
+  "assets": {
+    "banner_image": {        // ← Matches asset_id from format
+      "asset_type": "image",
+      "url": "https://cdn.example.com/banner.jpg",
+      "width": 300,
+      "height": 250
+    },
+    "clickthrough_url": {    // ← Matches asset_id from format
+      "asset_type": "url",
+      "url": "https://example.com/landing"
+    }
+  }
+}
+```
+
+**Common Asset IDs** (vary by format):
+- `banner_image`, `hero_image`: Primary visual assets
 - `logo`: Brand logo
-- `headline`: Main headline text
-- `description`: Body copy
+- `headline`, `description`: Text content
 - `cta_text`: Call-to-action button text
 - `video_file`: Video content
 - `vast_tag`: VAST XML for video delivery
-- `dynamic_endpoint`: URL for real-time creative generation
+- `clickthrough_url`: Landing page URL
 
-Asset roles are defined by the format specification and vary by format type.
+Always check the specific format's `assets_required` to see which asset IDs are required.
 
 ## Types of Creative Manifests
 
@@ -74,7 +111,7 @@ Static manifests contain all assets ready for immediate rendering. These are pro
     "id": "native_responsive"
   },
   "assets": {
-    "hero_image": {
+    "hero_image": {              // asset_id from format spec
       "asset_type": "image",
       "url": "https://cdn.example.com/hero.jpg",
       "width": 1200,
@@ -82,22 +119,22 @@ Static manifests contain all assets ready for immediate rendering. These are pro
       "format": "jpg",
       "alt": "Product image"
     },
-    "logo": {
+    "logo": {                    // asset_id from format spec
       "asset_type": "image",
       "url": "https://cdn.example.com/logo.png",
       "width": 100,
       "height": 100,
       "format": "png"
     },
-    "headline": {
+    "headline": {                // asset_id from format spec
       "asset_type": "text",
       "content": "Premium Quality You Can Trust"
     },
-    "description": {
+    "description": {             // asset_id from format spec
       "asset_type": "text",
       "content": "Discover why veterinarians recommend our formula"
     },
-    "cta_text": {
+    "cta_text": {                // asset_id from format spec
       "asset_type": "text",
       "content": "Learn More"
     }
@@ -234,11 +271,20 @@ Use `build_creative` to have a creative agent generate manifests from natural la
 Before using a manifest, validate it against format requirements:
 
 1. **Format Compatibility**: Ensure `format_id` matches intended format
-2. **Required Assets**: All required asset roles are present
-3. **Asset Specifications**: Each asset meets format requirements (dimensions, file size, etc.)
-4. **Macro Support**: Dynamic manifests properly handle required macros
+2. **Required Assets**: All required `asset_id` values from the format are present as keys in the manifest's `assets` object
+3. **Asset Key Matching**: Each key in the manifest's `assets` object MUST match an `asset_id` from the format's `assets_required` array
+4. **Asset Specifications**: Each asset meets format requirements (dimensions, file size, duration, etc.)
+5. **Macro Support**: Dynamic manifests properly handle required macros
+
+**What happens with invalid asset keys?**
+
+- **Missing required asset_id**: Creative agents MUST reject the manifest with an error listing which required assets are missing
+- **Unknown asset_id**: Creative agents SHOULD reject manifests containing asset keys that don't match any `asset_id` in the format. This catches typos and incompatible formats.
+- **Wrong asset_type**: If an asset's `asset_type` doesn't match the format's requirement for that `asset_id`, reject with a clear type mismatch error
 
 Creative agents that implement `build_creative` handle validation automatically. For manually constructed manifests, validate against the format specification returned by `list_creative_formats`.
+
+**Validation is runtime, not schema-time**: The JSON schema for creative manifests uses a flexible pattern (`^[a-z0-9_]+$`) for asset keys because the valid keys depend on which format you're using. Validation against the specific format's `assets_required` happens when you submit the manifest to a creative agent.
 
 ### Previewing Manifests
 
