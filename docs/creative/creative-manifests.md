@@ -45,7 +45,7 @@ For an overview of how formats, manifests, and creative agents work together, se
 
 ### Asset IDs
 
-Each asset in a manifest is keyed by its `asset_id`, which must match an `asset_id` defined in the format's `assets_required` array. The asset ID serves as a semantic identifier for the asset's purpose in the creative.
+Each asset in a manifest is keyed by its `asset_id`, which must match an `asset_id` defined in the format's `assets_required` array. The asset ID serves as the technical identifier for referencing the asset requirement in the format specification.
 
 **How Asset IDs Work**:
 
@@ -271,11 +271,20 @@ Use `build_creative` to have a creative agent generate manifests from natural la
 Before using a manifest, validate it against format requirements:
 
 1. **Format Compatibility**: Ensure `format_id` matches intended format
-2. **Required Assets**: All required asset roles are present
-3. **Asset Specifications**: Each asset meets format requirements (dimensions, file size, etc.)
-4. **Macro Support**: Dynamic manifests properly handle required macros
+2. **Required Assets**: All required `asset_id` values from the format are present as keys in the manifest's `assets` object
+3. **Asset Key Matching**: Each key in the manifest's `assets` object MUST match an `asset_id` from the format's `assets_required` array
+4. **Asset Specifications**: Each asset meets format requirements (dimensions, file size, duration, etc.)
+5. **Macro Support**: Dynamic manifests properly handle required macros
+
+**What happens with invalid asset keys?**
+
+- **Missing required asset_id**: Creative agents MUST reject the manifest with an error listing which required assets are missing
+- **Unknown asset_id**: Creative agents SHOULD reject manifests containing asset keys that don't match any `asset_id` in the format. This catches typos and incompatible formats.
+- **Wrong asset_type**: If an asset's `asset_type` doesn't match the format's requirement for that `asset_id`, reject with a clear type mismatch error
 
 Creative agents that implement `build_creative` handle validation automatically. For manually constructed manifests, validate against the format specification returned by `list_creative_formats`.
+
+**Validation is runtime, not schema-time**: The JSON schema for creative manifests uses a flexible pattern (`^[a-z0-9_]+$`) for asset keys because the valid keys depend on which format you're using. Validation against the specific format's `assets_required` happens when you submit the manifest to a creative agent.
 
 ### Previewing Manifests
 

@@ -15,7 +15,7 @@
     },
     "assets": {
       "type": "object",
-      "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets_required array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id serves as the semantic identifier for the asset's purpose in the creative.",
+      "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets_required array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id is the technical identifier used to match assets to format requirements.",
       "patternProperties": {
         "^[a-z0-9_]+$": {
           "oneOf": [

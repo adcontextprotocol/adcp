@@ -124,7 +124,7 @@
               },
               "asset_role": {
                 "type": "string",
-                "description": "Optional semantic description of this asset's purpose. Note: asset_id serves as the primary identifier - asset_role is for human-readable documentation only."
+                "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
               },
               "required": {
                 "type": "boolean",
@@ -178,7 +178,7 @@
                     },
                     "asset_role": {
                       "type": "string",
-                      "description": "Optional semantic description of this asset's purpose. Note: asset_id serves as the primary identifier - asset_role is for human-readable documentation only."
+                      "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo'). Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
                     },
                     "required": {
                       "type": "boolean",
