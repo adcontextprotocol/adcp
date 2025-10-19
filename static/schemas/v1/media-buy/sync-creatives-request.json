@@ -109,10 +109,12 @@
             "assets": {
               "promoted_offerings": {
                 "asset_type": "promoted_offerings",
-                "url": "https://retailer.com",
-                "colors": {
-                  "primary": "#C41E3A",
-                  "secondary": "#165B33"
+                "brand_manifest": {
+                  "url": "https://retailer.com",
+                  "colors": {
+                    "primary": "#C41E3A",
+                    "secondary": "#165B33"
+                  }
                 }
               },
               "generation_prompt": {

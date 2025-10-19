@@ -2,37 +2,72 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/assets/promoted-offerings-asset.json",
   "title": "Promoted Offerings Asset",
-  "description": "Reference to promoted offerings specification",
+  "description": "Promoted offerings specification combining brand manifest, product selectors, and asset filters. Used as an asset in generative creative formats.",
   "type": "object",
   "properties": {
     "asset_type": {
       "type": "string",
       "const": "promoted_offerings"
     },
-    "url": {
-      "type": "string",
-      "format": "uri",
-      "description": "URL of the advertiser's brand or offering (e.g., https://retailer.com)"
+    "brand_manifest": {
+      "$ref": "/schemas/v1/core/brand-manifest-ref.json",
+      "description": "Brand information manifest containing assets, themes, and guidelines"
     },
-    "colors": {
-      "type": "object",
-      "description": "Brand colors",
-      "properties": {
-        "primary": {"type": "string"},
-        "secondary": {"type": "string"},
-        "accent": {"type": "string"}
+    "product_selectors": {
+      "$ref": "/schemas/v1/core/promoted-products.json",
+      "description": "Selectors to choose which products/offerings from the brand manifest product catalog to promote"
+    },
+    "offerings": {
+      "type": "array",
+      "description": "Inline offerings for campaigns without a product catalog",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Offering name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of what's being offered"
+          },
+          "assets": {
+            "type": "array",
+            "description": "Assets specific to this offering",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": ["name"]
       }
     },
-    "fonts": {
-      "type": "array",
-      "description": "Brand fonts",
-      "items": {"type": "string"}
-    },
-    "tone": {
-      "type": "string",
-      "description": "Brand tone/voice"
+    "asset_selectors": {
+      "type": "object",
+      "description": "Selectors to choose specific assets from the brand manifest",
+      "properties": {
+        "tags": {
+          "type": "array",
+          "description": "Select assets with specific tags",
+          "items": {"type": "string"}
+        },
+        "asset_types": {
+          "type": "array",
+          "description": "Filter by asset type",
+          "items": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "vast_tag", "daast", "text", "url", "html", "css", "javascript", "webhook"]
+          }
+        },
+        "exclude_tags": {
+          "type": "array",
+          "description": "Exclude assets with these tags",
+          "items": {"type": "string"}
+        }
+      }
     }
   },
-  "required": ["asset_type"],
+  "required": ["asset_type", "brand_manifest"],
   "additionalProperties": false
 }
