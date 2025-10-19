@@ -5,10 +5,6 @@
   "description": "VAST (Video Ad Serving Template) tag for third-party video ad serving",
   "type": "object",
   "properties": {
-    "asset_type": {
-      "type": "string",
-      "const": "vast"
-    },
     "url": {
       "type": "string",
       "format": "uri",
@@ -26,12 +22,6 @@
     "vpaid_enabled": {
       "type": "boolean",
       "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
-    },
-    "max_wrapper_depth": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 10,
-      "description": "Maximum allowed wrapper/redirect depth"
     },
     "duration_ms": {
       "type": "integer",
@@ -66,13 +56,13 @@
   },
   "oneOf": [
     {
-      "required": ["asset_type", "url"],
+      "required": ["url"],
       "not": {
         "required": ["content"]
       }
     },
     {
-      "required": ["asset_type", "content"],
+      "required": ["content"],
       "not": {
         "required": ["url"]
       }

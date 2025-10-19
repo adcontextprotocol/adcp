@@ -23,21 +23,21 @@ For an overview of how formats, manifests, and creative agents work together, se
   promoted_offering?: string;  // Product being advertised (maps to create_media_buy)
   assets: {
     [asset_id: string]: {      // Keyed by asset_id from format's assets_required
-      asset_type: string;      // Type: image, video, audio, text, url, html, css, javascript, vast, daast, promoted_offerings, webhook
+      // Asset type is determined by format specification, not declared here
+      // Type-specific fields depend on asset_type defined in format's assets_required
 
-      // Type-specific fields - see asset type schemas for details
-      // Image: url, width, height, format, file_size, alt
-      // Video: url, width, height, duration_ms, format, codec, bitrate_kbps, file_size
-      // Audio: url, duration_ms, format, codec, bitrate_kbps, sample_rate_hz, channels
-      // Text: content, length, format (plain/html/markdown)
-      // URL: url, purpose (clickthrough/tracking/etc)
-      // HTML: content or url, width, height, file_size
-      // CSS: content or url
-      // JavaScript: content or url
+      // Image: url, width, height, format, alt_text
+      // Video: url, width, height, duration_ms, format, bitrate_kbps
+      // Audio: url, duration_ms, format, bitrate_kbps
+      // Text: content, language
+      // URL: url, description
+      // HTML: content or url, version
+      // CSS: content, media
+      // JavaScript: content, module_type
       // VAST: url or content, vast_version, vpaid_enabled, duration_ms, tracking_events
       // DAAST: url or content, daast_version, duration_ms, tracking_events, companion_ads
-      // Promoted Offerings: url, colors, tone (for generative creatives)
-      // Webhook: url, method, timeout_ms, response_type, security, supported_macros (server-side)
+      // Promoted Offerings: brand_manifest, product_selectors, offerings, asset_selectors
+      // Webhook: url, method, timeout_ms, response_type, security, supported_macros, required_macros
     }
   };
 }
@@ -95,6 +95,42 @@ Your manifest **must use those exact asset IDs** as keys:
 - `clickthrough_url`: Landing page URL
 
 Always check the specific format's `assets_required` to see which asset IDs are required.
+
+### Complete Example
+
+Here's a complete creative manifest showing the current structure without redundant fields:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "promoted_offering": "Premium Dog Food",
+  "assets": {
+    "banner_image": {
+      "url": "https://cdn.example.com/banner.jpg",
+      "width": 300,
+      "height": 250,
+      "format": "jpg"
+    },
+    "headline": {
+      "content": "Nutrition Dogs Love",
+      "language": "en"
+    },
+    "description": {
+      "content": "Made with real chicken and wholesome grains",
+      "language": "en"
+    },
+    "clickthrough_url": {
+      "url": "https://example.com/products/premium-dog-food",
+      "description": "Product landing page"
+    }
+  }
+}
+```
+
+**Note**: Asset types (`image`, `text`, `url`) are **not** declared in the manifest. They are determined by looking up each `asset_id` in the format specification's `assets_required` array. The format tells us that `banner_image` should be type `image`, `headline` should be type `text`, etc.
 
 ## Types of Creative Manifests
 
@@ -279,10 +315,30 @@ Before using a manifest, validate it against format requirements:
 **What happens with invalid asset keys?**
 
 - **Missing required asset_id**: Creative agents MUST reject the manifest with an error listing which required assets are missing
-- **Unknown asset_id**: Creative agents SHOULD reject manifests containing asset keys that don't match any `asset_id` in the format. This catches typos and incompatible formats.
-- **Wrong asset_type**: If an asset's `asset_type` doesn't match the format's requirement for that `asset_id`, reject with a clear type mismatch error
+- **Unknown asset_id**: Creative agents MUST reject manifests containing asset keys that don't match any `asset_id` in the format. This catches typos and incompatible formats immediately.
+- **Wrong asset_type**: If an asset doesn't match the type requirement for that `asset_id` in the format specification, reject with a clear type mismatch error
 
 Creative agents that implement `build_creative` handle validation automatically. For manually constructed manifests, validate against the format specification returned by `list_creative_formats`.
+
+**Format-Aware Validation**: Creative manifest validation MUST be performed in the context of the format specification. The format defines what type each `asset_id` should be, eliminating any validation ambiguity. Asset type information is NOT included in the manifest itself - it's determined by looking up the `asset_id` in the format's `assets_required` array.
+
+#### Validation Flow
+
+When a creative agent receives a manifest for validation:
+
+1. **Extract format_id** from the manifest
+2. **Fetch format specification** from the format registry (local or remote based on `agent_url`)
+3. **For each asset key in `manifest.assets`:**
+   - Look up the `asset_id` in `format.assets_required`
+   - If not found → **reject** with error "Unknown asset_id 'banner_imag' not defined in format"
+   - If found → determine the expected `asset_type` from the format requirement
+   - Fetch the asset type schema (e.g., `/schemas/v1/core/assets/image-asset.json`)
+   - Validate the asset payload against that schema
+   - Validate the asset meets any additional constraints in the format's `requirements` field
+4. **Check all required assets are present** (where `required: true` in format spec)
+5. **Validate type-specific constraints** (dimensions, file size, duration, etc.)
+
+The format specification is the single source of truth for what type each `asset_id` should be and what constraints apply.
 
 **Validation is runtime, not schema-time**: The JSON schema for creative manifests uses a flexible pattern (`^[a-z0-9_]+$`) for asset keys because the valid keys depend on which format you're using. Validation against the specific format's `assets_required` happens when you submit the manifest to a creative agent.
 

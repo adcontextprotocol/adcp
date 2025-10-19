@@ -257,21 +257,16 @@ Response:
       "type": "display",
       "assets_required": [
         {
-          "asset_type": "brand_manifest",
-          "asset_role": "brand_context",
+          "asset_id": "promoted_offerings",
+          "asset_type": "promoted_offerings",
           "required": true
-        },
-        {
-          "asset_type": "text",
-          "asset_role": "message",
-          "required": true,
-          "requirements": {
-            "description": "Natural language description of the creative to generate"
-          }
         }
       ],
-      "output_format_ids": ["300x250_banner_image"],
-      "description": "Accepts a brand manifest and message, generates a complete 300x250 banner creative"
+      "output_format_ids": [{
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "300x250_banner_image"
+      }],
+      "description": "Generative format that accepts promoted_offerings (which includes brand_manifest, product selectors, and asset filters), generates a complete 300x250 banner creative"
     },
     {
       "format_id": {
