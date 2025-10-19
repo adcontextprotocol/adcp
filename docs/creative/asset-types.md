@@ -11,8 +11,8 @@ Creative formats in AdCP use standardized asset types with well-defined properti
 **This document describes format requirements** (constraints and specifications defined in format specs).
 
 For **payload schemas** (the structure of actual asset data you send in creative manifests), see:
-- [Asset Type Registry](/schemas/v1/creative/asset-types/index.json) - Links to all payload schemas
-- [Core Asset Schemas](/schemas/v1/core/assets/) - Individual asset payload definitions
+- [Asset Type Registry](https://adcontextprotocol.org/schemas/v1/creative/asset-types/index.json) - Links to all payload schemas
+- Core Asset Schemas at `/schemas/v1/core/assets/` - Individual asset payload definitions
 
 **Key distinction**:
 - **Format requirements** (this doc): `max_file_size_mb`, `required: true/false`, `acceptable_formats`, duration constraints
