@@ -57,7 +57,7 @@
           "description": "Filter by asset type (e.g., ['image', 'video'])",
           "items": {
             "type": "string",
-            "enum": ["image", "video", "audio", "text", "html", "css", "javascript"]
+            "enum": ["image", "video", "audio", "vast_tag", "daast", "text", "url", "html", "css", "javascript", "webhook"]
           }
         },
         "exclude_tags": {

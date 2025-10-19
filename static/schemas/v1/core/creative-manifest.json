@@ -387,6 +387,100 @@
                 { "required": ["url"] }
               ],
               "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "CSS stylesheet asset",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "css"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "CSS stylesheet content"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL to external CSS file"
+                },
+                "media": {
+                  "type": "string",
+                  "description": "CSS media query context",
+                  "default": "all"
+                }
+              },
+              "required": ["asset_type"],
+              "oneOf": [
+                { "required": ["content"] },
+                { "required": ["url"] }
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "DAAST XML tag for third-party audio ad serving",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "daast"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Complete DAAST XML content"
+                },
+                "daast_version": {
+                  "type": "string",
+                  "enum": ["1.0", "1.1"],
+                  "description": "DAAST specification version"
+                },
+                "duration_seconds": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Expected audio duration in seconds"
+                }
+              },
+              "required": ["asset_type", "content", "daast_version"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "Promoted offerings specification for generative creatives",
+              "properties": {
+                "asset_type": {
+                  "type": "string",
+                  "const": "promoted_offerings"
+                },
+                "brand_manifest": {
+                  "$ref": "/schemas/v1/core/brand-manifest-ref.json",
+                  "description": "Brand information manifest"
+                },
+                "product_selectors": {
+                  "$ref": "/schemas/v1/core/promoted-products.json",
+                  "description": "Selectors for which products to promote"
+                },
+                "offerings": {
+                  "type": "array",
+                  "description": "Inline offerings for campaigns without a product catalog",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Offering name"
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Description of what's being offered"
+                      }
+                    },
+                    "required": ["name"]
+                  }
+                }
+              },
+              "required": ["asset_type", "brand_manifest"],
+              "additionalProperties": false
             }
           ]
         }

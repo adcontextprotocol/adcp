@@ -366,7 +366,7 @@
             "updated_date": "2024-01-15T14:20:00Z",
             "assets": {
               "vast_tag": {
-                "asset_type": "vast",
+                "asset_type": "vast_tag",
                 "url": "https://vast.example.com/video/123",
                 "vast_version": "4.1"
               }

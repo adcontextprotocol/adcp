@@ -26,6 +26,11 @@
       "schema": "/schemas/v1/creative/asset-types/vast_tag.json",
       "typical_use": "Third-party served video ads with VAST 2.0-4.2"
     },
+    "daast": {
+      "description": "DAAST XML tag for third-party audio ad serving",
+      "schema": "/schemas/v1/creative/asset-types/daast.json",
+      "typical_use": "Third-party served audio ads with DAAST 1.0-1.1"
+    },
     "text": {
       "description": "Text content asset (plain, HTML, markdown)",
       "schema": "/schemas/v1/creative/asset-types/text.json",
@@ -40,6 +45,11 @@
       "description": "HTML5 creative asset for interactive ads",
       "schema": "/schemas/v1/creative/asset-types/html.json",
       "typical_use": "HTML5 display banners, rich media, interactive ads"
+    },
+    "css": {
+      "description": "CSS stylesheet asset for styling",
+      "schema": "/schemas/v1/creative/asset-types/css.json",
+      "typical_use": "Stylesheets for HTML5 creatives, custom styling"
     },
     "webhook": {
       "description": "Server-side webhook for dynamic creative rendering",
@@ -62,7 +72,7 @@
     "asset_type": {
       "description": "The type of asset - determines which schema and properties apply",
       "type": "string",
-      "enum": ["image", "video", "audio", "vast_tag", "text", "url", "html", "webhook", "javascript"]
+      "enum": ["image", "video", "audio", "vast_tag", "daast", "text", "url", "html", "css", "webhook", "javascript"]
     },
     "required": {
       "description": "Whether this asset is mandatory for the creative format",

@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/creative/asset-types/css.json",
+  "title": "CSS Asset Type Schema",
+  "description": "Schema for CSS stylesheet assets used for styling HTML5 creatives",
+  "type": "object",
+  "properties": {
+    "asset_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Unique identifier for this asset within the format"
+    },
+    "asset_type": {
+      "type": "string",
+      "const": "css"
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether this asset is mandatory for the format"
+    },
+    "stylesheet_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to CSS file"
+    },
+    "inline_css": {
+      "type": "string",
+      "description": "Inline CSS content (alternative to stylesheet_url)"
+    },
+    "media": {
+      "type": "string",
+      "description": "CSS media query context (e.g., 'screen', 'print', 'screen and (max-width: 768px)')",
+      "default": "all"
+    },
+    "load_order": {
+      "type": "integer",
+      "description": "Order to load stylesheets (lower loads first)",
+      "minimum": 0,
+      "default": 0
+    },
+    "preprocessing": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["sass", "less", "none"],
+          "default": "none",
+          "description": "CSS preprocessor format"
+        },
+        "compile_required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether CSS needs compilation before use"
+        }
+      }
+    },
+    "minified": {
+      "type": "boolean",
+      "description": "Whether CSS is already minified",
+      "default": false
+    },
+    "max_size_bytes": {
+      "type": "integer",
+      "description": "Maximum allowed CSS file size in bytes",
+      "minimum": 1,
+      "default": 102400
+    }
+  },
+  "required": ["asset_id", "asset_type", "required"],
+  "oneOf": [
+    {"required": ["stylesheet_url"]},
+    {"required": ["inline_css"]}
+  ],
+  "additionalProperties": false
+}
