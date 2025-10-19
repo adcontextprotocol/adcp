@@ -13,15 +13,16 @@
     "2.0.0": {
       "date": "2025-10-14",
       "breaking_changes": [
-        "Added structured render_dimensions field to Format schema (required for display/dooh/native formats)",
+        "Added renders array to Format schema with role and dimensions fields (replaces top-level dimensions)",
+        "Formats now specify rendered outputs via renders array - enables companion ads, adaptive formats, and multi-placement",
+        "Each render includes role (primary, companion, mobile_variant, etc.) and structured dimensions object",
         "Removed string dimensions field from standard display formats",
-        "Removed unstructured requirements field from Format schema (use render_dimensions for format-level specs, assets_required[].requirements for asset specs)",
         "Renamed preview response 'outputs' to 'renders' to avoid confusion with generative format output_format_ids",
         "Removed format_id from preview renders (all renders are from the same format)",
-        "Removed hints object from preview renders (use render_dimensions from format lookup instead)",
+        "Removed hints object from preview renders (use format lookup for render specifications instead)",
         "Changed preview render field names: output_id→render_id, output_role→role, added dimensions field"
       ],
-      "rationale": "Structured dimensions eliminate parsing ambiguity. Multi-render preview support enables companion ads and adaptive formats. Terminology changes prevent confusion between preview rendering and generative format outputs. Simplified schema removes redundant fields."
+      "rationale": "Renders array with structured dimensions eliminates parsing ambiguity and uniformly supports single and multi-render formats. Multi-render preview support enables companion ads and adaptive formats. Terminology changes prevent confusion between preview rendering and generative format outputs. Simplified schema removes redundant fields."
     },
     "1.8.0": {
       "date": "2025-10-13",

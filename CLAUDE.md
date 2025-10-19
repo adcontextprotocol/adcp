@@ -341,32 +341,43 @@ For major version changes:
 
 ### Structured Rendering Dimensions
 
-**IMPORTANT**: Visual formats (display, dooh, native) now use structured `render_dimensions` instead of string-based dimensions.
+**IMPORTANT**: Visual formats (display, dooh, native) use structured dimensions within the `renders` array instead of string-based dimensions.
 
-**Schema field** (`render_dimensions`):
+**Schema structure** (formats have `renders` array):
 ```json
 {
-  "width": 300,
-  "height": 250,
-  "responsive": {
-    "width": false,
-    "height": false
-  },
-  "unit": "px"
+  "format_id": {...},
+  "type": "display",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 300,
+        "height": 250,
+        "responsive": {
+          "width": false,
+          "height": false
+        },
+        "unit": "px"
+      }
+    }
+  ]
 }
 ```
 
-**Why structured dimensions:**
+**Why the renders structure:**
+- Supports single and multi-render formats uniformly (companion ads, adaptive formats)
 - Eliminates string parsing ("300x250" → structured object)
 - Schema-validated with proper typing
 - Supports responsive dimensions (min/max width/height)
 - Supports aspect ratio constraints
 - Enables physical units for DOOH (inches, cm)
 - Proper preview rendering without custom parsing
+- Clear semantic roles for each rendered piece (primary, companion, mobile_variant, etc.)
 
 **Migration from string dimensions:**
 - Old: `"dimensions": "300x250"` (string in requirements)
-- New: `"render_dimensions": {width: 300, height: 250, responsive: {width: false, height: false}, unit: "px"}`
+- New: `"renders": [{"role": "primary", "dimensions": {width: 300, height: 250, responsive: {width: false, height: false}, unit: "px"}}]`
 
 ### Multi-Render Preview Support
 

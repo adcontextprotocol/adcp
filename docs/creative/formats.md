@@ -240,11 +240,11 @@ Formats are JSON objects with the following key fields:
 - **type**: Category (video, display, audio, native, dooh, rich_media)
 - **assets_required**: Array of asset specifications
 - **asset_role**: Identifies asset purpose (hero_image, logo, cta_button, etc.)
-- **render_dimensions**: Structured dimensions for visual formats (display, dooh, native) - see below
+- **renders**: Array of rendered outputs with dimensions - see below
 
-### Structured Rendering Dimensions
+### Rendered Outputs and Dimensions
 
-Visual formats (display, dooh, native) include structured `render_dimensions` for proper preview rendering and format filtering:
+Formats specify their rendered outputs via the `renders` array. Most formats produce a single render, but some (companion ads, adaptive formats, multi-placement) produce multiple renders:
 
 ```json
 {
@@ -253,15 +253,49 @@ Visual formats (display, dooh, native) include structured `render_dimensions` fo
     "id": "display_300x250"
   },
   "type": "display",
-  "render_dimensions": {
-    "width": 300,
-    "height": 250,
-    "responsive": {
-      "width": false,
-      "height": false
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 300,
+        "height": 250,
+        "responsive": {
+          "width": false,
+          "height": false
+        },
+        "unit": "px"
+      }
+    }
+  ]
+}
+```
+
+**Multi-render example (companion ad):**
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_with_companion_300x250"
+  },
+  "type": "video",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 1920,
+        "height": 1080,
+        "unit": "px"
+      }
     },
-    "unit": "px"
-  }
+    {
+      "role": "companion",
+      "dimensions": {
+        "width": 300,
+        "height": 250,
+        "unit": "px"
+      }
+    }
+  ]
 }
 ```
 
@@ -270,51 +304,65 @@ Visual formats (display, dooh, native) include structured `render_dimensions` fo
 **Fixed dimensions** (standard display ads):
 ```json
 {
-  "width": 300,
-  "height": 250,
-  "responsive": {"width": false, "height": false},
-  "unit": "px"
+  "role": "primary",
+  "dimensions": {
+    "width": 300,
+    "height": 250,
+    "responsive": {"width": false, "height": false},
+    "unit": "px"
+  }
 }
 ```
 
 **Responsive width** (fluid banners):
 ```json
 {
-  "min_width": 300,
-  "max_width": 970,
-  "height": 250,
-  "responsive": {"width": true, "height": false},
-  "unit": "px"
+  "role": "primary",
+  "dimensions": {
+    "min_width": 300,
+    "max_width": 970,
+    "height": 250,
+    "responsive": {"width": true, "height": false},
+    "unit": "px"
+  }
 }
 ```
 
 **Aspect ratio constrained** (native formats):
 ```json
 {
-  "aspect_ratio": "16:9",
-  "min_width": 300,
-  "responsive": {"width": true, "height": true},
-  "unit": "px"
+  "role": "primary",
+  "dimensions": {
+    "aspect_ratio": "16:9",
+    "min_width": 300,
+    "responsive": {"width": true, "height": true},
+    "unit": "px"
+  }
 }
 ```
 
 **Physical dimensions** (DOOH):
 ```json
 {
-  "width": 48,
-  "height": 14,
-  "responsive": {"width": false, "height": false},
-  "unit": "inches"
+  "role": "primary",
+  "dimensions": {
+    "width": 48,
+    "height": 14,
+    "responsive": {"width": false, "height": false},
+    "unit": "inches"
+  }
 }
 ```
 
-**Benefits of structured dimensions:**
-- No string parsing required
+**Benefits of the renders structure:**
+- Supports single and multi-render formats uniformly
+- No string parsing required - structured dimensions
 - Schema-validated dimensions
 - Supports responsive and fixed formats equally
 - Enables proper preview rendering
 - Allows dimension-based filtering
 - Supports physical units for DOOH
+- Clear semantic roles for each rendered piece
 
 ## Format Categories
 
