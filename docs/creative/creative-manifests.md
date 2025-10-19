@@ -330,7 +330,7 @@ When a creative agent receives a manifest for validation:
 2. **Fetch format specification** from the format registry (local or remote based on `agent_url`)
 3. **For each asset key in `manifest.assets`:**
    - Look up the `asset_id` in `format.assets_required`
-   - If not found → **reject** with error "Unknown asset_id '{key}' not defined in format"
+   - If not found → **reject** with error "Unknown asset_id 'banner_imag' not defined in format"
    - If found → determine the expected `asset_type` from the format requirement
    - Fetch the asset type schema (e.g., `/schemas/v1/core/assets/image-asset.json`)
    - Validate the asset payload against that schema
