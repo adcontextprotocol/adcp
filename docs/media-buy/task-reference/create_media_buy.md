@@ -9,6 +9,8 @@ Create a media buy from selected packages. This task handles the complete workfl
 
 **Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
 
+**Pricing Selection**: Each package must specify a `pricing_option_id` from the product's available pricing options. The media buy sets the overall currency. See [Pricing Models](../advanced-topics/pricing-models) for complete documentation on CPM, CPCV, CPP, and pricing selection.
+
 **Format Specification Required**: Each package must specify the creative formats that will be used. This enables placeholder creation in ad servers and ensures both parties have clear expectations for creative asset requirements.
 
 
@@ -35,8 +37,11 @@ Create a media buy from selected packages. This task handles the complete workfl
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this package |
 | `product_id` | string | Yes | Product ID for this package |
+| `pricing_option_id` | string | Yes | Pricing option ID from the product's `pricing_options` array - specifies which pricing model to use for this package. See [Pricing Models](../advanced-topics/pricing-models) for details. |
 | `format_ids` | FormatID[] | Yes | Array of structured format ID objects that will be used for this package - must be supported by the product |
-| `budget` | Budget | No | Budget configuration for this package (overrides media buy level budget if specified) |
+| `budget` | number | Yes | Budget allocation for this package in the media buy's currency |
+| `pacing` | string | No | Pacing strategy: `"even"` (default), `"asap"`, or `"front_loaded"` |
+| `bid_price` | number | No | Bid price for auction-based pricing options (required when `pricing_option.is_fixed` is false) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
 | `creative_ids` | string[] | No | Creative IDs to assign to this package at creation time (references existing library creatives) |
 | `creatives` | CreativeAsset[] | No | Full creative objects to upload and assign to this package at creation time (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives. Max 100 per package. |
