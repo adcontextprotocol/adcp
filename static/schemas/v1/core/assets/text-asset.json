@@ -9,11 +9,6 @@
       "type": "string",
       "description": "Text content"
     },
-    "max_length": {
-      "type": "integer",
-      "description": "Maximum character length constraint",
-      "minimum": 1
-    },
     "language": {
       "type": "string",
       "description": "Language code (e.g., 'en', 'es', 'fr')"

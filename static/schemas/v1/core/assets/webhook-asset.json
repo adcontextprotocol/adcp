@@ -61,11 +61,6 @@
         }
       },
       "required": ["method"]
-    },
-    "fallback_required": {
-      "type": "boolean",
-      "default": true,
-      "description": "Whether a fallback asset must be provided if webhook fails"
     }
   },
   "required": ["url", "response_type", "security"],

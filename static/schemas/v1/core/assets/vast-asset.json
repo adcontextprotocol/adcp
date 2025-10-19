@@ -23,12 +23,6 @@
       "type": "boolean",
       "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
     },
-    "max_wrapper_depth": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 10,
-      "description": "Maximum allowed wrapper/redirect depth"
-    },
     "duration_ms": {
       "type": "integer",
       "description": "Expected video duration in milliseconds (if known)",
