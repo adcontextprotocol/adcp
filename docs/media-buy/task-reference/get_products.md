@@ -9,6 +9,8 @@ Discover available advertising products based on campaign requirements, using na
 
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
 
+**Pricing Information**: Products include pricing options that buyers select when creating media buys. See [Pricing Models](../advanced-topics/pricing-models) for complete details on CPM, CPCV, CPP, and other pricing models.
+
 **Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications. **See [Creative Lifecycle](../creatives/index.md) for the complete workflow.**
 
 **Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](/schemas/v1/media-buy/get-products-request.json)
@@ -136,6 +138,7 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
 - **product_id**: Unique identifier for the product
 - **name**: Human-readable product name
 - **description**: Detailed description of the product and its inventory
+- **pricing_options**: Array of available pricing models for this product. Each option has a unique `pricing_option_id` that buyers reference in `create_media_buy`. See [Pricing Models](../advanced-topics/pricing-models) for complete documentation of supported pricing models (CPM, CPCV, CPP, CPC, vCPM, flat_rate).
 - **properties**: Array of specific advertising properties covered by this product (see [Property Schema](/schemas/v1/core/property.json))
   - **property_type**: Type of advertising property ("website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio")
   - **name**: Human-readable property name
