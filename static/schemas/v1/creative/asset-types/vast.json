@@ -12,7 +12,7 @@
     },
     "asset_type": {
       "type": "string",
-      "const": "vast_tag"
+      "const": "vast"
     },
     "required": {
       "type": "boolean",

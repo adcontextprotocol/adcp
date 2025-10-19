@@ -7,7 +7,7 @@
   "properties": {
     "asset_type": {
       "type": "string",
-      "const": "vast_tag"
+      "const": "vast"
     },
     "url": {
       "type": "string",

@@ -11,7 +11,7 @@
     },
     "type": {
       "type": "string",
-      "enum": ["image", "video", "audio", "text", "html", "css", "javascript", "vast_tag", "daast", "promoted_offerings", "url"],
+      "enum": ["image", "video", "audio", "text", "html", "css", "javascript", "vast", "daast", "promoted_offerings", "url"],
       "description": "Type of asset"
     },
     "required": {

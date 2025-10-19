@@ -21,9 +21,9 @@
       "schema": "/schemas/v1/creative/asset-types/audio.json",
       "typical_use": "Audio ads for streaming, podcasts, radio"
     },
-    "vast_tag": {
+    "vast": {
       "description": "VAST XML tag for third-party video ad serving",
-      "schema": "/schemas/v1/creative/asset-types/vast_tag.json",
+      "schema": "/schemas/v1/creative/asset-types/vast.json",
       "typical_use": "Third-party served video ads with VAST 2.0-4.2"
     },
     "daast": {
@@ -67,12 +67,12 @@
       "description": "Unique identifier for this asset within the format (maps to asset_role in format spec)",
       "type": "string",
       "pattern": "^[a-z0-9_]+$",
-      "examples": ["hero_image", "logo", "headline", "video_file", "vast_tag", "cta_text"]
+      "examples": ["hero_image", "logo", "headline", "video_file", "vast", "cta_text"]
     },
     "asset_type": {
       "description": "The type of asset - determines which schema and properties apply",
       "type": "string",
-      "enum": ["image", "video", "audio", "vast_tag", "daast", "text", "url", "html", "css", "webhook", "javascript"]
+      "enum": ["image", "video", "audio", "vast", "daast", "text", "url", "html", "css", "webhook", "javascript"]
     },
     "required": {
       "description": "Whether this asset is mandatory for the creative format",
