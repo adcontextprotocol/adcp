@@ -18,14 +18,14 @@
       "type": "boolean",
       "description": "Whether this asset is mandatory for the format"
     },
-    "tag_url": {
+    "url": {
       "type": "string",
       "format": "uri",
       "description": "URL endpoint that returns DAAST XML response"
     },
-    "inline_xml": {
+    "content": {
       "type": "string",
-      "description": "Inline DAAST XML content (alternative to tag_url)"
+      "description": "Inline DAAST XML content (alternative to url)"
     },
     "daast_version": {
       "type": "string",
@@ -108,14 +108,14 @@
     },
     "companion_ads": {
       "type": "object",
-      "description": "Requirements for companion display ads",
+      "description": "Requirements for companion display ads that may accompany the DAAST audio ad. This specifies format requirements, not the actual companion ad assets (which should be separate image assets in the format).",
       "properties": {
         "required": {
           "type": "boolean",
           "default": false,
-          "description": "Whether companion ads are required"
+          "description": "Whether companion ads must be included with this DAAST tag"
         },
-        "dimensions": {
+        "accepted_dimensions": {
           "type": "array",
           "items": {
             "type": "object",
@@ -125,14 +125,14 @@
             },
             "required": ["width", "height"]
           },
-          "description": "Accepted companion ad dimensions"
+          "description": "List of accepted companion ad dimensions (e.g., [{width: 300, height: 250}]). Actual companion ad assets should be provided as separate image assets in the creative manifest."
         }
       }
     },
     "fallback_required": {
       "type": "boolean",
       "default": true,
-      "description": "Whether a fallback audio asset must be provided if DAAST tag fails"
+      "description": "Whether a fallback audio asset must be provided if DAAST tag fails to load or render. When true, the format specification should include a separate audio asset (asset_type: 'audio') to use as fallback."
     },
     "supported_macros": {
       "type": "array",
@@ -153,8 +153,8 @@
   },
   "required": ["asset_id", "asset_type", "required"],
   "oneOf": [
-    {"required": ["tag_url"]},
-    {"required": ["inline_xml"]}
+    {"required": ["url"]},
+    {"required": ["content"]}
   ],
   "additionalProperties": false
 }

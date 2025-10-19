@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/assets/promoted-offerings-asset.json",
   "title": "Promoted Offerings Asset",
-  "description": "Promoted offerings specification for use as an asset in generative creative formats. IMPORTANT: This schema must stay synchronized with /schemas/v1/core/promoted-offerings.json - it adds the asset_type field to that structure.",
+  "description": "Promoted offerings specification for use as an asset in generative creative formats. NOTE: Due to JSON Schema Draft 07 limitations with allOf inside oneOf contexts, this schema duplicates structure from /schemas/v1/core/promoted-offerings.json but uses $ref for complex sub-schemas where possible. These must stay synchronized.",
   "type": "object",
   "properties": {
     "asset_type": {
@@ -10,12 +10,10 @@
       "const": "promoted_offerings"
     },
     "brand_manifest": {
-      "$ref": "/schemas/v1/core/brand-manifest-ref.json",
-      "description": "Brand information manifest containing assets, themes, and guidelines. Can be provided inline or as a URL reference to a hosted manifest."
+      "$ref": "/schemas/v1/core/brand-manifest-ref.json"
     },
     "product_selectors": {
-      "$ref": "/schemas/v1/core/promoted-products.json",
-      "description": "Selectors to choose which products/offerings from the brand manifest product catalog to promote"
+      "$ref": "/schemas/v1/core/promoted-products.json"
     },
     "offerings": {
       "type": "array",
