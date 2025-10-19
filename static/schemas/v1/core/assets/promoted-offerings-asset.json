@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/assets/promoted-offerings-asset.json",
   "title": "Promoted Offerings Asset",
-  "description": "Promoted offerings specification combining brand manifest, product selectors, and asset filters. Used as an asset in generative creative formats.",
+  "description": "Promoted offerings specification for use as an asset in generative creative formats. IMPORTANT: This schema must stay synchronized with /schemas/v1/core/promoted-offerings.json - it adds the asset_type field to that structure.",
   "type": "object",
   "properties": {
     "asset_type": {
@@ -11,7 +11,7 @@
     },
     "brand_manifest": {
       "$ref": "/schemas/v1/core/brand-manifest-ref.json",
-      "description": "Brand information manifest containing assets, themes, and guidelines"
+      "description": "Brand information manifest containing assets, themes, and guidelines. Can be provided inline or as a URL reference to a hosted manifest."
     },
     "product_selectors": {
       "$ref": "/schemas/v1/core/promoted-products.json",
@@ -19,13 +19,13 @@
     },
     "offerings": {
       "type": "array",
-      "description": "Inline offerings for campaigns without a product catalog",
+      "description": "Inline offerings for campaigns without a product catalog. Each offering has a name, description, and associated assets.",
       "items": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "description": "Offering name"
+            "description": "Offering name (e.g., 'Winter Sale', 'New Product Launch')"
           },
           "description": {
             "type": "string",
@@ -36,11 +36,13 @@
             "description": "Assets specific to this offering",
             "items": {
               "type": "object",
+              "description": "Asset definition using standard asset structure",
               "additionalProperties": true
             }
           }
         },
-        "required": ["name"]
+        "required": ["name"],
+        "additionalProperties": false
       }
     },
     "asset_selectors": {
@@ -49,12 +51,14 @@
       "properties": {
         "tags": {
           "type": "array",
-          "description": "Select assets with specific tags",
-          "items": {"type": "string"}
+          "description": "Select assets with specific tags (e.g., ['holiday', 'premium'])",
+          "items": {
+            "type": "string"
+          }
         },
         "asset_types": {
           "type": "array",
-          "description": "Filter by asset type",
+          "description": "Filter by asset type (e.g., ['image', 'video'])",
           "items": {
             "type": "string",
             "enum": ["image", "video", "audio", "vast_tag", "daast", "text", "url", "html", "css", "javascript", "webhook"]
@@ -63,9 +67,12 @@
         "exclude_tags": {
           "type": "array",
           "description": "Exclude assets with these tags",
-          "items": {"type": "string"}
+          "items": {
+            "type": "string"
+          }
         }
-      }
+      },
+      "additionalProperties": false
     }
   },
   "required": ["asset_type", "brand_manifest"],
