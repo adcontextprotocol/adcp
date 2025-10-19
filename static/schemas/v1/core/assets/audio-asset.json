@@ -5,10 +5,6 @@
   "description": "Audio asset with URL and specifications",
   "type": "object",
   "properties": {
-    "asset_type": {
-      "type": "string",
-      "const": "audio"
-    },
     "url": {
       "type": "string",
       "format": "uri",
@@ -29,6 +25,6 @@
       "minimum": 1
     }
   },
-  "required": ["asset_type", "url"],
+  "required": ["url"],
   "additionalProperties": false
 }

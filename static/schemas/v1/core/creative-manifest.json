@@ -15,7 +15,7 @@
     },
     "assets": {
       "type": "object",
-      "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets_required array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id is the technical identifier used to match assets to format requirements.",
+      "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets_required array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id is the technical identifier used to match assets to format requirements.\n\nIMPORTANT: Creative manifest validation MUST be performed in the context of the format specification. The format defines what type each asset_id should be, which eliminates any validation ambiguity.",
       "patternProperties": {
         "^[a-z0-9_]+$": {
           "oneOf": [
@@ -53,7 +53,7 @@
               "$ref": "/schemas/v1/core/assets/daast-asset.json"
             },
             {
-              "$ref": "/schemas/v1/core/assets/promoted-offerings-asset.json"
+              "$ref": "/schemas/v1/core/promoted-offerings.json"
             }
           ]
         }

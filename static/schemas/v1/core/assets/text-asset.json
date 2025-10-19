@@ -5,10 +5,6 @@
   "description": "Text content asset",
   "type": "object",
   "properties": {
-    "asset_type": {
-      "type": "string",
-      "const": "text"
-    },
     "content": {
       "type": "string",
       "description": "Text content"
@@ -23,6 +19,6 @@
       "description": "Language code (e.g., 'en', 'es', 'fr')"
     }
   },
-  "required": ["asset_type", "content"],
+  "required": ["content"],
   "additionalProperties": false
 }
