@@ -55,6 +55,19 @@ function updateSchemaRegistry() {
 console.log('\n📋 Updating schema registry...');
 updateSchemaRegistry();
 
+// Stage the changes to git if we updated any files
+if (filesUpdated > 0) {
+  console.log('\n📝 Staging schema version changes...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('git add static/schemas/v1/index.json', { stdio: 'inherit' });
+    console.log('  ✓ Staged static/schemas/v1/index.json');
+  } catch (error) {
+    console.error('  ⚠️  Warning: Could not stage changes (may not be in a git repository)');
+    console.error('     Please manually commit: static/schemas/v1/index.json');
+  }
+}
+
 console.log(`\n✅ Version update complete!\n`);
 console.log(`The AdCP version is now ${version} and is maintained solely in:`);
 console.log(`  • static/schemas/v1/index.json (adcp_version field)`);

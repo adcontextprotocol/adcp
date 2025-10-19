@@ -21,7 +21,8 @@
     "changeset": "changeset",
     "version": "changeset version && npm run update-schema-versions",
     "update-schema-versions": "node scripts/update-schema-versions.js",
-    "release": "npm run version && npm test && git add -A && git commit -m 'Version packages' && git push"
+    "release": "npm run version && npm test && npm run verify-version-sync && git add -A && git commit -m 'Version packages' && git push",
+    "verify-version-sync": "node scripts/verify-version-sync.js"
   },
   "dependencies": {
     "@docusaurus/core": "^3.9.1",
