@@ -15,11 +15,11 @@ For information about format IDs and how to reference formats, see [Creative For
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the source. |
-| `source_manifest` | object | No | Source creative manifest to transform (see [Creative Manifest](/schemas/v1/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets (e.g., `promoted_offerings` for generative formats). For transformation, this is the complete source creative. |
+| `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. |
+| `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](/schemas/v1/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets (e.g., `promoted_offerings` for generative formats). For transformation, this is the complete creative to adapt. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
 
-**Important**: Required inputs like `promoted_offerings` should be included in the `source_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires.
+**Important**: Required inputs like `promoted_offerings` should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires.
 
 ## Use Cases
 
@@ -34,7 +34,7 @@ For pure generation, provide a minimal source manifest with the required input a
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250_generative"
   },
-  "source_manifest": {
+  "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250_generative"
@@ -64,7 +64,7 @@ For transformation, provide the complete source manifest:
 ```json
 {
   "message": "Adapt this creative for mobile, making the text larger and CTA more prominent",
-  "source_manifest": {
+  "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250"
@@ -95,7 +95,7 @@ Transform an existing creative to a different size:
 
 ```json
 {
-  "source_manifest": {
+  "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_728x90"
@@ -161,7 +161,7 @@ The response contains the transformed or generated creative manifest:
 {
   "message": "Create a display banner for our winter sale",
   "target_format_id": {"agent_url": "...", "id": "display_300x250_generative"},
-  "source_manifest": {
+  "creative_manifest": {
     "format_id": {"agent_url": "...", "id": "display_300x250_generative"},
     "assets": {
       "promoted_offerings": {
@@ -187,7 +187,7 @@ The response contains the transformed or generated creative manifest:
 }
 ```
 
-**Key insight**: The manifest carries everything. `promoted_offerings` (if required by the format) is included in `source_manifest.assets` for build, flows through to the output manifest, and is available in `creative_manifest` for preview. No need to pass it separately at each step.
+**Key insight**: The manifest carries everything. `promoted_offerings` (if required by the format) is included in `creative_manifest.assets` for build, flows through to the output manifest, and is available in the output for preview. No need to pass it separately at each step.
 
 ## Examples
 
@@ -202,7 +202,7 @@ Generate a creative from scratch using a generative format that requires `promot
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250_generative"
   },
-  "source_manifest": {
+  "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250_generative"
@@ -261,7 +261,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 ```json
 {
   "message": "Adapt this leaderboard creative to a 300x250 banner format",
-  "source_manifest": {
+  "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_728x90"
@@ -327,7 +327,7 @@ Adapt a creative for mobile with specific design changes:
 ```json
 {
   "message": "Make this mobile-friendly: increase text size, simplify the layout, and make the CTA button more prominent",
-  "source_manifest": {
+  "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x600"
@@ -392,14 +392,14 @@ Adapt a creative for mobile with specific design changes:
 ### Transformation Model
 
 `build_creative` follows a **manifest-in, manifest-out** model:
-- Input: Source creative manifest (can be minimal or complete)
-- Process: Transform/generate based on `message` and `promoted_offerings`
+- Input: Creative manifest (can be minimal or complete, includes required assets)
+- Process: Transform/generate based on `message` and manifest assets
 - Output: Target creative manifest ready for preview or sync
 
 ### Pure Generation vs Transformation
 
-- **Pure Generation**: Omit `source_manifest` or provide minimal version. The creative agent generates assets from scratch using `message` and `promoted_offerings`.
-- **Transformation**: Provide complete `source_manifest`. The creative agent adapts existing assets to the target format, optionally following guidance in `message`.
+- **Pure Generation**: Provide minimal `creative_manifest` with just the format_id and required input assets (like `promoted_offerings` for generative formats). The creative agent generates output assets from scratch using `message` as guidance.
+- **Transformation**: Provide complete `creative_manifest` with all existing assets. The creative agent adapts existing assets to the target format, optionally following guidance in `message`.
 
 ### Integration with Other Tasks
 

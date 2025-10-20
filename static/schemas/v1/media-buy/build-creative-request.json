@@ -7,11 +7,11 @@
   "properties": {
     "message": {
       "type": "string",
-      "description": "Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the source."
+      "description": "Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative."
     },
-    "source_manifest": {
+    "creative_manifest": {
       "$ref": "/schemas/v1/core/creative-manifest.json",
-      "description": "Source creative manifest to transform. For pure generation, this should include the target format_id and any required input assets (e.g., promoted_offerings for generative formats). For transformation (e.g., resizing, reformatting), this is the complete source creative."
+      "description": "Creative manifest to transform or generate from. For pure generation, this should include the target format_id and any required input assets (e.g., promoted_offerings for generative formats). For transformation (e.g., resizing, reformatting), this is the complete creative to adapt."
     },
     "target_format_id": {
       "$ref": "/schemas/v1/core/format-id.json",
