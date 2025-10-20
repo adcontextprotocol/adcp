@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
-  "description": "Request to transform or generate a creative manifest. Takes a source manifest (which may be minimal for pure generation) and produces a target manifest in the specified format.",
+  "description": "Request to transform or generate a creative manifest. Takes a source manifest (which may be minimal for pure generation) and produces a target manifest in the specified format. The source manifest should include all assets required by the target format (e.g., promoted_offerings for generative formats).",
   "type": "object",
   "properties": {
     "message": {
@@ -11,15 +11,11 @@
     },
     "source_manifest": {
       "$ref": "/schemas/v1/core/creative-manifest.json",
-      "description": "Source creative manifest to transform. For pure generation, this can be minimal (just format_id and any seed assets). For transformation (e.g., resizing, reformatting), this is the complete source creative."
+      "description": "Source creative manifest to transform. For pure generation, this should include the target format_id and any required input assets (e.g., promoted_offerings for generative formats). For transformation (e.g., resizing, reformatting), this is the complete source creative."
     },
     "target_format_id": {
       "$ref": "/schemas/v1/core/format-id.json",
-      "description": "Format ID to generate. The format definition specifies whether output is manifest-based or code-based."
-    },
-    "promoted_offerings": {
-      "$ref": "/schemas/v1/core/promoted-offerings.json",
-      "description": "Complete offering specification for generative creatives - includes brand manifest, product selectors, inline offerings, and asset filters. Used as input context for generation."
+      "description": "Format ID to generate. The format definition specifies required input assets and output structure."
     }
   },
   "required": [

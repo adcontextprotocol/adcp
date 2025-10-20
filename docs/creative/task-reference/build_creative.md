@@ -16,27 +16,42 @@ For information about format IDs and how to reference formats, see [Creative For
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the source. |
-| `source_manifest` | object | No | Source creative manifest to transform (see [Creative Manifest](/schemas/v1/core/creative-manifest.json)). For pure generation, this can be minimal (just format_id and any seed assets). For transformation (e.g., resizing, reformatting), this is the complete source creative. If omitted, creative agent may use defaults. |
-| `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies whether output is manifest-based or code-based. |
-| `promoted_offerings` | object | No | Complete offering specification for generative creatives - includes brand manifest, product selectors, inline offerings, and asset filters. Used as input context for generation. See [Promoted Offerings](/schemas/v1/core/promoted-offerings.json). |
+| `source_manifest` | object | No | Source creative manifest to transform (see [Creative Manifest](/schemas/v1/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets (e.g., `promoted_offerings` for generative formats). For transformation, this is the complete source creative. |
+| `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
+
+**Important**: Required inputs like `promoted_offerings` should be included in the `source_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires.
 
 ## Use Cases
 
 ### Pure Generation (Creating from Scratch)
 
-For pure generation, provide a minimal source manifest (or omit it) and use `message` and `promoted_offerings` to guide creation:
+For pure generation, provide a minimal source manifest with the required input assets defined by the format:
 
 ```json
 {
   "message": "Create a banner promoting our winter sale with a warm, inviting feel",
   "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250"
+    "id": "display_300x250_generative"
   },
-  "promoted_offerings": {
-    "brand_manifest": {
-      "url": "https://mybrand.com",
-      "colors": {"primary": "#FF0000"}
+  "source_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250_generative"
+    },
+    "assets": {
+      "promoted_offerings": {
+        "brand_manifest": {
+          "url": "https://mybrand.com",
+          "colors": {"primary": "#FF0000"}
+        },
+        "inline_offerings": [
+          {
+            "name": "Winter Sale Collection",
+            "description": "50% off all winter items"
+          }
+        ]
+      }
     }
   }
 }
@@ -142,54 +157,74 @@ The response contains the transformed or generated creative manifest:
 3. **Sync**: Use `sync_creatives` to traffic the finalized creative
 
 ```json
-// Step 1: Build
+// Step 1: Build (generative format)
 {
   "message": "Create a display banner for our winter sale",
-  "target_format_id": {"agent_url": "...", "id": "display_300x250"},
-  "promoted_offerings": { /* brand and product data */ }
+  "target_format_id": {"agent_url": "...", "id": "display_300x250_generative"},
+  "source_manifest": {
+    "format_id": {"agent_url": "...", "id": "display_300x250_generative"},
+    "assets": {
+      "promoted_offerings": {
+        "brand_manifest": { /* brand data */ },
+        "inline_offerings": [ /* products */ ]
+      }
+    }
+  }
 }
 
 // Step 2: Preview (using the output manifest from step 1)
 {
   "format_id": {"agent_url": "...", "id": "display_300x250"},
-  "creative_manifest": { /* output from build_creative */ },
+  "creative_manifest": {
+    /* output from build_creative - includes all assets */
+  },
   "inputs": [{"name": "Desktop view"}, {"name": "Mobile view"}]
 }
 
 // Step 3: Sync (if preview looks good)
 {
-  "creative_manifests": [{ /* approved manifest */ }]
+  "creative_manifests": [{ /* approved manifest from build_creative */ }]
 }
 ```
 
+**Key insight**: The manifest carries everything. `promoted_offerings` (if required by the format) is included in `source_manifest.assets` for build, flows through to the output manifest, and is available in `creative_manifest` for preview. No need to pass it separately at each step.
+
 ## Examples
 
-### Example 1: Pure Generation
+### Example 1: Pure Generation (Generative Format)
 
-Generate a creative from scratch with just a message and brand context:
+Generate a creative from scratch using a generative format that requires `promoted_offerings`:
 
 ```json
 {
-  "message": "Create a 300x250 display banner for our winter sale. Use warm colors and emphasize the 50% discount",
+  "message": "Create a display banner for our winter sale. Use warm colors and emphasize the 50% discount",
   "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250"
+    "id": "display_300x250_generative"
   },
-  "promoted_offerings": {
-    "brand_manifest": {
-      "url": "https://mybrand.com",
-      "name": "My Brand",
-      "colors": {
-        "primary": "#FF5733",
-        "secondary": "#C70039"
-      }
+  "source_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250_generative"
     },
-    "inline_offerings": [
-      {
-        "name": "Winter Sale Collection",
-        "description": "50% off all winter items"
+    "assets": {
+      "promoted_offerings": {
+        "brand_manifest": {
+          "url": "https://mybrand.com",
+          "name": "My Brand",
+          "colors": {
+            "primary": "#FF5733",
+            "secondary": "#C70039"
+          }
+        },
+        "inline_offerings": [
+          {
+            "name": "Winter Sale Collection",
+            "description": "50% off all winter items"
+          }
+        ]
       }
-    ]
+    }
   }
 }
 ```
