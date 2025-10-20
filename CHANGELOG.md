@@ -1,5 +1,72 @@
 # Changelog
 
+## 2.2.0
+
+### Minor Changes
+
+- 727463a: Align build_creative with transformation model and consistent naming
+
+  **Breaking changes:**
+
+  - `build_creative` now uses `creative_manifest` instead of `source_manifest` parameter
+  - `build_creative` request no longer accepts `promoted_offerings` as a task parameter (must be in manifest assets)
+  - `preview_creative` request no longer accepts `promoted_offerings` as a task parameter (must be in manifest assets)
+  - `build_creative` response simplified to return just `creative_manifest` (removed complex nested structure)
+
+  **Improvements:**
+
+  - Clear transformation model: manifest-in → manifest-out
+  - Format definitions drive requirements (e.g., promoted_offerings is a format asset requirement)
+  - Consistent naming across build_creative and preview_creative
+  - Self-contained manifests that flow through build → preview → sync
+  - Eliminated redundancy and ambiguity about where to provide inputs
+
+  This change makes the creative generation workflow much clearer and more consistent. Generative formats that require `promoted_offerings` should specify it as a required asset in their format definition, and it should be included in the `creative_manifest.assets` object.
+
+### Patch Changes
+
+- eeb9967: Automate schema version synchronization with package.json
+
+  Implemented three-layer protection to ensure schema registry version stays in sync with package.json:
+
+  1. **Auto-staging**: update-schema-versions.js now automatically stages changes to git
+  2. **Verification gate**: New verify-version-sync.js script prevents releases when versions don't match
+  3. **Pre-push validation**: Git hook checks version sync before any push
+
+  Also fixed v2.1.0 schema registry version (was incorrectly showing 2.0.0) and removed duplicate creative-manifest entry.
+
+- 7d0c8c8: Improve documentation visibility and navigation
+
+  **Documentation Improvements:**
+
+  1. **Added Changelog Page**
+
+     - Created comprehensive `/docs/reference/changelog` with v2.1.0 and v2.0.0 release notes
+     - Includes developer migration guide with code examples
+     - Documents breaking changes and versioning policy
+     - Added to sidebar navigation in Reference section
+
+  2. **Improved Pricing Documentation Visibility**
+
+     - Added Pricing Models to sidebar navigation (Media Buy Protocol > Advanced Topics)
+     - Added pricing information callouts to key task documentation
+     - Enhanced `get_products` with pricing_options field description
+     - Added missing `pricing_option_id` field to `create_media_buy` Package Object
+     - Added prominent tip box linking to pricing guide in media-products.md
+
+  3. **Added Release Banner**
+     - Homepage now displays v2.1.0 release announcement with link to changelog
+     - Makes new releases immediately visible to documentation readers
+
+  **Why These Changes:**
+
+  - Users reported difficulty finding changelog and version history
+  - Pricing documentation was comprehensive but hidden from navigation
+  - Critical fields like `pricing_option_id` were not documented in API reference
+  - Release announcements need better visibility on homepage
+
+  These are documentation-only changes with no code or schema modifications.
+
 ## 2.1.0
 
 ### Minor Changes
