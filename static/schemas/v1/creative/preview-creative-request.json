@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/creative/preview-creative-request.json",
   "title": "Preview Creative Request",
-  "description": "Request to generate a preview of a creative manifest in a specific format",
+  "description": "Request to generate a preview of a creative manifest in a specific format. The creative_manifest should include all assets required by the format (e.g., promoted_offerings for generative formats).",
   "type": "object",
   "properties": {
     "format_id": {
@@ -11,7 +11,7 @@
     },
     "creative_manifest": {
       "$ref": "/schemas/v1/core/creative-manifest.json",
-      "description": "Complete creative manifest with all required assets"
+      "description": "Complete creative manifest with all required assets (including promoted_offerings if required by the format)"
     },
     "inputs": {
       "type": "array",
@@ -44,10 +44,6 @@
     "template_id": {
       "type": "string",
       "description": "Specific template ID for custom format rendering"
-    },
-    "promoted_offerings": {
-      "$ref": "/schemas/v1/core/promoted-offerings.json",
-      "description": "Complete offering specification for dynamic creative previews - includes brand manifest, product selectors, inline offerings, and asset filters"
     }
   },
   "required": [
