@@ -1351,7 +1351,7 @@ Consider running a bug bounty program to incentivize responsible vulnerability d
 For vulnerability disclosure policy and reporting procedures, see [SECURITY.md](https://github.com/adcontextprotocol/adcp/blob/main/SECURITY.md) in the AdCP repository.
 
 **Quick Reference**:
-- **Report vulnerabilities to**: [security contact needed]
+- **Report vulnerabilities to**: security@adcontextprotocol.org
 - **Expected response time**: Within 72 hours
 - **Public disclosure timeline**: After fix is available (coordinated disclosure)
 

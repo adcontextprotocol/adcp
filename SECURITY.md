@@ -26,7 +26,7 @@ Please report it responsibly:
 ### Reporting Process
 
 1. **DO NOT** open a public GitHub issue for security vulnerabilities
-2. Email security reports to: **[security contact needed]**
+2. Email security reports to: **security@adcontextprotocol.org**
 3. Include in your report:
    - Description of the vulnerability
    - Steps to reproduce
@@ -217,7 +217,7 @@ Before deploying an AdCP implementation to production:
 If you have security questions that are not sensitive vulnerability reports:
 
 - Open a GitHub Discussion in the Security category
-- Email the working group: **[working group contact needed]**
+- Email the working group: security@adcontextprotocol.org
 - Join the AdCP Slack workspace: https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg
 
 ## Updates to This Policy
