@@ -10,8 +10,8 @@ This document outlines security considerations, vulnerability disclosure procedu
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x     | :white_check_mark: |
-| < 1.0   | :x:                |
+| 2.x     | :white_check_mark: |
+| < 2.0   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -218,7 +218,7 @@ If you have security questions that are not sensitive vulnerability reports:
 
 - Open a GitHub Discussion in the Security category
 - Email the working group: **[working group contact needed]**
-- Join the AdCP Slack workspace: **[invite link needed]**
+- Join the AdCP Slack workspace: https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg
 
 ## Updates to This Policy
 
