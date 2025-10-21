@@ -89,6 +89,19 @@ interface CreativeAsset {
 }
 ```
 
+## Creative Assignment
+
+Assignment of a creative asset to a package.
+
+**JSON Schema**: [`/schemas/v1/core/creative-assignment.json`](/schemas/v1/core/creative-assignment.json)
+
+```typescript
+interface CreativeAssignment {
+  creative_id: string;
+  weight?: number;  // Delivery weight (0-100)
+}
+```
+
 ## Targeting
 
 Audience targeting criteria.

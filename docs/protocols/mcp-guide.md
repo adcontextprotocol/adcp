@@ -1,47 +1,17 @@
 ---
 sidebar_position: 2
-title: MCP Guide  
-description: Integrate AdCP with Model Context Protocol (MCP). Transport-specific guide for tool calls, context management, and MCP setup.
-keywords: [MCP integration, Model Context Protocol, tool calls, context management, MCP server setup]
+title: MCP Guide
+description: Integrate AdCP with Model Context Protocol (MCP). Transport-specific guide for tool calls, context management, and wire format.
+keywords: [MCP integration, Model Context Protocol, tool calls, context management, wire format]
 ---
 
 # MCP Integration Guide
 
 Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](./core-concepts.md).
 
-## MCP Server Setup
+## Testing AdCP via MCP
 
-### 1. Install AdCP MCP Server
-
-```bash
-npm install -g @adcp/mcp-server
-```
-
-### 2. Configure Your MCP Client
-
-```json
-{
-  "mcpServers": {
-    "adcp": {
-      "command": "npx",
-      "args": ["@adcp/mcp-server"],
-      "env": {
-        "ADCP_API_KEY": "your-api-key",
-        "ADCP_ENDPOINT": "https://api.adcp.example.com"
-      }
-    }
-  }
-}
-```
-
-### 3. Verify Connection
-
-```javascript
-// Test connection
-const tools = await mcp.listTools();
-console.log(tools.map(t => t.name));
-// ["get_products", "create_media_buy", "sync_creatives", ...]
-```
+You can test AdCP tasks using the reference implementation at **testing.adcontextprotocol.org**. This endpoint implements all AdCP tasks as MCP tools and is useful for development and integration testing.
 
 ## Tool Call Patterns
 
