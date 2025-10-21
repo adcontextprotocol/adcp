@@ -28,7 +28,7 @@ Buyers can recursively query creative_agents to discover all available formats. 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `format_ids` | string[] | No | Return only these specific format IDs |
+| `format_ids` | FormatID[] | No | Return only these specific structured format ID objects |
 | `type` | string | No | Filter by format type: `"audio"`, `"video"`, `"display"`, `"dooh"` (technical categories with distinct requirements) |
 | `asset_types` | string[] | No | Filter to formats that include these asset types. For third-party tags, search for `["html"]` or `["javascript"]`. E.g., `["image", "text"]` returns formats with images and text, `["javascript"]` returns formats accepting JavaScript tags. Values: `image`, `video`, `audio`, `text`, `html`, `javascript`, `url` |
 | `max_width` | integer | No | Maximum width in pixels (inclusive). Returns formats with width ≤ this value. |
@@ -47,7 +47,10 @@ Buyers can recursively query creative_agents to discover all available formats. 
   "capabilities": ["validation", "assembly", "preview"],
   "formats": [
     {
-      "format_id": "video_standard_30s",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_standard_30s"
+      },
       "name": "Standard Video - 30 seconds",
       "type": "video",
       "iab_specification": "https://iabtechlab.com/standards/video-ad-serving-template-vast/",
@@ -104,8 +107,10 @@ Response:
   "capabilities": ["validation", "assembly", "preview"],
   "formats": [
     {
-      "format_id": "display_300x250",
-      "agent_url": "https://creative.adcontextprotocol.org",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
       "name": "Medium Rectangle",
       "type": "display",
       "assets_required": [
@@ -145,8 +150,10 @@ Response:
   "capabilities": ["validation", "assembly", "generation", "preview"],
   "formats": [
     {
-      "format_id": "display_728x90_3p",
-      "agent_url": "https://dco.example.com",
+      "format_id": {
+        "agent_url": "https://dco.example.com",
+        "id": "display_728x90_3p"
+      },
       "name": "Leaderboard - Third Party",
       "type": "display",
       "dimensions": "728x90",
@@ -242,31 +249,30 @@ Response:
   "capabilities": ["validation", "assembly", "generation", "preview"],
   "formats": [
     {
-      "format_id": "300x250_banner_generative",
-      "agent_url": "https://creative.adcontextprotocol.org",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "300x250_banner_generative"
+      },
       "name": "300x250 Generative Banner",
       "type": "display",
       "assets_required": [
         {
-          "asset_type": "brand_manifest",
-          "asset_role": "brand_context",
+          "asset_id": "promoted_offerings",
+          "asset_type": "promoted_offerings",
           "required": true
-        },
-        {
-          "asset_type": "text",
-          "asset_role": "message",
-          "required": true,
-          "requirements": {
-            "description": "Natural language description of the creative to generate"
-          }
         }
       ],
-      "output_format_ids": ["300x250_banner_image"],
-      "description": "Accepts a brand manifest and message, generates a complete 300x250 banner creative"
+      "output_format_ids": [{
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "300x250_banner_image"
+      }],
+      "description": "Generative format that accepts promoted_offerings (which includes brand_manifest, product selectors, and asset filters), generates a complete 300x250 banner creative"
     },
     {
-      "format_id": "300x250_banner_image",
-      "agent_url": "https://creative.adcontextprotocol.org",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "300x250_banner_image"
+      },
       "name": "300x250 Standard Banner",
       "type": "display",
       "assets_required": [

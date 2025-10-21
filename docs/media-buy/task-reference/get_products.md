@@ -5,12 +5,23 @@ sidebar_position: 1
 # get_products
 Discover available advertising products based on campaign requirements, using natural language briefs or structured filters.
 
+**Authentication**: Optional (returns limited results without credentials - see [Authentication](../../reference/authentication.md#when-authentication-is-required))
+
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
+
+**Pricing Information**: Products include pricing options that buyers select when creating media buys. See [Pricing Models](../advanced-topics/pricing-models) for complete details on CPM, CPCV, CPP, and other pricing models.
 
 **Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications. **See [Creative Lifecycle](../creatives/index.md) for the complete workflow.**
 
 **Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](/schemas/v1/media-buy/get-products-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/get-products-response.json`](/schemas/v1/media-buy/get-products-response.json)
+
+## Authentication Behavior
+
+- **Without credentials**: Returns limited catalog (run-of-network products), no pricing information, no custom offerings
+- **With credentials**: Returns complete catalog, pricing details (CPM), custom products, and full targeting options
+
+See the [Quickstart Guide](../../quickstart.md#understanding-authentication) for details on getting credentials.
 
 ## Request Parameters
 
@@ -27,7 +38,7 @@ Discover available advertising products based on campaign requirements, using na
 | `delivery_type` | string | No | Filter by delivery type: `"guaranteed"` or `"non_guaranteed"` |
 | `is_fixed_price` | boolean | No | Filter for fixed price vs auction products |
 | `format_types` | string[] | No | Filter by format types (e.g., `["video", "display"]`) |
-| `format_ids` | string[] | No | Filter by specific format IDs (e.g., `["video_standard_30s"]`) |
+| `format_ids` | FormatID[] | No | Filter by specific structured format ID objects |
 | `standard_formats_only` | boolean | No | Only return products accepting IAB standard formats |
 | `min_exposures` | integer | No | Minimum exposures/impressions needed for measurement validity |
 ## Response (Message)
@@ -127,6 +138,7 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
 - **product_id**: Unique identifier for the product
 - **name**: Human-readable product name
 - **description**: Detailed description of the product and its inventory
+- **pricing_options**: Array of available pricing models for this product. Each option has a unique `pricing_option_id` that buyers reference in `create_media_buy`. See [Pricing Models](../advanced-topics/pricing-models) for complete documentation of supported pricing models (CPM, CPCV, CPP, CPC, vCPM, flat_rate).
 - **properties**: Array of specific advertising properties covered by this product (see [Property Schema](/schemas/v1/core/property.json))
   - **property_type**: Type of advertising property ("website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio")
   - **name**: Human-readable property name
@@ -138,7 +150,7 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
 - **property_tags**: Array of tags referencing groups of properties (alternative to `properties` array)
   - Use [`list_authorized_properties`](./list_authorized_properties) to resolve tags to actual property objects
   - Recommended for products with large property sets (e.g., radio networks with 1000+ stations)
-- **format_ids**: Array of supported creative format IDs (strings) - use `list_creative_formats` to get full format details
+- **format_ids**: Array of supported creative format ID objects (structured with `agent_url` and `id` fields) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
 - **is_fixed_price**: Whether this product has fixed pricing (true) or uses auction (false)
 - **cpm**: Cost per thousand impressions (for guaranteed/fixed price products)

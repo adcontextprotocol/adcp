@@ -5,10 +5,6 @@
   "description": "DAAST (Digital Audio Ad Serving Template) tag for third-party audio ad serving",
   "type": "object",
   "properties": {
-    "asset_type": {
-      "type": "string",
-      "const": "daast"
-    },
     "url": {
       "type": "string",
       "format": "uri",
@@ -55,13 +51,13 @@
   },
   "oneOf": [
     {
-      "required": ["asset_type", "url"],
+      "required": ["url"],
       "not": {
         "required": ["content"]
       }
     },
     {
-      "required": ["asset_type", "content"],
+      "required": ["content"],
       "not": {
         "required": ["url"]
       }

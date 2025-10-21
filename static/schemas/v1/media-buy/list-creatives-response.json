@@ -137,7 +137,7 @@
                   {"$ref": "/schemas/v1/core/assets/javascript-asset.json"},
                   {"$ref": "/schemas/v1/core/assets/vast-asset.json"},
                   {"$ref": "/schemas/v1/core/assets/daast-asset.json"},
-                  {"$ref": "/schemas/v1/core/assets/promoted-offerings-asset.json"},
+                  {"$ref": "/schemas/v1/core/promoted-offerings.json"},
                   {"$ref": "/schemas/v1/core/assets/url-asset.json"}
                 ]
               }
@@ -365,8 +365,7 @@
             "created_date": "2024-01-15T10:30:00Z",
             "updated_date": "2024-01-15T14:20:00Z",
             "assets": {
-              "vast_tag": {
-                "asset_type": "vast",
+              "vast": {
                 "url": "https://vast.example.com/video/123",
                 "vast_version": "4.1"
               }

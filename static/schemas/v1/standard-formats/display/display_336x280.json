@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "format_id": {
-      "type": "string",
-      "const": "display_336x280"
+      "$ref": "/schemas/v1/core/format-id.json"
     },
     "type": {
       "type": "string",

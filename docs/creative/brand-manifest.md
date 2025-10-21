@@ -306,7 +306,10 @@ Use brand manifest to inform creative generation:
 ```json
 {
   "message": "Create a native ad highlighting our new product launch",
-  "format_id": "display_native",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_native"
+  },
   "brand_manifest": {
     "url": "https://acmecorp.com",
     "logos": [

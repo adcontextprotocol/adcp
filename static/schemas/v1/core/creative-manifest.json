@@ -15,378 +15,45 @@
     },
     "assets": {
       "type": "object",
-      "description": "Map of asset roles (from format spec) to actual asset content. Each key is an asset_role defined by the format (e.g., 'hero_image', 'logo', 'headline', 'video_file', 'vast_tag').",
+      "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets_required array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id is the technical identifier used to match assets to format requirements.\n\nIMPORTANT: Creative manifest validation MUST be performed in the context of the format specification. The format defines what type each asset_id should be, which eliminates any validation ambiguity.",
       "patternProperties": {
         "^[a-z0-9_]+$": {
           "oneOf": [
             {
-              "type": "object",
-              "description": "Image asset with hosted URL",
-              "properties": {
-                "asset_type": {
-                  "type": "string",
-                  "const": "image"
-                },
-                "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "description": "URL to hosted image asset"
-                },
-                "width": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "description": "Image width in pixels"
-                },
-                "height": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "description": "Image height in pixels"
-                },
-                "format": {
-                  "type": "string",
-                  "enum": ["jpg", "jpeg", "png", "gif", "webp", "svg"],
-                  "description": "Image file format"
-                },
-                "file_size": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "description": "File size in bytes"
-                },
-                "alt": {
-                  "type": "string",
-                  "description": "Alternative text for accessibility"
-                }
-              },
-              "required": ["asset_type", "url", "width", "height"],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/assets/image-asset.json"
             },
             {
-              "type": "object",
-              "description": "Video asset with hosted URL",
-              "properties": {
-                "asset_type": {
-                  "type": "string",
-                  "const": "video"
-                },
-                "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "description": "URL to hosted video asset"
-                },
-                "width": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "description": "Video width in pixels"
-                },
-                "height": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "description": "Video height in pixels"
-                },
-                "duration_seconds": {
-                  "type": "number",
-                  "minimum": 0,
-                  "description": "Video duration in seconds"
-                },
-                "format": {
-                  "type": "string",
-                  "enum": ["mp4", "webm", "mov"],
-                  "description": "Video container format"
-                },
-                "codec": {
-                  "type": "string",
-                  "enum": ["h264", "h265", "vp8", "vp9", "av1"],
-                  "description": "Video codec"
-                },
-                "bitrate_mbps": {
-                  "type": "number",
-                  "minimum": 0,
-                  "description": "Video bitrate in Mbps"
-                },
-                "file_size": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "description": "File size in bytes"
-                },
-                "aspect_ratio": {
-                  "type": "string",
-                  "pattern": "^\\d+:\\d+$",
-                  "description": "Aspect ratio (e.g., '16:9', '9:16')"
-                }
-              },
-              "required": ["asset_type", "url", "width", "height", "duration_seconds"],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/assets/video-asset.json"
             },
             {
-              "type": "object",
-              "description": "Audio asset with hosted URL",
-              "properties": {
-                "asset_type": {
-                  "type": "string",
-                  "const": "audio"
-                },
-                "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "description": "URL to hosted audio asset"
-                },
-                "duration_seconds": {
-                  "type": "number",
-                  "minimum": 0,
-                  "description": "Audio duration in seconds"
-                },
-                "format": {
-                  "type": "string",
-                  "enum": ["mp3", "aac", "m4a", "wav", "ogg"],
-                  "description": "Audio file format"
-                },
-                "codec": {
-                  "type": "string",
-                  "enum": ["mp3", "aac", "opus", "vorbis"],
-                  "description": "Audio codec"
-                },
-                "bitrate_kbps": {
-                  "type": "number",
-                  "minimum": 0,
-                  "description": "Audio bitrate in Kbps"
-                },
-                "sample_rate_hz": {
-                  "type": "integer",
-                  "enum": [22050, 44100, 48000, 96000],
-                  "description": "Sample rate in Hz"
-                },
-                "channels": {
-                  "type": "string",
-                  "enum": ["mono", "stereo", "5.1", "7.1"],
-                  "description": "Audio channel configuration"
-                },
-                "file_size": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "description": "File size in bytes"
-                }
-              },
-              "required": ["asset_type", "url", "duration_seconds"],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/assets/audio-asset.json"
             },
             {
-              "type": "object",
-              "description": "VAST XML tag for third-party video serving",
-              "properties": {
-                "asset_type": {
-                  "type": "string",
-                  "const": "vast_tag"
-                },
-                "content": {
-                  "type": "string",
-                  "description": "Complete VAST XML content"
-                },
-                "vast_version": {
-                  "type": "string",
-                  "enum": ["2.0", "3.0", "4.0", "4.1", "4.2"],
-                  "description": "VAST specification version"
-                },
-                "vpaid_enabled": {
-                  "type": "boolean",
-                  "description": "Whether VPAID is used"
-                },
-                "duration_seconds": {
-                  "type": "number",
-                  "minimum": 0,
-                  "description": "Expected video duration in seconds"
-                }
-              },
-              "required": ["asset_type", "content", "vast_version"],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/assets/vast-asset.json"
             },
             {
-              "type": "object",
-              "description": "Text content asset",
-              "properties": {
-                "asset_type": {
-                  "type": "string",
-                  "const": "text"
-                },
-                "content": {
-                  "type": "string",
-                  "description": "Text content"
-                },
-                "length": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "description": "Character count"
-                },
-                "format": {
-                  "type": "string",
-                  "enum": ["plain", "html", "markdown"],
-                  "default": "plain",
-                  "description": "Text format"
-                }
-              },
-              "required": ["asset_type", "content"],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/assets/text-asset.json"
             },
             {
-              "type": "object",
-              "description": "URL asset for clickthrough, tracking, etc.",
-              "properties": {
-                "asset_type": {
-                  "type": "string",
-                  "const": "url"
-                },
-                "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "description": "The URL"
-                },
-                "purpose": {
-                  "type": "string",
-                  "enum": [
-                    "clickthrough",
-                    "landing_page",
-                    "tracking_pixel",
-                    "impression_tracker"
-                  ],
-                  "description": "Purpose of this URL"
-                }
-              },
-              "required": ["asset_type", "url"],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/assets/url-asset.json"
             },
             {
-              "type": "object",
-              "description": "Webhook for server-side dynamic content rendering",
-              "properties": {
-                "asset_type": {
-                  "type": "string",
-                  "const": "webhook"
-                },
-                "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "description": "Webhook URL to call for dynamic content"
-                },
-                "method": {
-                  "type": "string",
-                  "enum": ["GET", "POST"],
-                  "default": "POST"
-                },
-                "timeout_ms": {
-                  "type": "integer",
-                  "minimum": 10,
-                  "maximum": 5000,
-                  "default": 500
-                },
-                "supported_macros": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "Universal macros that can be passed to webhook"
-                },
-                "required_macros": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "Universal macros that must be provided"
-                },
-                "response_type": {
-                  "type": "string",
-                  "enum": ["html", "json", "xml", "javascript"]
-                },
-                "security": {
-                  "type": "object",
-                  "properties": {
-                    "method": {
-                      "type": "string",
-                      "enum": ["hmac_sha256", "api_key", "none"]
-                    },
-                    "hmac_header": {
-                      "type": "string"
-                    },
-                    "api_key_header": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["method"]
-                },
-                "fallback_required": {
-                  "type": "boolean",
-                  "default": true
-                }
-              },
-              "required": ["asset_type", "url", "response_type", "security"],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/assets/html-asset.json"
             },
             {
-              "type": "object",
-              "description": "HTML5 creative asset",
-              "properties": {
-                "asset_type": {
-                  "type": "string",
-                  "const": "html"
-                },
-                "content": {
-                  "type": "string",
-                  "description": "Complete HTML content"
-                },
-                "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "description": "URL to externally hosted HTML file"
-                },
-                "width": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "description": "Ad width in pixels"
-                },
-                "height": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "description": "Ad height in pixels"
-                },
-                "file_size": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "description": "Total file size in bytes"
-                }
-              },
-              "required": ["asset_type"],
-              "oneOf": [
-                { "required": ["content"] },
-                { "required": ["url"] }
-              ],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/assets/javascript-asset.json"
             },
             {
-              "type": "object",
-              "description": "JavaScript code asset",
-              "properties": {
-                "asset_type": {
-                  "type": "string",
-                  "const": "javascript"
-                },
-                "content": {
-                  "type": "string",
-                  "description": "JavaScript code content"
-                },
-                "url": {
-                  "type": "string",
-                  "format": "uri",
-                  "description": "URL to external JavaScript file"
-                },
-                "inline": {
-                  "type": "boolean",
-                  "description": "Whether code should be inlined vs external script tag"
-                }
-              },
-              "required": ["asset_type"],
-              "oneOf": [
-                { "required": ["content"] },
-                { "required": ["url"] }
-              ],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/assets/webhook-asset.json"
+            },
+            {
+              "$ref": "/schemas/v1/core/assets/css-asset.json"
+            },
+            {
+              "$ref": "/schemas/v1/core/assets/daast-asset.json"
+            },
+            {
+              "$ref": "/schemas/v1/core/promoted-offerings.json"
             }
           ]
         }

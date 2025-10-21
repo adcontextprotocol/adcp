@@ -36,11 +36,6 @@
       "description": "100% completions (for CPCV)",
       "minimum": 0
     },
-    "video_completions": {
-      "type": "number",
-      "description": "DEPRECATED: Use completed_views instead",
-      "minimum": 0
-    },
     "completion_rate": {
       "type": "number",
       "description": "Completion rate (completed_views/impressions)",

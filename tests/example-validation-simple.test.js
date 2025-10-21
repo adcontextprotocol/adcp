@@ -92,7 +92,7 @@ async function runTests() {
       description: 'Response example'
     },
     {
-      data: { "format_id": "video_standard_30s", "name": "Standard Video - 30 seconds", "type": "video" },
+      data: { "format_id": {"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_standard_30s"}, "name": "Standard Video - 30 seconds", "type": "video" },
       schema: '/schemas/v1/core/format.json',
       description: 'Format example'
     },
@@ -124,7 +124,9 @@ async function runTests() {
   // Test request/response examples
   await validateExample(
     {
-      "promoted_offering": "Nike Air Max 2024",
+      "brand_manifest": {
+        "url": "https://brand.nike.com/manifest.json"
+      },
       "brief": "Premium video inventory"
     },
     '/schemas/v1/media-buy/get-products-request.json',

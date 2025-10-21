@@ -13,23 +13,25 @@ For an overview of how formats, manifests, and creative agents work together, se
 AdCP defines two categories of formats:
 
 ### Standard Formats
-Pre-defined, industry-standard specifications that work consistently across publishers:
+Pre-defined, industry-standard specifications provided by the **AdCP Reference Creative Agent** (`https://creative.adcontextprotocol.org`):
 - **Simplified**: No platform-specific complexity
 - **Portable**: One creative works everywhere
-- **Validated**: Pre-tested specifications
+- **Validated**: Pre-tested IAB specifications
 - **Discoverable**: Available via `list_creative_formats`
+- **Maintained**: Centrally hosted and updated
 
-See the [Creative Channel Guides](./channels/video.md) for format documentation across video, display, audio, DOOH, and carousels.
+Standard formats include common IAB ad units (300x250, 728x90), standard video specs (15s, 30s pre-roll), audio formats, DOOH, and more. See the [Creative Channel Guides](./channels/video.md) for format documentation.
 
-**For sales agents:** See [Implementing Standard Format Support](../media-buy/capability-discovery/implementing-standard-formats.md) for guidance on referencing the reference creative agent at `https://creative.adcontextprotocol.org`.
+**For sales agents:** Before creating custom format definitions, check the reference creative agent to see if your formats already exist. Most publishers support some standard formats and should reference `https://creative.adcontextprotocol.org`. See [Implementing Standard Format Support](../media-buy/capability-discovery/implementing-standard-formats.md) for detailed guidance.
 
 ### Custom Formats
-Publisher-specific formats for unique inventory:
-- **Unique**: Truly differentiated experiences
-- **Specialized**: Platform-specific capabilities
-- **Extended**: Often based on standard formats
-- **Documented**: Clear specifications required
-- **Powered by Creative Agents**: Publishers provide creative agents that understand and support their custom formats
+Publisher-specific formats for unique inventory that doesn't match standard specifications:
+- **Unique requirements**: Custom dimensions, special asset needs, or unique technical specs
+- **Specialized capabilities**: Platform-specific features not available in standard formats
+- **Premium experiences**: Differentiated ad products like takeovers, rich media, or immersive units
+- **Custom validation**: Publisher-specific creative review or assembly logic
+
+**When to create custom formats:** Only when you have truly unique requirements that aren't covered by standard formats. Most publishers will reference standard formats for common ad units (300x250, video pre-roll, etc.) and only define custom formats for premium or specialized inventory.
 
 ## Discovering Formats
 
@@ -46,8 +48,10 @@ Buyers discover available formats using the `list_creative_formats` task, which 
 {
   "formats": [
     {
-      "format_id": "homepage_takeover_2024",
-      "agent_url": "https://youragent.com",
+      "format_id": {
+        "agent_url": "https://youragent.com",
+        "id": "homepage_takeover_2024"
+      },
       "name": "Homepage Takeover",
       "type": "rich_media"
     }
@@ -68,8 +72,10 @@ Each format includes an `agent_url` field pointing to its authoritative source:
 
 ```json
 {
-  "format_id": "video_30s_hosted",
-  "agent_url": "https://creative.adcontextprotocol.org",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_hosted"
+  },
   "name": "Standard 30-Second Video"
 }
 ```
@@ -81,6 +87,48 @@ The creative agent at that URL is the definitive source for:
 - Format documentation
 
 Buyers query the agent_url for full format details, validation, and preview capabilities.
+
+## Format Visual Presentation
+
+Formats include two optional fields for visual presentation in format browsing UIs:
+
+### Preview Image
+**Field**: `preview_image`
+**Purpose**: Thumbnail/card image for format browsing
+**Specifications**:
+- **Dimensions**: 400×300px (4:3 aspect ratio)
+- **Format**: PNG or JPG
+- **Use case**: Quick visual identification in format lists/grids
+
+### Example Showcase
+**Field**: `example_url`
+**Purpose**: Link to full interactive demo/showcase page
+**Content**: Publisher-controlled page showing:
+- Video walkthroughs of the format
+- Interactive demos
+- Multiple creative examples
+- Technical specifications
+- Best practices
+
+**Why this approach?**
+- Publishers control how to best showcase complex formats
+- No schema limitations on presentation methods
+- Handles video, interactive demos, DOOH installations, etc.
+- Structured card (preview_image) + deep link (example_url) pattern
+
+**Example**:
+```json
+{
+  "format_id": {
+    "agent_url": "https://publisher.com",
+    "id": "homepage_takeover_premium"
+  },
+  "name": "Premium Homepage Takeover",
+  "description": "Full-screen immersive experience with video, carousel, and companion units",
+  "preview_image": "https://publisher.com/format-cards/homepage-takeover.png",
+  "example_url": "https://publisher.com/formats/homepage-takeover-demo"
+}
+```
 
 ## Referencing Formats
 
@@ -164,8 +212,10 @@ Formats are JSON objects with the following key fields:
 
 ```json
 {
-  "format_id": "video_30s_hosted",
-  "agent_url": "https://creative.adcontextprotocol.org",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_hosted"
+  },
   "name": "30-Second Hosted Video",
   "type": "video",
   "assets_required": [
@@ -190,25 +240,62 @@ Formats are JSON objects with the following key fields:
 - **type**: Category (video, display, audio, native, dooh, rich_media)
 - **assets_required**: Array of asset specifications
 - **asset_role**: Identifies asset purpose (hero_image, logo, cta_button, etc.)
-- **render_dimensions**: Structured dimensions for visual formats (display, dooh, native) - see below
+- **renders**: Array of rendered outputs with dimensions - see below
 
-### Structured Rendering Dimensions
+### Rendered Outputs and Dimensions
 
-Visual formats (display, dooh, native) include structured `render_dimensions` for proper preview rendering and format filtering:
+Formats specify their rendered outputs via the `renders` array. Most formats produce a single render, but some (companion ads, adaptive formats, multi-placement) produce multiple renders:
 
 ```json
 {
-  "format_id": "display_300x250",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
   "type": "display",
-  "render_dimensions": {
-    "width": 300,
-    "height": 250,
-    "responsive": {
-      "width": false,
-      "height": false
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 300,
+        "height": 250,
+        "responsive": {
+          "width": false,
+          "height": false
+        },
+        "unit": "px"
+      }
+    }
+  ]
+}
+```
+
+**Multi-render example (companion ad):**
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_with_companion_300x250"
+  },
+  "type": "video",
+  "renders": [
+    {
+      "role": "primary",
+      "dimensions": {
+        "width": 1920,
+        "height": 1080,
+        "unit": "px"
+      }
     },
-    "unit": "px"
-  }
+    {
+      "role": "companion",
+      "dimensions": {
+        "width": 300,
+        "height": 250,
+        "unit": "px"
+      }
+    }
+  ]
 }
 ```
 
@@ -217,51 +304,65 @@ Visual formats (display, dooh, native) include structured `render_dimensions` fo
 **Fixed dimensions** (standard display ads):
 ```json
 {
-  "width": 300,
-  "height": 250,
-  "responsive": {"width": false, "height": false},
-  "unit": "px"
+  "role": "primary",
+  "dimensions": {
+    "width": 300,
+    "height": 250,
+    "responsive": {"width": false, "height": false},
+    "unit": "px"
+  }
 }
 ```
 
 **Responsive width** (fluid banners):
 ```json
 {
-  "min_width": 300,
-  "max_width": 970,
-  "height": 250,
-  "responsive": {"width": true, "height": false},
-  "unit": "px"
+  "role": "primary",
+  "dimensions": {
+    "min_width": 300,
+    "max_width": 970,
+    "height": 250,
+    "responsive": {"width": true, "height": false},
+    "unit": "px"
+  }
 }
 ```
 
 **Aspect ratio constrained** (native formats):
 ```json
 {
-  "aspect_ratio": "16:9",
-  "min_width": 300,
-  "responsive": {"width": true, "height": true},
-  "unit": "px"
+  "role": "primary",
+  "dimensions": {
+    "aspect_ratio": "16:9",
+    "min_width": 300,
+    "responsive": {"width": true, "height": true},
+    "unit": "px"
+  }
 }
 ```
 
 **Physical dimensions** (DOOH):
 ```json
 {
-  "width": 48,
-  "height": 14,
-  "responsive": {"width": false, "height": false},
-  "unit": "inches"
+  "role": "primary",
+  "dimensions": {
+    "width": 48,
+    "height": 14,
+    "responsive": {"width": false, "height": false},
+    "unit": "inches"
+  }
 }
 ```
 
-**Benefits of structured dimensions:**
-- No string parsing required
+**Benefits of the renders structure:**
+- Supports single and multi-render formats uniformly
+- No string parsing required - structured dimensions
 - Schema-validated dimensions
 - Supports responsive and fixed formats equally
 - Enables proper preview rendering
 - Allows dimension-based filtering
 - Supports physical units for DOOH
+- Clear semantic roles for each rendered piece
 
 ## Format Categories
 

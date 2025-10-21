@@ -4,9 +4,51 @@
 
 AdCP servers support time simulation and dry run capabilities to enable comprehensive testing of advertising workflows without waiting for real-time events or spending actual budgets.
 
+## Test Agent for Development
+
+AdCP provides a **public test agent** with free credentials for development and testing:
+
+**Agent URL**: `https://test-agent.adcontextprotocol.org`
+
+**Free Test Credentials**:
+
+**For MCP Protocol**:
+```json
+{
+  "agent_uri": "https://test-agent.adcontextprotocol.org/mcp",
+  "protocol": "mcp",
+  "version": "1.0",
+  "auth": {
+    "type": "bearer",
+    "token": "1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+  }
+}
+```
+
+**For A2A Protocol**:
+```json
+{
+  "agent_uri": "https://test-agent.adcontextprotocol.org/a2a",
+  "protocol": "a2a",
+  "version": "1.0",
+  "auth": {
+    "type": "bearer",
+    "token": "L4UCklW_V_40eTdWuQYF6HD5GWeKkgV8U6xxK-jwNO8"
+  }
+}
+```
+
+**Use Cases**:
+- Test authenticated operations
+- Practice integration patterns
+- Validate request/response structures
+- Develop and debug client implementations
+
+**Important**: This is a test environment. Data is ephemeral and may be reset periodically.
+
 ## Protocol Compliance Testing
 
-Use the [AdCP Protocol Test Harness](https://storylab.scope3.com/sales-agents) to validate your implementation's compliance with the AdCP specification. This interactive tool allows you to test all AdCP tasks and verify correct behavior across different scenarios.
+Use the [AdCP Protocol Test Harness](https://testing.adcontextprotocol.org) to validate your implementation's compliance with the AdCP specification. This interactive tool allows you to test all AdCP tasks and verify correct behavior across different scenarios.
 
 ## Testing Modes
 

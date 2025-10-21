@@ -11,6 +11,10 @@ type MemberItem = {
 
 const FoundingMembers: MemberItem[] = [
   {
+    name: 'Ebiquity',
+    logo: '/img/members/ebiquity.png',
+  },
+  {
     name: 'Optable',
     logo: '/img/members/optable.png',
   },

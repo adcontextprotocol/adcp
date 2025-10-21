@@ -24,7 +24,10 @@ Carousel formats define a repeatable asset group containing the assets for each 
 
 ```json
 {
-  "format_id": "product_carousel_3_to_10",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "product_carousel_3_to_10"
+  },
   "type": "display",
   "dimensions": "300x250",
   "assets_required": [
@@ -71,7 +74,10 @@ Carousel formats define a repeatable asset group containing the assets for each 
 
 ```json
 {
-  "format_id": "product_carousel_display",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "product_carousel_display"
+  },
   "type": "display",
   "dimensions": "300x600",
   "assets_required": [
@@ -112,7 +118,10 @@ Carousel formats define a repeatable asset group containing the assets for each 
 
 ```json
 {
-  "format_id": "image_slideshow_5s_each",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "image_slideshow_5s_each"
+  },
   "type": "display",
   "dimensions": "728x90",
   "assets_required": [
@@ -143,7 +152,10 @@ Carousel formats define a repeatable asset group containing the assets for each 
 
 ```json
 {
-  "format_id": "mobile_story_vertical",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "mobile_story_vertical"
+  },
   "type": "display",
   "dimensions": "1080x1920",
   "assets_required": [
@@ -188,7 +200,10 @@ Carousel formats define a repeatable asset group containing the assets for each 
 
 ```json
 {
-  "format_id": "video_playlist_6s_bumpers",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_playlist_6s_bumpers"
+  },
   "type": "video",
   "assets_required": [
     {
@@ -231,7 +246,10 @@ All assets for a given index must be provided together (you cannot have `product
 
 ```json
 {
-  "format_id": "product_carousel_3_to_10",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "product_carousel_3_to_10"
+  },
   "assets": {
     "product_0_image": {
       "asset_type": "image",
@@ -294,7 +312,10 @@ All assets for a given index must be provided together (you cannot have `product
 
 ```json
 {
-  "format_id": "mobile_story_vertical",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "mobile_story_vertical"
+  },
   "assets": {
     "frame_0_background": {
       "asset_type": "image",
@@ -508,7 +529,10 @@ https://track.brand.com/view?buy={MEDIA_BUY_ID}&item={CAROUSEL_INDEX}&total={CAR
 
 ```json
 {
-  "format_id": "ecommerce_carousel_300x600",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "ecommerce_carousel_300x600"
+  },
   "name": "E-commerce Product Carousel",
   "type": "display",
   "dimensions": "300x600",
@@ -566,7 +590,10 @@ https://track.brand.com/view?buy={MEDIA_BUY_ID}&item={CAROUSEL_INDEX}&total={CAR
 
 ```json
 {
-  "format_id": "ecommerce_carousel_300x600",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "ecommerce_carousel_300x600"
+  },
   "assets": {
     "product_0_image": {
       "asset_type": "image",

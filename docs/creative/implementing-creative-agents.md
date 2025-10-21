@@ -46,8 +46,10 @@ When formats reference your agent_url, you are the authority for:
 
 ```json
 {
-  "format_id": "youragency.com:story_sequence_5frame",
-  "agent_url": "https://youragency.com",
+  "format_id": {
+    "agent_url": "https://youragency.com",
+    "id": "story_sequence_5frame"
+  },
   "name": "5-Frame Story Sequence",
   "type": "display",
   "min_frames": 5,
@@ -193,8 +195,10 @@ You're a creative agency building custom formats for brands:
 
 ```json
 {
-  "format_id": "brandstudio.com:hero_video_package",
-  "agent_url": "https://brandstudio.com",
+  "format_id": {
+    "agent_url": "https://brandstudio.com",
+    "id": "hero_video_package"
+  },
   "name": "Hero Video Package",
   "type": "video",
   "description": "Premium video creative with multiple aspect ratios",
@@ -212,8 +216,10 @@ You're a platform defining specialized formats:
 
 ```json
 {
-  "format_id": "platform.com:interactive_quiz",
-  "agent_url": "https://platform.com",
+  "format_id": {
+    "agent_url": "https://platform.com",
+    "id": "interactive_quiz"
+  },
   "name": "Interactive Quiz Ad",
   "type": "rich_media",
   "description": "Engagement-driven quiz format",
@@ -231,8 +237,10 @@ You provide enhanced versions of standard formats:
 
 ```json
 {
-  "format_id": "enhanced.com:video_30s_optimized",
-  "agent_url": "https://enhanced.com",
+  "format_id": {
+    "agent_url": "https://enhanced.com",
+    "id": "video_30s_optimized"
+  },
   "name": "Optimized 30s Video",
   "type": "video",
   "extends": "creative.adcontextprotocol.org:video_30s",

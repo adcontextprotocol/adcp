@@ -6,6 +6,20 @@ title: Asset Types
 
 Creative formats in AdCP use standardized asset types with well-defined properties. This ensures consistency across formats and makes it easier for buyers to understand requirements.
 
+## Important: Payload vs Requirements
+
+**This document describes format requirements** (constraints and specifications defined in format specs).
+
+For **payload schemas** (the structure of actual asset data you send in creative manifests), see:
+- [Asset Type Registry](https://adcontextprotocol.org/schemas/v1/creative/asset-types/index.json) - Links to all payload schemas
+- Core Asset Schemas at `/schemas/v1/core/assets/` - Individual asset payload definitions
+
+**Key distinction**:
+- **Format requirements** (this doc): `max_file_size_mb`, `required: true/false`, `acceptable_formats`, duration constraints
+- **Payload schemas** (schemas): `url`, `width`, `height`, `content`, `duration_ms`, `format`
+
+Asset requirements belong in the format specification's `requirements` field. Asset payloads use the core schemas.
+
 ## Asset Type Schema
 
 The official JSON schema for asset types is available at:
@@ -263,7 +277,10 @@ When submitting creative assets, the orchestrator uses `asset_id` to map files:
 
 ```json
 {
-  "format_id": "foundational_immersive_canvas",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "foundational_immersive_canvas"
+  },
   "assets": {
     "hero_image": "https://cdn.example.com/campaign123/hero.jpg",
     "brand_logo": "https://cdn.example.com/brand/logo.png",
@@ -282,7 +299,10 @@ Creative formats specify their required assets using these standardized types:
 
 ```json
 {
-  "format_id": "video_15s_hosted",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_15s_hosted"
+  },
   "assets": [
     {
       "asset_id": "video_file",
