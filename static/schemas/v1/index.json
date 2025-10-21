@@ -128,6 +128,10 @@
         "protocol-envelope": {
           "$ref": "/schemas/v1/core/protocol-envelope.json",
           "description": "Standard envelope structure added by protocol layer (MCP, A2A, REST) that wraps task response payloads with protocol-level fields like status, context_id, task_id, and message"
+        },
+        "placement": {
+          "$ref": "/schemas/v1/core/placement.json",
+          "description": "Represents a specific ad placement within a product's inventory"
         }
       }
     },

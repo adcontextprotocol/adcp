@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/placement.json",
+  "title": "Placement",
+  "description": "Represents a specific ad placement within a product's inventory",
+  "type": "object",
+  "properties": {
+    "placement_id": {
+      "type": "string",
+      "description": "Unique identifier for the placement within the product"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for the placement (e.g., 'Homepage Banner', 'Article Sidebar')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of where and how the placement appears"
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Format IDs supported by this specific placement (subset of product's formats)",
+      "items": {
+        "$ref": "/schemas/v1/core/format-id.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": ["placement_id", "name"],
+  "additionalProperties": false
+}

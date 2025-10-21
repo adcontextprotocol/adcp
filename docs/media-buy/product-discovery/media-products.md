@@ -16,6 +16,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `name` (string, required)
 - `description` (string, required)
 - `formats` (list[Format], required): See [Creative Formats](../../creative/formats.md).
+- `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
 - `measurement` (Measurement, optional): Included measurement capabilities. Common for retail media products.
@@ -117,6 +118,80 @@ Defines creative requirements and restrictions:
   "templates_available": true
 }
 ```
+
+### Placements
+
+Products can optionally declare specific ad placements within their inventory. When placements are provided:
+
+- **Buyers purchase the entire product** - Packages always target the whole product, not individual placements
+- **Placement targeting happens at creative assignment** - Different creatives can be assigned to different placements
+- **Omitting placement targeting** - Creatives without placement_ids run on all placements in the package
+
+#### Placement Object Structure
+
+```json
+{
+  "placement_id": "homepage_banner",
+  "name": "Homepage Banner",
+  "description": "Above-the-fold banner on the homepage",
+  "format_ids": [
+    {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_728x90"},
+    {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_970x250"}
+  ]
+}
+```
+
+#### Example: Product with Placements
+
+```json
+{
+  "product_id": "news_site_premium",
+  "name": "News Site Premium Package",
+  "description": "Premium placements across news site",
+  "format_ids": [
+    {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_728x90"},
+    {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250"}
+  ],
+  "placements": [
+    {
+      "placement_id": "homepage_banner",
+      "name": "Homepage Banner",
+      "format_ids": [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_728x90"}]
+    },
+    {
+      "placement_id": "article_sidebar",
+      "name": "Article Sidebar",
+      "format_ids": [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250"}]
+    }
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [...]
+}
+```
+
+When creating a media buy, buyers can assign different creatives to different placements:
+
+```json
+{
+  "packages": [
+    {
+      "product_id": "news_site_premium",
+      "creative_assignments": [
+        {
+          "creative_id": "creative_1",
+          "placement_ids": ["homepage_banner"]
+        },
+        {
+          "creative_id": "creative_2",
+          "placement_ids": ["article_sidebar"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+See [Creative Assignment and Placement Targeting](../media-buys/index.md#creative-assignment-and-placement-targeting) for more details.
 
 ### Custom & Principal-Specific Products
 
