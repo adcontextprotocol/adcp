@@ -150,9 +150,66 @@ When running `npm run start`, all JSON schemas are accessible at:
 - Clearer semantics (the schema you reference IS the version you use)
 - Follows REST/HTTP conventions (version in path, not payload)
 
+### Changesets: The Version Management System
+
+**CRITICAL**: AdCP uses [Changesets](https://github.com/changesets/changesets) for version management. **NEVER manually update versions in `package.json` or `index.json`**.
+
+**How it works:**
+1. When making changes, create a changeset file in `.changeset/`
+2. The changeset describes what changed and declares the version bump type (patch/minor/major)
+3. When the PR is merged, the changeset automation:
+   - Bumps `package.json` version
+   - Updates `static/schemas/v1/index.json` `adcp_version` via sync script
+   - Updates `CHANGELOG.md` with your changeset content
+   - Creates a "Version Packages" PR
+
+**Creating a changeset:**
+```bash
+# Interactive (won't work in non-interactive environments)
+npx changeset
+
+# Manual: Create .changeset/your-feature-name.md
+---
+"adcontextprotocol": minor
+---
+
+Brief description of what changed and why.
+```
+
+**Changeset types:**
+- `patch` - Bug fixes, documentation updates, no API changes
+- `minor` - New features, backward-compatible API additions
+- `major` - Breaking changes to APIs or schemas
+
+**Example changeset file (`.changeset/placement-targeting.md`):**
+```markdown
+---
+"adcontextprotocol": minor
+---
+
+Add placement targeting for creative assignments. Enables products to define
+multiple placements and buyers to assign different creatives to each placement.
+
+**New schemas:**
+- placement.json core schema
+- Optional placements array in Product schema
+- Optional placement_ids in CreativeAssignment schema
+```
+
+**What NOT to do:**
+- ❌ Manually edit `package.json` version
+- ❌ Manually edit `static/schemas/v1/index.json` `adcp_version`
+- ❌ Manually edit `CHANGELOG.md`
+- ❌ Run `npm run update-schema-versions` yourself (automation does this)
+
+**What TO do:**
+- ✅ Create a changeset file describing your changes
+- ✅ Let the automation handle all version bumping
+- ✅ Update documentation and schema files as needed
+
 ### When to Version Schemas
 
-AdCP uses semantic versioning for schemas. Increment the version when:
+AdCP uses semantic versioning for schemas. The changeset type determines the version bump:
 
 **PATCH (1.0.0 → 1.0.1)**: Schema fixes that don't change behavior
 - Fix typos in descriptions
@@ -173,7 +230,7 @@ AdCP uses semantic versioning for schemas. Increment the version when:
 - Remove enum values
 - Change existing field meanings
 
-### Schema Versioning Checklist
+### Schema Change Checklist
 
 When making **ANY** schema change:
 
@@ -182,10 +239,9 @@ When making **ANY** schema change:
    - If breaking change, consider if really necessary
    - Document the rationale for the change
 
-2. **✅ Update Schema Registry**
-   - Update `adcp_version` in `static/schemas/v1/index.json`
-   - Update `lastUpdated` field in schema registry
-   - **DO NOT** add `adcp_version` to individual schemas
+2. **✅ Create a Changeset**
+   - Create `.changeset/descriptive-name.md` with version bump type and description
+   - **DO NOT** manually edit `package.json` or `index.json` versions
 
 3. **✅ Update All Related Schemas**
    - If changing core objects, update all schemas that reference them
@@ -193,19 +249,20 @@ When making **ANY** schema change:
    - Verify `$ref` links still resolve correctly
 
 4. **✅ Test Schema Changes**
-   - Validate all modified schemas with JSON Schema validator
+   - Run `npm test` to validate all schemas
    - Test with real request/response examples
    - Ensure existing examples still validate
 
 5. **✅ Update Documentation**
    - Update all affected task documentation in `docs/`
-   - Update API examples to reference correct schema path
-   - If major version, create migration guide in `docs/reference/versioning.md`
+   - Update API examples if needed
+   - If major version, document migration path in changeset
 
-### Example Schema Version Update
+### Example Schema Change Workflow
 
-When adding a new optional field to `create-media-buy-request.json`:
+**Scenario:** Adding a new optional field to `create-media-buy-request.json`
 
+**Step 1:** Make schema changes
 ```json
 // In create-media-buy-request.json
 {
@@ -219,14 +276,30 @@ When adding a new optional field to `create-media-buy-request.json`:
 }
 ```
 
-Then update schema registry:
-```json
-// In static/schemas/v1/index.json
-{
-  "adcp_version": "1.1.0",  // ← Update version
-  "lastUpdated": "2025-10-13"  // ← Update date
-}
+**Step 2:** Create a changeset (`.changeset/add-new-field.md`)
+```markdown
+---
+"adcontextprotocol": minor
+---
+
+Add optional `new_optional_field` parameter to create_media_buy request.
+
+This enables [describe the feature and why it's needed].
 ```
+
+**Step 3:** Commit and push
+```bash
+git add .
+git commit -m "Add new_optional_field to create_media_buy"
+git push
+```
+
+**What happens when merged:**
+- Changesets bot sees the changeset file
+- Automatically bumps version 2.2.0 → 2.3.0
+- Updates `index.json` `adcp_version` automatically
+- Updates `CHANGELOG.md` with changeset content
+- Creates a "Version Packages" PR
 
 ### Breaking Changes (Major Versions)
 
