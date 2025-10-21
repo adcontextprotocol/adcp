@@ -111,7 +111,7 @@
           },
           "min_height": {
             "type": "integer",
-            "description": "Minimum required width in pixels"
+            "description": "Minimum required height in pixels"
           },
           "acceptable_formats": {
             "type": "array",
