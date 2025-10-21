@@ -76,11 +76,20 @@ Static image assets for banners, logos, and visual content.
 
 **Properties:**
 - `width` / `height`: Dimensions in pixels
+- `min_width` / `min_height`: Minimum dimensions (px; typically used by responsive/sizeless formats)
+- `aspect_ratio`: Required aspect ratio
 - `acceptable_formats`: Image formats (jpg, png, gif, webp, svg)
 - `max_file_size_kb`: Maximum file size in kilobytes
 - `transparency`: Whether transparency is required/supported
 - `animation_allowed`: Whether animated GIFs are accepted
 - `notes`: Additional requirements (e.g., "Must be free of text")
+
+**Use Cases:**
+- Fixed layout: provide `width` and `height`. Do not include `min_width`, `min_height`, or `aspect_ratio`.
+- Responsive (fixed image aspect ratio): provide `min_width`, `min_height` and `aspect_ratio`. Do not include `width` or `height`.
+- Responsive (any image aspect ratio): provide `min_width` and `min_height` only. Do not include `width`, `height`, or `aspect_ratio`.
+
+**Note**: In fixed layouts, the image slot is an exact pixel box, so specify `width` and `height`. In responsive layouts, the renderer will resize the image; use `min_width`/`min_height` to ensure there are enough pixels for a sharp result after scaling. Use `aspect_ratio` only when the image asset itself must be a specific shape (e.g., 16:9); omit it if any image aspect ratio is acceptable
 
 ### Text Asset
 
