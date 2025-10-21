@@ -11,7 +11,7 @@ Transport-specific guide for integrating AdCP using the Model Context Protocol. 
 
 ## Testing AdCP via MCP
 
-You can test AdCP tasks using the reference implementation at **testing.adcontextprotocol.org**. This endpoint implements all AdCP tasks as MCP tools and is useful for development and integration testing.
+You can test AdCP tasks using the reference implementation at [testing.adcontextprotocol.org](https://testing.adcontextprotocol.org). This endpoint implements all AdCP tasks as MCP tools and is useful for development and integration testing.
 
 ## Tool Call Patterns
 
