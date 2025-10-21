@@ -113,6 +113,10 @@
             "type": "integer",
             "description": "Minimum required height in pixels"
           },
+          "aspect_ratio": {
+            "type": "string",
+            "description": "Required aspect ratio (e.g., '16:9', '9:16', '1:1')"
+          },
           "acceptable_formats": {
             "type": "array",
             "items": {
