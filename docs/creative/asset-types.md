@@ -76,6 +76,7 @@ Static image assets for banners, logos, and visual content.
 
 **Properties:**
 - `width` / `height`: Dimensions in pixels
+- `min_width` / `min_height`: Minimum dimensions (px; typically used by responsive/sizeless formats)
 - `acceptable_formats`: Image formats (jpg, png, gif, webp, svg)
 - `max_file_size_kb`: Maximum file size in kilobytes
 - `transparency`: Whether transparency is required/supported

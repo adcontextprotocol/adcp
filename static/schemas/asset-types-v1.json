@@ -105,6 +105,14 @@
             "type": "integer",
             "description": "Required height in pixels"
           },
+          "min_width": {
+            "type": "integer",
+            "description": "Minimum required width in pixels"
+          },
+          "min_height": {
+            "type": "integer",
+            "description": "Minimum required width in pixels"
+          },
           "acceptable_formats": {
             "type": "array",
             "items": {
