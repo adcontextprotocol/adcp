@@ -5,14 +5,13 @@ sidebar_position: 1.5
 
 # list_authorized_properties
 
-Discover which publishers this sales agent is authorized to represent, similar to IAB Tech Lab's sellers.json. Returns publisher domains and authorization scope (property_ids or property_tags). Buyers fetch actual property definitions from each publisher's canonical adagents.json file.
+Discover which publishers this sales agent is authorized to represent, similar to IAB Tech Lab's sellers.json. Returns just publisher domains. Buyers fetch each publisher's adagents.json to see property definitions and verify authorization scope.
 
 **Response Time**: ~2 seconds (database lookup)
 
 **Purpose**:
 - Authorization discovery - which publishers does this agent represent?
-- Authorization scope - all properties, specific property IDs, or properties with specific tags?
-- Single source of truth - property definitions come from publisher's adagents.json, not agent
+- Single source of truth - all details (properties, authorization scope) come from publisher's adagents.json
 - One-time discovery to cache publisher-agent relationships
 
 **Request Schema**: [`/schemas/v1/media-buy/list-authorized-properties-request.json`](/schemas/v1/media-buy/list-authorized-properties-request.json)
@@ -28,7 +27,7 @@ Discover which publishers this sales agent is authorized to represent, similar t
 
 The response includes a human-readable message that:
 - Summarizes the number of publishers represented
-- Notes authorization scope (e.g., "Authorized for CTV properties from 3 publishers")
+- Lists publisher domains
 - Notes any filtering applied
 
 The message is returned differently in each protocol:
@@ -39,19 +38,7 @@ The message is returned differently in each protocol:
 
 ```json
 {
-  "publisher_authorizations": [
-    {
-      "publisher_domain": "cnn.com",
-      "property_tags": ["ctv"]
-    },
-    {
-      "publisher_domain": "espn.com",
-      "property_ids": ["espn_ctv_app", "espn_ctv_web"]
-    },
-    {
-      "publisher_domain": "nytimes.com"
-    }
-  ],
+  "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"],
   "primary_channels": ["ctv", "display"],
   "primary_countries": ["US"],
   "portfolio_description": "CTV specialist representing major news and sports publishers across US markets."
@@ -60,10 +47,10 @@ The message is returned differently in each protocol:
 
 ### Field Descriptions
 
-- **publisher_authorizations**: Array of publisher domains and authorization scope
-  - **publisher_domain**: Domain where publisher's adagents.json is hosted
-  - **property_ids** *(optional)*: Specific property IDs from publisher's adagents.json. If omitted with property_tags also omitted, agent is authorized for ALL properties from this publisher.
-  - **property_tags** *(optional)*: Property tags from publisher's adagents.json. Agent represents all properties with these tags. Mutually exclusive with property_ids.
+- **publisher_domains**: Array of publisher domains this agent represents. Buyers should fetch each publisher's adagents.json to:
+  - See property definitions
+  - Verify this agent is in their authorized_agents list
+  - Check authorization scope (property_ids, property_tags, or all properties)
 - **primary_channels** *(optional)*: Main advertising channels (see [Channels enum](/schemas/v1/enums/channels.json))
 - **primary_countries** *(optional)*: Main countries (ISO 3166-1 alpha-2 codes)
 - **portfolio_description** *(optional)*: Markdown description of the agent's portfolio and capabilities
@@ -81,15 +68,16 @@ sequenceDiagram
 
     Note over Buyer: Discovery Phase
     Buyer->>Sales: list_authorized_properties()
-    Sales-->>Buyer: publisher_authorizations: [{publisher_domain: "cnn.com", property_tags: ["ctv"]}]
+    Sales-->>Buyer: publisher_domains: ["cnn.com", "espn.com"]
 
     Note over Buyer: Fetch Property Details
     Buyer->>Publisher: GET https://cnn.com/.well-known/adagents.json
     Publisher-->>Buyer: {properties: [...], tags: {...}, authorized_agents: [...]}
 
     Note over Buyer: Validate Authorization
-    Buyer->>Buyer: Check sales agent URL is in publisher's authorized_agents
-    Buyer->>Buyer: Resolve property_tags ["ctv"] to actual properties
+    Buyer->>Buyer: Find sales agent in publisher's authorized_agents array
+    Buyer->>Buyer: Check authorization scope (property_ids, property_tags, or all)
+    Buyer->>Buyer: Resolve scope to actual property list
 
     Note over Buyer: Cache for Future Use
     Buyer->>Buyer: Cache publisher properties + agent authorization
@@ -125,13 +113,8 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 ### MCP Response
 ```json
 {
-  "message": "Authorized to represent 1 publisher: cnn.com (CTV properties only)",
-  "publisher_authorizations": [
-    {
-      "publisher_domain": "cnn.com",
-      "property_tags": ["ctv"]
-    }
-  ],
+  "message": "Authorized to represent 3 publishers: cnn.com, espn.com, nytimes.com",
+  "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"],
   "primary_channels": ["ctv"],
   "primary_countries": ["US"]
 }
@@ -164,17 +147,12 @@ await a2a.send({
     "parts": [
       {
         "kind": "text",
-        "text": "Authorized to represent 1 publisher: cnn.com (CTV properties only)"
+        "text": "Authorized to represent 3 publishers: cnn.com, espn.com, nytimes.com"
       },
       {
         "kind": "data",
         "data": {
-          "publisher_authorizations": [
-            {
-              "publisher_domain": "cnn.com",
-              "property_tags": ["ctv"]
-            }
-          ],
+          "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"],
           "primary_channels": ["ctv"],
           "primary_countries": ["US"]
         }
@@ -261,26 +239,18 @@ From agent's own `adagents.json` `publisher_properties` entries, extract:
 - Publisher domains represented
 - Authorization scope (property_ids or property_tags for each publisher)
 
-### Step 2: Return Authorization List
+### Step 2: Return Publisher Domain List
 
-Return exactly what's in your own adagents.json:
+Return just the list of publisher domains:
 
 ```json
 {
-  "publisher_authorizations": [
-    {
-      "publisher_domain": "cnn.com",
-      "property_tags": ["ctv"]
-    },
-    {
-      "publisher_domain": "espn.com",
-      "property_ids": ["espn_ctv_app"]
-    }
-  ]
+  "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"]
 }
 ```
 
 **That's it.** You don't need to:
+- Specify authorization scope (buyers will find that in publisher's adagents.json)
 - Fetch publisher adagents.json files (buyers will do that)
 - Resolve property IDs to full property objects
 - Duplicate property definitions
@@ -291,7 +261,7 @@ Return exactly what's in your own adagents.json:
 Add high-level metadata about your capabilities:
 ```json
 {
-  "publisher_authorizations": [...],
+  "publisher_domains": ["cnn.com", "espn.com"],
   "primary_channels": ["ctv"],
   "primary_countries": ["US"],
   "portfolio_description": "CTV specialist for news and sports publishers"
@@ -306,37 +276,37 @@ Buyer agents should use this tool to discover which publishers an agent represen
 
 ```javascript
 const response = await salesAgent.listAuthorizedProperties();
-// Returns: {publisher_authorizations: [{publisher_domain: "cnn.com", property_tags: ["ctv"]}]}
+// Returns: {publisher_domains: ["cnn.com", "espn.com", "nytimes.com"]}
 ```
 
 ### Step 2: Fetch Publisher Property Definitions
 
 ```javascript
-for (const auth of response.publisher_authorizations) {
+for (const publisherDomain of response.publisher_domains) {
   // Fetch publisher's canonical adagents.json
   const publisherAgents = await fetch(
-    `https://${auth.publisher_domain}/.well-known/adagents.json`
+    `https://${publisherDomain}/.well-known/adagents.json`
   ).then(r => r.json());
 
-  // Validate agent is authorized
-  const authorized = publisherAgents.authorized_agents.find(
+  // Find agent's authorization entry in publisher's file
+  const agentAuth = publisherAgents.authorized_agents.find(
     a => a.url === salesAgentUrl
   );
 
-  if (!authorized) {
-    console.warn(`Agent not authorized for ${auth.publisher_domain}`);
+  if (!agentAuth) {
+    console.warn(`Agent not found in ${publisherDomain} authorized_agents`);
     continue;
   }
 
-  // Resolve property scope
+  // Resolve property scope from publisher's authorization
   let authorizedProperties;
-  if (auth.property_ids) {
+  if (agentAuth.property_ids) {
     authorizedProperties = publisherAgents.properties.filter(
-      p => auth.property_ids.includes(p.property_id)
+      p => agentAuth.property_ids.includes(p.property_id)
     );
-  } else if (auth.property_tags) {
+  } else if (agentAuth.property_tags) {
     authorizedProperties = publisherAgents.properties.filter(
-      p => p.tags?.some(tag => auth.property_tags.includes(tag))
+      p => p.tags?.some(tag => agentAuth.property_tags.includes(tag))
     );
   } else {
     // No scope = all properties
@@ -344,7 +314,10 @@ for (const auth of response.publisher_authorizations) {
   }
 
   // Cache for use in product validation
-  cache.set(auth.publisher_domain, authorizedProperties);
+  cache.set(publisherDomain, {
+    properties: authorizedProperties,
+    tags: publisherAgents.tags
+  });
 }
 ```
 

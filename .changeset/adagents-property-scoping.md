@@ -1,12 +1,12 @@
 ---
-"adcontextprotocol": major
+"adcontextprotocol": minor
 ---
 
-**BREAKING CHANGE**: Restructure `list_authorized_properties` response to return publisher authorizations instead of full property objects. Properties are now fetched from publisher canonical `adagents.json` files.
+Restructure `list_authorized_properties` response to return just publisher domains. Authorization scope comes from publisher canonical `adagents.json` files.
 
 **Architecture Change: Publishers Own Property Definitions**
 
-`list_authorized_properties` now works like IAB Tech Lab's sellers.json - it lists which publishers an agent represents, not full property details. Buyers fetch actual property definitions from each publisher's canonical adagents.json file.
+`list_authorized_properties` now works like IAB Tech Lab's sellers.json - it lists which publishers an agent represents. Buyers fetch each publisher's adagents.json to see property definitions and verify authorization scope.
 
 **Before (v2.x)**:
 ```json
@@ -16,19 +16,17 @@
 }
 ```
 
-**After (v3.0)**:
+**After (v2.3)**:
 ```json
 {
-  "publisher_authorizations": [
-    {
-      "publisher_domain": "cnn.com",
-      "property_tags": ["ctv"]
-    }
-  ]
+  "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"]
 }
 ```
 
-Buyers then fetch `https://cnn.com/.well-known/adagents.json` for actual property definitions.
+Buyers then fetch `https://cnn.com/.well-known/adagents.json` for:
+- Property definitions
+- Agent authorization verification
+- Authorization scope (property_ids, property_tags, or all)
 
 **New Fields:**
 
@@ -97,16 +95,17 @@ Sales agents need to update `list_authorized_properties` implementation:
 2. Return complete property objects in response
 3. Keep property data synchronized with publishers
 
-**New approach (v3.0)**:
+**New approach (v2.3+)**:
 1. Read `publisher_properties` from own adagents.json
-2. Return just publisher domains + authorization scope
-3. No need to maintain property data - buyers fetch from publishers
+2. Extract unique publisher domains
+3. Return just the list of publisher domains
+4. No need to maintain property data - buyers fetch from publishers
 
 Buyer agents need to update workflow:
-1. Call `list_authorized_properties` to get publisher list
+1. Call `list_authorized_properties` to get publisher domain list
 2. Fetch each publisher's adagents.json
-3. Validate agent is in publisher's authorized_agents
-4. Resolve property scope (property_ids or property_tags)
+3. Find agent in publisher's authorized_agents array
+4. Resolve authorization scope from publisher's file (property_ids, property_tags, or all)
 5. Cache publisher properties for product validation
 
-**Backward Compatibility:** Breaking change in `list_authorized_properties` response structure. `adagents.json` changes are additive (new optional fields).
+**Backward Compatibility:** Response structure changed but this is pre-1.0, so treated as minor version. `adagents.json` changes are additive (new optional fields).
