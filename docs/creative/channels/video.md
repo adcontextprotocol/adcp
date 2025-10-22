@@ -239,12 +239,12 @@ For third-party ad servers:
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_purpose": "impression_tracker",
+      "url_type": "tracker",
       "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&video={VIDEO_ID}&cb={CACHEBUSTER}"
     },
     "landing_url": {
       "asset_type": "url",
-      "url_purpose": "clickthrough",
+      "url_type": "clickthrough",
       "url": "https://brand.com/spring-sale?campaign={MEDIA_BUY_ID}"
     }
   }
@@ -262,7 +262,7 @@ For third-party ad servers:
   "assets": {
     "vast_tag": {
       "asset_type": "url",
-      "url_purpose": "vast_url",
+      "url_type": "tracker",
       "url": "https://ad-server.brand.com/vast?campaign={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     }
   }
@@ -384,37 +384,37 @@ https://track.brand.com/imp?
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_purpose": "impression_tracker",
+      "url_type": "tracker",
       "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     },
     "start_tracker": {
       "asset_type": "url",
-      "url_purpose": "video_start",
+      "url_type": "tracker",
       "url": "https://track.brand.com/start?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     },
     "quartile_25_tracker": {
       "asset_type": "url",
-      "url_purpose": "video_25percent",
+      "url_type": "tracker",
       "url": "https://track.brand.com/q25?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     },
     "quartile_50_tracker": {
       "asset_type": "url",
-      "url_purpose": "video_50percent",
+      "url_type": "tracker",
       "url": "https://track.brand.com/q50?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     },
     "quartile_75_tracker": {
       "asset_type": "url",
-      "url_purpose": "video_75percent",
+      "url_type": "tracker",
       "url": "https://track.brand.com/q75?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     },
     "complete_tracker": {
       "asset_type": "url",
-      "url_purpose": "video_complete",
+      "url_type": "tracker",
       "url": "https://track.brand.com/complete?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     },
     "click_tracker": {
       "asset_type": "url",
-      "url_purpose": "click_tracker",
+      "url_type": "tracker",
       "url": "https://track.brand.com/click?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     }
   }
@@ -429,27 +429,27 @@ For formats supporting user interaction:
 {
   "pause_tracker": {
     "asset_type": "url",
-    "url_purpose": "video_pause",
+    "url_type": "tracker",
     "url": "https://track.brand.com/pause?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
   },
   "resume_tracker": {
     "asset_type": "url",
-    "url_purpose": "video_resume",
+    "url_type": "tracker",
     "url": "https://track.brand.com/resume?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
   },
   "skip_tracker": {
     "asset_type": "url",
-    "url_purpose": "video_skip",
+    "url_type": "tracker",
     "url": "https://track.brand.com/skip?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
   },
   "mute_tracker": {
     "asset_type": "url",
-    "url_purpose": "video_mute",
+    "url_type": "tracker",
     "url": "https://track.brand.com/mute?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
   },
   "unmute_tracker": {
     "asset_type": "url",
-    "url_purpose": "video_unmute",
+    "url_type": "tracker",
     "url": "https://track.brand.com/unmute?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
   }
 }

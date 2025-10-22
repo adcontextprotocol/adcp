@@ -42,7 +42,7 @@ DOOH formats differ from other digital formats:
     {
       "asset_id": "impression_tracker",
       "asset_type": "url",
-      "url_purpose": "impression",
+      "url_type": "tracker",
       "required": true
     }
   ]
@@ -74,7 +74,7 @@ DOOH formats differ from other digital formats:
     {
       "asset_id": "impression_tracker",
       "asset_type": "url",
-      "url_purpose": "impression",
+      "url_type": "tracker",
       "required": true
     }
   ]
@@ -108,7 +108,7 @@ DOOH formats differ from other digital formats:
     {
       "asset_id": "impression_tracker",
       "asset_type": "url",
-      "url_purpose": "impression",
+      "url_type": "tracker",
       "required": true
     }
   ]
@@ -123,7 +123,7 @@ DOOH formats use impression trackers (often called "proof-of-play") to verify wh
 {
   "asset_id": "impression_tracker",
   "asset_type": "url",
-  "url_purpose": "impression",
+  "url_type": "tracker",
   "required": true,
   "requirements": {
     "required_macros": [
@@ -157,7 +157,7 @@ The mechanics are identical to digital impression tracking - it's just a URL tha
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_purpose": "impression",
+      "url_type": "tracker",
       "url": "https://track.brand.com/pop?buy={MEDIA_BUY_ID}&screen={SCREEN_ID}&venue={VENUE_TYPE}&ts={PLAY_TIMESTAMP}&lat={VENUE_LAT}&long={VENUE_LONG}"
     }
   }
@@ -183,7 +183,7 @@ The mechanics are identical to digital impression tracking - it's just a URL tha
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_purpose": "impression",
+      "url_type": "tracker",
       "url": "https://track.brand.com/pop?buy={MEDIA_BUY_ID}&screen={SCREEN_ID}&ts={PLAY_TIMESTAMP}"
     }
   }

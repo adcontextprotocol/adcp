@@ -301,7 +301,7 @@ All assets for a given index must be provided together (you cannot have `product
     },
     "landing_url": {
       "asset_type": "url",
-      "url_purpose": "clickthrough",
+      "url_type": "clickthrough",
       "url": "https://brand.com/shoes?campaign={MEDIA_BUY_ID}"
     }
   }
@@ -367,7 +367,7 @@ All assets for a given index must be provided together (you cannot have `product
     },
     "landing_url": {
       "asset_type": "url",
-      "url_purpose": "clickthrough",
+      "url_type": "clickthrough",
       "url": "https://brand.com/summer-sale?device={DEVICE_ID}&campaign={MEDIA_BUY_ID}"
     }
   }
@@ -478,7 +478,7 @@ All carousel items link to the same destination:
 {
   "landing_url": {
     "asset_type": "url",
-    "url_purpose": "clickthrough",
+    "url_type": "clickthrough",
     "url": "https://brand.com/products?campaign={MEDIA_BUY_ID}"
   }
 }
@@ -492,17 +492,17 @@ Each carousel item can have its own clickthrough URL (if supported by format):
 {
   "product_0_landing_url": {
     "asset_type": "url",
-    "url_purpose": "clickthrough",
+    "url_type": "clickthrough",
     "url": "https://brand.com/product/shoes-red?campaign={MEDIA_BUY_ID}"
   },
   "product_1_landing_url": {
     "asset_type": "url",
-    "url_purpose": "clickthrough",
+    "url_type": "clickthrough",
     "url": "https://brand.com/product/shoes-blue?campaign={MEDIA_BUY_ID}"
   },
   "product_2_landing_url": {
     "asset_type": "url",
-    "url_purpose": "clickthrough",
+    "url_type": "clickthrough",
     "url": "https://brand.com/product/shoes-black?campaign={MEDIA_BUY_ID}"
   }
 }
@@ -657,12 +657,12 @@ https://track.brand.com/view?buy={MEDIA_BUY_ID}&item={CAROUSEL_INDEX}&total={CAR
     },
     "landing_url": {
       "asset_type": "url",
-      "url_purpose": "clickthrough",
+      "url_type": "clickthrough",
       "url": "https://brand.com/watches?campaign={MEDIA_BUY_ID}&utm_source={DOMAIN}"
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_purpose": "impression_tracker",
+      "url_type": "tracker",
       "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     }
   }

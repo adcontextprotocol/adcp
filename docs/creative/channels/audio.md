@@ -175,12 +175,12 @@ Multi-segment audio assembled dynamically:
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_purpose": "impression_tracker",
+      "url_type": "tracker",
       "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&station={APP_BUNDLE}&cb={CACHEBUSTER}"
     },
     "landing_url": {
       "asset_type": "url",
-      "url_purpose": "clickthrough",
+      "url_type": "clickthrough",
       "url": "https://brand.com/spring?campaign={MEDIA_BUY_ID}"
     }
   }
@@ -198,7 +198,7 @@ Multi-segment audio assembled dynamically:
   "assets": {
     "vast_url": {
       "asset_type": "url",
-      "url_purpose": "vast_url",
+      "url_type": "tracker",
       "url": "https://ad-server.brand.com/audio-vast?campaign={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     }
   }
@@ -228,7 +228,7 @@ Multi-segment audio assembled dynamically:
     },
     "landing_url": {
       "asset_type": "url",
-      "url_purpose": "clickthrough",
+      "url_type": "clickthrough",
       "url": "https://brand.com/spring-sale?source=audio&cb={CACHEBUSTER}"
     }
   }

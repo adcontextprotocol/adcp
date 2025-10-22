@@ -128,10 +128,14 @@ Links for clickthroughs, tracking, and landing pages.
 ```
 
 **Properties:**
-- `url_type`: Purpose (clickthrough, impression_tracker, video_tracker, landing_page)
+- `url_type`: Whether the URL is for human interaction (used only in format requirements):
+  - `clickthrough` - User clicks this URL (may redirect through ad tech platforms before reaching destination)
+  - `tracker` - Fires in background (returns 1x1 pixel, JavaScript snippet, or 204 No Content)
 - `must_be_https`: Whether HTTPS is required
 - `allowed_domains`: List of allowed domains (if restricted)
 - `tracking_macros_supported`: Whether URL macros are supported
+
+**Note**: The `url_type` field is only used in format requirements to specify how the URL will be used. When providing URLs in creative manifests, you only need to supply the `url` value - the `asset_id` already indicates the semantic purpose (e.g., `impression_tracker`, `video_start_tracker`, `landing_url`).
 
 ### Audio Asset
 
