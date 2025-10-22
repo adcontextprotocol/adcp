@@ -26,10 +26,28 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "contact": {
+    "name": "Example Publisher Ad Operations",
+    "email": "adops@example.com",
+    "domain": "example.com",
+    "seller_id": "pub-example-12345",
+    "tag_id": "67890"
+  },
+  "properties": [
+    {
+      "property_id": "example_site",
+      "property_type": "website",
+      "name": "Example Site",
+      "identifiers": [
+        {"type": "domain", "value": "example.com"}
+      ]
+    }
+  ],
   "authorized_agents": [
     {
       "url": "https://agent.example.com",
-      "authorized_for": "Official sales agent for our US and CA display inventory"
+      "authorized_for": "Official sales agent",
+      "property_ids": ["example_site"]
     }
   ],
   "last_updated": "2025-01-10T12:00:00Z"
@@ -39,10 +57,418 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 ### Schema Definition
 
 - **`$schema`** *(optional)*: JSON Schema reference for validation
+- **`contact`** *(optional)*: Contact info for entity managing this file
+  - **`name`** *(required)*: Name of managing entity (may be publisher or third-party)
+  - **`email`** *(optional)*: Contact email for questions/issues
+  - **`domain`** *(optional)*: Primary domain of managing entity
+  - **`seller_id`** *(optional)*: Seller ID from IAB Tech Lab sellers.json
+  - **`tag_id`** *(optional)*: TAG Certified Against Fraud ID
+- **`properties`** *(optional)*: Array of properties covered by this file (same structure as `list_authorized_properties`)
+- **`tags`** *(optional)*: Metadata for property tags (same structure as `list_authorized_properties`)
 - **`authorized_agents`** *(required)*: Array of authorized sales agents
   - **`url`** *(required)*: Agent's API endpoint URL
-  - **`authorized_for`** *(required)*: Human-readable authorization description (1-500 characters)
+  - **`authorized_for`** *(required)*: Human-readable authorization description
+  - **`property_tags`** *(optional)*: Tags identifying which properties this agent represents (resolved against top-level `properties`)
+  - **`properties`** *(optional)*: Explicit property list (alternative to `property_tags`)
 - **`last_updated`** *(optional)*: ISO 8601 timestamp of last modification
+
+## Contact Information
+
+The optional `contact` object identifies who manages this `adagents.json` file - which may be the publisher themselves or a third-party operator.
+
+**Why this matters**: If there are questions or issues with authorization, buyers know who to contact. This also enables cross-validation with sellers.json and TAG certification.
+
+```json
+{
+  "contact": {
+    "name": "CNN Advertising Operations",
+    "email": "adops@cnn.com",
+    "domain": "cnn.com",
+    "seller_id": "pub-cnn-12345",  // From sellers.json
+    "tag_id": "67890"               // TAG Certified Against Fraud ID
+  }
+}
+```
+
+**Recommended fields**: Include `email`, `domain`, and `seller_id` when available to facilitate verification and communication.
+
+## Property Declaration
+
+The optional `properties` array lists all properties covered by this file, using the **same structure as `list_authorized_properties`**.
+
+**Key insight**: `adagents.json` and `list_authorized_properties` should be consistent - they describe the same properties with the same tags.
+
+```json
+{
+  "properties": [
+    {
+      "property_type": "mobile_app",
+      "name": "Instagram",
+      "identifiers": [
+        {"type": "ios_bundle", "value": "com.burbn.instagram"},
+        {"type": "android_package", "value": "com.instagram.android"}
+      ],
+      "tags": ["meta_network", "social_media"],
+      "publisher_domain": "instagram.com"
+    },
+    {
+      "property_type": "mobile_app",
+      "name": "Facebook",
+      "identifiers": [...],
+      "tags": ["meta_network", "social_media"],
+      "publisher_domain": "facebook.com"
+    }
+  ],
+  "tags": {
+    "meta_network": {
+      "name": "Meta Network",
+      "description": "All Meta-owned properties"
+    },
+    "social_media": {
+      "name": "Social Media Apps",
+      "description": "Social networking applications"
+    }
+  }
+}
+```
+
+## Agent Authorization Patterns
+
+Agents can be authorized using **property IDs** (recommended), **tags** (for flexible grouping), or **explicit property lists**.
+
+### Pattern 1: Property IDs (Recommended)
+
+Use `property_ids` to reference specific properties by ID - direct and unambiguous.
+
+```json
+{
+  "properties": [
+    {
+      "property_id": "cnn_ctv_app",
+      "property_type": "ctv_app",
+      "name": "CNN CTV App",
+      "identifiers": [...]
+    },
+    {
+      "property_id": "cnn_web_us",
+      "property_type": "website",
+      "name": "CNN.com US",
+      "identifiers": [...]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "url": "https://cnn-ctv-agent.com",
+      "authorized_for": "CNN CTV properties",
+      "property_ids": ["cnn_ctv_app"]
+    }
+  ]
+}
+```
+
+**Resolution**: Agent is authorized for exactly the properties with matching `property_id` values.
+
+### Pattern 2: Tag-Based Authorization
+
+Use `property_tags` to reference properties by tag - good for flexible grouping.
+
+```json
+{
+  "properties": [
+    {
+      "property_id": "instagram",
+      "property_type": "mobile_app",
+      "name": "Instagram",
+      "identifiers": [...],
+      "tags": ["meta_network", "social_media"]
+    },
+    {
+      "property_id": "facebook",
+      "property_type": "mobile_app",
+      "name": "Facebook",
+      "identifiers": [...],
+      "tags": ["meta_network", "social_media"]
+    }
+  ],
+  "tags": {
+    "meta_network": {
+      "name": "Meta Network",
+      "description": "All Meta-owned properties"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://meta-ads.com",
+      "authorized_for": "All Meta properties",
+      "property_tags": ["meta_network"]
+    }
+  ]
+}
+```
+
+**Resolution**: Agent is authorized for all properties where `tags` includes `"meta_network"`.
+
+### Pattern 3: Explicit Property Objects
+
+Use `properties` array for inline property definitions (rare - usually properties are defined at top level).
+
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://agent.com",
+      "authorized_for": "Specific inventory",
+      "properties": [
+        {
+          "property_type": "website",
+          "name": "Example Site",
+          "identifiers": [
+            {"type": "domain", "value": "example.com"}
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Pattern 4: Publisher Property References
+
+Use `publisher_properties` to authorize an agent for properties defined in another publisher's `adagents.json` file. This is the **recommended pattern** when publishers authorize third-party sales agents, as it ensures a single source of truth for property definitions.
+
+**By Property ID**:
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://third-party-sales.com",
+      "authorized_for": "CNN CTV App only",
+      "publisher_properties": [
+        {
+          "publisher_domain": "cnn.com",
+          "property_ids": ["cnn_ctv_app"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+**By Publisher Tags**:
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://ctv-specialist.com",
+      "authorized_for": "CTV inventory from multiple publishers",
+      "publisher_properties": [
+        {
+          "publisher_domain": "cnn.com",
+          "property_tags": ["ctv"]
+        },
+        {
+          "publisher_domain": "espn.com",
+          "property_tags": ["ctv"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Key Points**:
+- Agent references properties from the publisher's canonical `adagents.json` file
+- Property IDs and tags are resolved against the **publisher's** properties/tags definitions
+- Ensures consistency - if publisher updates properties, agent authorization automatically reflects changes
+- When buyer agents call `list_authorized_properties`, they should fetch each referenced publisher's `adagents.json` to resolve property definitions
+
+### Pattern 5: No Scoping (Simple Case)
+
+If `property_ids`, `property_tags`, `properties`, and `publisher_properties` are all omitted, agent is authorized for ALL properties in this file.
+
+```json
+{
+  "authorized_agents": [
+    {
+      "url": "https://agent.com",
+      "authorized_for": "All inventory"
+      // No scoping = authorized for everything in this file
+    }
+  ]
+}
+```
+
+## Real-World Examples
+
+### Example 1: Meta Network (Tag-Based)
+
+Meta manages Instagram, Facebook, and WhatsApp with a single sales agent:
+
+```json
+{
+  "contact": {
+    "name": "Meta Advertising Operations",
+    "email": "adops@meta.com",
+    "domain": "meta.com",
+    "seller_id": "pub-meta-12345",
+    "tag_id": "12345"
+  },
+  "properties": [
+    {
+      "property_type": "mobile_app",
+      "name": "Instagram",
+      "identifiers": [
+        {"type": "ios_bundle", "value": "com.burbn.instagram"},
+        {"type": "android_package", "value": "com.instagram.android"}
+      ],
+      "tags": ["meta_network"],
+      "publisher_domain": "instagram.com"
+    },
+    {
+      "property_type": "mobile_app",
+      "name": "Facebook",
+      "identifiers": [
+        {"type": "ios_bundle", "value": "com.facebook.Facebook"},
+        {"type": "android_package", "value": "com.facebook.katana"}
+      ],
+      "tags": ["meta_network"],
+      "publisher_domain": "facebook.com"
+    },
+    {
+      "property_type": "mobile_app",
+      "name": "WhatsApp",
+      "identifiers": [
+        {"type": "ios_bundle", "value": "net.whatsapp.WhatsApp"},
+        {"type": "android_package", "value": "com.whatsapp"}
+      ],
+      "tags": ["meta_network"],
+      "publisher_domain": "whatsapp.com"
+    }
+  ],
+  "tags": {
+    "meta_network": {
+      "name": "Meta Network",
+      "description": "All Meta-owned properties"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://meta-ads.com",
+      "authorized_for": "All Meta properties",
+      "property_tags": ["meta_network"]
+    }
+  ]
+}
+```
+
+### Example 2: Tumblr (Subdomain Exclusion)
+
+Tumblr authorizes sales only for corporate properties, NOT user blogs:
+
+```json
+{
+  "contact": {
+    "name": "Tumblr Advertising"
+  },
+  "properties": [
+    {
+      "property_type": "website",
+      "name": "Tumblr Corporate",
+      "identifiers": [
+        {"type": "domain", "value": "tumblr.com"}
+      ],
+      "tags": ["corporate"],
+      "publisher_domain": "tumblr.com"
+    }
+  ],
+  "tags": {
+    "corporate": {
+      "name": "Corporate Properties",
+      "description": "Tumblr corporate properties only"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://tumblr-sales.com",
+      "authorized_for": "Tumblr corporate properties only",
+      "property_tags": ["corporate"]
+    }
+  ]
+}
+```
+
+**Why this works**: The property only lists `"value": "tumblr.com"` (not `"*.tumblr.com"`), so the agent is authorized ONLY for the root domain. User blogs on subdomains like `userblog.tumblr.com` are not authorized.
+
+### Example 3: CNN (Channel and Geographic Segmentation)
+
+CNN has CTV properties managed by one agent, and US/international websites by another:
+
+```json
+{
+  "contact": {
+    "name": "CNN Advertising Operations",
+    "email": "adops@cnn.com",
+    "domain": "cnn.com",
+    "seller_id": "pub-cnn-12345",
+    "tag_id": "67890"
+  },
+  "properties": [
+    {
+      "property_id": "cnn_ctv_app",
+      "property_type": "ctv_app",
+      "name": "CNN CTV App",
+      "identifiers": [
+        {"type": "roku_store_id", "value": "12345"},
+        {"type": "fire_tv_asin", "value": "B00ABC123"},
+        {"type": "apple_tv_bundle", "value": "com.cnn.tv"}
+      ],
+      "tags": ["ctv"]
+    },
+    {
+      "property_id": "cnn_web_us",
+      "property_type": "website",
+      "name": "CNN.com US",
+      "identifiers": [
+        {"type": "domain", "value": "cnn.com"}
+      ],
+      "tags": ["web"]
+    },
+    {
+      "property_id": "cnn_web_intl",
+      "property_type": "website",
+      "name": "CNN International",
+      "identifiers": [
+        {"type": "domain", "value": "edition.cnn.com"}
+      ],
+      "tags": ["web"]
+    }
+  ],
+  "tags": {
+    "ctv": {
+      "name": "Connected TV",
+      "description": "CTV app inventory"
+    },
+    "web": {
+      "name": "Web Properties",
+      "description": "Website inventory"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://cnn-ctv-agent.com",
+      "authorized_for": "CNN CTV properties",
+      "property_ids": ["cnn_ctv_app"]
+    },
+    {
+      "url": "https://cnn-web-agent.com",
+      "authorized_for": "CNN US and international websites",
+      "property_ids": ["cnn_web_us", "cnn_web_intl"]
+    }
+  ]
+}
+```
+
+**Why this works**: One agent handles all CTV regardless of platform (Roku, Fire TV, etc.), while another handles all web properties regardless of geography. Tags enable flexible grouping without duplicating property lists.
 
 ## Mobile Applications
 
@@ -51,23 +477,48 @@ Mobile applications follow the same pattern as [app-ads.txt](https://iabtechlab.
 1. **Developer Website**: Apps reference their developer's website through app store listings
 2. **Single File**: Publisher hosts one `adagents.json` for all properties (websites, apps, etc.)
 3. **Trust Chain**: App store enforces developer website link, creating trusted authorization path
-4. **Publisher-Level Authorization**: Agents are authorized for all publisher properties
+4. **Property Scoping**: Use the `properties` array to specify which apps/platforms each agent represents
 
 ### Implementation for Apps
 
-Publishers with mobile apps use the same file format, with agents authorized for their entire inventory portfolio:
+Publishers with mobile apps can use property scoping to specify which platforms each agent represents:
 
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "publisher": {
+    "name": "Publisher Inc.",
+    "domain": "publisher.com"
+  },
   "authorized_agents": [
     {
       "url": "https://mobile-agent.com",
-      "authorized_for": "Authorized for all mobile app inventory across iOS and Android"
+      "authorized_for": "Mobile app inventory only",
+      "properties": [
+        {
+          "property_type": "mobile_app",
+          "name": "Publisher Mobile App",
+          "identifiers": [
+            {"type": "ios_bundle", "value": "com.publisher.app"},
+            {"type": "android_package", "value": "com.publisher.app"}
+          ],
+          "publisher_domain": "publisher.com"
+        }
+      ]
     },
     {
       "url": "https://web-agent.com",
-      "authorized_for": "Authorized for desktop and mobile web display inventory"
+      "authorized_for": "Web properties only",
+      "properties": [
+        {
+          "property_type": "website",
+          "name": "Publisher Website",
+          "identifiers": [
+            {"type": "domain", "value": "publisher.com"}
+          ],
+          "publisher_domain": "publisher.com"
+        }
+      ]
     }
   ],
   "last_updated": "2025-01-10T15:30:00Z"
@@ -89,15 +540,28 @@ Publishers with mobile apps use the same file format, with agents authorized for
 }
 ```
 
-### Single Agent with Full Metadata
+### Publisher with Full Metadata
 
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "publisher": {
+    "name": "Premium Video Network Inc.",
+    "domain": "premiumvideo.com",
+    "seller_id": "pub-67890",
+    "identifiers": [
+      {"type": "tag_id", "value": "67890"}
+    ]
+  },
+  "portfolio": {
+    "primary_channels": ["video", "ctv"],
+    "primary_countries": ["US", "CA", "GB"],
+    "portfolio_description": "Premium video inventory across streaming platforms and CTV apps. Brand-safe, viewability-guaranteed inventory with professional content."
+  },
   "authorized_agents": [
     {
       "url": "https://premium-ads.com",
-      "authorized_for": "Primary sales agent for premium video inventory worldwide"
+      "authorized_for": "Primary sales agent for all premium video inventory worldwide"
     }
   ],
   "last_updated": "2025-01-10T12:00:00Z"
@@ -109,41 +573,92 @@ Publishers with mobile apps use the same file format, with agents authorized for
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "publisher": {
+    "name": "Multi-Platform Media Co.",
+    "domain": "mediaco.com"
+  },
+  "portfolio": {
+    "primary_channels": ["display", "video", "mobile"],
+    "primary_countries": ["US", "CA", "GB", "AU"]
+  },
   "authorized_agents": [
     {
-      "url": "https://direct-sales.example.com",
-      "authorized_for": "Direct sales team for premium placements and custom packages"
+      "url": "https://direct-sales.mediaco.com",
+      "authorized_for": "Direct sales for premium placements and custom packages"
     },
     {
-      "url": "https://programmatic-partner.com", 
-      "authorized_for": "Authorized reseller for display inventory in EMEA region"
+      "url": "https://programmatic-partner.com",
+      "authorized_for": "Authorized reseller for display inventory in EMEA region",
+      "properties": [
+        {
+          "property_type": "website",
+          "name": "MediaCo Properties",
+          "identifiers": [
+            {"type": "domain", "value": "mediaco.com"},
+            {"type": "domain", "value": "*.mediaco.com"}
+          ],
+          "publisher_domain": "mediaco.com",
+          "tags": ["display_inventory", "emea"]
+        }
+      ]
     },
     {
       "url": "https://video-specialist.com",
-      "authorized_for": "Specialized video advertising partner for CTV and mobile video"
+      "authorized_for": "Specialized video advertising for CTV and mobile video",
+      "properties": [
+        {
+          "property_type": "ctv_app",
+          "name": "MediaCo Streaming",
+          "identifiers": [
+            {"type": "roku_store_id", "value": "12345"},
+            {"type": "fire_tv_asin", "value": "B00ABC123"}
+          ],
+          "publisher_domain": "mediaco.com"
+        }
+      ]
     },
     {
       "url": "https://mobile-network.com",
-      "authorized_for": "Mobile app advertising network for iOS and Android inventory"
+      "authorized_for": "Mobile app advertising for iOS and Android",
+      "properties": [
+        {
+          "property_type": "mobile_app",
+          "name": "MediaCo Mobile App",
+          "identifiers": [
+            {"type": "ios_bundle", "value": "com.mediaco.app"},
+            {"type": "android_package", "value": "com.mediaco.app"}
+          ],
+          "publisher_domain": "mediaco.com"
+        }
+      ]
     }
   ],
   "last_updated": "2025-01-10T15:30:00Z"
 }
 ```
 
-### Media Company with Multiple Properties
+### DOOH Network with Portfolio Discovery
 
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "publisher": {
+    "name": "Clear Channel Outdoor",
+    "domain": "clearchannel.com"
+  },
+  "portfolio": {
+    "primary_channels": ["dooh"],
+    "primary_countries": ["US", "CA"],
+    "portfolio_description": "Premium DOOH network across airports, transit hubs, and premium malls. Business traveler and commuter audiences with proof-of-play verification and dwell time targeting."
+  },
   "authorized_agents": [
     {
-      "url": "https://premium-direct.com",
-      "authorized_for": "Direct sales for all premium inventory across web, mobile, and CTV"
+      "url": "https://dooh-direct.clearchannel.com",
+      "authorized_for": "Direct sales for all DOOH inventory"
     },
     {
-      "url": "https://programmatic-ssp.com",
-      "authorized_for": "Programmatic sales for remnant inventory worldwide"
+      "url": "https://programmatic-dooh.com",
+      "authorized_for": "Programmatic DOOH sales"
     }
   ],
   "last_updated": "2025-01-10T14:15:00Z"
@@ -639,78 +1154,91 @@ Publishers may eventually support tag-based authorization:
 
 ## Domain Matching Rules
 
-For website properties with domain identifiers, AdCP uses specific matching patterns to determine authorization scope:
+For website properties with domain identifiers, AdCP follows web conventions for common subdomains while requiring explicit authorization for others.
 
 ### Base Domain Matching (`example.com`)
 
-Base domain format (without subdomain prefix) matches:
-- The exact domain: `example.com`
-- Standard mobile subdomain: `m.example.com`
-- Standard web subdomain: `www.example.com`
+Base domain format matches the domain plus standard web subdomains:
 
-**Example**: `"value": "yahoo.com"` authorizes:
-- ✅ `yahoo.com`
-- ✅ `www.yahoo.com`
-- ✅ `m.yahoo.com`
-- ❌ `finance.yahoo.com`
-- ❌ `mail.yahoo.com`
+**Example**: `"value": "cnn.com"` authorizes:
+- ✅ `cnn.com`
+- ✅ `www.cnn.com` (standard web subdomain)
+- ✅ `m.cnn.com` (standard mobile subdomain)
+- ❌ `edition.cnn.com` (requires explicit authorization)
+- ❌ `money.cnn.com` (requires explicit authorization)
+
+**Rationale**: Matches how websites actually work - www and m are conventionally the same site.
 
 ### Specific Subdomain Matching (`subdomain.example.com`)
 
-Specific subdomain format matches only that exact subdomain:
+Specific subdomain matches only that exact subdomain:
 
-**Example**: `"value": "finance.yahoo.com"` authorizes:
-- ✅ `finance.yahoo.com`
-- ❌ `yahoo.com`
-- ❌ `www.yahoo.com`
-- ❌ `mail.yahoo.com`
+**Example**: `"value": "edition.cnn.com"` authorizes:
+- ✅ `edition.cnn.com`
+- ❌ `cnn.com`
+- ❌ `www.cnn.com`
+- ❌ Any other subdomain
 
 ### Wildcard Subdomain Matching (`*.example.com`)
 
-Wildcard format matches all subdomains but not the base domain:
+Wildcard format matches ALL subdomains but NOT the base domain:
 
-**Example**: `"value": "*.yahoo.com"` authorizes:
-- ✅ `finance.yahoo.com`
-- ✅ `mail.yahoo.com`
-- ✅ `sports.yahoo.com`
-- ✅ `news.yahoo.com`
-- ❌ `yahoo.com`
-- ❌ `www.yahoo.com`
+**Example**: `"value": "*.cnn.com"` authorizes:
+- ✅ `www.cnn.com`
+- ✅ `m.cnn.com`
+- ✅ `edition.cnn.com`
+- ✅ `money.cnn.com`
+- ✅ Any subdomain
+- ❌ `cnn.com` (base domain requires separate authorization)
 
-### Implementation Examples
+### Common Patterns
 
-#### Multi-Domain Authorization
+#### Pattern 1: Base Domain (Most Common)
 ```json
 {
   "property_type": "website",
-  "name": "Yahoo Network",
+  "name": "CNN Website",
   "identifiers": [
-    {"type": "domain", "value": "yahoo.com"},
-    {"type": "domain", "value": "finance.yahoo.com"},
-    {"type": "domain", "value": "mail.yahoo.com"}
+    {"type": "domain", "value": "cnn.com"}
   ],
-  "publisher_domain": "yahoo.com"
+  "publisher_domain": "cnn.com"
 }
 ```
 
-This configuration requires authorization validation for:
-- Base domain: `yahoo.com` (includes www.yahoo.com and m.yahoo.com)
-- Specific subdomain: `finance.yahoo.com`
-- Specific subdomain: `mail.yahoo.com`
+**Authorizes**: `cnn.com`, `www.cnn.com`, and `m.cnn.com`
 
-#### Wildcard Network Authorization
+#### Pattern 2: Base + Specific Subdomains
 ```json
 {
   "property_type": "website",
-  "name": "All Yahoo Subdomains",
+  "name": "CNN Properties",
   "identifiers": [
-    {"type": "domain", "value": "*.yahoo.com"}
+    {"type": "domain", "value": "cnn.com"},
+    {"type": "domain", "value": "edition.cnn.com"},
+    {"type": "domain", "value": "money.cnn.com"}
   ],
-  "publisher_domain": "yahoo.com"
+  "publisher_domain": "cnn.com"
 }
 ```
 
-This configuration authorizes all Yahoo subdomains but requires separate authorization for the base domain.
+**Authorizes**: Base domain (cnn.com, www.cnn.com, m.cnn.com) + edition.cnn.com + money.cnn.com
+
+#### Pattern 3: All Subdomains (Use with Caution)
+```json
+{
+  "property_type": "website",
+  "name": "All CNN Network Sites",
+  "identifiers": [
+    {"type": "domain", "value": "cnn.com"},
+    {"type": "domain", "value": "*.cnn.com"}
+  ],
+  "publisher_domain": "cnn.com"
+}
+```
+
+**Authorizes**: Base domain + ALL subdomains (www, edition, money, etc.)
+
+**Warning**: Only use wildcards when you genuinely control ALL subdomains.
 
 ### Validation Process
 

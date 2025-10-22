@@ -331,6 +331,180 @@ if (response.primary_channels?.includes('dooh') &&
 }
 ```
 
+## Consistency with adagents.json
+
+**Critical Principle**: The properties returned by `list_authorized_properties` should be a **subset** of the properties declared in the publisher's `adagents.json` files.
+
+### Why Consistency Matters
+
+Buyer agents need to validate that:
+1. The sales agent is authorized to represent these properties
+2. Property definitions match publisher's canonical declarations
+3. Tags resolve to the same properties across both files
+
+### Consistency Requirements
+
+**Property Objects**: Must be identical between agent response and publisher's `adagents.json`:
+- Same `property_id` values
+- Same `identifiers` arrays
+- Same `tags` arrays
+- Same `property_type`, `name`, etc.
+
+**Tags Object**: Must include all tags referenced by returned properties, with identical:
+- Tag names
+- Tag descriptions
+
+### Resolving Publisher Property References
+
+**Best Practice**: Sales agents should resolve properties from publisher `adagents.json` files:
+
+1. **For each publisher domain** in agent's own `adagents.json` `publisher_properties` references:
+   - Fetch publisher's `adagents.json` from `https://{publisher_domain}/.well-known/adagents.json`
+   - Parse the publisher's `properties` array and `tags` object
+
+2. **Resolve authorization scope**:
+   - If `property_ids` specified: Include only properties with matching `property_id` values
+   - If `property_tags` specified: Include only properties where `tags` array contains those tag values
+
+3. **Return exact property definitions**:
+   - Use property objects exactly as defined in publisher's file
+   - Add `publisher_domain` field to each property (required in response, optional in adagents.json)
+   - Include all referenced tags from publisher's `tags` object
+
+4. **Cache strategy**:
+   - Cache publisher's `adagents.json` for performance
+   - Respect cache headers if publisher provides them
+   - Refresh periodically or when serving stale data
+
+### Example Consistency
+
+**Publisher's adagents.json** (cnn.com/.well-known/adagents.json):
+```json
+{
+  "properties": [
+    {
+      "property_id": "cnn_ctv_app",
+      "property_type": "ctv_app",
+      "name": "CNN CTV App",
+      "identifiers": [
+        {"type": "roku_store_id", "value": "12345"}
+      ],
+      "tags": ["ctv"]
+    },
+    {
+      "property_id": "cnn_web_us",
+      "property_type": "website",
+      "name": "CNN.com US",
+      "identifiers": [{"type": "domain", "value": "cnn.com"}],
+      "tags": ["web"]
+    }
+  ],
+  "tags": {
+    "ctv": {"name": "Connected TV", "description": "CTV app inventory"},
+    "web": {"name": "Web Properties", "description": "Website inventory"}
+  },
+  "authorized_agents": [
+    {
+      "url": "https://cnn-ctv-agent.com",
+      "authorized_for": "CNN CTV properties",
+      "property_ids": ["cnn_ctv_app"]
+    }
+  ]
+}
+```
+
+**Agent's list_authorized_properties Response**:
+```json
+{
+  "properties": [
+    {
+      "property_id": "cnn_ctv_app",
+      "property_type": "ctv_app",
+      "name": "CNN CTV App",
+      "identifiers": [
+        {"type": "roku_store_id", "value": "12345"}
+      ],
+      "tags": ["ctv"],
+      "publisher_domain": "cnn.com"
+    }
+  ],
+  "tags": {
+    "ctv": {"name": "Connected TV", "description": "CTV app inventory"}
+  }
+}
+```
+
+**Key Points**:
+- Agent returns only `cnn_ctv_app` (authorized via `property_ids`)
+- Property definition is **identical** to publisher's declaration
+- Tags object includes `"ctv"` with **identical** metadata
+- Agent adds `publisher_domain: "cnn.com"` (required in response, optional in adagents.json)
+- Agent does NOT include `cnn_web_us` (not authorized for it)
+
+### Publisher Property Reference Example
+
+**Third-party agent's adagents.json** (agent.example/.well-known/adagents.json):
+```json
+{
+  "contact": {
+    "name": "Example CTV Sales Network",
+    "email": "sales@agent.example",
+    "domain": "agent.example"
+  },
+  "authorized_agents": [
+    {
+      "url": "https://agent.example/api",
+      "authorized_for": "CTV properties from partner publishers",
+      "publisher_properties": [
+        {
+          "publisher_domain": "cnn.com",
+          "property_tags": ["ctv"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Agent's list_authorized_properties Response**:
+
+The agent resolves this by:
+1. Fetching CNN's adagents.json from `https://cnn.com/.well-known/adagents.json`
+2. Finding all properties with `"ctv"` tag
+3. Returning those exact property definitions with `publisher_domain` added
+
+```json
+{
+  "properties": [
+    {
+      "property_id": "cnn_ctv_app",
+      "property_type": "ctv_app",
+      "name": "CNN CTV App",
+      "identifiers": [
+        {"type": "roku_store_id", "value": "12345"}
+      ],
+      "tags": ["ctv"],
+      "publisher_domain": "cnn.com"
+    }
+  ],
+  "tags": {
+    "ctv": {"name": "Connected TV", "description": "CTV app inventory"}
+  }
+}
+```
+
+**Key**: Property definition comes from CNN's canonical file, ensuring consistency.
+
+### Validation by Buyer Agents
+
+Buyer agents should verify consistency:
+1. Fetch `/.well-known/adagents.json` from each `publisher_domain`
+2. Verify sales agent URL is in publisher's `authorized_agents` array
+3. Verify agent's properties match publisher's definitions exactly
+4. Cache validated mappings to avoid repeated fetches
+
+This ensures buyer agents work with publisher's canonical property definitions and prevents drift between declarations.
+
 ## Use Cases
 
 ### Large Network Discovery
