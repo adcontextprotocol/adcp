@@ -41,7 +41,8 @@ The message is returned differently in each protocol:
   "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"],
   "primary_channels": ["ctv", "display"],
   "primary_countries": ["US"],
-  "portfolio_description": "CTV specialist representing major news and sports publishers across US markets."
+  "portfolio_description": "CTV specialist representing major news and sports publishers across US markets.",
+  "last_updated": "2025-01-15T14:30:00Z"
 }
 ```
 
@@ -55,6 +56,7 @@ The message is returned differently in each protocol:
 - **primary_countries** *(optional)*: Main countries (ISO 3166-1 alpha-2 codes)
 - **portfolio_description** *(optional)*: Markdown description of the agent's portfolio and capabilities
 - **advertising_policies** *(optional)*: Agent's policies and restrictions (publisher-specific policies come from publisher's adagents.json)
+- **last_updated** *(optional)*: ISO 8601 timestamp when the agent's publisher list was last updated. Buyers can compare this to cached publisher adagents.json timestamps to detect staleness.
 
 ## Workflow: From Authorization to Property Details
 
@@ -283,6 +285,18 @@ const response = await salesAgent.listAuthorizedProperties();
 
 ```javascript
 for (const publisherDomain of response.publisher_domains) {
+  // Check cache freshness using last_updated
+  const cached = cache.get(publisherDomain);
+  if (cached && response.last_updated) {
+    const cachedTimestamp = new Date(cached.last_updated);
+    const agentTimestamp = new Date(response.last_updated);
+
+    if (cachedTimestamp >= agentTimestamp) {
+      // Cache is still fresh
+      continue;
+    }
+  }
+
   // Fetch publisher's canonical adagents.json
   const publisherAgents = await fetch(
     `https://${publisherDomain}/.well-known/adagents.json`
@@ -316,7 +330,8 @@ for (const publisherDomain of response.publisher_domains) {
   // Cache for use in product validation
   cache.set(publisherDomain, {
     properties: authorizedProperties,
-    tags: publisherAgents.tags
+    tags: publisherAgents.tags,
+    last_updated: publisherAgents.last_updated || new Date().toISOString()
   });
 }
 ```
