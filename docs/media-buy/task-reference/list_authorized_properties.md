@@ -5,14 +5,14 @@ sidebar_position: 1.5
 
 # list_authorized_properties
 
-Discover all advertising properties this sales agent is authorized to represent, enabling buyers to validate authorization via adagents.json and resolve property tags used in products.
+Discover which publishers this sales agent is authorized to represent, similar to IAB Tech Lab's sellers.json. Returns just publisher domains. Buyers fetch each publisher's adagents.json to see property definitions and verify authorization scope.
 
-**Response Time**: ~2 seconds (database lookup with potential pagination)
+**Response Time**: ~2 seconds (database lookup)
 
-**Purpose**: 
-- Authorization validation for buyer agents
-- Property tag resolution for products that use `property_tags` instead of full `properties` arrays
-- One-time discovery to cache property-to-domain mappings
+**Purpose**:
+- Authorization discovery - which publishers does this agent represent?
+- Single source of truth - all details (properties, authorization scope) come from publisher's adagents.json
+- One-time discovery to cache publisher-agent relationships
 
 **Request Schema**: [`/schemas/v1/media-buy/list-authorized-properties-request.json`](/schemas/v1/media-buy/list-authorized-properties-request.json)
 **Response Schema**: [`/schemas/v1/media-buy/list-authorized-properties-response.json`](/schemas/v1/media-buy/list-authorized-properties-response.json)
@@ -21,13 +21,13 @@ Discover all advertising properties this sales agent is authorized to represent,
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `tags` | string[] | No | Filter properties by specific tags (e.g., `["local_radio", "premium"]`) |
+| `publisher_domains` | string[] | No | Filter to specific publisher domains (e.g., `["cnn.com", "espn.com"]`) |
 
 ## Response (Message)
 
 The response includes a human-readable message that:
-- Summarizes the total number of authorized properties
-- Explains tag groupings if applicable
+- Summarizes the number of publishers represented
+- Lists publisher domains
 - Notes any filtering applied
 
 The message is returned differently in each protocol:
@@ -38,127 +38,65 @@ The message is returned differently in each protocol:
 
 ```json
 {
-  "properties": [
-    {
-      "property_type": "website",
-      "name": "Sports Network",
-      "identifiers": [
-        {"type": "domain", "value": "sportsnetwork.com"}
-      ],
-      "tags": ["sports_network", "premium"],
-      "publisher_domain": "sportsnetwork.com"
-    },
-    {
-      "property_type": "radio",
-      "name": "WXYZ-FM Chicago",
-      "identifiers": [
-        {"type": "call_sign", "value": "WXYZ-FM"},
-        {"type": "market", "value": "chicago"}
-      ],
-      "tags": ["local_radio", "midwest"],
-      "publisher_domain": "radionetwork.com"
-    }
-  ],
-  "tags": {
-    "local_radio": {
-      "name": "Local Radio Stations",
-      "description": "1847 local radio stations across US markets"
-    },
-    "sports_network": {
-      "name": "Sports Network Properties",
-      "description": "145 sports properties and networks"
-    },
-    "midwest": {
-      "name": "Midwest Markets",
-      "description": "523 properties in midwest markets"
-    },
-    "premium": {
-      "name": "Premium Inventory",
-      "description": "Premium tier inventory across all property types"
-    }
-  },
-  "primary_channels": ["dooh"],
-  "primary_countries": ["US", "CA", "MX"],
-  "portfolio_description": "Premium DOOH network across North America. **Venues**: Airports, transit hubs, premium malls, office towers. **Audiences**: Business travelers, commuters, high net worth shoppers. **Special Features**: Dwell time targeting, dayparting, proof-of-play verification."
+  "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"],
+  "primary_channels": ["ctv", "display"],
+  "primary_countries": ["US"],
+  "portfolio_description": "CTV specialist representing major news and sports publishers across US markets.",
+  "last_updated": "2025-01-15T14:30:00Z"
 }
 ```
 
 ### Field Descriptions
 
-- **properties**: Array of all authorized properties (see [Property Schema](/schemas/v1/core/property.json))
-- **tags**: Metadata for each tag used by properties
-  - **name**: Human-readable name for the tag
-  - **description**: Description of what the tag represents and optionally how many properties it includes
+- **publisher_domains**: Array of publisher domains this agent represents. Buyers should fetch each publisher's adagents.json to:
+  - See property definitions
+  - Verify this agent is in their authorized_agents list
+  - Check authorization scope (property_ids, property_tags, or all properties)
 - **primary_channels** *(optional)*: Main advertising channels (see [Channels enum](/schemas/v1/enums/channels.json))
 - **primary_countries** *(optional)*: Main countries (ISO 3166-1 alpha-2 codes)
-- **portfolio_description** *(optional)*: Markdown description of the property portfolio
-- **advertising_policies** *(optional)*: Publisher's advertising content policies, restrictions, and guidelines in natural language. May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, or links to full policy documentation.
+- **portfolio_description** *(optional)*: Markdown description of the agent's portfolio and capabilities
+- **advertising_policies** *(optional)*: Agent's policies and restrictions (publisher-specific policies come from publisher's adagents.json)
+- **last_updated** *(optional)*: ISO 8601 timestamp when the agent's publisher list was last updated. Buyers can compare this to cached publisher adagents.json timestamps to detect staleness.
 
-## Integration with get_products
+## Workflow: From Authorization to Property Details
 
-This tool works in conjunction with [`get_products`](./get_products) to support two patterns:
-
-### Pattern 1: Direct Properties
-Products include full property objects directly:
-```json
-{
-  "product_id": "sports_premium",
-  "properties": [
-    {
-      "property_type": "website",
-      "name": "ESPN.com",
-      "identifiers": [{"type": "domain", "value": "espn.com"}],
-      "publisher_domain": "espn.com"
-    }
-  ]
-}
-```
-
-### Pattern 2: Property Tags (Recommended for Large Networks)
-Products reference tags, requiring `list_authorized_properties` to resolve:
-```json
-{
-  "product_id": "local_radio_midwest",
-  "property_tags": ["local_radio", "midwest"]
-}
-```
-
-To resolve tags to actual properties:
-1. Call `list_authorized_properties()` once to get all properties
-2. Filter properties where `tags` array includes the referenced tags
-3. Use those properties for validation
-
-## Validation Workflow
+This tool is the first step in understanding what a sales agent represents:
 
 ```mermaid
 sequenceDiagram
     participant Buyer as Buyer Agent
     participant Sales as Sales Agent
-    participant Publisher as Publisher Domain
+    participant Publisher as Publisher (cnn.com)
 
-    Note over Buyer: One-time Setup
+    Note over Buyer: Discovery Phase
     Buyer->>Sales: list_authorized_properties()
-    Sales-->>Buyer: All property objects with tags
-    
-    Note over Buyer: Cache Validation Data
-    loop For each property.publisher_domain
-        Buyer->>Publisher: GET /.well-known/adagents.json
-        Publisher-->>Buyer: Authorized agents list
-        Buyer->>Buyer: Cache: domain → authorized agents
-    end
-    
+    Sales-->>Buyer: publisher_domains: ["cnn.com", "espn.com"]
+
+    Note over Buyer: Fetch Property Details
+    Buyer->>Publisher: GET https://cnn.com/.well-known/adagents.json
+    Publisher-->>Buyer: {properties: [...], tags: {...}, authorized_agents: [...]}
+
+    Note over Buyer: Validate Authorization
+    Buyer->>Buyer: Find sales agent in publisher's authorized_agents array
+    Buyer->>Buyer: Check authorization scope (property_ids, property_tags, or all)
+    Buyer->>Buyer: Resolve scope to actual property list
+
+    Note over Buyer: Cache for Future Use
+    Buyer->>Buyer: Cache publisher properties + agent authorization
+
     Note over Buyer: Product Discovery
     Buyer->>Sales: get_products(...)
-    Sales-->>Buyer: Products with properties OR property_tags
-    
-    Note over Buyer: Authorization Validation
-    alt Product has properties array
-        Buyer->>Buyer: Check each property.publisher_domain in cache
-    else Product has property_tags
-        Buyer->>Buyer: Resolve tags to properties from cached list
-        Buyer->>Buyer: Check each resolved property.publisher_domain
-    end
+    Sales-->>Buyer: Products referencing properties
+    Buyer->>Buyer: Use cached publisher properties for validation
 ```
+
+### Key Insight: Publishers Own Property Definitions
+
+Unlike traditional supply-side platforms where the SSP defines properties, in AdCP:
+- **Publishers** define their properties in their own `adagents.json` file
+- **Sales agents** reference those definitions via `list_authorized_properties`
+- **Buyers** fetch property details from publishers, not from sales agents
+- This ensures a single source of truth and prevents property definition drift
 
 ## Protocol-Specific Examples
 
@@ -169,7 +107,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 {
   "tool": "list_authorized_properties",
   "arguments": {
-    "tags": ["local_radio"]
+    "publisher_domains": ["cnn.com"]
   }
 }
 ```
@@ -177,29 +115,10 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 ### MCP Response
 ```json
 {
-  "message": "Found 1847 authorized properties matching tags: local_radio",
-  "properties": [
-    {
-      "property_type": "radio",
-      "name": "WXYZ-FM Chicago",
-      "identifiers": [
-        {"type": "call_sign", "value": "WXYZ-FM"},
-        {"type": "market", "value": "chicago"}
-      ],
-      "tags": ["local_radio", "midwest"],
-      "publisher_domain": "radionetwork.com"
-    }
-  ],
-  "tags": {
-    "local_radio": {
-      "name": "Local Radio Stations",
-      "description": "1847 local radio stations across US markets"
-    },
-    "midwest": {
-      "name": "Midwest Markets", 
-      "description": "523 properties in midwest markets"
-    }
-  }
+  "message": "Authorized to represent 3 publishers: cnn.com, espn.com, nytimes.com",
+  "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"],
+  "primary_channels": ["ctv"],
+  "primary_countries": ["US"]
 }
 ```
 
@@ -213,7 +132,7 @@ await a2a.send({
         data: {
           skill: "list_authorized_properties",
           parameters: {
-            tags: ["local_radio"]
+            publisher_domains: ["cnn.com"]
           }
         }
       }
@@ -230,33 +149,14 @@ await a2a.send({
     "parts": [
       {
         "kind": "text",
-        "text": "Found 1847 authorized properties matching tags: local_radio"
+        "text": "Authorized to represent 3 publishers: cnn.com, espn.com, nytimes.com"
       },
       {
         "kind": "data",
         "data": {
-          "properties": [
-            {
-              "property_type": "radio",
-              "name": "WXYZ-FM Chicago",
-              "identifiers": [
-                {"type": "call_sign", "value": "WXYZ-FM"},
-                {"type": "market", "value": "chicago"}
-              ],
-              "tags": ["local_radio", "midwest"],
-              "publisher_domain": "radionetwork.com"
-            }
-          ],
-          "tags": {
-            "local_radio": {
-              "name": "Local Radio Stations",
-              "description": "1847 local radio stations across US markets"
-            },
-            "midwest": {
-              "name": "Midwest Markets",
-              "description": "523 properties in midwest markets"
-            }
-          }
+          "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"],
+          "primary_channels": ["ctv"],
+          "primary_countries": ["US"]
         }
       }
     ]
@@ -331,21 +231,141 @@ if (response.primary_channels?.includes('dooh') &&
 }
 ```
 
+## Implementation Guide for Sales Agents
+
+Sales agents should return publisher authorizations that match their authorization in publisher adagents.json files:
+
+### Step 1: Read Own Authorization
+
+From agent's own `adagents.json` `publisher_properties` entries, extract:
+- Publisher domains represented
+- Authorization scope (property_ids or property_tags for each publisher)
+
+### Step 2: Return Publisher Domain List
+
+Return just the list of publisher domains:
+
+```json
+{
+  "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"]
+}
+```
+
+**That's it.** You don't need to:
+- Specify authorization scope (buyers will find that in publisher's adagents.json)
+- Fetch publisher adagents.json files (buyers will do that)
+- Resolve property IDs to full property objects
+- Duplicate property definitions
+- Keep property data in sync
+
+### Step 3: Portfolio Metadata (Optional)
+
+Add high-level metadata about your capabilities:
+```json
+{
+  "publisher_domains": ["cnn.com", "espn.com"],
+  "primary_channels": ["ctv"],
+  "primary_countries": ["US"],
+  "portfolio_description": "CTV specialist for news and sports publishers"
+}
+```
+
+## Implementation Guide for Buyer Agents
+
+Buyer agents should use this tool to discover which publishers an agent represents, then fetch property details from publishers.
+
+### Step 1: Call list_authorized_properties
+
+```javascript
+const response = await salesAgent.listAuthorizedProperties();
+// Returns: {publisher_domains: ["cnn.com", "espn.com", "nytimes.com"]}
+```
+
+### Step 2: Fetch Publisher Property Definitions
+
+```javascript
+for (const publisherDomain of response.publisher_domains) {
+  // Check cache freshness using last_updated
+  const cached = cache.get(publisherDomain);
+  if (cached && response.last_updated) {
+    const cachedTimestamp = new Date(cached.last_updated);
+    const agentTimestamp = new Date(response.last_updated);
+
+    if (cachedTimestamp >= agentTimestamp) {
+      // Cache is still fresh
+      continue;
+    }
+  }
+
+  // Fetch publisher's canonical adagents.json
+  const publisherAgents = await fetch(
+    `https://${publisherDomain}/.well-known/adagents.json`
+  ).then(r => r.json());
+
+  // Find agent's authorization entry in publisher's file
+  const agentAuth = publisherAgents.authorized_agents.find(
+    a => a.url === salesAgentUrl
+  );
+
+  if (!agentAuth) {
+    console.warn(`Agent not found in ${publisherDomain} authorized_agents`);
+    continue;
+  }
+
+  // Resolve property scope from publisher's authorization
+  let authorizedProperties;
+  if (agentAuth.property_ids) {
+    authorizedProperties = publisherAgents.properties.filter(
+      p => agentAuth.property_ids.includes(p.property_id)
+    );
+  } else if (agentAuth.property_tags) {
+    authorizedProperties = publisherAgents.properties.filter(
+      p => p.tags?.some(tag => agentAuth.property_tags.includes(tag))
+    );
+  } else {
+    // No scope = all properties
+    authorizedProperties = publisherAgents.properties;
+  }
+
+  // Cache for use in product validation
+  cache.set(publisherDomain, {
+    properties: authorizedProperties,
+    tags: publisherAgents.tags,
+    last_updated: publisherAgents.last_updated || new Date().toISOString()
+  });
+}
+```
+
+### Step 3: Use Cached Properties
+
+When validating products:
+```javascript
+// Product references properties
+const product = await salesAgent.getProducts(...);
+
+for (const property of product.properties) {
+  const cached = cache.get(property.publisher_domain);
+  // Validate against cached publisher definitions
+}
+```
+
 ## Use Cases
 
-### Large Network Discovery
-For agents representing thousands of properties (e.g., radio networks):
-- Call once to get all properties and their tags
-- Cache the property list for validation
-- Products can reference `["local_radio"]` instead of listing 1847 stations
+### Third-Party Sales Networks
+A CTV sales network representing multiple publishers:
+- Returns list of publisher domains and authorization scope
+- Buyers fetch property details from each publisher
+- No duplication of property data across agents
 
-### Authorization Verification
-For buyer agents validating seller authorization:
-- Discover all domains this agent claims to represent
-- Fetch adagents.json from each domain once
-- Cache authorization status for fast product validation
+### Publisher Direct Sales
+A publisher selling their own inventory:
+- Returns their own domain with authorization scope
+- Buyers fetch property definitions from publisher's adagents.json
+- Consistent with how third-party agents work
 
-### Tag Resolution
-For products using `property_tags` instead of full property arrays:
-- Use cached property list to resolve tags to actual properties
-- Perform validation on the resolved properties
+### Authorization Validation
+Buyer agents validating seller authorization:
+- Discover which publishers agent claims to represent
+- Fetch each publisher's adagents.json to verify authorization
+- Check agent URL is in publisher's authorized_agents list
+- Cache validated relationships
