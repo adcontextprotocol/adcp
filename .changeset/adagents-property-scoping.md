@@ -1,12 +1,34 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": major
 ---
 
-Restructure adagents.json to mirror list_authorized_properties pattern with property-scoped authorization.
+**BREAKING CHANGE**: Restructure `list_authorized_properties` response to return publisher authorizations instead of full property objects. Properties are now fetched from publisher canonical `adagents.json` files.
 
-**Key Design Change:**
+**Architecture Change: Publishers Own Property Definitions**
 
-The `adagents.json` structure now parallels `list_authorized_properties` - both use the same `properties` array with `tags` for organization. Agents reference properties via `property_tags` (recommended) or explicit `properties` lists.
+`list_authorized_properties` now works like IAB Tech Lab's sellers.json - it lists which publishers an agent represents, not full property details. Buyers fetch actual property definitions from each publisher's canonical adagents.json file.
+
+**Before (v2.x)**:
+```json
+{
+  "properties": [{...full property objects...}],
+  "tags": {...}
+}
+```
+
+**After (v3.0)**:
+```json
+{
+  "publisher_authorizations": [
+    {
+      "publisher_domain": "cnn.com",
+      "property_tags": ["ctv"]
+    }
+  ]
+}
+```
+
+Buyers then fetch `https://cnn.com/.well-known/adagents.json` for actual property definitions.
 
 **New Fields:**
 
@@ -40,20 +62,22 @@ The `adagents.json` structure now parallels `list_authorized_properties` - both 
    - Required in `list_authorized_properties` (multi-domain responses)
    - Optional in adagents.json (file location implies domain)
 
-**Use Cases Solved:**
+**Benefits:**
 
-- **Meta**: Single agent for Instagram, Facebook, WhatsApp using `property_tags: ["meta_network"]`
-- **Tumblr**: Authorize only root domain, NOT user subdomains
-- **Netflix**: Different agents for mobile apps vs. website using tags
-- **Third-Party Sales**: Agent references `publisher_domain: "cnn.com", property_tags: ["ctv"]` to sell publisher's CTV inventory without duplicating property definitions
+- **Single source of truth**: Publishers define properties once in their own adagents.json
+- **No duplication**: Agents don't copy property data, they reference it
+- **Automatic updates**: Agent authorization reflects publisher property changes without manual sync
+- **Simpler agents**: Agents return authorization list, not property details
+- **Buyer validation**: Buyers verify authorization by checking publisher's adagents.json
+- **Scalability**: Works for agents representing 1 or 1000 publishers
 
-**Consistency Benefits:**
+**Use Cases:**
 
-- Same Property schema everywhere (adagents.json, list_authorized_properties, get_products)
-- Same tag resolution logic
-- Same subdomain matching rules (`*.example.com` wildcards)
-- Single source of truth: publisher's adagents.json is canonical, agents reference it
-- When publisher updates properties, agent authorization automatically reflects changes
+- **Third-Party Sales Networks**: CTV specialist represents multiple publishers without duplicating property data
+- **Publisher Direct**: Publisher's own agent references their domain, buyers fetch properties from publisher file
+- **Meta Multi-Brand**: Single agent for Instagram, Facebook, WhatsApp using property tags
+- **Tumblr Subdomain Control**: Authorize root domain only, NOT user subdomains
+- **Authorization Validation**: Buyers verify agent is in publisher's authorized_agents list
 
 **Domain Matching Rules:**
 
@@ -64,4 +88,25 @@ Follows web conventions while requiring explicit authorization for non-standard 
 
 **Rationale**: www and m are conventionally the same site. Other subdomains require explicit listing.
 
-**Backward Compatibility:** All new fields optional. Simple files with just `authorized_agents` still valid. Domain matching is a clarification of intended behavior.
+**Migration Guide:**
+
+Sales agents need to update `list_authorized_properties` implementation:
+
+**Old approach (v2.x)**:
+1. Fetch/maintain full property definitions
+2. Return complete property objects in response
+3. Keep property data synchronized with publishers
+
+**New approach (v3.0)**:
+1. Read `publisher_properties` from own adagents.json
+2. Return just publisher domains + authorization scope
+3. No need to maintain property data - buyers fetch from publishers
+
+Buyer agents need to update workflow:
+1. Call `list_authorized_properties` to get publisher list
+2. Fetch each publisher's adagents.json
+3. Validate agent is in publisher's authorized_agents
+4. Resolve property scope (property_ids or property_tags)
+5. Cache publisher properties for product validation
+
+**Backward Compatibility:** Breaking change in `list_authorized_properties` response structure. `adagents.json` changes are additive (new optional fields).

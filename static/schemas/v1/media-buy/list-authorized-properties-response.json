@@ -2,37 +2,43 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/media-buy/list-authorized-properties-response.json",
   "title": "List Authorized Properties Response",
-  "description": "Response payload for list_authorized_properties task",
+  "description": "Response payload for list_authorized_properties task. Lists publisher domains and authorization scope (property_ids or property_tags). Buyers fetch actual property definitions from each publisher's canonical adagents.json file.",
   "type": "object",
   "properties": {
-    "properties": {
+    "publisher_authorizations": {
       "type": "array",
-      "description": "Array of all properties this agent is authorized to represent",
+      "description": "Publisher domains this agent is authorized for, with scope of authorization. Buyers should fetch each publisher's adagents.json to resolve actual property definitions.",
       "items": {
-        "$ref": "/schemas/v1/core/property.json"
-      }
-    },
-    "tags": {
-      "type": "object",
-      "description": "Metadata for each tag referenced by properties",
-      "additionalProperties": {
         "type": "object",
         "properties": {
-          "name": {
+          "publisher_domain": {
             "type": "string",
-            "description": "Human-readable name for this tag"
+            "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
-          "description": {
-            "type": "string",
-            "description": "Description of what this tag represents"
+          "property_ids": {
+            "type": "array",
+            "description": "Specific property IDs from the publisher's adagents.json this agent is authorized for. Mutually exclusive with property_tags.",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$"
+            },
+            "minItems": 1
+          },
+          "property_tags": {
+            "type": "array",
+            "description": "Property tags from the publisher's adagents.json this agent is authorized for. Agent represents all properties with these tags. Mutually exclusive with property_ids.",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$"
+            },
+            "minItems": 1
           }
         },
-        "required": [
-          "name",
-          "description"
-        ],
+        "required": ["publisher_domain"],
         "additionalProperties": false
-      }
+      },
+      "minItems": 1
     },
     "primary_channels": {
       "type": "array",
@@ -72,7 +78,7 @@
     }
   },
   "required": [
-    "properties"
+    "publisher_authorizations"
   ],
   "additionalProperties": false
 }

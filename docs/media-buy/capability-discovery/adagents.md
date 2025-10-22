@@ -302,7 +302,9 @@ If `property_ids`, `property_tags`, `properties`, and `publisher_properties` are
 
 ### Example 1: Meta Network (Tag-Based)
 
-Meta manages Instagram, Facebook, and WhatsApp with a single sales agent:
+Meta manages Instagram, Facebook, and WhatsApp with a single sales agent. This adagents.json would be hosted at **meta.com/.well-known/adagents.json** (or instagram.com, facebook.com, whatsapp.com - all would have the same content).
+
+**Note**: `publisher_domain` is optional in adagents.json when properties are for the same domain where the file is hosted. It's included here because these are cross-domain properties (Instagram, Facebook, WhatsApp) all managed by Meta.
 
 ```json
 {
@@ -363,7 +365,9 @@ Meta manages Instagram, Facebook, and WhatsApp with a single sales agent:
 
 ### Example 2: Tumblr (Subdomain Exclusion)
 
-Tumblr authorizes sales only for corporate properties, NOT user blogs:
+Tumblr authorizes sales only for corporate properties, NOT user blogs. This file would be hosted at **tumblr.com/.well-known/adagents.json**.
+
+**Note**: `publisher_domain` is omitted since the property is for the same domain where the file is hosted (tumblr.com).
 
 ```json
 {
@@ -377,8 +381,7 @@ Tumblr authorizes sales only for corporate properties, NOT user blogs:
       "identifiers": [
         {"type": "domain", "value": "tumblr.com"}
       ],
-      "tags": ["corporate"],
-      "publisher_domain": "tumblr.com"
+      "tags": ["corporate"]
     }
   ],
   "tags": {
