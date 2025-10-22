@@ -17,21 +17,38 @@
       "type": "string",
       "description": "Detailed description of the product and its inventory"
     },
-    "properties": {
+    "publisher_properties": {
       "type": "array",
-      "description": "Array of advertising properties covered by this product for adagents.json validation",
+      "description": "Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization.",
       "items": {
-        "$ref": "/schemas/v1/core/property.json"
-      },
-      "minItems": 1
-    },
-    "property_tags": {
-      "type": "array",
-      "description": "Tags identifying groups of properties covered by this product (use list_authorized_properties to get full property details)",
-      "items": {
-        "type": "string",
-        "pattern": "^[a-z0-9_]+$",
-        "description": "Lowercase tag with underscores (e.g., 'local_radio', 'premium_content')"
+        "type": "object",
+        "properties": {
+          "publisher_domain": {
+            "type": "string",
+            "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "property_ids": {
+            "type": "array",
+            "description": "Specific property IDs from the publisher's adagents.json. Mutually exclusive with property_tags.",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$"
+            },
+            "minItems": 1
+          },
+          "property_tags": {
+            "type": "array",
+            "description": "Property tags from the publisher's adagents.json. Product covers all properties with these tags. Mutually exclusive with property_ids.",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["publisher_domain"],
+        "additionalProperties": false
       },
       "minItems": 1
     },
@@ -104,18 +121,11 @@
       "description": "Expiration timestamp for custom products"
     }
   },
-  "oneOf": [
-    {
-      "required": ["properties"]
-    },
-    {
-      "required": ["property_tags"]
-    }
-  ],
   "required": [
     "product_id",
     "name",
     "description",
+    "publisher_properties",
     "format_ids",
     "delivery_type",
     "delivery_measurement",

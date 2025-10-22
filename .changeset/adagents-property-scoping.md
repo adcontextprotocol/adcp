@@ -2,31 +2,47 @@
 "adcontextprotocol": minor
 ---
 
-Restructure `list_authorized_properties` response to return just publisher domains. Authorization scope comes from publisher canonical `adagents.json` files.
+Restructure property references across the protocol to use `publisher_properties` pattern. Publishers are the single source of truth for property definitions.
 
 **Architecture Change: Publishers Own Property Definitions**
 
 `list_authorized_properties` now works like IAB Tech Lab's sellers.json - it lists which publishers an agent represents. Buyers fetch each publisher's adagents.json to see property definitions and verify authorization scope.
 
-**Before (v2.x)**:
+**Key Changes:**
+
+1. **list_authorized_properties response** - Simplified to just domains:
 ```json
+// Before (v2.x)
+{"properties": [{...}], "tags": {...}}
+
+// After (v2.3)
+{"publisher_domains": ["cnn.com", "espn.com"]}
+```
+
+2. **Product property references** - Changed to publisher_properties:
+```json
+// Before (v2.x)
 {
-  "properties": [{...full property objects...}],
-  "tags": {...}
+  "properties": [{...full objects...}]
+  // OR
+  "property_tags": ["premium"]
+}
+
+// After (v2.3)
+{
+  "publisher_properties": [
+    {
+      "publisher_domain": "cnn.com",
+      "property_tags": ["ctv"]
+    }
+  ]
 }
 ```
 
-**After (v2.3)**:
-```json
-{
-  "publisher_domains": ["cnn.com", "espn.com", "nytimes.com"]
-}
-```
-
-Buyers then fetch `https://cnn.com/.well-known/adagents.json` for:
-- Property definitions
+Buyers fetch `https://cnn.com/.well-known/adagents.json` for:
+- Property definitions (cnn.com is source of truth)
 - Agent authorization verification
-- Authorization scope (property_ids, property_tags, or all)
+- Property tag definitions
 
 **New Fields:**
 
