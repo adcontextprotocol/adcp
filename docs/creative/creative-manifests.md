@@ -250,7 +250,7 @@ Digital Out-of-Home (DOOH) creatives use impression tracking just like other for
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_purpose": "impression",
+      "url_type": "tracker",
       "url": "https://tracking.example.com/imp?screen={SCREEN_ID}&venue={VENUE_TYPE}&ts={PLAY_TIMESTAMP}&lat={VENUE_LAT}&lon={VENUE_LONG}"
     }
   }

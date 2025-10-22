@@ -201,7 +201,7 @@ For video ads in commercial breaks:
     {
       "asset_id": "impression_pixel",
       "asset_type": "url",
-      "url_type": "impression_tracker",
+      "url_type": "tracker",
       "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pkg={PACKAGE_ID}&cre={CREATIVE_ID}&device={DEVICE_ID}&domain={DOMAIN}&cb={CACHEBUSTER}"
     },
     {
@@ -232,7 +232,7 @@ For video ads in commercial breaks:
     {
       "asset_id": "impression_tracker",
       "asset_type": "url",
-      "url_type": "impression_tracker",
+      "url_type": "tracker",
       "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pkg={PACKAGE_ID}&station={STATION_ID}&show={SHOW_NAME}&cb={CACHEBUSTER}"
     }
   ]

@@ -192,12 +192,12 @@ Display formats in AdCP include:
     },
     "landing_url": {
       "asset_type": "url",
-      "url_purpose": "clickthrough",
+      "url_type": "clickthrough",
       "url": "https://brand.com/spring?campaign={MEDIA_BUY_ID}"
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_purpose": "impression_tracker",
+      "url_type": "tracker",
       "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     }
   }
@@ -223,7 +223,7 @@ Display formats in AdCP include:
     },
     "landing_url": {
       "asset_type": "url",
-      "url_purpose": "clickthrough",
+      "url_type": "clickthrough",
       "url": "https://brand.com/spring"
     }
   }
@@ -407,7 +407,7 @@ HTML5 manifest:
     },
     "landing_url": {
       "asset_type": "url",
-      "url_purpose": "clickthrough",
+      "url_type": "clickthrough",
       "url": "https://brand.com/spring"
     }
   }
