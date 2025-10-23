@@ -44,30 +44,54 @@ For asynchronous operations like activation, both protocols support:
 
 ## Response Data
 
+Different decisioning platforms use different activation models. The response contains **one** of the following targeting mechanisms:
+
+### Segment-Based Activation (DSPs/SSPs)
 ```json
 {
   "task_id": "string",
   "status": "string",
-  "decisioning_platform_segment_id": "string",
+  "decisioning_platform_segment_id": "ttd_nike_running_456",
   "estimated_activation_duration_minutes": "number",
-  "deployed_at": "string",
-  "errors": [
-    {
-      "code": "string",
-      "message": "string",
-      "field": "string",
-      "suggestion": "string",
-      "details": {}
-    }
-  ]
+  "deployed_at": "string"
+}
+```
+
+### Key-Value Targeting (GAM/Ad Servers)
+```json
+{
+  "task_id": "string",
+  "status": "string",
+  "targeting_key_values": {
+    "weather_segment": "snow_enthusiasts",
+    "provider": "liveintent",
+    "tier": "premium"
+  },
+  "estimated_activation_duration_minutes": "number",
+  "deployed_at": "string"
+}
+```
+
+### Deal-Based Activation (PMP/PG)
+```json
+{
+  "task_id": "string",
+  "status": "string",
+  "deal_id": "PM-DEAL-123456",
+  "activation_metadata": {
+    "seat_id": "12345",
+    "floor_cpm": 2.50
+  },
+  "estimated_activation_duration_minutes": "number",
+  "deployed_at": "string"
 }
 ```
 
 ### Field Descriptions
 
+#### Common Fields (all activation types)
 - **task_id**: Unique identifier for tracking the activation task
 - **status**: Current activation status (pending, processing, deployed, failed)
-- **decisioning_platform_segment_id**: Platform-specific segment ID for campaign targeting
 - **estimated_activation_duration_minutes**: Estimated completion time (when status is pending)
 - **deployed_at**: ISO 8601 timestamp when activation completed (when status is deployed)
 - **errors**: Optional array of errors and warnings encountered during activation
@@ -77,16 +101,25 @@ For asynchronous operations like activation, both protocols support:
   - **suggestion**: Suggested fix for the error (optional)
   - **details**: Additional activation-specific error details (optional)
 
+#### Activation Model Fields (exactly one required)
+- **decisioning_platform_segment_id**: Platform-specific segment ID (for DSPs/SSPs like The Trade Desk, DV360, Scope3)
+- **targeting_key_values**: Key-value pairs object (for GAM and similar ad servers)
+- **deal_id**: Deal identifier (for PMP/PG deal-based activation)
+
+#### Optional Field
+- **activation_metadata**: Additional platform-specific data beyond the primary targeting mechanism
+
 ## Protocol-Specific Examples
 
 The AdCP payload is identical across protocols. Only the request/response wrapper differs.
 
-### MCP Request
+### MCP Request Examples
+
+#### Segment-Based Platform (DSP)
 ```json
 {
   "tool": "activate_signal",
   "arguments": {
-    
     "signal_agent_segment_id": "luxury_auto_intenders",
     "platform": "the-trade-desk",
     "account": "agency-123-ttd"
@@ -94,7 +127,21 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 }
 ```
 
-### MCP Response (Asynchronous)
+#### Key-Value Platform (GAM)
+```json
+{
+  "tool": "activate_signal",
+  "arguments": {
+    "signal_agent_segment_id": "snow_enthusiasts_segment",
+    "platform": "gam",
+    "account": "weather-channel-gam"
+  }
+}
+```
+
+### MCP Response Examples
+
+#### Segment-Based Activation (DSP)
 Initial response:
 ```json
 {
@@ -115,6 +162,39 @@ After polling for completion:
   "task_id": "activation_789",
   "status": "deployed",
   "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
+  "deployed_at": "2025-01-15T14:30:00Z"
+}
+```
+
+#### Key-Value Activation (GAM)
+Initial response:
+```json
+{
+  "message": "Initiating activation of 'Snow Enthusiasts' on GAM",
+  "context_id": "ctx-signals-456",
+  "task_id": "activation_abc",
+  "status": "pending",
+  "targeting_key_values": {
+    "weather_segment": "snow_enthusiasts",
+    "provider": "liveintent",
+    "tier": "premium"
+  },
+  "estimated_activation_duration_minutes": 15
+}
+```
+
+After polling for completion:
+```json
+{
+  "message": "Signal successfully activated on GAM. Use these key-value pairs in your line item targeting.",
+  "context_id": "ctx-signals-456",
+  "task_id": "activation_abc",
+  "status": "deployed",
+  "targeting_key_values": {
+    "weather_segment": "snow_enthusiasts",
+    "provider": "liveintent",
+    "tier": "premium"
+  },
   "deployed_at": "2025-01-15T14:30:00Z"
 }
 ```

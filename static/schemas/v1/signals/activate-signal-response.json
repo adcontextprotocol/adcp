@@ -2,12 +2,27 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/signals/activate-signal-response.json",
   "title": "Activate Signal Response",
-  "description": "Response payload for activate_signal task",
+  "description": "Response payload for activate_signal task. Different platforms use different activation models: segment-based (DSPs/SSPs), key-value targeting (GAM/ad servers), or deal-based (PMP/PG).",
   "type": "object",
   "properties": {
     "decisioning_platform_segment_id": {
       "type": "string",
-      "description": "The platform-specific ID to use once activated"
+      "description": "Platform-specific segment ID (for segment-based platforms like DSPs/SSPs such as The Trade Desk, DV360, Scope3)"
+    },
+    "targeting_key_values": {
+      "type": "object",
+      "description": "Key-value pairs for ad server targeting (for GAM and similar ad servers that use KV targeting)",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "deal_id": {
+      "type": "string",
+      "description": "Deal identifier for deal-based activation (for PMP/PG deals)"
+    },
+    "activation_metadata": {
+      "type": "object",
+      "description": "Additional platform-specific activation data (optional, for platform-specific requirements beyond the primary targeting mechanism)"
     },
     "estimated_activation_duration_minutes": {
       "type": "number",
@@ -27,6 +42,16 @@
       }
     }
   },
-  "required": [],
+  "oneOf": [
+    {
+      "required": ["decisioning_platform_segment_id"]
+    },
+    {
+      "required": ["targeting_key_values"]
+    },
+    {
+      "required": ["deal_id"]
+    }
+  ],
   "additionalProperties": false
 }
