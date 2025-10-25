@@ -32,11 +32,6 @@
       "format": "date-time",
       "description": "Campaign end date/time in ISO 8601 format"
     },
-    "budget": {
-      "type": "number",
-      "description": "Total budget for this media buy. Currency is determined by the pricing_option_id selected in each package.",
-      "minimum": 0
-    },
     "reporting_webhook": {
       "allOf": [
         {
@@ -87,8 +82,7 @@
     "packages",
     "brand_manifest",
     "start_time",
-    "end_time",
-    "budget"
+    "end_time"
   ],
   "additionalProperties": false
 }

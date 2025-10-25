@@ -25,11 +25,6 @@
       "format": "date-time",
       "description": "New end date/time in ISO 8601 format"
     },
-    "budget": {
-      "type": "number",
-      "description": "Updated total budget for this media buy. Currency is determined by the pricing_option_id selected in each package.",
-      "minimum": 0
-    },
     "packages": {
       "type": "array",
       "description": "Package-specific updates",

@@ -9,7 +9,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 
 **Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
 
-**Pricing Selection**: Each package must specify a `pricing_option_id` from the product's available pricing options. The media buy sets the overall currency. See [Pricing Models](../advanced-topics/pricing-models) for complete documentation on CPM, CPCV, CPP, and pricing selection.
+**Pricing Selection**: Each package must specify a `pricing_option_id` from the product's available pricing options. The pricing option determines the currency, pricing model (CPM, CPCV, CPP, etc.), and rates. See [Pricing Models](../advanced-topics/pricing-models) for complete documentation.
 
 **Format Specification Required**: Each package must specify the creative formats that will be used. This enables placeholder creation in ad servers and ensures both parties have clear expectations for creative asset requirements.
 
@@ -28,7 +28,6 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `po_number` | string | No | Purchase order number for tracking |
 | `start_time` | string | Yes | Campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
 | `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
-| `budget` | Budget | Yes | Budget configuration for the media buy (see Budget Object below) |
 | `reporting_webhook` | ReportingWebhook | No | Optional webhook configuration for automated reporting delivery (see Reporting Webhook Object below) |
 
 ### Package Object
@@ -37,9 +36,9 @@ Create a media buy from selected packages. This task handles the complete workfl
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this package |
 | `product_id` | string | Yes | Product ID for this package |
-| `pricing_option_id` | string | Yes | Pricing option ID from the product's `pricing_options` array - specifies which pricing model to use for this package. See [Pricing Models](../advanced-topics/pricing-models) for details. |
+| `pricing_option_id` | string | Yes | Pricing option ID from the product's `pricing_options` array - specifies pricing model and currency for this package. See [Pricing Models](../advanced-topics/pricing-models) for details. |
 | `format_ids` | FormatID[] | Yes | Array of structured format ID objects that will be used for this package - must be supported by the product |
-| `budget` | number | Yes | Budget allocation for this package in the media buy's currency |
+| `budget` | number | Yes | Budget allocation for this package in the currency specified by the pricing option |
 | `pacing` | string | No | Pacing strategy: `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction-based pricing options (required when `pricing_option.is_fixed` is false) |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
@@ -57,14 +56,6 @@ Create a media buy from selected packages. This task handles the complete workfl
 | `geo_metro_any_of` | string[] | No | Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing. |
 | `geo_postal_code_any_of` | string[] | No | Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing. |
 | `frequency_cap` | FrequencyCap | No | Frequency capping settings (see Frequency Cap Object below) |
-
-### Budget Object
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `total` | number | Yes | Total budget amount |
-| `currency` | string | Yes | ISO 4217 currency code (e.g., "USD", "EUR", "GBP") |
-| `pacing` | string | No | Pacing strategy: `"even"` (allocate remaining budget evenly over remaining time), `"asap"` (spend remaining budget as quickly as possible), or `"front_loaded"` (allocate more remaining budget earlier) - default: `"even"` |
 
 ### Frequency Cap Object
 
@@ -150,11 +141,9 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
             "id": "video_standard_15s"
           }
         ],
-        "budget": {
-          "total": 60000,
-          "currency": "USD",
-          "pacing": "even"
-        },
+        "budget": 60000,
+        "pacing": "even",
+        "pricing_option_id": "cpm-fixed-sports",
         "targeting_overlay": {
           "geo_country_any_of": ["US"],
           "geo_region_any_of": ["CA", "NY"],
@@ -171,11 +160,9 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
             "id": "audio_standard_30s"
           }
         ],
-        "budget": {
-          "total": 40000,
-          "currency": "USD",
-          "pacing": "front_loaded"
-        },
+        "budget": 40000,
+        "pacing": "front_loaded",
+        "pricing_option_id": "cpm-fixed-audio",
         "targeting_overlay": {
           "geo_country_any_of": ["US"],
           "geo_region_any_of": ["CA"],
@@ -187,11 +174,6 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
     "po_number": "PO-2024-Q1-001",
     "start_time": "2024-02-01T00:00:00Z",
     "end_time": "2024-03-31T23:59:59Z",
-    "budget": {
-      "total": 100000,
-      "currency": "USD",
-      "pacing": "even"
-    },
     "reporting_webhook": {
       "url": "https://buyer.example.com/webhooks/reporting",
       "auth_type": "bearer",
@@ -306,11 +288,9 @@ await a2a.send({
                     "id": "video_standard_15s"
                   }
                 ],
-                "budget": {
-                  "total": 60000,
-                  "currency": "USD",
-                  "pacing": "even"
-                },
+                "budget": 60000,
+                "pacing": "even",
+                "pricing_option_id": "cpm-fixed-sports",
                 "targeting_overlay": {
                   "geo_country_any_of": ["US"],
                   "geo_region_any_of": ["CA", "NY"],
@@ -327,11 +307,9 @@ await a2a.send({
                     "id": "audio_standard_30s"
                   }
                 ],
-                "budget": {
-                  "total": 40000,
-                  "currency": "USD",
-                  "pacing": "front_loaded"
-                },
+                "budget": 40000,
+                "pacing": "front_loaded",
+                "pricing_option_id": "cpm-fixed-audio",
                 "targeting_overlay": {
                   "geo_country_any_of": ["US"],
                   "geo_region_any_of": ["CA"],
@@ -342,12 +320,7 @@ await a2a.send({
             "promoted_offering": "Nike Air Max 2024 - premium running shoes",
             "po_number": "PO-2024-Q1-001",
             "start_time": "2024-02-01T00:00:00Z",
-            "end_time": "2024-03-31T23:59:59Z",
-            "budget": {
-              "total": 100000,
-              "currency": "USD",
-              "pacing": "even"
-            }
+            "end_time": "2024-03-31T23:59:59Z"
           }
         }
       }
@@ -413,11 +386,7 @@ This example shows polling, but MCP implementations may also support webhooks or
     "promoted_offering": "High-value campaign requiring approval",
     "po_number": "PO-2024-LARGE-001",
     "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-06-30T23:59:59Z",
-    "budget": {
-      "total": 500000,
-      "currency": "USD"
-    }
+    "end_time": "2024-06-30T23:59:59Z"
   }
 }
 ```
@@ -479,11 +448,7 @@ A2A can use Server-Sent Events for real-time streaming or webhooks for push noti
     "promoted_offering": "High-value campaign requiring approval",
     "po_number": "PO-2024-LARGE-001",
     "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-06-30T23:59:59Z",
-    "budget": {
-      "total": 500000,
-      "currency": "USD"
-    }
+    "end_time": "2024-06-30T23:59:59Z"
   }
 }
 ```
@@ -534,11 +499,7 @@ data: {"status": {"state": "completed"}, "artifacts": [{
     "promoted_offering": "High-value campaign requiring approval",
     "po_number": "PO-2024-LARGE-001",
     "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-06-30T23:59:59Z",
-    "budget": {
-      "total": 500000,
-      "currency": "USD"
-    }
+    "end_time": "2024-06-30T23:59:59Z"
   },
   "pushNotificationConfig": {
     "url": "https://buyer.example.com/webhooks/adcp",
@@ -711,8 +672,7 @@ Create a media buy and upload creatives in a single API call. This eliminates th
     }
   ],
   "start_time": "asap",
-  "end_time": "2024-03-31T23:59:59Z",
-  "budget": 80000
+  "end_time": "2024-03-31T23:59:59Z"
 }
 ```
 
@@ -739,11 +699,9 @@ Create a media buy and upload creatives in a single API call. This eliminates th
           "id": "video_standard_30s"
         }
       ],
-      "budget": {
-        "total": 30000,
-        "currency": "USD",
-        "pacing": "even"
-      },
+      "budget": 30000,
+      "pacing": "even",
+      "pricing_option_id": "cpm-fixed-ctv",
       "targeting_overlay": {
         "geo_country_any_of": ["US"],
         "geo_region_any_of": ["CA", "NY"],
@@ -763,10 +721,8 @@ Create a media buy and upload creatives in a single API call. This eliminates th
           "id": "audio_standard_30s"
         }
       ],
-      "budget": {
-        "total": 20000,
-        "currency": "USD"
-      },
+      "budget": 20000,
+      "pricing_option_id": "cpm-fixed-audio",
       "targeting_overlay": {
         "geo_country_any_of": ["US"],
         "geo_region_any_of": ["CA", "NY"]
@@ -776,12 +732,7 @@ Create a media buy and upload creatives in a single API call. This eliminates th
   "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs, promoting the new salmon and rice formula for sensitive skin and stomachs",
   "po_number": "PO-2024-Q1-0123",
   "start_time": "2024-02-01T00:00:00Z",
-  "end_time": "2024-02-29T23:59:59Z",
-  "budget": {
-    "total": 50000,
-    "currency": "USD",
-    "pacing": "even"
-  }
+  "end_time": "2024-02-29T23:59:59Z"
 }
 ```
 
@@ -803,11 +754,9 @@ Create a media buy and upload creatives in a single API call. This eliminates th
           "id": "display_728x90"
         }
       ],
-      "budget": {
-        "total": 75000,
-        "currency": "USD",
-        "pacing": "even"
-      },
+      "budget": 75000,
+      "pacing": "even",
+      "pricing_option_id": "cpm-fixed-retail",
       "targeting_overlay": {
         "geo_country_any_of": ["US"],
         "geo_region_any_of": ["CA", "AZ", "NV"],
@@ -822,12 +771,7 @@ Create a media buy and upload creatives in a single API call. This eliminates th
   "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs",
   "po_number": "PO-2024-RETAIL-0456",
   "start_time": "2024-02-01T00:00:00Z",
-  "end_time": "2024-03-31T23:59:59Z",
-  "budget": {
-    "total": 75000,
-    "currency": "USD",
-    "pacing": "even"
-  }
+  "end_time": "2024-03-31T23:59:59Z"
 }
 ```
 
@@ -1073,11 +1017,9 @@ response = await mcp.call_tool("create_media_buy", {
         {
             "buyer_ref": "espn_ctv_sports",
             "product_id": "sports_ctv_premium",
-            "budget": {
-                "total": 30000,
-                "currency": "USD",
-                "pacing": "even"
-            },
+            "budget": 30000,
+            "pacing": "even",
+            "pricing_option_id": "cpm-fixed-sports",
             "targeting_overlay": {
                 "geo_country_any_of": ["US"],
                 "geo_region_any_of": ["CA", "NY"],
@@ -1087,10 +1029,8 @@ response = await mcp.call_tool("create_media_buy", {
         {
             "buyer_ref": "espn_audio_sports",
             "product_id": "audio_sports_talk",
-            "budget": {
-                "total": 20000,
-                "currency": "USD"
-            },
+            "budget": 20000,
+            "pricing_option_id": "cpm-fixed-audio",
             "targeting_overlay": {
                 "geo_country_any_of": ["US"]
             }
@@ -1099,12 +1039,7 @@ response = await mcp.call_tool("create_media_buy", {
     "promoted_offering": "ESPN+ streaming service - exclusive UFC fights and soccer leagues, promoting annual subscription",
     "po_number": "PO-2024-001",
     "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-03-31T23:59:59Z",
-    "budget": {
-        "total": 50000,
-        "currency": "USD",
-        "pacing": "even"
-    }
+    "end_time": "2024-03-31T23:59:59Z"
 })
 
 # Check if async processing is needed
