@@ -5,19 +5,46 @@
   "description": "Response payload for activate_signal task",
   "type": "object",
   "properties": {
-    "decisioning_platform_segment_id": {
-      "type": "string",
-      "description": "The platform-specific ID to use once activated"
-    },
-    "estimated_activation_duration_minutes": {
-      "type": "number",
-      "description": "Estimated time to complete (optional)",
-      "minimum": 0
-    },
-    "deployed_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Timestamp when activation completed (optional)"
+    "deployments": {
+      "type": "array",
+      "description": "Array of deployment results for each destination",
+      "items": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "description": "Platform identifier for DSPs. Either platform or agent_url will be present."
+          },
+          "agent_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL identifying the destination agent. Either platform or agent_url will be present."
+          },
+          "account": {
+            "type": "string",
+            "description": "Account identifier if applicable"
+          },
+          "activation_key": {
+            "$ref": "/schemas/v1/core/activation-key.json",
+            "description": "The activation key to use for targeting. Only present if the authenticated caller has access to this destination."
+          },
+          "estimated_activation_duration_minutes": {
+            "type": "number",
+            "description": "Estimated time to complete activation (for async operations)",
+            "minimum": 0
+          },
+          "deployed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when activation completed"
+          }
+        },
+        "oneOf": [
+          {"required": ["platform"]},
+          {"required": ["agent_url"]}
+        ],
+        "additionalProperties": false
+      }
     },
     "errors": {
       "type": "array",
@@ -27,6 +54,6 @@
       }
     }
   },
-  "required": [],
+  "required": ["deployments"],
   "additionalProperties": false
 }
