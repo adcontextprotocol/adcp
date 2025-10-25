@@ -42,10 +42,18 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `signal_ids` | SignalID[] | No | Filter by specific signal IDs (see Signal ID Object below) |
 | `catalog_types` | string[] | No | Filter by catalog type ("marketplace", "custom", "owned") |
 | `data_providers` | string[] | No | Filter by specific data providers |
 | `max_cpm` | number | No | Maximum CPM price filter |
 | `min_coverage_percentage` | number | No | Minimum coverage requirement |
+
+### Signal ID Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `agent_url` | string | Yes | URL of the agent that defines this signal |
+| `id` | string | Yes | Signal identifier within the agent's namespace |
 
 ## Response Structure
 
@@ -64,7 +72,10 @@ The response structure is identical across protocols, with only the transport wr
 {
   "signals": [
     {
-      "signal_agent_segment_id": "string",
+      "signal_id": {
+        "agent_url": "string",
+        "id": "string"
+      },
       "name": "string",
       "description": "string",
       "signal_type": "string",
@@ -92,7 +103,9 @@ The response structure is identical across protocols, with only the transport wr
 ### Field Descriptions
 
 - **signals**: Array of matching signals
-  - **signal_agent_segment_id**: Unique identifier for the signal
+  - **signal_id**: Structured unique identifier for the signal
+    - **agent_url**: URL of the agent that defines this signal
+    - **id**: Signal identifier within the agent's namespace
   - **name**: Human-readable signal name
   - **description**: Detailed signal description
   - **signal_type**: Type of signal (marketplace, custom, owned)
@@ -140,7 +153,10 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
   "context_id": "ctx-signals-123",
   "signals": [
     {
-      "signal_agent_segment_id": "luxury_auto_intenders",
+      "signal_id": {
+        "agent_url": "https://experian.com",
+        "id": "luxury_auto_intenders"
+      },
       "name": "Luxury Automotive Intenders",
       "description": "High-income individuals researching luxury vehicles",
       "signal_type": "marketplace",
@@ -228,7 +244,10 @@ A2A returns results as artifacts with the same data structure:
             "context_id": "ctx-signals-123",
                       "signals": [
               {
-                "signal_agent_segment_id": "luxury_auto_intenders",
+                "signal_id": {
+                  "agent_url": "https://experian.com",
+                  "id": "luxury_auto_intenders"
+                },
                 "name": "Luxury Automotive Intenders",
                 "description": "High-income individuals researching luxury vehicles",
                 "signal_type": "marketplace",
@@ -297,7 +316,10 @@ Discover all available deployments across platforms:
 ```json
 {
   "signals": [{
-    "signal_agent_segment_id": "peer39_luxury_auto",
+    "signal_id": {
+      "agent_url": "https://peer39.com",
+      "id": "luxury_auto"
+    },
     "name": "Luxury Automotive Context",
     "description": "Pages with luxury automotive content and high viewability",
     "signal_type": "marketplace",
@@ -345,7 +367,9 @@ Discover all available deployments across platforms:
 
 - **context_id** (string): Context identifier for session persistence
 - **signals** (array): Array of matching signals
-  - **signal_agent_segment_id** (string): Universal identifier for the signal
+  - **signal_id** (object): Structured universal identifier for the signal
+    - **agent_url** (string): URL of the agent that defines this signal
+    - **id** (string): Signal identifier within the agent's namespace
   - **name** (string): Human-readable signal name
   - **description** (string): Detailed signal description
   - **signal_type** (string): Type of signal (marketplace, custom, owned)
@@ -365,7 +389,7 @@ Discover all available deployments across platforms:
 ## Error Codes
 
 ### Discovery Errors
-- `SIGNAL_AGENT_SEGMENT_NOT_FOUND`: Signal agent segment ID doesn't exist
+- `SIGNAL_NOT_FOUND`: Signal ID doesn't exist
 - `AGENT_NOT_FOUND`: Private signal agent not visible to this principal
 - `AGENT_ACCESS_DENIED`: Principal not authorized for this signal agent
 
@@ -390,7 +414,10 @@ Discover all available deployments across platforms:
   "context_id": "ctx-signals-abc123",
   "signals": [
     {
-      "signal_agent_segment_id": "acme_affluent_shoppers",
+      "signal_id": {
+        "agent_url": "https://acmedata.com",
+        "id": "affluent_shoppers"
+      },
       "name": "Affluent Shoppers",
       "description": "Users with demonstrated luxury purchase behavior",
       "signal_type": "marketplace",
@@ -430,7 +457,10 @@ Discover all available deployments across platforms:
   "context_id": "ctx-signals-abc123",
   "signals": [
     {
-      "signal_agent_segment_id": "premium_auto_shoppers",
+      "signal_id": {
+        "agent_url": "https://experian.com",
+        "id": "premium_auto_shoppers"
+      },
       "name": "Premium Auto Shoppers",
       "description": "High-value automotive purchase intenders",
       "signal_type": "marketplace",

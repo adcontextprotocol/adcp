@@ -69,6 +69,13 @@
       "type": "object",
       "description": "Filters to refine results",
       "properties": {
+        "signal_ids": {
+          "type": "array",
+          "description": "Filter by specific signal IDs",
+          "items": {
+            "$ref": "/schemas/v1/core/signal-id.json"
+          }
+        },
         "catalog_types": {
           "type": "array",
           "description": "Filter by catalog type",

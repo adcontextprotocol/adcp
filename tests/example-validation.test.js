@@ -269,7 +269,10 @@ const exampleData = {
   getSignalsResponse: {
     "signals": [
       {
-        "signal_agent_segment_id": "luxury_auto_intenders",
+        "signal_id": {
+          "agent_url": "https://experian.com",
+          "id": "luxury_auto_intenders"
+        },
         "name": "Luxury Automotive Intenders",
         "description": "High-income individuals researching luxury vehicles",
         "signal_type": "marketplace",
@@ -293,7 +296,10 @@ const exampleData = {
   },
   
   activateSignalRequest: {
-    "signal_agent_segment_id": "luxury_auto_intenders",
+    "signal_id": {
+      "agent_url": "https://experian.com",
+      "id": "luxury_auto_intenders"
+    },
     "platform": "the-trade-desk",
     "account": "agency-123-ttd"
   },

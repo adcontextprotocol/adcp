@@ -5,8 +5,8 @@
   "description": "Request parameters for activating a signal on a specific platform/account",
   "type": "object",
   "properties": {
-    "signal_agent_segment_id": {
-      "type": "string",
+    "signal_id": {
+      "$ref": "/schemas/v1/core/signal-id.json",
       "description": "The universal identifier for the signal to activate"
     },
     "platform": {
@@ -19,7 +19,7 @@
     }
   },
   "required": [
-    "signal_agent_segment_id",
+    "signal_id",
     "platform"
   ],
   "additionalProperties": false
