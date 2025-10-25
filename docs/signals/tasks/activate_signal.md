@@ -21,9 +21,16 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `signal_agent_segment_id` | string | Yes | The universal identifier for the signal to activate |
+| `signal_id` | SignalID | Yes | The universal identifier for the signal to activate (see Signal ID Object below) |
 | `platform` | string | Yes | The target platform for activation |
 | `account` | string | No* | Account identifier (required for account-specific activation) |
+
+### Signal ID Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `agent_url` | string | Yes | URL of the agent that defines this signal |
+| `id` | string | Yes | Signal identifier within the agent's namespace |
 
 *Required when activating at account level
 
@@ -86,8 +93,11 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 {
   "tool": "activate_signal",
   "arguments": {
-    
-    "signal_agent_segment_id": "luxury_auto_intenders",
+
+    "signal_id": {
+      "agent_url": "https://experian.com",
+      "id": "luxury_auto_intenders"
+    },
     "platform": "the-trade-desk",
     "account": "agency-123-ttd"
   }
@@ -127,7 +137,7 @@ await a2a.send({
   message: {
     parts: [{
       kind: "text",
-      text: "Please activate the luxury_auto_intenders signal on The Trade Desk for account agency-123-ttd."
+      text: "Please activate the Experian luxury_auto_intenders signal on The Trade Desk for account agency-123-ttd."
     }]
   }
 });
@@ -142,7 +152,10 @@ await a2a.send({
       data: {
         skill: "activate_signal",
         parameters: {
-          signal_agent_segment_id: "luxury_auto_intenders",
+          signal_id: {
+            agent_url: "https://experian.com",
+            id: "luxury_auto_intenders"
+          },
           platform: "the-trade-desk",
           account: "agency-123-ttd"
         }
@@ -193,7 +206,10 @@ For long-running activations (when initial response is `submitted`), configure a
 ```javascript
 const response = await session.call('activate_signal',
   {
-    signal_agent_segment_id: "luxury_auto_intenders",
+    signal_id: {
+      agent_url: "https://experian.com",
+      id: "luxury_auto_intenders"
+    },
     platform: "the-trade-desk",
     account: "agency-123-ttd"
   },
@@ -326,7 +342,7 @@ See **[Task Management: Webhook Integration](../../protocols/task-management.md#
 ## Error Codes
 
 ### Activation Errors
-- `SIGNAL_AGENT_SEGMENT_NOT_FOUND`: Signal agent segment ID doesn't exist
+- `SIGNAL_NOT_FOUND`: Signal ID doesn't exist
 - `ACTIVATION_FAILED`: Could not activate signal for unspecified reasons
 - `ALREADY_ACTIVATED`: Signal already active on the specified platform/account
 - `DEPLOYMENT_UNAUTHORIZED`: Can't deploy to platform/account due to permissions

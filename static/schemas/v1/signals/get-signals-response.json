@@ -11,8 +11,8 @@
       "items": {
         "type": "object",
         "properties": {
-          "signal_agent_segment_id": {
-            "type": "string",
+          "signal_id": {
+            "$ref": "/schemas/v1/core/signal-id.json",
             "description": "Unique identifier for the signal"
           },
           "name": {
@@ -112,7 +112,7 @@
           }
         },
         "required": [
-          "signal_agent_segment_id",
+          "signal_id",
           "name",
           "description",
           "signal_type",
