@@ -9,7 +9,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 
 **Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
 
-**Pricing Selection**: Each package must specify a `pricing_option_id` from the product's available pricing options. The pricing option determines the currency, pricing model (CPM, CPCV, CPP, etc.), and rates. See [Pricing Models](../advanced-topics/pricing-models) for complete documentation.
+**Pricing & Currency**: Each package specifies its own `pricing_option_id`, which determines currency, pricing model (CPM, CPCV, CPP, etc.), and rates. Packages can use different currencies when sellers support it—sellers validate and reject incompatible combinations. See [Pricing Models](../advanced-topics/pricing-models) for details.
 
 **Format Specification Required**: Each package must specify the creative formats that will be used. This enables placeholder creation in ad servers and ensures both parties have clear expectations for creative asset requirements.
 
