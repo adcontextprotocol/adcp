@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": major
+"adcontextprotocol": minor
 ---
 
 Add activation key support for signal protocol with permission-based access. Enables signal agents and buyers to receive activation keys (segment IDs or key-value pairs) based on authenticated permissions.
