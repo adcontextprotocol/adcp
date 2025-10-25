@@ -44,6 +44,9 @@
             "description": "Updated budget allocation for this package in the currency specified by the pricing option",
             "minimum": 0
           },
+          "pacing": {
+            "$ref": "/schemas/v1/enums/pacing.json"
+          },
           "active": {
             "type": "boolean",
             "description": "Pause/resume specific package"

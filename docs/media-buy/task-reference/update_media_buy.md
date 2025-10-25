@@ -34,6 +34,7 @@ Update campaign and package settings. This task supports partial updates and han
 | `package_id` | string | No* | Publisher's ID of package to update |
 | `buyer_ref` | string | No* | Buyer's reference for the package to update |
 | `budget` | number | No | Updated budget allocation for this package in the currency specified by the pricing option |
+| `pacing` | string | No | Pacing strategy: `"even"`, `"asap"`, or `"front_loaded"` |
 | `active` | boolean | No | Pause/resume specific package |
 | `targeting_overlay` | TargetingOverlay | No | Update targeting for this package (see Targeting Overlay Object in create_media_buy) |
 | `creative_ids` | string[] | No | Update creative assignments |
