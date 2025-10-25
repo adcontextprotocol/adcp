@@ -11,44 +11,35 @@
     },
     "deliver_to": {
       "type": "object",
-      "description": "Where the signals need to be delivered",
+      "description": "Destination platforms where signals need to be activated",
       "properties": {
-        "platforms": {
-          "oneOf": [
-            {
-              "type": "string",
-              "const": "all"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ],
-          "description": "Target platforms for signal deployment"
-        },
-        "accounts": {
+        "destinations": {
           "type": "array",
-          "description": "Specific platform-account combinations",
+          "description": "List of destination platforms (DSPs, sales agents, etc.). If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
           "items": {
             "type": "object",
             "properties": {
               "platform": {
                 "type": "string",
-                "description": "Platform identifier"
+                "description": "Platform identifier for DSPs (e.g., 'the-trade-desk', 'amazon-dsp'). Use either platform or agent_url."
+              },
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL identifying the destination agent (for sales agents, etc.). Use either platform or agent_url."
               },
               "account": {
                 "type": "string",
-                "description": "Account identifier on that platform"
+                "description": "Optional account identifier on the platform or agent"
               }
             },
-            "required": [
-              "platform",
-              "account"
+            "oneOf": [
+              {"required": ["platform"]},
+              {"required": ["agent_url"]}
             ],
             "additionalProperties": false
-          }
+          },
+          "minItems": 1
         },
         "countries": {
           "type": "array",
@@ -60,7 +51,7 @@
         }
       },
       "required": [
-        "platforms",
+        "destinations",
         "countries"
       ],
       "additionalProperties": false
