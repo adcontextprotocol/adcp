@@ -22,7 +22,6 @@ Update campaign and package settings. This task supports partial updates and han
 | `active` | boolean | No | Pause/resume the entire media buy |
 | `start_time` | string | No | New campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
 | `end_time` | string | No | New end date/time in ISO 8601 format (UTC unless timezone specified) |
-| `budget` | Budget | No | New budget configuration (see Budget Object in create_media_buy) |
 | `packages` | PackageUpdate[] | No | Package-specific updates (see Package Update Object below) |
 | `push_notification_config` | PushNotificationConfig | No | Optional webhook for async update notifications (see Webhook Configuration below) |
 
@@ -34,7 +33,9 @@ Update campaign and package settings. This task supports partial updates and han
 |-----------|------|----------|-------------|
 | `package_id` | string | No* | Publisher's ID of package to update |
 | `buyer_ref` | string | No* | Buyer's reference for the package to update |
-| `budget` | Budget | No | New budget configuration for this package (see Budget Object in create_media_buy) |
+| `budget` | number | No | Updated budget allocation for this package in the currency specified by the pricing option |
+| `pacing` | string | No | Pacing strategy: `"even"`, `"asap"`, or `"front_loaded"` |
+| `bid_price` | number | No | Updated bid price for auction-based pricing options (only applies to auction packages) |
 | `active` | boolean | No | Pause/resume specific package |
 | `targeting_overlay` | TargetingOverlay | No | Update targeting for this package (see Targeting Overlay Object in create_media_buy) |
 | `creative_ids` | string[] | No | Update creative assignments |
@@ -48,10 +49,12 @@ For long-running updates (typically requiring approval workflows), you can provi
 ```json
 {
   "buyer_ref": "nike_q1_campaign_2024",
-  "budget": {
-    "total": 150000,
-    "currency": "USD"
-  },
+  "packages": [
+    {
+      "buyer_ref": "nike_ctv_sports_package",
+      "budget": 150000
+    }
+  ],
   "push_notification_config": {
     "url": "https://buyer.com/webhooks/media-buy-updates",
     "authentication": {
@@ -119,18 +122,10 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
   "tool": "update_media_buy",
   "arguments": {
     "buyer_ref": "nike_q1_campaign_2024",
-    "budget": {
-      "total": 150000,
-      "currency": "USD",
-      "pacing": "front_loaded"
-    },
     "packages": [
       {
         "buyer_ref": "nike_ctv_sports_package",
-        "budget": {
-          "total": 100000,
-          "currency": "USD"
-        }
+        "budget": 100000
       }
     ]
   }
@@ -140,7 +135,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 ### MCP Response (Synchronous)
 ```json
 {
-  "message": "Successfully updated media buy. Budget increased to $150,000 with front-loaded pacing.",
+  "message": "Successfully updated media buy. CTV package budget increased to $100,000.",
   "status": "completed",
   "media_buy_id": "mb_12345",
   "buyer_ref": "nike_q1_campaign_2024",
@@ -187,18 +182,10 @@ await a2a.send({
         skill: "update_media_buy",
         parameters: {
           buyer_ref: "nike_q1_campaign_2024",
-          budget: {
-            total: 150000,
-            currency: "USD",
-            pacing: "front_loaded"
-          },
           packages: [
             {
               buyer_ref: "nike_ctv_sports_package",
-              budget: {
-                total: 100000,
-                currency: "USD"
-              }
+              budget: 100000
             }
           ]
         }
@@ -217,7 +204,7 @@ A2A returns results as artifacts:
     "parts": [
       {
         "kind": "text",
-        "text": "Successfully updated media buy. Budget increased to $150,000 with front-loaded pacing."
+        "text": "Successfully updated media buy. CTV package budget increased to $100,000."
       },
       {
         "kind": "data",
@@ -296,18 +283,11 @@ data: {"artifacts": [{"name": "update_confirmation", "parts": [{"kind": "text", 
 {
   "buyer_ref": "purina_pet_campaign_q1",
   "end_time": "2024-02-28T23:59:59Z",
-  "budget": {
-    "total": 75000,
-    "currency": "USD"
-  },
   "packages": [
     {
       "buyer_ref": "purina_ctv_package",
-      "budget": {
-        "total": 45000,
-        "currency": "USD",
-        "pacing": "front_loaded"
-      }
+      "budget": 45000,
+      "pacing": "front_loaded"
     },
     {
       "buyer_ref": "purina_audio_package",
@@ -318,7 +298,7 @@ data: {"artifacts": [{"name": "update_confirmation", "parts": [{"kind": "text", 
 ```
 
 #### Response - Immediate Update
-**Message**: "Campaign updated successfully. Budget increased from $50,000 to $75,000 (+50%), giving you more reach for the extended flight through February 28. CTV package switched to front-loaded pacing to allocate more remaining budget earlier in the remaining campaign period, while audio package has been paused. Changes take effect immediately."
+**Message**: "Campaign updated successfully. CTV package budget increased to $45,000 and switched to front-loaded pacing to allocate more remaining budget earlier in the remaining campaign period. Audio package has been paused. Campaign extended through February 28. Changes take effect immediately."
 
 **Payload**:
 ```json
@@ -339,15 +319,17 @@ data: {"artifacts": [{"name": "update_confirmation", "parts": [{"kind": "text", 
 ```json
 {
   "buyer_ref": "purina_pet_campaign_q1",
-  "budget": {
-    "total": 150000,
-    "currency": "USD"
-  }
+  "packages": [
+    {
+      "buyer_ref": "purina_ctv_package",
+      "budget": 150000
+    }
+  ]
 }
 ```
 
 #### Response - Pending Approval
-**Message**: "Budget increase to $150,000 requires manual approval due to the significant change (+200%). This typically takes 2-4 hours during business hours. Your campaign continues to deliver at the current $50,000 budget until approved. I'll notify you once the increase is approved."
+**Message**: "CTV package budget increase to $150,000 requires manual approval due to the significant change (+400%). This typically takes 2-4 hours during business hours. Your campaign continues to deliver at the current budget until approved. I'll notify you once the increase is approved."
 
 **Payload**:
 ```json
