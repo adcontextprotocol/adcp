@@ -47,6 +47,11 @@
           "pacing": {
             "$ref": "/schemas/v1/enums/pacing.json"
           },
+          "bid_price": {
+            "type": "number",
+            "description": "Updated bid price for auction-based pricing options (only applies when pricing_option is auction-based)",
+            "minimum": 0
+          },
           "active": {
             "type": "boolean",
             "description": "Pause/resume specific package"
