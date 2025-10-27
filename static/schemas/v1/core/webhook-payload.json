@@ -10,9 +10,8 @@
       "description": "Unique identifier for this task. Use this to correlate webhook notifications with the original task submission."
     },
     "task_type": {
-      "type": "string",
-      "description": "Type of AdCP operation that triggered this webhook. Enables webhook handlers to route to appropriate processing logic.",
-      "enum": ["create_media_buy", "update_media_buy", "sync_creatives", "activate_signal", "get_signals"]
+      "$ref": "/schemas/v1/enums/task-type.json",
+      "description": "Type of AdCP operation that triggered this webhook. Enables webhook handlers to route to appropriate processing logic."
     },
     "domain": {
       "type": "string",

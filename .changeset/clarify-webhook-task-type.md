@@ -6,6 +6,8 @@ Clarify webhook payload structure with explicit required fields documentation.
 
 **Changes:**
 - Added new `webhook-payload.json` schema documenting the complete structure of webhook POST payloads
+- Added new `task-type.json` enum schema with all valid AdCP task types
+- Refactored task schemas to use `$ref` to task-type enum (eliminates duplication across 4 schemas)
 - Updated task management documentation to explicitly list required webhook fields: `task_id`, `task_type`, `domain`, `status`, `created_at`, `updated_at`
 - Enhanced webhook examples to show all required protocol-level fields
 - Added schema reference link for webhook payload structure

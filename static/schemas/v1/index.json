@@ -189,6 +189,10 @@
         "task-status": {
           "$ref": "/schemas/v1/enums/task-status.json",
           "description": "Standardized task status values based on A2A TaskState enum"
+        },
+        "task-type": {
+          "$ref": "/schemas/v1/enums/task-type.json",
+          "description": "Valid AdCP task types across all domains (create_media_buy, update_media_buy, sync_creatives, activate_signal, get_signals)"
         }
       }
     },
