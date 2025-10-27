@@ -90,15 +90,8 @@
             "description": "Unique identifier for this task"
           },
           "task_type": {
-            "type": "string",
-            "description": "Type of AdCP operation",
-            "enum": [
-              "create_media_buy",
-              "update_media_buy",
-              "sync_creatives",
-              "activate_signal",
-              "get_signals"
-            ]
+            "$ref": "/schemas/v1/enums/task-type.json",
+            "description": "Type of AdCP operation"
           },
           "domain": {
             "type": "string",

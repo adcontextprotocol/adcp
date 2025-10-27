@@ -466,6 +466,18 @@ const response = await session.call('create_media_buy',
 
 When a task's status changes, the publisher POSTs the **complete task response object** to your webhook URL.
 
+**Webhook Payload Schema**: [`/schemas/v1/core/webhook-payload.json`](/schemas/v1/core/webhook-payload.json)
+
+**Required fields in all webhook payloads:**
+- `task_id` - Unique identifier for the task
+- `task_type` - Type of AdCP operation (e.g., "create_media_buy", "sync_creatives", "activate_signal")
+- `domain` - AdCP domain ("media-buy" or "signals")
+- `status` - Current task status
+- `created_at` - Task creation timestamp
+- `updated_at` - Last update timestamp
+
+These fields are always present regardless of task type or status, enabling webhook handlers to properly route and process notifications.
+
 **Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted` (long-running operations).
 
 **When webhooks are NOT triggered:**
@@ -486,8 +498,12 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
-  "status": "input-required",
   "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "domain": "media-buy",
+  "status": "input-required",
+  "created_at": "2025-01-22T10:00:00Z",
+  "updated_at": "2025-01-22T10:15:00Z",
   "buyer_ref": "nike_q1_campaign_2024",
   "message": "Campaign budget $150K requires VP approval to proceed"
 }
@@ -501,7 +517,13 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "domain": "media-buy",
   "status": "completed",
+  "created_at": "2025-01-22T10:00:00Z",
+  "updated_at": "2025-01-22T10:30:00Z",
+  "completed_at": "2025-01-22T10:30:00Z",
   "media_buy_id": "mb_12345",
   "buyer_ref": "nike_q1_campaign_2024",
   "creative_deadline": "2024-01-30T23:59:59Z",
