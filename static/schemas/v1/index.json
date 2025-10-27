@@ -132,6 +132,10 @@
         "placement": {
           "$ref": "/schemas/v1/core/placement.json",
           "description": "Represents a specific ad placement within a product's inventory"
+        },
+        "webhook-payload": {
+          "$ref": "/schemas/v1/core/webhook-payload.json",
+          "description": "Webhook payload structure sent when async task status changes - combines protocol-level task metadata (task_id, task_type, domain, status, timestamps) with domain-specific response data"
         }
       }
     },
