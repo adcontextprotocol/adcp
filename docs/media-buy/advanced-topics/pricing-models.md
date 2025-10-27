@@ -366,46 +366,32 @@ Publishers can offer the same product in multiple currencies:
 
 ## Buyer Selection Process
 
-Currency is set at the **media buy level**, packages specify their pricing option and budget allocation:
+Each package specifies its own pricing option, which determines currency and pricing model:
 
 ```json
 {
   "buyer_ref": "campaign_001",
-  "budget": {
-    "total": 100000,
-    "currency": "USD"
-  },
   "start_time": "2025-01-01T00:00:00Z",
   "end_time": "2025-01-31T23:59:59Z",
   "promoted_offering": "Q1 Brand Campaign",
   "packages": [{
     "buyer_ref": "pkg_ctv",
-    "products": ["premium_ctv"],
-    "format_ids": [
-      {
-        "agent_url": "https://creatives.adcontextprotocol.org",
-        "id": "video_15s"
-      },
-      {
-        "agent_url": "https://creatives.adcontextprotocol.org",
-        "id": "video_30s"
-      }
-    ],
+    "product_id": "premium_ctv",
+    "format_ids": [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_30s"}],
+    "pricing_option_id": "cpcv_usd_auction",
     "budget": 50000,
     "pacing": "even",
-    "pricing_option_id": "cpcv_usd_auction",
     "bid_price": 0.16
   }]
 }
 ```
 
 **How it works:**
-1. Media buy sets overall `budget.currency` (e.g., "USD") - applies to all packages
-2. Each package selects a specific `pricing_option_id` from the product (e.g., "cpcv_usd_auction")
-3. The pricing option ID fully specifies the pricing model, currency, and whether it's fixed or auction
-4. Package sets its budget allocation as a number in the media buy's currency
-5. Package can specify `pacing` strategy (even, frontload, etc.)
-6. If the selected pricing option is auction-based (`is_fixed: false`), package must include `bid_price`
+1. Package selects `pricing_option_id` from product (e.g., "cpcv_usd_auction")
+2. Pricing option determines currency, pricing model, and fixed vs auction
+3. Package `budget` is in the pricing option's currency
+4. Auction-based pricing requires `bid_price`
+5. Sellers validate currency compatibility across packages
 
 ## Reporting Metrics by Pricing Model
 
