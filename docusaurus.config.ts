@@ -89,6 +89,8 @@ const config: Config = {
             // Enable both content cleaning options for optimal LLM output
             excludeImports: true,
             removeDuplicateHeadings: true,
+            description: 'Open standard for advertising automation and AI-powered workflows. Built on Model Context Protocol (MCP) for unified programmatic advertising.',
+
         },
     ],
     [
