@@ -28,7 +28,7 @@ See the [Quickstart Guide](../../quickstart.md#understanding-authentication) for
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `brief` | string | No | Natural language description of campaign requirements |
-| `promoted_offering` | string | Yes | Description of advertiser and what is being promoted |
+| `brand_manifest` | BrandManifest \| string | No | Brand information manifest providing brand context, assets, and product catalog. Can be provided inline as an object or as a URL reference to a hosted manifest. Sales agents can decide whether brand context is necessary for product recommendations. |
 | `filters` | Filters | No | Structured filters for product discovery (see Filters Object below) |
 
 ### Filters Object
@@ -343,7 +343,6 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
   "tool": "get_products",
   "arguments": {
     "brief": "Premium video inventory for sports fans",
-    "promoted_offering": "Nike Air Max 2024 - latest innovation in cushioning",
     "filters": {
       "format_types": ["video"],
       "delivery_type": "guaranteed"
@@ -398,7 +397,7 @@ await a2a.send({
   message: {
     parts: [{
       kind: "text",
-      text: "Find premium video inventory for sports fans. We're promoting Nike Air Max 2024 - latest innovation in cushioning. Looking for guaranteed delivery."
+      text: "Find premium video inventory for sports fans. Looking for guaranteed delivery."
     }]
   }
 });
@@ -411,7 +410,7 @@ await a2a.send({
     parts: [
       {
         kind: "text",
-        text: "Looking for sports inventory for Nike campaign"  // Optional context
+        text: "Looking for sports inventory for campaign"  // Optional context
       },
       {
         kind: "data",
@@ -419,7 +418,6 @@ await a2a.send({
           skill: "get_products",  // Must match skill name in Agent Card
           parameters: {
             brief: "Premium video inventory for sports fans",
-            promoted_offering: "Nike Air Max 2024 - latest innovation in cushioning",
             filters: {
               format_types: ["video"],
               delivery_type: "guaranteed"
@@ -493,7 +491,6 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
 **Request:**
 ```json
 {
-  "promoted_offering": "Nike Air Max 2024",
   "filters": {
     "min_exposures": 10000
   }
@@ -526,19 +523,14 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
 ### Request with Natural Language Brief
 ```json
 {
-    // First request, no context yet
-  "brief": "Looking for premium sports inventory",
-  "promoted_offering": "Nike Air Max 2024 - the latest innovation in cushioning technology featuring sustainable materials, targeting runners and fitness enthusiasts"
+  "brief": "Looking for premium sports inventory"
 }
 ```
 ### Request for Run-of-Network (No Brief)
 ```json
 {
-    // First request, no context yet
-  "promoted_offering": "Tesla Model 3 - electric vehicle with autopilot",
-  "brief": null,  // No brief = run-of-network request
   "filters": {
-    "delivery_type": "non_guaranteed",  // Programmatic inventory
+    "delivery_type": "non_guaranteed",
     "format_types": ["video", "display"],
     "standard_formats_only": true
   }
@@ -547,8 +539,7 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
 ### Request with Structured Filters
 ```json
 {
-    // First request, no context yet
-  "promoted_offering": "Peloton Digital Membership - unlimited access to live and on-demand fitness classes, promoting New Year special pricing",
+  "brief": "Fitness enthusiasts interested in home workouts",
   "filters": {
     "delivery_type": "guaranteed",
     "format_types": ["video"],
@@ -560,9 +551,7 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
 ### Retail Media Request
 ```json
 {
-    // First request, no context yet
-  "brief": "Target pet owners who shop at our stores using our first-party data",
-  "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs"
+  "brief": "Target pet owners who shop at our stores using our first-party data"
 }
 ```
 ### Response - Run-of-Network (No Recommendations)
@@ -738,19 +727,16 @@ When the promoted offering is subject to policy restrictions, the response will 
 }
 ```
 ## Usage Notes
-- The `promoted_offering` field is required and must clearly describe the advertiser and what is being promoted
 - The `brief` field is optional - omit it to signal a run-of-network request
 - **No brief = Run-of-network**: Publisher returns broad reach products, not the entire catalog
 - Format filtering ensures advertisers only see inventory that matches their creative capabilities
 - If no brief is provided, returns run-of-network products (high-volume, broad reach inventory)
 - The `brief_relevance` field is only included when a brief parameter is provided
 - Products represent available advertising inventory with specific targeting, format, and pricing characteristics
-- Policy compliance checks may filter out products based on the promoted offering
 - The `message` field provides a human-readable summary of the response
 - Publishers may request clarification when briefs are incomplete
 ## Brief Requirements
 For comprehensive guidance on brief structure and expectations, see the [Brief Expectations](../product-discovery/brief-expectations) documentation. Key points:
-- **Required**: The `promoted_offering` field must clearly describe the advertiser and what is being promoted
 - **Optional**: The `brief` field - include for recommendations, omit for run-of-network
 - **Run-of-Network**: Omit brief to get broad reach products (not entire catalog)
 - **Recommendations**: Include brief when you want publisher help selecting products
@@ -790,7 +776,6 @@ Use format knowledge to filter products:
 const products = await client.call_tool("get_products", {
   context_id: null,
   brief: "Reach young adults interested in gaming",
-  promoted_offering: "Discord Nitro subscription - premium features for gamers including HD video streaming and larger file uploads",
   filters: {
     format_types: ["audio"],
     standard_formats_only: true
@@ -825,8 +810,8 @@ def get_product_catalog():
         # Add more products...
     ]
 ```
-### Step 2: Implement Policy Checking and Natural Language Processing
-The `get_products` tool needs to validate the promoted offering and interpret briefs:
+### Step 2: Implement Natural Language Processing
+The `get_products` tool needs to interpret briefs and filter products:
 ```python
 @mcp.tool
 def get_products(req: GetProductsRequest, context: Context) -> GetProductsResponse:
@@ -834,26 +819,8 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
     principal_id = _get_principal_id_from_context(context)
     # Get context
     context_id = req.context_id or _create_context()
-    # Validate promoted offering is provided
-    if not req.promoted_offering:
-        raise ToolError("Promoted offering description is required", code="MISSING_PROMOTED_OFFERING")
-    # Run policy checks on promoted offering
-    policy_result = check_promoted_offering_policy(req.promoted_offering)
-    # Handle policy violations
-    if policy_result.status == "blocked":
-        return GetProductsResponse(
-            message=f"I'm unable to offer products for this campaign. {policy_result.message}",
-            context_id=context_id,
-            products=[]
-        )
-    elif policy_result.status == "restricted":
-        return GetProductsResponse(
-            message=f"{policy_result.message} Please contact {policy_result.contact} for approval.",
-            context_id=context_id,
-            products=[]
-        )
-    # Get products filtered by policy
-    all_products = get_products_for_category(policy_result.category)
+    # Get all available products
+    all_products = get_product_catalog()
     # If no brief provided, return run-of-network products
     if not req.brief:
         # Filter for broad reach, high-volume products
@@ -996,27 +963,6 @@ def get_products_for_principal(principal_id: str) -> List[Product]:
     # Filter based on principal's access level
     return filter_by_principal_access(products, principal_id)
 ```
-## Policy Checking
-Implement policy checks for the promoted offering:
-```python
-def check_promoted_offering_policy(promoted_offering: str) -> PolicyResult:
-    # Extract advertiser and category from promoted_offering
-    advertiser, category = extract_advertiser_info(promoted_offering)
-    # Check against blocked categories
-    if category in BLOCKED_CATEGORIES:
-        return PolicyResult(
-            status="blocked",
-            message=f"{category} advertising is not permitted on this publisher"
-        )
-    # Check against restricted categories
-    if category in RESTRICTED_CATEGORIES:
-        return PolicyResult(
-            status="restricted",
-            message=f"{category} advertising requires manual approval",
-            contact="sales@publisher.com"
-        )
-    return PolicyResult(status="allowed", category=category)
-```
 ## Error Handling
 Common error scenarios and handling:
 ```python
@@ -1026,24 +972,8 @@ def get_products(req: GetProductsRequest, context: Context) -> GetProductsRespon
         principal_id = _get_principal_id_from_context(context)
     except:
         raise ToolError("Authentication required", code="AUTH_REQUIRED")
-    if not req.promoted_offering:
-        raise ToolError("Promoted offering description is required", code="MISSING_PROMOTED_OFFERING")
     if req.brief and len(req.brief) > 1000:
         raise ToolError("Brief too long", code="INVALID_REQUEST")
-    # Policy violations are handled in the response, not as errors
-    policy_result = check_promoted_offering_policy(req.promoted_offering)
-    if policy_result.status == "blocked":
-        return GetProductsResponse(
-            message=f"I'm unable to offer products for this campaign. {policy_result.message}",
-            context_id=context_id,
-            products=[]
-        )
-    elif policy_result.status == "restricted":
-        return GetProductsResponse(
-            message=f"{policy_result.message} Please contact {policy_result.contact} for manual approval.",
-            context_id=context_id,
-            products=[]
-        )
     # Continue with normal processing...
 ```
 ## Testing Discovery
