@@ -28,7 +28,7 @@ See the [Quickstart Guide](../../quickstart.md#understanding-authentication) for
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `brief` | string | No | Natural language description of campaign requirements |
-| `promoted_offering` | string | Yes | Description of advertiser and what is being promoted |
+| `brand_manifest` | BrandManifest \| string | No | Brand information manifest providing brand context, assets, and product catalog. Can be provided inline as an object or as a URL reference to a hosted manifest. Sales agents can decide whether brand context is necessary for product recommendations. |
 | `filters` | Filters | No | Structured filters for product discovery (see Filters Object below) |
 
 ### Filters Object
