@@ -14,8 +14,8 @@ Discover which publishers this sales agent is authorized to represent, similar t
 - Single source of truth - all details (properties, authorization scope) come from publisher's adagents.json
 - One-time discovery to cache publisher-agent relationships
 
-**Request Schema**: [`/schemas/v1/media-buy/list-authorized-properties-request.json`](/schemas/v1/media-buy/list-authorized-properties-request.json)
-**Response Schema**: [`/schemas/v1/media-buy/list-authorized-properties-response.json`](/schemas/v1/media-buy/list-authorized-properties-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-response.json)
 
 ## Request Parameters
 
@@ -52,7 +52,7 @@ The message is returned differently in each protocol:
   - See property definitions
   - Verify this agent is in their authorized_agents list
   - Check authorization scope (property_ids, property_tags, or all properties)
-- **primary_channels** *(optional)*: Main advertising channels (see [Channels enum](/schemas/v1/enums/channels.json))
+- **primary_channels** *(optional)*: Main advertising channels (see [Channels enum](https://adcontextprotocol.org/schemas/v1/enums/channels.json))
 - **primary_countries** *(optional)*: Main countries (ISO 3166-1 alpha-2 codes)
 - **portfolio_description** *(optional)*: Markdown description of the agent's portfolio and capabilities
 - **advertising_policies** *(optional)*: Agent's policies and restrictions (publisher-specific policies come from publisher's adagents.json)
@@ -190,7 +190,7 @@ if (response.primary_channels?.includes('dooh') &&
 
 **`primary_channels`** *(optional)*: Main advertising channels in this portfolio
 - Values: `"display"`, `"video"`, `"dooh"`, `"ctv"`, `"podcast"`, `"retail"`, etc.
-- See [Channels enum](/schemas/v1/enums/channels.json) for full list
+- See [Channels enum](https://adcontextprotocol.org/schemas/v1/enums/channels.json) for full list
 - Helps filter "Do you have DOOH?" before examining properties
 
 **`primary_countries`** *(optional)*: Main countries (ISO 3166-1 alpha-2 codes)

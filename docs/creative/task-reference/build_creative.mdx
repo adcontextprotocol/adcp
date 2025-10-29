@@ -16,7 +16,7 @@ For information about format IDs and how to reference formats, see [Creative For
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. |
-| `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](/schemas/v1/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets (e.g., `promoted_offerings` for generative formats). For transformation, this is the complete creative to adapt. |
+| `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/v1/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets (e.g., `promoted_offerings` for generative formats). For transformation, this is the complete creative to adapt. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
 
 **Important**: Required inputs like `promoted_offerings` should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires.

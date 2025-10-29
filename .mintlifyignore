@@ -1,8 +1,11 @@
 node_modules
 .docusaurus
-build
+build/**
 src
 tsconfig.json
 docusaurus.config.ts
 sidebars.ts
 babel.config.js
+CLAUDE.md
+README.md
+static/**
