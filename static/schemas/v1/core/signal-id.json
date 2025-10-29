@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/signal-id.json",
+  "title": "Signal ID",
+  "description": "Structured signal identifier with agent URL and signal name",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the agent that defines this signal (e.g., 'https://liveramp.com' for LiveRamp signals, or 'https://publisher.com/.well-known/adcp/signals' for custom signals)"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Signal identifier within the agent's namespace (e.g., 'cats-that-use-ai', 'luxury_auto_intenders')"
+    }
+  },
+  "required": ["agent_url", "id"],
+  "additionalProperties": false
+}
