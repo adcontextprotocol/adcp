@@ -1,0 +1,435 @@
+---
+sidebar_position: 2
+title: MCP Guide
+description: Integrate AdCP with Model Context Protocol (MCP). Transport-specific guide for tool calls, context management, and wire format.
+keywords: [MCP integration, Model Context Protocol, tool calls, context management, wire format]
+---
+
+# MCP Integration Guide
+
+Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](./core-concepts.mdx).
+
+## Testing AdCP via MCP
+
+You can test AdCP tasks using the reference implementation at [testing.adcontextprotocol.org](https://testing.adcontextprotocol.org). This endpoint implements all AdCP tasks as MCP tools and is useful for development and integration testing.
+
+## Tool Call Patterns
+
+### Basic Tool Invocation
+
+```javascript
+// Standard MCP tool call
+const response = await mcp.call('get_products', {
+  brief: "Video campaign for pet owners",
+  promoted_offering: "Premium dog food"
+});
+
+// All responses include status field (AdCP 1.6.0+)
+console.log(response.status);   // "completed" | "input-required" | "working" | etc.
+console.log(response.message);  // Human-readable summary
+```
+
+### Tool Call with Filters
+
+```javascript
+// Structured parameters
+const response = await mcp.call('get_products', {
+  filters: {
+    format_types: ["video"],
+    delivery_type: "guaranteed", 
+    max_cpm: 50
+  },
+  promoted_offering: "Sports betting app"
+});
+```
+
+## MCP Response Format
+
+**New in AdCP 1.6.0**: All responses include unified status field.
+
+```json
+{
+  "status": "completed",           // Unified status (see Core Concepts)
+  "message": "Found 5 products",  // Human-readable summary  
+  "context_id": "ctx-abc123",     // MCP session continuity
+  "data": {                       // Task-specific structured data
+    "products": [...],
+    "errors": [...]               // Task-level errors/warnings
+  }
+}
+```
+
+### MCP-Specific Fields
+- **context_id**: Session identifier that you must manually manage
+- **data**: Direct JSON structure (vs. A2A's artifact parts)
+- **status**: Same values as A2A protocol for consistency
+
+**Status Handling**: See [Core Concepts](./core-concepts.mdx) for complete status handling patterns.
+
+## Available Tools
+
+All AdCP tasks are available as MCP tools:
+
+### Media Buy Tools
+```javascript
+await mcp.call('get_products', {...});           // Discover inventory
+await mcp.call('list_creative_formats', {...});  // Get format specs
+await mcp.call('create_media_buy', {...});       // Create campaigns  
+await mcp.call('update_media_buy', {...});       // Modify campaigns
+await mcp.call('sync_creatives', {...});         // Manage creative assets
+await mcp.call('get_media_buy_delivery', {...}); // Performance metrics
+await mcp.call('list_authorized_properties', {...}); // Available properties
+await mcp.call('provide_performance_feedback', {...}); // Share outcomes
+```
+
+### Task Management Tools
+```javascript
+await mcp.call('tasks/list', {...});          // List and filter async tasks
+await mcp.call('tasks/get', {...});           // Poll specific task status
+```
+
+### Signals Tools
+```javascript
+await mcp.call('get_signals', {...});      // Discover audience signals
+await mcp.call('activate_signal', {...});  // Deploy signals to platforms
+```
+
+**Task Parameters**: See individual task documentation in [Media Buy](../media-buy/index.mdx) and [Signals](../signals/overview.mdx) sections.
+
+**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Task Management](./task-management.mdx).
+
+## Context Management (MCP-Specific)
+
+**Critical**: MCP requires manual context management. You must pass `context_id` to maintain conversation state.
+
+### Context Session Pattern
+
+```javascript
+class McpAdcpSession {
+  constructor(mcpClient) {
+    this.mcp = mcpClient;
+    this.contextId = null;
+    this.activeTasks = new Map(); // Track async operations
+  }
+  
+  async call(tool, params, options = {}) {
+    // Build request with protocol-level fields
+    const request = {
+      tool: tool,
+      arguments: params
+    };
+    
+    // Include context from previous calls
+    if (this.contextId) {
+      request.context_id = this.contextId;
+    }
+    
+    // Include webhook configuration (protocol-level, A2A-compatible)
+    if (options.push_notification_config) {
+      request.push_notification_config = options.push_notification_config;
+    }
+    
+    const response = await this.mcp.call(request);
+    
+    // Save context for next call
+    this.contextId = response.context_id;
+    
+    // Track async operations
+    if (response.task_id) {
+      this.activeTasks.set(response.task_id, {
+        tool,
+        params,
+        startTime: new Date(),
+        status: response.status
+      });
+    }
+    
+    return response;
+  }
+  
+  reset() {
+    this.contextId = null;
+    this.activeTasks.clear();
+  }
+  
+  // Poll specific task
+  async pollTask(taskId, includeResult = false) {
+    return this.call('tasks/get', { 
+      task_id: taskId, 
+      include_result: includeResult 
+    });
+  }
+  
+  // List pending tasks
+  async listPendingTasks() {
+    return this.call('tasks/list', {
+      filters: {
+        statuses: ["submitted", "working", "input-required"]
+      }
+    });
+  }
+  
+  // State reconciliation helper
+  async reconcileState() {
+    const pending = await this.listPendingTasks();
+    const serverTasks = new Set(pending.tasks.map(t => t.task_id));
+    const clientTasks = new Set(this.activeTasks.keys());
+    
+    return {
+      missing_from_client: [...serverTasks].filter(id => !clientTasks.has(id)),
+      missing_from_server: [...clientTasks].filter(id => !serverTasks.has(id)),
+      total_pending: pending.tasks.length
+    };
+  }
+}
+```
+
+### Usage Examples
+
+#### Basic Session with Context
+```javascript
+const session = new McpAdcpSession(mcp);
+
+// First call - no context needed
+const products = await session.call('get_products', {
+  brief: "Sports campaign"
+});
+
+// Follow-up - context automatically included
+const refined = await session.call('get_products', {
+  brief: "Focus on premium CTV"
+});
+// Session remembers previous interaction
+```
+
+#### Async Operations with Webhooks
+```javascript
+// Create media buy with webhook configuration
+const response = await session.call('create_media_buy',
+  {
+    buyer_ref: "nike_q1_2025",
+    packages: [...],
+    budget: { total: 150000, currency: "USD" }
+  },
+  {
+    push_notification_config: {
+      url: "https://buyer.com/webhooks/adcp",
+      authentication: {
+        schemes: ["HMAC-SHA256"],  // or ["Bearer"] for simple auth
+        credentials: "shared_secret_32_chars"
+      }
+    }
+  }
+);
+
+if (response.status === 'submitted') {
+  console.log(`Task ${response.task_id} submitted for long-running execution`);
+  // Webhook will notify when complete, or poll manually
+} else if (response.status === 'completed') {
+  console.log(`Media buy created: ${response.media_buy_id}`);
+}
+```
+
+#### Task Management and Polling
+```javascript
+// Check status of specific task
+const taskStatus = await session.pollTask('task_456', true);
+if (taskStatus.status === 'completed') {
+  console.log('Result:', taskStatus.result);
+}
+
+// State reconciliation
+const reconciliation = await session.reconcileState();
+if (reconciliation.missing_from_client.length > 0) {
+  console.log('Found orphaned tasks:', reconciliation.missing_from_client);
+  // Start tracking these tasks
+}
+
+// List all pending operations
+const pending = await session.listPendingTasks();
+console.log(`${pending.tasks.length} operations in progress`);
+```
+
+### Context Expiration Handling
+
+```javascript
+async function handleContextExpiration(session, tool, params) {
+  try {
+    return await session.call(tool, params);
+  } catch (error) {
+    if (error.message?.includes('context not found')) {
+      // Context expired - start fresh
+      session.reset();
+      return session.call(tool, params);
+    }
+    throw error;
+  }
+}
+```
+
+**Key Difference**: Unlike A2A which manages context automatically, MCP requires explicit context_id management.
+
+## Async Operations (MCP-Specific)
+
+MCP handles long-running operations through polling with `context_id`:
+
+### Polling Pattern
+
+```javascript
+async function waitForCompletion(session, initialResponse) {
+  if (!initialResponse.task_id) {
+    return initialResponse; // Already completed
+  }
+  
+  let pollInterval = initialResponse.status === 'working' ? 5000 : 30000;
+  
+  while (true) {
+    // Poll using tasks/get with task_id
+    const response = await session.pollTask(initialResponse.task_id, true);
+    
+    if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      return response;
+    }
+    
+    if (response.status === 'input-required') {
+      // Handle user input requirement
+      const input = await promptUser(response.message);
+      // Continue conversation with context_id
+      return session.call('create_media_buy', {
+        context_id: response.context_id,
+        additional_info: input
+      });
+    }
+    
+    // Adjust polling frequency based on status
+    pollInterval = response.status === 'working' ? 5000 : 30000;
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+}
+```
+
+### Async Operation Example
+
+```javascript
+// Start async operation
+const initial = await session.call('create_media_buy', {
+  buyer_ref: "nike_q1_2025",
+  packages: [...],
+  budget: { total: 100000, currency: "USD" }
+});
+
+switch (initial.status) {
+  case 'completed':
+    console.log('Created immediately:', initial.media_buy_id);
+    break;
+    
+  case 'working':
+    console.log('Processing, will complete within 2 minutes...');
+    const final = await waitForCompletion(session, initial);
+    console.log('Created:', final.result.media_buy_id);
+    break;
+    
+  case 'submitted':
+    console.log(`Queued for approval - long-running operation`);
+    console.log(`Track with task ID: ${initial.task_id}`);
+    // Use webhook or poll manually
+    break;
+    
+  case 'input-required':
+    console.log('Need additional info:', initial.message);
+    // Handle user input
+    break;
+}
+```
+
+**Note**: Use `tasks/get` for polling specific tasks, or `tasks/list` for state reconciliation. See [Task Management](./task-management.mdx) for complete documentation on task tracking patterns and webhook integration.
+
+## Integration Example
+
+```javascript
+// Initialize MCP session with context management
+const session = new McpAdcpSession(mcp);
+
+// Use unified status handling (see Core Concepts)
+async function handleAdcpCall(tool, params, options = {}) {
+  const response = await session.call(tool, params, options);
+  
+  switch (response.status) {
+    case 'input-required':
+      // Handle clarification (see Core Concepts for patterns)
+      const input = await promptUser(response.message);
+      return session.call(tool, { ...params, additional_info: input });
+      
+    case 'working':
+      // Handle short async operations 
+      return waitForCompletion(session, response);
+      
+    case 'submitted':
+      // Handle long async operations
+      if (options.webhook_url) {
+        console.log(`Task ${response.task_id} submitted, webhook will notify`);
+        return { pending: true, task_id: response.task_id };
+      } else {
+        console.log(`Task ${response.task_id} submitted, polling...`);
+        return waitForCompletion(session, response);
+      }
+      
+    case 'completed':
+      return response.data || response.result;
+      
+    case 'failed':
+      throw new Error(response.message);
+  }
+}
+
+// Example usage
+const products = await handleAdcpCall('get_products', {
+  brief: "CTV campaign for luxury cars"
+});
+```
+
+## MCP-Specific Considerations
+
+### Tool Discovery
+```javascript
+// List available AdCP tools
+const tools = await mcp.listTools();
+const adcpTools = tools.filter(t => t.name.startsWith('adcp_') || 
+  ['get_products', 'create_media_buy'].includes(t.name));
+```
+
+### Parameter Validation
+```javascript
+// MCP provides tool schemas for validation
+const toolSchema = await mcp.getToolSchema('get_products');
+// Use schema to validate parameters before calling
+```
+
+### Error Handling
+```javascript
+try {
+  const response = await session.call('get_products', params);
+} catch (mcpError) {
+  // MCP transport errors (connection, auth, etc.)
+  console.error('MCP Error:', mcpError);
+} 
+
+// AdCP task errors come in response.status === 'failed'
+```
+
+## Best Practices
+
+1. **Use session wrapper** for automatic context management
+2. **Check status field** before processing response data  
+3. **Handle context expiration** gracefully with retries
+4. **Reference Core Concepts** for status handling patterns
+5. **Validate parameters** using MCP tool schemas when available
+
+## Next Steps
+
+- **Core Concepts**: Read [Core Concepts](./core-concepts.mdx) for status handling and workflows
+- **Task Reference**: See [Media Buy Tasks](../media-buy/index.mdx) and [Signals](../signals/overview.mdx)
+- **Protocol Comparison**: Compare with [A2A integration](./a2a-guide.mdx)
+- **Examples**: Find complete workflow examples in Core Concepts
+
+**For status handling, async operations, and clarification patterns, see [Core Concepts](./core-concepts.mdx) - this guide focuses on MCP transport specifics only.**

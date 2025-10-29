@@ -5,9 +5,12 @@
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
+    "start:mintlify": "NODE_ENV=production npx --yes mintlify@latest dev --port 3001",
     "build": "docusaurus build",
+    "build:mintlify": "cd mintlify-docs && mintlify build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
+    "deploy:mintlify": "mintlify deploy",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
@@ -45,6 +48,7 @@
     "ajv-formats": "^3.0.1",
     "glob": "^11.0.3",
     "husky": "^9.0.11",
+    "mintlify": "^4.2.177",
     "typescript": "~5.6.2"
   },
   "browserslist": {

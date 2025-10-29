@@ -1,0 +1,8 @@
+node_modules
+.docusaurus
+build
+src
+tsconfig.json
+docusaurus.config.ts
+sidebars.ts
+babel.config.js
