@@ -1,0 +1,247 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Creative Agent API",
+    "version": "2.2.0",
+    "description": "The Creative Agent API implements the Creative Protocol, enabling AI agents to discover creative formats, generate assets, preview creatives, and manage creative manifests.",
+    "contact": {
+      "name": "AdCP Support",
+      "url": "https://adcontextprotocol.org",
+      "email": "support@adcontextprotocol.org"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://creative.adcontextprotocol.org",
+      "description": "Creative Agent API Server"
+    }
+  ],
+  "paths": {
+    "/mcp/v1/list_creative_formats": {
+      "post": {
+        "summary": "List Creative Formats",
+        "description": "Discover available creative formats with their requirements, dimensions, and asset specifications.",
+        "operationId": "list_creative_formats",
+        "tags": [
+          "Format Discovery"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/creative/list-creative-formats-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/creative/list-creative-formats-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/v1/build_creative": {
+      "post": {
+        "summary": "Build Creative",
+        "description": "Generate creative assets from a natural language brief using AI.",
+        "operationId": "build_creative",
+        "tags": [
+          "Generative Creative"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/creative/build-creative-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/creative/build-creative-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/v1/preview_creative": {
+      "post": {
+        "summary": "Preview Creative",
+        "description": "Generate preview renderings of a creative manifest to see how it will appear.",
+        "operationId": "preview_creative",
+        "tags": [
+          "Creative Preview"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/creative/preview-creative-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/creative/preview-creative-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/v1/list_creatives": {
+      "post": {
+        "summary": "List Creatives",
+        "description": "Retrieve a list of creative manifests stored by the creative agent.",
+        "operationId": "list_creatives",
+        "tags": [
+          "Creative Management"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/creative/list-creatives-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/creative/list-creatives-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Format Discovery"
+    },
+    {
+      "name": "Generative Creative"
+    },
+    {
+      "name": "Creative Preview"
+    },
+    {
+      "name": "Creative Management"
+    }
+  ]
+}

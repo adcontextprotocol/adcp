@@ -649,7 +649,7 @@ git push            # Push to remote
 2. Keep the specification abstract
 3. Focus on protocol capabilities, not implementation
 4. Ask for clarification on design decisions
-5. Refer to the [API Reference](docs/media-buy/api-reference.md) for tool signatures
+5. Refer to the [Task Reference](docs/media-buy/task-reference/index.mdx) for tool signatures
 
 ## Standard Formats: Lessons Learned
 
