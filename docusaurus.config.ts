@@ -141,8 +141,7 @@ const config: Config = {
       },
       items: [
         {
-          type: 'docSidebar',
-          sidebarId: 'tutorialSidebar',
+          href: 'https://docs.adcontextprotocol.org',
           position: 'left',
           label: 'Docs',
         },
@@ -161,11 +160,11 @@ const config: Config = {
           items: [
             {
               label: 'Getting Started',
-              to: '/docs/intro',
+              href: 'https://docs.adcontextprotocol.org/docs/intro',
             },
             {
               label: 'Signals Protocol',
-              to: '/docs/signals/overview',
+              href: 'https://docs.adcontextprotocol.org/docs/signals/overview',
             },
           ],
         },
@@ -178,7 +177,7 @@ const config: Config = {
             },
             {
               label: 'Working Group',
-              href: '/docs/community/working-group',
+              href: 'https://docs.adcontextprotocol.org/docs/community/working-group',
             },
           ],
         },
