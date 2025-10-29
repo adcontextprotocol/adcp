@@ -8,7 +8,7 @@ keywords: [advertising automation protocol, programmatic advertising API, MCP ad
 # Getting Started with Ad Context Protocol
 
 :::info **🎉 AdCP v2.3.0 Released**
-Major improvements: Publisher-owned property definitions via adagents.json, placement targeting for creative assignments, flexible product discovery with optional brand context, and streamlined budget management at package level. Plus webhook payload clarification and comprehensive security documentation. [See what's new →](./reference/changelog)
+Major improvements: Publisher-owned property definitions via adagents.json, placement targeting for creative assignments, flexible product discovery with optional brand context, and streamlined budget management at package level. Plus webhook payload clarification and comprehensive security documentation. [See what's new →](./reference/release-notes)
 :::
 
 Welcome to the Ad Context Protocol (AdCP) documentation. AdCP is an **open standard for advertising automation** that enables AI assistants to interact with advertising platforms through unified, standardized interfaces.
