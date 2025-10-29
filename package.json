@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
-    "start": "docusaurus start",
+    "start": "bash scripts/start-docusaurus.sh",
+    "start:mintlify": "bash scripts/start-mintlify.sh",
     "build": "docusaurus build",
+    "build:mintlify": "cd mintlify-docs && mintlify build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
+    "deploy:mintlify": "mintlify deploy",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
@@ -15,6 +18,7 @@
     "typecheck": "tsc",
     "test:schemas": "node tests/schema-validation.test.js",
     "test:examples": "node tests/example-validation-simple.test.js",
+    "generate-openapi": "node scripts/generate-openapi.js",
     "test": "npm run test:schemas && npm run test:examples && npm run typecheck",
     "precommit": "npm test",
     "prepare": "husky",
@@ -45,6 +49,7 @@
     "ajv-formats": "^3.0.1",
     "glob": "^11.0.3",
     "husky": "^9.0.11",
+    "mintlify": "^4.2.177",
     "typescript": "~5.6.2"
   },
   "browserslist": {

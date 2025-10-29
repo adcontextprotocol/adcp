@@ -1,0 +1,138 @@
+---
+sidebar_position: 1
+title: Getting Started
+---
+
+# Getting Started with AdCP Protocols
+
+> **New to AdCP?** Start with the [**Quickstart Guide**](../quickstart) for a complete introduction including authentication, testing, and your first request.
+
+## Quick Overview
+
+AdCP works with multiple protocols, but you only need to learn one. Both protocols provide access to the same advertising tasks - choose based on your technical needs.
+
+## Which Protocol Should I Use?
+
+Both protocols provide access to ALL AdCP capabilities - the same tasks, same features, same functionality. Choose based on your technical ecosystem:
+
+### Use MCP If:
+- **You're using Claude** or other MCP-compatible AI assistants
+- **You have existing MCP tools** in your workflow
+- **You prefer direct tool calling** patterns
+- **Your client supports MCP** natively
+
+**Technical style**: Tool-based, request/response pattern
+
+→ [**Start with the MCP Guide**](./mcp-guide.mdx)
+
+### Use A2A If:
+- **You're using Google's agent ecosystem** or A2A-compatible agents
+- **You prefer task-based** interactions
+- **You like Server-Sent Events** for real-time updates
+- **Your client supports A2A** natively
+
+**Technical style**: Task-based, message/artifact pattern
+
+→ [**Start with the A2A Guide**](./a2a-guide.mdx)
+
+## What You'll Be Able to Do
+
+Regardless of protocol choice, you can:
+- Discover advertising products and inventory
+- Create and manage media buys
+- Upload and assign creative assets
+- Monitor campaign delivery
+- Manage audience signals
+- Handle targeting and optimization
+
+## How AdCP Protocols Work
+
+```
+Your Application
+       ↓
+[Choose One Protocol]
+       ↓
+   MCP or A2A
+       ↓
+  AdCP Tasks
+       ↓
+Ad Platforms (Google, Meta, Amazon, etc.)
+```
+
+Both protocols are just different ways to access the same underlying AdCP tasks. The business logic and capabilities are identical.
+
+## Next Steps
+
+1. **Choose your protocol** based on the criteria above
+2. **Read the relevant guide** (MCP or A2A)
+3. **Try the examples** in your chosen protocol
+4. **Explore the tasks** available in AdCP
+
+## Quick Comparison
+
+Both protocols support all features - they just express them differently:
+
+### MCP Example
+```json
+// Request
+{
+  "method": "get_products",
+  "params": {
+    "brief": "CTV campaign for sports fans"
+  }
+}
+
+// Response  
+{
+  "message": "Found 5 CTV products",
+  "context_id": "ctx-123",
+  "data": {
+    "products": [...],
+    "clarification_needed": false
+  }
+}
+```
+
+### A2A Example
+```json
+// Request
+{
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "CTV campaign for sports fans"
+    }]
+  }
+}
+
+// Response
+{
+  "contextId": "ctx-123",
+  "artifacts": [{
+    "name": "product_catalog",
+    "parts": [
+      {"kind": "text", "text": "Found 5 CTV products"},
+      {"kind": "data", "data": {"products": [...]}}
+    ]
+  }]
+}
+```
+
+Same data, different structure. Both can handle clarifications, async operations, approvals, and all AdCP features.
+
+## Don't Get Overwhelmed
+
+You don't need to read everything! Start with:
+1. This page (you're here ✓)
+2. Your chosen protocol guide
+3. Try some examples
+
+The reference documentation is there when you need it, but most users only need the protocol guides.
+
+## Getting Help
+
+- **For MCP questions**: See the [MCP Guide](./mcp-guide.mdx)
+- **For A2A questions**: See the [A2A Guide](./a2a-guide.mdx)
+- **For context & task IDs**: See [Context Management](./context-management.mdx) to understand the difference between `context_id` and `task_id`
+- **For task details**: See the [Media Buy](../media-buy/index.mdx) or [Signals](../signals/overview.mdx) sections
+- **For deep technical details**: Check the [Reference](../reference/error-codes.mdx) section (only if needed)

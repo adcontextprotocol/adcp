@@ -36,7 +36,7 @@ The AdCP Reference Creative Agent (`https://creative.adcontextprotocol.org`) is 
 - Generates previews for standard formats
 - Provides a stable, maintained reference implementation
 
-Sales agents should reference this URL rather than replicating format definitions. See [Implementing Standard Format Support](../../../docs/media-buy/capability-discovery/implementing-standard-formats.md) for guidance.
+Sales agents should reference this URL rather than replicating format definitions. See [Implementing Standard Format Support](https://docs.adcontextprotocol.org/docs/media-buy/capability-discovery/implementing-standard-formats) for guidance.
 
 ## Keeping in Sync
 
