@@ -188,6 +188,18 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "API Reference",
+        "openapi": "https://adcontextprotocol.org/openapi/sales-agent-api.json"
+      },
+      {
+        "tab": "Creative API",
+        "openapi": "https://adcontextprotocol.org/openapi/creative-agent-api.json"
+      },
+      {
+        "tab": "Signals API",
+        "openapi": "https://adcontextprotocol.org/openapi/signals-agent-api.json"
       }
     ]
   },
@@ -198,7 +210,11 @@
   "api": {
     "maintainOrder": true
   },
-  "openapi": [],
+  "openapi": [
+    "https://adcontextprotocol.org/openapi/sales-agent-api.json",
+    "https://adcontextprotocol.org/openapi/creative-agent-api.json",
+    "https://adcontextprotocol.org/openapi/signals-agent-api.json"
+  ],
   "seo": {
     "indexHiddenPages": false
   },
