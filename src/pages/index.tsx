@@ -14,9 +14,9 @@ function ReleaseBanner() {
     <div className={styles.releaseBanner}>
       <div className="container">
         <div className={styles.releaseBannerContent}>
-          <span className={styles.releaseTag}>v2.0.0 Released</span>
+          <span className={styles.releaseTag}>v2.3.0 Released</span>
           <span className={styles.releaseText}>
-            Major update with structured dimensions and enhanced preview support!
+            Publisher-owned properties, placement targeting, flexible product discovery, and more!
           </span>
           <Link className={styles.releaseLink} to="/docs/intro">
             Read the docs →
@@ -229,7 +229,7 @@ function KeyFeatures() {
               Everything you need, production-ready
             </Heading>
             <p className={styles.sectionSubtitle}>
-              AdCP v2.0.0 includes a complete suite of capabilities for modern advertising workflows.
+              AdCP v2.3.0 includes a complete suite of capabilities for modern advertising workflows.
             </p>
 
             <div className={styles.featureGrid}>
