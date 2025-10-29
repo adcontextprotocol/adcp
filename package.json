@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
-    "start": "docusaurus start",
-    "start:mintlify": "NODE_ENV=production npx --yes mintlify@latest dev --port 3001",
+    "start": "bash scripts/start-docusaurus.sh",
+    "start:mintlify": "bash scripts/start-mintlify.sh",
     "build": "docusaurus build",
     "build:mintlify": "cd mintlify-docs && mintlify build",
     "swizzle": "docusaurus swizzle",
