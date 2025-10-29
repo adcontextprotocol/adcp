@@ -1,0 +1,294 @@
+---
+title: Changelog
+description: Version history and release notes for the Ad Context Protocol
+keywords: [changelog, release notes, version history, breaking changes, migration guide]
+sidebar_position: 10
+---
+
+# Changelog
+
+All notable changes to the Ad Context Protocol specification are documented here. AdCP follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## Version 2.1.0
+
+**Released:** January 2025
+
+### What's New
+
+Version 2.1.0 simplifies creative asset management and improves schema consistency across the protocol.
+
+#### Simplified Asset Schema Architecture
+
+**Key Change:** Separated asset payload schemas from format requirement schemas, eliminating redundancy and improving clarity.
+
+**What Changed:**
+- Removed `asset_type` field from creative manifest wire format
+- Consolidated asset type definitions into `/core/assets/` (removed 11 duplicate schemas)
+- Moved constraint fields (like `max_wrapper_depth`, `max_length`) from asset payloads to format specifications
+
+**Why This Matters:**
+- **Cleaner manifests**: Creative manifests are now simpler without redundant type information
+- **Single source of truth**: Each asset type defined once, eliminating 1,797 lines of duplicate code
+- **Clear separation**: Payloads describe data structure; formats describe constraints
+
+#### Improved Asset ID Documentation
+
+**Key Change:** Clarified the relationship between `asset_id` in format definitions and creative manifest structure.
+
+**What Changed:**
+- Made explicit that manifest keys MUST exactly match `asset_id` values from format specifications
+- Clarified that `asset_role` is optional/documentary
+- Added validation guidance for mismatched keys
+
+**Why This Matters:** Eliminates ambiguity about how to structure creative manifests, reducing integration errors.
+
+#### Enhanced Format ID Consistency
+
+**Key Change:** Documented format ID structure more clearly across all documentation.
+
+**What Changed:**
+- Fixed inconsistent format_id documentation
+- Improved cross-references between format discovery and media buy creation
+
+### Migration Guide for Developers
+
+#### 1. Update Creative Manifest Structure
+
+**Before (v2.0.x):**
+```json
+{
+  "assets": {
+    "banner_image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/banner.jpg",
+      "width": 300,
+      "height": 250
+    }
+  }
+}
+```
+
+**After (v2.1.0):**
+```json
+{
+  "assets": {
+    "banner_image": {
+      "url": "https://cdn.example.com/banner.jpg",
+      "width": 300,
+      "height": 250
+    }
+  }
+}
+```
+
+**Action Required:** Remove `asset_type` fields from all creative manifests in your codebase.
+
+#### 2. Update Schema References
+
+**Before (v2.0.x):**
+```javascript
+const schema = await fetch('/schemas/v1/creative/asset-types/image.json')
+```
+
+**After (v2.1.0):**
+```javascript
+const schema = await fetch('/schemas/v1/core/assets/image-asset.json')
+```
+
+**Action Required:** Update schema import paths in validation code.
+
+#### 3. Update Validation Logic
+
+**Before (v2.0.x):**
+```javascript
+// Standalone asset validation
+validate(assetPayload, imageAssetSchema)
+```
+
+**After (v2.1.0):**
+```javascript
+// Format-aware validation
+const format = await fetchFormat(manifest.format_id)
+const assetRequirement = format.assets_required.find(a => a.asset_id === assetId)
+const assetSchema = await fetchAssetSchema(assetRequirement.asset_type)
+validate(assetPayload, assetSchema)
+```
+
+**Action Required:** Implement format-aware validation that looks up asset types from format specifications.
+
+#### 4. Move Constraints to Format Specifications
+
+**Before (v2.0.x):**
+Constraints were in both asset payloads and format specs (redundant).
+
+**After (v2.1.0):**
+```json
+{
+  "asset_id": "video_file",
+  "asset_type": "video",
+  "required": true,
+  "requirements": {
+    "width": 1920,
+    "height": 1080,
+    "duration_ms": 15000,
+    "max_file_size_bytes": 10485760,
+    "acceptable_codecs": ["h264", "h265"]
+  }
+}
+```
+
+**Action Required:** Move constraint validation from asset schemas to format specification requirements.
+
+### Breaking Changes Summary
+
+1. **Removed Fields:**
+   - `asset_type` in creative manifest payloads
+   - `max_wrapper_depth` from `vast-asset.json`
+   - `max_length` from `text-asset.json`
+   - `fallback_required` from `webhook-asset.json`
+
+2. **Schema Path Changes:**
+   - `/creative/asset-types/*.json` → `/core/assets/*-asset.json`
+
+3. **Validation Approach:**
+   - Changed from standalone asset validation to format-aware validation
+
+### Non-Breaking Improvements
+
+- Added Ebiquity as founding member
+- Clarified asset_key usage in manifests
+- Fixed format_id documentation inconsistencies
+- Improved schema validation error messages
+
+---
+
+## Version 2.0.0
+
+**Released:** October 2025
+
+### First Production Release
+
+AdCP v2.0.0 is the first production-ready release of the Advertising Context Protocol.
+
+### Core Features
+
+#### Media Buy Tasks
+- `get_products` - Discover advertising inventory
+- `list_creative_formats` - Discover supported creative formats
+- `create_media_buy` - Create advertising campaigns
+- `sync_creatives` - Synchronize creative assets
+- `list_creatives` - Query creative library
+- `update_media_buy` - Update campaign settings
+- `get_media_buy_delivery` - Retrieve delivery metrics
+- `list_authorized_properties` - Discover authorized properties
+- `provide_performance_feedback` - Share performance data
+
+#### Creative Tasks
+- `build_creative` - Generate creatives from briefs
+- `preview_creative` - Generate creative previews
+- `list_creative_formats` - Discover format specifications
+
+#### Signals Tasks
+- `get_signals` - Discover available signals
+- `activate_signal` - Activate signals for campaigns
+
+#### Standard Formats
+- Display formats (banner, mobile, interstitial)
+- Video formats (standard, skippable, stories)
+- Native formats (responsive native)
+- Standard asset types for multi-asset creatives
+
+#### Protocol Infrastructure
+- JSON Schema validation for all tasks
+- MCP (Model Context Protocol) support
+- A2A (Agent-to-Agent) protocol support
+- Task management with async workflows
+- Human-in-the-loop approval system
+
+#### Documentation
+- Protocol specification
+- Task reference guides
+- Integration guides for MCP and A2A
+- Standard formats documentation
+- Error handling documentation
+
+### Design Decisions
+
+**Simplified Versioning:** Version is maintained only in the schema registry (`/schemas/v1/index.json`) and indicated by schema path. Individual request/response schemas and documentation do not contain version fields, reducing maintenance burden while maintaining clear version semantics.
+
+### Technical Details
+
+- **Schema Version**: 2.0.0
+- **Standard Formats Version**: 1.0.0
+- **Protocol Support**: MCP, A2A
+- **Node Version**: >=18.0
+
+---
+
+## Versioning Policy
+
+### Semantic Versioning
+
+AdCP uses [Semantic Versioning 2.0.0](https://semver.org/):
+
+- **PATCH (x.x.N)**: Bug fixes, documentation improvements, clarifications
+- **MINOR (x.N.0)**: New features, backward-compatible additions
+- **MAJOR (N.0.0)**: Breaking changes
+
+### What Triggers a Version Bump
+
+#### Patch Release (2.1.0 → 2.1.1)
+- Fix typos in documentation
+- Correct validation patterns
+- Clarify existing field meanings
+- Fix broken schema references
+- Documentation improvements
+
+#### Minor Release (2.1.0 → 2.2.0)
+- Add new optional fields to requests/responses
+- Add new enum values (append-only)
+- Add new optional properties to core objects
+- Add new tasks (new request/response pairs)
+- New features that don't break existing implementations
+
+#### Major Release (2.0.0 → 3.0.0)
+- Remove or rename existing fields
+- Change field types or constraints
+- Make optional fields required
+- Remove enum values
+- Change existing field meanings
+- Any change that would break existing implementations
+
+### Deprecation Policy
+
+When we need to make breaking changes:
+
+1. **Deprecation Notice**: Field/feature marked deprecated in minor release
+2. **Transition Period**: Minimum 6 months support for deprecated features
+3. **Migration Guide**: Detailed guide provided in release notes
+4. **Breaking Change**: Removed in next major version
+
+### Version Checking
+
+All schemas include their version in the path:
+- Current: `/schemas/v1/`
+- Future: `/schemas/v2/`
+
+Check the schema registry for the current version:
+```bash
+curl https://adcontextprotocol.org/schemas/v1/index.json
+```
+
+---
+
+## Release Notes Archive
+
+For complete release notes including patch versions and detailed technical changes, see the [GitHub Releases](https://github.com/adcontextprotocol/adcp/releases) page.
+
+## Contributing
+
+Found an issue or have a suggestion?
+
+- 💬 Discuss in [Slack Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
+- 🐛 Report bugs on [GitHub Issues](https://github.com/adcontextprotocol/adcp/issues)
+- 📧 Email: support@adcontextprotocol.org

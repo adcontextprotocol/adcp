@@ -1,0 +1,476 @@
+---
+title: Brand Manifest
+description: Standardized brand information manifest for creative generation and media buying
+keywords: [brand manifest, brand manifest, creative generation, brand guidelines]
+---
+
+# Brand Manifest
+
+The **Brand Manifest** is a standardized manifest format that serves as the **namespace and identity** for brands in AdCP. It provides brand context, assets, and product catalogs that can be cached and reused across all media buys and creative generation requests.
+
+Brand manifests can be provided either **inline as a JSON object** or **by URL reference** to a hosted manifest file.
+
+## Overview
+
+Brand cards solve a key problem: how to efficiently provide brand context without requiring complex authorization flows or repeated data entry. By making the brand manifest the central identifier for all advertising activity, AdCP enables:
+
+- **Natural grouping**: All media buys and creatives for a brand reference the same card
+- **Consistent identity**: Brand guidelines automatically travel with every request
+- **Better caching**: Fetch once, use everywhere
+- **Simplified queries**: "Show me all campaigns for this brand"
+- **Asset discovery**: Creative requests automatically access brand assets
+
+### Key Benefits
+
+- **Namespace**: Brand card serves as the primary identifier for all advertising activity
+- **Minimal Friction**: Start with just a name or URL, expand as needed
+- **Cacheable**: Same brand manifest reused across all requests
+- **Standardized**: Consistent format across all AdCP implementations
+- **Flexible**: Supports SMB to enterprise use cases
+- **AI-Optimized**: Structured for easy ingestion by creative agents
+
+## Providing Brand Manifests
+
+### Inline JSON Object
+
+Provide the brand manifest directly in the request:
+
+```json
+{
+  "brand_manifest": {
+    "url": "https://bobsfunburgers.com",
+    "name": "Bob's Fun Burgers",
+    "colors": {
+      "primary": "#FF6B35"
+    }
+  }
+}
+```
+
+### URL String
+
+Reference a hosted brand manifest file with a URL string:
+
+```json
+{
+  "brand_manifest": "https://cdn.acmecorp.com/brand-manifest.json"
+}
+```
+
+The manifest at the URL must conform to the brand-manifest.json schema.
+
+**Benefits of URL references:**
+- **Centralized management**: Update brand information in one place
+- **Version control**: Track changes to brand guidelines over time
+- **Reduced payload size**: Large manifests don't bloat every request
+- **CDN caching**: Leverage edge caching for faster access
+- **Consistency**: Same manifest across all campaigns and platforms
+
+## Use Cases
+
+### SMB / Ad Hoc Creative Generation
+
+For small businesses or one-off campaigns, a minimal brand manifest provides enough context:
+
+```json
+{
+  "url": "https://bobsfunburgers.com"
+}
+```
+
+Or reference a hosted manifest with a URL string:
+
+```json
+"https://bobsfunburgers.com/.well-known/brand-manifest.json"
+```
+
+Creative agents can infer brand information from the URL, pulling logos, colors, and style from the website.
+
+### Enterprise / Established Brand
+
+For established brands with defined guidelines, host the manifest on a CDN:
+
+**Hosted at `https://cdn.acmecorp.com/brand-manifest.json`:**
+```json
+{
+  "url": "https://acmecorp.com",
+  "name": "ACME Corporation",
+  "logos": [
+    {
+      "url": "https://cdn.acmecorp.com/logo-square-dark.png",
+      "tags": ["dark", "square"],
+      "width": 512,
+      "height": 512
+    },
+    {
+      "url": "https://cdn.acmecorp.com/logo-horizontal-light.png",
+      "tags": ["light", "horizontal"],
+      "width": 1200,
+      "height": 400
+    }
+  ],
+  "colors": {
+    "primary": "#FF6B35",
+    "secondary": "#004E89",
+    "accent": "#F7931E",
+    "background": "#FFFFFF",
+    "text": "#1A1A1A"
+  },
+  "fonts": {
+    "primary": "Helvetica Neue",
+    "secondary": "Georgia"
+  },
+  "tone": "professional and trustworthy",
+  "tagline": "Innovation You Can Trust",
+  "product_catalog": {
+    "feed_url": "https://acmecorp.com/products.rss",
+    "feed_format": "google_merchant_center"
+  },
+  "industry": "technology",
+  "target_audience": "business decision-makers aged 35-55"
+}
+```
+
+**Reference in requests:**
+```json
+{
+  "brand_manifest": "https://cdn.acmecorp.com/brand-manifest.json"
+}
+```
+
+### Multi-SKU Retailer
+
+Large retailers can provide product feeds and asset libraries:
+
+```json
+{
+  "url": "https://bigretail.com",
+  "name": "BigRetail",
+  "product_catalog": {
+    "feed_url": "https://bigretail.com/catalog.xml",
+    "feed_format": "google_merchant_center"
+  },
+  "disclaimers": [
+    {
+      "text": "Prices and availability subject to change",
+      "context": "pricing",
+      "required": true
+    }
+  ]
+}
+```
+
+### Brands Without URLs
+
+Some brands don't have dedicated URLs (white-label products, local businesses, B2B brands). Brand cards support name-only identification:
+
+```json
+{
+  "name": "Great Value",
+  "colors": {
+    "primary": "#0071CE",
+    "secondary": "#FFC220"
+  },
+  "tone": "affordable and trustworthy"
+}
+```
+
+**Common cases for name-only brands:**
+- White-label/store brands (e.g., "Great Value", "Kirkland")
+- Local businesses without websites
+- B2B brands without public sites
+- Sub-brands under parent company URLs
+
+## Brand Manifest Schemas
+
+### Brand Manifest Reference (Union Type)
+
+**Schema URL**: [/schemas/v1/core/brand-manifest-ref.json](https://adcontextprotocol.org/schemas/v1/core/brand-manifest-ref.json)
+
+The brand manifest reference is a union type that accepts either:
+1. **Inline object**: Full brand manifest JSON object
+2. **URL reference**: Object with `manifest_url` field pointing to hosted manifest
+
+### Brand Manifest Object
+
+**Schema URL**: [/schemas/v1/core/brand-manifest.json](https://adcontextprotocol.org/schemas/v1/core/brand-manifest.json)
+
+The structure of the brand manifest object itself (whether provided inline or hosted at a URL).
+
+### Required Fields
+
+**Either `url` OR `name` is required** (both can be provided):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `url` | string (uri) | Primary brand URL for context and asset discovery |
+| `name` | string | Brand or business name (required if no URL provided) |
+
+### Optional Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Brand or business name |
+| `logos` | Logo[] | Brand logo assets with semantic tags |
+| `colors` | Colors | Brand color palette (hex format) |
+| `fonts` | Fonts | Brand typography guidelines |
+| `tone` | string | Brand voice and messaging tone |
+| `tagline` | string | Brand tagline or slogan |
+| `product_feed` | string (uri) | URL to product catalog feed |
+| `asset_library` | AssetLibrary | References to brand asset libraries |
+| `disclaimers` | Disclaimer[] | Legal disclaimers for creatives |
+| `industry` | string | Industry or vertical |
+| `target_audience` | string | Primary target audience description |
+| `contact` | Contact | Brand contact information |
+| `metadata` | Metadata | Version and update tracking |
+
+### Logo Object
+
+```typescript
+{
+  url: string;           // URL to logo asset
+  tags?: string[];       // Semantic tags (e.g., "dark", "light", "square", "horizontal")
+  width?: number;        // Logo width in pixels
+  height?: number;       // Logo height in pixels
+}
+```
+
+**Common Tags**: `"dark"`, `"light"`, `"square"`, `"horizontal"`, `"vertical"`, `"icon"`, `"wordmark"`, `"lockup"`
+
+### Colors Object
+
+```typescript
+{
+  primary?: string;      // Primary brand color (#RRGGBB)
+  secondary?: string;    // Secondary brand color (#RRGGBB)
+  accent?: string;       // Accent color (#RRGGBB)
+  background?: string;   // Background color (#RRGGBB)
+  text?: string;         // Text color (#RRGGBB)
+}
+```
+
+### Fonts Object
+
+```typescript
+{
+  primary?: string;      // Primary font family name
+  secondary?: string;    // Secondary font family name
+  font_urls?: string[];  // URLs to web font files
+}
+```
+
+### Disclaimer Object
+
+```typescript
+{
+  text: string;          // Disclaimer text
+  context?: string;      // When this applies (e.g., "financial_products", "health_claims")
+  required?: boolean;    // Whether this must appear (default: true)
+}
+```
+
+### Asset Library Object
+
+```typescript
+{
+  images?: string;       // URL to image asset library or API
+  videos?: string;       // URL to video asset library or API
+  templates?: string;    // URL to creative templates library
+}
+```
+
+## Integration with AdCP Tasks
+
+### create_media_buy
+
+Include brand manifest in media buy creation to provide context for creative generation:
+
+```json
+{
+  "buyer_ref": "campaign_2024_q1",
+  "promoted_offering": "ACME Pro Widget",
+  "brand_manifest": {
+    "url": "https://acmecorp.com",
+    "name": "ACME Corporation",
+    "tone": "professional and innovative"
+  },
+  "packages": [...],
+  "budget": {...}
+}
+```
+
+### build_creative
+
+Use brand manifest to inform creative generation:
+
+```json
+{
+  "message": "Create a native ad highlighting our new product launch",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_native"
+  },
+  "brand_manifest": {
+    "url": "https://acmecorp.com",
+    "logos": [
+      {
+        "url": "https://cdn.acmecorp.com/logo-square.png",
+        "tags": ["square", "dark"]
+      }
+    ],
+    "colors": {
+      "primary": "#FF6B35",
+      "secondary": "#004E89"
+    },
+    "tone": "professional and trustworthy"
+  }
+}
+```
+
+## Best Practices
+
+### 1. Start Simple, Expand as Needed
+
+Begin with just a URL. Add more fields only when the URL-based inference isn't sufficient:
+
+```json
+// ✅ Good starting point
+{
+  "url": "https://mybrand.com"
+}
+
+// ✅ Add details when needed
+{
+  "url": "https://mybrand.com",
+  "logos": [...],
+  "colors": {...}
+}
+```
+
+### 2. Use Semantic Tags for Logos
+
+Tags help creative agents select appropriate logo variants:
+
+```json
+{
+  "logos": [
+    {"url": "...", "tags": ["dark", "square"]},      // For light backgrounds
+    {"url": "...", "tags": ["light", "square"]},     // For dark backgrounds
+    {"url": "...", "tags": ["dark", "horizontal"]},  // Wide layouts
+    {"url": "...", "tags": ["icon"]}                 // Small placements
+  ]
+}
+```
+
+### 3. Cache and Reuse Brand Manifests
+
+Brand cards are designed to be cached. Use URL strings for automatic caching:
+
+```javascript
+// Reference hosted manifest (cacheable by URL)
+const brandManifestUrl = "https://cdn.acmecorp.com/brand-manifest.json";
+
+// Reuse across requests - agents can cache the manifest
+await createMediaBuy({ brand_manifest: brandManifestUrl, ... });
+await buildCreative({ brand_manifest: brandManifestUrl, ... });
+await buildCreative({ brand_manifest: brandManifestUrl, ... }); // Same manifest, different creative
+```
+
+Or cache inline manifests yourself:
+
+```javascript
+// Cache inline manifest once
+const brandManifest = {
+  url: "https://acmecorp.com",
+  colors: {...},
+  logos: [...]
+};
+
+// Reuse across requests
+await createMediaBuy({ brand_manifest: brandManifest, ... });
+await buildCreative({ brand_manifest: brandManifest, ... });
+```
+
+### 4. Product Feeds for Multi-SKU
+
+Large retailers should provide product feeds:
+
+```json
+{
+  "url": "https://retailer.com",
+  "product_feed": "https://retailer.com/products.json"
+}
+```
+
+**Supported Feed Formats**: RSS, JSON Feed, Product CSV
+
+### 5. Asset Libraries for Enterprise
+
+Enterprise brands with large asset libraries should provide API endpoints:
+
+```json
+{
+  "asset_library": {
+    "images": "https://assets.brand.com/api/images",
+    "videos": "https://assets.brand.com/api/videos"
+  }
+}
+```
+
+## Evolution and Versioning
+
+Brand cards are versioned using the `metadata.version` field:
+
+```json
+{
+  "url": "https://brand.com",
+  "metadata": {
+    "version": "2.1",
+    "updated_date": "2024-03-15T10:00:00Z"
+  }
+}
+```
+
+Version updates:
+- **Patch** (2.0.1): Fix typos, update contact info
+- **Minor** (2.1.0): Add new assets, update colors
+- **Major** (3.0.0): Complete rebrand, new identity
+
+## Migration from brand_guidelines
+
+For implementations using the legacy `brand_guidelines` field in `build_creative`:
+
+**Before (Legacy)**:
+```json
+{
+  "brand_guidelines": {
+    "colors": ["#FF6B35", "#004E89"],
+    "fonts": ["Helvetica Neue"],
+    "tone": "professional"
+  }
+}
+```
+
+**After (Brand Manifest)**:
+```json
+{
+  "brand_manifest": {
+    "url": "https://brand.com",
+    "colors": {
+      "primary": "#FF6B35",
+      "secondary": "#004E89"
+    },
+    "fonts": {
+      "primary": "Helvetica Neue"
+    },
+    "tone": "professional"
+  }
+}
+```
+
+## Related Documentation
+
+- **[create_media_buy](../media-buy/task-reference/create_media_buy)** - Media buy creation with brand context
+- **[build_creative](./task-reference/build_creative)** - AI-powered creative generation
+- **[Creative Lifecycle](../media-buy/creatives/)** - Managing creative assets
+- **[Data Models](../reference/data-models)** - Core AdCP data structures

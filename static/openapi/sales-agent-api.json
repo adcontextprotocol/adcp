@@ -1,0 +1,406 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sales Agent API",
+    "version": "2.2.0",
+    "description": "The Sales Agent API implements the Media Buy Protocol, enabling AI agents to discover advertising products, create and manage media buys, sync creatives, and track performance.",
+    "contact": {
+      "name": "AdCP Support",
+      "url": "https://adcontextprotocol.org",
+      "email": "support@adcontextprotocol.org"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://salesagent.adcontextprotocol.org",
+      "description": "Sales Agent API Server"
+    }
+  ],
+  "paths": {
+    "/mcp/v1/get_products": {
+      "post": {
+        "summary": "Discover Available Products",
+        "description": "Search for advertising products using natural language. Returns products matching the brief with pricing, targeting, and format information.",
+        "operationId": "get_products",
+        "tags": [
+          "Product Discovery"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/get-products-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/get-products-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/v1/list_authorized_properties": {
+      "post": {
+        "summary": "List Authorized Properties",
+        "description": "Retrieve the list of advertising properties (websites, apps, channels) that the agent is authorized to sell.",
+        "operationId": "list_authorized_properties",
+        "tags": [
+          "Capability Discovery"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/v1/create_media_buy": {
+      "post": {
+        "summary": "Create Media Buy",
+        "description": "Create a new media buy (campaign) with specified products, budget, dates, creatives, and targeting.",
+        "operationId": "create_media_buy",
+        "tags": [
+          "Media Buys"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/v1/update_media_buy": {
+      "post": {
+        "summary": "Update Media Buy",
+        "description": "Update an existing media buy with new budget, dates, status, or other modifications.",
+        "operationId": "update_media_buy",
+        "tags": [
+          "Media Buys"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/v1/get_media_buy_delivery": {
+      "post": {
+        "summary": "Get Media Buy Delivery",
+        "description": "Retrieve delivery metrics and performance data for a media buy.",
+        "operationId": "get_media_buy_delivery",
+        "tags": [
+          "Performance & Reporting"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/get-media-buy-delivery-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/get-media-buy-delivery-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/v1/sync_creatives": {
+      "post": {
+        "summary": "Sync Creatives",
+        "description": "Synchronize creative assets with the sales agent for trafficking to ad servers.",
+        "operationId": "sync_creatives",
+        "tags": [
+          "Creatives"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/sync-creatives-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/sync-creatives-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/v1/provide_performance_feedback": {
+      "post": {
+        "summary": "Provide Performance Feedback",
+        "description": "Submit performance feedback to help optimize media buy delivery.",
+        "operationId": "provide_performance_feedback",
+        "tags": [
+          "Performance & Reporting"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/provide-performance-feedback-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/media-buy/provide-performance-feedback-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://adcontextprotocol.org/schemas/v1/core/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Product Discovery"
+    },
+    {
+      "name": "Capability Discovery"
+    },
+    {
+      "name": "Media Buys"
+    },
+    {
+      "name": "Performance & Reporting"
+    },
+    {
+      "name": "Creatives"
+    }
+  ]
+}

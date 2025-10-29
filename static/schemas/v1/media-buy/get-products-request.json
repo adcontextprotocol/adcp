@@ -56,8 +56,6 @@
       "additionalProperties": false
     }
   },
-  "required": [
-    "brand_manifest"
-  ],
+  "required": [],
   "additionalProperties": false
 }
