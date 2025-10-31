@@ -15,12 +15,12 @@ Performance data feeds into AdCP's [Accountability & Trust Framework](../index.m
 ## Key Optimization Tasks
 
 ### Delivery Reporting
-Use [`get_media_buy_delivery`](../task-reference/get_media_buy_delivery) to retrieve comprehensive performance data including impressions, spend, clicks, and conversions across all campaign packages.
+Use [`get_media_buy_delivery`](../task-reference/get_media_buy_delivery.mdx) to retrieve comprehensive performance data including impressions, spend, clicks, and conversions across all campaign packages.
 
 Alternatively, configure **webhook-based reporting** during media buy creation to receive automated delivery notifications at regular intervals.
 
 ### Campaign Updates
-Use [`update_media_buy`](../task-reference/update_media_buy) to modify campaign settings, budgets, and configurations based on performance insights.
+Use [`update_media_buy`](../task-reference/update_media_buy.mdx) to modify campaign settings, budgets, and configurations based on performance insights.
 
 ## Optimization Workflow
 
@@ -176,7 +176,7 @@ When a reporting webhook is configured, publishers commit to sending:
 
 ### Webhook Payload
 
-Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](../task-reference/get_media_buy_delivery) with additional metadata:
+Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](../task-reference/get_media_buy_delivery.mdx) with additional metadata:
 
 ```json
 {
@@ -647,7 +647,7 @@ See [Core Concepts: Webhook Reliability](../../protocols/core-concepts.mdx#webho
 - **Temporal adjustments** for optimal timing
 
 ## Performance Feedback Loop
-The performance feedback system enables AI-driven optimization by feeding back business outcomes to publishers. See [`provide_performance_feedback`](../task-reference/provide_performance_feedback) for detailed API documentation.
+The performance feedback system enables AI-driven optimization by feeding back business outcomes to publishers. See [`provide_performance_feedback`](../task-reference/provide_performance_feedback.mdx) for detailed API documentation.
 
 ### Performance Index Concept
 
@@ -659,7 +659,7 @@ A normalized score indicating relative performance:
 
 ### Sharing Performance Data
 
-Buyers can voluntarily share performance outcomes using the [`provide_performance_feedback`](../task-reference/provide_performance_feedback) task:
+Buyers can voluntarily share performance outcomes using the [`provide_performance_feedback`](../task-reference/provide_performance_feedback.mdx) task:
 
 ```json
 {
@@ -704,7 +704,7 @@ Publishers can leverage performance indices to:
 Future implementations may support dimensional performance feedback, allowing optimization at the intersection of multiple dimensions (e.g., "mobile users in NYC perform 80% above baseline").
 
 ## Targeting Consistency
-Reporting aligns with AdCP's [Targeting](../advanced-topics/targeting) approach, enabling:
+Reporting aligns with AdCP's [Targeting](../advanced-topics/targeting.mdx) approach, enabling:
 - **Consistent analysis** across campaign lifecycle
 - **Granular breakdowns** by targeting parameters
 - **Cross-campaign insights** for portfolio optimization
@@ -783,7 +783,7 @@ Optimization and reporting is the ongoing phase that runs throughout active camp
 
 ## Related Documentation
 
-- **[`get_media_buy_delivery`](../task-reference/get_media_buy_delivery)** - Retrieve delivery reports
-- **[`update_media_buy`](../task-reference/update_media_buy)** - Modify campaigns based on performance
+- **[`get_media_buy_delivery`](../task-reference/get_media_buy_delivery.mdx)** - Retrieve delivery reports
+- **[`update_media_buy`](../task-reference/update_media_buy.mdx)** - Modify campaigns based on performance
 - **[Media Buy Lifecycle](./index.mdx)** - Complete campaign management workflow
-- **[Targeting](../advanced-topics/targeting)** - Brief-based targeting and overlays
+- **[Targeting](../advanced-topics/targeting.mdx)** - Brief-based targeting and overlays

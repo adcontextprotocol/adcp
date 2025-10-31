@@ -11,7 +11,7 @@ Before you can effectively buy advertising through AdCP, you need to understand 
 
 ## What You'll Learn
 
-### [Implementing Standard Format Support](./implementing-standard-formats) 🎨
+### [Implementing Standard Format Support](./implementing-standard-formats.mdx) 🎨
 Learn how sales agents can support standard creative formats through the reference creative agent. Learn how to:
 
 - Reference standard IAB formats without replicating them
@@ -22,7 +22,7 @@ Learn how sales agents can support standard creative formats through the referen
 - Leverage the Standard Creative Agent for standard formats
 - Work with publisher-specific creative agents for custom formats
 
-### [Authorized Properties](./authorized-properties) 🔐
+### [Authorized Properties](./authorized-properties.mdx) 🔐
 Learn how AdCP prevents unauthorized resale and ensures sales agents are legitimate. Understand:
 
 - The problem of unauthorized resale in digital advertising
@@ -35,19 +35,19 @@ Learn how AdCP prevents unauthorized resale and ensures sales agents are legitim
 
 These capability discovery tasks provide the reference data needed for effective AdCP workflows:
 
-### [`list_creative_formats`](../task-reference/list_creative_formats)
+### [`list_creative_formats`](../task-reference/list_creative_formats.mdx)
 Discover all supported creative formats with detailed specifications including dimensions, file types, duration limits, and technical requirements.
 
-### [`list_authorized_properties`](../task-reference/list_authorized_properties)  
+### [`list_authorized_properties`](../task-reference/list_authorized_properties.mdx)  
 Get all properties a sales agent is authorized to represent, including property tags for efficient organization and authorization validation data.
 
 ## Integration Pattern
 
 Capability discovery typically happens early in your AdCP workflow:
 
-1. **Understand Formats**: Call [`list_creative_formats`](../task-reference/list_creative_formats) to learn supported creative types
-2. **Validate Authorization**: Use [`list_authorized_properties`](../task-reference/list_authorized_properties) to verify sales agent legitimacy
-3. **Discover Products**: Search for advertising inventory with [`get_products`](../task-reference/get_products)
+1. **Understand Formats**: Call [`list_creative_formats`](../task-reference/list_creative_formats.mdx) to learn supported creative types
+2. **Validate Authorization**: Use [`list_authorized_properties`](../task-reference/list_authorized_properties.mdx) to verify sales agent legitimacy
+3. **Discover Products**: Search for advertising inventory with [`get_products`](../task-reference/get_products.mdx)
 4. **Plan Creatives**: Match discovered products to available formats for production planning
 5. **Execute Campaigns**: Create media buys with confidence in format compatibility and authorization
 
@@ -75,6 +75,6 @@ Together, these capabilities provide the foundation for safe, efficient, and eff
 - **[Product Discovery](../product-discovery/)** - Finding advertising inventory
 - **[Creatives](../creatives/)** - Creative asset management
 - **[Creative Protocol](../../creative/)** - Creative agents and manifests
-- **[Creative Channel Guides](../../creative/channels/video)** - Format examples and patterns
+- **[Creative Channel Guides](../../creative/channels/video.mdx)** - Format examples and patterns
 - **[Creative Manifests](../../creative/creative-manifests.mdx)** - Understanding creative specifications
-- **[AdAgents Specification](./adagents)** - Technical authorization details
+- **[AdAgents Specification](./adagents.mdx)** - Technical authorization details

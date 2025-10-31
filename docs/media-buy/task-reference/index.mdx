@@ -13,14 +13,14 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 
 | Task | Purpose | Response Time | Phase |
 |------|---------|---------------|-------|
-| [`get_products`](./get_products) | Discover inventory using natural language briefs | ~60s | Discovery |
-| [`create_media_buy`](./create_media_buy) | Create campaigns from selected products | Minutes-Days | Media Buys |
-| [`update_media_buy`](./update_media_buy) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
-| [`list_creative_formats`](./list_creative_formats) | View supported creative specifications | ~1s | Capability |
-| [`list_authorized_properties`](./list_authorized_properties) | See available publisher properties | ~1s | Capability |
-| [`sync_creatives`](./sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
-| [`list_creatives`](./list_creatives) | Query creative library with filtering | ~1s | Creatives |
-| [`get_media_buy_delivery`](./get_media_buy_delivery) | Retrieve performance and delivery data | ~60s | Reporting |
+| [`get_products`](./get_products.mdx) | Discover inventory using natural language briefs | ~60s | Discovery |
+| [`create_media_buy`](./create_media_buy.mdx) | Create campaigns from selected products | Minutes-Days | Media Buys |
+| [`update_media_buy`](./update_media_buy.mdx) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
+| [`list_creative_formats`](./list_creative_formats.mdx) | View supported creative specifications | ~1s | Capability |
+| [`list_authorized_properties`](./list_authorized_properties.mdx) | See available publisher properties | ~1s | Capability |
+| [`sync_creatives`](./sync_creatives.mdx) | Upload and manage creative assets | Minutes-Days | Creatives |
+| [`list_creatives`](./list_creatives.mdx) | Query creative library with filtering | ~1s | Creatives |
+| [`get_media_buy_delivery`](./get_media_buy_delivery.mdx) | Retrieve performance and delivery data | ~60s | Reporting |
 
 ## Response Time Categories
 
@@ -28,46 +28,46 @@ AdCP tasks fall into four response time categories:
 
 ### 🟢 Instant (~1 second)
 **Simple database lookups**
-- [`list_creative_formats`](./list_creative_formats) - Format specifications
-- [`list_authorized_properties`](./list_authorized_properties) - Available properties  
-- [`list_creatives`](./list_creatives) - Creative library queries
+- [`list_creative_formats`](./list_creative_formats.mdx) - Format specifications
+- [`list_authorized_properties`](./list_authorized_properties.mdx) - Available properties  
+- [`list_creatives`](./list_creatives.mdx) - Creative library queries
 
 ### 🟡 Processing (~60 seconds)  
 **AI/LLM inference with backend systems**
-- [`get_products`](./get_products) - Natural language product discovery
-- [`get_media_buy_delivery`](./get_media_buy_delivery) - Performance data aggregation
+- [`get_products`](./get_products.mdx) - Natural language product discovery
+- [`get_media_buy_delivery`](./get_media_buy_delivery.mdx) - Performance data aggregation
 
 ### 🟠 Asynchronous (Minutes to Days)
 **Complex operations with potential human approval**
-- [`create_media_buy`](./create_media_buy) - Campaign creation and validation
-- [`update_media_buy`](./update_media_buy) - Campaign modifications
-- [`sync_creatives`](./sync_creatives) - Creative asset processing
+- [`create_media_buy`](./create_media_buy.mdx) - Campaign creation and validation
+- [`update_media_buy`](./update_media_buy.mdx) - Campaign modifications
+- [`sync_creatives`](./sync_creatives.mdx) - Creative asset processing
 
 ## Task Categories by Workflow
 
 ### Discovery & Planning
 Start here to understand what's available and plan your campaign.
 
-- **[`get_products`](./get_products)** - The core discovery task using natural language briefs
-- **[`list_creative_formats`](./list_creative_formats)** - Understand creative requirements
-- **[`list_authorized_properties`](./list_authorized_properties)** - See available placements
+- **[`get_products`](./get_products.mdx)** - The core discovery task using natural language briefs
+- **[`list_creative_formats`](./list_creative_formats.mdx)** - Understand creative requirements
+- **[`list_authorized_properties`](./list_authorized_properties.mdx)** - See available placements
 
 ### Media Buy Management  
 Create and manage your advertising campaigns.
 
-- **[`create_media_buy`](./create_media_buy)** - Create campaigns from discovered products
-- **[`update_media_buy`](./update_media_buy)** - Modify budgets, targeting, and settings
+- **[`create_media_buy`](./create_media_buy.mdx)** - Create campaigns from discovered products
+- **[`update_media_buy`](./update_media_buy.mdx)** - Modify budgets, targeting, and settings
 
 ### Creative Management
 Handle creative assets throughout their lifecycle.
 
-- **[`sync_creatives`](./sync_creatives)** - Upload assets to centralized library
-- **[`list_creatives`](./list_creatives)** - Search and manage your creative library
+- **[`sync_creatives`](./sync_creatives.mdx)** - Upload assets to centralized library
+- **[`list_creatives`](./list_creatives.mdx)** - Search and manage your creative library
 
 ### Performance & Optimization
 Monitor and optimize campaign performance.
 
-- **[`get_media_buy_delivery`](./get_media_buy_delivery)** - Track delivery and performance metrics
+- **[`get_media_buy_delivery`](./get_media_buy_delivery.mdx)** - Track delivery and performance metrics
 
 
 ## Schema Reference
@@ -103,11 +103,11 @@ Long-running tasks provide:
 
 ## Getting Started
 
-1. **Start with Discovery**: Use [`get_products`](./get_products) to find relevant inventory
-2. **Understand Formats**: Check [`list_creative_formats`](./list_creative_formats) for requirements  
-3. **Create Campaign**: Use [`create_media_buy`](./create_media_buy) with selected products
-4. **Upload Creatives**: Use [`sync_creatives`](./sync_creatives) for asset management
-5. **Monitor Performance**: Track results with [`get_media_buy_delivery`](./get_media_buy_delivery)
+1. **Start with Discovery**: Use [`get_products`](./get_products.mdx) to find relevant inventory
+2. **Understand Formats**: Check [`list_creative_formats`](./list_creative_formats.mdx) for requirements  
+3. **Create Campaign**: Use [`create_media_buy`](./create_media_buy.mdx) with selected products
+4. **Upload Creatives**: Use [`sync_creatives`](./sync_creatives.mdx) for asset management
+5. **Monitor Performance**: Track results with [`get_media_buy_delivery`](./get_media_buy_delivery.mdx)
 
 ## Related Documentation
 

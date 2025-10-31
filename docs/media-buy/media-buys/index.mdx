@@ -22,7 +22,7 @@ AdCP's media buy management provides a unified interface for:
 ## The Media Buy Lifecycle Phases
 
 ### 1. Creation Phase
-Transform discovered products into active advertising campaigns using [`create_media_buy`](../task-reference/create_media_buy):
+Transform discovered products into active advertising campaigns using [`create_media_buy`](../task-reference/create_media_buy.mdx):
 
 - **Package Configuration**: Combine products with formats, targeting, and budget
 - **Campaign Setup**: Define timing, overall budget, and promoted offering
@@ -40,7 +40,7 @@ This phase may involve:
 - **Triton Digital**: Creates a Campaign with Flights
 
 ### 2. Creative Upload Phase
-Once created, the media buy requires creative assets via [`sync_creatives`](../task-reference/sync_creatives):
+Once created, the media buy requires creative assets via [`sync_creatives`](../task-reference/sync_creatives.mdx):
 
 - **Platform-specific format support** (video, audio, display, custom)
 - **Validation and policy review** for creative compliance
@@ -51,7 +51,7 @@ Monitor and manage active campaigns:
 
 - **Status Tracking**: Campaign transitions from `pending_activation` to `active`
 - **Creative Assignment**: Attach assets from the creative library
-- **Delivery Monitoring**: Track pacing and performance metrics with [`get_media_buy_delivery`](../task-reference/get_media_buy_delivery)
+- **Delivery Monitoring**: Track pacing and performance metrics with [`get_media_buy_delivery`](../task-reference/get_media_buy_delivery.mdx)
 - **Issue Resolution**: Handle approval delays and platform issues
 
 ### 4. Optimization & Reporting Phase
@@ -63,7 +63,7 @@ Key activities include:
 - **Dimensional reporting** using the same targeting dimensions for consistent analysis
 - **AI-driven insights** through performance feedback loops
 
-For complete details on optimization strategies, performance monitoring, standard metrics, and best practices, see **[Optimization & Reporting](./optimization-reporting)**.
+For complete details on optimization strategies, performance monitoring, standard metrics, and best practices, see **[Optimization & Reporting](./optimization-reporting.mdx)**.
 
 ## Key Concepts
 
@@ -189,17 +189,17 @@ Campaign state transitions:
 
 Media buy operations use a unified status system with predictable timing:
 
-- **[`create_media_buy`](../task-reference/create_media_buy)**: Instant to days
+- **[`create_media_buy`](../task-reference/create_media_buy.mdx)**: Instant to days
   - `completed`: Simple campaigns created immediately  
   - `working`: Processing within 120 seconds (validation, setup)
   - `submitted`: Complex campaigns requiring hours to days (human approval)
   
-- **[`update_media_buy`](../task-reference/update_media_buy)**: Instant to days
+- **[`update_media_buy`](../task-reference/update_media_buy.mdx)**: Instant to days
   - `completed`: Budget changes applied immediately
   - `working`: Targeting updates within 120 seconds
   - `submitted`: Package modifications requiring approval (hours to days)
 
-- **[`get_media_buy_delivery`](../task-reference/get_media_buy_delivery)**: ~60 seconds (data aggregation)
+- **[`get_media_buy_delivery`](../task-reference/get_media_buy_delivery.mdx)**: ~60 seconds (data aggregation)
 - **Performance analysis**: ~1 second (cached metrics)
 
 **Status Meanings:**
@@ -330,10 +330,10 @@ Different platforms offer varying reporting and optimization capabilities:
 
 ### Discovery to Media Buy
 Seamless flow from product discovery to campaign creation:
-1. Use [`get_products`](../task-reference/get_products) to find inventory
+1. Use [`get_products`](../task-reference/get_products.mdx) to find inventory
 2. Select products that align with campaign objectives
 3. Configure packages with appropriate targeting and formats
-4. Create media buy with [`create_media_buy`](../task-reference/create_media_buy)
+4. Create media buy with [`create_media_buy`](../task-reference/create_media_buy.mdx)
 
 ### Creative Integration
 Coordinate with creative management:
@@ -345,7 +345,7 @@ Coordinate with creative management:
 ### Performance Optimization
 Data-driven campaign improvement leveraging comprehensive analytics:
 
-1. **Track delivery** with [`get_media_buy_delivery`](../task-reference/get_media_buy_delivery)
+1. **Track delivery** with [`get_media_buy_delivery`](../task-reference/get_media_buy_delivery.mdx)
    - Monitor real-time delivery metrics and pacing analysis
    - Get package-level performance breakdown for optimization opportunities
    - Track performance across different targeting approaches
@@ -355,7 +355,7 @@ Data-driven campaign improvement leveraging comprehensive analytics:
    - Monitor performance index scores for AI-driven optimization
    - Identify high and low performing segments
 
-3. **Update campaigns** with [`update_media_buy`](../task-reference/update_media_buy)
+3. **Update campaigns** with [`update_media_buy`](../task-reference/update_media_buy.mdx)
    - Reallocate budgets between high and low performing packages
    - Adjust targeting based on performance data
    - Pause underperforming packages and scale successful ones
@@ -377,4 +377,4 @@ Data-driven campaign improvement leveraging comprehensive analytics:
 - **[Product Discovery](../product-discovery/)** - Finding inventory for media buys
 - **[Task Reference](../task-reference/)** - Complete API documentation
 - **[Creatives](../creatives/)** - Creative asset management
-- **[Orchestrator Design Guide](../advanced-topics/orchestrator-design)** - Implementation best practices
+- **[Orchestrator Design Guide](../advanced-topics/orchestrator-design.mdx)** - Implementation best practices
