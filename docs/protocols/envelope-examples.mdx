@@ -382,6 +382,28 @@ function wrapResponse(taskResponse, metadata) {
 
 ## Summary
 
+## Webhook
+
+### Task Status Webhook Payload
+
+```json
+{
+  "operation_id": "op_456",
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "message": "Media buy created successfully",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_123",
+    "buyer_ref": "campaign_2024_q1",
+    "packages": [
+      { "package_id": "pkg_001" }
+    ]
+  }
+}
+```
+
 | Protocol | Message Location | Payload Location | Async Mechanism |
 |----------|-----------------|------------------|-----------------|
 | **MCP** | `content[].text` | `content[].resource.text` | Progress notifications |

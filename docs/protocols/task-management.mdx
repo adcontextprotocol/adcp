@@ -464,19 +464,21 @@ const response = await session.call('create_media_buy',
 
 ### Webhook POST Format
 
-When a task's status changes, the publisher POSTs the **complete task response object** to your webhook URL.
+When a task's status changes, the publisher POSTs a payload with protocol fields at the top-level and the task-specific payload nested under `result` to your webhook URL.
 
 **Webhook Payload Schema**: [`https://adcontextprotocol.org/schemas/v1/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v1/core/webhook-payload.json)
 
-**Required fields in all webhook payloads:**
-- `task_id` - Unique identifier for the task
-- `task_type` - Type of AdCP operation (e.g., "create_media_buy", "sync_creatives", "activate_signal")
+**Top-level fields:**
+- `operation_id` (required) — Correlates a sequence of updates for this operation
 - `domain` - AdCP domain ("media-buy" or "signals")
-- `status` - Current task status
-- `created_at` - Task creation timestamp
-- `updated_at` - Last update timestamp
-
-These fields are always present regardless of task type or status, enabling webhook handlers to properly route and process notifications.
+- `task_type` (required) — e.g., "create_media_buy", "sync_creatives", "activate_signal"
+- `status` (required) — Current task status
+- `task_id` (optional) — Present when server exposes task tracking id
+- `context_id` (optional) — Conversation/session id
+- `message` (optional) — Human-readable context
+- `timestamp` (optional) — ISO 8601 time when webhook was generated
+- `result` (optional) — Task-specific payload for this status
+- `error` (optional) — Error message string when status is `failed`
 
 **Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted` (long-running operations).
 
@@ -498,14 +500,17 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
+  "operation_id": "op_456",
   "task_id": "task_456",
   "task_type": "create_media_buy",
   "domain": "media-buy",
   "status": "input-required",
-  "created_at": "2025-01-22T10:00:00Z",
-  "updated_at": "2025-01-22T10:15:00Z",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "message": "Campaign budget $150K requires VP approval to proceed"
+  "timestamp": "2025-01-22T10:15:00Z",
+  "context_id": "ctx_abc123",
+  "message": "Campaign budget $150K requires VP approval to proceed",
+  "result": {
+    "buyer_ref": "nike_q1_campaign_2024"
+  }
 }
 ```
 
@@ -517,19 +522,21 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
+  "operation_id": "op_456",
   "task_id": "task_456",
   "task_type": "create_media_buy",
   "domain": "media-buy",
   "status": "completed",
-  "created_at": "2025-01-22T10:00:00Z",
-  "updated_at": "2025-01-22T10:30:00Z",
-  "completed_at": "2025-01-22T10:30:00Z",
-  "media_buy_id": "mb_12345",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "creative_deadline": "2024-01-30T23:59:59Z",
-  "packages": [
-    { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_package" }
-  ]
+  "timestamp": "2025-01-22T10:30:00Z",
+  "message": "Media buy created successfully with 2 packages ready for creative assignment",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "buyer_ref": "nike_q1_campaign_2024",
+    "creative_deadline": "2024-01-30T23:59:59Z",
+    "packages": [
+      { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_package" }
+    ]
+  }
 }
 ```
 
@@ -557,12 +564,12 @@ app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) =
 
     case 'completed':
       // Process the completed operation
-      if (task_type === 'media_buy') {
+      if (task_type === 'create_media_buy') {
         await handleMediaBuyCreated({
-          media_buy_id: response.media_buy_id,
-          buyer_ref: response.buyer_ref,
-          packages: response.packages,
-          creative_deadline: response.creative_deadline
+          media_buy_id: response.result?.media_buy_id,
+          buyer_ref: response.result?.buyer_ref,
+          packages: response.result?.packages,
+          creative_deadline: response.result?.creative_deadline
         });
       }
       break;

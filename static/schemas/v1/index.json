@@ -135,7 +135,7 @@
         },
         "webhook-payload": {
           "$ref": "/schemas/v1/core/webhook-payload.json",
-          "description": "Webhook payload structure sent when async task status changes - combines protocol-level task metadata (task_id, task_type, domain, status, timestamps) with domain-specific response data"
+          "description": "Webhook payload structure sent when async task status changes - protocol-level fields at top-level (operation_id, task_type, status, etc.) and task-specific payload nested under 'result'"
         }
       }
     },
