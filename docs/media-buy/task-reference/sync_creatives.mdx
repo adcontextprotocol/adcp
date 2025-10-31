@@ -87,8 +87,8 @@ For large bulk operations or creative approval workflows, you can provide a task
 - Large creative uploads processing asynchronously
 
 **Webhook payload:**
-- Complete sync_creatives response with summary and results
-- Includes action taken for each creative (created/updated/unchanged/failed)
+- Protocol fields at top-level (operation_id, task_type, status, etc.)
+- `result` contains complete sync_creatives response with summary and results
 
 See [Webhook Security](/docs/protocols/core-concepts.mdx#security) for authentication details.
 
