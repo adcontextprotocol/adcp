@@ -68,7 +68,14 @@
     },
     "result": {
       "type": ["object"],
-      "description": "Task-specific payload for this status update. Validated against the appropriate response schema based on task_type."
+      "description": "Task-specific payload for this status update. Validated against the appropriate response schema based on task_type.",
+      "oneOf": [
+        { "$ref": "/schemas/v1/media-buy/create-media-buy-response.json" },
+        { "$ref": "/schemas/v1/media-buy/update-media-buy-response.json" },
+        { "$ref": "/schemas/v1/media-buy/sync-creatives-response.json" },
+        { "$ref": "/schemas/v1/signals/activate-signal-response.json" },
+        { "$ref": "/schemas/v1/signals/get-signals-response.json" }
+      ]
     },
     "error": {
       "type": ["string", "null"],
