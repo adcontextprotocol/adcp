@@ -7,7 +7,7 @@ keywords: [A2A integration, Agent-to-Agent Protocol, artifacts, SSE streaming, a
 
 # A2A Integration Guide
 
-Transport-specific guide for integrating AdCP using the Agent-to-Agent Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](./core-concepts.mdx).
+Transport-specific guide for integrating AdCP using the Agent-to-Agent Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](/docs/protocols/core-concepts).
 
 ## A2A Client Setup
 
@@ -146,7 +146,7 @@ const task = await a2a.send({
 });
 ```
 
-**Status Handling**: See [Core Concepts](./core-concepts.mdx) for complete status handling patterns.
+**Status Handling**: See [Core Concepts](/docs/protocols/core-concepts) for complete status handling patterns.
 
 ## A2A Response Format
 
@@ -375,7 +375,7 @@ await a2a.send({
 
 All AdCP tasks are available as A2A skills. Use explicit invocation for deterministic execution:
 
-**Task Management**: For comprehensive guidance on tracking async operations across all domains, polling patterns, and webhook integration, see [Task Management](./task-management.mdx).
+**Task Management**: For comprehensive guidance on tracking async operations across all domains, polling patterns, and webhook integration, see [Task Management](/docs/protocols/task-management).
 
 ### Skill Structure
 ```javascript
@@ -399,7 +399,7 @@ await a2a.send({
 - **Media Buy**: `get_products`, `list_creative_formats`, `create_media_buy`, `update_media_buy`, `sync_creatives`, `get_media_buy_delivery`, `list_authorized_properties`, `provide_performance_feedback`
 - **Signals**: `get_signals`, `activate_signal`
 
-**Task Parameters**: See [Media Buy](../media-buy/index.mdx) and [Signals](../signals/overview.mdx) documentation for complete parameter specifications.
+**Task Parameters**: See [Media Buy](/docs/media-buy) and [Signals](/docs/signals/overview) documentation for complete parameter specifications.
 
 ## Agent Cards
 
@@ -526,9 +526,9 @@ if (response.status === 'failed' && response.data?.file_errors) {
 
 ## Next Steps
 
-- **Core Concepts**: Read [Core Concepts](./core-concepts.mdx) for status handling and workflows  
-- **Task Reference**: See [Media Buy Tasks](../media-buy/index.mdx) and [Signals](../signals/overview.mdx)
-- **Protocol Comparison**: Compare with [MCP integration](./mcp-guide.mdx)
+- **Core Concepts**: Read [Core Concepts](/docs/protocols/core-concepts) for status handling and workflows  
+- **Task Reference**: See [Media Buy Tasks](/docs/media-buy) and [Signals](/docs/signals/overview)
+- **Protocol Comparison**: Compare with [MCP integration](/docs/protocols/mcp-guide)
 - **Examples**: Find complete workflow examples in Core Concepts
 
-**For status handling, async operations, and clarification patterns, see [Core Concepts](./core-concepts.mdx) - this guide focuses on A2A transport specifics only.**
+**For status handling, async operations, and clarification patterns, see [Core Concepts](/docs/protocols/core-concepts) - this guide focuses on A2A transport specifics only.**

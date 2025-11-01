@@ -27,7 +27,7 @@ The Signals Activation Protocol provides:
 
 ### Agent Integration
 
-The Signals Activation Protocol operates within the broader [AdCP Ecosystem Layers](../intro#the-adcp-ecosystem-layers), enabling signal agents to directly integrate with and activate signals on decisioning platforms (DSPs, orchestration platforms). 
+The Signals Activation Protocol operates within the broader [AdCP Ecosystem Layers](/docs/intro#the-adcp-ecosystem-layers), enabling signal agents to directly integrate with and activate signals on decisioning platforms (DSPs, orchestration platforms). 
 
 **Direct Integration Model**: Signal agents contract directly with decisioning platforms, eliminating intermediary reporting and usage tracking. Once signals are activated on a decisioning platform, all usage reporting, billing, and campaign metrics are handled directly by that platform.
 
@@ -174,11 +174,11 @@ This is relative to each signal agent's capabilities - a 50% coverage signal fro
 
 The Signals Activation Protocol defines the following tasks that agents can perform:
 
-### [get_signals](./tasks/get_signals)
+### [get_signals](/docs/signals/tasks/get_signals)
 
 Discover relevant signals based on a marketing specification across multiple platforms. This task enables natural language search for audiences, contextual signals, and other targeting data.
 
-### [activate_signal](./tasks/activate_signal)
+### [activate_signal](/docs/signals/tasks/activate_signal)
 
 Activate a signal for use on a specific platform/account. This task handles the entire activation lifecycle, including initiating the request, monitoring progress, and returning the final deployment status.
 
@@ -238,9 +238,9 @@ Activate a signal for use on a specific platform/account. This task handles the 
 
 ## Error Handling
 
-For comprehensive error handling guidance including pending vs error states, response patterns, and recovery strategies, see [Protocol Error Handling](../protocols/error-handling.mdx).
+For comprehensive error handling guidance including pending vs error states, response patterns, and recovery strategies, see [Protocol Error Handling](/docs/protocols/error-handling).
 
-Signal-specific error codes are documented in each task specification and the [Error Codes Reference](../reference/error-codes.mdx).
+Signal-specific error codes are documented in each task specification and the [Error Codes Reference](/docs/reference/error-codes).
 
 ## Response Structure
 
