@@ -444,7 +444,7 @@ Task management integrates with protocol-level webhook configuration for push no
 
 ### Webhook Configuration
 
-Configure webhooks at the protocol level when making async task calls. See **[Core Concepts: Protocol-Level Webhook Configuration](./core-concepts.mdx#protocol-level-webhook-configuration)** for complete setup examples.
+Configure webhooks at the protocol level when making async task calls. See **[Core Concepts: Protocol-Level Webhook Configuration](/docs/protocols/core-concepts.mdx#protocol-level-webhook-configuration)** for complete setup examples.
 
 **Quick example:**
 ```javascript
@@ -590,7 +590,7 @@ app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) =
 
 **Important**: Webhooks use at-least-once delivery semantics and may be duplicated or arrive out of order.
 
-See **[Core Concepts: Webhook Reliability](./core-concepts.mdx#webhook-reliability)** for detailed implementation guidance including:
+See **[Core Concepts: Webhook Reliability](/docs/protocols/core-concepts.mdx#webhook-reliability)** for detailed implementation guidance including:
 - Idempotent webhook handlers
 - Sequence handling and out-of-order detection
 - Security considerations (signature verification)
@@ -649,8 +649,8 @@ See **[Core Concepts: Webhook Reliability](./core-concepts.mdx#webhook-reliabili
 
 ## Related Documentation
 
-- **[Core Concepts](./core-concepts.mdx)** - Protocol fundamentals and design principles
-- **[MCP Guide](./mcp-guide.mdx)** - MCP-specific implementation patterns
-- **[A2A Guide](./a2a-guide.mdx)** - A2A-specific integration examples
-- **[Media Buy Reference](../media-buy/task-reference/)** - Domain-specific task documentation
-- **[Signals Reference](../signals/overview.mdx)** - Signal-specific task documentation
+- **[Core Concepts](/docs/protocols/core-concepts)** - Protocol fundamentals and design principles
+- **[MCP Guide](/docs/protocols/mcp-guide)** - MCP-specific implementation patterns
+- **[A2A Guide](/docs/protocols/a2a-guide)** - A2A-specific integration examples
+- **[Media Buy Reference](/docs/media-buy/task-reference/)** - Domain-specific task documentation
+- **[Signals Reference](/docs/signals/overview)** - Signal-specific task documentation
