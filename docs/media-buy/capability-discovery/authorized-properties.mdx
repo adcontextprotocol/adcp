@@ -92,7 +92,7 @@ Publishers authorize sales agents by hosting an `adagents.json` file at `/.well-
 
 ## How Sales Agents Share Authorized Properties
 
-Sales agents use the [`list_authorized_properties`](../task-reference/list_authorized_properties.mdx) task to declare all properties they are authorized to represent. This serves multiple purposes:
+Sales agents use the [`list_authorized_properties`](../task-reference/list_authorized_properties) task to declare all properties they are authorized to represent. This serves multiple purposes:
 
 1. **Transparency**: Buyers can see what properties an agent represents
 2. **Validation enablement**: Provides the data buyers need to verify authorization
@@ -247,7 +247,7 @@ if (!authorized) {
 
 Authorization validation integrates seamlessly with [Product Discovery](../product-discovery/):
 
-1. **Discover products** using [`get_products`](../task-reference/get_products.mdx)
+1. **Discover products** using [`get_products`](../task-reference/get_products)
 2. **Validate authorization** for properties referenced in products
 3. **Proceed confidently** with authorized inventory
 4. **Flag unauthorized** products for manual review
@@ -266,11 +266,11 @@ For complete technical details on implementing the `adagents.json` file format, 
 - Validation code examples and error handling
 - Security considerations and best practices
 
-See the **[adagents.json Tech Spec](./adagents.mdx)** for complete implementation guidance.
+See the **[adagents.json Tech Spec](./adagents)** for complete implementation guidance.
 
 ## Related Documentation
 
-- **[`list_authorized_properties`](../task-reference/list_authorized_properties.mdx)** - API reference for property discovery
+- **[`list_authorized_properties`](../task-reference/list_authorized_properties)** - API reference for property discovery
 - **[Product Discovery](../product-discovery/)** - How authorization integrates with product discovery
 - **[Properties Schema](https://adcontextprotocol.org/schemas/v1/core/property.json)** - Technical property data model
-- **[adagents.json Tech Spec](./adagents.mdx)** - Complete `adagents.json` implementation guide
+- **[adagents.json Tech Spec](./adagents)** - Complete `adagents.json` implementation guide

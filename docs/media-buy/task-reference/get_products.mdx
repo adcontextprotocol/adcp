@@ -9,9 +9,9 @@ Discover available advertising products based on campaign requirements, using na
 
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
 
-**Pricing Information**: Products include pricing options that buyers select when creating media buys. See [Pricing Models](../advanced-topics/pricing-models.mdx) for complete details on CPM, CPCV, CPP, and other pricing models.
+**Pricing Information**: Products include pricing options that buyers select when creating media buys. See [Pricing Models](../advanced-topics/pricing-models) for complete details on CPM, CPCV, CPP, and other pricing models.
 
-**Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats.mdx) to get full format specifications. **See [Creative Lifecycle](../creatives/index.mdx) for the complete workflow.**
+**Format Discovery**: Products return format references (IDs only). Use [`list_creative_formats`](./list_creative_formats) to get full format specifications. **See [Creative Lifecycle](../creatives/index.mdx) for the complete workflow.**
 
 **Request Schema**: [`https://adcontextprotocol.org/schemas/v1/media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/get-products-request.json)
 **Response Schema**: [`https://adcontextprotocol.org/schemas/v1/media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/get-products-response.json)
@@ -138,7 +138,7 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
 - **product_id**: Unique identifier for the product
 - **name**: Human-readable product name
 - **description**: Detailed description of the product and its inventory
-- **pricing_options**: Array of available pricing models for this product. Each option has a unique `pricing_option_id` that buyers reference in `create_media_buy`. See [Pricing Models](../advanced-topics/pricing-models.mdx) for complete documentation of supported pricing models (CPM, CPCV, CPP, CPC, vCPM, flat_rate).
+- **pricing_options**: Array of available pricing models for this product. Each option has a unique `pricing_option_id` that buyers reference in `create_media_buy`. See [Pricing Models](../advanced-topics/pricing-models) for complete documentation of supported pricing models (CPM, CPCV, CPP, CPC, vCPM, flat_rate).
 - **properties**: Array of specific advertising properties covered by this product (see [Property Schema](https://adcontextprotocol.org/schemas/v1/core/property.json))
   - **property_type**: Type of advertising property ("website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio")
   - **name**: Human-readable property name
@@ -148,7 +148,7 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
   - **tags**: Optional array of tags for categorization (e.g., network membership, content categories)
   - **publisher_domain**: Domain where adagents.json should be checked for authorization validation
 - **property_tags**: Array of tags referencing groups of properties (alternative to `properties` array)
-  - Use [`list_authorized_properties`](./list_authorized_properties.mdx) to resolve tags to actual property objects
+  - Use [`list_authorized_properties`](./list_authorized_properties) to resolve tags to actual property objects
   - Recommended for products with large property sets (e.g., radio networks with 1000+ stations)
 - **format_ids**: Array of supported creative format ID objects (structured with `agent_url` and `id` fields) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
@@ -179,7 +179,7 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
 
 ## Property Tag Resolution
 
-When products use `property_tags` instead of full `properties` arrays, buyer agents must resolve the tags to actual property objects using [`list_authorized_properties`](./list_authorized_properties.mdx).
+When products use `property_tags` instead of full `properties` arrays, buyer agents must resolve the tags to actual property objects using [`list_authorized_properties`](./list_authorized_properties).
 
 ### Resolution Process
 
@@ -223,7 +223,7 @@ for (const property of productProperties) {
 
 1. **Get Properties**: For each product, get property objects either:
    - Directly from the `properties` array, OR
-   - By resolving `property_tags` via [`list_authorized_properties`](./list_authorized_properties.mdx)
+   - By resolving `property_tags` via [`list_authorized_properties`](./list_authorized_properties)
 2. **Check Publisher Domains**: For each property, fetch `/.well-known/adagents.json` from `publisher_domain`
 3. **Validate Domain Identifiers**: For website properties, also check each domain identifier
 4. **Validate Agent**: Confirm the sales agent URL appears in `authorized_agents`
@@ -736,7 +736,7 @@ When the promoted offering is subject to policy restrictions, the response will 
 - The `message` field provides a human-readable summary of the response
 - Publishers may request clarification when briefs are incomplete
 ## Brief Requirements
-For comprehensive guidance on brief structure and expectations, see the [Brief Expectations](../product-discovery/brief-expectations.mdx) documentation. Key points:
+For comprehensive guidance on brief structure and expectations, see the [Brief Expectations](../product-discovery/brief-expectations) documentation. Key points:
 - **Optional**: The `brief` field - include for recommendations, omit for run-of-network
 - **Run-of-Network**: Omit brief to get broad reach products (not entire catalog)
 - **Recommendations**: Include brief when you want publisher help selecting products
@@ -994,6 +994,6 @@ for brief in test_briefs:
 ## Integration with Media Buy Flow
 Discovery is just the first step. Ensure smooth transitions to the next phases:
 1. **Discovery** → `get_products` finds relevant inventory
-2. **Purchase** → [`create_media_buy`](./create_media_buy.mdx) executes the campaign
-3. **Creative** → [`sync_creatives`](./sync_creatives.mdx) uploads assets
+2. **Purchase** → [`create_media_buy`](./create_media_buy) executes the campaign
+3. **Creative** → [`sync_creatives`](./sync_creatives) uploads assets
 4. **Monitor** → Track delivery and optimize
