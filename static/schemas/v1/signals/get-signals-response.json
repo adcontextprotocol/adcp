@@ -44,36 +44,30 @@
           },
           "deployments": {
             "type": "array",
-            "description": "Array of platform deployments",
+            "description": "Array of destination deployments",
             "items": {
               "type": "object",
               "properties": {
                 "platform": {
                   "type": "string",
-                  "description": "Platform name"
+                  "description": "Platform identifier for DSPs. Either platform or agent_url will be present."
+                },
+                "agent_url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL identifying the destination agent. Either platform or agent_url will be present."
                 },
                 "account": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Specific account if applicable"
+                  "type": "string",
+                  "description": "Account identifier if applicable"
                 },
                 "is_live": {
                   "type": "boolean",
-                  "description": "Whether signal is currently active"
+                  "description": "Whether signal is currently active on this destination"
                 },
-                "scope": {
-                  "type": "string",
-                  "description": "Deployment scope",
-                  "enum": [
-                    "platform-wide",
-                    "account-specific"
-                  ]
-                },
-                "decisioning_platform_segment_id": {
-                  "type": "string",
-                  "description": "Platform-specific segment ID"
+                "activation_key": {
+                  "$ref": "/schemas/v1/core/activation-key.json",
+                  "description": "The key to use for targeting. Only present if is_live=true AND this destination has requester=true in the request."
                 },
                 "estimated_activation_duration_minutes": {
                   "type": "number",
@@ -81,10 +75,9 @@
                   "minimum": 0
                 }
               },
-              "required": [
-                "platform",
-                "is_live",
-                "scope"
+              "oneOf": [
+                {"required": ["platform", "is_live"]},
+                {"required": ["agent_url", "is_live"]}
               ],
               "additionalProperties": false
             }

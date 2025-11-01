@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/activation-key.json",
+  "title": "Activation Key",
+  "description": "Universal identifier for using a signal on a destination platform. Can be either a segment ID or a key-value pair depending on the platform's targeting mechanism.",
+  "type": "object",
+  "oneOf": [
+    {
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "segment_id",
+          "description": "Segment ID based targeting"
+        },
+        "segment_id": {
+          "type": "string",
+          "description": "The platform-specific segment identifier to use in campaign targeting"
+        }
+      },
+      "required": ["type", "segment_id"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "key_value",
+          "description": "Key-value pair based targeting"
+        },
+        "key": {
+          "type": "string",
+          "description": "The targeting parameter key"
+        },
+        "value": {
+          "type": "string",
+          "description": "The targeting parameter value"
+        }
+      },
+      "required": ["type", "key", "value"],
+      "additionalProperties": false
+    }
+  ]
+}

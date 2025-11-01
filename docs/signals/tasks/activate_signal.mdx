@@ -22,10 +22,26 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `signal_agent_segment_id` | string | Yes | The universal identifier for the signal to activate |
-| `platform` | string | Yes | The target platform for activation |
-| `account` | string | No* | Account identifier (required for account-specific activation) |
+| `destinations` | Destination[] | Yes | Target destination(s) for activation (see Destination Object below) |
 
-*Required when activating at account level
+### Destination Object
+
+Each destination must have **either** `platform` (for DSPs) **or** `agent_url` (for sales agents):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `platform` | string | Conditional* | Platform identifier (e.g., 'the-trade-desk', 'amazon-dsp') |
+| `agent_url` | string (URI) | Conditional* | URL identifying the sales agent |
+| `account` | string | No | Account identifier on the platform or agent |
+
+*Must include either `platform` or `agent_url`, but not both.
+
+**Activation Keys**: If the authenticated caller has access to any of the destinations in the request, the signal agent will include `activation_key` in the response for those destinations.
+
+**Permission Model**: The signal agent determines key inclusion based on the caller's authentication and authorization. For example:
+- A sales agent receives keys for destinations matching its `agent_url`
+- A buyer with credentials for multiple DSP platforms receives keys for all those platforms
+- Access is determined by the signal agent's permission system, not by flags in the request
 
 ## Response Structure
 
@@ -46,11 +62,18 @@ For asynchronous operations like activation, both protocols support:
 
 ```json
 {
-  "task_id": "string",
-  "status": "string",
-  "decisioning_platform_segment_id": "string",
-  "estimated_activation_duration_minutes": "number",
-  "deployed_at": "string",
+  "deployments": [
+    {
+      "platform": "string",
+      "account": "string",
+      "activation_key": {
+        "type": "segment_id",
+        "segment_id": "string"
+      },
+      "estimated_activation_duration_minutes": "number",
+      "deployed_at": "string"
+    }
+  ],
   "errors": [
     {
       "code": "string",
@@ -65,11 +88,13 @@ For asynchronous operations like activation, both protocols support:
 
 ### Field Descriptions
 
-- **task_id**: Unique identifier for tracking the activation task
-- **status**: Current activation status (pending, processing, deployed, failed)
-- **decisioning_platform_segment_id**: Platform-specific segment ID for campaign targeting
-- **estimated_activation_duration_minutes**: Estimated completion time (when status is pending)
-- **deployed_at**: ISO 8601 timestamp when activation completed (when status is deployed)
+- **deployments**: Array of deployment results for each destination
+  - **platform**: Platform identifier for DSPs (either platform or agent_url will be present)
+  - **agent_url**: URL identifying the destination agent (either platform or agent_url will be present)
+  - **account**: Account identifier if applicable
+  - **activation_key**: The key to use for targeting (see Activation Key below). Only present if the authenticated caller has access to this destination.
+  - **estimated_activation_duration_minutes**: Estimated completion time for async operations
+  - **deployed_at**: ISO 8601 timestamp when activation completed
 - **errors**: Optional array of errors and warnings encountered during activation
   - **code**: Standardized error code for programmatic handling
   - **message**: Human-readable error description with context
@@ -77,33 +102,87 @@ For asynchronous operations like activation, both protocols support:
   - **suggestion**: Suggested fix for the error (optional)
   - **details**: Additional activation-specific error details (optional)
 
+### Activation Key Object
+
+The activation key represents how to use the signal on a destination platform. It can be either a segment ID or a key-value pair:
+
+**Segment ID format (typical for DSP platforms):**
+```json
+{
+  "type": "segment_id",
+  "segment_id": "ttd_segment_12345"
+}
+```
+
+**Key-Value format (typical for sales agents):**
+```json
+{
+  "type": "key_value",
+  "key": "audience_segment",
+  "value": "luxury_auto_intenders"
+}
+```
+
 ## Protocol-Specific Examples
 
 The AdCP payload is identical across protocols. Only the request/response wrapper differs.
 
-### MCP Request
+### MCP Request - Sales Agent Activation
 ```json
 {
   "tool": "activate_signal",
   "arguments": {
-    
     "signal_agent_segment_id": "luxury_auto_intenders",
-    "platform": "the-trade-desk",
-    "account": "agency-123-ttd"
+    "destinations": [{
+      "agent_url": "https://wonderstruck.salesagents.com"
+    }]
   }
 }
 ```
 
-### MCP Response (Asynchronous)
+### MCP Response - Synchronous (Key-Value)
+Immediate response with activation key:
+```json
+{
+  "message": "Signal successfully activated on Wonderstruck sales agent",
+  "context_id": "ctx-signals-123",
+  "deployments": [{
+    "agent_url": "https://wonderstruck.salesagents.com",
+    "activation_key": {
+      "type": "key_value",
+      "key": "audience_segment",
+      "value": "luxury_auto_intenders_v2"
+    },
+    "deployed_at": "2025-01-15T14:30:00Z"
+  }]
+}
+```
+
+### MCP Request - DSP Platform Activation
+```json
+{
+  "tool": "activate_signal",
+  "arguments": {
+    "signal_agent_segment_id": "luxury_auto_intenders",
+    "destinations": [{
+      "platform": "the-trade-desk",
+      "account": "agency-123-ttd"
+    }]
+  }
+}
+```
+
+### MCP Response - Asynchronous (Segment ID)
 Initial response:
 ```json
 {
   "message": "Initiating activation of 'Luxury Auto Intenders' on The Trade Desk",
   "context_id": "ctx-signals-123",
-  "task_id": "activation_789",
-  "status": "pending",
-  "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
-  "estimated_activation_duration_minutes": 30
+  "deployments": [{
+    "platform": "the-trade-desk",
+    "account": "agency-123-ttd",
+    "estimated_activation_duration_minutes": 30
+  }]
 }
 ```
 
@@ -112,10 +191,15 @@ After polling for completion:
 {
   "message": "Signal successfully activated on The Trade Desk",
   "context_id": "ctx-signals-123",
-  "task_id": "activation_789",
-  "status": "deployed",
-  "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
-  "deployed_at": "2025-01-15T14:30:00Z"
+  "deployments": [{
+    "platform": "the-trade-desk",
+    "account": "agency-123-ttd",
+    "activation_key": {
+      "type": "segment_id",
+      "segment_id": "ttd_agency123_lux_auto"
+    },
+    "deployed_at": "2025-01-15T14:30:00Z"
+  }]
 }
 ```
 
@@ -143,8 +227,10 @@ await a2a.send({
         skill: "activate_signal",
         parameters: {
           signal_agent_segment_id: "luxury_auto_intenders",
-          platform: "the-trade-desk",
-          account: "agency-123-ttd"
+          destinations: [{
+            platform: "the-trade-desk",
+            account: "agency-123-ttd"
+          }]
         }
       }
     }]
@@ -172,10 +258,15 @@ data: {"status": {"state": "completed"}, "artifacts": [{
     {"kind": "text", "text": "Signal successfully activated on The Trade Desk"},
     {"kind": "data", "data": {
       "context_id": "ctx-signals-123",
-      "task_id": "activation_789",
-      "status": "deployed",
-      "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
-      "deployed_at": "2025-01-15T14:30:00Z"
+      "deployments": [{
+        "platform": "the-trade-desk",
+        "account": "agency-123-ttd",
+        "activation_key": {
+          "type": "segment_id",
+          "segment_id": "ttd_agency123_lux_auto"
+        },
+        "deployed_at": "2025-01-15T14:30:00Z"
+      }]
     }}
   ]
 }]}
@@ -194,8 +285,10 @@ For long-running activations (when initial response is `submitted`), configure a
 const response = await session.call('activate_signal',
   {
     signal_agent_segment_id: "luxury_auto_intenders",
-    platform: "the-trade-desk",
-    account: "agency-123-ttd"
+    destinations: [{
+      platform: "the-trade-desk",
+      account: "agency-123-ttd"
+    }]
   },
   {
     webhook_url: "https://buyer.com/webhooks/adcp/activate_signal/agent_id/op_id",
@@ -212,10 +305,15 @@ Content-Type: application/json
 Authorization: Bearer secret-token
 
 {
-  "status": "deployed",
-  "task_id": "activation_789",
-  "decisioning_platform_segment_id": "ttd_agency123_lux_auto",
-  "deployed_at": "2025-01-15T14:30:00Z"
+  "deployments": [{
+    "platform": "the-trade-desk",
+    "account": "agency-123-ttd",
+    "activation_key": {
+      "type": "segment_id",
+      "segment_id": "ttd_agency123_lux_auto"
+    },
+    "deployed_at": "2025-01-15T14:30:00Z"
+  }]
 }
 ```
 
@@ -223,7 +321,7 @@ See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx
 
 ## Scenarios
 
-### Initial Response (Pending)
+### Async Activation - Initial Response (Pending)
 **Message**: "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use."
 
 **Complete Response**:
@@ -231,38 +329,51 @@ See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx
 {
   "message": "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use.",
   "context_id": "ctx-signals-def456",
-  "task_id": "activation_12345",
-  "status": "pending",
-  "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
-  "estimated_activation_duration_minutes": 60
+  "deployments": [{
+    "platform": "pubmatic",
+    "account": "brand-456-pm",
+    "estimated_activation_duration_minutes": 60
+  }]
 }
 ```
 
-### Status Update (Processing)
-**Message**: "Good progress on the activation. Access permissions validated successfully. Now configuring the signal deployment on PubMatic's platform. About 45 minutes remaining."
+### Async Activation - Final Response (Deployed)
+**Message**: "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately with the activation key provided. The activation completed faster than expected - just 52 minutes."
 
 **Complete Response**:
 ```json
 {
-  "message": "Good progress on the activation. Access permissions validated successfully. Now configuring the signal deployment on PubMatic's platform. About 45 minutes remaining.",
+  "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately with the activation key provided. The activation completed faster than expected - just 52 minutes.",
   "context_id": "ctx-signals-def456",
-  "task_id": "activation_12345",
-  "status": "processing"
+  "deployments": [{
+    "platform": "pubmatic",
+    "account": "brand-456-pm",
+    "activation_key": {
+      "type": "segment_id",
+      "segment_id": "pm_brand456_peer39_lux_auto"
+    },
+    "deployed_at": "2025-01-15T14:30:00Z"
+  }]
 }
 ```
 
-### Final Response (Deployed)
-**Message**: "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately in your campaigns with the ID 'pm_brand456_peer39_lux_auto'. The activation completed faster than expected - just 52 minutes."
+### Sync Activation - Sales Agent (Immediate)
+**Message**: "Signal successfully activated on Wonderstruck sales agent. Use the key-value pair in your targeting configuration."
 
 **Complete Response**:
 ```json
 {
-  "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately in your campaigns with the ID 'pm_brand456_peer39_lux_auto'. The activation completed faster than expected - just 52 minutes.",
-  "context_id": "ctx-signals-def456",
-  "task_id": "activation_12345",
-  "status": "deployed",
-  "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
-  "deployed_at": "2025-01-15T14:30:00Z"
+  "message": "Signal successfully activated on Wonderstruck sales agent. Use the key-value pair in your targeting configuration.",
+  "context_id": "ctx-signals-ghi789",
+  "deployments": [{
+    "agent_url": "https://wonderstruck.salesagents.com",
+    "activation_key": {
+      "type": "key_value",
+      "key": "audience_segment",
+      "value": "luxury_auto_context_v2"
+    },
+    "deployed_at": "2025-01-15T14:31:00Z"
+  }]
 }
 ```
 
@@ -274,10 +385,15 @@ See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx
 {
   "message": "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated.",
   "context_id": "ctx-signals-def456",
-  "task_id": "activation_12345",
-  "status": "deployed",
-  "decisioning_platform_segment_id": "pm_brand456_peer39_lux_auto",
-  "deployed_at": "2025-01-15T14:30:00Z",
+  "deployments": [{
+    "platform": "pubmatic",
+    "account": "brand-456-pm",
+    "activation_key": {
+      "type": "segment_id",
+      "segment_id": "pm_brand456_peer39_lux_auto"
+    },
+    "deployed_at": "2025-01-15T14:30:00Z"
+  }],
   "errors": [
     {
       "code": "SUBOPTIMAL_CONFIGURATION",
@@ -297,17 +413,15 @@ See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx
 {
   "message": "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again.",
   "context_id": "ctx-signals-def456",
-  "task_id": "activation_12345",
-  "status": "failed",
   "errors": [
     {
       "code": "DEPLOYMENT_UNAUTHORIZED",
       "message": "Account brand-456-pm not authorized for Peer39 data on PubMatic",
-      "field": "account",
+      "field": "destination.account",
       "suggestion": "Contact your PubMatic account manager to enable Peer39 data access for your account",
       "details": {
         "account_id": "brand-456-pm",
-        "platform": "pubmatic",
+        "destination_url": "https://pubmatic.com",
         "data_provider": "peer39",
         "required_permission": "third_party_data_access"
       }
@@ -315,13 +429,6 @@ See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx
   ]
 }
 ```
-
-## Status Values
-
-- **pending**: Activation request received and queued
-- **processing**: Activation in progress
-- **deployed**: Signal successfully activated and ready to use
-- **failed**: Activation could not be completed (check errors array for details)
 
 ## Error Codes
 
