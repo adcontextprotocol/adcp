@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.3.1
+
+### Patch Changes
+
+- b09ddd6: Update homepage documentation links to external docs site. All documentation links on the homepage, navigation, and footer now point to https://docs.adcontextprotocol.org instead of local paths, directing users to the hosted documentation site.
+- 8904e6c: Fix broken documentation links for Mintlify deployment.
+
+  Converted all relative internal links to absolute Mintlify-compatible paths with `/docs/` prefix. This fixes 389 broken links across 50 documentation files that were causing 404 errors when users clicked them on docs.adcontextprotocol.org.
+
+  **Technical details:**
+
+  - Changed relative paths like `./reference/release-notes` to absolute `/docs/reference/release-notes`
+  - Mintlify requires absolute paths with `/docs/` prefix and no file extensions
+  - Links now match Mintlify's URL structure and routing expectations
+
+  Fixes #167
+
+- ddeef70: Fix Slack working group invite link in community documentation. The previous invite URL was not functional; replaced with working invite link for the agenticads Slack workspace.
+
 ## 2.3.0
 
 ### Minor Changes
