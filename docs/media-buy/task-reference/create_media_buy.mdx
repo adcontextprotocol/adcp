@@ -958,10 +958,14 @@ Authorization: Bearer bearer-token-xyz
 Content-Type: application/json
 
 {
-  "status": "input-required",
+  "operation_id": "op_id",
   "task_id": "task_456",
-  "buyer_ref": "campaign_2024",
-  "message": "Campaign budget $150K requires approval to proceed"
+  "task_type": "create_media_buy",
+  "status": "input-required",
+  "message": "Campaign budget $150K requires approval to proceed",
+  "result": {
+    "buyer_ref": "campaign_2024"
+  }
 }
 ```
 
@@ -973,20 +977,25 @@ Authorization: Bearer bearer-token-xyz
 Content-Type: application/json
 
 {
+  "operation_id": "op_id",
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
   "status": "completed",
-  "media_buy_id": "mb_12345",
-  "buyer_ref": "campaign_2024",
-  "creative_deadline": "2024-01-30T23:59:59Z",
-  "packages": [
-    {
-      "package_id": "pkg_001",
-      "buyer_ref": "ctv_package"
-    }
-  ]
+  "result": {
+    "media_buy_id": "mb_12345",
+    "buyer_ref": "campaign_2024",
+    "creative_deadline": "2024-01-30T23:59:59Z",
+    "packages": [
+      {
+        "package_id": "pkg_001",
+        "buyer_ref": "ctv_package"
+      }
+    ]
+  }
 }
 ```
 
-Each webhook receives the full response object for that status. See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx#webhook-integration)** for complete details.
+Each webhook includes protocol fields plus a `result` object for the task-specific payload of that status. See **[Task Management: Webhook Integration](../../protocols/task-management.mdx#webhook-integration)** for complete details.
 
 ### A2A Status Checking
 
