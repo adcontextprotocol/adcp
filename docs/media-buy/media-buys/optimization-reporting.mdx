@@ -174,7 +174,7 @@ When a reporting webhook is configured, publishers commit to sending:
 - One final notification when the campaign completes
 - If reporting data is delayed beyond the expected delay window, a `"delayed"` notification will be sent
 
-### Webhook Payload
+### Webhook Payload (Real-time)
 
 Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with additional metadata:
 
@@ -210,6 +210,139 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
 - **`sequence_number`**: Sequential notification number (starts at 1)
 - **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
 - **`media_buy_deliveries`**: Array of media buy delivery data (may contain multiple media buys aggregated by publisher)
+
+### Offline File Delivery (Batch)
+
+For offline file delivery, publishers can provide reporting data in JSON Lines or Parquet format. Both formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
+
+**File Naming Convention:**
+Files should follow the naming pattern: `s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.{jsonl|parquet}.gz`
+
+**Compression:**
+Files are typically compressed with gzip (`.jsonl.gz` or `.parquet.gz`) for efficient storage and transfer.
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+<TabItem value="jsonl" label="JSON Lines (JSONL)" default>
+
+---
+
+JSON Lines (JSONL) preserves the exact webhook payload structure, with each line containing a complete JSON object. This format is ideal for:
+- Preserving nested structures
+- Easy parsing with standard JSON libraries
+- Streaming processing (one line at a time)
+- Human-readable format
+
+**Structure:**
+
+Each line in the JSONL file contains a complete webhook payload object. Multiple media buys can be included by having multiple lines in the file.
+
+**Example:**
+
+```jsonl
+{"notification_type":"scheduled","sequence_number":5,"next_expected_at":"2024-02-06T08:00:00Z","reporting_period":{"start":"2024-02-05T00:00:00Z","end":"2024-02-05T23:59:59Z"},"currency":"USD","media_buy_deliveries":[{"media_buy_id":"mb_001","buyer_ref":"campaign_a","status":"active","totals":{"impressions":125000,"spend":5625.00,"clicks":250,"ctr":0.002,"video_completions":87500,"completion_rate":0.70},"by_package":[{"package_id":"pkg_001","buyer_ref":"ctv_package","impressions":75000,"spend":3375.00,"clicks":150,"video_completions":52500,"pacing_index":0.95,"pricing_model":"cpcv","rate":0.045,"currency":"USD"},{"package_id":"pkg_002","buyer_ref":"audio_package","impressions":50000,"spend":2250.00,"clicks":100,"video_completions":35000,"pacing_index":0.93,"pricing_model":"cpm","rate":45.00,"currency":"USD"}]}]}
+{"notification_type":"scheduled","sequence_number":6,"next_expected_at":"2024-02-07T08:00:00Z","reporting_period":{"start":"2024-02-06T00:00:00Z","end":"2024-02-06T23:59:59Z"},"currency":"USD","media_buy_deliveries":[{"media_buy_id":"mb_002","buyer_ref":"campaign_b","status":"active","totals":{"impressions":200000,"spend":9000.00,"clicks":400,"ctr":0.002,"video_completions":140000,"completion_rate":0.70},"by_package":[{"package_id":"pkg_003","buyer_ref":"display_package","impressions":200000,"spend":9000.00,"clicks":400,"video_completions":140000,"pacing_index":1.02,"pricing_model":"cpm","rate":45.00,"currency":"USD"}]}]}
+```
+
+**Formatted Example (for readability):**
+
+```json
+{
+  "notification_type": "scheduled",
+  "sequence_number": 5,
+  "next_expected_at": "2024-02-06T08:00:00Z",
+  "reporting_period": {
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_001",
+      "buyer_ref": "campaign_a",
+      "status": "active",
+      "totals": {
+        "impressions": 125000,
+        "spend": 5625.00,
+        "clicks": 250,
+        "ctr": 0.002,
+        "video_completions": 87500,
+        "completion_rate": 0.70
+      },
+      "by_package": [...]
+    }
+  ]
+}
+```
+
+---
+
+</TabItem>
+<TabItem value="parquet" label="Parquet">
+
+---
+
+Parquet is a columnar storage format optimized for analytics and batch processing. This format is ideal for:
+- Large-scale data processing
+- Efficient columnar queries
+- Compression and storage optimization
+- Integration with data warehouses and analytics tools
+
+**Structure:**
+
+Parquet files preserve the nested structure through nested columns. The schema mirrors the JSON structure:
+
+**Schema Structure:**
+```
+reporting_period
+  ├── start (string)
+  └── end (string)
+notification_type (string)
+sequence_number (int64)
+next_expected_at (string)
+currency (string)
+media_buy_deliveries (list)
+  └── element (struct)
+      ├── media_buy_id (string)
+      ├── buyer_ref (string)
+      ├── status (string)
+      ├── totals (struct)
+      │   ├── impressions (int64)
+      │   ├── spend (double)
+      │   ├── clicks (int64)
+      │   ├── ctr (double)
+      │   ├── video_completions (int64)
+      │   └── completion_rate (double)
+      └── by_package (list)
+          └── element (struct)
+              ├── package_id (string)
+              ├── buyer_ref (string)
+              ├── impressions (int64)
+              ├── spend (double)
+              ├── clicks (int64)
+              ├── video_completions (int64)
+              ├── pacing_index (double)
+              ├── pricing_model (string)
+              ├── rate (double)
+              └── currency (string)
+```
+
+**Example Data Representation:**
+
+The Parquet file contains the same data as the JSONL format, but stored in columnar format. For example:
+
+| reporting_period.start | reporting_period.end | currency | media_buy_deliveries[0].media_buy_id | media_buy_deliveries[0].totals.impressions | media_buy_deliveries[0].by_package[0].package_id | media_buy_deliveries[0].by_package[0].pricing_model |
+|------------------------|----------------------|----------|---------------------------------------|-------------------------------------------|---------------------------------------------------|-----------------------------------------------------|
+| 2024-02-05T00:00:00Z   | 2024-02-05T23:59:59Z | USD      | mb_001                                | 125000                                    | pkg_001                                           | cpcv                                                |
+| 2024-02-05T00:00:00Z   | 2024-02-05T23:59:59Z | USD      | mb_001                                | 125000                                    | pkg_002                                           | cpm                                                 |
+| 2024-02-06T00:00:00Z   | 2024-02-06T23:59:59Z | USD      | mb_002                                | 200000                                    | pkg_003                                           | cpm                                                 |
+
+---
+
+</TabItem>
+</Tabs>
 
 ### Timezone Handling
 
