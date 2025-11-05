@@ -74,7 +74,7 @@ Publishers can proactively push reporting data to buyers through webhook notific
 **Example: Offline Delivery**
 Publisher pushes daily report files to buyer's cloud storage:
 ```
-s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.json.gz
+s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.jsonl.gz
 ```
 
 File contains same structure as webhook payload but aggregated across all campaigns. Buyer processes files on their schedule.
