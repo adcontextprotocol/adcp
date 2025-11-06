@@ -412,6 +412,107 @@ See [Carousel Channel Guide](/docs/creative/channels/carousels) for complete spe
 
 Some formats like carousels, slideshows, and stories use repeatable asset groups where each frame contains a collection of assets. See the [Carousel & Multi-Asset Formats guide](/docs/creative/channels/carousels) for complete documentation on frame-based format patterns.
 
+## Format Cards
+
+Format cards provide visual representations of creative formats for display in browsing and selection interfaces. Creative agents can optionally include card definitions that reference card formats and provide the assets needed to render attractive visual cards.
+
+### Card Types
+
+Creative agents should provide at least the standard card, and optionally a detailed card:
+
+**Standard Card** (`format_card`):
+- Compact 300x400px card for format browsing
+- Supports 2x density images for retina displays
+- Quick visual understanding of format specs
+
+**Detailed Card** (`format_card_detailed`, optional):
+- Responsive layout with text description alongside hero carousel showing format in context
+- Markdown specifications section below
+- Full format documentation similar to [Yahoo's ad specs](https://adspecs.yahooinc.com/premium-ads/e2e-horizon-desktop)
+
+### Structure
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_standard_30s"
+  },
+  "name": "Standard Video - 30 seconds",
+  "type": "video",
+  // ... other format fields ...
+
+  "format_card": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "format_card_standard"
+    },
+    "manifest": {
+      "display_name": "30-Second Video",
+      "preview_mockup_url": "https://cdn.example.com/format-mockups/video_30s.png",
+      "format_type_label": "Video"
+    }
+  },
+
+  "format_card_detailed": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "format_card_detailed"
+    },
+    "manifest": {
+      "display_name": "Standard 30-Second Video",
+      "description": "The Edge A-Logs Horizon (desktop) format is an encompassing...",
+      "carousel_images": [
+        "https://cdn.example.com/formats/video_30s_context1.jpg",
+        "https://cdn.example.com/formats/video_30s_context2.jpg"
+      ],
+      "specifications_markdown": "# Technical Specifications\n\n..."
+    }
+  }
+}
+```
+
+### Rendering Cards
+
+Cards can be rendered in two ways:
+
+1. **Via `preview_creative`**: Pass the card format and manifest to generate a rendered card
+2. **Pre-rendered**: Creative agents can pre-generate cards and serve them directly
+
+This flexibility allows implementations to choose between dynamic generation or static hosting based on their infrastructure.
+
+### Standard Card Formats
+
+The AdCP reference creative agent defines two standard card formats:
+
+- **`format_card_standard`** (300x400px) - Compact card for format browsing
+- **`format_card_detailed`** (responsive) - Rich card with carousel and full specs
+
+Creative agents can also define custom card formats to highlight unique format capabilities or match their branding.
+
+**Note**: Standard card format definitions are maintained in the [creative-agent repository](https://github.com/adcontextprotocol/creative-agent), not in this protocol specification.
+
+### When to Include Format Cards
+
+Format cards are optional but recommended for:
+- Visual formats (display, video, DOOH) where mockups help explain the format
+- Complex formats with multiple asset requirements
+- Custom formats that differ from standard specifications
+- Formats where visual preview aids buyer understanding
+
+Use the detailed card variant when you want to provide comprehensive format documentation similar to ad spec pages.
+
+### Client Rendering Guidelines
+
+When displaying formats in UIs, clients should follow this fallback order:
+
+1. **If `format_card` exists** → Render card via `preview_creative` or display pre-rendered image
+2. **If only `preview_image` exists** → Display static image (deprecated but supported)
+3. **If neither exists** → Render text-only representation (format name + description)
+4. **If card rendering fails** → Gracefully fall back to text-only representation
+
+This ensures a consistent user experience regardless of what format metadata is available.
+
 ## Related Documentation
 
 - [Creative Protocol Overview](/docs/creative) - How formats, manifests, and agents work together

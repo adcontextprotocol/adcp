@@ -119,6 +119,40 @@
       "type": "string",
       "format": "date-time",
       "description": "Expiration timestamp for custom products"
+    },
+    "product_card": {
+      "type": "object",
+      "description": "Optional standard visual card (300x400px) for displaying this product in user interfaces. Can be rendered via preview_creative or pre-generated.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/v1/core/format-id.json",
+          "description": "Creative format defining the card layout (typically product_card_standard)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": ["format_id", "manifest"],
+      "additionalProperties": false
+    },
+    "product_card_detailed": {
+      "type": "object",
+      "description": "Optional detailed card with carousel and full specifications. Provides rich product presentation similar to media kit pages.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/v1/core/format-id.json",
+          "description": "Creative format defining the detailed card layout (typically product_card_detailed)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the detailed card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": ["format_id", "manifest"],
+      "additionalProperties": false
     }
   },
   "required": [

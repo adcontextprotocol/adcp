@@ -20,7 +20,7 @@
     "preview_image": {
       "type": "string",
       "format": "uri",
-      "description": "Optional preview image URL for format browsing/discovery UI. Should be 400x300px (4:3 aspect ratio) PNG or JPG. Used as thumbnail/card image in format browsers."
+      "description": "DEPRECATED: Use format_card instead. Optional preview image URL for format browsing/discovery UI. Should be 400x300px (4:3 aspect ratio) PNG or JPG. Used as thumbnail/card image in format browsers. This field is maintained for backward compatibility but format_card provides a more flexible, structured approach."
     },
     "example_url": {
       "type": "string",
@@ -217,6 +217,40 @@
       "items": {
         "$ref": "/schemas/v1/core/format-id.json"
       }
+    },
+    "format_card": {
+      "type": "object",
+      "description": "Optional standard visual card (300x400px) for displaying this format in user interfaces. Can be rendered via preview_creative or pre-generated.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/v1/core/format-id.json",
+          "description": "Creative format defining the card layout (typically format_card_standard)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": ["format_id", "manifest"],
+      "additionalProperties": false
+    },
+    "format_card_detailed": {
+      "type": "object",
+      "description": "Optional detailed card with carousel and full specifications. Provides rich format documentation similar to ad spec pages.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/v1/core/format-id.json",
+          "description": "Creative format defining the detailed card layout (typically format_card_detailed)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the detailed card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": ["format_id", "manifest"],
+      "additionalProperties": false
     }
   },
   "required": ["format_id", "name", "type"],

@@ -571,10 +571,19 @@ Automation can't write good explanations or migration guides - that requires hum
 #### `category` and `is_standard` (Removed in v1.10.0)
 - **Why removed**: Information is redundant with source location
 - **Migration**:
-  - Standard formats are defined in `/schemas/v1/standard-formats/` directory
+  - Standard formats are defined in the creative-agent repository
   - Custom formats have an `agent_url` pointing to a non-standard creative agent
   - Format location/source already indicates whether it's standard or custom
 - **Rationale**: These fields carried information already expressed by the format's authoritative source. Adding explicit fields was redundant and increased maintenance burden.
+
+#### `preview_image` (Deprecated in v2.5.0, will be removed in v3.0.0)
+- **Why deprecated**: Static image URLs lack flexibility for rich card presentations
+- **Migration**: Use `format_card` and optionally `format_card_detailed` fields instead
+  - `format_card` provides structured card definition with format_id and manifest
+  - Supports dynamic generation via `preview_creative` or pre-rendered CDN assets
+  - Detailed cards enable carousel + markdown specs for comprehensive format documentation
+- **Backward compatibility**: Field remains functional but should not be used in new implementations
+- **Rationale**: Card system uses AdCP's own creative format infrastructure for extensibility and consistency
 
 ## Common Tasks
 
@@ -712,30 +721,14 @@ When addressing code review feedback:
 
 ### Standard Formats Architecture
 
-The simplified standard formats structure:
-
-```
-static/schemas/v1/standard-formats/
-├── index.json                 # Registry of all standard formats
-├── asset-types/              # Reusable asset type definitions
-│   ├── image.json
-│   ├── video.json
-│   └── text.json
-├── display/                  # Display format definitions
-│   ├── display_300x250.json
-│   └── mobile_interstitial_320x480.json
-├── video/                    # Video format definitions
-│   ├── video_skippable_15s.json
-│   └── video_story_vertical.json
-└── native/                   # Native format definitions
-    └── native_responsive.json
-```
+Standard creative formats are maintained in the separate **creative-agent repository**, not in this protocol specification repo.
 
 Key principles:
 - Each format is self-contained with all requirements
 - No cross-references to placement or selection schemas
 - Assets are defined inline with clear specifications
 - Format categories match industry standards (display, video, native, etc.)
+- The reference creative agent at `https://creative.adcontextprotocol.org` serves these formats
 
 ## Documentation Structure Theory & Learnings
 
