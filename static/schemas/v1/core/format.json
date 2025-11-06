@@ -120,7 +120,7 @@
               "asset_type": {
                 "type": "string",
                 "description": "Type of asset",
-                "enum": ["image", "video", "audio", "vast", "daast", "text", "html", "css", "javascript", "url", "webhook", "promoted_offerings"]
+                "enum": ["image", "video", "audio", "vast", "daast", "text", "markdown", "html", "css", "javascript", "url", "webhook", "promoted_offerings"]
               },
               "asset_role": {
                 "type": "string",
@@ -174,7 +174,7 @@
                     "asset_type": {
                       "type": "string",
                       "description": "Type of asset",
-                      "enum": ["image", "video", "audio", "vast", "daast", "text", "html", "css", "javascript", "url", "webhook", "promoted_offerings"]
+                      "enum": ["image", "video", "audio", "vast", "daast", "text", "markdown", "html", "css", "javascript", "url", "webhook", "promoted_offerings"]
                     },
                     "asset_role": {
                       "type": "string",
