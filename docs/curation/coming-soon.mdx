@@ -27,9 +27,7 @@ The Curation Protocol will enable AI assistants to discover and package media in
 
 ## Expected Timeline
 
-- **Q2 2025**: Initial specification draft
-- **Q3 2025**: Reference implementation
-- **Q4 2025**: First platform implementations
+- **Coming Soon**: Initial specification draft and reference implementation
 
 ## Get Involved
 
