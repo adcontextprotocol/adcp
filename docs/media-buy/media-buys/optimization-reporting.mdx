@@ -213,31 +213,22 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
 
 ### Offline File Delivery (Batch)
 
-For offline file delivery, publishers can provide reporting data in JSON Lines or Parquet format. Both formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
-
-**File Naming Convention:**
-Files should follow the naming pattern: `s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.{jsonl|parquet}.gz`
+For offline file delivery, publishers can provide reporting data in JSON Lines (JSONL), CSV, or Parquet format. All formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
 
 **Compression:**
-Files are typically compressed with gzip (`.jsonl.gz` or `.parquet.gz`) for efficient storage and transfer.
+Files can be compressed with gzip (`.jsonl.gz`, `.csv.gz`, or `.parquet.gz`) for efficient storage and transfer. Compression is recommended for large files.
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-<TabItem value="jsonl" label="JSON Lines (JSONL)" default>
+<TabItem value="jsonl" label="JSONL" default>
 
 ---
 
-JSON Lines (JSONL) preserves the exact webhook payload structure, with each line containing a complete JSON object. This format is ideal for:
-- Preserving nested structures
-- Easy parsing with standard JSON libraries
-- Streaming processing (one line at a time)
-- Human-readable format
-
 **Structure:**
 
-Each line in the JSONL file contains a complete webhook payload object. Multiple media buys can be included by having multiple lines in the file.
+Each line in the JSONL file contains a complete webhook payload object. Multiple reports can be included by having multiple lines in the file. The structure matches the [webhook payload structure](#webhook-payload-real-time).
 
 **Example:**
 
@@ -246,35 +237,34 @@ Each line in the JSONL file contains a complete webhook payload object. Multiple
 {"notification_type":"scheduled","sequence_number":6,"next_expected_at":"2024-02-07T08:00:00Z","reporting_period":{"start":"2024-02-06T00:00:00Z","end":"2024-02-06T23:59:59Z"},"currency":"USD","media_buy_deliveries":[{"media_buy_id":"mb_002","buyer_ref":"campaign_b","status":"active","totals":{"impressions":200000,"spend":9000.00,"clicks":400,"ctr":0.002,"video_completions":140000,"completion_rate":0.70},"by_package":[{"package_id":"pkg_003","buyer_ref":"display_package","impressions":200000,"spend":9000.00,"clicks":400,"video_completions":140000,"pacing_index":1.02,"pricing_model":"cpm","rate":45.00,"currency":"USD"}]}]}
 ```
 
-**Formatted Example (for readability):**
+**File Format:**
+- File extension: `.jsonl` or `.jsonl.gz` (compressed)
+- Compression: Consider using `.gz` compression for large files to reduce storage and transfer costs
 
-```json
-{
-  "notification_type": "scheduled",
-  "sequence_number": 5,
-  "next_expected_at": "2024-02-06T08:00:00Z",
-  "reporting_period": {
-    "start": "2024-02-05T00:00:00Z",
-    "end": "2024-02-05T23:59:59Z"
-  },
-  "currency": "USD",
-  "media_buy_deliveries": [
-    {
-      "media_buy_id": "mb_001",
-      "buyer_ref": "campaign_a",
-      "status": "active",
-      "totals": {
-        "impressions": 125000,
-        "spend": 5625.00,
-        "clicks": 250,
-        "ctr": 0.002,
-        "video_completions": 87500,
-        "completion_rate": 0.70
-      },
-      "by_package": [...]
-    }
-  ]
-}
+---
+
+</TabItem>
+<TabItem value="csv" label="CSV">
+
+---
+
+**Structure:**
+
+CSV format flattens the nested JSON structure into rows. Since CSV cannot natively represent nested arrays, each child element (package) gets its own row with all parent-level data repeated. This is the standard approach for representing hierarchical data in CSV format.
+
+```csv
+reporting_period.start,reporting_period.end,notification_type,sequence_number,next_expected_at,currency,media_buy_deliveries.media_buy_id,media_buy_deliveries.buyer_ref,media_buy_deliveries.status,media_buy_deliveries.totals.impressions,media_buy_deliveries.totals.spend,media_buy_deliveries.totals.clicks,media_buy_deliveries.totals.ctr,media_buy_deliveries.totals.video_completions,media_buy_deliveries.totals.completion_rate,by_package.package_id,by_package.buyer_ref,by_package.impressions,by_package.spend,by_package.clicks,by_package.video_completions,by_package.pacing_index,by_package.pricing_model,by_package.rate,by_package.currency
+```
+
+**CSV Example:**
+
+Each row represents a package with its parent media buy context repeated. Parent-level data (reporting period, media buy totals) is included in every package row:
+
+```csv
+reporting_period.start,reporting_period.end,notification_type,sequence_number,next_expected_at,currency,media_buy_deliveries.media_buy_id,media_buy_deliveries.buyer_ref,media_buy_deliveries.status,media_buy_deliveries.totals.impressions,media_buy_deliveries.totals.spend,media_buy_deliveries.totals.clicks,media_buy_deliveries.totals.ctr,media_buy_deliveries.totals.video_completions,media_buy_deliveries.totals.completion_rate,by_package.package_id,by_package.buyer_ref,by_package.impressions,by_package.spend,by_package.clicks,by_package.video_completions,by_package.pacing_index,by_package.pricing_model,by_package.rate,by_package.currency
+2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,scheduled,5,2024-02-06T08:00:00Z,USD,mb_001,campaign_a,active,125000,5625.00,250,0.002,87500,0.70,pkg_001,ctv_package,75000,3375.00,150,52500,0.95,cpcv,0.045,USD
+2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,scheduled,5,2024-02-06T08:00:00Z,USD,mb_001,campaign_a,active,125000,5625.00,250,0.002,87500,0.70,pkg_002,audio_package,50000,2250.00,100,35000,0.93,cpm,45.00,USD
+2024-02-06T00:00:00Z,2024-02-06T23:59:59Z,scheduled,6,2024-02-07T08:00:00Z,USD,mb_002,campaign_b,active,200000,9000.00,400,0.002,140000,0.70,pkg_003,display_package,200000,9000.00,400,140000,1.02,cpm,45.00,USD
 ```
 
 ---
@@ -283,12 +273,6 @@ Each line in the JSONL file contains a complete webhook payload object. Multiple
 <TabItem value="parquet" label="Parquet">
 
 ---
-
-Parquet is a columnar storage format optimized for analytics and batch processing. This format is ideal for:
-- Large-scale data processing
-- Efficient columnar queries
-- Compression and storage optimization
-- Integration with data warehouses and analytics tools
 
 **Structure:**
 
