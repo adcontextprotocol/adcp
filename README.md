@@ -33,7 +33,7 @@ Discover and activate data signals using natural language.
 - **Transparent Pricing**: CPM and revenue share models
 - **Real-time Status**: Track activation and deployment progress
 
-### 📍 Curation Protocol - Coming Q2 2025
+### 📍 Curation Protocol - Coming Soon
 Curate media inventory based on context and brand safety requirements.
 
 ### 💰 Media Buy Protocol - RFC/v0.1  

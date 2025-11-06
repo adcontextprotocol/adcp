@@ -43,7 +43,7 @@ Enable AI assistants to discover and activate data signals across any compatible
 ```
 
 ### Coming Soon
-- **Curation Protocol** (Q2 2025) - Contextual inventory discovery
+- **Curation Protocol** (Coming Soon) - Contextual inventory discovery
 - **Media Buy Protocol** (RFC/v0.1) - Campaign execution and optimization
 
 ## 🛠 Implementation
@@ -88,7 +88,7 @@ We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for deta
 
 - 🚧 **Now**: Signals Activation Protocol RFC/v0.1
 - 🚧 **Now**: Media Buy Protocol RFC/v0.1
-- 📅 **Q2 2025**: Curation Protocol RFC
+- 📅 **Coming Soon**: Curation Protocol RFC
 - 🔮 **Q4 2025**: Advanced AI integrations
 
 See our [detailed roadmap](https://github.com/adcontextprotocol/adcontextprotocol/projects/1) for more.
