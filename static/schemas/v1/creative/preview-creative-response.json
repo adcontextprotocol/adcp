@@ -31,7 +31,11 @@
                     "preview_url": {
                       "type": "string",
                       "format": "uri",
-                      "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe. Handles all rendering complexity internally (images, video players, audio players, interactive content, etc.)."
+                      "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe. Returned when output_format='url' (default)."
+                    },
+                    "preview_html": {
+                      "type": "string",
+                      "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Returned when output_format='html'. Includes complete HTML document or embeddable fragment depending on creative agent implementation."
                     },
                     "role": {
                       "type": "string",
@@ -75,7 +79,18 @@
                       }
                     }
                   },
-                  "required": ["render_id", "preview_url", "role"]
+                  "required": ["render_id", "role"],
+                  "oneOf": [
+                    {
+                      "required": ["preview_url"]
+                    },
+                    {
+                      "required": ["preview_html"]
+                    },
+                    {
+                      "required": ["preview_url", "preview_html"]
+                    }
+                  ]
                 },
                 "minItems": 1
               },
@@ -162,6 +177,9 @@
                                 "type": "string",
                                 "format": "uri"
                               },
+                              "preview_html": {
+                                "type": "string"
+                              },
                               "role": {
                                 "type": "string"
                               },
@@ -197,7 +215,18 @@
                                 }
                               }
                             },
-                            "required": ["render_id", "preview_url", "role"]
+                            "required": ["render_id", "role"],
+                            "oneOf": [
+                              {
+                                "required": ["preview_url"]
+                              },
+                              {
+                                "required": ["preview_html"]
+                              },
+                              {
+                                "required": ["preview_url", "preview_html"]
+                              }
+                            ]
                           },
                           "minItems": 1
                         },

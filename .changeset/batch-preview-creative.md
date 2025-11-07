@@ -2,30 +2,45 @@
 "adcontextprotocol": minor
 ---
 
-Add batch preview support to `preview_creative` task for 5-10x faster preview generation of multiple creative manifests.
+Add batch preview and direct HTML embedding support to `preview_creative` task for dramatically faster preview workflows.
 
-**Enhancement:**
-- `preview_creative` now accepts either a single creative request OR a `requests` array for batch processing
-- Batch mode supports 1-50 creatives in one API call
-- Response format matches request mode (single response or `results` array)
+**Enhancements:**
+
+1. **Batch Mode** - Preview 1-50 creatives in one API call (5-10x faster)
+   - Request includes `requests` array instead of single creative
+   - Response returns `results` array with success/error per creative
+   - Supports partial success (some succeed, others fail)
+   - Order preservation (results match request order)
+
+2. **Direct HTML Embedding** - Skip iframes entirely with `output_format: "html"`
+   - Request includes `output_format: "html"` parameter
+   - Response includes `preview_html` field with raw HTML
+   - No iframe overhead - embed HTML directly in page
+   - Perfect for grids of 50+ previews
+   - Batch-level and per-request `output_format` support
 
 **Benefits:**
-- 5-10x faster than individual API calls for 10+ creatives
-- Single HTTP round trip reduces latency and server load
-- Supports partial success - some previews can succeed while others fail
-- No breaking changes - existing single-creative requests work identically
+- **Performance**: 5-10x faster for 10+ creatives (single HTTP round trip)
+- **Scalability**: No 50 iframe requests for preview grids
+- **Flexibility**: Mix formats and output types in one batch
+- **Developer Experience**: Simpler grid rendering with direct HTML
 
 **Backward Compatibility:**
-- Existing single-creative requests unchanged (same request/response structure)
-- Schema uses `oneOf` to accept either format
-- Both modes coexist seamlessly
+- Existing requests unchanged (same request/response structure)
+- Default `output_format: "url"` maintains iframe behavior
+- Schema uses `oneOf` for seamless mode detection
+- No breaking changes
 
 **Use Cases:**
-- Bulk creative review for campaigns
-- Multi-format preview generation
+- Bulk creative review UIs with 50+ preview grids
+- Campaign management dashboards
 - A/B testing creative variations
-- High-concurrency preview workflows
+- Multi-format preview generation
 
 **Schema Changes:**
-- `/schemas/v1/creative/preview-creative-request.json` - Now accepts single OR batch requests via `oneOf`
-- `/schemas/v1/creative/preview-creative-response.json` - Returns single OR batch responses via `oneOf`
+- `/schemas/v1/creative/preview-creative-request.json`:
+  - Accepts single OR batch requests via `oneOf`
+  - New `output_format` parameter ("url" | "html")
+- `/schemas/v1/creative/preview-creative-response.json`:
+  - Returns single OR batch responses via `oneOf`
+  - New `preview_html` field in renders (alternative to `preview_url`)
