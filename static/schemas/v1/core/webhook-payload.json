@@ -39,11 +39,6 @@
       "type": "string",
       "description": "Session/conversation identifier. Use this to continue the conversation if input-required status needs clarification or additional parameters."
     },
-    "context": {
-      "type": "object",
-      "description": "Initiator provided context payload echoed back from the original request. Used to carry per-call metadata such as UI/session hints (e.g., {'ui': 'buyer_dashboard', 'user_id': '123'}) or correlation data. MUST be returned exactly as received.",
-      "additionalProperties": true
-    },
     "progress": {
       "type": "object",
       "description": "Progress information for tasks still in 'working' state. Rarely seen in webhooks since 'working' tasks typically complete synchronously, but may appear if a task transitions from 'submitted' to 'working'.",
@@ -81,6 +76,11 @@
         { "$ref": "/schemas/v1/signals/activate-signal-response.json" },
         { "$ref": "/schemas/v1/signals/get-signals-response.json" }
       ]
+    },
+    "context": {
+      "type": "object",
+      "description": "Initiator provided context payload echoed back from the original request. Used to carry per-call metadata such as UI/session hints (e.g., {'ui': 'buyer_dashboard', 'user_id': '123'}) or correlation data. MUST be returned exactly as received.",
+      "additionalProperties": true
     },
     "error": {
       "type": ["string", "null"],
