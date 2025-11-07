@@ -144,7 +144,7 @@
       "properties": {
         "results": {
           "type": "array",
-          "description": "Array of preview results. Each result contains either a successful preview response or an error. Order matches the requests array.",
+          "description": "Array of preview results corresponding to each request in the same order. results[0] is the result for requests[0], results[1] for requests[1], etc. Order is guaranteed even when some requests fail. Each result contains either a successful preview response or an error.",
           "items": {
             "type": "object",
             "properties": {

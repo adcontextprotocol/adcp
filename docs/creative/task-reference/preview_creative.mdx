@@ -1350,6 +1350,24 @@ Test creative behavior with different privacy settings:
 - Retry entire batch on single failure (handle individually)
 - Ignore the `expires_at` timestamp (previews are temporary)
 
+**Future Consideration - Per-Request Output Format:**
+
+Currently, `output_format` applies to all requests in a batch. A future enhancement could allow per-request output format:
+
+```typescript
+// Hypothetical future API
+{
+  "requests": [
+    {"format_id": "display_300x250", "output_format": "html"},  // Direct embed
+    {"format_id": "video_30s", "output_format": "url"}          // Sandboxed
+  ]
+}
+```
+
+**Use case:** Mixed security contexts (some formats need sandboxing, others don't).
+
+**Current workaround:** Make two batch calls if you need different output formats. The current design prioritizes simplicity.
+
 ### Application Architecture Patterns
 
 #### Pattern 1: Format Catalog SPA
@@ -1417,16 +1435,141 @@ function useIncrementalPreviews(creatives, pageSize = 10) {
 
 ### Caching Strategy
 
+**Individual Result Caching (Recommended)**
+
+Cache individual preview results by format_id + manifest hash:
+
+```typescript
+// Cache each result separately
+function cachePreviewResults(results, formatIds) {
+  results.forEach((result, idx) => {
+    if (result.success) {
+      const cacheKey = `${formatIds[idx]}:${hashManifest(manifests[idx])}`;
+      cache.set(cacheKey, result.response, result.response.expires_at);
+    }
+  });
+}
+
+// Efficient partial cache lookup
+async function getPreviewsWithCache(formatIds, manifests) {
+  const cached = [];
+  const toFetch = [];
+
+  formatIds.forEach((id, idx) => {
+    const cacheKey = `${id}:${hashManifest(manifests[idx])}`;
+    const cachedResult = cache.get(cacheKey);
+
+    if (cachedResult && !isExpired(cachedResult.expires_at)) {
+      cached[idx] = cachedResult;
+    } else {
+      toFetch.push({idx, id, manifest: manifests[idx]});
+    }
+  });
+
+  // Batch fetch only missing previews
+  if (toFetch.length > 0) {
+    const fetched = await client.preview_creative({
+      output_format: "html",
+      requests: toFetch.map(f => ({
+        format_id: f.id,
+        creative_manifest: f.manifest
+      }))
+    });
+
+    fetched.results.forEach((result, i) => {
+      cached[toFetch[i].idx] = result.response;
+    });
+  }
+
+  return cached;
+}
+```
+
+**Benefits:**
+- Request formats [A,B,C] → cache each separately
+- Later request [B,C,D] → only fetch D (B and C from cache)
+- More flexible than caching entire batch responses
+
+**Expiration Handling:**
+- Always check `expires_at` before using cached previews
+- Different formats may have different expiration times
+- Regenerate expired previews on demand
+
+**HTML Output:**
+- Safe to cache for session duration or until `expires_at`
+- Consider service worker caching for offline support
+- Invalidate when manifest changes
+
 **Preview URLs:**
 - URLs expire (check `expires_at`)
 - Cache for duration of session or until expiration
 - Don't persist URLs in databases (they're temporary)
 - Store manifest + format_id instead, regenerate previews on demand
 
-**HTML Output:**
-- Safe to cache for session duration
-- Consider service worker caching for offline support
-- Invalidate when manifest changes
+### Migration from Single to Batch
+
+**Before (Individual Requests):**
+```python
+# Sequential - slow for many formats
+previews = []
+for format in formats:
+    preview = await client.preview_creative(
+        format_id=format.format_id,
+        creative_manifest=format.format_card.manifest
+    )
+    previews.append(preview)
+
+# Total time: N × 250ms = 5000ms for 20 formats
+```
+
+**After (Batch Request):**
+```python
+# Batch - 5-10x faster
+response = await client.preview_creative(
+    output_format="html",  # Direct embedding
+    requests=[
+        {
+            "format_id": fmt.format_id,
+            "creative_manifest": fmt.format_card.manifest
+        }
+        for fmt in formats
+    ]
+)
+
+# Total time: ~500ms for 20 formats
+```
+
+**Error Handling Pattern:**
+```typescript
+const response = await client.preview_creative({
+  requests: formatRequests
+});
+
+// Separate successes and failures
+const succeeded = response.results.filter(r => r.success);
+const failed = response.results.filter(r => !r.success);
+
+if (failed.length > 0) {
+  console.log(`${failed.length} previews failed:`);
+  failed.forEach((result, idx) => {
+    console.error(`  - ${formatIds[idx]}: ${result.error.message}`);
+  });
+
+  // Option 1: Retry failed ones individually
+  for (const failedIdx of failed) {
+    const retryResult = await client.preview_creative({
+      format_id: formatIds[failedIdx],
+      creative_manifest: manifests[failedIdx]
+    });
+  }
+
+  // Option 2: Just log and continue with successes
+  // (recommended for format showcases)
+}
+
+// Use successful previews
+displayPreviews(succeeded.map(r => r.response));
+```
 
 ### Error Handling
 
@@ -1447,6 +1590,46 @@ function displayPreviews(results) {
   });
 }
 ```
+
+## HTTP Status Codes
+
+### Single Mode
+- **200 OK**: Preview generated successfully
+- **400 Bad Request**: Invalid request (malformed manifest, missing required fields, invalid format_id)
+- **404 Not Found**: Format ID not supported by creative agent
+- **500 Server Error**: Preview generation failed
+
+### Batch Mode
+- **200 OK**: Batch processed (may contain partial/full success). Check individual `success` fields in results array.
+- **400 Bad Request**: Invalid batch structure (empty requests array, >50 items, malformed batch)
+- **500 Server Error**: Batch processing failed entirely (couldn't start processing)
+
+**Key Distinction**: In batch mode, HTTP 200 means the batch endpoint worked. Individual preview failures are indicated by `success: false` in the results array. This allows clients to distinguish "batch endpoint broken" (5xx) from "some previews failed" (200 with failures in results).
+
+## Response Fields
+
+### interactive_url (Optional)
+
+The `interactive_url` field provides a URL to an interactive testing page where users can:
+- Switch between preview variants with controls
+- Modify macro values in real-time
+- Test different scenarios (device types, locations, privacy settings)
+- Copy embed codes or preview URLs
+
+**When to provide:**
+- Multi-variant previews (desktop/mobile/tablet)
+- Dynamic creatives with many macros
+- AI-generated content with context variations
+
+**Example interactive page features:**
+- Dropdown to switch between preview variants
+- Form inputs to test custom macro values
+- Device/viewport simulator
+- Share link to specific variant
+
+This is separate from `preview_url` because:
+- `preview_url` is for embedding in iframes (production use)
+- `interactive_url` is for human testing and exploration (development/review)
 
 ## Implementation Considerations
 
