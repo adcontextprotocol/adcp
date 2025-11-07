@@ -4,6 +4,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/adcontextprotocol/adcp?style=social)](https://github.com/adcontextprotocol/adcp)
 [![Documentation](https://img.shields.io/badge/docs-adcontextprotocol.org-blue)](https://adcontextprotocol.org)
+[![npm version](https://img.shields.io/npm/v/@adcp/client)](https://www.npmjs.com/package/@adcp/client)
 [![MCP Compatible](https://img.shields.io/badge/MCP-compatible-green)](https://modelcontextprotocol.io)
 
 > **AdCP revolutionizes advertising automation by providing a single, AI-powered protocol that works across all major advertising platforms.**
@@ -52,6 +53,23 @@ Curate media inventory based on context and brand safety requirements.
 Execute and optimize media buys programmatically across platforms.
 
 ## Quick Start
+
+### Install Client Libraries
+
+#### JavaScript/TypeScript
+```bash
+npm install @adcp/client
+```
+- **NPM Package**: [@adcp/client](https://www.npmjs.com/package/@adcp/client)
+- **GitHub**: [adcp-client](https://github.com/adcontextprotocol/adcp-client)
+
+#### Python
+Python client library is in development. For now, use the Model Context Protocol Python SDK:
+```bash
+pip install mcp
+```
+- **GitHub**: [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
+- **Examples**: See our [reference implementations](https://github.com/adcontextprotocol)
 
 ### For Platform Providers
 
