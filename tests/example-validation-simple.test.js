@@ -137,7 +137,11 @@ async function runTests() {
     {
       "signal_spec": "High-income households",
       "deliver_to": {
-        "platforms": ["the-trade-desk"],
+        "destinations": [
+          {
+            "platform": "the-trade-desk"
+          }
+        ],
         "countries": ["US"]
       }
     },

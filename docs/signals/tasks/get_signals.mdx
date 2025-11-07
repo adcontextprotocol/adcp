@@ -19,7 +19,7 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `signal_spec` | string | Yes | Natural language description of the desired signals |
-| `deliver_to` | DeliverTo | Yes | Where the signals need to be delivered (see Deliver To Object below) |
+| `deliver_to` | DeliverTo | Yes | Destination platforms where signals need to be activated (see Deliver To Object below) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below) |
 | `max_results` | number | No | Maximum number of results to return |
 
@@ -27,16 +27,27 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `platforms` | string[] \| "all" | Yes | Target platforms for signal deployment |
-| `accounts` | Account[] | No | Specific platform-account combinations (see Account Object below) |
+| `destinations` | Destination[] | Yes | List of destination platforms (DSPs, sales agents, etc.) - see Destination Object below |
 | `countries` | string[] | Yes | Countries where signals will be used (ISO codes) |
 
-### Account Object
+### Destination Object
+
+Each destination must have **either** `platform` (for DSPs) **or** `agent_url` (for sales agents):
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `platform` | string | Yes | Platform identifier |
-| `account` | string | Yes | Account identifier on that platform |
+| `platform` | string | Conditional* | Platform identifier (e.g., 'the-trade-desk', 'amazon-dsp') |
+| `agent_url` | string (URI) | Conditional* | URL identifying the sales agent |
+| `account` | string | No | Account identifier on the platform or agent |
+
+*Must include either `platform` or `agent_url`, but not both.
+
+**Activation Keys**: If the authenticated caller has access to any of the destinations in the request, the signal agent will include `activation_key` fields in the response for those destinations (when `is_live: true`).
+
+**Permission Model**: The signal agent determines key inclusion based on the caller's authentication and authorization. For example:
+- A sales agent receives keys for destinations matching its `agent_url`
+- A buyer with credentials for multiple DSP platforms receives keys for all those platforms
+- Access is determined by the signal agent's permission system, not by flags in the request
 
 ### Filters Object
 
@@ -72,11 +83,13 @@ The response structure is identical across protocols, with only the transport wr
       "coverage_percentage": "number",
       "deployments": [
         {
-          "platform": "string",
+          "agent_url": "string",
           "account": "string",
           "is_live": "boolean",
-          "scope": "string",
-          "decisioning_platform_segment_id": "string",
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "string"
+          },
           "estimated_activation_duration_minutes": "number"
         }
       ],
@@ -98,30 +111,56 @@ The response structure is identical across protocols, with only the transport wr
   - **signal_type**: Type of signal (marketplace, custom, owned)
   - **data_provider**: Name of the data provider
   - **coverage_percentage**: Percentage of audience coverage
-  - **deployments**: Array of platform deployments
-    - **platform**: Platform name
-    - **account**: Specific account if applicable
-    - **is_live**: Whether signal is currently active
-    - **scope**: Deployment scope (platform-wide or account-specific)
-    - **decisioning_platform_segment_id**: Platform-specific segment ID
+  - **deployments**: Array of destination deployments
+    - **agent_url**: URL identifying the destination agent
+    - **account**: Account identifier if applicable
+    - **is_live**: Whether signal is currently active on this destination
+    - **activation_key**: The key to use for targeting (see Activation Key below). **Only present if `is_live=true` AND this destination has `requester=true` in the request.**
     - **estimated_activation_duration_minutes**: Time to activate if not live
   - **pricing**: Pricing information
     - **cpm**: Cost per thousand impressions
     - **currency**: Currency code
 
+### Activation Key Object
+
+The activation key represents how to use the signal on a destination platform. It can be either a segment ID or a key-value pair:
+
+**Segment ID format:**
+```json
+{
+  "type": "segment_id",
+  "segment_id": "ttd_segment_12345"
+}
+```
+
+**Key-Value format:**
+```json
+{
+  "type": "key_value",
+  "key": "audience_segment",
+  "value": "luxury_auto_intenders"
+}
+```
+
 ## Protocol-Specific Examples
 
 The AdCP payload is identical across protocols. Only the request/response wrapper differs.
 
-### MCP Request
+### MCP Request - Sales Agent Requesting Signals
+
+A sales agent querying for signals. Because the authenticated caller is wonderstruck.salesagents.com, the signal agent will include activation keys in the response:
+
 ```json
 {
   "tool": "get_signals",
   "arguments": {
-    
     "signal_spec": "High-income households interested in luxury goods",
     "deliver_to": {
-      "platforms": ["the-trade-desk", "amazon-dsp"],
+      "destinations": [
+        {
+          "agent_url": "https://wonderstruck.salesagents.com"
+        }
+      ],
       "countries": ["US"]
     },
     "filters": {
@@ -133,10 +172,79 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 }
 ```
 
-### MCP Response
+### MCP Response - With Activation Key
+
+Because the authenticated caller matches the destination, the response includes the activation key:
+
 ```json
 {
-  "message": "Found 1 luxury segment matching your criteria. Available on The Trade Desk, pending activation on Amazon DSP.",
+  "message": "Found 1 luxury segment matching your criteria. Already activated for your sales agent.",
+  "context_id": "ctx-signals-123",
+  "signals": [
+    {
+      "signal_agent_segment_id": "luxury_auto_intenders",
+      "name": "Luxury Automotive Intenders",
+      "description": "High-income individuals researching luxury vehicles",
+      "signal_type": "marketplace",
+      "data_provider": "Experian",
+      "coverage_percentage": 12,
+      "deployments": [
+        {
+          "agent_url": "https://wonderstruck.salesagents.com",
+          "is_live": true,
+          "activation_key": {
+            "type": "key_value",
+            "key": "audience_segment",
+            "value": "luxury_auto_intenders_v2"
+          }
+        }
+      ],
+      "pricing": {
+        "cpm": 3.50,
+        "currency": "USD"
+      }
+    }
+  ]
+}
+```
+
+### MCP Request - Buyer Querying Multiple DSP Platforms
+
+A buyer checking availability across multiple DSP platforms:
+
+```json
+{
+  "tool": "get_signals",
+  "arguments": {
+    "signal_spec": "High-income households interested in luxury goods",
+    "deliver_to": {
+      "destinations": [
+        {
+          "platform": "the-trade-desk",
+          "account": "agency-123"
+        },
+        {
+          "platform": "amazon-dsp"
+        }
+      ],
+      "countries": ["US"]
+    },
+    "filters": {
+      "max_cpm": 5.0,
+      "catalog_types": ["marketplace"]
+    },
+    "max_results": 5
+  }
+}
+```
+
+### MCP Response - Buyer With Multi-Platform Access
+
+A buyer with credentials for both The Trade Desk and Amazon DSP receives keys for both platforms:
+
+```json
+{
+  "message": "Found 1 luxury segment matching your criteria. Already activated on The Trade Desk, pending activation on Amazon DSP.",
   "context_id": "ctx-signals-123",
   "signals": [
     {
@@ -149,16 +257,16 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "deployments": [
         {
           "platform": "the-trade-desk",
-          "account": null,
+          "account": "agency-123",
           "is_live": true,
-          "scope": "platform-wide",
-          "decisioning_platform_segment_id": "ttd_exp_lux_auto_123"
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ttd_agency123_exp_lux_auto"
+          }
         },
         {
           "platform": "amazon-dsp",
-          "account": null,
           "is_live": false,
-          "scope": "platform-wide",
           "estimated_activation_duration_minutes": 60
         }
       ],
@@ -196,7 +304,15 @@ await a2a.send({
         parameters: {
           signal_spec: "High-income households interested in luxury goods",
           deliver_to: {
-            platforms: ["the-trade-desk", "amazon-dsp"],
+            destinations: [
+              {
+                agent_url: "https://thetradedesk.com",
+                account: "agency-123"
+              },
+              {
+                agent_url: "https://advertising.amazon.com/dsp"
+              }
+            ],
             countries: ["US"]
           },
           filters: {
@@ -226,7 +342,7 @@ A2A returns results as artifacts with the same data structure:
           "kind": "data",
           "data": {
             "context_id": "ctx-signals-123",
-                      "signals": [
+            "signals": [
               {
                 "signal_agent_segment_id": "luxury_auto_intenders",
                 "name": "Luxury Automotive Intenders",
@@ -236,17 +352,13 @@ A2A returns results as artifacts with the same data structure:
                 "coverage_percentage": 12,
                 "deployments": [
                   {
-                    "platform": "the-trade-desk",
-                    "account": null,
-                    "is_live": true,
-                    "scope": "platform-wide",
-                    "decisioning_platform_segment_id": "ttd_exp_lux_auto_123"
+                    "agent_url": "https://thetradedesk.com",
+                    "account": "agency-123",
+                    "is_live": true
                   },
                   {
-                    "platform": "amazon-dsp",
-                    "account": null,
+                    "agent_url": "https://advertising.amazon.com/dsp",
                     "is_live": false,
-                    "scope": "platform-wide",
                     "estimated_activation_duration_minutes": 60
                   }
                 ],
@@ -376,11 +488,12 @@ Discover all available deployments across platforms:
 
 ## Usage Notes
 
-1. **Multi-Platform Discovery**: Use `platforms: "all"` to see all available deployments
-2. **Deployment Status**: Check `is_live` to determine if activation is needed
-3. **Platform IDs**: Use the `decisioning_platform_segment_id` when creating campaigns
-4. **Activation Required**: If `is_live` is false, use the `activate_signal` task
-5. **The message field** provides a quick summary of the most relevant findings
+1. **Authentication-Based Keys**: Activation keys are only returned when the authenticated caller matches one of the destinations
+2. **Permission Security**: The signal agent determines key inclusion based on caller identity, not request flags
+3. **Deployment Status**: Check `is_live` to determine if activation is needed
+4. **Multiple Destinations**: Query multiple destinations to check availability across platforms
+5. **Activation Required**: If `is_live` is false, use the `activate_signal` task
+6. **The message field** provides a quick summary of the most relevant findings
 
 ### Response - Multiple Signals Found
 
