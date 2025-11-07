@@ -91,6 +91,10 @@ Embed directly in your page:
 
 **Benefits:** No iframe overhead, faster load times, better for grids of 50+ previews.
 
+:::warning Security Consideration
+Only use `output_format: "html"` with **trusted creative agents**. Direct HTML embedding bypasses iframe sandboxing. For third-party or untrusted creatives, use `output_format: "url"` (default) which provides iframe isolation. Consider HTML sanitization if accepting user-generated creative content.
+:::
+
 ### Batch Preview (Multiple Creatives)
 
 Preview multiple different creatives in one API call (5-10x faster):
@@ -438,7 +442,14 @@ Some formats render as multiple pieces in a single preview variant:
 Each rendered piece has:
 - **role**: Semantic role (`"primary"`, `"companion"`, or descriptive strings for device variants)
 - **dimensions**: Width and height for iframe sizing (especially important when multiple pieces have different sizes)
-- **preview_url**: Separate iframe URL for rendering this piece
+- **preview_url**: Iframe URL for rendering (present based on `output_format` request)
+- **preview_html**: Raw HTML for rendering (present based on `output_format` request)
+
+**Output Format Behavior:**
+- When `output_format: "url"` (default), creative agents return `preview_url`
+- When `output_format: "html"`, creative agents return `preview_html`
+- Creative agents MAY provide both fields for client flexibility
+- Clients should check which field(s) are present and use accordingly
 
 **Optional Fields:**
 - **embedding**: Security metadata for safe iframe integration (sandbox policies, HTTPS requirements, CSP)
@@ -1323,6 +1334,7 @@ Test creative behavior with different privacy settings:
 - Creating campaign review grids (20+ creatives)
 - Server-side rendering preview pages
 - Performance is critical (no iframe HTTP overhead)
+- **Working with trusted creative agents only** (your own or verified partners)
 
 ### Batch Request Optimization
 

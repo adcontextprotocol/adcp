@@ -31,11 +31,11 @@
                     "preview_url": {
                       "type": "string",
                       "format": "uri",
-                      "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe. Returned when output_format='url' (default)."
+                      "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe. Typically returned when output_format='url' (default). Creative agents MAY provide both preview_url and preview_html for client flexibility."
                     },
                     "preview_html": {
                       "type": "string",
-                      "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Returned when output_format='html'. Includes complete HTML document or embeddable fragment depending on creative agent implementation."
+                      "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Typically returned when output_format='html'. Security warning: Only use with trusted creative agents as this bypasses iframe sandboxing. Creative agents MAY provide both formats."
                     },
                     "role": {
                       "type": "string",
@@ -175,10 +175,12 @@
                               },
                               "preview_url": {
                                 "type": "string",
-                                "format": "uri"
+                                "format": "uri",
+                                "description": "URL to iframe-embeddable HTML page. Typically present when output_format='url'."
                               },
                               "preview_html": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Raw HTML for direct embedding. Typically present when output_format='html'. Security: Only use with trusted agents."
                               },
                               "role": {
                                 "type": "string"
