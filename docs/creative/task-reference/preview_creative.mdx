@@ -1610,26 +1610,9 @@ function displayPreviews(results) {
 
 ### interactive_url (Optional)
 
-The `interactive_url` field provides a URL to an interactive testing page where users can:
-- Switch between preview variants with controls
-- Modify macro values in real-time
-- Test different scenarios (device types, locations, privacy settings)
-- Copy embed codes or preview URLs
+Optional URL to an interactive testing page with controls for switching between preview variants and testing different macro values. Creative agents may provide this for development/testing workflows.
 
-**When to provide:**
-- Multi-variant previews (desktop/mobile/tablet)
-- Dynamic creatives with many macros
-- AI-generated content with context variations
-
-**Example interactive page features:**
-- Dropdown to switch between preview variants
-- Form inputs to test custom macro values
-- Device/viewport simulator
-- Share link to specific variant
-
-This is separate from `preview_url` because:
-- `preview_url` is for embedding in iframes (production use)
-- `interactive_url` is for human testing and exploration (development/review)
+**Note:** With `output_format: "html"`, you can embed variant switching controls directly in the HTML instead of using a separate interactive page.
 
 ## Implementation Considerations
 
