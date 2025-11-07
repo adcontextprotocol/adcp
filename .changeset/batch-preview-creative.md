@@ -44,3 +44,16 @@ Add batch preview and direct HTML embedding support to `preview_creative` task f
 - `/schemas/v1/creative/preview-creative-response.json`:
   - Returns single OR batch responses via `oneOf`
   - New `preview_html` field in renders (alternative to `preview_url`)
+
+**Documentation Improvements:**
+- **Common Workflows** section with real-world examples:
+  - Format showcase pages (catalog of all available formats)
+  - Creative review grids (campaign approval workflows)
+  - Web component integration patterns
+- **Best Practices** section covering:
+  - When to use URL vs HTML output
+  - Batch request optimization strategies
+  - Three production-ready architecture patterns
+  - Caching strategies for URLs vs HTML
+  - Error handling patterns
+- Clear guidance on building efficient applications with 50+ preview grids

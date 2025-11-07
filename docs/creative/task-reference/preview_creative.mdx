@@ -139,14 +139,126 @@ Response contains results in the same order:
 }
 ```
 
+## Common Workflows
+
+### Format Showcase Pages
+
+**Use Case:** Display all available creative formats from a creative agent in a browsable catalog.
+
+Build a format showcase with batch HTML preview:
+
+```typescript
+// 1. List all formats from creative agent
+const formats = await creative_agent.list_creative_formats();
+
+// 2. Generate format card previews (batch request with HTML output)
+const formatPreviews = await creative_agent.preview_creative({
+  output_format: "html",
+  requests: formats.formats.map(format => ({
+    format_id: format.format_id,
+    creative_manifest: format.format_card.manifest  // Format card manifest
+  }))
+});
+
+// 3. Render in a grid
+function FormatCatalog({ formatPreviews }) {
+  return (
+    <div className="format-grid">
+      {formatPreviews.results.map((result, idx) => (
+        result.success && (
+          <div
+            key={idx}
+            className="format-card"
+            dangerouslySetInnerHTML={{
+              __html: result.response.previews[0].renders[0].preview_html
+            }}
+          />
+        )
+      ))}
+    </div>
+  );
+}
+```
+
+**Benefits:**
+- Single API call retrieves all format previews
+- No iframe overhead (faster page load)
+- Easy to style as cohesive catalog
+- Users can browse and select formats
+
+### Creative Review Grid
+
+**Use Case:** Review all creatives in a campaign before launch.
+
+```typescript
+// 1. Get all creatives for campaign
+const campaignCreatives = await getCreativesForCampaign(campaignId);
+
+// 2. Preview all with batch + HTML
+const previews = await creative_agent.preview_creative({
+  output_format: "html",
+  requests: campaignCreatives.map(c => ({
+    format_id: c.format_id,
+    creative_manifest: c.manifest
+  }))
+});
+
+// 3. Display with approval workflow
+function CampaignReview({ previews }) {
+  return (
+    <div className="review-grid">
+      {previews.results.map((result, idx) => (
+        <div className="creative-card">
+          <div dangerouslySetInnerHTML={{
+            __html: result.response.previews[0].renders[0].preview_html
+          }}/>
+          <button onClick={() => approve(idx)}>Approve</button>
+          <button onClick={() => reject(idx)}>Reject</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Web Component Integration (Recommended)
+
+For production applications, use the `<rendered-creative>` web component for better encapsulation:
+
+```html
+<!-- Include web component script -->
+<script src="https://creative.adcontextprotocol.org/static/rendered-creative.js"></script>
+
+<!-- Use with preview_url output -->
+<div class="grid">
+  <rendered-creative
+    src="https://creative-agent.example.com/preview/abc123"
+    width="300"
+    height="400"
+    lazy="true">
+  </rendered-creative>
+</div>
+```
+
+**Web Component Benefits:**
+- **Shadow DOM** - Complete CSS isolation
+- **Lazy Loading** - Only loads when visible
+- **Framework Agnostic** - Works with React, Vue, Angular, vanilla JS
+- **No iframe overhead** - Lighter than traditional iframes
+
+**When to use `output_format: "html"` vs web components:**
+- Use **HTML output** for maximum performance (50+ previews, server-side rendering)
+- Use **web components** for better encapsulation and lazy loading
+- Both approaches work with batch mode
+
 ## Overview
 
 Creative agents provide the ability to preview how creative manifests will render in given formats. This is essential for:
-- **Calibration**: Testing how dynamic creatives render with different inputs
-- **Review**: Visual validation before campaign launch
+- **Format Discovery**: Showcasing available formats in catalogs
+- **Creative Review**: Visual validation before campaign launch
+- **Bulk Workflows**: Previewing entire campaigns efficiently
 - **Context Testing**: Simulating different user scenarios, devices, and environments
 - **Quality Assurance**: Verifying creative rendering across multiple variants
-- **Bulk Workflows**: Previewing entire campaigns efficiently (batch mode)
 
 The `preview_creative` task supports two modes:
 1. **Single mode**: Preview one creative with optional variant inputs
@@ -1194,6 +1306,134 @@ Test creative behavior with different privacy settings:
   {"name": "No consent", "macros": {"GDPR": "1", "GDPR_CONSENT": ""}},
   {"name": "LAT enabled", "macros": {"LIMIT_AD_TRACKING": "1"}}
 ]
+```
+
+## Best Practices
+
+### Choosing Output Format
+
+**Use `output_format: "url"` (default) when:**
+- You want maximum isolation (iframes sandbox content)
+- You're building interactive preview tools with controls
+- You need to support legacy browsers
+- Security is paramount (third-party creatives)
+
+**Use `output_format: "html"` when:**
+- Building format showcase catalogs (10+ formats)
+- Creating campaign review grids (20+ creatives)
+- Server-side rendering preview pages
+- Performance is critical (no iframe HTTP overhead)
+
+### Batch Request Optimization
+
+**Do:**
+- Batch related previews together (e.g., all formats from one agent)
+- Use consistent `output_format` at batch level to reduce request size
+- Handle partial failures gracefully (check `success` field)
+- Set reasonable batch sizes (10-30 for most use cases, up to 50 maximum)
+
+**Don't:**
+- Mix unrelated preview requests in one batch
+- Batch requests from different creative agents
+- Retry entire batch on single failure (handle individually)
+- Ignore the `expires_at` timestamp (previews are temporary)
+
+### Application Architecture Patterns
+
+#### Pattern 1: Format Catalog SPA
+
+```typescript
+// Single page loads all formats once
+async function loadFormatCatalog() {
+  const formats = await agent.list_creative_formats();
+  const previews = await agent.preview_creative({
+    output_format: "html",
+    requests: formats.formats.map(f => ({
+      format_id: f.format_id,
+      creative_manifest: f.format_card.manifest
+    }))
+  });
+
+  // Cache in state management (Redux, Zustand, etc.)
+  store.setState({ formats, previews });
+}
+```
+
+#### Pattern 2: Incremental Preview Loading
+
+```typescript
+// Load previews as user scrolls
+function useIncrementalPreviews(creatives, pageSize = 10) {
+  const [page, setPage] = useState(0);
+  const [previews, setPreviews] = useState([]);
+
+  useEffect(() => {
+    const start = page * pageSize;
+    const batch = creatives.slice(start, start + pageSize);
+
+    agent.preview_creative({
+      output_format: "html",
+      requests: batch.map(c => ({
+        format_id: c.format_id,
+        creative_manifest: c.manifest
+      }))
+    }).then(result => {
+      setPreviews(prev => [...prev, ...result.results]);
+    });
+  }, [page]);
+
+  return { previews, loadMore: () => setPage(p => p + 1) };
+}
+```
+
+#### Pattern 3: Web Component with Lazy Loading
+
+```html
+<!-- Best for production: combines caching + lazy loading + isolation -->
+<script src="https://creative.adcontextprotocol.org/static/rendered-creative.js"></script>
+
+<div class="grid">
+  <!-- Components load when scrolled into view -->
+  <rendered-creative
+    src="https://preview-url.com/format1"
+    width="300"
+    height="400"
+    lazy="true">
+  </rendered-creative>
+</div>
+```
+
+### Caching Strategy
+
+**Preview URLs:**
+- URLs expire (check `expires_at`)
+- Cache for duration of session or until expiration
+- Don't persist URLs in databases (they're temporary)
+- Store manifest + format_id instead, regenerate previews on demand
+
+**HTML Output:**
+- Safe to cache for session duration
+- Consider service worker caching for offline support
+- Invalidate when manifest changes
+
+### Error Handling
+
+```typescript
+function displayPreviews(results) {
+  return results.map((result, idx) => {
+    if (result.success) {
+      return <Preview html={result.response.previews[0].renders[0].preview_html} />;
+    } else {
+      // Handle errors gracefully
+      console.error(`Preview ${idx} failed:`, result.error.message);
+      return <PreviewError
+        code={result.error.code}
+        message={result.error.message}
+        onRetry={() => retryPreview(idx)}
+      />;
+    }
+  });
+}
 ```
 
 ## Implementation Considerations
