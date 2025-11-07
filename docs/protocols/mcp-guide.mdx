@@ -7,7 +7,7 @@ keywords: [MCP integration, Model Context Protocol, tool calls, context manageme
 
 # MCP Integration Guide
 
-Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](./core-concepts.mdx).
+Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](/docs/protocols/core-concepts).
 
 ## Testing AdCP via MCP
 
@@ -64,7 +64,7 @@ const response = await mcp.call('get_products', {
 - **data**: Direct JSON structure (vs. A2A's artifact parts)
 - **status**: Same values as A2A protocol for consistency
 
-**Status Handling**: See [Core Concepts](./core-concepts.mdx) for complete status handling patterns.
+**Status Handling**: See [Core Concepts](/docs/protocols/core-concepts) for complete status handling patterns.
 
 ## Available Tools
 
@@ -94,9 +94,9 @@ await mcp.call('get_signals', {...});      // Discover audience signals
 await mcp.call('activate_signal', {...});  // Deploy signals to platforms
 ```
 
-**Task Parameters**: See individual task documentation in [Media Buy](../media-buy/index.mdx) and [Signals](../signals/overview.mdx) sections.
+**Task Parameters**: See individual task documentation in [Media Buy](/docs/media-buy) and [Signals](/docs/signals/overview) sections.
 
-**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Task Management](./task-management.mdx).
+**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Task Management](/docs/protocols/task-management).
 
 ## Context Management (MCP-Specific)
 
@@ -342,7 +342,7 @@ switch (initial.status) {
 }
 ```
 
-**Note**: Use `tasks/get` for polling specific tasks, or `tasks/list` for state reconciliation. See [Task Management](./task-management.mdx) for complete documentation on task tracking patterns and webhook integration.
+**Note**: Use `tasks/get` for polling specific tasks, or `tasks/list` for state reconciliation. See [Task Management](/docs/protocols/task-management) for complete documentation on task tracking patterns and webhook integration.
 
 ## Integration Example
 
@@ -427,9 +427,9 @@ try {
 
 ## Next Steps
 
-- **Core Concepts**: Read [Core Concepts](./core-concepts.mdx) for status handling and workflows
-- **Task Reference**: See [Media Buy Tasks](../media-buy/index.mdx) and [Signals](../signals/overview.mdx)
-- **Protocol Comparison**: Compare with [A2A integration](./a2a-guide.mdx)
+- **Core Concepts**: Read [Core Concepts](/docs/protocols/core-concepts) for status handling and workflows
+- **Task Reference**: See [Media Buy Tasks](/docs/media-buy) and [Signals](/docs/signals/overview)
+- **Protocol Comparison**: Compare with [A2A integration](/docs/protocols/a2a-guide)
 - **Examples**: Find complete workflow examples in Core Concepts
 
-**For status handling, async operations, and clarification patterns, see [Core Concepts](./core-concepts.mdx) - this guide focuses on MCP transport specifics only.**
+**For status handling, async operations, and clarification patterns, see [Core Concepts](/docs/protocols/core-concepts) - this guide focuses on MCP transport specifics only.**

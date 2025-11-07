@@ -5,9 +5,9 @@ sidebar_position: 4
 
 # Creative Manifests
 
-Creative manifests are structured specifications that define all the assets and metadata needed to render a creative in a specific format. They pair the requirements defined by [Creative Formats](./formats.mdx) with actual asset content.
+Creative manifests are structured specifications that define all the assets and metadata needed to render a creative in a specific format. They pair the requirements defined by [Creative Formats](/docs/creative/formats) with actual asset content.
 
-For an overview of how formats, manifests, and creative agents work together, see the [Creative Protocol Overview](./index.mdx).
+For an overview of how formats, manifests, and creative agents work together, see the [Creative Protocol Overview](/docs/creative).
 
 
 ## Manifest Structure
@@ -257,7 +257,7 @@ Digital Out-of-Home (DOOH) creatives use impression tracking just like other for
 }
 ```
 
-**DOOH-Specific Macros** (see [Universal Macros](./universal-macros.mdx) for complete list):
+**DOOH-Specific Macros** (see [Universal Macros](/docs/creative/universal-macros) for complete list):
 - `{SCREEN_ID}` - Unique identifier for the physical screen
 - `{VENUE_TYPE}` - Venue category (airport, mall, transit, highway, retail)
 - `{VENUE_LAT}` / `{VENUE_LONG}` - Physical location coordinates
@@ -300,7 +300,7 @@ Construct manifests directly by pairing format requirements with your assets:
 
 **2. AI-Generated (Optional)**
 
-Use `build_creative` to have a creative agent generate manifests from natural language briefs. See [Generative Creative](./generative-creative.mdx) for details.
+Use `build_creative` to have a creative agent generate manifests from natural language briefs. See [Generative Creative](/docs/creative/generative-creative) for details.
 
 ### Validating Manifests
 
@@ -422,7 +422,7 @@ Then reference in media buys by `creative_id`. Each manifest is for a single for
 
 Manifests support macro placeholders for dynamic values. AdCP uses universal macros that work consistently across all publishers.
 
-See [Universal Macros](./universal-macros.mdx) for complete documentation on available macros, macro substitution process, and format-specific macro support.
+See [Universal Macros](/docs/creative/universal-macros) for complete documentation on available macros, macro substitution process, and format-specific macro support.
 
 
 ## Best Practices
@@ -455,7 +455,7 @@ See [Universal Macros](./universal-macros.mdx) for complete documentation on ava
 
 ### Repeatable Asset Groups
 
-For carousel, slideshow, and multi-asset formats, see the [Carousel & Multi-Asset Formats](./channels/carousels.mdx) guide for complete documentation on repeatable asset groups.
+For carousel, slideshow, and multi-asset formats, see the [Carousel & Multi-Asset Formats](/docs/creative/channels/carousels) guide for complete documentation on repeatable asset groups.
 
 ## Schema Reference
 
@@ -465,7 +465,7 @@ For carousel, slideshow, and multi-asset formats, see the [Carousel & Multi-Asse
 
 ## Related Documentation
 
-- [Creative Formats](./formats.mdx) - Understanding format specifications and discovery
-- [Channel Guides](./channels/video.mdx) - Format examples across video, display, audio, DOOH, and carousels
-- [build_creative Task](./task-reference/build_creative.mdx)
-- [preview_creative Task](./task-reference/preview_creative.mdx)
+- [Creative Formats](/docs/creative/formats) - Understanding format specifications and discovery
+- [Channel Guides](/docs/creative/channels/video) - Format examples across video, display, audio, DOOH, and carousels
+- [build_creative Task](/docs/creative/task-reference/build_creative)
+- [preview_creative Task](/docs/creative/task-reference/preview_creative)

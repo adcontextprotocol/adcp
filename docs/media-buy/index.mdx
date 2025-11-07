@@ -12,31 +12,31 @@ The Media Buy protocol is AdCP's core advertising automation interface, providin
 
 Media Buy tasks are accessible through multiple protocols:
 
-- **[MCP (Model Context Protocol)](../protocols/mcp-guide)**: Direct integration with AI assistants like Claude
-- **[A2A (Agent-to-Agent)](../protocols/a2a-guide)**: Complex agent workflows and collaboration
+- **[MCP (Model Context Protocol)](/docs/protocols/mcp-guide)**: Direct integration with AI assistants like Claude
+- **[A2A (Agent-to-Agent)](/docs/protocols/a2a-guide)**: Complex agent workflows and collaboration
 - **REST API**: Coming soon for traditional integrations
 
-All protocols provide identical functionality - choose based on your integration needs. See [Protocol Comparison](../protocols/protocol-comparison) for guidance.
+All protocols provide identical functionality - choose based on your integration needs. See [Protocol Comparison](/docs/protocols/protocol-comparison) for guidance.
 
 ## The 8 Core Media Buy Tasks
 
 The Media Buy protocol provides these essential operations:
 
 ### Discovery & Planning
-- **[`get_products`](./task-reference/get_products)**: Discover advertising inventory using natural language briefs
-- **[`list_creative_formats`](./task-reference/list_creative_formats)**: Understand creative requirements and specifications
-- **[`list_authorized_properties`](./task-reference/list_authorized_properties)**: Verify publisher authorization and available properties
+- **[`get_products`](/docs/media-buy/task-reference/get_products)**: Discover advertising inventory using natural language briefs
+- **[`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats)**: Understand creative requirements and specifications
+- **[`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties)**: Verify publisher authorization and available properties
 
 ### Campaign Execution
-- **[`create_media_buy`](./task-reference/create_media_buy)**: Launch advertising campaigns with complete lifecycle management
-- **[`update_media_buy`](./task-reference/update_media_buy)**: Modify budgets, targeting, and campaign settings
+- **[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)**: Launch advertising campaigns with complete lifecycle management
+- **[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)**: Modify budgets, targeting, and campaign settings
 
 ### Creative Management
-- **[`list_creatives`](./task-reference/list_creatives)**: Browse and filter creative asset libraries
-- **[`sync_creatives`](./task-reference/sync_creatives)**: Upload and synchronize creative assets across platforms
+- **[`list_creatives`](/docs/media-buy/task-reference/list_creatives)**: Browse and filter creative asset libraries
+- **[`sync_creatives`](/docs/media-buy/task-reference/sync_creatives)**: Upload and synchronize creative assets across platforms
 
 ### Performance Optimization
-- **[`get_media_buy_delivery`](./task-reference/get_media_buy_delivery)**: Track performance metrics and campaign delivery
+- **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)**: Track performance metrics and campaign delivery
 
 ## Key Design Principles
 
@@ -199,22 +199,22 @@ The following diagram illustrates the complete lifecycle of a media buy in AdCP:
 
 ## Documentation Structure
 
-### [Task Reference](./task-reference/) 🔗
+### [Task Reference](/docs/media-buy/task-reference/) 🔗
 Complete API reference for all 8 media buying operations, from product discovery and creative management to campaign creation and optimization.
 
-### [Capability Discovery](./capability-discovery/) 🔍
+### [Capability Discovery](/docs/media-buy/capability-discovery/) 🔍
 Foundation concepts including creative format specifications and property authorization. Learn about preventing unauthorized resale and understanding format requirements.
 
-### [Product Discovery](./product-discovery/) 📋
+### [Product Discovery](/docs/media-buy/product-discovery/) 📋
 Natural language approach to finding inventory, including brief structure, product models, and real-world examples.
 
-### [Media Buys](./media-buys/) 🎯
+### [Media Buys](/docs/media-buy/media-buys/) 🎯
 Complete campaign lifecycle management from creation through optimization, including asynchronous operations, human-in-the-loop workflows, performance monitoring, and data-driven campaign optimization.
 
-### [Creatives](./creatives/) 🎨
-Creative asset management including library management, asset lifecycle, and cross-platform synchronization. Works in conjunction with the [Creative Protocol](../creative/) for building and managing creative content.
+### [Creatives](/docs/media-buy/creatives/) 🎨
+Creative asset management including library management, asset lifecycle, and cross-platform synchronization. Works in conjunction with the [Creative Protocol](/docs/creative/) for building and managing creative content.
 
-### [Advanced Topics](./advanced-topics/) 🛠️
+### [Advanced Topics](/docs/media-buy/advanced-topics/) 🛠️
 Advanced features including targeting dimensions, security models, design rationale, and development tools.
 
 ## Getting Started
@@ -222,26 +222,26 @@ Advanced features including targeting dimensions, security models, design ration
 Choose your path based on your role and needs:
 
 ### **For AI Agent Developers**
-1. **Start with [Protocol Selection](../protocols/protocol-comparison)** - Choose MCP or A2A based on your use case
-2. **Learn [Capability Discovery](./capability-discovery/)** - Understand creative formats and property authorization
-3. **Try [Product Discovery](./product-discovery/)** - See how natural language briefs work
-4. **Reference [Task Reference](./task-reference/)** - Implement the 8 core tasks
+1. **Start with [Protocol Selection](/docs/protocols/protocol-comparison)** - Choose MCP or A2A based on your use case
+2. **Learn [Capability Discovery](/docs/media-buy/capability-discovery/)** - Understand creative formats and property authorization
+3. **Try [Product Discovery](/docs/media-buy/product-discovery/)** - See how natural language briefs work
+4. **Reference [Task Reference](/docs/media-buy/task-reference/)** - Implement the 8 core tasks
 
 ### **For Campaign Managers**
-1. **Understand the [Media Buy Lifecycle](./media-buys/)** - Learn the complete workflow
-2. **Review [Product Discovery](./product-discovery/)** - See how to find inventory with briefs
-3. **Study [Policy Compliance](./media-buys/policy-compliance)** - Understand approval requirements
-4. **Explore [Optimization & Reporting](./media-buys/optimization-reporting)** - Learn performance management
+1. **Understand the [Media Buy Lifecycle](/docs/media-buy/media-buys/)** - Learn the complete workflow
+2. **Review [Product Discovery](/docs/media-buy/product-discovery/)** - See how to find inventory with briefs
+3. **Study [Policy Compliance](/docs/media-buy/media-buys/policy-compliance)** - Understand approval requirements
+4. **Explore [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting)** - Learn performance management
 
 ### **For Publishers/Sales Agents**
-1. **Learn [Authorized Properties](./capability-discovery/authorized-properties)** - Understand authorization requirements
-2. **Review [Creative Formats](../creative/formats)** - See supported creative specifications
-3. **Study [Advanced Topics](./advanced-topics/)** - Deep dive into technical implementation
+1. **Learn [Authorized Properties](/docs/media-buy/capability-discovery/authorized-properties)** - Understand authorization requirements
+2. **Review [Creative Formats](/docs/creative/formats)** - See supported creative specifications
+3. **Study [Advanced Topics](/docs/media-buy/advanced-topics/)** - Deep dive into technical implementation
 
 ### **For Technical Implementers**
-1. **Choose your [Protocol](../protocols/protocol-comparison)** - MCP vs A2A comparison
-2. **Study [Task Reference](./task-reference/)** - Complete API documentation
-3. **Review [Advanced Topics](./advanced-topics/)** - Security, testing, and architecture
-4. **Explore [Creative Management](./creatives/)** - Asset lifecycle and synchronization
+1. **Choose your [Protocol](/docs/protocols/protocol-comparison)** - MCP vs A2A comparison
+2. **Study [Task Reference](/docs/media-buy/task-reference/)** - Complete API documentation
+3. **Review [Advanced Topics](/docs/media-buy/advanced-topics/)** - Security, testing, and architecture
+4. **Explore [Creative Management](/docs/media-buy/creatives/)** - Asset lifecycle and synchronization
 
 The Media Buy protocol makes advertising automation accessible to AI agents while maintaining the human expertise and approval workflows that ensure quality and compliance.

@@ -41,7 +41,7 @@ The `sync_creatives` task provides a powerful, efficient approach to creative li
 | `assignments` | object | No | Bulk creative-to-package assignments (simple package-level only - see note below) |
 | `delete_missing` | boolean | No | Archive creatives not in this sync (default: false) |
 
-**Note on Placement Targeting:** The `assignments` field only supports package-level assignments without placement targeting. To assign creatives to specific placements within a product, use [`create_media_buy`](./create_media_buy.mdx) or [`update_media_buy`](./update_media_buy.mdx) with `creative_assignments[].placement_ids`.
+**Note on Placement Targeting:** The `assignments` field only supports package-level assignments without placement targeting. To assign creatives to specific placements within a product, use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) or [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) with `creative_assignments[].placement_ids`.
 
 ### Creative Asset Structure
 
@@ -87,10 +87,10 @@ For large bulk operations or creative approval workflows, you can provide a task
 - Large creative uploads processing asynchronously
 
 **Webhook payload:**
-- Complete sync_creatives response with summary and results
-- Includes action taken for each creative (created/updated/unchanged/failed)
+- Protocol fields at top-level (operation_id, task_type, status, etc.)
+- `result` contains complete sync_creatives response with summary and results
 
-See [Webhook Security](../../protocols/core-concepts.mdx#security) for authentication details.
+See [Webhook Security](/docs/protocols/core-concepts.mdx#security) for authentication details.
 
 ## Response Format
 
@@ -137,7 +137,7 @@ For generative formats, buyers submit a creative manifest (brand information + g
 
 **Note on Transparency:** Some buyers may care about creation method (AI vs human) for brand safety, compliance, or quality reasons. Publishers should communicate their approach during format discovery or setup.
 
-**Protocol Context**: The `context_id` is managed at the protocol level (automatic in A2A, manual in MCP) and is not part of the task request parameters. See [Context Management](../../protocols/context-management.mdx) for details.
+**Protocol Context**: The `context_id` is managed at the protocol level (automatic in A2A, manual in MCP) and is not part of the task request parameters. See [Context Management](/docs/protocols/context-management) for details.
 
 **Workflow Steps:**
 
@@ -556,9 +556,9 @@ The `sync_creatives` task replaces previous action-based creative management app
 
 ## Related Tasks
 
-- [`list_creatives`](./list_creatives) - Query creative library with filtering and search
-- [`create_media_buy`](./create_media_buy) - Create campaigns that use library creatives
-- [`list_creative_formats`](./list_creative_formats) - Discover supported creative formats
+- [`list_creatives`](/docs/media-buy/task-reference/list_creatives) - Query creative library with filtering and search
+- [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) - Create campaigns that use library creatives
+- [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) - Discover supported creative formats
 
 ---
 

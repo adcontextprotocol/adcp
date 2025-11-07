@@ -18,7 +18,7 @@ function ReleaseBanner() {
           <span className={styles.releaseText}>
             Publisher-owned properties, placement targeting, flexible product discovery, and more!
           </span>
-          <Link className={styles.releaseLink} to="/docs/intro">
+          <Link className={styles.releaseLink} to="https://docs.adcontextprotocol.org">
             Read the docs →
           </Link>
         </div>
@@ -69,7 +69,7 @@ function HomepageHeader() {
             <div className={styles.buttons}>
               <Link
                 className="button button--primary button--lg margin-right--md"
-                to="/docs/intro">
+                to="https://docs.adcontextprotocol.org">
                 Start Building
               </Link>
               <Link
@@ -412,7 +412,7 @@ function GetStarted() {
                   <li>Build on open standards, avoid vendor lock-in</li>
                 </ul>
                 <div className={styles.audienceAction}>
-                  <Link className="button button--primary button--lg" to="/docs/intro">
+                  <Link className="button button--primary button--lg" to="https://docs.adcontextprotocol.org">
                     Start Building Today
                   </Link>
                   <p className={styles.actionSubtext}>Documentation & guides</p>

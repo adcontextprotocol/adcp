@@ -367,7 +367,7 @@ The server decides whether to use webhooks based on the initial response status:
 
 ### Webhook POST Format
 
-When an async operation changes status, the publisher POSTs the **complete task response object** to your webhook URL.
+When an async operation changes status, the publisher POSTs a payload with protocol fields at the top-level and the task-specific payload nested under `result`.
 
 #### Webhook Scenarios
 
@@ -417,29 +417,40 @@ const response = await session.call('create_media_buy', params, {
 // Later: Webhook POST when approval is needed
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 {
-  "status": "input-required",
+  "operation_id": "op_456",
   "task_id": "task_456",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "message": "Please approve $150K campaign to proceed"
+  "task_type": "create_media_buy",
+  "status": "input-required",
+  "timestamp": "2025-01-22T10:15:00Z",
+  "message": "Please approve $150K campaign to proceed",
+  "result": {
+    "buyer_ref": "nike_q1_campaign_2024"
+  }
 }
 
-// Later: Webhook POST when approved and completed (full create_media_buy response)
+// Later: Webhook POST when approved and completed (result nested)
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 {
+  "operation_id": "op_456",
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
   "status": "completed",
-  "media_buy_id": "mb_12345",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "creative_deadline": "2024-01-30T23:59:59Z",
-  "packages": [
-    {
-      "package_id": "pkg_12345_001",
-      "buyer_ref": "nike_ctv_sports_package"
-    },
-    {
-      "package_id": "pkg_12345_002",
-      "buyer_ref": "nike_audio_drive_package"
-    }
-  ]
+  "timestamp": "2025-01-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "buyer_ref": "nike_q1_campaign_2024",
+    "creative_deadline": "2024-01-30T23:59:59Z",
+    "packages": [
+      {
+        "package_id": "pkg_12345_001",
+        "buyer_ref": "nike_ctv_sports_package"
+      },
+      {
+        "package_id": "pkg_12345_002",
+        "buyer_ref": "nike_audio_drive_package"
+      }
+    ]
+  }
 }
 ```
 
@@ -468,51 +479,56 @@ Your webhook handler can parse the URL path to route to the correct handler base
 
 #### Webhook Payload Structure
 
-Every webhook POST contains the complete task response for that status, matching the task's response schema.
+Every webhook POST contains protocol fields plus a `result` object for the task-specific payload of that status.
 
 **`input-required` webhook (human needs to respond):**
 ```json
 {
-  "status": "input-required",
+  "operation_id": "op_456",
   "task_id": "task_456",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "message": "Campaign budget requires VP approval to proceed"
+  "task_type": "create_media_buy",
+  "status": "input-required",
+  "message": "Campaign budget requires VP approval to proceed",
+  "result": {
+    "buyer_ref": "nike_q1_campaign_2024"
+  }
 }
 ```
 
 **`completed` webhook (operation finished - full create_media_buy response):**
 ```json
 {
+  "operation_id": "op_456",
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
   "status": "completed",
-  "media_buy_id": "mb_12345",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "creative_deadline": "2024-01-30T23:59:59Z",
-  "packages": [
-    {
-      "package_id": "pkg_001",
-      "buyer_ref": "nike_ctv_package"
-    }
-  ]
+  "result": {
+    "media_buy_id": "mb_12345",
+    "buyer_ref": "nike_q1_campaign_2024",
+    "creative_deadline": "2024-01-30T23:59:59Z",
+    "packages": [
+      {
+        "package_id": "pkg_001",
+        "buyer_ref": "nike_ctv_package"
+      }
+    ]
+  }
 }
 ```
 
 **`failed` webhook (operation failed):**
 ```json
 {
-  "status": "failed",
+  "operation_id": "op_456",
   "task_id": "task_456",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "errors": [
-    {
-      "code": "insufficient_inventory",
-      "message": "Requested targeting yielded 0 available impressions",
-      "suggestion": "Broaden geographic targeting or increase budget"
-    }
-  ]
+  "task_type": "create_media_buy",
+  "status": "failed",
+  "message": "Requested targeting yielded 0 available impressions",
+  "error": "insufficient_inventory"
 }
 ```
 
-**Key principle:** Webhooks are ONLY called for `submitted` operations, and each webhook contains the full response object matching the task's response schema.
+**Key principle:** Webhooks are ONLY called for `submitted` operations, and each webhook contains an envelope plus `result` matching the task's response schema.
 
 ### Task State Reconciliation
 
@@ -555,7 +571,7 @@ input-required → → → → →
 - **`completed`**: Success, process results
 - **`failed`**: Error, handle appropriately
 
-For detailed timing expectations and polling patterns, see **[Task Management](./task-management.mdx#task-status-lifecycle)**.
+For detailed timing expectations and polling patterns, see **[Task Management](/docs/protocols/task-management.mdx#task-status-lifecycle)**.
 
 ## Webhook Reliability
 
@@ -1066,31 +1082,19 @@ class TaskTracker {
 
 ### Webhook Event Format
 
-AdCP webhook events include all necessary information for processing:
+AdCP webhook events include all necessary information for processing, with task-specific data in `result`:
 
 ```json
 {
-  "event_id": "evt_789abc123def",
-  "event_type": "task_status_changed",
+  "operation_id": "op_123",
   "timestamp": "2025-01-22T10:25:00Z",
   "task_id": "task_456",
   "task_type": "create_media_buy",
-  "domain": "media-buy",
-  "previous_status": "working",
-  "current_status": "completed",
-  "context": {
-    "buyer_ref": "nike_q1_2025",
-    "media_buy_id": "mb_987654321"
-  },
+  "status": "completed",
+  "message": "Media buy created successfully",
   "result": {
-    // Included for completed tasks
     "media_buy_id": "mb_987654321",
-    "packages": [...]
-  },
-  "error": {
-    // Included for failed tasks
-    "code": "insufficient_inventory",
-    "message": "Requested targeting yielded 0 available impressions"
+    "packages": []
   }
 }
 ```
@@ -1246,7 +1250,7 @@ For daily and monthly frequencies, the publisher's reporting timezone (from prod
 6. **Frequency Validation**: Ensure requested frequency is in product's `available_reporting_frequencies`
 7. **Metrics Validation**: Ensure requested metrics are in product's `available_metrics`
 
-See [Optimization & Reporting](../media-buy/media-buys/optimization-reporting.mdx#webhook-based-reporting) for complete implementation guidance.
+See [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting.mdx#webhook-based-reporting) for complete implementation guidance.
 
 ## Error Handling
 
@@ -1431,8 +1435,8 @@ function getStatus(response) {
 
 ## Next Steps
 
-- **MCP Integration**: See [MCP Guide](./mcp-guide.mdx) for tool calls and context management
-- **A2A Integration**: See [A2A Guide](./a2a-guide.mdx) for artifacts and streaming
-- **Protocol Comparison**: See [Protocol Comparison](./protocol-comparison.mdx) for choosing between MCP and A2A
+- **MCP Integration**: See [MCP Guide](/docs/protocols/mcp-guide) for tool calls and context management
+- **A2A Integration**: See [A2A Guide](/docs/protocols/a2a-guide) for artifacts and streaming
+- **Protocol Comparison**: See [Protocol Comparison](/docs/protocols/protocol-comparison) for choosing between MCP and A2A
 
 This unified status approach ensures consistent behavior across all AdCP implementations while making client development more predictable and robust.

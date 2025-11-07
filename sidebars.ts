@@ -163,7 +163,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Reference',
       items: [
-        'reference/changelog',
+        'reference/release-notes',
         'reference/error-codes',
         'reference/data-models',
         'reference/authentication',

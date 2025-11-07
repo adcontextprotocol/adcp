@@ -7,7 +7,7 @@ title: Media Products
 A **Product** is the core sellable unit in AdCP. This document details the Product model, including its pricing and delivery types, and how products are discovered and structured in the system.
 
 :::tip **Pricing Models**
-Products declare which pricing models they support. Buyers select a specific pricing option when creating media buys. See the complete [Pricing Models Guide](../advanced-topics/pricing-models) for details on CPM, CPCV, CPP, CPC, vCPM, and flat rate pricing.
+Products declare which pricing models they support. Buyers select a specific pricing option when creating media buys. See the complete [Pricing Models Guide](/docs/media-buy/advanced-topics/pricing-models) for details on CPM, CPCV, CPP, CPC, vCPM, and flat rate pricing.
 :::
 
 ## The Product Model
@@ -15,7 +15,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `product_id` (string, required)
 - `name` (string, required)
 - `description` (string, required)
-- `formats` (list[Format], required): See [Creative Formats](../../creative/formats.mdx).
+- `formats` (list[Format], required): See [Creative Formats](/docs/creative/formats).
 - `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
@@ -23,6 +23,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
 - `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
 - `expires_at` (datetime, optional): If `is_custom`, the time the product is no longer valid.
+- `product_card` (object, optional): Visual card definition for displaying this product in user interfaces. See [Product Cards](#product-cards).
 
 ### Pricing Models
 
@@ -191,7 +192,7 @@ When creating a media buy, buyers can assign different creatives to different pl
 }
 ```
 
-See [Creative Assignment and Placement Targeting](../media-buys/index.mdx#creative-assignment-and-placement-targeting) for more details.
+See [Creative Assignment and Placement Targeting](/docs/media-buy/media-buys/index.mdx#creative-assignment-and-placement-targeting) for more details.
 
 ### Custom & Principal-Specific Products
 
@@ -354,13 +355,109 @@ A server can offer a general catalog, but it can also return:
 }
 ```
 
+## Product Cards
+
+Product cards provide visual representations of products for display in user interfaces. Publishers can optionally include card definitions that reference card formats and provide the assets needed to render attractive visual cards.
+
+### Card Types
+
+Publishers should provide at least the standard card, and optionally a detailed card:
+
+**Standard Card** (`product_card`):
+- Compact 300x400px card for product grids and lists
+- Supports 2x density images for retina displays
+- Quick visual identification of products
+
+**Detailed Card** (`product_card_detailed`, optional):
+- Responsive layout with text description alongside hero carousel
+- Markdown specifications section below
+- Full product documentation similar to media kits
+
+### Structure
+
+```json
+{
+  "product_id": "ctv_premium",
+  "name": "Premium CTV Inventory",
+  // ... other product fields ...
+
+  "product_card": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "product_card_standard"
+    },
+    "manifest": {
+      "display_name": "Premium CTV - Living Room Audiences",
+      "hero_image_url": "https://cdn.example.com/products/ctv_hero.jpg",
+      "brief_highlight": "Perfect for reaching cord-cutters and premium streaming audiences"
+    }
+  },
+
+  "product_card_detailed": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "product_card_detailed"
+    },
+    "manifest": {
+      "display_name": "Premium CTV - Living Room Audiences",
+      "description": "Reach high-income households with premium CTV inventory during peak viewing hours...",
+      "carousel_images": [
+        "https://cdn.example.com/products/ctv_context1.jpg",
+        "https://cdn.example.com/products/ctv_context2.jpg"
+      ],
+      "specifications_markdown": "# Technical Specifications\n\n..."
+    }
+  }
+}
+```
+
+### Rendering Cards
+
+Cards can be rendered in two ways:
+
+1. **Via `preview_creative`**: Pass the card format and manifest to generate a rendered card
+2. **Pre-rendered**: Publishers can pre-generate cards and serve them directly
+
+This flexibility allows publishers to choose between dynamic generation or static hosting based on their infrastructure.
+
+### Standard Card Formats
+
+The AdCP reference creative agent defines two standard card formats:
+
+- **`product_card_standard`** (300x400px) - Compact card for product browsing
+- **`product_card_detailed`** (responsive) - Rich card with carousel and full specs
+
+Publishers can also define custom card formats to match their branding or highlight unique product attributes.
+
+**Note**: Standard card format definitions are maintained in the [creative-agent repository](https://github.com/adcontextprotocol/creative-agent), not in this protocol specification.
+
+### When to Include Product Cards
+
+Product cards are optional but recommended for:
+- Products with strong visual identity (e.g., specific shows, events, publications)
+- Premium products where visual presentation enhances perceived value
+- Complex products where visual highlights help explain capabilities
+- Products targeting specific audiences that benefit from visual representation
+
+Use the detailed card variant when you want to provide comprehensive product documentation similar to media kit pages.
+
+### Client Rendering Guidelines
+
+When displaying products in UIs, clients should follow this fallback order:
+
+1. **If `product_card` exists** → Render card via `preview_creative` or display pre-rendered image
+2. **If neither exists** → Render text-only representation (product name + description)
+3. **If card rendering fails** → Gracefully fall back to text-only representation
+
+This ensures a consistent user experience regardless of what product metadata is available.
+
 ## Integration with Discovery
 
-Products are discovered through the [Product Discovery](./index.mdx) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be purchased via `create_media_buy`.
+Products are discovered through the [Product Discovery](/docs/media-buy/product-discovery) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be purchased via `create_media_buy`.
 
 ## See Also
 
-- [Product Discovery](./index.mdx) - How to discover products using natural language
-- [Media Buys](../media-buys/index.mdx) - How to purchase products
-- [Targeting](../advanced-topics/targeting.mdx) - Detailed targeting options
-- [Creative Formats](../../creative/formats.mdx) - Understanding format specifications and discovery
+- [Product Discovery](/docs/media-buy/product-discovery) - How to discover products using natural language
+- [Media Buys](/docs/media-buy/media-buys) - How to purchase products
+- [Targeting](/docs/media-buy/advanced-topics/targeting) - Detailed targeting options
+- [Creative Formats](/docs/creative/formats) - Understanding format specifications and discovery

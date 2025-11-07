@@ -123,7 +123,7 @@ Sales agents typically support one or both:
 - **API Keys**: Simple header-based authentication (`X-API-Key: <key>`)
 - **JWT Tokens**: OAuth-based authentication (`Authorization: Bearer <token>`)
 
-See [Authentication Reference](./reference/authentication.mdx) for technical details.
+See [Authentication Reference](/docs/reference/authentication) for technical details.
 
 **3. Dynamic Registration (Optional)**
 
@@ -239,7 +239,7 @@ curl -X POST <agent-url> \
 - ❌ Does NOT spend actual money
 - ❌ Does NOT affect production systems
 
-**Learn more**: [Testing & Development Guide](./media-buy/advanced-topics/testing.mdx)
+**Learn more**: [Testing & Development Guide](/docs/media-buy/advanced-topics/testing)
 
 ## Protocol Choice: MCP vs A2A
 
@@ -257,7 +257,7 @@ AdCP tasks work identically across protocols - choose based on your technical ne
 
 **The tasks are the same** - `get_products`, `create_media_buy`, etc. work identically in both protocols, just with different request/response wrappers.
 
-**Learn more**: [Protocol Comparison](./protocols/protocol-comparison.mdx)
+**Learn more**: [Protocol Comparison](/docs/protocols/protocol-comparison)
 
 ## Using the NPM Client
 
@@ -308,7 +308,7 @@ console.log('Test media buy created:', mediaBuy.media_buy_id);
 
 **Solution**:
 1. Verify you're using the latest AdCP version (check [schema registry](https://adcontextprotocol.org/schemas/v1/index.json))
-2. Check parameter names match the [task reference docs](./media-buy/task-reference/get_products.mdx)
+2. Check parameter names match the [task reference docs](/docs/media-buy/task-reference/get_products)
 3. Use the testing platform to validate your request structure
 
 ### Missing Pricing Information
@@ -329,8 +329,8 @@ Now that you understand the basics:
 
 1. **Explore the Protocol**:
    - Try the [interactive testing platform](https://testing.adcontextprotocol.org)
-   - Read the [MCP Guide](./protocols/mcp-guide.mdx) or [A2A Guide](./protocols/a2a-guide.mdx)
-   - Review the [Task Reference](./media-buy/task-reference/index.mdx)
+   - Read the [MCP Guide](/docs/protocols/mcp-guide) or [A2A Guide](/docs/protocols/a2a-guide)
+   - Review the [Task Reference](/docs/media-buy/task-reference)
 
 2. **Get Credentials**:
    - Identify sales agents you want to work with (check their `adagents.json` files)
@@ -339,8 +339,8 @@ Now that you understand the basics:
 
 3. **Build Your Integration**:
    - Install the [@adcp/client](https://www.npmjs.com/package/@adcp/client) NPM package
-   - Follow the [implementation patterns](./media-buy/advanced-topics/orchestrator-design.mdx)
-   - Use [dry run mode](./media-buy/advanced-topics/testing.mdx) to test safely
+   - Follow the [implementation patterns](/docs/media-buy/advanced-topics/orchestrator-design)
+   - Use [dry run mode](/docs/media-buy/advanced-topics/testing) to test safely
 
 4. **Join the Community**:
    - [Slack Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)

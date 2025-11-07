@@ -70,10 +70,10 @@ For long-running updates (typically requiring approval workflows), you can provi
 - Update takes longer than ~120 seconds (status: `working` → `completed`)
 
 **Webhook payload:**
-- Complete update_media_buy response with final status
-- Includes media_buy_id, affected_packages, and implementation_date
+- Protocol fields at top-level (operation_id, task_type, status, etc.)
+- `result` contains update_media_buy payload, including media_buy_id, affected_packages, implementation_date
 
-See [Webhook Security](../../protocols/core-concepts.mdx#security) for authentication details.
+See [Webhook Security](/docs/protocols/core-concepts.mdx#security) for authentication details.
 
 ## Response (Message)
 

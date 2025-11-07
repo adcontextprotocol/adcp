@@ -32,9 +32,14 @@
       "typical_use": "Third-party served audio ads with DAAST 1.0-1.1"
     },
     "text": {
-      "description": "Text content asset (plain, HTML, markdown)",
+      "description": "Plain text content asset",
       "schema": "/schemas/v1/core/assets/text-asset.json",
       "typical_use": "Headlines, descriptions, CTAs, body copy, disclaimers"
+    },
+    "markdown": {
+      "description": "Markdown-formatted text content (CommonMark/GFM)",
+      "schema": "/schemas/v1/core/assets/markdown-asset.json",
+      "typical_use": "Product specifications, format documentation, rich descriptions, structured content"
     },
     "url": {
       "description": "URL asset for clickthrough, tracking, landing pages",
