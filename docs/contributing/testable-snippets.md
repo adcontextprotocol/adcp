@@ -91,7 +91,8 @@ Each testable snippet should:
 - Produce visible output (console.log, etc.)
 
 **Good Example:**
-```javascript test=true
+```javascript
+// Example of a complete, testable snippet
 import { AdcpClient } from '@adcp/client';
 
 const client = new AdcpClient({
@@ -119,7 +120,8 @@ const products = await client.getProducts({
 
 When demonstrating operations that modify state (create, update, delete), use dry run mode:
 
-```javascript test=true
+```javascript
+// Example showing dry run mode usage
 const mediaBuy = await client.createMediaBuy({
   product_id: 'prod_123',
   budget: 10000,
@@ -136,7 +138,7 @@ console.log('Dry run successful');
 
 JavaScript/TypeScript examples should use `await` or `.then()`:
 
-```javascript test=true
+```javascript
 // Using await (recommended)
 const products = await client.getProducts({...});
 
@@ -150,7 +152,7 @@ client.getProducts({...}).then(products => {
 
 Each testable snippet should demonstrate ONE concept:
 
-```javascript test=true
+```javascript
 // Good: Demonstrates authentication
 import { AdcpClient } from '@adcp/client';
 

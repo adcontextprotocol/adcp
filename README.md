@@ -64,12 +64,11 @@ npm install @adcp/client
 - **GitHub**: [adcp-client](https://github.com/adcontextprotocol/adcp-client)
 
 #### Python
-Python client library is in development. For now, use the Model Context Protocol Python SDK:
 ```bash
-pip install mcp
+pip install adcp
 ```
-- **GitHub**: [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
-- **Examples**: See our [reference implementations](https://github.com/adcontextprotocol)
+- **PyPI Package**: [adcp](https://pypi.org/project/adcp/)
+- **GitHub**: [adcp-python](https://github.com/adcontextprotocol/adcp-python)
 
 ### For Platform Providers
 

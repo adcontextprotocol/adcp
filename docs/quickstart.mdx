@@ -267,6 +267,19 @@ If you're building in Node.js, use the official AdCP client:
 npm install @adcp/client
 ```
 
+**Quick test - verify agent connectivity**:
+
+```javascript test=true
+// Test that the agent is accessible
+const TEST_AGENT_URL = 'https://test-agent.adcontextprotocol.org';
+
+const response = await fetch(`${TEST_AGENT_URL}/.well-known/agent-card.json`);
+const agentCard = await response.json();
+
+console.log('✓ Connected to:', agentCard.name);
+console.log('✓ Agent is ready for testing');
+```
+
 **Example usage with test agent**:
 
 ```javascript
