@@ -403,7 +403,9 @@ The response format depends on the request mode:
   preview_id: string;            // Unique identifier for this preview variant
   renders: [{                    // Array of rendered pieces (most formats have one)
     render_id: string;           // Unique identifier for this rendered piece
-    preview_url: string;         // URL to HTML page - can be embedded in iframe
+    output_format: "url" | "html" | "both";  // Discriminator indicating which fields are present
+    preview_url?: string;        // URL to HTML page (present when output_format is "url" or "both")
+    preview_html?: string;       // Raw HTML for embedding (present when output_format is "html" or "both")
     role: string;                // Semantic role: "primary", "companion", or descriptive custom string
     dimensions?: {               // Dimensions for this rendered piece (enables iframe sizing)
       width: number;             // Width in pixels
@@ -440,16 +442,17 @@ Some formats render as multiple pieces in a single preview variant:
 - **DOOH installations**: Multiple screens in a venue
 
 Each rendered piece has:
+- **output_format**: Discriminator field indicating which preview fields are provided (`"url"`, `"html"`, or `"both"`)
 - **role**: Semantic role (`"primary"`, `"companion"`, or descriptive strings for device variants)
 - **dimensions**: Width and height for iframe sizing (especially important when multiple pieces have different sizes)
-- **preview_url**: Iframe URL for rendering (present based on `output_format` request)
-- **preview_html**: Raw HTML for rendering (present based on `output_format` request)
+- **preview_url**: Iframe URL for rendering (present when `output_format` is `"url"` or `"both"`)
+- **preview_html**: Raw HTML for rendering (present when `output_format` is `"html"` or `"both"`)
 
 **Output Format Behavior:**
-- When `output_format: "url"` (default), creative agents return `preview_url`
-- When `output_format: "html"`, creative agents return `preview_html`
-- Creative agents MAY provide both fields for client flexibility
-- Clients should check which field(s) are present and use accordingly
+- When `output_format: "url"` (default) in request, creative agents return `output_format: "url"` with `preview_url` field
+- When `output_format: "html"` in request, creative agents return `output_format: "html"` with `preview_html` field
+- Creative agents MAY provide both fields by returning `output_format: "both"` with both `preview_url` and `preview_html`
+- Clients should check the `output_format` discriminator to determine which fields are present
 
 **Optional Fields:**
 - **embedding**: Security metadata for safe iframe integration (sandbox policies, HTTPS requirements, CSP)
@@ -651,6 +654,7 @@ Response contains results in the same order:
             "renders": [
               {
                 "render_id": "render_1",
+                "output_format": "url",
                 "preview_url": "https://creative-agent.example.com/preview/abc123",
                 "role": "primary",
                 "dimensions": {"width": 300, "height": 250}
@@ -674,6 +678,7 @@ Response contains results in the same order:
             "renders": [
               {
                 "render_id": "render_2",
+                "output_format": "url",
                 "preview_url": "https://creative-agent.example.com/preview/def456",
                 "role": "primary",
                 "dimensions": {"width": 728, "height": 90}
@@ -697,6 +702,7 @@ Response contains results in the same order:
             "renders": [
               {
                 "render_id": "render_3",
+                "output_format": "url",
                 "preview_url": "https://creative-agent.example.com/preview/video789",
                 "role": "primary",
                 "dimensions": {"width": 1920, "height": 1080}
@@ -761,6 +767,7 @@ Response with HTML for direct embedding:
             "renders": [
               {
                 "render_id": "render_1",
+                "output_format": "html",
                 "preview_html": "<div class=\"creative-300x250\"><img src=\"https://...\"/><div class=\"headline\">Ad 1</div></div>",
                 "role": "primary",
                 "dimensions": {"width": 300, "height": 250}
@@ -781,6 +788,7 @@ Response with HTML for direct embedding:
             "renders": [
               {
                 "render_id": "render_2",
+                "output_format": "html",
                 "preview_html": "<div class=\"creative-300x250\"><img src=\"https://...\"/><div class=\"headline\">Ad 2</div></div>",
                 "role": "primary",
                 "dimensions": {"width": 300, "height": 250}

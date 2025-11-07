@@ -28,14 +28,19 @@
                       "type": "string",
                       "description": "Unique identifier for this rendered piece within the variant"
                     },
+                    "output_format": {
+                      "type": "string",
+                      "enum": ["url", "html", "both"],
+                      "description": "Discriminator field indicating which preview format(s) are provided. 'url' = preview_url only, 'html' = preview_html only, 'both' = both preview_url and preview_html."
+                    },
                     "preview_url": {
                       "type": "string",
                       "format": "uri",
-                      "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe. Typically returned when output_format='url' (default). Creative agents MAY provide both preview_url and preview_html for client flexibility."
+                      "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe. Present when output_format is 'url' or 'both'."
                     },
                     "preview_html": {
                       "type": "string",
-                      "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Typically returned when output_format='html'. Security warning: Only use with trusted creative agents as this bypasses iframe sandboxing. Creative agents MAY provide both formats."
+                      "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Present when output_format is 'html' or 'both'. Security warning: Only use with trusted creative agents as this bypasses iframe sandboxing."
                     },
                     "role": {
                       "type": "string",
@@ -79,16 +84,43 @@
                       }
                     }
                   },
-                  "required": ["render_id", "role"],
-                  "oneOf": [
+                  "required": ["render_id", "role", "output_format"],
+                  "allOf": [
                     {
-                      "required": ["preview_url"]
+                      "if": {
+                        "properties": {
+                          "output_format": { "const": "url" }
+                        }
+                      },
+                      "then": {
+                        "required": ["preview_url"],
+                        "not": {
+                          "required": ["preview_html"]
+                        }
+                      }
                     },
                     {
-                      "required": ["preview_html"]
+                      "if": {
+                        "properties": {
+                          "output_format": { "const": "html" }
+                        }
+                      },
+                      "then": {
+                        "required": ["preview_html"],
+                        "not": {
+                          "required": ["preview_url"]
+                        }
+                      }
                     },
                     {
-                      "required": ["preview_url", "preview_html"]
+                      "if": {
+                        "properties": {
+                          "output_format": { "const": "both" }
+                        }
+                      },
+                      "then": {
+                        "required": ["preview_url", "preview_html"]
+                      }
                     }
                   ]
                 },
@@ -173,14 +205,19 @@
                               "render_id": {
                                 "type": "string"
                               },
+                              "output_format": {
+                                "type": "string",
+                                "enum": ["url", "html", "both"],
+                                "description": "Discriminator field indicating which preview format(s) are provided. 'url' = preview_url only, 'html' = preview_html only, 'both' = both preview_url and preview_html."
+                              },
                               "preview_url": {
                                 "type": "string",
                                 "format": "uri",
-                                "description": "URL to iframe-embeddable HTML page. Typically present when output_format='url'."
+                                "description": "URL to iframe-embeddable HTML page. Present when output_format is 'url' or 'both'."
                               },
                               "preview_html": {
                                 "type": "string",
-                                "description": "Raw HTML for direct embedding. Typically present when output_format='html'. Security: Only use with trusted agents."
+                                "description": "Raw HTML for direct embedding. Present when output_format is 'html' or 'both'. Security: Only use with trusted agents."
                               },
                               "role": {
                                 "type": "string"
@@ -217,16 +254,43 @@
                                 }
                               }
                             },
-                            "required": ["render_id", "role"],
-                            "oneOf": [
+                            "required": ["render_id", "role", "output_format"],
+                            "allOf": [
                               {
-                                "required": ["preview_url"]
+                                "if": {
+                                  "properties": {
+                                    "output_format": { "const": "url" }
+                                  }
+                                },
+                                "then": {
+                                  "required": ["preview_url"],
+                                  "not": {
+                                    "required": ["preview_html"]
+                                  }
+                                }
                               },
                               {
-                                "required": ["preview_html"]
+                                "if": {
+                                  "properties": {
+                                    "output_format": { "const": "html" }
+                                  }
+                                },
+                                "then": {
+                                  "required": ["preview_html"],
+                                  "not": {
+                                    "required": ["preview_url"]
+                                  }
+                                }
                               },
                               {
-                                "required": ["preview_url", "preview_html"]
+                                "if": {
+                                  "properties": {
+                                    "output_format": { "const": "both" }
+                                  }
+                                },
+                                "then": {
+                                  "required": ["preview_url", "preview_html"]
+                                }
                               }
                             ]
                           },
