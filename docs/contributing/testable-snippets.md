@@ -10,6 +10,8 @@ Automated testing of documentation examples ensures:
 - Breaking changes are caught immediately
 - Users can trust the documentation
 
+**Important**: The test infrastructure validates code blocks **directly in the documentation files** (`.md` and `.mdx`). When you mark a snippet with `test=true`, that exact code from the documentation is extracted and executed. The `examples/` directory contains standalone reference scripts but is **not** directly connected to the documentation testing system.
+
 ## Marking Snippets for Testing
 
 To mark a code block for testing, add `test=true` or `testable` after the language identifier:
@@ -248,6 +250,17 @@ Currently supported languages for testing:
 - **TypeScript** (`.ts`, `typescript`, `ts`) - compiled to JS
 - **Bash** (`.sh`, `bash`, `shell`) - only `curl` commands
 - **Python** (`.py`, `python`) - requires Python 3 installed
+
+### Limitations
+
+**Package Dependencies**: Snippets that import external packages (like `@adcp/client` or `adcp`) will only work if:
+1. The package is installed in the repository's `node_modules`
+2. Or the package is listed in `devDependencies`
+
+For examples requiring the client library, you have options:
+- **Option 1**: Add the library to `devDependencies` so tests can import it
+- **Option 2**: Don't mark those snippets as testable; provide standalone test scripts in `examples/` instead
+- **Option 3**: Use curl/HTTP examples for testable documentation (no package dependencies)
 
 ## Debugging Failed Tests
 

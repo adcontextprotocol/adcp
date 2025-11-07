@@ -267,51 +267,31 @@ If you're building in Node.js, use the official AdCP client:
 npm install @adcp/client
 ```
 
-**Quick test - verify agent connectivity**:
-
-```javascript test=true
-// Test that the agent is accessible
-const TEST_AGENT_URL = 'https://test-agent.adcontextprotocol.org';
-
-const response = await fetch(`${TEST_AGENT_URL}/.well-known/agent-card.json`);
-const agentCard = await response.json();
-
-console.log('✓ Connected to:', agentCard.name);
-console.log('✓ Agent is ready for testing');
-```
-
 **Example usage with test agent**:
 
 ```javascript
 import { AdcpClient } from '@adcp/client';
 
-// Use the public test agent
+// Connect to the public test agent
 const client = new AdcpClient({
   agentUrl: 'https://test-agent.adcontextprotocol.org/mcp',
   protocol: 'mcp',
-  bearerToken: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'  // Test agent token
+  bearerToken: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
 });
 
-// Test authenticated product discovery
-const products = await client.getProducts({
-  promoted_offering: 'Nike Air Max 2024 - innovative cushioning technology'
+// Discover available advertising products
+const result = await client.getProducts({
+  promoted_offering: 'Premium athletic footwear with innovative cushioning'
 });
 
-console.log(`Found ${products.products.length} products`);
-console.log('First product:', products.products[0]);
-
-// Test with dry run mode
-const mediaBuy = await client.createMediaBuy({
-  product_id: products.products[0].product_id,
-  budget: 10000,
-  start_date: '2025-11-01',
-  end_date: '2025-11-30'
-}, {
-  dryRun: true  // No actual campaign created
-});
-
-console.log('Test media buy created:', mediaBuy.media_buy_id);
+console.log(`✓ Found ${result.products.length} matching products`);
+if (result.products.length > 0) {
+  console.log(`  Example: ${result.products[0].name}`);
+  console.log(`  CPM: $${result.products[0].pricing.cpm}`);
+}
 ```
+
+**To test this code**: After installing `@adcp/client`, save this to a file and run with `node --input-type=module yourfile.js`
 
 ## Common Issues
 
