@@ -59,7 +59,8 @@ function extractCodeBlocks(filePath) {
 
   // Regex to match code blocks with optional metadata
   // Matches: ```language test=true or ```language testable
-  const codeBlockRegex = /```(\w+)(?:\s+(test=true|testable))?(?:\s+.*?)?\n([\s\S]*?)```/g;
+  // Note: Use [^\n]* instead of .*? to avoid consuming the first line of code
+  const codeBlockRegex = /```(\w+)(?:\s+(test=true|testable))?[^\n]*\n([\s\S]*?)```/g;
 
   let match;
   let blockIndex = 0;

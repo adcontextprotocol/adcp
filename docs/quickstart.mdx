@@ -270,24 +270,33 @@ npm install @adcp/client
 **Example usage with test agent**:
 
 ```javascript
-import { AdcpClient } from '@adcp/client';
+import { ADCPMultiAgentClient } from '@adcp/client';
 
 // Connect to the public test agent
-const client = new AdcpClient({
-  agentUrl: 'https://test-agent.adcontextprotocol.org/mcp',
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
   protocol: 'mcp',
-  bearerToken: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+// Get the agent and discover products
+const agent = client.agent('test-agent');
+const result = await agent.getProducts({
+  brief: 'Premium athletic footwear with innovative cushioning',
+  brand_manifest: {
+    brand_name: 'Nike',
+    brand_description: 'Athletic footwear and apparel'
+  }
 });
 
-// Discover available advertising products
-const result = await client.getProducts({
-  promoted_offering: 'Premium athletic footwear with innovative cushioning'
-});
-
-console.log(`✓ Found ${result.products.length} matching products`);
-if (result.products.length > 0) {
-  console.log(`  Example: ${result.products[0].name}`);
-  console.log(`  CPM: $${result.products[0].pricing.cpm}`);
+if (result.success && result.data) {
+  console.log(`✓ Found ${result.data.products.length} matching products`);
+} else {
+  console.log(`Error: ${result.error}`);
 }
 ```
 
