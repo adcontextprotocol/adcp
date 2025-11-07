@@ -1,0 +1,90 @@
+export const BasicExample = () => (
+  <>
+    <CodeGroup>
+      ```javascript JavaScript {6-8}
+      import { AdcpClient } from '@adcp/client';
+
+      const client = new AdcpClient({
+        agentUrl: 'https://test-agent.adcontextprotocol.org/mcp',
+        protocol: 'mcp',
+        bearerToken: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+      });
+
+      // Discover products for athletic footwear
+      const result = await client.getProducts({
+        promoted_offering: 'Premium athletic footwear with innovative cushioning'
+      });
+
+      console.log(`Found ${result.products.length} matching products`);
+      result.products.forEach(product => {
+        console.log(`- ${product.name}: $${product.pricing.cpm} CPM`);
+      });
+      ```
+
+      ```python Python {6-8}
+      from adcp import AdcpClient
+
+      client = AdcpClient(
+          agent_url='https://test-agent.adcontextprotocol.org/mcp',
+          protocol='mcp',
+          bearer_token='1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+      )
+
+      # Discover products for athletic footwear
+      result = client.get_products(
+          promoted_offering='Premium athletic footwear with innovative cushioning'
+      )
+
+      print(f"Found {len(result.products)} matching products")
+      for product in result.products:
+          print(f"- {product.name}: ${product.pricing.cpm} CPM")
+      ```
+
+      ```bash cURL
+      curl -X POST https://test-agent.adcontextprotocol.org/mcp \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ" \
+        -d '{
+          "jsonrpc": "2.0",
+          "id": "req-123",
+          "method": "tools/call",
+          "params": {
+            "name": "get_products",
+            "arguments": {
+              "promoted_offering": "Premium athletic footwear with innovative cushioning"
+            }
+          }
+        }'
+      ```
+    </CodeGroup>
+
+    <Accordion title="Expected Response">
+      ```json
+      {
+        "jsonrpc": "2.0",
+        "id": "req-123",
+        "result": {
+          "content": [{
+            "type": "text",
+            "text": "Found 3 products matching your criteria..."
+          }, {
+            "type": "resource",
+            "resource": {
+              "products": [{
+                "product_id": "ctv_premium",
+                "name": "Premium CTV Placement",
+                "pricing": {
+                  "cpm": 25.00,
+                  "currency": "USD"
+                }
+              }]
+            }
+          }]
+        }
+      }
+      ```
+    </Accordion>
+  </>
+);
+
+export default BasicExample;

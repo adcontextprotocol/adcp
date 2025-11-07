@@ -1,0 +1,62 @@
+export const authErrors = {
+  invalid: {
+    code: "AUTH_INVALID",
+    message: "Invalid or expired authentication token",
+    resolution: "Check your bearer token and ensure it hasn't expired"
+  },
+  required: {
+    code: "AUTH_REQUIRED",
+    message: "Authentication required for this operation",
+    resolution: "Add an Authorization header with a valid bearer token"
+  },
+  insufficient: {
+    code: "INSUFFICIENT_PERMISSIONS",
+    message: "Your account doesn't have permission for this operation",
+    resolution: "Contact the sales agent to upgrade your account permissions"
+  }
+};
+
+<Accordion title="Authentication Errors">
+  <AccordionGroup>
+    <Accordion title="Invalid Token">
+      ```json
+      {
+        "error": {
+          "code": "AUTH_INVALID",
+          "message": "Invalid or expired authentication token"
+        }
+      }
+      ```
+
+      **Resolution**: Check your bearer token and ensure it hasn't expired. Request a new token from the sales agent if needed.
+    </Accordion>
+
+    <Accordion title="Missing Authentication">
+      ```json
+      {
+        "error": {
+          "code": "AUTH_REQUIRED",
+          "message": "Authentication required for this operation"
+        }
+      }
+      ```
+
+      **Resolution**: Add an `Authorization: Bearer <token>` header to your request.
+    </Accordion>
+
+    <Accordion title="Insufficient Permissions">
+      ```json
+      {
+        "error": {
+          "code": "INSUFFICIENT_PERMISSIONS",
+          "message": "Your account doesn't have permission for this operation"
+        }
+      }
+      ```
+
+      **Resolution**: Contact the sales agent to upgrade your account permissions.
+    </Accordion>
+  </AccordionGroup>
+</Accordion>
+
+export default authErrors;
