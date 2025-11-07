@@ -5,9 +5,11 @@ sidebar_position: 14
 
 # preview_creative
 
-Generate preview renderings of a creative manifest in a specific format. This allows buyers and publishers to see how a creative will render in different contexts before finalizing it for campaigns.
+Generate preview renderings of one or more creative manifests. Supports both single creative preview and batch preview (5-10x faster for multiple creatives).
 
 ## Quick Start
+
+### Single Creative Preview
 
 The simplest preview request returns a single URL you can iframe:
 
@@ -47,24 +49,89 @@ Embed the preview:
 
 The preview URL returns an HTML page that handles all rendering (images, video players, audio players, etc.) - no client logic needed.
 
+### Batch Preview (Multiple Creatives)
+
+Preview multiple different creatives in one API call (5-10x faster):
+
+```json
+{
+  "requests": [
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "creative_manifest": { /* first creative */ }
+    },
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_30s_vast"
+      },
+      "creative_manifest": { /* second creative */ }
+    }
+  ]
+}
+```
+
+Response contains results in the same order:
+
+```json
+{
+  "results": [
+    {
+      "success": true,
+      "response": {
+        "previews": [ /* first creative previews */ ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    },
+    {
+      "success": true,
+      "response": {
+        "previews": [ /* second creative previews */ ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    }
+  ]
+}
+```
+
 ## Overview
 
-Creative agents provide the ability to preview how a creative manifest will render in a given format. This is essential for:
+Creative agents provide the ability to preview how creative manifests will render in given formats. This is essential for:
 - **Calibration**: Testing how dynamic creatives render with different inputs
 - **Review**: Visual validation before campaign launch
 - **Context Testing**: Simulating different user scenarios, devices, and environments
 - **Quality Assurance**: Verifying creative rendering across multiple variants
+- **Bulk Workflows**: Previewing entire campaigns efficiently (batch mode)
 
-To test multiple scenarios, provide an `inputs` array - you'll get one preview per input.
+The `preview_creative` task supports two modes:
+1. **Single mode**: Preview one creative with optional variant inputs
+2. **Batch mode**: Preview 1-50 different creatives in one API call (5-10x faster)
 
 ## Request Parameters
+
+The request format depends on the mode:
+
+### Single Mode Parameters
+
+Use these top-level fields to preview one creative:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `format_id` | FormatID | Yes | Format identifier for rendering (structured object with agent_url and id) |
-| `creative_manifest` | object | Yes | Complete creative manifest with all required assets (brand_manifest should be included in the manifest for dynamic creatives) |
+| `creative_manifest` | object | Yes | Complete creative manifest with all required assets |
 | `inputs` | array | No | Array of input sets for generating multiple preview variants |
 | `template_id` | string | No | Specific template for custom format rendering |
+
+### Batch Mode Parameters
+
+Use a top-level `requests` array to preview multiple creatives:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `requests` | array | Yes | Array of 1-50 preview requests. Each item has the same structure as single mode parameters. |
 
 ### Creative Manifest Structure
 
@@ -121,6 +188,10 @@ The `inputs` array allows you to request multiple preview variants in a single c
 
 ## Response Format
 
+The response format depends on the request mode:
+
+### Single Mode Response
+
 ```json
 {
   "previews": "array",
@@ -129,11 +200,41 @@ The `inputs` array allows you to request multiple preview variants in a single c
 }
 ```
 
-### Field Descriptions
-
+**Field Descriptions:**
 - **previews**: Array of preview variants. One preview per input set from the request. If no inputs provided, returns a single default preview.
 - **interactive_url**: Optional URL to interactive testing page with controls to switch between variants
 - **expires_at**: ISO 8601 timestamp when preview links expire
+
+### Batch Mode Response
+
+```json
+{
+  "results": [
+    {
+      "success": true,
+      "response": {
+        "previews": "array",
+        "interactive_url": "string",
+        "expires_at": "string"
+      }
+    },
+    {
+      "success": false,
+      "error": {
+        "code": "string",
+        "message": "string",
+        "details": "object"
+      }
+    }
+  ]
+}
+```
+
+**Field Descriptions:**
+- **results**: Array of preview results matching the order of requests
+- **success**: Whether this specific preview request succeeded
+- **response**: Preview response for successful requests (same structure as single mode)
+- **error**: Error information for failed requests (code, message, optional details)
 
 ### Preview Variant Structure
 
@@ -297,7 +398,162 @@ Each `preview_url` returns an HTML page that renders the creative at the appropr
         width="1200" height="627" frameborder="0"></iframe>
 ```
 
-### Example 2: Dynamic Creative with Context
+### Example 2: Batch Preview - Multiple Creatives
+
+Preview three different banner creatives in one API call:
+
+```json
+{
+  "requests": [
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "creative_manifest": {
+        "format_id": {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250"
+        },
+        "assets": {
+          "image": {
+            "asset_type": "image",
+            "url": "https://cdn.example.com/banner-300x250-v1.jpg",
+            "width": 300,
+            "height": 250,
+            "format": "jpg"
+          }
+        }
+      }
+    },
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_728x90"
+      },
+      "creative_manifest": {
+        "format_id": {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_728x90"
+        },
+        "assets": {
+          "image": {
+            "asset_type": "image",
+            "url": "https://cdn.example.com/banner-728x90-v1.jpg",
+            "width": 728,
+            "height": 90,
+            "format": "jpg"
+          }
+        }
+      }
+    },
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_30s_vast"
+      },
+      "creative_manifest": {
+        "format_id": {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_30s_vast"
+        },
+        "assets": {
+          "vast_tag": {
+            "asset_type": "vast_tag",
+            "content": "<?xml version=\"1.0\"?><VAST version=\"4.2\">...</VAST>",
+            "vast_version": "4.2"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+Response contains results in the same order:
+
+```json
+{
+  "results": [
+    {
+      "success": true,
+      "response": {
+        "previews": [
+          {
+            "preview_id": "prev_abc123",
+            "renders": [
+              {
+                "render_id": "render_1",
+                "preview_url": "https://creative-agent.example.com/preview/abc123",
+                "role": "primary",
+                "dimensions": {"width": 300, "height": 250}
+              }
+            ],
+            "input": {
+              "name": "Default",
+              "macros": {"CACHEBUSTER": "12345678"}
+            }
+          }
+        ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    },
+    {
+      "success": true,
+      "response": {
+        "previews": [
+          {
+            "preview_id": "prev_def456",
+            "renders": [
+              {
+                "render_id": "render_2",
+                "preview_url": "https://creative-agent.example.com/preview/def456",
+                "role": "primary",
+                "dimensions": {"width": 728, "height": 90}
+              }
+            ],
+            "input": {
+              "name": "Default",
+              "macros": {"CACHEBUSTER": "12345678"}
+            }
+          }
+        ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    },
+    {
+      "success": true,
+      "response": {
+        "previews": [
+          {
+            "preview_id": "prev_video789",
+            "renders": [
+              {
+                "render_id": "render_3",
+                "preview_url": "https://creative-agent.example.com/preview/video789",
+                "role": "primary",
+                "dimensions": {"width": 1920, "height": 1080}
+              }
+            ],
+            "input": {
+              "name": "Default",
+              "macros": {"CACHEBUSTER": "87654321"}
+            }
+          }
+        ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    }
+  ]
+}
+```
+
+**Key Benefits:**
+- Single API call for 3 creatives (5-10x faster than 3 separate calls)
+- Results returned in same order as requests
+- Mix different formats in one batch (display + video)
+
+### Example 3: Dynamic Creative with Context
 
 Preview a dynamic creative with different geographic and device contexts:
 
