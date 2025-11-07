@@ -130,9 +130,12 @@ Protocol-level response wrapper (MCP/A2A).
 interface ProtocolResponse {
   message: string;              // Human-readable summary (protocol level)
   context_id?: string;          // Session continuity (protocol level)
-  data: any;                   // AdCP task-specific response data
+  context?: any;                // initiator-provided context (echoed back)
+  data: any;                    // AdCP task-specific response data
 }
 ```
+
+Note: `context` is set by the tool initiator on the request and must be carried back unchanged by agents in responses and webhooks.
 
 **Note**: Individual AdCP task schemas contain only the application-level data that goes in the `data` field of the protocol response. Task-specific errors are included within each task's response schema, not at the protocol level.
 

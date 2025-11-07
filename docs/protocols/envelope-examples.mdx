@@ -27,6 +27,7 @@ This guide shows how task responses are wrapped by different protocol layers. Th
 - Async operation tracking (task_id, status)
 - Human-readable message
 - Webhook configuration
+- Initiator context echo (context)
 
 ## MCP (Model Context Protocol)
 
@@ -60,6 +61,7 @@ This guide shows how task responses are wrapped by different protocol layers. Th
 - Task payload in `content[].resource.text`
 - Protocol metadata in `metadata` field
 - MCP doesn't expose `task_id` - async is handled via MCP's progress notifications
+- Initiator `context` is echoed in `metadata.context`
 
 ### Async Response (Long-Running Operation)
 
@@ -127,6 +129,7 @@ MCP sends progress notifications separately:
 - Explicit `task_id` for tracking
 - `state` field for task status
 - A2A native support for async via task state machine
+- Initiator `context` is echoed at the top level as `context`
 
 ### Async Response (Submitted)
 
@@ -175,6 +178,7 @@ X-AdCP-Status: completed
 
 {
   "message": "Found 3 products matching your criteria for CTV inventory",
+  "context": { "ui": "buyer_dashboard" },
   "data": {
     "products": [...]
   }

@@ -61,6 +61,11 @@
     "name_search": {
       "type": "string",
       "description": "Search for formats by name (case-insensitive partial match)"
+    },
+    "context": {
+      "type": "object",
+      "description": "Initiator provided context payload echoed back from the original request. Used to carry per-call metadata such as UI/session hints (e.g., {'ui': 'buyer_dashboard', 'user_id': '123'}) or correlation data. MUST be returned exactly as received.",
+      "additionalProperties": true
     }
   },
   "additionalProperties": false

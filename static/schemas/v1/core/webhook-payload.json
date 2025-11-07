@@ -39,6 +39,11 @@
       "type": "string",
       "description": "Session/conversation identifier. Use this to continue the conversation if input-required status needs clarification or additional parameters."
     },
+    "context": {
+      "type": "object",
+      "description": "Initiator provided context payload echoed back from the original request. Used to carry per-call metadata such as UI/session hints (e.g., {'ui': 'buyer_dashboard', 'user_id': '123'}) or correlation data. MUST be returned exactly as received.",
+      "additionalProperties": true
+    },
     "progress": {
       "type": "object",
       "description": "Progress information for tasks still in 'working' state. Rarely seen in webhooks since 'working' tasks typically complete synchronously, but may appear if a task transitions from 'submitted' to 'working'.",
@@ -174,6 +179,7 @@
         "status": "input-required",
         "timestamp": "2025-01-22T10:15:00Z",
         "context_id": "ctx_abc123",
+        "context": { "ui": "buyer_dashboard", "user_id": "123" },
         "message": "Campaign budget $150K requires VP approval to proceed",
         "result": {
           "errors": [
@@ -195,6 +201,7 @@
         "domain": "media-buy",
         "status": "completed",
         "timestamp": "2025-01-22T10:30:00Z",
+        "context": { "ui": "buyer_dashboard", "user_id": "123" },
         "message": "Media buy created successfully with 2 packages ready for creative assignment",
         "result": {
           "media_buy_id": "mb_12345",
@@ -218,6 +225,7 @@
         "domain": "media-buy",
         "status": "failed",
         "timestamp": "2025-01-22T10:46:00Z",
+        "context": { "ui": "buyer_dashboard", "user_id": "123" },
         "message": "Creative sync failed due to invalid asset URLs",
         "error": "invalid_assets: One or more creative assets could not be accessed"
       }
