@@ -5,9 +5,11 @@ sidebar_position: 14
 
 # preview_creative
 
-Generate preview renderings of a creative manifest in a specific format. This allows buyers and publishers to see how a creative will render in different contexts before finalizing it for campaigns.
+Generate preview renderings of one or more creative manifests. Supports both single creative preview and batch preview (5-10x faster for multiple creatives).
 
 ## Quick Start
+
+### Single Creative Preview
 
 The simplest preview request returns a single URL you can iframe:
 
@@ -47,24 +49,249 @@ Embed the preview:
 
 The preview URL returns an HTML page that handles all rendering (images, video players, audio players, etc.) - no client logic needed.
 
+### Direct HTML Embedding (No iframes)
+
+For faster rendering and grid layouts, request HTML directly instead of URLs:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "native_responsive"
+  },
+  "creative_manifest": { /* your creative */ },
+  "output_format": "html"
+}
+```
+
+Response contains raw HTML:
+
+```json
+{
+  "previews": [
+    {
+      "preview_html": "<div class=\"creative\"><img src=\"...\"/><h3>Headline</h3></div>",
+      "input": {
+        "name": "Default",
+        "macros": {}
+      }
+    }
+  ],
+  "expires_at": "2025-02-15T18:00:00Z"
+}
+```
+
+Embed directly in your page:
+
+```html
+<div class="preview-grid">
+  <div dangerouslySetInnerHTML={{__html: preview.preview_html}} />
+</div>
+```
+
+**Benefits:** No iframe overhead, faster load times, better for grids of 50+ previews.
+
+:::warning Security Consideration
+Only use `output_format: "html"` with **trusted creative agents**. Direct HTML embedding bypasses iframe sandboxing. For third-party or untrusted creatives, use `output_format: "url"` (default) which provides iframe isolation. Consider HTML sanitization if accepting user-generated creative content.
+:::
+
+### Batch Preview (Multiple Creatives)
+
+Preview multiple different creatives in one API call (5-10x faster):
+
+```json
+{
+  "requests": [
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "creative_manifest": { /* first creative */ }
+    },
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_30s_vast"
+      },
+      "creative_manifest": { /* second creative */ }
+    }
+  ]
+}
+```
+
+Response contains results in the same order:
+
+```json
+{
+  "results": [
+    {
+      "success": true,
+      "response": {
+        "previews": [ /* first creative previews */ ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    },
+    {
+      "success": true,
+      "response": {
+        "previews": [ /* second creative previews */ ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    }
+  ]
+}
+```
+
+## Common Workflows
+
+### Format Showcase Pages
+
+**Use Case:** Display all available creative formats from a creative agent in a browsable catalog.
+
+Build a format showcase with batch HTML preview:
+
+```typescript
+// 1. List all formats from creative agent
+const formats = await creative_agent.list_creative_formats();
+
+// 2. Generate format card previews (batch request with HTML output)
+const formatPreviews = await creative_agent.preview_creative({
+  output_format: "html",
+  requests: formats.formats.map(format => ({
+    format_id: format.format_id,
+    creative_manifest: format.format_card.manifest  // Format card manifest
+  }))
+});
+
+// 3. Render in a grid
+function FormatCatalog({ formatPreviews }) {
+  return (
+    <div className="format-grid">
+      {formatPreviews.results.map((result, idx) => (
+        result.success && (
+          <div
+            key={idx}
+            className="format-card"
+            dangerouslySetInnerHTML={{
+              __html: result.response.previews[0].renders[0].preview_html
+            }}
+          />
+        )
+      ))}
+    </div>
+  );
+}
+```
+
+**Benefits:**
+- Single API call retrieves all format previews
+- No iframe overhead (faster page load)
+- Easy to style as cohesive catalog
+- Users can browse and select formats
+
+### Creative Review Grid
+
+**Use Case:** Review all creatives in a campaign before launch.
+
+```typescript
+// 1. Get all creatives for campaign
+const campaignCreatives = await getCreativesForCampaign(campaignId);
+
+// 2. Preview all with batch + HTML
+const previews = await creative_agent.preview_creative({
+  output_format: "html",
+  requests: campaignCreatives.map(c => ({
+    format_id: c.format_id,
+    creative_manifest: c.manifest
+  }))
+});
+
+// 3. Display with approval workflow
+function CampaignReview({ previews }) {
+  return (
+    <div className="review-grid">
+      {previews.results.map((result, idx) => (
+        <div className="creative-card">
+          <div dangerouslySetInnerHTML={{
+            __html: result.response.previews[0].renders[0].preview_html
+          }}/>
+          <button onClick={() => approve(idx)}>Approve</button>
+          <button onClick={() => reject(idx)}>Reject</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Web Component Integration (Recommended)
+
+For production applications, use the `<rendered-creative>` web component for better encapsulation:
+
+```html
+<!-- Include web component script -->
+<script src="https://creative.adcontextprotocol.org/static/rendered-creative.js"></script>
+
+<!-- Use with preview_url output -->
+<div class="grid">
+  <rendered-creative
+    src="https://creative-agent.example.com/preview/abc123"
+    width="300"
+    height="400"
+    lazy="true">
+  </rendered-creative>
+</div>
+```
+
+**Web Component Benefits:**
+- **Shadow DOM** - Complete CSS isolation
+- **Lazy Loading** - Only loads when visible
+- **Framework Agnostic** - Works with React, Vue, Angular, vanilla JS
+- **No iframe overhead** - Lighter than traditional iframes
+
+**When to use `output_format: "html"` vs web components:**
+- Use **HTML output** for maximum performance (50+ previews, server-side rendering)
+- Use **web components** for better encapsulation and lazy loading
+- Both approaches work with batch mode
+
 ## Overview
 
-Creative agents provide the ability to preview how a creative manifest will render in a given format. This is essential for:
-- **Calibration**: Testing how dynamic creatives render with different inputs
-- **Review**: Visual validation before campaign launch
+Creative agents provide the ability to preview how creative manifests will render in given formats. This is essential for:
+- **Format Discovery**: Showcasing available formats in catalogs
+- **Creative Review**: Visual validation before campaign launch
+- **Bulk Workflows**: Previewing entire campaigns efficiently
 - **Context Testing**: Simulating different user scenarios, devices, and environments
 - **Quality Assurance**: Verifying creative rendering across multiple variants
 
-To test multiple scenarios, provide an `inputs` array - you'll get one preview per input.
+The `preview_creative` task supports two modes:
+1. **Single mode**: Preview one creative with optional variant inputs
+2. **Batch mode**: Preview 1-50 different creatives in one API call (5-10x faster)
 
 ## Request Parameters
+
+The request format depends on the mode:
+
+### Single Mode Parameters
+
+Use these top-level fields to preview one creative:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `format_id` | FormatID | Yes | Format identifier for rendering (structured object with agent_url and id) |
-| `creative_manifest` | object | Yes | Complete creative manifest with all required assets (brand_manifest should be included in the manifest for dynamic creatives) |
+| `creative_manifest` | object | Yes | Complete creative manifest with all required assets |
 | `inputs` | array | No | Array of input sets for generating multiple preview variants |
 | `template_id` | string | No | Specific template for custom format rendering |
+| `output_format` | string | No | Output format: `"url"` (default) returns `preview_url` for iframe embedding, `"html"` returns `preview_html` for direct embedding |
+
+### Batch Mode Parameters
+
+Use a top-level `requests` array to preview multiple creatives:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `requests` | array | Yes | Array of 1-50 preview requests. Each item has the same structure as single mode parameters (including `output_format`). |
+| `output_format` | string | No | Default output format for all requests. Individual requests can override this with their own `output_format`. |
 
 ### Creative Manifest Structure
 
@@ -121,6 +348,10 @@ The `inputs` array allows you to request multiple preview variants in a single c
 
 ## Response Format
 
+The response format depends on the request mode:
+
+### Single Mode Response
+
 ```json
 {
   "previews": "array",
@@ -129,11 +360,41 @@ The `inputs` array allows you to request multiple preview variants in a single c
 }
 ```
 
-### Field Descriptions
-
+**Field Descriptions:**
 - **previews**: Array of preview variants. One preview per input set from the request. If no inputs provided, returns a single default preview.
 - **interactive_url**: Optional URL to interactive testing page with controls to switch between variants
 - **expires_at**: ISO 8601 timestamp when preview links expire
+
+### Batch Mode Response
+
+```json
+{
+  "results": [
+    {
+      "success": true,
+      "response": {
+        "previews": "array",
+        "interactive_url": "string",
+        "expires_at": "string"
+      }
+    },
+    {
+      "success": false,
+      "error": {
+        "code": "string",
+        "message": "string",
+        "details": "object"
+      }
+    }
+  ]
+}
+```
+
+**Field Descriptions:**
+- **results**: Array of preview results matching the order of requests
+- **success**: Whether this specific preview request succeeded
+- **response**: Preview response for successful requests (same structure as single mode)
+- **error**: Error information for failed requests (code, message, optional details)
 
 ### Preview Variant Structure
 
@@ -181,7 +442,14 @@ Some formats render as multiple pieces in a single preview variant:
 Each rendered piece has:
 - **role**: Semantic role (`"primary"`, `"companion"`, or descriptive strings for device variants)
 - **dimensions**: Width and height for iframe sizing (especially important when multiple pieces have different sizes)
-- **preview_url**: Separate iframe URL for rendering this piece
+- **preview_url**: Iframe URL for rendering (present based on `output_format` request)
+- **preview_html**: Raw HTML for rendering (present based on `output_format` request)
+
+**Output Format Behavior:**
+- When `output_format: "url"` (default), creative agents return `preview_url`
+- When `output_format: "html"`, creative agents return `preview_html`
+- Creative agents MAY provide both fields for client flexibility
+- Clients should check which field(s) are present and use accordingly
 
 **Optional Fields:**
 - **embedding**: Security metadata for safe iframe integration (sandbox policies, HTTPS requirements, CSP)
@@ -297,7 +565,263 @@ Each `preview_url` returns an HTML page that renders the creative at the appropr
         width="1200" height="627" frameborder="0"></iframe>
 ```
 
-### Example 2: Dynamic Creative with Context
+### Example 2: Batch Preview - Multiple Creatives
+
+Preview three different banner creatives in one API call:
+
+```json
+{
+  "requests": [
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "creative_manifest": {
+        "format_id": {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250"
+        },
+        "assets": {
+          "image": {
+            "asset_type": "image",
+            "url": "https://cdn.example.com/banner-300x250-v1.jpg",
+            "width": 300,
+            "height": 250,
+            "format": "jpg"
+          }
+        }
+      }
+    },
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_728x90"
+      },
+      "creative_manifest": {
+        "format_id": {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_728x90"
+        },
+        "assets": {
+          "image": {
+            "asset_type": "image",
+            "url": "https://cdn.example.com/banner-728x90-v1.jpg",
+            "width": 728,
+            "height": 90,
+            "format": "jpg"
+          }
+        }
+      }
+    },
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_30s_vast"
+      },
+      "creative_manifest": {
+        "format_id": {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_30s_vast"
+        },
+        "assets": {
+          "vast_tag": {
+            "asset_type": "vast_tag",
+            "content": "<?xml version=\"1.0\"?><VAST version=\"4.2\">...</VAST>",
+            "vast_version": "4.2"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+Response contains results in the same order:
+
+```json
+{
+  "results": [
+    {
+      "success": true,
+      "response": {
+        "previews": [
+          {
+            "preview_id": "prev_abc123",
+            "renders": [
+              {
+                "render_id": "render_1",
+                "preview_url": "https://creative-agent.example.com/preview/abc123",
+                "role": "primary",
+                "dimensions": {"width": 300, "height": 250}
+              }
+            ],
+            "input": {
+              "name": "Default",
+              "macros": {"CACHEBUSTER": "12345678"}
+            }
+          }
+        ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    },
+    {
+      "success": true,
+      "response": {
+        "previews": [
+          {
+            "preview_id": "prev_def456",
+            "renders": [
+              {
+                "render_id": "render_2",
+                "preview_url": "https://creative-agent.example.com/preview/def456",
+                "role": "primary",
+                "dimensions": {"width": 728, "height": 90}
+              }
+            ],
+            "input": {
+              "name": "Default",
+              "macros": {"CACHEBUSTER": "12345678"}
+            }
+          }
+        ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    },
+    {
+      "success": true,
+      "response": {
+        "previews": [
+          {
+            "preview_id": "prev_video789",
+            "renders": [
+              {
+                "render_id": "render_3",
+                "preview_url": "https://creative-agent.example.com/preview/video789",
+                "role": "primary",
+                "dimensions": {"width": 1920, "height": 1080}
+              }
+            ],
+            "input": {
+              "name": "Default",
+              "macros": {"CACHEBUSTER": "87654321"}
+            }
+          }
+        ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    }
+  ]
+}
+```
+
+**Key Benefits:**
+- Single API call for 3 creatives (5-10x faster than 3 separate calls)
+- Results returned in same order as requests
+- Mix different formats in one batch (display + video)
+
+### Example 3: Batch with HTML Output (Grid View)
+
+Request HTML directly for 50 creatives to build a preview grid without 50 iframes:
+
+```json
+{
+  "output_format": "html",
+  "requests": [
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "creative_manifest": { /* Creative 1 */ }
+    },
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "creative_manifest": { /* Creative 2 */ }
+    }
+    // ... 48 more creatives
+  ]
+}
+```
+
+Response with HTML for direct embedding:
+
+```json
+{
+  "results": [
+    {
+      "success": true,
+      "response": {
+        "previews": [
+          {
+            "preview_id": "prev_1",
+            "renders": [
+              {
+                "render_id": "render_1",
+                "preview_html": "<div class=\"creative-300x250\"><img src=\"https://...\"/><div class=\"headline\">Ad 1</div></div>",
+                "role": "primary",
+                "dimensions": {"width": 300, "height": 250}
+              }
+            ],
+            "input": {"name": "Default", "macros": {"CACHEBUSTER": "123"}}
+          }
+        ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    },
+    {
+      "success": true,
+      "response": {
+        "previews": [
+          {
+            "preview_id": "prev_2",
+            "renders": [
+              {
+                "render_id": "render_2",
+                "preview_html": "<div class=\"creative-300x250\"><img src=\"https://...\"/><div class=\"headline\">Ad 2</div></div>",
+                "role": "primary",
+                "dimensions": {"width": 300, "height": 250}
+              }
+            ],
+            "input": {"name": "Default", "macros": {"CACHEBUSTER": "456"}}
+          }
+        ],
+        "expires_at": "2025-02-15T18:00:00Z"
+      }
+    }
+    // ... 48 more results
+  ]
+}
+```
+
+Render in a grid:
+
+```jsx
+<div className="preview-grid">
+  {results.map((result, idx) => (
+    result.success && (
+      <div
+        key={idx}
+        className="preview-item"
+        dangerouslySetInnerHTML={{
+          __html: result.response.previews[0].renders[0].preview_html
+        }}
+      />
+    )
+  ))}
+</div>
+```
+
+**Performance:**
+- No 50 iframe HTTP requests
+- Faster page load (all HTML in one response)
+- Better scrolling performance
+- Easier to style with CSS Grid
+
+### Example 4: Dynamic Creative with Context
 
 Preview a dynamic creative with different geographic and device contexts:
 
@@ -794,6 +1318,301 @@ Test creative behavior with different privacy settings:
   {"name": "LAT enabled", "macros": {"LIMIT_AD_TRACKING": "1"}}
 ]
 ```
+
+## Best Practices
+
+### Choosing Output Format
+
+**Use `output_format: "url"` (default) when:**
+- You want maximum isolation (iframes sandbox content)
+- You're building interactive preview tools with controls
+- You need to support legacy browsers
+- Security is paramount (third-party creatives)
+
+**Use `output_format: "html"` when:**
+- Building format showcase catalogs (10+ formats)
+- Creating campaign review grids (20+ creatives)
+- Server-side rendering preview pages
+- Performance is critical (no iframe HTTP overhead)
+- **Working with trusted creative agents only** (your own or verified partners)
+
+### Batch Request Optimization
+
+**Do:**
+- Batch related previews together (e.g., all formats from one agent)
+- Use consistent `output_format` at batch level to reduce request size
+- Handle partial failures gracefully (check `success` field)
+- Set reasonable batch sizes (10-30 for most use cases, up to 50 maximum)
+
+**Don't:**
+- Mix unrelated preview requests in one batch
+- Batch requests from different creative agents
+- Retry entire batch on single failure (handle individually)
+- Ignore the `expires_at` timestamp (previews are temporary)
+
+**Future Consideration - Per-Request Output Format:**
+
+Currently, `output_format` applies to all requests in a batch. A future enhancement could allow per-request output format:
+
+```typescript
+// Hypothetical future API
+{
+  "requests": [
+    {"format_id": "display_300x250", "output_format": "html"},  // Direct embed
+    {"format_id": "video_30s", "output_format": "url"}          // Sandboxed
+  ]
+}
+```
+
+**Use case:** Mixed security contexts (some formats need sandboxing, others don't).
+
+**Current workaround:** Make two batch calls if you need different output formats. The current design prioritizes simplicity.
+
+### Application Architecture Patterns
+
+#### Pattern 1: Format Catalog SPA
+
+```typescript
+// Single page loads all formats once
+async function loadFormatCatalog() {
+  const formats = await agent.list_creative_formats();
+  const previews = await agent.preview_creative({
+    output_format: "html",
+    requests: formats.formats.map(f => ({
+      format_id: f.format_id,
+      creative_manifest: f.format_card.manifest
+    }))
+  });
+
+  // Cache in state management (Redux, Zustand, etc.)
+  store.setState({ formats, previews });
+}
+```
+
+#### Pattern 2: Incremental Preview Loading
+
+```typescript
+// Load previews as user scrolls
+function useIncrementalPreviews(creatives, pageSize = 10) {
+  const [page, setPage] = useState(0);
+  const [previews, setPreviews] = useState([]);
+
+  useEffect(() => {
+    const start = page * pageSize;
+    const batch = creatives.slice(start, start + pageSize);
+
+    agent.preview_creative({
+      output_format: "html",
+      requests: batch.map(c => ({
+        format_id: c.format_id,
+        creative_manifest: c.manifest
+      }))
+    }).then(result => {
+      setPreviews(prev => [...prev, ...result.results]);
+    });
+  }, [page]);
+
+  return { previews, loadMore: () => setPage(p => p + 1) };
+}
+```
+
+#### Pattern 3: Web Component with Lazy Loading
+
+```html
+<!-- Best for production: combines caching + lazy loading + isolation -->
+<script src="https://creative.adcontextprotocol.org/static/rendered-creative.js"></script>
+
+<div class="grid">
+  <!-- Components load when scrolled into view -->
+  <rendered-creative
+    src="https://preview-url.com/format1"
+    width="300"
+    height="400"
+    lazy="true">
+  </rendered-creative>
+</div>
+```
+
+### Caching Strategy
+
+**Individual Result Caching (Recommended)**
+
+Cache individual preview results by format_id + manifest hash:
+
+```typescript
+// Cache each result separately
+function cachePreviewResults(results, formatIds) {
+  results.forEach((result, idx) => {
+    if (result.success) {
+      const cacheKey = `${formatIds[idx]}:${hashManifest(manifests[idx])}`;
+      cache.set(cacheKey, result.response, result.response.expires_at);
+    }
+  });
+}
+
+// Efficient partial cache lookup
+async function getPreviewsWithCache(formatIds, manifests) {
+  const cached = [];
+  const toFetch = [];
+
+  formatIds.forEach((id, idx) => {
+    const cacheKey = `${id}:${hashManifest(manifests[idx])}`;
+    const cachedResult = cache.get(cacheKey);
+
+    if (cachedResult && !isExpired(cachedResult.expires_at)) {
+      cached[idx] = cachedResult;
+    } else {
+      toFetch.push({idx, id, manifest: manifests[idx]});
+    }
+  });
+
+  // Batch fetch only missing previews
+  if (toFetch.length > 0) {
+    const fetched = await client.preview_creative({
+      output_format: "html",
+      requests: toFetch.map(f => ({
+        format_id: f.id,
+        creative_manifest: f.manifest
+      }))
+    });
+
+    fetched.results.forEach((result, i) => {
+      cached[toFetch[i].idx] = result.response;
+    });
+  }
+
+  return cached;
+}
+```
+
+**Benefits:**
+- Request formats [A,B,C] → cache each separately
+- Later request [B,C,D] → only fetch D (B and C from cache)
+- More flexible than caching entire batch responses
+
+**Expiration Handling:**
+- Always check `expires_at` before using cached previews
+- Different formats may have different expiration times
+- Regenerate expired previews on demand
+
+**HTML Output:**
+- Safe to cache for session duration or until `expires_at`
+- Consider service worker caching for offline support
+- Invalidate when manifest changes
+
+**Preview URLs:**
+- URLs expire (check `expires_at`)
+- Cache for duration of session or until expiration
+- Don't persist URLs in databases (they're temporary)
+- Store manifest + format_id instead, regenerate previews on demand
+
+### Migration from Single to Batch
+
+**Before (Individual Requests):**
+```python
+# Sequential - slow for many formats
+previews = []
+for format in formats:
+    preview = await client.preview_creative(
+        format_id=format.format_id,
+        creative_manifest=format.format_card.manifest
+    )
+    previews.append(preview)
+
+# Total time: N × 250ms = 5000ms for 20 formats
+```
+
+**After (Batch Request):**
+```python
+# Batch - 5-10x faster
+response = await client.preview_creative(
+    output_format="html",  # Direct embedding
+    requests=[
+        {
+            "format_id": fmt.format_id,
+            "creative_manifest": fmt.format_card.manifest
+        }
+        for fmt in formats
+    ]
+)
+
+# Total time: ~500ms for 20 formats
+```
+
+**Error Handling Pattern:**
+```typescript
+const response = await client.preview_creative({
+  requests: formatRequests
+});
+
+// Separate successes and failures
+const succeeded = response.results.filter(r => r.success);
+const failed = response.results.filter(r => !r.success);
+
+if (failed.length > 0) {
+  console.log(`${failed.length} previews failed:`);
+  failed.forEach((result, idx) => {
+    console.error(`  - ${formatIds[idx]}: ${result.error.message}`);
+  });
+
+  // Option 1: Retry failed ones individually
+  for (const failedIdx of failed) {
+    const retryResult = await client.preview_creative({
+      format_id: formatIds[failedIdx],
+      creative_manifest: manifests[failedIdx]
+    });
+  }
+
+  // Option 2: Just log and continue with successes
+  // (recommended for format showcases)
+}
+
+// Use successful previews
+displayPreviews(succeeded.map(r => r.response));
+```
+
+### Error Handling
+
+```typescript
+function displayPreviews(results) {
+  return results.map((result, idx) => {
+    if (result.success) {
+      return <Preview html={result.response.previews[0].renders[0].preview_html} />;
+    } else {
+      // Handle errors gracefully
+      console.error(`Preview ${idx} failed:`, result.error.message);
+      return <PreviewError
+        code={result.error.code}
+        message={result.error.message}
+        onRetry={() => retryPreview(idx)}
+      />;
+    }
+  });
+}
+```
+
+## HTTP Status Codes
+
+### Single Mode
+- **200 OK**: Preview generated successfully
+- **400 Bad Request**: Invalid request (malformed manifest, missing required fields, invalid format_id)
+- **404 Not Found**: Format ID not supported by creative agent
+- **500 Server Error**: Preview generation failed
+
+### Batch Mode
+- **200 OK**: Batch processed (may contain partial/full success). Check individual `success` fields in results array.
+- **400 Bad Request**: Invalid batch structure (empty requests array, >50 items, malformed batch)
+- **500 Server Error**: Batch processing failed entirely (couldn't start processing)
+
+**Key Distinction**: In batch mode, HTTP 200 means the batch endpoint worked. Individual preview failures are indicated by `success: false` in the results array. This allows clients to distinguish "batch endpoint broken" (5xx) from "some previews failed" (200 with failures in results).
+
+## Response Fields
+
+### interactive_url (Optional)
+
+Optional URL to an interactive testing page with controls for switching between preview variants and testing different macro values. Creative agents may provide this for development/testing workflows.
+
+**Note:** With `output_format: "html"`, you can embed variant switching controls directly in the HTML instead of using a separate interactive page.
 
 ## Implementation Considerations
 
