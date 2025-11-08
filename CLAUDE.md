@@ -102,12 +102,85 @@ Update JSON schemas whenever you:
 When making documentation changes:
 1. ✅ Identify affected schemas in `static/schemas/v1/`
 2. ✅ Update request schemas (if changing task parameters)
-3. ✅ Update response schemas (if changing response structure)  
+3. ✅ Update response schemas (if changing response structure)
 4. ✅ Update core data models (if changing object definitions)
 5. ✅ Update enum schemas (if changing allowed values)
 6. ✅ Verify cross-references (`$ref` links) are still valid
 7. ✅ Test schema validation with example data
 8. ✅ Update schema descriptions to match documentation
+
+### Discriminated Union Types
+
+**CRITICAL**: Always use explicit discriminator fields for union types to enable proper TypeScript type generation.
+
+**Why Discriminators Matter:**
+- **Without discriminators**: TypeScript generators produce index signatures (`{ [k: string]: unknown }`) or massive union types with poor type narrowing
+- **With discriminators**: TypeScript produces proper discriminated unions with excellent IDE autocomplete and type safety
+- **Impact**: Can reduce union signature count by 50%+ and eliminate broken type intersections
+
+**Pattern to Use:**
+```json
+{
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "discriminator_field": { "const": "variant_a" },
+        "field_a": { "type": "string" }
+      },
+      "required": ["discriminator_field", "field_a"]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "discriminator_field": { "const": "variant_b" },
+        "field_b": { "type": "number" }
+      },
+      "required": ["discriminator_field", "field_b"]
+    }
+  ]
+}
+```
+
+**Pattern to AVOID:**
+```json
+{
+  "properties": { /* all fields optional */ },
+  "allOf": [
+    { "if": {...}, "then": {...} }  // ❌ TypeScript can't generate good types from this
+  ]
+}
+```
+
+**or:**
+```json
+{
+  "properties": { /* shared fields */ },
+  "oneOf": [
+    { "required": ["field_a"] },
+    { "required": ["field_b"] }
+  ]
+  // ❌ No discriminator means TypeScript can't narrow types
+}
+```
+
+**Discriminator Naming Conventions:**
+- Use semantic names that describe what's being discriminated
+- Common patterns: `type`, `kind`, `delivery_type`, `output_format`, `asset_kind`
+- Keep discriminator values lowercase with underscores
+- Use string const values, not enums (better for TypeScript)
+
+**Examples from AdCP:**
+- `destination.json`: `type: "platform" | "agent"`
+- `sub-asset.json`: `asset_kind: "media" | "text"`
+- `vast-asset.json`: `delivery_type: "url" | "inline"`
+- `preview-render.json`: `output_format: "url" | "html" | "both"`
+
+**When to Use:**
+- ✅ Object has mutually exclusive fields (either field_a OR field_b)
+- ✅ Different variants require different required fields
+- ✅ Schema will be used for TypeScript generation
+- ✅ Variants represent conceptually distinct alternatives
 
 ### Schema Location Map
 

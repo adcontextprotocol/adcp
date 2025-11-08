@@ -139,6 +139,7 @@ async function runTests() {
       "deliver_to": {
         "destinations": [
           {
+            "type": "platform",
             "platform": "the-trade-desk"
           }
         ],
