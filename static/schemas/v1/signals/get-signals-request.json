@@ -17,27 +17,7 @@
           "type": "array",
           "description": "List of destination platforms (DSPs, sales agents, etc.). If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
           "items": {
-            "type": "object",
-            "properties": {
-              "platform": {
-                "type": "string",
-                "description": "Platform identifier for DSPs (e.g., 'the-trade-desk', 'amazon-dsp'). Use either platform or agent_url."
-              },
-              "agent_url": {
-                "type": "string",
-                "format": "uri",
-                "description": "URL identifying the destination agent (for sales agents, etc.). Use either platform or agent_url."
-              },
-              "account": {
-                "type": "string",
-                "description": "Optional account identifier on the platform or agent"
-              }
-            },
-            "oneOf": [
-              {"required": ["platform"]},
-              {"required": ["agent_url"]}
-            ],
-            "additionalProperties": false
+            "$ref": "/schemas/v1/core/destination.json"
           },
           "minItems": 1
         },
