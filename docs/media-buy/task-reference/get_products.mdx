@@ -432,173 +432,20 @@ for (const property of productProperties) {
 
 For complete validation requirements, examples, and error handling, see the [adagents.json Tech Spec](/docs/media-buy/capability-discovery/adagents#buyer-agent-validation) documentation.
 
-## Domain Matching Examples
+## Protocol Integration
 
-When validating authorization, domain matching follows specific rules for identifier values:
+The `get_products` task works identically across all protocols (MCP, A2A, REST). The task parameters and response payload are the same - only the transport wrapper differs.
 
-### Base Domain Matching
-```json
-{
-  "identifiers": [{"type": "domain", "value": "nytimes.com"}]
-}
-```
-**Matches**: `www.nytimes.com`, `m.nytimes.com`  
-**Does NOT Match**: `cooking.nytimes.com`, `games.nytimes.com`
+**Quick reference:**
+- **MCP**: Use `call_tool("get_products", arguments)`
+- **A2A**: Use natural language or explicit skill invocation with `parameters`
+- **REST**: POST to `/tasks/get_products` with JSON body
 
-### Specific Subdomain Matching  
-```json
-{
-  "identifiers": [{"type": "domain", "value": "cooking.nytimes.com"}]
-}
-```
-**Matches**: `cooking.nytimes.com` only  
-**Does NOT Match**: `www.nytimes.com`, `games.nytimes.com`
+The Quick Start examples above use our multi-agent client which handles protocol details automatically. For protocol-specific implementation details, see:
+- [MCP Integration Guide](/docs/protocols/mcp-guide)
+- [A2A Integration Guide](/docs/protocols/a2a-guide)
+- [Protocol Comparison](/docs/protocols/protocol-comparison)
 
-### Wildcard Subdomain Matching
-```json
-{
-  "identifiers": [{"type": "domain", "value": "*.nytimes.com"}]
-}
-```
-**Matches**: `cooking.nytimes.com`, `games.nytimes.com`, `travel.nytimes.com`  
-**Does NOT Match**: `www.nytimes.com`, `nytimes.com`, `subdomain.cooking.nytimes.com`
-## Protocol-Specific Examples
-The AdCP payload is identical across protocols. Only the request/response wrapper differs.
-### MCP Request
-```json
-{
-  "tool": "get_products",
-  "arguments": {
-    "brief": "Premium video inventory for sports fans",
-    "filters": {
-      "format_types": ["video"],
-      "delivery_type": "guaranteed"
-    }
-  }
-}
-```
-### MCP Response
-```json
-{
-  "message": "Found 3 premium video products matching your requirements",
-  "context_id": "ctx-media-buy-123",
-  "products": [
-    {
-      "product_id": "ctv_sports_premium",
-      "name": "CTV Sports Premium",
-      "description": "Premium CTV inventory on sports content",
-      "properties": [
-        {
-          "property_type": "website",
-          "name": "Sports Network",
-          "identifiers": [
-            {"type": "domain", "value": "sportsnetwork.com"}
-          ],
-          "tags": ["sports_content", "premium_content"],
-          "publisher_domain": "sportsnetwork.com"
-        }
-      ],
-      "format_ids": [
-        {
-          "agent_url": "https://creative.adcontextprotocol.org",
-          "id": "video_16x9_30s"
-        }
-      ],
-      "delivery_type": "guaranteed",
-      "is_fixed_price": true,
-      "cpm": 45.00,
-      "currency": "USD",
-      "min_spend": 10000,
-      "is_custom": false,
-      "brief_relevance": "Premium CTV with sports content alignment"
-    }
-  ]
-}
-```
-### A2A Request
-A2A supports both natural language and explicit skill invocation:
-
-#### Natural Language Invocation
-```javascript
-await a2a.send({
-  message: {
-    parts: [{
-      kind: "text",
-      text: "Find premium video inventory for sports fans. Looking for guaranteed delivery."
-    }]
-  }
-});
-```
-
-#### Explicit Skill Invocation
-```javascript
-await a2a.send({
-  message: {
-    parts: [
-      {
-        kind: "text",
-        text: "Looking for sports inventory for campaign"  // Optional context
-      },
-      {
-        kind: "data",
-        data: {
-          skill: "get_products",  // Must match skill name in Agent Card
-          parameters: {
-            brief: "Premium video inventory for sports fans",
-            filters: {
-              format_types: ["video"],
-              delivery_type: "guaranteed"
-            }
-          }
-        }
-      }
-    ]
-  }
-});
-```
-### A2A Response
-A2A returns results as artifacts with text and data parts:
-```json
-{
-  "artifacts": [{
-    "name": "product_discovery_result",
-    "parts": [
-      {
-        "kind": "text",
-        "text": "Found 3 premium video products matching your requirements"
-      },
-      {
-        "kind": "data",
-        "data": {
-          "products": [
-            {
-              "product_id": "ctv_sports_premium",
-              "name": "CTV Sports Premium",
-              "description": "Premium CTV inventory on sports content",
-              "format_ids": [
-        {
-          "agent_url": "https://creative.adcontextprotocol.org",
-          "id": "video_16x9_30s"
-        }
-      ],
-              "delivery_type": "guaranteed",
-              "is_fixed_price": true,
-              "cpm": 45.00,
-              "min_spend": 10000,
-              "is_custom": false,
-              "brief_relevance": "Premium CTV with sports content alignment"
-            }
-          ]
-        }
-      }
-    ]
-  }]
-}
-```
-### Key Differences
-- **MCP**: Direct tool call with arguments, returns flat JSON response
-- **A2A**: Message-based invocation (natural language or explicit skill with parameters), returns artifacts with text and data parts
-- **Payload**: The `parameters` field in A2A explicit invocation contains the exact same structure as MCP's `arguments`
 ## Minimum Exposures for Measurement
 
 When buyers specify `min_exposures` in the request, products are filtered to only include those that can deliver the required volume for measurement validity.
@@ -646,39 +493,186 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
 }
 ```
 
-## Scenarios
-### Request with Natural Language Brief
-```json
-{
-  "brief": "Looking for premium sports inventory"
-}
-```
-### Request for Run-of-Network (No Brief)
-```json
-{
-  "filters": {
-    "delivery_type": "non_guaranteed",
-    "format_types": ["video", "display"],
-    "standard_formats_only": true
+## Common Scenarios
+
+### Run-of-Network Discovery
+
+Request broad-reach inventory without targeting specifics:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
   }
-}
-```
-### Request with Structured Filters
-```json
-{
-  "brief": "Fitness enthusiasts interested in home workouts",
-  "filters": {
-    "delivery_type": "guaranteed",
-    "format_types": ["video"],
-    "is_fixed_price": true,
-    "standard_formats_only": true
+}]);
+
+const agent = client.agent('test-agent');
+
+// No brief = run-of-network products
+const result = await agent.getProducts({
+  filters: {
+    delivery_type: 'non_guaranteed',
+    format_types: ['video', 'display'],
+    standard_formats_only: true
   }
-}
+});
+
+console.log(`Found ${result.products.length} run-of-network products`);
 ```
-### Retail Media Request
-```json
-{
-  "brief": "Target pet owners who shop at our stores using our first-party data"
+
+**Python:**
+
+```python test=true
+from adcp import ADCPMultiAgentClient
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+    }
+}])
+
+agent = client.agent('test-agent')
+
+# No brief = run-of-network products
+result = agent.get_products(
+    filters={
+        'delivery_type': 'non_guaranteed',
+        'format_types': ['video', 'display'],
+        'standard_formats_only': True
+    }
+)
+
+print(f"Found {len(result['products'])} run-of-network products")
+```
+
+### Multi-Format Discovery
+
+Find products supporting multiple creative formats:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+const result = await agent.getProducts({
+  brief: 'Premium inventory for athletic footwear campaign',
+  filters: {
+    format_types: ['video', 'display'],
+    delivery_type: 'guaranteed'
+  },
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  }
+});
+
+// Analyze format support
+const multiFormat = result.products.filter(p => p.format_ids.length > 1);
+console.log(`${multiFormat.length} of ${result.products.length} products support multiple formats`);
+```
+
+### Budget-Based Filtering
+
+Find products within budget constraints:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+const budget = 25000;
+
+const result = await agent.getProducts({
+  brief: 'Video advertising for athletic footwear',
+  filters: {
+    format_types: ['video']
+  }
+});
+
+// Filter by minimum spend
+const affordable = result.products.filter(p =>
+  !p.min_spend || p.min_spend <= budget
+);
+
+console.log(`${affordable.length} of ${result.products.length} products fit $${budget} budget`);
+```
+
+### Property Tag Resolution
+
+Resolve property tags to validate authorization:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+// Discover products
+const discovery = await agent.getProducts({
+  brief: 'Local radio advertising in midwest markets'
+});
+
+// Find products with property tags
+const taggedProducts = discovery.products.filter(p => p.property_tags);
+
+if (taggedProducts.length > 0) {
+  // Resolve tags to actual properties
+  const authorized = await agent.listAuthorizedProperties();
+
+  for (const product of taggedProducts) {
+    const properties = authorized.properties.filter(prop =>
+      product.property_tags.every(tag => prop.tags.includes(tag))
+    );
+    console.log(`Product ${product.product_id}: ${properties.length} properties`);
+  }
+} else {
+  console.log('No products use property tags');
 }
 ```
 ### Response - Run-of-Network (No Recommendations)
