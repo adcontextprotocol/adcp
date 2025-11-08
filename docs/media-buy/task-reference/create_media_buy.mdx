@@ -21,7 +21,11 @@ Create a media buy from selected packages. This task handles the complete workfl
 
 Here's how to create a media buy from a discovered product:
 
-**JavaScript:**
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs groupId="language">
+<TabItem value="javascript" label="JavaScript">
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -69,7 +73,8 @@ const mediaBuy = await agent.createMediaBuy({
 console.log(`Media buy created: ${mediaBuy.media_buy_id}`);
 ```
 
-**Python:**
+</TabItem>
+<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -116,6 +121,9 @@ media_buy = agent.create_media_buy(
 
 print(f"Media buy created: {media_buy['media_buy_id']}")
 ```
+
+</TabItem>
+</Tabs>
 
 ## Request Parameters
 

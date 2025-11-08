@@ -27,7 +27,11 @@ See the [Quickstart Guide](/docs/quickstart.mdx#understanding-authentication) fo
 
 Here's how to discover products with a natural language brief:
 
-**JavaScript:**
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs groupId="language">
+<TabItem value="javascript" label="JavaScript">
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -54,7 +58,8 @@ const result = await agent.getProducts({
 console.log(`Found ${result.products.length} products`);
 ```
 
-**Python:**
+</TabItem>
+<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -81,22 +86,34 @@ result = agent.get_products(
 print(f"Found {len(result['products'])} products")
 ```
 
-**CLI:**
+</TabItem>
+<TabItem value="cli" label="CLI">
 
 ```bash test=true
-adcp-cli get-products \
-  --agent-uri https://test-agent.adcontextprotocol.org/mcp \
-  --auth-token 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ \
-  --brief "Premium athletic footwear with innovative cushioning" \
-  --brand-name "Nike" \
-  --brand-url "https://nike.com"
+# Using npx (JavaScript/Node.js)
+npx @adcp/client \
+  https://test-agent.adcontextprotocol.org/mcp \
+  get_products \
+  '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
+  --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
+
+# Or using uvx (Python)
+uvx adcp \
+  https://test-agent.adcontextprotocol.org/mcp \
+  get_products \
+  '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
+  --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
+
+</TabItem>
+</Tabs>
 
 ### Using Structured Filters
 
 You can also discover products using structured filters instead of (or in addition to) a brief:
 
-**JavaScript:**
+<Tabs groupId="language">
+<TabItem value="javascript" label="JavaScript">
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -123,7 +140,8 @@ const result = await agent.getProducts({
 console.log(`Found ${result.products.length} guaranteed video products`);
 ```
 
-**Python:**
+</TabItem>
+<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -149,6 +167,9 @@ result = agent.get_products(
 
 print(f"Found {len(result['products'])} guaranteed video products")
 ```
+
+</TabItem>
+</Tabs>
 
 ## Request Parameters
 
