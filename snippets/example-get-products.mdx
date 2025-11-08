@@ -2,23 +2,35 @@ export const BasicExample = () => (
   <>
     <CodeGroup>
       ```javascript JavaScript {6-8}
-      import { AdcpClient } from '@adcp/client';
+      import { ADCPMultiAgentClient } from '@adcp/client';
 
-      const client = new AdcpClient({
-        agentUrl: 'https://test-agent.adcontextprotocol.org/mcp',
+      const client = new ADCPMultiAgentClient([{
+        id: 'test-agent',
+        agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
         protocol: 'mcp',
-        bearerToken: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-      });
+        auth: {
+          type: 'bearer',
+          token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+        }
+      }]);
+
+      const agent = client.agent('test-agent');
 
       // Discover products for athletic footwear
-      const result = await client.getProducts({
-        promoted_offering: 'Premium athletic footwear with innovative cushioning'
+      const result = await agent.getProducts({
+        brief: 'Premium athletic footwear with innovative cushioning',
+        brand_manifest: {
+          name: 'Nike',
+          url: 'https://nike.com'
+        }
       });
 
-      console.log(`Found ${result.products.length} matching products`);
-      result.products.forEach(product => {
-        console.log(`- ${product.name}: $${product.pricing.cpm} CPM`);
-      });
+      if (result.success && result.data) {
+        console.log(`Found ${result.data.products.length} matching products`);
+        result.data.products.forEach(product => {
+          console.log(`- ${product.name}: $${product.cpm} CPM`);
+        });
+      }
       ```
 
       ```python Python {6-8}
@@ -51,7 +63,11 @@ export const BasicExample = () => (
           "params": {
             "name": "get_products",
             "arguments": {
-              "promoted_offering": "Premium athletic footwear with innovative cushioning"
+              "brief": "Premium athletic footwear with innovative cushioning",
+              "brand_manifest": {
+                "name": "Nike",
+                "url": "https://nike.com"
+              }
             }
           }
         }'
