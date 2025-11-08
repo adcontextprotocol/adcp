@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": major
+"adcontextprotocol": minor
 ---
 
 Add discriminator fields to multiple schemas for improved TypeScript type safety and reduced union signature complexity.
