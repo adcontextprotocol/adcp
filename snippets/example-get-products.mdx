@@ -57,25 +57,20 @@ export const BasicExample = () => (
               print(f"- {product.name}: ${product.cpm} CPM")
       ```
 
-      ```bash cURL
-      curl -X POST https://test-agent.adcontextprotocol.org/mcp \
-        -H "Content-Type: application/json" \
-        -H "Authorization: Bearer 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ" \
-        -d '{
-          "jsonrpc": "2.0",
-          "id": "req-123",
-          "method": "tools/call",
-          "params": {
-            "name": "get_products",
-            "arguments": {
-              "brief": "Premium athletic footwear with innovative cushioning",
-              "brand_manifest": {
-                "name": "Nike",
-                "url": "https://nike.com"
-              }
-            }
-          }
-        }'
+      ```bash CLI
+      # Using npx (JavaScript/Node.js)
+      npx @adcp/client \
+        https://test-agent.adcontextprotocol.org/mcp \
+        get_products \
+        '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
+        --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
+
+      # Or using uvx (Python)
+      uvx adcp \
+        https://test-agent.adcontextprotocol.org/mcp \
+        get_products \
+        '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
+        --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
       ```
     </CodeGroup>
 
