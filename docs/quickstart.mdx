@@ -269,7 +269,7 @@ npm install @adcp/client
 
 **Example usage with test agent**:
 
-```javascript
+```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 // Connect to the public test agent
@@ -288,15 +288,17 @@ const agent = client.agent('test-agent');
 const result = await agent.getProducts({
   brief: 'Premium athletic footwear with innovative cushioning',
   brand_manifest: {
-    brand_name: 'Nike',
-    brand_description: 'Athletic footwear and apparel'
+    name: 'Nike',
+    url: 'https://nike.com'
   }
 });
 
 if (result.success && result.data) {
   console.log(`✓ Found ${result.data.products.length} matching products`);
-} else {
+} else if (result.error) {
   console.log(`Error: ${result.error}`);
+} else {
+  console.log(`Status: ${result.status}`);
 }
 ```
 

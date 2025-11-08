@@ -97,28 +97,38 @@ function findDocFiles() {
  * Test a JavaScript/TypeScript snippet
  */
 async function testJavaScriptSnippet(snippet) {
-  const tempFile = path.join(__dirname, `temp-snippet-${Date.now()}.js`);
+  // Detect ESM syntax and use .mjs extension to avoid Node warnings
+  const hasESMSyntax = snippet.code.includes('import ') || snippet.code.includes('export ');
+  const extension = hasESMSyntax ? '.mjs' : '.js';
+  const tempFile = path.join(__dirname, `temp-snippet-${Date.now()}${extension}`);
 
   try {
     // Write snippet to temporary file
     fs.writeFileSync(tempFile, snippet.code);
 
-    // Execute with Node.js
+    // Execute with Node.js from project root to access node_modules
     const { stdout, stderr } = await execAsync(`node ${tempFile}`, {
-      timeout: 10000 // 10 second timeout
+      timeout: 60000, // 60 second timeout (API calls can take time)
+      cwd: path.join(__dirname, '..') // Run from project root
     });
+
+    // Check if stderr contains only warnings (not errors)
+    const hasRealErrors = stderr && !stderr.includes('[MODULE_TYPELESS_PACKAGE_JSON]');
 
     return {
       success: true,
       output: stdout,
-      error: stderr
+      error: hasRealErrors ? stderr : null
     };
   } catch (error) {
     return {
       success: false,
       error: error.message,
       stdout: error.stdout,
-      stderr: error.stderr
+      stderr: error.stderr,
+      code: error.code,
+      signal: error.signal,
+      killed: error.killed
     };
   } finally {
     // Clean up temp file
@@ -261,8 +271,14 @@ async function validateSnippet(snippet) {
       failedTests++;
       log(`  ✗ FAILED`, 'error');
       log(`    Error: ${result.error}`, 'error');
+      if (result.code) log(`    Exit code: ${result.code}`, 'error');
+      if (result.signal) log(`    Signal: ${result.signal}`, 'error');
+      if (result.killed) log(`    Killed: ${result.killed}`, 'error');
+      if (result.stdout) {
+        log(`    Stdout: ${result.stdout.substring(0, 200)}`, 'error');
+      }
       if (result.stderr) {
-        log(`    Stderr: ${result.stderr}`, 'error');
+        log(`    Stderr: ${result.stderr.substring(0, 500)}`, 'error');
       }
     }
   } catch (error) {
