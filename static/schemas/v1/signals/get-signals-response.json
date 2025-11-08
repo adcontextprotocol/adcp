@@ -46,40 +46,7 @@
             "type": "array",
             "description": "Array of destination deployments",
             "items": {
-              "type": "object",
-              "properties": {
-                "platform": {
-                  "type": "string",
-                  "description": "Platform identifier for DSPs. Either platform or agent_url will be present."
-                },
-                "agent_url": {
-                  "type": "string",
-                  "format": "uri",
-                  "description": "URL identifying the destination agent. Either platform or agent_url will be present."
-                },
-                "account": {
-                  "type": "string",
-                  "description": "Account identifier if applicable"
-                },
-                "is_live": {
-                  "type": "boolean",
-                  "description": "Whether signal is currently active on this destination"
-                },
-                "activation_key": {
-                  "$ref": "/schemas/v1/core/activation-key.json",
-                  "description": "The key to use for targeting. Only present if is_live=true AND this destination has requester=true in the request."
-                },
-                "estimated_activation_duration_minutes": {
-                  "type": "number",
-                  "description": "Time to activate if not live",
-                  "minimum": 0
-                }
-              },
-              "oneOf": [
-                {"required": ["platform", "is_live"]},
-                {"required": ["agent_url", "is_live"]}
-              ],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/deployment.json"
             }
           },
           "pricing": {

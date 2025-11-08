@@ -32,15 +32,16 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 
 ### Destination Object
 
-Each destination must have **either** `platform` (for DSPs) **or** `agent_url` (for sales agents):
+Each destination uses a `type` field to discriminate between platform-based and agent-based destinations:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `platform` | string | Conditional* | Platform identifier (e.g., 'the-trade-desk', 'amazon-dsp') |
-| `agent_url` | string (URI) | Conditional* | URL identifying the sales agent |
+| `type` | string | Yes | Discriminator: "platform" for DSPs, "agent" for sales agents |
+| `platform` | string | Conditional* | Platform identifier (e.g., 'the-trade-desk', 'amazon-dsp'). Required when type="platform" |
+| `agent_url` | string (URI) | Conditional* | URL identifying the sales agent. Required when type="agent" |
 | `account` | string | No | Account identifier on the platform or agent |
 
-*Must include either `platform` or `agent_url`, but not both.
+*`platform` is required when `type="platform"`, `agent_url` is required when `type="agent"`.
 
 **Activation Keys**: If the authenticated caller has access to any of the destinations in the request, the signal agent will include `activation_key` fields in the response for those destinations (when `is_live: true`).
 
@@ -83,6 +84,7 @@ The response structure is identical across protocols, with only the transport wr
       "coverage_percentage": "number",
       "deployments": [
         {
+          "type": "agent",
           "agent_url": "string",
           "account": "string",
           "is_live": "boolean",
@@ -158,6 +160,7 @@ A sales agent querying for signals. Because the authenticated caller is wonderst
     "deliver_to": {
       "destinations": [
         {
+          "type": "agent",
           "agent_url": "https://wonderstruck.salesagents.com"
         }
       ],
@@ -190,6 +193,7 @@ Because the authenticated caller matches the destination, the response includes 
       "coverage_percentage": 12,
       "deployments": [
         {
+          "type": "agent",
           "agent_url": "https://wonderstruck.salesagents.com",
           "is_live": true,
           "activation_key": {
@@ -220,10 +224,12 @@ A buyer checking availability across multiple DSP platforms:
     "deliver_to": {
       "destinations": [
         {
+          "type": "platform",
           "platform": "the-trade-desk",
           "account": "agency-123"
         },
         {
+          "type": "platform",
           "platform": "amazon-dsp"
         }
       ],
@@ -256,6 +262,7 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
       "coverage_percentage": 12,
       "deployments": [
         {
+          "type": "platform",
           "platform": "the-trade-desk",
           "account": "agency-123",
           "is_live": true,
@@ -265,6 +272,7 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
           }
         },
         {
+          "type": "platform",
           "platform": "amazon-dsp",
           "is_live": false,
           "estimated_activation_duration_minutes": 60
@@ -306,10 +314,12 @@ await a2a.send({
           deliver_to: {
             destinations: [
               {
+                type: "agent",
                 agent_url: "https://thetradedesk.com",
                 account: "agency-123"
               },
               {
+                type: "agent",
                 agent_url: "https://advertising.amazon.com/dsp"
               }
             ],
@@ -352,11 +362,13 @@ A2A returns results as artifacts with the same data structure:
                 "coverage_percentage": 12,
                 "deployments": [
                   {
+                    "type": "agent",
                     "agent_url": "https://thetradedesk.com",
                     "account": "agency-123",
                     "is_live": true
                   },
                   {
+                    "type": "agent",
                     "agent_url": "https://advertising.amazon.com/dsp",
                     "is_live": false,
                     "estimated_activation_duration_minutes": 60
@@ -417,6 +429,7 @@ Discover all available deployments across platforms:
     "coverage_percentage": 15,
     "deployments": [
       {
+        "type": "platform",
         "platform": "index-exchange",
         "account": "agency-123-ix",
         "is_live": true,
@@ -424,6 +437,7 @@ Discover all available deployments across platforms:
         "decisioning_platform_segment_id": "ix_agency123_peer39_lux_auto"
       },
       {
+        "type": "platform",
         "platform": "index-exchange",
         "account": null,
         "is_live": true,
@@ -431,6 +445,7 @@ Discover all available deployments across platforms:
         "decisioning_platform_segment_id": "ix_peer39_luxury_auto_gen"
       },
       {
+        "type": "platform",
         "platform": "openx",
         "account": null,
         "is_live": true,
@@ -438,6 +453,7 @@ Discover all available deployments across platforms:
         "decisioning_platform_segment_id": "ox_peer39_lux_auto_456"
       },
       {
+        "type": "platform",
         "platform": "pubmatic",
         "account": "brand-456-pm",
         "is_live": false,
@@ -511,6 +527,7 @@ Discover all available deployments across platforms:
       "coverage_percentage": 22,
       "deployments": [
         {
+          "type": "platform",
           "platform": "index-exchange",
           "account": "agency-123-ix",
           "is_live": true,
@@ -518,6 +535,7 @@ Discover all available deployments across platforms:
           "decisioning_platform_segment_id": "ix_agency123_acme_aff_shop"
         },
         {
+          "type": "platform",
           "platform": "openx",
           "account": "agency-123-ox",
           "is_live": true,
@@ -551,6 +569,7 @@ Discover all available deployments across platforms:
       "coverage_percentage": 8,
       "deployments": [
         {
+          "type": "platform",
           "platform": "the-trade-desk",
           "account": null,
           "is_live": true,
