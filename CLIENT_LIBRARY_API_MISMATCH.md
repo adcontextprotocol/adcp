@@ -1,8 +1,8 @@
-# Client Library API Mismatch Issue
+# Client Library API Alignment - RESOLVED ✅
 
-## Problem
+## Status: Issues Resolved
 
-Our documentation examples don't match the actual @adcp/client API, causing confusion and broken examples.
+All documentation has been updated to match the actual @adcp/client API. Tests are now passing.
 
 ## Specific Issues Found
 
@@ -41,39 +41,35 @@ Our documentation examples don't match the actual @adcp/client API, causing conf
 - **Actual structure**: `{ success, status, error, metadata, debug_logs, data? }`
 - **Note**: `data` field only present on success, contains the actual response payload
 
-### 4. Test Agent Requirements
-The test agent at `https://test-agent.adcontextprotocol.org/mcp` is rejecting requests with:
-```
-"brand_manifest must provide brand information"
-```
+### 4. Test Agent Requirements - ✅ RESOLVED
+The test agent was correctly rejecting invalid brand_manifest objects.
 
-Even when providing a brand_manifest object, suggesting either:
-- The test agent has stricter validation than documented
-- The test agent configuration is incorrect
-- There's a mismatch between the protocol spec and implementation
+**Root Cause**: Documentation examples used wrong field names:
+- ❌ Used: `brand_name` and `brand_description` (not in schema)
+- ✅ Correct: `name` and `url` (per brand-manifest.json schema)
 
-## Impact
+**Fix**: Updated all examples to use correct field names per schema.
 
-1. **Documentation examples don't work** - Users copy/paste examples that fail
-2. **Testing infrastructure blocked** - Can't mark examples as testable because they fail
-3. **User confusion** - Multiple class names and APIs create confusion about which to use
-4. **Protocol mismatch** - Test agent behavior doesn't match documented requirements
+## Resolution Summary
 
-## Recommendations
+### ✅ Completed Fixes (This PR)
 
-### Short-term (This PR)
-1. ✅ Fix regex in snippet validation to preserve import statements
-2. ✅ Add links to NPM and PyPI packages
-3. ✅ Create testable snippet infrastructure
-4. ⚠️  Don't mark JavaScript client examples as testable until API is aligned
-5. ✓  Use curl examples for testable snippets (protocol-level, always accurate)
+1. **Fixed regex in snippet validation** - Import statements now preserved correctly
+2. **Added links to NPM and PyPI** - Library discoverability improved
+3. **Created testable snippet infrastructure** - Can now test JavaScript examples
+4. **Updated all client API usage** - Changed from `AdcpClient` to `ADCPMultiAgentClient`
+5. **Fixed brand_manifest** - Using correct `name`/`url` fields per schema
+6. **Fixed response handling** - Check `result.success` and access `result.data`
+7. **Increased test timeout** - 60s for API calls (was 10s, causing timeouts)
+8. **Fixed ESM imports** - Auto-detect and use `.mjs` extension
+9. **Fixed node_modules access** - Tests run from project root
 
-### Medium-term (Follow-up PR)
-1. **Audit all documentation** for AdcpClient vs ADCPClient usage
-2. **Sync with @adcp/client maintainers** on the canonical API
-3. **Update constructor examples** to match actual multi-agent client API
-4. **Test against actual implementation** rather than assumed API
-5. **Fix or document test agent requirements** for brand_manifest
+### Test Results
+
+- ✅ **1 testable snippet passing** (quickstart.mdx JavaScript example)
+- ✅ Successfully calls test agent and validates response
+- ✅ All schema tests passing
+- ✅ All example validation tests passing
 
 ### Long-term (Architecture)
 1. **Single source of truth** - Generate docs from TypeScript types?
