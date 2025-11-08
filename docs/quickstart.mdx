@@ -269,7 +269,9 @@ npm install @adcp/client
 
 **Example usage with test agent**:
 
-```javascript test=true
+<CodeGroup>
+
+```javascript test=true JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 // Connect to the public test agent
@@ -302,7 +304,60 @@ if (result.success && result.data) {
 }
 ```
 
-**To test this code**: After installing `@adcp/client`, save this to a file and run with `node --input-type=module yourfile.js`
+```python Python
+from adcp import AdcpClient
+
+# Connect to the public test agent
+client = AdcpClient(
+    agent_url='https://test-agent.adcontextprotocol.org/mcp',
+    protocol='mcp',
+    bearer_token='1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+)
+
+# Get products
+result = client.get_products(
+    brief='Premium athletic footwear with innovative cushioning',
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
+    }
+)
+
+if result.success and result.data:
+    print(f"✓ Found {len(result.data.products)} matching products")
+elif result.error:
+    print(f"Error: {result.error}")
+else:
+    print(f"Status: {result.status}")
+```
+
+```bash cURL
+curl -X POST https://test-agent.adcontextprotocol.org/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "get_products",
+      "arguments": {
+        "brief": "Premium athletic footwear with innovative cushioning",
+        "brand_manifest": {
+          "name": "Nike",
+          "url": "https://nike.com"
+        }
+      }
+    }
+  }'
+```
+
+</CodeGroup>
+
+**To test this code**: After installing the client library, save to a file and run:
+- JavaScript: `node --input-type=module yourfile.js`
+- Python: `python yourfile.py`
+- cURL: Copy and paste directly into terminal
 
 ## Common Issues
 

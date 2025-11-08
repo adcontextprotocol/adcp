@@ -44,12 +44,17 @@ export const BasicExample = () => (
 
       # Discover products for athletic footwear
       result = client.get_products(
-          promoted_offering='Premium athletic footwear with innovative cushioning'
+          brief='Premium athletic footwear with innovative cushioning',
+          brand_manifest={
+              'name': 'Nike',
+              'url': 'https://nike.com'
+          }
       )
 
-      print(f"Found {len(result.products)} matching products")
-      for product in result.products:
-          print(f"- {product.name}: ${product.pricing.cpm} CPM")
+      if result.success and result.data:
+          print(f"Found {len(result.data.products)} matching products")
+          for product in result.data.products:
+              print(f"- {product.name}: ${product.cpm} CPM")
       ```
 
       ```bash cURL
