@@ -1,0 +1,32 @@
+name: Check Testable Snippets
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**/*.md'
+      - 'docs/**/*.mdx'
+
+jobs:
+  check-snippets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for diff
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Check for untested code snippets
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD --name-only | grep -E '\.(md|mdx)$' > changed_files.txt || true
+
+          if [ -s changed_files.txt ]; then
+            echo "📋 Checking documentation changes for testable snippets..."
+            node scripts/check-testable-snippets.js
+          else
+            echo "✓ No documentation files changed"
+          fi
