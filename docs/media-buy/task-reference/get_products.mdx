@@ -23,6 +23,133 @@ Discover available advertising products based on campaign requirements, using na
 
 See the [Quickstart Guide](/docs/quickstart.mdx#understanding-authentication) for details on getting credentials.
 
+## Quick Start
+
+Here's how to discover products with a natural language brief:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+const result = await agent.getProducts({
+  brief: 'Premium athletic footwear with innovative cushioning',
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  }
+});
+
+console.log(`Found ${result.products.length} products`);
+```
+
+**Python:**
+
+```python test=true
+from adcp import ADCPMultiAgentClient
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+    }
+}])
+
+agent = client.agent('test-agent')
+result = agent.get_products(
+    brief='Premium athletic footwear with innovative cushioning',
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
+    }
+)
+
+print(f"Found {len(result['products'])} products")
+```
+
+**CLI:**
+
+```bash test=true
+adcp-cli get-products \
+  --agent-uri https://test-agent.adcontextprotocol.org/mcp \
+  --auth-token 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ \
+  --brief "Premium athletic footwear with innovative cushioning" \
+  --brand-name "Nike" \
+  --brand-url "https://nike.com"
+```
+
+### Using Structured Filters
+
+You can also discover products using structured filters instead of (or in addition to) a brief:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+const result = await agent.getProducts({
+  filters: {
+    format_types: ['video'],
+    delivery_type: 'guaranteed',
+    standard_formats_only: true
+  }
+});
+
+console.log(`Found ${result.products.length} guaranteed video products`);
+```
+
+**Python:**
+
+```python test=true
+from adcp import ADCPMultiAgentClient
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+    }
+}])
+
+agent = client.agent('test-agent')
+result = agent.get_products(
+    filters={
+        'format_types': ['video'],
+        'delivery_type': 'guaranteed',
+        'standard_formats_only': True
+    }
+)
+
+print(f"Found {len(result['products'])} guaranteed video products")
+```
+
 ## Request Parameters
 
 | Parameter | Type | Required | Description |
