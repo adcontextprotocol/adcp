@@ -42,13 +42,20 @@ The `oneOf` discriminator enforces atomic semantics at the schema level - operat
 
 **Updated Schemas:**
 
-All schemas now use `oneOf` with explicit success/error branches:
+All mutating operation schemas now use `oneOf` with explicit success/error branches:
 
+**Media Buy Operations:**
 - `create-media-buy-response.json` - Success requires `media_buy_id`, `buyer_ref`, `packages`; Error requires `errors` array
 - `update-media-buy-response.json` - Success requires `media_buy_id`, `buyer_ref`; Error requires `errors` array
 - `build-creative-response.json` - Success requires `creative_manifest`; Error requires `errors` array
 - `provide-performance-feedback-response.json` - Success requires `success: true`; Error requires `errors` array
-- `webhook-payload.json` - Uses conditional validation (`if/then` with `allOf`) to validate result field against the appropriate task response schema based on task_type. Ensures webhook results are properly validated against their respective task schemas. Updated example to show error-only response for input-required status.
+- `sync-creatives-response.json` - Success requires `creatives` array (with per-item results); Error requires `errors` array (operation-level failures only)
+
+**Signals Operations:**
+- `activate-signal-response.json` - Success requires `decisioning_platform_segment_id`; Error requires `errors` array
+
+**Webhook Validation:**
+- `webhook-payload.json` - Uses conditional validation (`if/then` with `allOf`) to validate result field against the appropriate task response schema based on task_type. Ensures webhook results are properly validated against their respective task schemas.
 
 **Schema Structure:**
 
@@ -78,9 +85,13 @@ The `not` constraints ensure responses cannot contain both success and error fie
 - **Validation**: Schema-level enforcement of atomic semantics
 - **Consistency**: All mutating operations follow same pattern
 
-**Exception: Batch Operations**
+**Batch Operations Pattern**
 
-`sync_creatives` is intentionally excluded from this pattern because it processes multiple independent items. Per-item success/failure in the results array is appropriate for batch operations where failing the entire batch would hurt UX.
+`sync_creatives` uses a two-level error model that distinguishes:
+- **Operation-level failures** (oneOf error branch): Authentication failed, service down, invalid request format - no creatives processed
+- **Per-item failures**: Individual creative validation errors (action='failed' within the creatives array) - rest of batch still processed
+
+This provides best-effort batch semantics (process what you can, report what failed) while maintaining atomic operation boundaries (either you can process the batch OR you can't).
 
 **Migration:**
 

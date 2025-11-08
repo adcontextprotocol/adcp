@@ -2,31 +2,56 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/signals/activate-signal-response.json",
   "title": "Activate Signal Response",
-  "description": "Response payload for activate_signal task",
+  "description": "Response payload for activate_signal task. Returns either complete success data OR error information, never both. This enforces atomic operation semantics - the signal is either fully activated or not activated at all.",
   "type": "object",
-  "properties": {
-    "decisioning_platform_segment_id": {
-      "type": "string",
-      "description": "The platform-specific ID to use once activated"
+  "oneOf": [
+    {
+      "description": "Success response - signal activated successfully",
+      "type": "object",
+      "properties": {
+        "decisioning_platform_segment_id": {
+          "type": "string",
+          "description": "The platform-specific ID to use once activated. This ID is used for targeting the activated signal in media buys."
+        },
+        "estimated_activation_duration_minutes": {
+          "type": "number",
+          "description": "Estimated time to complete activation (for async activation)",
+          "minimum": 0
+        },
+        "deployed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when activation completed (if synchronous)"
+        }
+      },
+      "required": ["decisioning_platform_segment_id"],
+      "additionalProperties": false,
+      "not": {
+        "required": ["errors"]
+      }
     },
-    "estimated_activation_duration_minutes": {
-      "type": "number",
-      "description": "Estimated time to complete (optional)",
-      "minimum": 0
-    },
-    "deployed_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Timestamp when activation completed (optional)"
-    },
-    "errors": {
-      "type": "array",
-      "description": "Task-specific errors and warnings (e.g., activation failures, platform issues)",
-      "items": {
-        "$ref": "/schemas/v1/core/error.json"
+    {
+      "description": "Error response - operation failed, signal not activated",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Array of errors explaining why activation failed (e.g., platform connectivity issues, signal definition problems, authentication failures)",
+          "items": {
+            "$ref": "/schemas/v1/core/error.json"
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": false,
+      "not": {
+        "anyOf": [
+          {"required": ["decisioning_platform_segment_id"]},
+          {"required": ["estimated_activation_duration_minutes"]},
+          {"required": ["deployed_at"]}
+        ]
       }
     }
-  },
-  "required": [],
-  "additionalProperties": false
+  ]
 }
