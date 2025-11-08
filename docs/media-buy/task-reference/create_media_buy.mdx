@@ -17,6 +17,106 @@ Create a media buy from selected packages. This task handles the complete workfl
 **Request Schema**: [/schemas/v1/media-buy/create-media-buy-request.json](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
 **Response Schema**: [/schemas/v1/media-buy/create-media-buy-response.json](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-response.json)
 
+## Quick Start
+
+Here's how to create a media buy from a discovered product:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+// First, discover products
+const discovery = await agent.getProducts({
+  brief: 'Premium video inventory for athletic footwear',
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  }
+});
+
+// Then create a media buy with the first product
+const product = discovery.products[0];
+const mediaBuy = await agent.createMediaBuy({
+  buyer_ref: 'nike-q1-2024',
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  },
+  packages: [{
+    buyer_ref: 'package-1',
+    product_id: product.product_id,
+    pricing_option_id: product.pricing_options[0].pricing_option_id,
+    format_ids: product.format_ids,
+    budget: 10000
+  }],
+  start_time: 'asap',
+  end_time: '2024-12-31T23:59:59Z'
+});
+
+console.log(`Media buy created: ${mediaBuy.media_buy_id}`);
+```
+
+**Python:**
+
+```python test=true
+from adcp import ADCPMultiAgentClient
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+    }
+}])
+
+agent = client.agent('test-agent')
+
+# First, discover products
+discovery = agent.get_products(
+    brief='Premium video inventory for athletic footwear',
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
+    }
+)
+
+# Then create a media buy with the first product
+product = discovery['products'][0]
+media_buy = agent.create_media_buy(
+    buyer_ref='nike-q1-2024',
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
+    },
+    packages=[{
+        'buyer_ref': 'package-1',
+        'product_id': product['product_id'],
+        'pricing_option_id': product['pricing_options'][0]['pricing_option_id'],
+        'format_ids': product['format_ids'],
+        'budget': 10000
+    }],
+    start_time='asap',
+    end_time='2024-12-31T23:59:59Z'
+)
+
+print(f"Media buy created: {media_buy['media_buy_id']}")
+```
+
 ## Request Parameters
 
 | Parameter | Type | Required | Description |
