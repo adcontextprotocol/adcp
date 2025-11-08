@@ -238,7 +238,307 @@ The Quick Start examples above use our multi-agent client which handles protocol
 
 ## Common Scenarios
 
-### MCP with Manual Approval (Polling Example)
+### Multi-Package Campaign
+
+Create a campaign with multiple packages across different products:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+// First, discover products
+const discovery = await agent.getProducts({
+  filters: {
+    format_types: ['video', 'audio'],
+    delivery_type: 'guaranteed'
+  }
+});
+
+// Find video and audio products
+const videoProduct = discovery.products.find(p =>
+  p.format_ids.some(f => f.id.includes('video'))
+);
+const audioProduct = discovery.products.find(p =>
+  p.format_ids.some(f => f.id.includes('audio'))
+);
+
+// Create split-budget campaign
+const mediaBuy = await agent.createMediaBuy({
+  buyer_ref: `multi-package-${Date.now()}`,
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  },
+  packages: [
+    {
+      buyer_ref: 'video-package',
+      product_id: videoProduct.product_id,
+      pricing_option_id: videoProduct.pricing_options[0].pricing_option_id,
+      format_ids: [videoProduct.format_ids[0]],
+      budget: 30000
+    },
+    {
+      buyer_ref: 'audio-package',
+      product_id: audioProduct.product_id,
+      pricing_option_id: audioProduct.pricing_options[0].pricing_option_id,
+      format_ids: [audioProduct.format_ids[0]],
+      budget: 20000
+    }
+  ],
+  start_time: 'asap',
+  end_time: '2024-12-31T23:59:59Z'
+});
+
+console.log(`Created ${mediaBuy.packages.length}-package media buy`);
+console.log(`Total budget: $50,000`);
+```
+
+**Python:**
+
+```python test=true
+from adcp import ADCPMultiAgentClient
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+    }
+}])
+
+agent = client.agent('test-agent')
+
+# Discover products
+discovery = agent.get_products(
+    filters={
+        'format_types': ['video', 'audio'],
+        'delivery_type': 'guaranteed'
+    }
+)
+
+# Find video and audio products
+video_product = next((p for p in discovery['products']
+                     if any('video' in f['id'] for f in p['format_ids'])), None)
+audio_product = next((p for p in discovery['products']
+                     if any('audio' in f['id'] for f in p['format_ids'])), None)
+
+# Create split-budget campaign
+media_buy = agent.create_media_buy(
+    buyer_ref=f'multi-package-{int(time.time())}',
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
+    },
+    packages=[
+        {
+            'buyer_ref': 'video-package',
+            'product_id': video_product['product_id'],
+            'pricing_option_id': video_product['pricing_options'][0]['pricing_option_id'],
+            'format_ids': [video_product['format_ids'][0]],
+            'budget': 30000
+        },
+        {
+            'buyer_ref': 'audio-package',
+            'product_id': audio_product['product_id'],
+            'pricing_option_id': audio_product['pricing_options'][0]['pricing_option_id'],
+            'format_ids': [audio_product['format_ids'][0]],
+            'budget': 20000
+        }
+    ],
+    start_time='asap',
+    end_time='2024-12-31T23:59:59Z'
+)
+
+print(f"Created {len(media_buy['packages'])}-package media buy")
+print("Total budget: $50,000")
+```
+
+### Geographic Targeting
+
+Create a media buy with geographic targeting overlay:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+// Discover products
+const discovery = await agent.getProducts({
+  brief: 'Video advertising for athletic footwear'
+});
+
+const product = discovery.products[0];
+
+// Create media buy with geographic targeting
+const mediaBuy = await agent.createMediaBuy({
+  buyer_ref: `geo-targeted-${Date.now()}`,
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  },
+  packages: [{
+    buyer_ref: 'california-only',
+    product_id: product.product_id,
+    pricing_option_id: product.pricing_options[0].pricing_option_id,
+    format_ids: [product.format_ids[0]],
+    budget: 15000,
+    targeting_overlay: {
+      geo_country_any_of: ['US'],
+      geo_region_any_of: ['CA'],
+      frequency_cap: {
+        suppress_minutes: 60
+      }
+    }
+  }],
+  start_time: 'asap',
+  end_time: '2024-12-31T23:59:59Z'
+});
+
+console.log('Created geographically-targeted media buy');
+console.log(`Targeting: ${mediaBuy.packages[0].targeting_overlay.geo_region_any_of.join(', ')}`);
+```
+
+### Webhook Reporting Setup
+
+Configure automated reporting via webhook:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+// Discover products that support webhook reporting
+const discovery = await agent.getProducts({
+  filters: {
+    format_types: ['video']
+  }
+});
+
+const product = discovery.products.find(p =>
+  p.reporting_capabilities?.supports_webhooks
+);
+
+if (product) {
+  const mediaBuy = await agent.createMediaBuy({
+    buyer_ref: `with-reporting-${Date.now()}`,
+    brand_manifest: {
+      name: 'Nike',
+      url: 'https://nike.com'
+    },
+    packages: [{
+      buyer_ref: 'package-1',
+      product_id: product.product_id,
+      pricing_option_id: product.pricing_options[0].pricing_option_id,
+      format_ids: [product.format_ids[0]],
+      budget: 10000
+    }],
+    start_time: 'asap',
+    end_time: '2024-12-31T23:59:59Z',
+    reporting_webhook: {
+      url: 'https://example.com/webhooks/reporting',
+      auth_type: 'bearer',
+      auth_token: 'test-token',
+      reporting_frequency: product.reporting_capabilities.available_reporting_frequencies[0]
+    }
+  });
+
+  console.log(`Created media buy with ${mediaBuy.reporting_webhook.reporting_frequency} reporting`);
+} else {
+  console.log('No products support webhook reporting');
+}
+```
+
+### Error Handling
+
+Handle media buy creation errors gracefully:
+
+**JavaScript:**
+
+```javascript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+try {
+  // Attempt to create media buy with invalid product
+  const mediaBuy = await agent.createMediaBuy({
+    buyer_ref: `test-${Date.now()}`,
+    brand_manifest: {
+      name: 'Nike',
+      url: 'https://nike.com'
+    },
+    packages: [{
+      buyer_ref: 'invalid-package',
+      product_id: 'nonexistent-product',
+      pricing_option_id: 'invalid',
+      format_ids: [],
+      budget: 10000
+    }],
+    start_time: 'asap',
+    end_time: '2024-12-31T23:59:59Z'
+  });
+
+  console.log('Unexpected success');
+} catch (error) {
+  console.log(`Error creating media buy: ${error.message}`);
+  if (error.code === 'PRODUCT_NOT_FOUND') {
+    console.log('Product not found - check product_id');
+  } else if (error.code === 'INVALID_FORMAT') {
+    console.log('Format not supported - check format_ids');
+  }
+}
+```
+
+### Human-in-the-Loop Example (Conceptual)
 
 This example shows polling, but MCP implementations may also support webhooks or streaming for real-time updates.
 
