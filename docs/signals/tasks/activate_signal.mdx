@@ -26,15 +26,16 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 
 ### Destination Object
 
-Each destination must have **either** `platform` (for DSPs) **or** `agent_url` (for sales agents):
+Each destination uses a `type` field to discriminate between platform-based and agent-based destinations:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `platform` | string | Conditional* | Platform identifier (e.g., 'the-trade-desk', 'amazon-dsp') |
-| `agent_url` | string (URI) | Conditional* | URL identifying the sales agent |
+| `type` | string | Yes | Discriminator: "platform" for DSPs, "agent" for sales agents |
+| `platform` | string | Conditional* | Platform identifier (e.g., 'the-trade-desk', 'amazon-dsp'). Required when type="platform" |
+| `agent_url` | string (URI) | Conditional* | URL identifying the sales agent. Required when type="agent" |
 | `account` | string | No | Account identifier on the platform or agent |
 
-*Must include either `platform` or `agent_url`, but not both.
+*`platform` is required when `type="platform"`, `agent_url` is required when `type="agent"`.
 
 **Activation Keys**: If the authenticated caller has access to any of the destinations in the request, the signal agent will include `activation_key` in the response for those destinations.
 
@@ -64,6 +65,7 @@ For asynchronous operations like activation, both protocols support:
 {
   "deployments": [
     {
+      "type": "platform",
       "platform": "string",
       "account": "string",
       "activation_key": {
@@ -134,6 +136,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
   "arguments": {
     "signal_agent_segment_id": "luxury_auto_intenders",
     "destinations": [{
+      "type": "agent",
       "agent_url": "https://wonderstruck.salesagents.com"
     }]
   }
@@ -147,7 +150,9 @@ Immediate response with activation key:
   "message": "Signal successfully activated on Wonderstruck sales agent",
   "context_id": "ctx-signals-123",
   "deployments": [{
+    "type": "agent",
     "agent_url": "https://wonderstruck.salesagents.com",
+    "is_live": true,
     "activation_key": {
       "type": "key_value",
       "key": "audience_segment",
@@ -165,6 +170,7 @@ Immediate response with activation key:
   "arguments": {
     "signal_agent_segment_id": "luxury_auto_intenders",
     "destinations": [{
+      "type": "platform",
       "platform": "the-trade-desk",
       "account": "agency-123-ttd"
     }]
@@ -179,8 +185,10 @@ Initial response:
   "message": "Initiating activation of 'Luxury Auto Intenders' on The Trade Desk",
   "context_id": "ctx-signals-123",
   "deployments": [{
+    "type": "platform",
     "platform": "the-trade-desk",
     "account": "agency-123-ttd",
+    "is_live": false,
     "estimated_activation_duration_minutes": 30
   }]
 }
@@ -192,8 +200,10 @@ After polling for completion:
   "message": "Signal successfully activated on The Trade Desk",
   "context_id": "ctx-signals-123",
   "deployments": [{
+    "type": "platform",
     "platform": "the-trade-desk",
     "account": "agency-123-ttd",
+    "is_live": true,
     "activation_key": {
       "type": "segment_id",
       "segment_id": "ttd_agency123_lux_auto"
@@ -228,6 +238,7 @@ await a2a.send({
         parameters: {
           signal_agent_segment_id: "luxury_auto_intenders",
           destinations: [{
+            type: "platform",
             platform: "the-trade-desk",
             account: "agency-123-ttd"
           }]
@@ -259,6 +270,7 @@ data: {"status": {"state": "completed"}, "artifacts": [{
     {"kind": "data", "data": {
       "context_id": "ctx-signals-123",
       "deployments": [{
+        "type": "platform",
         "platform": "the-trade-desk",
         "account": "agency-123-ttd",
         "activation_key": {
@@ -286,6 +298,7 @@ const response = await session.call('activate_signal',
   {
     signal_agent_segment_id: "luxury_auto_intenders",
     destinations: [{
+      type: "platform",
       platform: "the-trade-desk",
       account: "agency-123-ttd"
     }]
@@ -306,6 +319,7 @@ Authorization: Bearer secret-token
 
 {
   "deployments": [{
+    "type": "platform",
     "platform": "the-trade-desk",
     "account": "agency-123-ttd",
     "activation_key": {
@@ -330,6 +344,7 @@ See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx
   "message": "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
+    "type": "platform",
     "platform": "pubmatic",
     "account": "brand-456-pm",
     "estimated_activation_duration_minutes": 60
@@ -346,6 +361,7 @@ See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx
   "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately with the activation key provided. The activation completed faster than expected - just 52 minutes.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
+    "type": "platform",
     "platform": "pubmatic",
     "account": "brand-456-pm",
     "activation_key": {
@@ -366,6 +382,7 @@ See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx
   "message": "Signal successfully activated on Wonderstruck sales agent. Use the key-value pair in your targeting configuration.",
   "context_id": "ctx-signals-ghi789",
   "deployments": [{
+    "type": "agent",
     "agent_url": "https://wonderstruck.salesagents.com",
     "activation_key": {
       "type": "key_value",
@@ -386,6 +403,7 @@ See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx
   "message": "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
+    "type": "platform",
     "platform": "pubmatic",
     "account": "brand-456-pm",
     "activation_key": {
