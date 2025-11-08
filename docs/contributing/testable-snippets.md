@@ -10,7 +10,7 @@ Automated testing of documentation examples ensures:
 - Breaking changes are caught immediately
 - Users can trust the documentation
 
-**Important**: The test infrastructure validates code blocks **directly in the documentation files** (`.md` and `.mdx`). When you mark a snippet with `test=true`, that exact code from the documentation is extracted and executed. The `examples/` directory contains standalone reference scripts but is **not** directly connected to the documentation testing system.
+**Important**: The test infrastructure validates code blocks **directly in the documentation files** (`.md` and `.mdx`). When you mark a snippet with `test=true`, that exact code from the documentation is extracted and executed.
 
 ## Marking Snippets for Testing
 
@@ -259,7 +259,7 @@ Currently supported languages for testing:
 
 For examples requiring the client library, you have options:
 - **Option 1**: Add the library to `devDependencies` so tests can import it
-- **Option 2**: Don't mark those snippets as testable; provide standalone test scripts in `examples/` instead
+- **Option 2**: Don't mark those snippets as testable; document them as conceptual examples instead
 - **Option 3**: Use curl/HTTP examples for testable documentation (no package dependencies)
 
 ## Debugging Failed Tests

@@ -58,16 +58,17 @@ function extractCodeBlocks(filePath) {
   const blocks = [];
 
   // Regex to match code blocks with optional metadata
-  // Matches: ```language test=true or ```language testable
-  // Note: Use [^\n]* instead of .*? to avoid consuming the first line of code
-  const codeBlockRegex = /```(\w+)(?:\s+(test=true|testable))?[^\n]*\n([\s\S]*?)```/g;
+  // Matches: ```language [anything] test=true [anything]
+  // Note: Use [^\n]* to capture the entire metadata line
+  const codeBlockRegex = /```(\w+)([^\n]*)\n([\s\S]*?)```/g;
 
   let match;
   let blockIndex = 0;
 
   while ((match = codeBlockRegex.exec(content)) !== null) {
     const language = match[1];
-    const shouldTest = match[2] !== undefined;
+    const metadata = match[2];
+    const shouldTest = /\btest=true\b/.test(metadata) || /\btestable\b/.test(metadata);
     const code = match[3];
 
     blocks.push({
@@ -176,6 +177,71 @@ async function testCurlCommand(snippet) {
 }
 
 /**
+ * Test a bash command (npx, uvx, etc)
+ */
+async function testBashCommand(snippet) {
+  try {
+    // Execute the bash command - find the first non-comment, non-empty line
+    const lines = snippet.code.split('\n');
+    const firstCommand = lines.find(line => {
+      const trimmed = line.trim();
+      return trimmed && !trimmed.startsWith('#');
+    });
+
+    if (!firstCommand) {
+      return { success: false, error: 'No executable command found in bash snippet' };
+    }
+
+    // For multi-line commands with continuation, collect all continued lines
+    const commandParts = [];
+    const startIndex = lines.indexOf(firstCommand);
+
+    for (let i = startIndex; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Skip empty lines and comments unless we're in a multi-line command
+      if (!line || line.startsWith('#')) {
+        if (commandParts.length === 0 || !commandParts[commandParts.length - 1].endsWith('\\')) {
+          if (commandParts.length > 0) break; // End of command
+          continue; // Skip to find start of command
+        }
+      }
+
+      // Remove trailing backslash and add the line content
+      if (line.endsWith('\\')) {
+        commandParts.push(line.slice(0, -1).trim());
+      } else {
+        commandParts.push(line);
+        break; // End of command
+      }
+    }
+
+    const fullCommand = commandParts.join(' ');
+
+    const { stdout, stderr } = await execAsync(fullCommand, {
+      timeout: 60000, // 60 second timeout for CLI commands
+      shell: '/bin/bash',
+      cwd: path.join(__dirname, '..') // Run from project root
+    });
+
+    return {
+      success: true,
+      output: stdout,
+      error: stderr
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+      stdout: error.stdout,
+      stderr: error.stderr,
+      code: error.code,
+      signal: error.signal
+    };
+  }
+}
+
+/**
  * Test a Python snippet
  */
 async function testPythonSnippet(snippet) {
@@ -185,9 +251,10 @@ async function testPythonSnippet(snippet) {
     // Write snippet to temporary file
     fs.writeFileSync(tempFile, snippet.code);
 
-    // Execute with Python
-    const { stdout, stderr } = await execAsync(`python3 ${tempFile}`, {
-      timeout: 10000
+    // Execute with Python 3.11 (required for adcp package) from project root
+    const { stdout, stderr } = await execAsync(`python3.11 ${tempFile}`, {
+      timeout: 60000, // 60 second timeout (API calls can take time)
+      cwd: path.join(__dirname, '..') // Run from project root
     });
 
     return {
@@ -242,11 +309,21 @@ async function validateSnippet(snippet) {
       case 'bash':
       case 'sh':
       case 'shell':
-        // Check if it's a curl command
-        if (snippet.code.trim().startsWith('curl')) {
+        // Check if it's a supported bash command (skip comments to find actual command)
+        const lines = snippet.code.split('\n');
+        const firstCommand = lines.find(line => {
+          const trimmed = line.trim();
+          return trimmed && !trimmed.startsWith('#');
+        });
+
+        if (!firstCommand) {
+          result = { success: false, error: 'No executable command found in bash snippet' };
+        } else if (firstCommand.trim().startsWith('curl')) {
           result = await testCurlCommand(snippet);
+        } else if (firstCommand.trim().startsWith('npx') || firstCommand.trim().startsWith('uvx')) {
+          result = await testBashCommand(snippet);
         } else {
-          result = { success: false, error: 'Only curl commands are tested for bash snippets' };
+          result = { success: false, error: 'Only curl, npx, and uvx commands are tested for bash snippets' };
         }
         break;
 

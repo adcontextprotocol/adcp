@@ -42,6 +42,64 @@ Implementation details can be mentioned as:
 - Write for an audience implementing the protocol, not using a specific implementation
 - Keep examples generic and illustrative
 
+### Testable Documentation
+
+**IMPORTANT**: All code examples in documentation should be testable when possible.
+
+**How to mark snippets as testable**:
+
+Code snippets use Mintlify's code fence syntax with the tab title followed by `test=true`:
+
+```
+```javascript JavaScript test=true
+import { ADCPMultiAgentClient } from '@adcp/client';
+// ... working code ...
+```
+```
+
+**Key principles**:
+1. **Tab title first** - The text after the language becomes the tab title (e.g., "JavaScript", "Python", "CLI")
+2. **test=true after** - Add `test=true` after the tab title to enable automated testing
+3. **Complete examples** - Test-marked code must be complete and runnable
+4. **Use test credentials** - Use the public test agent credentials in examples
+
+**Supported languages**:
+- `javascript` / `typescript` - Runs with Node.js ESM modules
+- `python` - Runs with Python 3.11+
+- `bash` - Supports `curl`, `npx`, and `uvx` commands
+
+**What gets tested**:
+- Code executes without errors
+- API calls succeed (or fail as expected)
+- Output matches expectations
+
+**When NOT to mark as testable**:
+- Incomplete code fragments
+- Conceptual examples
+- Browser-only code
+- Code requiring user interaction
+
+**Example**:
+```
+```javascript JavaScript test=true
+// This will be tested automatically
+import { ADCPMultiAgentClient } from '@adcp/client';
+const client = new ADCPMultiAgentClient([...]);
+// Must be complete and runnable
+```
+
+```javascript JavaScript
+// This is NOT tested (no test=true marker)
+const result = await someFunction();
+// Incomplete or conceptual examples
+```
+```
+
+**Running tests**:
+```bash
+node tests/snippet-validation.test.js
+```
+
 ## JSON Schema Maintenance
 
 ### Schema-Documentation Consistency
