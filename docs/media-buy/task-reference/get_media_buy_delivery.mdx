@@ -74,7 +74,10 @@ The message is returned differently in each protocol:
           "spend": "number",
           "clicks": "number",
           "video_completions": "number",
-          "pacing_index": "number"
+          "pacing_index": "number",
+          "pricing_model": "string",
+          "rate": "number",
+          "currency": "string"
         }
       ],
       "daily_breakdown": [
@@ -120,6 +123,9 @@ The message is returned differently in each protocol:
     - **clicks**: Package clicks
     - **video_completions**: Package video completions
     - **pacing_index**: Delivery pace (1.0 = on track, &lt;1.0 = behind, &gt;1.0 = ahead)
+    - **pricing_model**: The pricing model used for this package (e.g., `"cpm"`, `"cpcv"`, `"cpp"`, `"cpc"`, `"cpv"`, `"vcpm"`, `"flat_rate"`). This indicates how the package is billed and which metrics are most relevant for optimization. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) for details on each model.
+    - **rate**: The pricing rate for this package in the specified currency. For fixed-rate pricing, this is the agreed rate (e.g., CPM rate of `12.50` means $12.50 per 1,000 impressions). For auction-based pricing, this represents the effective rate based on actual delivery. The rate helps calculate expected delivery and compare performance across different pricing models.
+    - **currency**: ISO 4217 currency code (e.g., `"USD"`, `"EUR"`, `"GBP"`) for this specific package's pricing. This indicates the currency in which the `rate` and `spend` values are denominated. Different packages within the same media buy can use different currencies when supported by the publisher.
   - **daily_breakdown**: Day-by-day delivery
     - **date**: Date (YYYY-MM-DD)
     - **impressions**: Daily impressions
@@ -176,7 +182,10 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
           "spend": 22500,
           "clicks": 0,
           "video_completions": 525000,
-          "pacing_index": 0.95
+          "pacing_index": 0.95,
+          "pricing_model": "cpcv",
+          "rate": 0.03,
+          "currency": "USD"
         }
       ]
     }
@@ -262,7 +271,10 @@ A2A returns results as artifacts:
                     "spend": 22500,
                     "clicks": 0,
                     "video_completions": 525000,
-                    "pacing_index": 0.95
+                    "pacing_index": 0.95,
+                    "pricing_model": "cpcv",
+                    "rate": 0.03,
+                    "currency": "USD"
                   }
                 ]
               }
@@ -330,14 +342,20 @@ A2A returns results as artifacts:
           "spend": 11250.00,
           "clicks": 500,
           "video_completions": 175000,
-          "pacing_index": 0.93
+          "pacing_index": 0.93,
+          "pricing_model": "cpcv",
+          "rate": 0.0643,
+          "currency": "USD"
         },
         {
           "package_id": "pkg_audio_drive_ca_ny",
           "impressions": 200000,
           "spend": 5625.00,
           "clicks": 400,
-          "pacing_index": 0.88
+          "pacing_index": 0.88,
+          "pricing_model": "cpm",
+          "rate": 28.125,
+          "currency": "USD"
         }
       ],
       "daily_breakdown": [
@@ -410,7 +428,10 @@ A2A returns results as artifacts:
           "spend": 11250.00,
           "clicks": 500,
           "video_completions": 175000,
-          "pacing_index": 0.93
+          "pacing_index": 0.93,
+          "pricing_model": "cpcv",
+          "rate": 0.0643,
+          "currency": "USD"
         }
       ],
       "daily_breakdown": []
@@ -433,7 +454,10 @@ A2A returns results as artifacts:
           "spend": 5625.00,
           "clicks": 100,
           "video_completions": 56250,
-          "pacing_index": 0.75
+          "pacing_index": 0.75,
+          "pricing_model": "cpm",
+          "rate": 45.00,
+          "currency": "USD"
         }
       ],
       "daily_breakdown": []
@@ -456,7 +480,10 @@ A2A returns results as artifacts:
           "spend": 10000.00,
           "clicks": 400,
           "video_completions": 110000,
-          "pacing_index": 1.05
+          "pacing_index": 1.05,
+          "pricing_model": "cpm",
+          "rate": 33.33,
+          "currency": "USD"
         }
       ],
       "daily_breakdown": []
