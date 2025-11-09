@@ -128,7 +128,6 @@ from adcp import ADCPMultiAgentClient
 ```
 
 </CodeGroup>
-```
 
 **Running tests**:
 ```bash
