@@ -5,21 +5,18 @@ sidebar_position: 3
 
 # create_media_buy
 
-Create a media buy from selected packages. This task handles the complete workflow including validation, approval if needed, and campaign creation.
+Create a media buy from selected products. Handles validation, optional approval workflows, and campaign creation.
 
-**Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
+**Response Time**: Instant to days (status: `completed`, `working` < 120s, or `submitted` for manual review)
 
-**Pricing & Currency**: Each package specifies its own `pricing_option_id`, which determines currency, pricing model (CPM, CPCV, CPP, etc.), and rates. Packages can use different currencies when sellers support it—sellers validate and reject incompatible combinations. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) for details.
+**Format Specification Required**: Each package must specify creative formats for placeholder creation and asset requirements.
 
-**Format Specification Required**: Each package must specify the creative formats that will be used. This enables placeholder creation in ad servers and ensures both parties have clear expectations for creative asset requirements.
-
-
-**Request Schema**: [/schemas/v1/media-buy/create-media-buy-request.json](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
-**Response Schema**: [/schemas/v1/media-buy/create-media-buy-response.json](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-response.json)
+**Request Schema**: [`/schemas/v1/media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
+**Response Schema**: [`/schemas/v1/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-response.json)
 
 ## Quick Start
 
-Here's how to create a media buy from a discovered product:
+Create a media buy from a discovered product:
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
@@ -51,7 +48,7 @@ const discovery = await agent.getProducts({
   }
 });
 
-// Then create a media buy with the first product
+// Create media buy with first product
 const product = discovery.products[0];
 const mediaBuy = await agent.createMediaBuy({
   buyer_ref: 'nike-q1-2024',
@@ -100,7 +97,7 @@ discovery = agent.get_products(
     }
 )
 
-# Then create a media buy with the first product
+# Create media buy with first product
 product = discovery['products'][0]
 media_buy = agent.create_media_buy(
     buyer_ref='nike-q1-2024',
@@ -129,128 +126,54 @@ print(f"Media buy created: {media_buy['media_buy_id']}")
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buyer_ref` | string | Yes | Buyer's reference identifier for this media buy |
-| `packages` | Package[] | Yes | Array of package configurations (see Package Object below) |
-| `brand_manifest` | BrandManifestRef | Yes | Brand information manifest serving as the namespace and identity for this media buy. Provides brand context, assets, and product catalog. Can be provided as an inline object or URL reference to a hosted manifest. Can be cached and reused across multiple requests. See [Brand Manifest](/docs/creative/brand-manifest) for details. |
-| `promoted_products` | PromotedProducts | No | Products or offerings being promoted in this media buy. Useful for campaign-level reporting, policy compliance, and publisher understanding of what's being advertised. Selects from brand manifest's product catalog using SKUs, tags, categories, or natural language queries. |
-| `po_number` | string | No | Purchase order number for tracking |
-| `start_time` | string | Yes | Campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
-| `end_time` | string | Yes | Campaign end date/time in ISO 8601 format (UTC unless timezone specified) |
-| `reporting_webhook` | ReportingWebhook | No | Optional webhook configuration for automated reporting delivery (see Reporting Webhook Object below) |
+| `buyer_ref` | string | Yes | Buyer's reference identifier |
+| `packages` | Package[] | Yes | Package configurations (see below) |
+| `brand_manifest` | BrandManifest | Yes | Brand information. See [Brand Manifest](/docs/creative/brand-manifest) |
+| `promoted_products` | PromotedProducts | No | Products being promoted (for reporting/policy compliance) |
+| `po_number` | string | No | Purchase order number |
+| `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
+| `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
+| `reporting_webhook` | ReportingWebhook | No | Optional webhook for automated reporting delivery |
 
 ### Package Object
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buyer_ref` | string | Yes | Buyer's reference identifier for this package |
-| `product_id` | string | Yes | Product ID for this package |
-| `pricing_option_id` | string | Yes | Pricing option ID from the product's `pricing_options` array - specifies pricing model and currency for this package. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) for details. |
-| `format_ids` | FormatID[] | Yes | Array of structured format ID objects that will be used for this package - must be supported by the product |
-| `budget` | number | Yes | Budget allocation for this package in the currency specified by the pricing option |
-| `pacing` | string | No | Pacing strategy: `"even"` (default), `"asap"`, or `"front_loaded"` |
-| `bid_price` | number | No | Bid price for auction-based pricing options (required when `pricing_option.is_fixed` is false) |
-| `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria for this package (see Targeting Overlay Object below) |
-| `creative_ids` | string[] | No | Creative IDs to assign to this package at creation time (references existing library creatives) |
-| `creatives` | CreativeAsset[] | No | Full creative objects to upload and assign to this package at creation time (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives. Max 100 per package. |
+| `buyer_ref` | string | Yes | Buyer's package reference |
+| `product_id` | string | Yes | Product ID from discovery |
+| `pricing_option_id` | string | Yes | Pricing option from product. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) |
+| `format_ids` | FormatID[] | Yes | Creative formats to use (must be supported by product) |
+| `budget` | number | Yes | Budget in pricing option's currency |
+| `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
+| `bid_price` | number | No | Bid price for auction products |
+| `targeting_overlay` | TargetingOverlay | No | Additional targeting (geographic restrictions, frequency caps). See [Targeting](/docs/media-buy/advanced-topics/targeting) |
+| `creative_ids` | string[] | No | Existing creative IDs to assign |
+| `creatives` | CreativeAsset[] | No | Upload and assign new creatives (max 100 per package) |
 
-### Targeting Overlay Object
+## Response
 
-**Note**: Targeting overlays should be rare. Most targeting should be expressed in your brief and handled by the publisher through product selection. Use overlays only for geographic restrictions (RCT testing, regulatory compliance) or frequency capping.
+Returns a media buy with status indicating next steps:
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `geo_country_any_of` | string[] | No | Restrict delivery to specific countries (ISO codes). Use for regulatory compliance or RCT testing. |
-| `geo_region_any_of` | string[] | No | Restrict delivery to specific regions/states. Use for regulatory compliance or RCT testing. |
-| `geo_metro_any_of` | string[] | No | Restrict delivery to specific metro areas (DMA codes). Use for regulatory compliance or RCT testing. |
-| `geo_postal_code_any_of` | string[] | No | Restrict delivery to specific postal/ZIP codes. Use for regulatory compliance or RCT testing. |
-| `frequency_cap` | FrequencyCap | No | Frequency capping settings (see Frequency Cap Object below) |
+| Field | Description |
+|-------|-------------|
+| `media_buy_id` | Unique identifier for this media buy |
+| `status` | `"completed"`, `"working"`, or `"submitted"` |
+| `packages` | Array of created packages with IDs and statuses |
+| `message` | Human-readable status description |
 
-### Frequency Cap Object
+**Status meanings:**
+- **`completed`**: Media buy is active and ready
+- **`working`**: Processing asynchronously (< 120 seconds expected)
+- **`submitted`**: Requires manual approval (hours to days)
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `suppress_minutes` | number | Yes | Minutes to suppress after impression (applied at package level) |
-
-### Reporting Webhook Object
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `url` | string | Yes | Webhook endpoint URL for reporting notifications |
-| `auth_type` | string | Yes | Authentication type: `"bearer"`, `"basic"`, or `"none"` |
-| `auth_token` | string | No* | Authentication token or credentials (required unless auth_type is "none") |
-| `reporting_frequency` | string | Yes | Reporting frequency: `"hourly"`, `"daily"`, or `"monthly"`. Must be supported by all products in the media buy. |
-| `requested_metrics` | string[] | No | Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included. Must be subset of product's `available_metrics`. |
-
-**Publisher Commitment**: When a reporting webhook is configured, the publisher commits to sending **(campaign_duration / reporting_frequency) + 1** webhook notifications:
-- One notification per frequency period during the campaign
-- One final notification when the campaign completes
-- If reporting data is delayed beyond the product's `expected_delay_minutes`, a notification with `"delayed"` status will be sent to avoid appearing as a missed notification
-
-**Timezone Considerations**: For daily and monthly frequencies, the publisher's reporting timezone (specified in `reporting_capabilities.timezone`) determines when periods begin/end. Ensure alignment between your systems and the publisher's timezone to avoid confusion about reporting period boundaries.
-
-## Response (Message)
-
-The response includes a human-readable message that:
-- Confirms the media buy was created with budget and targeting details
-- Explains next steps and deadlines
-- Describes any approval requirements
-- Provides implementation details and status updates
-
-The message is returned differently in each protocol:
-- **MCP**: Returned as a `message` field in the JSON response
-- **A2A**: Returned as a text part in the artifact
-
-## Response (Payload)
-
-```json
-{
-  "media_buy_id": "string",
-  "buyer_ref": "string",
-  "creative_deadline": "string",
-  "packages": [
-    {
-      "package_id": "string",
-      "buyer_ref": "string"
-    }
-  ]
-}
-```
-
-### Field Descriptions
-
-- **media_buy_id**: Publisher's unique identifier for the created media buy
-- **buyer_ref**: Buyer's reference identifier for this media buy
-- **creative_deadline**: ISO 8601 timestamp for creative upload deadline
-- **packages**: Array of created packages
-  - **package_id**: Publisher's unique identifier for the package
-  - **buyer_ref**: Buyer's reference identifier for the package
-
-## Protocol Integration
-
-The `create_media_buy` task works identically across all protocols (MCP, A2A, REST). The task parameters and response payload are the same - only the transport wrapper differs.
-
-**Quick reference:**
-- **MCP**: Use `call_tool("create_media_buy", arguments)`
-- **A2A**: Use natural language or explicit skill invocation with `parameters`
-- **REST**: POST to `/tasks/create_media_buy` with JSON body
-
-**Asynchronous Operations:**
-- `create_media_buy` may complete instantly, take up to 120 seconds, or require manual approval (hours/days)
-- Response includes `status`: `completed`, `working`, or `submitted`
-- For long-running operations, see [Task Management](/docs/protocols/task-management) for polling, webhooks, and streaming patterns
-
-The Quick Start examples above use our multi-agent client which handles protocol details automatically. For protocol-specific implementation details, see:
-- [MCP Integration Guide](/docs/protocols/mcp-guide)
-- [A2A Integration Guide](/docs/protocols/a2a-guide)
-- [Protocol Comparison](/docs/protocols/protocol-comparison)
+See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-response.json) for complete field list.
 
 ## Common Scenarios
 
 ### Multi-Package Campaign
 
-Create a campaign with multiple packages across different products:
-
-**JavaScript:**
+<Tabs groupId="language">
+<TabItem value="javascript" label="JavaScript">
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -267,7 +190,7 @@ const client = new ADCPMultiAgentClient([{
 
 const agent = client.agent('test-agent');
 
-// First, discover products
+// Discover multiple products
 const discovery = await agent.getProducts({
   filters: {
     format_types: ['video', 'audio'],
@@ -283,7 +206,7 @@ const audioProduct = discovery.products.find(p =>
   p.format_ids.some(f => f.id.includes('audio'))
 );
 
-// Create split-budget campaign
+// Create campaign with multiple packages
 const mediaBuy = await agent.createMediaBuy({
   buyer_ref: `multi-package-${Date.now()}`,
   brand_manifest: {
@@ -311,10 +234,10 @@ const mediaBuy = await agent.createMediaBuy({
 });
 
 console.log(`Created ${mediaBuy.packages.length}-package media buy`);
-console.log(`Total budget: $50,000`);
 ```
 
-**Python:**
+</TabItem>
+<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -331,7 +254,7 @@ client = ADCPMultiAgentClient([{
 
 agent = client.agent('test-agent')
 
-# Discover products
+# Discover multiple products
 discovery = agent.get_products(
     filters={
         'format_types': ['video', 'audio'],
@@ -341,13 +264,14 @@ discovery = agent.get_products(
 
 # Find video and audio products
 video_product = next((p for p in discovery['products']
-                     if any('video' in f['id'] for f in p['format_ids'])), None)
+    if any('video' in f['id'] for f in p['format_ids'])), None)
 audio_product = next((p for p in discovery['products']
-                     if any('audio' in f['id'] for f in p['format_ids'])), None)
+    if any('audio' in f['id'] for f in p['format_ids'])), None)
 
-# Create split-budget campaign
+# Create campaign with multiple packages
+import time
 media_buy = agent.create_media_buy(
-    buyer_ref=f'multi-package-{int(time.time())}',
+    buyer_ref=f"multi-package-{int(time.time() * 1000)}",
     brand_manifest={
         'name': 'Nike',
         'url': 'https://nike.com'
@@ -373,14 +297,15 @@ media_buy = agent.create_media_buy(
 )
 
 print(f"Created {len(media_buy['packages'])}-package media buy")
-print("Total budget: $50,000")
 ```
+
+</TabItem>
+</Tabs>
 
 ### Geographic Targeting
 
-Create a media buy with geographic targeting overlay:
-
-**JavaScript:**
+<Tabs groupId="language">
+<TabItem value="javascript" label="JavaScript">
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -397,14 +322,17 @@ const client = new ADCPMultiAgentClient([{
 
 const agent = client.agent('test-agent');
 
-// Discover products
 const discovery = await agent.getProducts({
-  brief: 'Video advertising for athletic footwear'
+  brief: 'Video campaign for US launch',
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  }
 });
 
 const product = discovery.products[0];
 
-// Create media buy with geographic targeting
+// Campaign with geographic restrictions
 const mediaBuy = await agent.createMediaBuy({
   buyer_ref: `geo-targeted-${Date.now()}`,
   brand_manifest: {
@@ -412,32 +340,84 @@ const mediaBuy = await agent.createMediaBuy({
     url: 'https://nike.com'
   },
   packages: [{
-    buyer_ref: 'california-only',
+    buyer_ref: 'us-package',
     product_id: product.product_id,
     pricing_option_id: product.pricing_options[0].pricing_option_id,
-    format_ids: [product.format_ids[0]],
-    budget: 15000,
+    format_ids: product.format_ids,
+    budget: 50000,
     targeting_overlay: {
       geo_country_any_of: ['US'],
-      geo_region_any_of: ['CA'],
-      frequency_cap: {
-        suppress_minutes: 60
-      }
+      geo_region_any_of: ['CA', 'NY', 'TX']
     }
   }],
   start_time: 'asap',
   end_time: '2024-12-31T23:59:59Z'
 });
 
-console.log('Created geographically-targeted media buy');
-console.log(`Targeting: ${mediaBuy.packages[0].targeting_overlay.geo_region_any_of.join(', ')}`);
+console.log(`Created geo-targeted media buy: ${mediaBuy.media_buy_id}`);
 ```
 
-### Webhook Reporting Setup
+</TabItem>
+<TabItem value="python" label="Python">
 
-Configure automated reporting via webhook:
+```python test=true
+from adcp import ADCPMultiAgentClient
+import time
 
-**JavaScript:**
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+    }
+}])
+
+agent = client.agent('test-agent')
+
+discovery = agent.get_products(
+    brief='Video campaign for US launch',
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
+    }
+)
+
+product = discovery['products'][0]
+
+# Campaign with geographic restrictions
+media_buy = agent.create_media_buy(
+    buyer_ref=f"geo-targeted-{int(time.time() * 1000)}",
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
+    },
+    packages=[{
+        'buyer_ref': 'us-package',
+        'product_id': product['product_id'],
+        'pricing_option_id': product['pricing_options'][0]['pricing_option_id'],
+        'format_ids': product['format_ids'],
+        'budget': 50000,
+        'targeting_overlay': {
+            'geo_country_any_of': ['US'],
+            'geo_region_any_of': ['CA', 'NY', 'TX']
+        }
+    }],
+    start_time='asap',
+    end_time='2024-12-31T23:59:59Z'
+)
+
+print(f"Created geo-targeted media buy: {media_buy['media_buy_id']}")
+```
+
+</TabItem>
+</Tabs>
+
+### Campaign with Inline Creatives
+
+<Tabs groupId="language">
+<TabItem value="javascript" label="JavaScript">
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -454,913 +434,181 @@ const client = new ADCPMultiAgentClient([{
 
 const agent = client.agent('test-agent');
 
-// Discover products that support webhook reporting
 const discovery = await agent.getProducts({
-  filters: {
-    format_types: ['video']
+  brief: 'Display campaign',
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
   }
 });
 
-const product = discovery.products.find(p =>
-  p.reporting_capabilities?.supports_webhooks
-);
+const product = discovery.products[0];
 
-if (product) {
-  const mediaBuy = await agent.createMediaBuy({
-    buyer_ref: `with-reporting-${Date.now()}`,
-    brand_manifest: {
-      name: 'Nike',
-      url: 'https://nike.com'
+// Create media buy with creatives in single operation
+const mediaBuy = await agent.createMediaBuy({
+  buyer_ref: `inline-creative-${Date.now()}`,
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  },
+  packages: [{
+    buyer_ref: 'display-package',
+    product_id: product.product_id,
+    pricing_option_id: product.pricing_options[0].pricing_option_id,
+    format_ids: product.format_ids,
+    budget: 15000,
+    creatives: [{
+      creative_id: 'summer-2024-display',
+      format_id: product.format_ids[0],
+      assets: [{
+        asset_id: 'hero-image',
+        asset_type: 'image',
+        url: 'https://nike.com/creatives/summer-2024.jpg'
+      }]
+    }]
+  }],
+  start_time: 'asap',
+  end_time: '2024-12-31T23:59:59Z'
+});
+
+console.log(`Media buy created with inline creatives: ${mediaBuy.media_buy_id}`);
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python test=true
+from adcp import ADCPMultiAgentClient
+import time
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+    }
+}])
+
+agent = client.agent('test-agent')
+
+discovery = agent.get_products(
+    brief='Display campaign',
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
+    }
+)
+
+product = discovery['products'][0]
+
+# Create media buy with creatives in single operation
+media_buy = agent.create_media_buy(
+    buyer_ref=f"inline-creative-{int(time.time() * 1000)}",
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
     },
-    packages: [{
-      buyer_ref: 'package-1',
-      product_id: product.product_id,
-      pricing_option_id: product.pricing_options[0].pricing_option_id,
-      format_ids: [product.format_ids[0]],
-      budget: 10000
+    packages=[{
+        'buyer_ref': 'display-package',
+        'product_id': product['product_id'],
+        'pricing_option_id': product['pricing_options'][0]['pricing_option_id'],
+        'format_ids': product['format_ids'],
+        'budget': 15000,
+        'creatives': [{
+            'creative_id': 'summer-2024-display',
+            'format_id': product['format_ids'][0],
+            'assets': [{
+                'asset_id': 'hero-image',
+                'asset_type': 'image',
+                'url': 'https://nike.com/creatives/summer-2024.jpg'
+            }]
+        }]
     }],
-    start_time: 'asap',
-    end_time: '2024-12-31T23:59:59Z',
-    reporting_webhook: {
-      url: 'https://example.com/webhooks/reporting',
-      auth_type: 'bearer',
-      auth_token: 'test-token',
-      reporting_frequency: product.reporting_capabilities.available_reporting_frequencies[0]
-    }
-  });
+    start_time='asap',
+    end_time='2024-12-31T23:59:59Z'
+)
 
-  console.log(`Created media buy with ${mediaBuy.reporting_webhook.reporting_frequency} reporting`);
-} else {
-  console.log('No products support webhook reporting');
-}
+print(f"Media buy created with inline creatives: {media_buy['media_buy_id']}")
 ```
 
-### Error Handling
+</TabItem>
+</Tabs>
 
-Handle media buy creation errors gracefully:
+## Async Workflows
 
-**JavaScript:**
+### Handling `working` Status
 
-```javascript test=true
-import { ADCPMultiAgentClient } from '@adcp/client';
+When a media buy returns `status: "working"`, check status periodically:
 
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
-
-try {
-  // Attempt to create media buy with invalid product
-  const mediaBuy = await agent.createMediaBuy({
-    buyer_ref: `test-${Date.now()}`,
-    brand_manifest: {
-      name: 'Nike',
-      url: 'https://nike.com'
-    },
-    packages: [{
-      buyer_ref: 'invalid-package',
-      product_id: 'nonexistent-product',
-      pricing_option_id: 'invalid',
-      format_ids: [],
-      budget: 10000
-    }],
-    start_time: 'asap',
-    end_time: '2024-12-31T23:59:59Z'
-  });
-
-  console.log('Unexpected success');
-} catch (error) {
-  console.log(`Error creating media buy: ${error.message}`);
-  if (error.code === 'PRODUCT_NOT_FOUND') {
-    console.log('Product not found - check product_id');
-  } else if (error.code === 'INVALID_FORMAT') {
-    console.log('Format not supported - check format_ids');
-  }
-}
-```
-
-### Human-in-the-Loop Example (Conceptual)
-
-This example shows polling, but MCP implementations may also support webhooks or streaming for real-time updates.
-
-**Initial Request:**
-```json
-{
-  "tool": "create_media_buy",
-  "arguments": {
-    "buyer_ref": "large_campaign_2024",
-    "packages": [...],
-    "promoted_offering": "High-value campaign requiring approval",
-    "po_number": "PO-2024-LARGE-001",
-    "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-06-30T23:59:59Z"
-  }
-}
-```
-
-**Response (Asynchronous):**
-```json
-{
-  "task_id": "task_456",
-  "status": "working",
-  "message": "Large budget requires sales team approval. Expected review time: 2-4 hours.",
-  "context_id": "ctx-mb-456"
-}
-```
-
-**Client checks status (via polling in this example):**
-```json
-{
-  "tool": "create_media_buy_status",
-  "arguments": {
-    "context_id": "ctx-mb-456"
-  }
-}
-```
-
-**Status Response (Still pending):**
-```json
-{
-  "status": "working",
-  "message": "Awaiting manual approval. Sales team reviewing. 1 of 2 approvals received.",
-  "context_id": "ctx-mb-456",
-  "responsible_party": "publisher",
-  "estimated_completion": "2024-01-15T16:00:00Z"
-}
-```
-
-**Status Response (Approved):**
-```json
-{
-  "status": "completed",
-  "message": "Media buy approved and created. Upload creatives by Jan 30.",
-  "media_buy_id": "mb_789456",
-  "buyer_ref": "large_campaign_2024",
-  "creative_deadline": "2024-01-30T23:59:59Z",
-  "packages": [...]
-}
-```
-
-### A2A with Manual Approval (SSE Example)
-
-A2A can use Server-Sent Events for real-time streaming or webhooks for push notifications.
-
-**Initial Request with SSE:**
-```json
-{
-  "skill": "create_media_buy",
-  "input": {
-    "buyer_ref": "large_campaign_2024",
-    "packages": [...],
-    "promoted_offering": "High-value campaign requiring approval",
-    "po_number": "PO-2024-LARGE-001",
-    "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-06-30T23:59:59Z"
-  }
-}
-```
-
-**Initial Response:**
-```json
-{
-  "taskId": "task-mb-large-001",
-  "contextId": "ctx-conversation-xyz",
-  "status": { 
-    "state": "working",
-    "message": "Large budget requires sales team approval"
-  }
-}
-```
-
-**SSE Updates (Human approval process):**
-```
-data: {"message": "Validating campaign requirements..."}
-data: {"message": "Budget exceeds auto-approval threshold. Routing to sales team..."}
-data: {"message": "Sales team notified. Expected review time: 2-4 hours"}
-data: {"message": "First approval received from regional manager"}
-data: {"message": "Second approval received from finance team"}
-data: {"status": {"state": "completed"}, "artifacts": [{
-  "artifactId": "artifact-mb-large-xyz",
-  "name": "media_buy_confirmation",
-  "parts": [
-    {"kind": "text", "text": "Media buy approved and created successfully. $500,000 campaign scheduled Feb 1 - Jun 30. Upload creatives by Jan 30."},
-    {"kind": "data", "data": {
-      "media_buy_id": "mb_789456",
-      "buyer_ref": "large_campaign_2024",
-      "creative_deadline": "2024-01-30T23:59:59Z",
-      "packages": [...]
-    }}
-  ]
-}]}
-```
-
-### A2A with Webhooks (Long-Running Task)
-
-**Initial Request with Webhook Configuration:**
-```json
-{
-  "skill": "create_media_buy",
-  "input": {
-    "buyer_ref": "large_campaign_2024",
-    "packages": [...],
-    "promoted_offering": "High-value campaign requiring approval",
-    "po_number": "PO-2024-LARGE-001",
-    "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-06-30T23:59:59Z"
-  },
-  "pushNotificationConfig": {
-    "url": "https://buyer.example.com/webhooks/adcp",
-    "authType": "bearer",
-    "authToken": "secret-token-xyz"
-  }
-}
-```
-
-**Initial Response:**
-```json
-{
-  "taskId": "task-mb-webhook-001",
-  "contextId": "ctx-conversation-xyz",
-  "status": { 
-    "state": "working",
-    "message": "Task processing. Updates will be sent to webhook."
-  }
-}
-```
-
-**Webhook Notifications (sent to buyer's endpoint):**
-```json
-// First webhook
-{
-  "taskId": "task-mb-webhook-001",
-  "contextId": "ctx-conversation-xyz",
-  "status": {"state": "working"},
-  "message": "Budget exceeds threshold. Awaiting sales approval."
-}
-
-// Final webhook when complete
-{
-  "taskId": "task-mb-webhook-001",
-  "contextId": "ctx-conversation-xyz",
-  "status": {"state": "completed"},
-  "artifacts": [{
-    "artifactId": "artifact-mb-webhook-xyz",
-    "name": "media_buy_confirmation",
-    "parts": [
-      {"kind": "data", "data": {
-        "media_buy_id": "mb_789456",
-        "buyer_ref": "large_campaign_2024",
-        "creative_deadline": "2024-01-30T23:59:59Z",
-        "packages": [...]
-      }}
-    ]
-  }]
-}
-```
-
-### A2A with Input Required
-
-If the system needs clarification (e.g., ambiguous targeting):
-
-**SSE Update requesting input:**
-```
-data: {"status": {"state": "input-required", "message": "Multiple interpretations found for 'sports fans'. Please specify: 1) All sports enthusiasts, 2) NFL fans specifically, 3) Live sports event viewers"}}
-```
-
-**Client provides clarification:**
-```json
-{
-  "referenceTaskIds": ["task-mb-large-001"],
-  "message": "Target all sports enthusiasts including NFL, NBA, and soccer fans"
-}
-```
-
-**Task resumes with clarification:**
-```
-data: {"status": {"state": "working", "message": "Applying targeting for all sports enthusiasts..."}}
-data: {"status": {"state": "completed"}, "artifacts": [...]}
-```
-
-## Scenarios
-
-### Media Buy with Inline Creatives (Single Atomic Operation)
-
-Create a media buy and upload creatives in a single API call. This eliminates the need for a separate `sync_creatives` call and ensures creatives and campaign are created together atomically.
-
-```json
-{
-  "buyer_ref": "nike_q1_campaign_2024",
-  "brand_manifest": {
-    "brand": {
-      "name": "Nike",
-      "website": "https://nike.com"
-    },
-    "products": [
-      {
-        "sku": "AIR_MAX_2024",
-        "name": "Air Max 2024",
-        "category": "athletic footwear",
-        "price": {"amount": 150, "currency": "USD"}
-      }
-    ]
-  },
-  "promoted_products": {
-    "skus": ["AIR_MAX_2024"]
-  },
-  "packages": [
-    {
-      "buyer_ref": "nike_ctv_package",
-      "product_id": "ctv_sports_premium",
-      "format_ids": [
-        {
-          "agent_url": "https://creatives.adcontextprotocol.org",
-          "id": "video_standard_30s"
-        }
-      ],
-      "budget": 50000,
-      "pricing_option_id": "cpm-fixed-sports",
-      "creatives": [
-        {
-          "creative_id": "hero_video_30s",
-          "name": "Air Max Hero Video",
-          "format_id": {
-            "agent_url": "https://creative.adcontextprotocol.org",
-            "id": "video_standard_30s"
-          },
-          "assets": {
-            "video": {
-              "asset_type": "video",
-              "url": "https://cdn.nike.com/hero-30s.mp4",
-              "width": 1920,
-              "height": 1080,
-              "duration_ms": 30000
-            }
-          },
-          "tags": ["q1_2024", "hero"]
-        }
-      ]
-    },
-    {
-      "buyer_ref": "nike_display_package",
-      "product_id": "display_premium",
-      "format_ids": [
-        {
-          "agent_url": "https://creatives.adcontextprotocol.org",
-          "id": "premium_bespoke_display"
-        }
-      ],
-      "budget": 30000,
-      "pricing_option_id": "cpm-fixed-display",
-      "creatives": [
-        {
-          "creative_id": "holiday_hero_display",
-          "name": "Air Max Holiday Display (Generative)",
-          "format_id": {
-            "agent_url": "https://publisher.com/.well-known/adcp/sales",
-            "id": "premium_bespoke_display"
-          },
-          "assets": {
-            "promoted_offerings": {
-              "asset_type": "promoted_offerings",
-              "url": "https://nike.com/air-max",
-              "colors": {
-                "primary": "#111111",
-                "secondary": "#FFFFFF"
-              }
-            },
-            "generation_prompt": {
-              "asset_type": "text",
-              "content": "Create a bold, athletic display ad emphasizing innovation and performance. Target runners aged 25-45."
-            }
-          },
-          "tags": ["q1_2024", "generative"]
-        }
-      ]
-    }
-  ],
-  "start_time": "asap",
-  "end_time": "2024-03-31T23:59:59Z"
-}
-```
-
-**Benefits:**
-- **Single API call** - Creates media buy and uploads both static and generative creatives atomically
-- **Simplified workflow** - No need to manage creative library separately for new campaigns
-- **Atomic operation** - If media buy fails, creatives aren't orphaned in library
-- **Mixed creative types** - Combine static assets (video) with generative formats (display) in same request
-- **Brand context** - Generative creatives leverage brand_manifest for creation
-
-**Note:** Creatives are still added to the library for reuse. Use `creative_ids` to reference existing library creatives, or `creatives` to upload new ones.
-
-### Standard Media Buy Request
-```json
-{
-  "buyer_ref": "purina_pet_campaign_q1",
-  "packages": [
-    {
-      "buyer_ref": "purina_ctv_package",
-      "product_id": "ctv_prime_time",
-      "format_ids": [
-        {
-          "agent_url": "https://creatives.adcontextprotocol.org",
-          "id": "video_standard_30s"
-        }
-      ],
-      "budget": 30000,
-      "pacing": "even",
-      "pricing_option_id": "cpm-fixed-ctv",
-      "targeting_overlay": {
-        "geo_country_any_of": ["US"],
-        "geo_region_any_of": ["CA", "NY"],
-        "axe_include_segment": "x7h4n",
-        "signals": ["auto_intenders_q1_2025"],
-        "frequency_cap": {
-          "suppress_minutes": 30
-        }
-      }
-    },
-    {
-      "buyer_ref": "purina_audio_package",
-      "product_id": "audio_drive_time",
-      "format_ids": [
-        {
-          "agent_url": "https://creatives.adcontextprotocol.org",
-          "id": "audio_standard_30s"
-        }
-      ],
-      "budget": 20000,
-      "pricing_option_id": "cpm-fixed-audio",
-      "targeting_overlay": {
-        "geo_country_any_of": ["US"],
-        "geo_region_any_of": ["CA", "NY"]
-      }
-    }
-  ],
-  "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs, promoting the new salmon and rice formula for sensitive skin and stomachs",
-  "po_number": "PO-2024-Q1-0123",
-  "start_time": "2024-02-01T00:00:00Z",
-  "end_time": "2024-02-29T23:59:59Z"
-}
-```
-
-### Retail Media Buy Request
-```json
-{
-  "buyer_ref": "purina_albertsons_retail_q1",
-  "packages": [
-    {
-      "buyer_ref": "purina_albertsons_conquest",
-      "product_id": "albertsons_competitive_conquest",
-      "format_ids": [
-        {
-          "agent_url": "https://creatives.adcontextprotocol.org",
-          "id": "display_300x250"
-        },
-        {
-          "agent_url": "https://creatives.adcontextprotocol.org",
-          "id": "display_728x90"
-        }
-      ],
-      "budget": 75000,
-      "pacing": "even",
-      "pricing_option_id": "cpm-fixed-retail",
-      "targeting_overlay": {
-        "geo_country_any_of": ["US"],
-        "geo_region_any_of": ["CA", "AZ", "NV"],
-        "axe_include_segment": "x3f9q",
-        "axe_exclude_segment": "x2v8r",
-        "frequency_cap": {
-          "suppress_minutes": 60
-        }
-      }
-    }
-  ],
-  "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs",
-  "po_number": "PO-2024-RETAIL-0456",
-  "start_time": "2024-02-01T00:00:00Z",
-  "end_time": "2024-03-31T23:59:59Z"
-}
-```
-
-### Response - Success
-**Message**: "Successfully created your $50,000 media buy targeting pet owners in CA and NY. The campaign will reach 2.5M users through Connected TV and Audio channels. Please upload creative assets by January 30 to activate the campaign. Campaign scheduled to run Feb 1-29."
-
-**Payload**:
-```json
-{
-  "media_buy_id": "gam_1234567890",
-  "buyer_ref": "purina_pet_campaign_q1",
-  "creative_deadline": "2024-01-30T23:59:59Z",
-  "packages": [
-    {
-      "package_id": "gam_pkg_001",
-      "buyer_ref": "purina_ctv_package"
-    },
-    {
-      "package_id": "gam_pkg_002",
-      "buyer_ref": "purina_audio_package"
-    }
-  ]
-}
-```
-
-### Response - Retail Media Success
-**Message**: "Successfully created your $75,000 retail media campaign targeting competitive dog food buyers. The campaign will reach 450K Albertsons shoppers with deterministic purchase data. Creative assets must include co-branding and drive to Albertsons.com. Upload by January 30 to activate. Campaign runs Feb 1 - Mar 31."
-
-**Payload**:
-```json
-{
-  "media_buy_id": "albertsons_mb_789012",
-  "buyer_ref": "purina_albertsons_retail_q1",
-  "creative_deadline": "2024-01-30T23:59:59Z",
-  "packages": [
-    {
-      "package_id": "albertsons_pkg_001",
-      "buyer_ref": "purina_albertsons_conquest"
-    }
-  ]
-}
-```
-
-### Response - Pending Manual Approval
-**Message**: "Your $50,000 media buy has been submitted for approval. Due to the campaign size, it requires manual review by our sales team. Expected approval time is 2-4 hours during business hours. You'll receive a notification once approved. Campaign scheduled for Feb 1 - Mar 31."
-
-**Payload**:
-```json
-{
-  "media_buy_id": "mb_789",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "creative_deadline": null,
-  "packages": []
-}
-```
-
-## Platform Behavior
-
-Different advertising platforms handle media buy creation differently:
-
-- **Google Ad Manager (GAM)**: Creates Order with LineItems, requires approval
-- **Kevel**: Creates Campaign with Flights, instant activation
-- **Triton**: Creates Campaign for audio delivery
-
-## Status Values
-
-Both protocols use standard task states:
-
-- `working`: Task is in progress (includes waiting for approvals, processing, etc.)
-- `input-required`: Needs clarification or additional information from client
-- `completed`: Task finished successfully
-- `failed`: Task encountered an error
-- `cancelled`: Task was cancelled
-- `rejected`: Task was rejected (e.g., policy violation)
-
-**Note**: Specific business states (like "awaiting manual approval", "pending creative assets", etc.) are conveyed through the message field, not custom status values. This ensures consistency across protocols.
-
-## Asynchronous Behavior
-
-This operation can be either synchronous or asynchronous depending on the publisher's implementation and the complexity of the request.
-
-### Synchronous Response
-When the operation can be completed immediately (rare), the response includes the created media buy details directly.
-
-### Asynchronous Response
-When the operation requires processing time, the response returns immediately with:
-- A tracking identifier (`context_id` for MCP, `taskId` for A2A)
-- Initial status (`"working"` for both MCP and A2A)
-- Updates can be received via:
-  - **Polling**: Call status endpoints periodically (MCP and A2A)
-  - **Webhooks**: Register callback URLs for push notifications (MCP and A2A)
-  - **Streaming**: Use SSE or WebSockets for real-time updates (MCP and A2A)
-
-## Status Checking
-
-### MCP Status Checking
-
-#### Option 1: Polling (create_media_buy_status)
-
-For MCP implementations using polling, use this endpoint to check the status of an asynchronous media buy creation.
-
-#### Request
-```json
-{
-  "context_id": "ctx-create-mb-456"  // Required - from create_media_buy response
-}
-```
-
-#### Response Examples
-
-**Processing:**
-```json
-{
-  "message": "Media buy creation in progress - validating inventory",
-  "context_id": "ctx-create-mb-456",
-  "status": "working",
-  "progress": {
-    "current_step": "inventory_validation",
-    "completed": 2,
-    "total": 5,
-    "unit_type": "steps",
-    "responsible_party": "system"
-  }
-}
-```
-
-**Completed:**
-```json
-{
-  "message": "Successfully created your $50,000 media buy. Upload creative assets by Jan 30.",
-  "context_id": "ctx-create-mb-456",
-  "status": "completed",
-  "media_buy_id": "gam_1234567890",
-  "buyer_ref": "espn_sports_q1_2024",
-  "creative_deadline": "2024-01-30T23:59:59Z",
-  "packages": [
-    {"package_id": "gam_pkg_001", "buyer_ref": "espn_ctv_sports"},
-    {"package_id": "gam_pkg_002", "buyer_ref": "espn_audio_sports"}
-  ]
-}
-```
-
-**Pending Manual Approval:**
-```json
-{
-  "message": "Media buy requires manual approval. Sales team reviewing campaign.",
-  "context_id": "ctx-create-mb-456",
-  "status": "working",
-  "responsible_party": "publisher",
-  "action_detail": "Sales team reviewing campaign"
-}
-```
-
-#### Option 2: Webhooks (MCP)
-
-Register a callback URL to receive push notifications for long-running operations. Webhooks are ONLY used when the initial response is `submitted`.
-
-**Configuration:**
 ```javascript
-const response = await session.call('create_media_buy',
-  {
-    buyer_ref: "campaign_2024",
-    packages: [...]
-  },
-  {
-    webhook_url: "https://buyer.example.com/webhooks/adcp/create_media_buy/agent_id/op_id",
-    webhook_auth: { type: "bearer", credentials: "bearer-token-xyz" }
-  }
-);
-```
+// If status is "working", poll for completion
+if (mediaBuy.status === 'working') {
+  // Wait a few seconds, then check status
+  await new Promise(resolve => setTimeout(resolve, 5000));
 
-**Response patterns:**
-- **`completed`** - Synchronous success, webhook NOT called (you have the result)
-- **`working`** - Will complete within ~120s, webhook NOT called (wait for response)
-- **`submitted`** - Long-running operation, webhook WILL be called on status changes
-
-**Example webhook flow (only for `submitted` operations):**
-
-Webhook POST for human approval needed:
-```http
-POST /webhooks/adcp/create_media_buy/agent_id/op_id HTTP/1.1
-Host: buyer.example.com
-Authorization: Bearer bearer-token-xyz
-Content-Type: application/json
-
-{
-  "operation_id": "op_id",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "status": "input-required",
-  "message": "Campaign budget $150K requires approval to proceed",
-  "result": {
-    "buyer_ref": "campaign_2024"
-  }
+  // Check status (implementation depends on protocol)
+  // MCP: call get_media_buy or polling endpoint
+  // A2A: status updates via SSE
 }
 ```
 
-**Webhook POST when complete (after approval - full create_media_buy response):**
-```http
-POST /webhooks/adcp/create_media_buy/agent_id/op_id HTTP/1.1
-Host: buyer.example.com
-Authorization: Bearer bearer-token-xyz
-Content-Type: application/json
+### Handling `submitted` Status
 
-{
-  "operation_id": "op_id",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "status": "completed",
-  "result": {
-    "media_buy_id": "mb_12345",
-    "buyer_ref": "campaign_2024",
-    "creative_deadline": "2024-01-30T23:59:59Z",
-    "packages": [
-      {
-        "package_id": "pkg_001",
-        "buyer_ref": "ctv_package"
-      }
-    ]
-  }
+When status is `"submitted"`, manual approval is required (hours to days):
+
+```javascript
+if (mediaBuy.status === 'submitted') {
+  console.log('Media buy submitted for manual review');
+  console.log(`Message: ${mediaBuy.message}`);
+  // Set up webhook or periodic status checks
 }
 ```
 
-Each webhook includes protocol fields plus a `result` object for the task-specific payload of that status. See **[Task Management: Webhook Integration](../../protocols/task-management.mdx#webhook-integration)** for complete details.
+See [Task Management](/docs/protocols/task-management) for protocol-specific async patterns.
 
-### A2A Status Checking
+## Error Handling
 
-A2A supports both SSE streaming and webhooks as shown in the examples above. Choose based on your needs:
-- **SSE**: Best for real-time updates with persistent connection
-- **Webhooks**: Best for long-running tasks or when client may disconnect
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `INVALID_REQUEST` | Missing required fields or invalid values | Check request parameters against schema |
+| `PRODUCT_NOT_FOUND` | Product ID doesn't exist | Verify product_id from discovery |
+| `FORMAT_NOT_SUPPORTED` | Format not supported by product | Check product.format_ids |
+| `POLICY_VIOLATION` | Content policy restriction | Review policy message and adjust |
+| `BUDGET_INSUFFICIENT` | Budget too low for product minimums | Increase budget or choose different product |
 
-### Polling Guidelines (when using polling):
-- First 10 seconds: Every 1-2 seconds
-- Next minute: Every 5-10 seconds
-- After 1 minute: Every 30-60 seconds
-- For manual approval (when message indicates approval needed): Every 5 minutes
+## Format Requirements
 
-### Handling Pending States
-Orchestrators MUST handle pending states as normal operation flow:
+Each package must specify `format_ids` to enable:
+- **Placeholder creation** in ad servers
+- **Clear asset expectations** for creative teams
+- **Format validation** before trafficking
 
-1. Store the context_id for tracking
-2. Monitor for updates via configured method (polling, webhooks, or streaming)
-3. Handle eventual completion, rejection, or manual approval
-
-### Example Pending Operation Flow
-
-```python
-# 1. Create media buy
-response = await mcp.call_tool("create_media_buy", {
-    "buyer_ref": "espn_sports_q1_2024",
-    "packages": [
-        {
-            "buyer_ref": "espn_ctv_sports",
-            "product_id": "sports_ctv_premium",
-            "budget": 30000,
-            "pacing": "even",
-            "pricing_option_id": "cpm-fixed-sports",
-            "targeting_overlay": {
-                "geo_country_any_of": ["US"],
-                "geo_region_any_of": ["CA", "NY"],
-                "axe_include_segment": "x5j7w"
-            }
-        },
-        {
-            "buyer_ref": "espn_audio_sports",
-            "product_id": "audio_sports_talk",
-            "budget": 20000,
-            "pricing_option_id": "cpm-fixed-audio",
-            "targeting_overlay": {
-                "geo_country_any_of": ["US"]
-            }
-        }
-    ],
-    "promoted_offering": "ESPN+ streaming service - exclusive UFC fights and soccer leagues, promoting annual subscription",
-    "po_number": "PO-2024-001",
-    "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-03-31T23:59:59Z"
-})
-
-# Check if async processing is needed
-if response.get("status") == "working":
-    context_id = response["context_id"]
-    
-    # 2. Monitor for completion (polling example shown, but webhooks/streaming may be available)
-    while True:
-        status_response = await mcp.call_tool("create_media_buy_status", {
-            "context_id": context_id
-        })
-        
-        if status_response["status"] == "completed":
-            # Operation completed successfully
-            media_buy_id = status_response["media_buy_id"]
-            break
-        elif status_response["status"] == "failed":
-            # Operation failed
-            handle_error(status_response["error"])
-            break
-        elif status_response["status"] == "working" and "approval" in status_response.get("message", "").lower():
-            # Requires human approval - may take hours/days
-            notify_user_of_pending_approval(status_response)
-            # Continue polling less frequently
-            await sleep(300)  # Check every 5 minutes
-        else:
-            # Still processing
-            await sleep(10)  # Poll every 10 seconds
-```
-
-## Platform Mapping
-
-How media buy creation maps to different platforms:
-
-- **Google Ad Manager**: Creates an Order with LineItems
-- **Kevel**: Creates a Campaign with Flights
-- **Triton Digital**: Creates a Campaign with Flights
-
-## Format Workflow and Placeholder Creatives
-
-### Why Format Specification is Required
-
-When creating a media buy, format specification serves critical purposes:
-
-1. **Placeholder Creation**: Publisher creates placeholder creatives in ad server with correct format specifications
-2. **Validation**: System validates that selected products actually support the requested formats  
-3. **Clear Expectations**: Both parties know exactly what creative formats are needed
-4. **Progress Tracking**: Track which creative assets are missing vs. required
-5. **Technical Setup**: Ad server configuration completed before actual creatives arrive
-
-### Workflow Integration
-
-The complete media buy workflow with format awareness:
-
-```
-1. list_creative_formats -> Get available format specifications
-2. get_products -> Find products (returns format IDs they support)
-3. Validate format compatibility -> Ensure products support desired formats  
-4. create_media_buy -> Specify formats for each package (REQUIRED)
-   └── Publisher creates placeholders in ad server
-   └── Both sides have clear creative requirements
-5. sync_creatives -> Upload actual files matching the specified formats
-6. Campaign activation -> Replace placeholders with real creatives
-```
-
-### Format Validation
-
-Publishers MUST validate that:
-- All specified formats are supported by the product in each package
-- Format specifications match those returned by `list_creative_formats`
-- Creative requirements can be fulfilled within campaign timeline
-
-If validation fails, return an error:
-```json
-{
-  "error": {
-    "code": "FORMAT_INCOMPATIBLE",
-    "message": "Product 'ctv_sports_premium' does not support format 'audio_standard_30s'",
-    "field": "packages[0].formats",
-    "supported_formats": ["video_standard_30s", "video_standard_15s"]
-  }
-}
-```
-
-## Usage Notes
-
-- A media buy represents a complete advertising campaign with one or more packages
-- Each package is based on a single product with specific targeting, budget allocation, and format requirements
-- **Format specification is required** for each package - this enables placeholder creation and validation
-- Both media buys and packages have `buyer_ref` fields for the buyer's reference tracking
-- The `brand_manifest` field is required and provides brand identity, context, and product catalog (see [Brand Manifest](/docs/creative/brand-manifest) for guidance)
-- Publishers will validate the promoted offering against their policies before creating the media buy
-- Package-level targeting overlay applies additional criteria on top of product-level targeting
-- The total budget is distributed across packages based on their individual `budget` settings (or proportionally if not specified)
-- Budget supports multiple currencies via ISO 4217 currency codes
-- AXE segments (`axe_include_segment` and `axe_exclude_segment`) enable advanced audience targeting within the targeting overlay
-- Creative assets must be uploaded before the deadline for the campaign to activate
-- Pending states are normal operational states, not errors
-- Orchestrators MUST NOT treat pending states as errors - they are part of normal workflow
+See [Creative Formats](/docs/creative/formats) for format specifications.
 
 ## Policy Compliance
 
-The `promoted_offering` is validated during media buy creation. If a policy violation is detected, the API will return an error:
+Media buys undergo policy review for:
+- Advertiser category restrictions
+- Content guidelines
+- Platform-specific policies
 
-```json
-{
-  "error": {
-    "code": "POLICY_VIOLATION",
-    "message": "Offering category not permitted on this publisher",
-    "field": "promoted_offering",
-    "suggestion": "Contact publisher for category approval process"
-  }
-}
-```
+Policy violations may result in `submitted` status requiring manual approval or rejection. See [Policy Compliance](/docs/media-buy/media-buys/policy-compliance) for details.
 
-Publishers should ensure that:
-- The promoted offering aligns with the selected packages
-- Any uploaded creatives match the declared offering
-- The campaign complies with all applicable advertising policies
+## Next Steps
 
-## Implementation Guide
+After creating a media buy:
 
-### Generating Helpful Messages
+1. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) to provide creative assets
+2. **Monitor Delivery**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) to track performance
+3. **Optimize**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for optimization
+4. **Update**: Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to modify campaigns
 
-The `message` field should provide a concise summary that includes:
-- Total budget and key targeting parameters
-- Expected reach or inventory details
-- Clear next steps and deadlines
-- Approval status and expected timelines
+## Learn More
 
-```python
-def generate_media_buy_message(media_buy, request):
-    if media_buy.status == "completed" and media_buy.creative_deadline:
-        return f"Successfully created your ${request.total_budget:,} media buy targeting {format_targeting(request.targeting_overlay)}. The campaign will reach {media_buy.estimated_reach:,} users. Please upload creative assets by {format_date(media_buy.creative_deadline)} to activate the campaign."
-    elif media_buy.status == "working" and media_buy.requires_approval:
-        return f"Your ${request.total_budget:,} media buy has been submitted for approval. {media_buy.approval_reason}. Expected approval time is {media_buy.estimated_approval_time}. You'll receive a notification once approved."
-    elif media_buy.status == "completed" and media_buy.is_live:
-        return f"Great news! Your ${request.total_budget:,} campaign is now live and delivering to your target audience. Monitor performance using check_media_buy_status."
-    elif media_buy.status == "rejected":
-        return f"Media buy was rejected: {media_buy.rejection_reason}. Please review the requirements and resubmit."
-```
+- [Media Buy Lifecycle](/docs/media-buy/media-buys/) - Complete campaign workflow
+- [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) - CPM, CPCV, CPP explained
+- [Targeting](/docs/media-buy/advanced-topics/targeting) - Targeting overlays and restrictions
+- [Task Management](/docs/protocols/task-management) - Async patterns and status checking
