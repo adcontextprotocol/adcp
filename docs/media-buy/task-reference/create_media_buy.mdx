@@ -1,6 +1,7 @@
 ---
 title: create_media_buy
 sidebar_position: 3
+testable: true
 ---
 
 # create_media_buy
@@ -20,7 +21,7 @@ Create a media buy from a discovered product:
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -66,7 +67,7 @@ const mediaBuy = await agent.createMediaBuy({
 console.log(`Media buy created: ${mediaBuy.media_buy_id}`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -166,7 +167,7 @@ See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -227,7 +228,7 @@ const mediaBuy = await agent.createMediaBuy({
 console.log(`Created ${mediaBuy.packages.length}-package media buy`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -293,7 +294,7 @@ print(f"Created {len(media_buy['packages'])}-package media buy")
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -343,7 +344,7 @@ const mediaBuy = await agent.createMediaBuy({
 console.log(`Created geo-targeted media buy: ${mediaBuy.media_buy_id}`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 import time
 
@@ -400,7 +401,7 @@ print(f"Created geo-targeted media buy: {media_buy['media_buy_id']}")
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -455,7 +456,7 @@ const mediaBuy = await agent.createMediaBuy({
 console.log(`Media buy created with inline creatives: ${mediaBuy.media_buy_id}`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 import time
 

@@ -67,21 +67,26 @@ Implementation details can be mentioned as:
 
 **IMPORTANT**: All code examples in documentation should be testable when possible.
 
-**How to mark snippets as testable**:
+**How to mark pages as testable**:
 
-Code snippets use Mintlify's code fence syntax with the tab title followed by `test=true`:
+Add `testable: true` to the frontmatter of pages where all code examples should be tested:
 
-```
-```javascript JavaScript test=true
-import { ADCPMultiAgentClient } from '@adcp/client';
-// ... working code ...
-```
+```markdown
+---
+title: get_products
+sidebar_position: 1
+testable: true
+---
+
+# get_products
+
+...code examples here (no test=true needed in individual blocks)...
 ```
 
 **Key principles**:
-1. **Tab title first** - The text after the language becomes the tab title (e.g., "JavaScript", "Python", "CLI")
-2. **test=true after** - Add `test=true` after the tab title to enable automated testing
-3. **Complete examples** - Test-marked code must be complete and runnable
+1. **Page-level flag** - Use `testable: true` in frontmatter to mark entire page as testable
+2. **Tab titles** - The text after the language becomes the tab title (e.g., "JavaScript", "Python", "CLI")
+3. **Complete examples** - All code on testable pages must be complete and runnable
 4. **Use test credentials** - Use the public test agent credentials in examples
 
 **Supported languages**:
@@ -90,30 +95,39 @@ import { ADCPMultiAgentClient } from '@adcp/client';
 - `bash` - Supports `curl`, `npx`, and `uvx` commands
 
 **What gets tested**:
+- All code blocks on pages with `testable: true` frontmatter
 - Code executes without errors
 - API calls succeed (or fail as expected)
 - Output matches expectations
 
-**When NOT to mark as testable**:
-- Incomplete code fragments
-- Conceptual examples
-- Browser-only code
+**When NOT to mark page as testable**:
+- Pages with incomplete code fragments
+- Conceptual examples or pseudocode
+- Browser-only code examples
 - Code requiring user interaction
+- Mixed testable and non-testable examples (use separate pages)
 
-**Example**:
-```
-```javascript JavaScript test=true
-// This will be tested automatically
-import { ADCPMultiAgentClient } from '@adcp/client';
-const client = new ADCPMultiAgentClient([...]);
-// Must be complete and runnable
-```
+**Example testable page**:
+```markdown
+---
+title: get_products
+testable: true
+---
+
+<CodeGroup>
 
 ```javascript JavaScript
-// This is NOT tested (no test=true marker)
-const result = await someFunction();
-// Incomplete or conceptual examples
+// All code on this page is automatically tested
+import { ADCPMultiAgentClient } from '@adcp/client';
+const client = new ADCPMultiAgentClient([...]);
 ```
+
+```python Python
+# Complete and runnable Python example
+from adcp import ADCPMultiAgentClient
+```
+
+</CodeGroup>
 ```
 
 **Running tests**:

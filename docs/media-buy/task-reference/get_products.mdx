@@ -1,6 +1,7 @@
 ---
 title: get_products
 sidebar_position: 1
+testable: true
 ---
 # get_products
 
@@ -19,7 +20,7 @@ Discover products with a natural language brief:
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -44,7 +45,7 @@ const result = await agent.getProducts({
 console.log(`Found ${result.products.length} products`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -69,7 +70,7 @@ result = agent.get_products(
 print(f"Found {len(result['products'])} products")
 ```
 
-```bash CLI test=true
+```bash CLI
 npx @adcp/client \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
@@ -85,7 +86,7 @@ You can also use structured filters instead of (or in addition to) a brief:
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -110,7 +111,7 @@ const result = await agent.getProducts({
 console.log(`Found ${result.products.length} guaranteed video products`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -180,7 +181,7 @@ Returns an array of `products`, each containing:
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -205,7 +206,7 @@ const discovery = await agent.getProducts({
 console.log(`Found ${discovery.products.length} run-of-network products`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -236,7 +237,7 @@ print(f"Found {len(discovery['products'])} run-of-network products")
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -266,7 +267,7 @@ const discovery = await agent.getProducts({
 console.log(`Found ${discovery.products.length} products supporting video and display`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -302,7 +303,7 @@ print(f"Found {len(discovery['products'])} products supporting video and display
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -337,7 +338,7 @@ const affordable = discovery.products.filter(p => {
 console.log(`Found ${affordable.length} products within $${budget} budget`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -376,7 +377,7 @@ print(f"Found {len(affordable)} products within ${budget} budget")
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -405,7 +406,7 @@ const productsWithTags = discovery.products.filter(p => p.property_tags && p.pro
 console.log(`${productsWithTags.length} products use property tags (large networks)`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -441,7 +442,7 @@ print(f"{len(products_with_tags)} products use property tags (large networks)")
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -472,7 +473,7 @@ const discovery = await agent.getProducts({
 console.log(`Found ${discovery.products.length} guaranteed products with 100k+ exposures`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -509,7 +510,7 @@ print(f"Found {len(discovery['products'])} guaranteed products with 100k+ exposu
 
 <CodeGroup>
 
-```javascript JavaScript test=true
+```javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -538,7 +539,7 @@ const discovery = await agent.getProducts({
 console.log(`Found ${discovery.products.length} products with standard formats only`);
 ```
 
-```python Python test=true
+```python Python
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
