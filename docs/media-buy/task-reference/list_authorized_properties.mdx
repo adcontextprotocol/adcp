@@ -61,22 +61,10 @@ Unlike traditional SSPs:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Get all authorized publishers
-const result = await agent.listAuthorizedProperties();
+const result = await testAgent.listAuthorizedProperties();
 
 console.log(`Agent represents ${result.publisher_domains.length} publishers`);
 console.log(`Primary channels: ${result.primary_channels?.join(', ')}`);
@@ -88,22 +76,10 @@ result.publisher_domains.forEach(domain => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
+from adcp.test_helpers import test_agent
 
 # Get all authorized publishers
-result = agent.list_authorized_properties()
+result = test_agent.list_authorized_properties()
 
 print(f"Agent represents {len(result['publisher_domains'])} publishers")
 print(f"Primary channels: {', '.join(result.get('primary_channels', []))}")
@@ -120,8 +96,10 @@ for domain in result['publisher_domains']:
 <CodeGroup>
 
 ```javascript JavaScript
+import { testAgent } from '@adcp/client/test-helpers';
+
 // Check if agent represents specific publishers
-const result = await agent.listAuthorizedProperties({
+const result = await testAgent.listAuthorizedProperties({
   publisher_domains: ['cnn.com', 'espn.com']
 });
 
@@ -136,8 +114,10 @@ if (result.publisher_domains.length > 0) {
 ```
 
 ```python Python
+from adcp.test_helpers import test_agent
+
 # Check if agent represents specific publishers
-result = agent.list_authorized_properties(
+result = test_agent.list_authorized_properties(
     publisher_domains=['cnn.com', 'espn.com']
 )
 
@@ -156,8 +136,10 @@ else:
 <CodeGroup>
 
 ```javascript JavaScript
+import { testAgent } from '@adcp/client/test-helpers';
+
 // Step 1: Get authorized publishers
-const authResult = await agent.listAuthorizedProperties();
+const authResult = await testAgent.listAuthorizedProperties();
 
 // Step 2: Fetch property definitions from each publisher
 const publisherProperties = {};
@@ -169,7 +151,7 @@ for (const domain of authResult.publisher_domains) {
 
     // Find this agent in publisher's authorized list
     const agentAuth = adagents.authorized_agents.find(
-      a => a.url === agent.agent_uri
+      a => a.url === 'https://test-agent.adcontextprotocol.org/mcp'
     );
 
     if (agentAuth) {
@@ -197,10 +179,11 @@ for (const domain of authResult.publisher_domains) {
 ```
 
 ```python Python
+from adcp.test_helpers import test_agent
 import requests
 
 # Step 1: Get authorized publishers
-auth_result = agent.list_authorized_properties()
+auth_result = test_agent.list_authorized_properties()
 
 # Step 2: Fetch property definitions from each publisher
 publisher_properties = {}
@@ -212,7 +195,7 @@ for domain in auth_result['publisher_domains']:
 
         # Find this agent in publisher's authorized list
         agent_auth = next(
-            (a for a in adagents['authorized_agents'] if a['url'] == agent.agent_uri),
+            (a for a in adagents['authorized_agents'] if a['url'] == 'https://test-agent.adcontextprotocol.org/mcp'),
             None
         )
 
@@ -241,8 +224,10 @@ for domain in auth_result['publisher_domains']:
 <CodeGroup>
 
 ```javascript JavaScript
+import { testAgent } from '@adcp/client/test-helpers';
+
 // Determine what type of agent this is based on portfolio
-const result = await agent.listAuthorizedProperties();
+const result = await testAgent.listAuthorizedProperties();
 
 // Check for CTV specialists
 if (result.primary_channels?.includes('ctv')) {
@@ -266,8 +251,10 @@ if (result.portfolio_description) {
 ```
 
 ```python Python
+from adcp.test_helpers import test_agent
+
 # Determine what type of agent this is based on portfolio
-result = agent.list_authorized_properties()
+result = test_agent.list_authorized_properties()
 
 # Check for CTV specialists
 if 'ctv' in result.get('primary_channels', []):
@@ -294,22 +281,10 @@ if result.get('portfolio_description'):
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Use last_updated to determine if cache is stale
-const result = await agent.listAuthorizedProperties();
+const result = await testAgent.listAuthorizedProperties();
 
 // Example cache from previous fetch (in practice, load from storage)
 const cache = {
@@ -338,23 +313,11 @@ for (const domain of result.publisher_domains) {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+from adcp.test_helpers import test_agent
 from datetime import datetime
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
-
 # Use last_updated to determine if cache is stale
-result = agent.list_authorized_properties()
+result = test_agent.list_authorized_properties()
 
 # Example cache from previous fetch (in practice, load from storage)
 cache = {

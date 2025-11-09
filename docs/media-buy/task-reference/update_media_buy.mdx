@@ -56,22 +56,10 @@ See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy
 ### Pause Campaign
 
 ```javascript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Pause entire campaign
-const result = await agent.updateMediaBuy({
+const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   status: 'paused'
 });
@@ -82,22 +70,10 @@ console.log(`Campaign paused: ${result.status}`);
 ### Update Package Budget
 
 ```javascript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Increase budget for specific package
-const result = await agent.updateMediaBuy({
+const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
     package_id: 'pkg_67890',
@@ -111,22 +87,10 @@ console.log(`Package budget updated: ${result.packages[0].budget}`);
 ### Change Campaign Dates
 
 ```javascript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Extend campaign end date
-const result = await agent.updateMediaBuy({
+const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   end_time: '2025-03-31T23:59:59Z'  // Extended from original end date
 });
@@ -137,22 +101,10 @@ console.log(`Campaign extended to: ${result.end_time}`);
 ### Update Targeting
 
 ```javascript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Add geographic restrictions to package
-const result = await agent.updateMediaBuy({
+const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
     package_id: 'pkg_67890',
@@ -169,22 +121,10 @@ console.log('Targeting updated successfully');
 ### Replace Creatives
 
 ```javascript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Swap out creative assets
-const result = await agent.updateMediaBuy({
+const result = await testAgent.updateMediaBuy({
   media_buy_id: 'mb_12345',
   packages: [{
     package_id: 'pkg_67890',

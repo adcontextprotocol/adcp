@@ -69,22 +69,10 @@ Buyers can recursively query creative_agents. **Track visited URLs to avoid infi
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Get full specs for formats returned by get_products
-const result = await agent.listCreativeFormats({
+const result = await testAgent.listCreativeFormats({
   format_ids: [
     {
       agent_url: 'https://creatives.adcontextprotocol.org',
@@ -103,22 +91,10 @@ result.formats.forEach(format => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
+from adcp.test_helpers import test_agent
 
 # Get full specs for formats returned by get_products
-result = agent.list_creative_formats(
+result = test_agent.list_creative_formats(
     format_ids=[
         {
             'agent_url': 'https://creatives.adcontextprotocol.org',
@@ -142,22 +118,10 @@ for format in result['formats']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Find formats that accept images and text
-const result = await agent.listCreativeFormats({
+const result = await testAgent.listCreativeFormats({
   asset_types: ['image', 'text']
 });
 
@@ -173,22 +137,10 @@ result.formats.forEach(format => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
+from adcp.test_helpers import test_agent
 
 # Find formats that accept images and text
-result = agent.list_creative_formats(
+result = test_agent.list_creative_formats(
     asset_types=['image', 'text']
 )
 
@@ -208,22 +160,10 @@ for format in result['formats']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Find formats that accept JavaScript or HTML tags
-const result = await agent.listCreativeFormats({
+const result = await testAgent.listCreativeFormats({
   asset_types: ['javascript', 'html'],
   max_width: 970,
   max_height: 250
@@ -241,22 +181,10 @@ result.formats.forEach(format => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
+from adcp.test_helpers import test_agent
 
 # Find formats that accept JavaScript or HTML tags
-result = agent.list_creative_formats(
+result = test_agent.list_creative_formats(
     asset_types=['javascript', 'html'],
     max_width=970,
     max_height=250
@@ -278,22 +206,10 @@ for format in result['formats']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Find video formats
-const result = await agent.listCreativeFormats({
+const result = await testAgent.listCreativeFormats({
   type: 'video'
 });
 
@@ -313,22 +229,10 @@ Object.entries(byDuration).forEach(([duration, formats]) => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
+from adcp.test_helpers import test_agent
 
 # Find video formats
-result = agent.list_creative_formats(
+result = test_agent.list_creative_formats(
     type='video'
 )
 
@@ -352,22 +256,10 @@ for duration, formats in by_duration.items():
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Find mobile-optimized formats
-const result = await agent.listCreativeFormats({
+const result = await testAgent.listCreativeFormats({
   name_search: 'mobile'
 });
 
@@ -379,22 +271,10 @@ result.formats.forEach(format => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
+from adcp.test_helpers import test_agent
 
 # Find mobile-optimized formats
-result = agent.list_creative_formats(
+result = test_agent.list_creative_formats(
     name_search='mobile'
 )
 
@@ -411,22 +291,10 @@ for format in result['formats']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Find formats that adapt to container size
-const result = await agent.listCreativeFormats({
+const result = await testAgent.listCreativeFormats({
   is_responsive: true,
   type: 'display'
 });
@@ -439,22 +307,10 @@ result.formats.forEach(format => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
+from adcp.test_helpers import test_agent
 
 # Find formats that adapt to container size
-result = agent.list_creative_formats(
+result = test_agent.list_creative_formats(
     is_responsive=True,
     type='display'
 )

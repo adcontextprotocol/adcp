@@ -56,22 +56,10 @@ See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/get-media-buy-de
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Get single media buy delivery report
-const result = await agent.getMediaBuyDelivery({
+const result = await testAgent.getMediaBuyDelivery({
   media_buy_ids: ['mb_12345'],
   start_date: '2024-02-01',
   end_date: '2024-02-07'
@@ -83,22 +71,10 @@ console.log(`CTR: ${(result.media_buy_deliveries[0].totals.ctr * 100).toFixed(2)
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
+from adcp.test_helpers import test_agent
 
 # Get single media buy delivery report
-result = agent.get_media_buy_delivery(
+result = test_agent.get_media_buy_delivery(
     media_buy_ids=['mb_12345'],
     start_date='2024-02-01',
     end_date='2024-02-07'
@@ -116,22 +92,10 @@ print(f"CTR: {result['media_buy_deliveries'][0]['totals']['ctr'] * 100:.2f}%")
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Get all active media buys from context
-const result = await agent.getMediaBuyDelivery({
+const result = await testAgent.getMediaBuyDelivery({
   status_filter: 'active',
   start_date: '2024-02-01',
   end_date: '2024-02-07'
@@ -148,22 +112,10 @@ result.media_buy_deliveries.forEach(delivery => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
+from adcp.test_helpers import test_agent
 
 # Get all active media buys from context
-result = agent.get_media_buy_delivery(
+result = test_agent.get_media_buy_delivery(
     status_filter='active',
     start_date='2024-02-01',
     end_date='2024-02-07'
@@ -185,26 +137,14 @@ for delivery in result['media_buy_deliveries']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Get month-to-date performance
 const now = new Date();
 const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 const dateFormat = date => date.toISOString().split('T')[0];
 
-const result = await agent.getMediaBuyDelivery({
+const result = await testAgent.getMediaBuyDelivery({
   media_buy_ids: ['mb_12345'],
   start_date: dateFormat(monthStart),
   end_date: dateFormat(now)
@@ -222,26 +162,14 @@ console.log(`Peak day: ${peakDay.date} with ${peakDay.impressions.toLocaleString
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+from adcp.test_helpers import test_agent
 from datetime import date
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
 
 # Get month-to-date performance
 today = date.today()
 month_start = date(today.year, today.month, 1)
 
-result = agent.get_media_buy_delivery(
+result = test_agent.get_media_buy_delivery(
     media_buy_ids=['mb_12345'],
     start_date=str(month_start),
     end_date=str(today)
@@ -264,22 +192,10 @@ print(f"Peak day: {peak_day['date']} with {peak_day['impressions']:,} impression
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Get both active and paused campaigns
-const result = await agent.getMediaBuyDelivery({
+const result = await testAgent.getMediaBuyDelivery({
   status_filter: ['active', 'paused'],
   start_date: '2024-02-01',
   end_date: '2024-02-07'
@@ -303,23 +219,11 @@ byStatus.paused?.forEach(delivery => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+from adcp.test_helpers import test_agent
 from collections import defaultdict
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
-
 # Get both active and paused campaigns
-result = agent.get_media_buy_delivery(
+result = test_agent.get_media_buy_delivery(
     status_filter=['active', 'paused'],
     start_date='2024-02-01',
     end_date='2024-02-07'
@@ -346,22 +250,10 @@ for delivery in by_status['paused']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/test-helpers';
 
 // Query by buyer reference instead of media buy ID
-const result = await agent.getMediaBuyDelivery({
+const result = await testAgent.getMediaBuyDelivery({
   buyer_refs: ['nike_q1_campaign_2024', 'nike_q1_retargeting_2024']
 });
 
@@ -377,22 +269,10 @@ result.media_buy_deliveries.forEach(delivery => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
-
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
+from adcp.test_helpers import test_agent
 
 # Query by buyer reference instead of media buy ID
-result = agent.get_media_buy_delivery(
+result = test_agent.get_media_buy_delivery(
     buyer_refs=['nike_q1_campaign_2024', 'nike_q1_retargeting_2024']
 )
 
