@@ -110,13 +110,7 @@ const config: Config = {
     [
       'classic',
       {
-        docs: {
-          sidebarPath: './sidebars.ts',
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/adcontextprotocol/adcp/tree/main/',
-        },
+        docs: false, // Docs served by Mintlify at docs.adcontextprotocol.org
         sitemap: {
           changefreq: 'weekly',
           priority: 0.5,
