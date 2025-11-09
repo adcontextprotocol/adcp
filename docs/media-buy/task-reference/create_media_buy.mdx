@@ -19,7 +19,8 @@ Create a media buy from selected products. Handles validation, optional approval
 Create a media buy from a discovered product:
 
 <CodeGroup>
-```javascript test=true
+
+```javascript JavaScript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -64,7 +65,8 @@ const mediaBuy = await agent.createMediaBuy({
 
 console.log(`Media buy created: ${mediaBuy.media_buy_id}`);
 ```
-```python test=true
+
+```python Python test=true
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -109,6 +111,7 @@ media_buy = agent.create_media_buy(
 
 print(f"Media buy created: {media_buy['media_buy_id']}")
 ```
+
 </CodeGroup>
 
 ## Request Parameters
@@ -162,7 +165,8 @@ See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy
 ### Multi-Package Campaign
 
 <CodeGroup>
-```javascript test=true
+
+```javascript JavaScript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -222,7 +226,8 @@ const mediaBuy = await agent.createMediaBuy({
 
 console.log(`Created ${mediaBuy.packages.length}-package media buy`);
 ```
-```python test=true
+
+```python Python test=true
 from adcp import ADCPMultiAgentClient
 
 client = ADCPMultiAgentClient([{
@@ -281,12 +286,14 @@ media_buy = agent.create_media_buy(
 
 print(f"Created {len(media_buy['packages'])}-package media buy")
 ```
+
 </CodeGroup>
 
 ### Geographic Targeting
 
 <CodeGroup>
-```javascript test=true
+
+```javascript JavaScript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -335,7 +342,8 @@ const mediaBuy = await agent.createMediaBuy({
 
 console.log(`Created geo-targeted media buy: ${mediaBuy.media_buy_id}`);
 ```
-```python test=true
+
+```python Python test=true
 from adcp import ADCPMultiAgentClient
 import time
 
@@ -385,12 +393,14 @@ media_buy = agent.create_media_buy(
 
 print(f"Created geo-targeted media buy: {media_buy['media_buy_id']}")
 ```
+
 </CodeGroup>
 
 ### Campaign with Inline Creatives
 
 <CodeGroup>
-```javascript test=true
+
+```javascript JavaScript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -444,7 +454,8 @@ const mediaBuy = await agent.createMediaBuy({
 
 console.log(`Media buy created with inline creatives: ${mediaBuy.media_buy_id}`);
 ```
-```python test=true
+
+```python Python test=true
 from adcp import ADCPMultiAgentClient
 import time
 
@@ -499,6 +510,7 @@ media_buy = agent.create_media_buy(
 
 print(f"Media buy created with inline creatives: {media_buy['media_buy_id']}")
 ```
+
 </CodeGroup>
 
 ## Async Workflows
