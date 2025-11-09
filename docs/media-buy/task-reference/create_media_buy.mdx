@@ -18,11 +18,8 @@ Create a media buy from selected products. Handles validation, optional approval
 
 Create a media buy from a discovered product:
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -70,8 +67,6 @@ const mediaBuy = await agent.createMediaBuy({
 console.log(`Media buy created: ${mediaBuy.media_buy_id}`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -119,8 +114,7 @@ media_buy = agent.create_media_buy(
 print(f"Media buy created: {media_buy['media_buy_id']}")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ## Request Parameters
 
@@ -172,8 +166,7 @@ See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy
 
 ### Multi-Package Campaign
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -236,8 +229,6 @@ const mediaBuy = await agent.createMediaBuy({
 console.log(`Created ${mediaBuy.packages.length}-package media buy`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -299,13 +290,11 @@ media_buy = agent.create_media_buy(
 print(f"Created {len(media_buy['packages'])}-package media buy")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ### Geographic Targeting
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -357,8 +346,6 @@ const mediaBuy = await agent.createMediaBuy({
 console.log(`Created geo-targeted media buy: ${mediaBuy.media_buy_id}`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -411,13 +398,11 @@ media_buy = agent.create_media_buy(
 print(f"Created geo-targeted media buy: {media_buy['media_buy_id']}")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ### Campaign with Inline Creatives
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -474,8 +459,6 @@ const mediaBuy = await agent.createMediaBuy({
 console.log(`Media buy created with inline creatives: ${mediaBuy.media_buy_id}`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -533,8 +516,7 @@ media_buy = agent.create_media_buy(
 print(f"Media buy created with inline creatives: {media_buy['media_buy_id']}")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ## Async Workflows
 

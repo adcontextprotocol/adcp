@@ -6,6 +6,27 @@ This guide helps AI assistants understand the AdCP project structure and maintai
 
 The Advertising Context Protocol (AdCP) is an open standard for AI-powered advertising workflows. It provides a unified interface for media buying across diverse advertising platforms.
 
+## Documentation Framework
+
+**CRITICAL**: This project uses TWO documentation systems:
+
+1. **Mintlify** - Primary documentation platform
+   - All documentation in `docs/` directory
+   - Markdown/MDX files served by Mintlify
+   - Uses Mintlify-specific components (`<CodeGroup>`, not Docusaurus `<Tabs>`)
+   - Run with: `mintlify dev` (should use conductor port, not 3000)
+
+2. **Docusaurus** - Legacy/backwards compatibility only
+   - Used for homepage
+   - Used to serve JSON schemas at `/schemas/` endpoints
+   - Will be migrated away from eventually
+   - DO NOT use Docusaurus components in documentation files
+
+**When editing documentation:**
+- ✅ Use Mintlify `<CodeGroup>` for multi-language examples
+- ❌ DO NOT use Docusaurus `import Tabs from '@theme/Tabs'`
+- ❌ DO NOT use `<Tabs>` or `<TabItem>` components
+
 ## Documentation Standards
 
 ### Protocol Specification vs Implementation

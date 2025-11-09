@@ -17,11 +17,8 @@ Discover available advertising products based on campaign requirements using nat
 
 Discover products with a natural language brief:
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -48,8 +45,6 @@ const result = await agent.getProducts({
 console.log(`Found ${result.products.length} products`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -76,8 +71,6 @@ result = agent.get_products(
 print(f"Found {len(result['products'])} products")
 ```
 
-</TabItem>
-<TabItem value="cli" label="CLI">
 
 ```bash test=true
 npx @adcp/client \
@@ -87,15 +80,13 @@ npx @adcp/client \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ### Using Structured Filters
 
 You can also use structured filters instead of (or in addition to) a brief:
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -122,8 +113,6 @@ const result = await agent.getProducts({
 console.log(`Found ${result.products.length} guaranteed video products`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -150,8 +139,7 @@ result = agent.get_products(
 print(f"Found {len(result['products'])} guaranteed video products")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ## Request Parameters
 
@@ -194,8 +182,7 @@ Returns an array of `products`, each containing:
 
 ### Run-of-Network Discovery
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -222,8 +209,6 @@ const discovery = await agent.getProducts({
 console.log(`Found ${discovery.products.length} run-of-network products`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -250,13 +235,11 @@ discovery = agent.get_products(
 print(f"Found {len(discovery['products'])} run-of-network products")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ### Multi-Format Discovery
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -288,8 +271,6 @@ const discovery = await agent.getProducts({
 console.log(`Found ${discovery.products.length} products supporting video and display`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -321,13 +302,11 @@ discovery = agent.get_products(
 print(f"Found {len(discovery['products'])} products supporting video and display")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ### Budget-Based Filtering
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -364,8 +343,6 @@ const affordable = discovery.products.filter(p => {
 console.log(`Found ${affordable.length} products within $${budget} budget`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -400,13 +377,11 @@ affordable = [p for p in discovery['products']
 print(f"Found {len(affordable)} products within ${budget} budget")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ### Property Tag Resolution
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -437,8 +412,6 @@ const productsWithTags = discovery.products.filter(p => p.property_tags && p.pro
 console.log(`${productsWithTags.length} products use property tags (large networks)`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -470,13 +443,11 @@ products_with_tags = [p for p in discovery['products']
 print(f"{len(products_with_tags)} products use property tags (large networks)")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ### Guaranteed Delivery Products
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -509,8 +480,6 @@ const discovery = await agent.getProducts({
 console.log(`Found ${discovery.products.length} guaranteed products with 100k+ exposures`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -543,13 +512,11 @@ discovery = agent.get_products(
 print(f"Found {len(discovery['products'])} guaranteed products with 100k+ exposures")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ### Standard Formats Only
 
-<Tabs groupId="language">
-<TabItem value="javascript" label="JavaScript">
+<CodeGroup>
 
 ```javascript test=true
 import { ADCPMultiAgentClient } from '@adcp/client';
@@ -580,8 +547,6 @@ const discovery = await agent.getProducts({
 console.log(`Found ${discovery.products.length} products with standard formats only`);
 ```
 
-</TabItem>
-<TabItem value="python" label="Python">
 
 ```python test=true
 from adcp import ADCPMultiAgentClient
@@ -612,8 +577,7 @@ discovery = agent.get_products(
 print(f"Found {len(discovery['products'])} products with standard formats only")
 ```
 
-</TabItem>
-</Tabs>
+</CodeGroup>
 
 ## Error Handling
 
