@@ -93,17 +93,7 @@ const config: Config = {
 
         },
     ],
-    [
-      '@docusaurus/plugin-client-redirects',
-      {
-        redirects: [
-          {
-            to: '/docs/intro/',
-            from: '/docs',
-          },
-        ],
-      },
-    ],
+    // No redirects needed - docs served by Mintlify at docs.adcontextprotocol.org
   ],
 
   presets: [
