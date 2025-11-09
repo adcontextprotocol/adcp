@@ -1,565 +1,711 @@
 ---
 title: sync_creatives
+sidebar_position: 4
+testable: true
 ---
 
 # sync_creatives
 
-Synchronize creative assets with the centralized creative library using upsert semantics. This task supports bulk operations, partial updates, assignment management, and comprehensive validation for efficient creative library management.
+Upload and manage creative assets for media buys. Supports bulk uploads, upsert semantics, and third-party tags.
 
-**Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
+**Response Time**: Instant to minutes (depends on file processing and validation)
 
-## Overview
+**Request Schema**: [`/schemas/v1/media-buy/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/sync-creatives-request.json)
+**Response Schema**: [`/schemas/v1/media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/sync-creatives-response.json)
 
-The `sync_creatives` task provides a powerful, efficient approach to creative library management using **upsert semantics** - creatives are either created (if they don't exist) or updated (if they do exist) based on their `creative_id`. This eliminates the need to check existence before uploading and enables seamless bulk operations.
+## Quick Start
 
-**Key Features:**
-- **Bulk Operations**: Process up to 100 creatives per request
-- **Upsert Semantics**: Automatic create-or-update behavior
-- **Patch Mode**: Update only specified fields while preserving others
-- **Assignment Management**: Bulk assign creatives to packages in the same request
-- **Validation Modes**: Choose between strict (fail-fast) or lenient (process-valid) validation
-- **Dry Run**: Preview changes before applying them
-- **Generative Creatives**: Submit brand manifest and generation prompts for AI or human-created creatives
-- **Comprehensive Reporting**: Detailed results for each creative processed
+Upload creatives with package assignments:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+const result = await agent.syncCreatives({
+  media_buy_id: 'mb_12345',
+  creatives: [{
+    creative_id: 'creative_video_001',
+    name: 'Summer Sale 30s',
+    format_id: {
+      agent_url: 'https://creatives.adcontextprotocol.org',
+      id: 'video_standard_30s'
+    },
+    assets: [{
+      asset_type: 'video',
+      url: 'https://cdn.example.com/summer-sale-30s.mp4'
+    }],
+    package_assignments: [{
+      package_id: 'pkg_67890',
+      status: 'active'
+    }]
+  }]
+});
+
+console.log(`Synced ${result.creatives.length} creatives`);
+```
+
+```python Python
+from adcp import ADCPMultiAgentClient
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+    }
+}])
+
+agent = client.agent('test-agent')
+result = agent.sync_creatives(
+    media_buy_id='mb_12345',
+    creatives=[{
+        'creative_id': 'creative_video_001',
+        'name': 'Summer Sale 30s',
+        'format_id': {
+            'agent_url': 'https://creatives.adcontextprotocol.org',
+            'id': 'video_standard_30s'
+        },
+        'assets': [{
+            'asset_type': 'video',
+            'url': 'https://cdn.example.com/summer-sale-30s.mp4'
+        }],
+        'package_assignments': [{
+            'package_id': 'pkg_67890',
+            'status': 'active'
+        }]
+    }]
+)
+
+print(f"Synced {len(result['creatives'])} creatives")
+```
+
+</CodeGroup>
 
 ## Request Parameters
 
-### Core Parameters
-
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `creatives` | array | Yes | Array of creative assets to sync (max 100) |
-| `patch` | boolean | No | Partial update mode (default: false) |
-| `dry_run` | boolean | No | Preview changes without applying (default: false) |
-| `validation_mode` | enum | No | Validation strictness: "strict" or "lenient" (default: "strict") |
-| `push_notification_config` | PushNotificationConfig | No | Optional webhook for async sync notifications (see Webhook Configuration below) |
+| `media_buy_id` | string | Yes | Media buy to sync creatives for |
+| `creatives` | Creative[] | Yes | Creative assets to upload/update |
+| `mode` | string | No | Sync mode: `"upsert"` (default), `"dry_run"`, `"patch"` |
 
-### Assignment Management
+### Creative Object
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assignments` | object | No | Bulk creative-to-package assignments (simple package-level only - see note below) |
-| `delete_missing` | boolean | No | Archive creatives not in this sync (default: false) |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `creative_id` | string | Yes | Unique identifier for this creative |
+| `name` | string | Yes | Human-readable name |
+| `format_id` | FormatId | Yes | Format specification (structured object with `agent_url` and `id`) |
+| `assets` | Asset[] | Yes* | Asset files (URLs or inline). *Not required for third-party tags |
+| `third_party_tag` | string | No | Third-party ad tag (HTML/JavaScript) |
+| `package_assignments` | Assignment[] | No | Package assignments with status |
+| `brand_safe` | boolean | No | Brand safety certification flag |
 
-**Note on Placement Targeting:** The `assignments` field only supports package-level assignments without placement targeting. To assign creatives to specific placements within a product, use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) or [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) with `creative_assignments[].placement_ids`.
+### Asset Object
 
-### Creative Asset Structure
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `asset_type` | string | Yes | Type: `"video"`, `"image"`, `"html"`, `"javascript"`, etc. |
+| `url` | string | Yes* | Public CDN URL to asset file. *Not required if using inline content |
+| `content` | string | No | Inline asset content (base64 for binary, plain text for HTML/JS) |
 
-Each creative in the `creatives` array follows the [Creative Asset schema](https://adcontextprotocol.org/schemas/v1/core/creative-asset.json) with support for:
+### Package Assignment Object
 
-**Hosted Assets:**
-- `creative_id`, `name`, `format_id` (required)
-- `assets` object with asset types like `image`, `video`, `audio` (required)
-- `tags` (optional)
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `package_id` | string | Yes | Package to assign creative to |
+| `status` | string | No | Assignment status: `"active"` (default), `"paused"` |
 
-**Third-Party Served Assets:**
-- `creative_id`, `name`, `format_id` (required)
-- `assets` object with `vast`, `daast`, `html`, or `javascript` asset types (required)
-- `tags` (optional)
+## Response
 
-**Generative Creatives:**
-- `creative_id`, `name`, `format_id` (required - references a generative format)
-- `assets` object with `promoted_offerings` and `generation_prompt`
-- Publisher creates the creative (AI or human - buyer may not know the implementation method)
-- Response includes `preview_url` when ready for review
-- Note: Some buyers may care about creation method for brand safety or compliance reasons
+| Field | Description |
+|-------|-------------|
+| `creatives` | Array of synced creative objects with `platform_creative_id` populated |
+| `errors` | Array of validation/processing errors (if any) |
+| `warnings` | Array of non-blocking warnings (if any) |
 
-## Webhook Configuration (Task-Specific)
+**Each creative in response includes**:
+- All request fields
+- `platform_creative_id` - Platform's internal ID
+- Processing status and timestamps
 
-For large bulk operations or creative approval workflows, you can provide a task-specific webhook to be notified when the sync completes:
+**See schema for complete field list**: [sync-creatives-response.json](https://adcontextprotocol.org/schemas/v1/media-buy/sync-creatives-response.json)
 
-```json
-{
-  "creatives": [/* up to 100 creatives */],
-  "push_notification_config": {
-    "url": "https://buyer.com/webhooks/creative-sync",
-    "authentication": {
-      "schemes": ["HMAC-SHA256"],
-      "credentials": "shared_secret_32_chars"
-    }
+## Common Scenarios
+
+### Bulk Upload with Assignments
+
+Upload multiple creatives and assign them to packages in one call:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
   }
-}
-```
+}]);
 
-**When webhooks are sent:**
-- Bulk sync takes longer than ~120 seconds (status: `working` → `completed`)
-- Creative approval required (status: `submitted` → `completed`)
-- Large creative uploads processing asynchronously
+const agent = client.agent('test-agent');
 
-**Webhook payload:**
-- Protocol fields at top-level (operation_id, task_type, status, etc.)
-- `result` contains complete sync_creatives response with summary and results
-
-See [Webhook Security](/docs/protocols/core-concepts.mdx#security) for authentication details.
-
-## Response Format
-
-The response provides comprehensive details about the sync operation:
-
-```json
-{
-  "message": "Sync completed: 3 created, 2 updated, 1 unchanged",
-  "context_id": "ctx_sync_123456",
-  "status": "completed",
-  "dry_run": false,
-  "creatives": [
+const result = await agent.syncCreatives({
+  media_buy_id: 'mb_12345',
+  creatives: [
     {
-      "creative_id": "hero_video_30s",
-      "action": "created",
-      "platform_id": "plt_123456"
+      creative_id: 'creative_display_001',
+      name: 'Summer Sale Banner 300x250',
+      format_id: {
+        agent_url: 'https://creatives.adcontextprotocol.org',
+        id: 'display_300x250'
+      },
+      assets: [{
+        asset_type: 'image',
+        url: 'https://cdn.example.com/banner-300x250.jpg'
+      }],
+      package_assignments: [
+        { package_id: 'pkg_premium', status: 'active' },
+        { package_id: 'pkg_standard', status: 'active' }
+      ],
+      brand_safe: true
     },
     {
-      "creative_id": "banner_300x250",
-      "action": "updated",
-      "platform_id": "plt_789012",
-      "changes": ["click_url"]
+      creative_id: 'creative_video_002',
+      name: 'Product Demo 15s',
+      format_id: {
+        agent_url: 'https://creatives.adcontextprotocol.org',
+        id: 'video_standard_15s'
+      },
+      assets: [{
+        asset_type: 'video',
+        url: 'https://cdn.example.com/demo-15s.mp4'
+      }],
+      package_assignments: [
+        { package_id: 'pkg_premium', status: 'active' }
+      ],
+      brand_safe: true
     },
     {
-      "creative_id": "native_ad_01",
-      "action": "unchanged",
-      "platform_id": "plt_345678"
+      creative_id: 'creative_display_002',
+      name: 'Summer Sale Banner 728x90',
+      format_id: {
+        agent_url: 'https://creatives.adcontextprotocol.org',
+        id: 'display_728x90'
+      },
+      assets: [{
+        asset_type: 'image',
+        url: 'https://cdn.example.com/banner-728x90.jpg'
+      }],
+      package_assignments: [
+        { package_id: 'pkg_standard', status: 'active' }
+      ],
+      brand_safe: true
     }
   ]
-}
+});
+
+console.log(`Successfully synced ${result.creatives.length} creatives`);
+result.creatives.forEach(creative => {
+  console.log(`  ${creative.name}: ${creative.platform_creative_id}`);
+});
 ```
 
-## Generative Creative Workflow
+```python Python
+from adcp import ADCPMultiAgentClient
 
-For generative formats, buyers submit a creative manifest (brand information + generation instructions) rather than finished assets. The publisher then creates the creative - either through AI generation, human designers, or a hybrid approach.
-
-**Key Characteristics:**
-
-1. **Implementation Agnostic**: Buyer submits the same request whether the publisher uses AI, human designers, or both
-2. **Async by Default**: Response time ranges from seconds (AI) to days (human review)
-3. **Preview-First**: Publisher returns `preview_url` for buyer approval before campaign launch
-4. **Simple Approval**: Set `approved: true` to finalize or `approved: false` with updated `generation_prompt` to request changes
-5. **Conversational Refinement**: Use `context_id` from response to continue the conversation
-
-**Note on Transparency:** Some buyers may care about creation method (AI vs human) for brand safety, compliance, or quality reasons. Publishers should communicate their approach during format discovery or setup.
-
-**Protocol Context**: The `context_id` is managed at the protocol level (automatic in A2A, manual in MCP) and is not part of the task request parameters. See [Context Management](/docs/protocols/context-management) for details.
-
-**Workflow Steps:**
-
-```
-1. Buyer submits creative with promoted_offerings + generation_prompt
-2. Publisher responds with status: "submitted" or "working"
-3. Publisher creates creative (AI/human/hybrid)
-4. Publisher responds with status: "completed" + preview_url
-5. Buyer reviews preview:
-   - Approve: Re-submit with approved: true
-   - Refine: Re-submit with approved: false + updated generation_prompt
-```
-
-**Example Generative Formats:**
-- `premium_bespoke_display` - Custom-designed display ad (human designer, 24-48h)
-- `ai_native_responsive` - AI-generated native ad (automated, under 60s)
-- `hybrid_video_30s` - AI draft + human polish (hybrid, 2-4h)
-
-The format definition specifies expected turnaround time, but the buyer's workflow is identical regardless of implementation.
-
-## Usage Examples
-
-### Example 1: Full Sync with New Creatives
-
-Upload new creatives with automatic assignment:
-
-```json
-{
-  "creatives": [
-    {
-      "creative_id": "hero_video_30s",
-      "name": "Brand Hero Video 30s",
-      "format_id": {
-        "agent_url": "https://creatives.adcontextprotocol.org",
-        "id": "video_30s_vast"
-      },
-      "assets": {
-        "vast_tag": {
-          "asset_type": "vast",
-          "url": "https://vast.example.com/video/123",
-          "vast_version": "4.1",
-          "duration_ms": 30000
-        }
-      },
-      "tags": ["q1_2024", "video", "hero"]
-    },
-    {
-      "creative_id": "banner_300x250",
-      "name": "Standard Banner",
-      "format_id": {
-        "agent_url": "https://creatives.adcontextprotocol.org",
-        "id": "display_300x250"
-      },
-      "assets": {
-        "banner_image": {
-          "asset_type": "image",
-          "url": "https://cdn.example.com/banner.jpg",
-          "width": 300,
-          "height": 250,
-          "format": "jpg"
-        }
-      },
-      "tags": ["q1_2024", "display"]
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
     }
-  ],
-  "assignments": {
-    "hero_video_30s": ["pkg_ctv_001", "pkg_ctv_002"],
-    "banner_300x250": ["pkg_display_001"]
-  }
-}
-```
+}])
 
-### Example 2: Patch Update - Asset URLs Only
+agent = client.agent('test-agent')
 
-Update asset URLs without affecting other creative properties:
-
-```json
-{
-  "creatives": [
-    {
-      "creative_id": "hero_video_30s",
-      "assets": {
-        "vast_tag": {
-          "asset_type": "vast",
-          "url": "https://vast.example.com/video/new-campaign"
-        }
-      }
-    },
-    {
-      "creative_id": "banner_300x250",
-      "assets": {
-        "banner_image": {
-          "asset_type": "image",
-          "url": "https://cdn.example.com/new-banner.jpg"
-        }
-      }
-    }
-  ],
-  "patch": true
-}
-```
-
-### Example 3: Third-Party HTML Tag Upload
-
-Upload a creative with third-party HTML tag:
-
-```json
-{
-  "creatives": [
-    {
-      "creative_id": "programmatic_display",
-      "name": "Programmatic Display Ad",
-      "format_id": {
-        "agent_url": "https://creatives.adcontextprotocol.org",
-        "id": "display_300x250"
-      },
-      "assets": {
-        "ad_tag": {
-          "asset_type": "html",
-          "content": "<div id='ad-container'><script src='https://ads.example.com/serve?id=12345'></script></div>",
-          "width": 300,
-          "height": 250
-        }
-      },
-      "tags": ["programmatic", "display"]
-    }
-  ]
-}
-```
-
-### Example 4: Generative Creative Submission
-
-Submit a creative manifest for publisher to create (AI or human):
-
-**Request:**
-```json
-{
-  "creatives": [
-    {
-      "creative_id": "holiday_hero_display",
-      "name": "Holiday Campaign Hero Display",
-      "format_id": {
-        "agent_url": "https://publisher.com/.well-known/adcp/sales",
-        "id": "premium_bespoke_display"
-      },
-      "assets": {
-        "promoted_offerings": {
-          "asset_type": "promoted_offerings",
-          "url": "https://retailer.com",
-          "colors": {
-            "primary": "#C41E3A",
-            "secondary": "#165B33",
-            "accent": "#FFD700"
-          },
-          "tone": "Warm, festive, family-oriented"
+result = agent.sync_creatives(
+    media_buy_id='mb_12345',
+    creatives=[
+        {
+            'creative_id': 'creative_display_001',
+            'name': 'Summer Sale Banner 300x250',
+            'format_id': {
+                'agent_url': 'https://creatives.adcontextprotocol.org',
+                'id': 'display_300x250'
+            },
+            'assets': [{
+                'asset_type': 'image',
+                'url': 'https://cdn.example.com/banner-300x250.jpg'
+            }],
+            'package_assignments': [
+                {'package_id': 'pkg_premium', 'status': 'active'},
+                {'package_id': 'pkg_standard', 'status': 'active'}
+            ],
+            'brand_safe': True
         },
-        "generation_prompt": {
-          "asset_type": "text",
-          "content": "Create a holiday campaign featuring our winter collection. Emphasize warmth, family togetherness, and quality. Include subtle holiday elements without being overtly religious."
+        {
+            'creative_id': 'creative_video_002',
+            'name': 'Product Demo 15s',
+            'format_id': {
+                'agent_url': 'https://creatives.adcontextprotocol.org',
+                'id': 'video_standard_15s'
+            },
+            'assets': [{
+                'asset_type': 'video',
+                'url': 'https://cdn.example.com/demo-15s.mp4'
+            }],
+            'package_assignments': [
+                {'package_id': 'pkg_premium', 'status': 'active'}
+            ],
+            'brand_safe': True
+        },
+        {
+            'creative_id': 'creative_display_002',
+            'name': 'Summer Sale Banner 728x90',
+            'format_id': {
+                'agent_url': 'https://creatives.adcontextprotocol.org',
+                'id': 'display_728x90'
+            },
+            'assets': [{
+                'asset_type': 'image',
+                'url': 'https://cdn.example.com/banner-728x90.jpg'
+            }],
+            'package_assignments': [
+                {'package_id': 'pkg_standard', 'status': 'active'}
+            ],
+            'brand_safe': True
         }
-      },
-      "tags": ["holiday", "q4_2024", "hero"]
+    ]
+)
+
+print(f"Successfully synced {len(result['creatives'])} creatives")
+for creative in result['creatives']:
+    print(f"  {creative['name']}: {creative['platform_creative_id']}")
+```
+
+</CodeGroup>
+
+### Patch Update (Change Assignments Only)
+
+Update package assignments without re-uploading assets:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { ADCPMultiAgentClient} from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+const result = await agent.syncCreatives({
+  media_buy_id: 'mb_12345',
+  mode: 'patch',
+  creatives: [{
+    creative_id: 'creative_video_001',
+    name: 'Summer Sale 30s',
+    format_id: {
+      agent_url: 'https://creatives.adcontextprotocol.org',
+      id: 'video_standard_30s'
+    },
+    package_assignments: [
+      { package_id: 'pkg_premium', status: 'active' },
+      { package_id: 'pkg_standard', status: 'paused' }
+    ]
+  }]
+});
+
+console.log('Updated assignments for creative:', result.creatives[0].creative_id);
+```
+
+```python Python
+from adcp import ADCPMultiAgentClient
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
     }
-  ]
-}
+}])
+
+agent = client.agent('test-agent')
+
+result = agent.sync_creatives(
+    media_buy_id='mb_12345',
+    mode='patch',
+    creatives=[{
+        'creative_id': 'creative_video_001',
+        'name': 'Summer Sale 30s',
+        'format_id': {
+            'agent_url': 'https://creatives.adcontextprotocol.org',
+            'id': 'video_standard_30s'
+        },
+        'package_assignments': [
+            {'package_id': 'pkg_premium', 'status': 'active'},
+            {'package_id': 'pkg_standard', 'status': 'paused'}
+        ]
+    }]
+)
+
+print(f"Updated assignments for creative: {result['creatives'][0]['creative_id']}")
 ```
 
-**Note:** The `url` field in the `promoted_offerings` asset represents the advertiser's brand or product website (e.g., `https://retailer.com`), not a reference to a cached manifest. Publishers can use this URL to gather additional brand context if needed.
+</CodeGroup>
 
-**Initial Response (Async):**
-```json
-{
-  "status": "submitted",
-  "message": "Creative submitted for creation",
-  "context_id": "ctx_abc123",
-  "creatives": [
-    {
-      "creative_id": "holiday_hero_display",
-      "action": "created",
-      "platform_id": "pub_creative_789"
+### Third-Party Ad Tags
+
+Use third-party ad serving with HTML/JavaScript tags:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+const result = await agent.syncCreatives({
+  media_buy_id: 'mb_12345',
+  creatives: [{
+    creative_id: 'creative_3p_001',
+    name: 'DCM Tag - Summer Campaign',
+    format_id: {
+      agent_url: 'https://creatives.adcontextprotocol.org',
+      id: 'display_300x250'
+    },
+    third_party_tag: `
+      <script src="https://ad.doubleclick.net/ddm/trackimp/N1234.5678?ord=${CACHEBUSTER}"></script>
+      <a href="${CLICK_URL}https://example.com/landing">
+        <img src="https://ad.doubleclick.net/ddm/ad/N1234.5678;sz=300x250;ord=${CACHEBUSTER}"/>
+      </a>
+    `,
+    package_assignments: [{
+      package_id: 'pkg_standard',
+      status: 'active'
+    }]
+  }]
+});
+
+console.log('Third-party tag uploaded:', result.creatives[0].creative_id);
+```
+
+```python Python
+from adcp import ADCPMultiAgentClient
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
     }
-  ]
-}
+}])
+
+agent = client.agent('test-agent')
+
+result = agent.sync_creatives(
+    media_buy_id='mb_12345',
+    creatives=[{
+        'creative_id': 'creative_3p_001',
+        'name': 'DCM Tag - Summer Campaign',
+        'format_id': {
+            'agent_url': 'https://creatives.adcontextprotocol.org',
+            'id': 'display_300x250'
+        },
+        'third_party_tag': '''
+            <script src="https://ad.doubleclick.net/ddm/trackimp/N1234.5678?ord=${CACHEBUSTER}"></script>
+            <a href="${CLICK_URL}https://example.com/landing">
+                <img src="https://ad.doubleclick.net/ddm/ad/N1234.5678;sz=300x250;ord=${CACHEBUSTER}"/>
+            </a>
+        ''',
+        'package_assignments': [{
+            'package_id': 'pkg_standard',
+            'status': 'active'
+        }]
+    }]
+)
+
+print(f"Third-party tag uploaded: {result['creatives'][0]['creative_id']}")
 ```
 
-**Later Response (When Ready):**
-```json
-{
-  "status": "completed",
-  "message": "Creative ready for review",
-  "context_id": "ctx_abc123",
-  "creatives": [
-    {
-      "creative_id": "holiday_hero_display",
-      "action": "created",
-      "platform_id": "pub_creative_789",
-      "preview_url": "https://publisher.com/preview/pub_creative_789",
-      "expires_at": "2024-12-20T00:00:00Z"
+</CodeGroup>
+
+### Generative Creatives
+
+Use the creative agent to generate creatives from a brand manifest. See the [Generative Creatives guide](/docs/creative/generative-creatives) for complete workflow details.
+
+<CodeGroup>
+
+```javascript JavaScript
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+const result = await agent.syncCreatives({
+  media_buy_id: 'mb_12345',
+  creatives: [{
+    creative_id: 'creative_gen_001',
+    name: 'AI-Generated Summer Banner',
+    format_id: {
+      agent_url: 'https://creatives.adcontextprotocol.org',
+      id: 'display_300x250'
+    },
+    assets: [{
+      asset_type: 'manifest',
+      url: 'https://cdn.example.com/brand-manifest.json'
+    }],
+    package_assignments: [{
+      package_id: 'pkg_standard',
+      status: 'active'
+    }]
+  }]
+});
+
+console.log('Generative creative synced:', result.creatives[0].creative_id);
+```
+
+```python Python
+from adcp import ADCPMultiAgentClient
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
     }
-  ]
+}])
+
+agent = client.agent('test-agent')
+
+result = agent.sync_creatives(
+    media_buy_id='mb_12345',
+    creatives=[{
+        'creative_id': 'creative_gen_001',
+        'name': 'AI-Generated Summer Banner',
+        'format_id': {
+            'agent_url': 'https://creatives.adcontextprotocol.org',
+            'id': 'display_300x250'
+        },
+        'assets': [{
+            'asset_type': 'manifest',
+            'url': 'https://cdn.example.com/brand-manifest.json'
+        }],
+        'package_assignments': [{
+            'package_id': 'pkg_standard',
+            'status': 'active'
+        }]
+    }]
+)
+
+print(f"Generative creative synced: {result['creatives'][0]['creative_id']}")
+```
+
+</CodeGroup>
+
+### Dry Run Validation
+
+Validate creative configuration without uploading:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
+const result = await agent.syncCreatives({
+  media_buy_id: 'mb_12345',
+  mode: 'dry_run',
+  creatives: [{
+    creative_id: 'creative_test_001',
+    name: 'Test Creative',
+    format_id: {
+      agent_url: 'https://creatives.adcontextprotocol.org',
+      id: 'video_standard_30s'
+    },
+    assets: [{
+      asset_type: 'video',
+      url: 'https://cdn.example.com/test-video.mp4'
+    }],
+    package_assignments: [{
+      package_id: 'pkg_unknown',
+      status: 'active'
+    }]
+  }]
+});
+
+if (result.errors && result.errors.length > 0) {
+  console.log('Validation errors found:');
+  result.errors.forEach(error => console.log(`  - ${error.message}`));
+} else {
+  console.log('Validation passed! Ready to sync.');
 }
 ```
 
-**Approval (Buyer likes it):**
-```json
-{
-  "creatives": [
-    {
-      "creative_id": "holiday_hero_display",
-      "approved": true
+```python Python
+from adcp import ADCPMultiAgentClient
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
     }
-  ]
-}
+}])
+
+agent = client.agent('test-agent')
+
+result = agent.sync_creatives(
+    media_buy_id='mb_12345',
+    mode='dry_run',
+    creatives=[{
+        'creative_id': 'creative_test_001',
+        'name': 'Test Creative',
+        'format_id': {
+            'agent_url': 'https://creatives.adcontextprotocol.org',
+            'id': 'video_standard_30s'
+        },
+        'assets': [{
+            'asset_type': 'video',
+            'url': 'https://cdn.example.com/test-video.mp4'
+        }],
+        'package_assignments': [{
+            'package_id': 'pkg_unknown',
+            'status': 'active'
+        }]
+    }]
+)
+
+if result.get('errors'):
+    print('Validation errors found:')
+    for error in result['errors']:
+        print(f"  - {error['message']}")
+else:
+    print('Validation passed! Ready to sync.')
 ```
 
-**Or Request Changes (Buyer wants refinement):**
-```json
-{
-  "creatives": [
-    {
-      "creative_id": "holiday_hero_display",
-      "approved": false,
-      "assets": {
-        "generation_prompt": {
-          "asset_type": "text",
-          "content": "Make the colors more vibrant and emphasize the sale pricing more prominently"
-        }
-      }
-    }
-  ]
-}
-```
+</CodeGroup>
 
-_Note: Conversational context is maintained automatically by the protocol layer - no explicit `context_id` parameter is needed in requests._
+## Sync Modes
 
-The buyer may not know if this creative was generated by AI in 20 seconds or designed by a human team over 2 days. The workflow is identical either way, though publishers should communicate their approach for buyers who care about creation method.
+### Upsert (default)
+- Creates new creatives or updates existing by `creative_id`
+- Merges package assignments (additive)
+- Full asset replacement if assets provided
+- Use when initially uploading or doing complete updates
 
-### Example 5: Dry Run Preview
+### Patch
+- Updates only specified fields
+- Additive package assignments (doesn't remove existing)
+- Does not replace assets unless explicitly provided
+- Use when modifying assignments without re-uploading assets
 
-Preview changes before applying them:
-
-```json
-{
-  "creatives": [
-    {
-      "creative_id": "test_banner",
-      "name": "Test Banner Creative",
-      "format_id": {
-        "agent_url": "https://creatives.adcontextprotocol.org",
-        "id": "display_300x250"
-      },
-      "assets": {
-        "banner_image": {
-          "asset_type": "image",
-          "url": "https://cdn.example.com/test-banner.jpg",
-          "width": 300,
-          "height": 250
-        }
-      }
-    }
-  ],
-  "dry_run": true,
-  "validation_mode": "lenient"
-}
-```
-
-### Example 6: Library Replacement (Advanced)
-
-Replace entire creative library with new set (use with extreme caution):
-
-```json
-{
-  "creatives": [
-    // ... all creatives that should exist in the library
-  ],
-  "delete_missing": true,
-  "validation_mode": "strict"
-}
-```
-
-## Operational Modes
-
-### Patch vs Full Upsert
-
-**Full Upsert Mode (default):**
-- Replaces the entire creative with provided data
-- Missing optional fields are cleared/reset to defaults
-- Use when you want to ensure complete creative definition
-
-**Patch Mode (`patch: true`):**
-- Updates only the fields specified in the request
-- Preserves existing values for unspecified fields  
-- Use for selective updates (e.g., updating click URLs only)
-
-### Validation Modes  
-
-**Strict Mode (default):**
-- Entire sync operation fails if any creative has validation errors
-- Ensures data consistency and integrity
-- Use for production uploads where quality is critical
-
-**Lenient Mode:**
-- Processes valid creatives and reports errors for invalid ones
-- Allows partial success in bulk operations
-- Use for large imports where some failures are acceptable
+### Dry Run
+- Validates request without making changes
+- Returns errors and warnings
+- Does not process assets or create creatives
+- Use for pre-flight validation checks
 
 ## Error Handling
 
-### Validation Errors
-
-Common validation scenarios and their handling:
-
-```json
-{
-  "results": [
-    {
-      "creative_id": "invalid_creative",
-      "action": "failed",
-      "errors": [
-        "Missing required field: format_id",
-        "Missing required field: assets",
-        "Asset 'vast_tag' has invalid asset_type: must be one of [image, video, audio, text, html, css, javascript, vast, daast, promoted_offerings, url]"
-      ]
-    }
-  ]
-}
-```
-
-### Assignment Errors
-
-When assignments fail, they're reported within each creative's result:
-
-```json
-{
-  "creatives": [
-    {
-      "creative_id": "hero_video_30s",
-      "action": "updated",
-      "assigned_to": ["pkg_ctv_001"],
-      "assignment_errors": {
-        "pkg_invalid_123": "Package not found or access denied"
-      }
-    }
-  ]
-}
-```
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `INVALID_FORMAT` | Format not supported by product | Check product's supported formats via `list_creative_formats` |
+| `ASSET_PROCESSING_FAILED` | Asset file corrupt or invalid | Verify asset meets format requirements (codec, dimensions, duration) |
+| `PACKAGE_NOT_FOUND` | Package ID doesn't exist in media buy | Verify `package_id` from `create_media_buy` response |
+| `THIRD_PARTY_TAG_INVALID` | 3P tag failed validation | Check tag syntax and required macros (`${CLICK_URL}`, `${CACHEBUSTER}`) |
+| `BRAND_SAFETY_VIOLATION` | Creative failed brand safety scan | Review content against publisher's brand safety guidelines |
+| `FORMAT_MISMATCH` | Assets don't match format requirements | Verify asset types and specifications match format definition |
+| `DUPLICATE_CREATIVE_ID` | Creative ID already exists in different media buy | Use unique `creative_id` or sync to correct media buy |
 
 ## Best Practices
 
-### 1. Batch Size Management
-- Stay within 100 creatives per request limit
-- For large libraries, break into multiple sync requests
-- Consider rate limiting to avoid overwhelming the platform
+1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development.
 
-### 2. Validation Strategy
-- Use `dry_run: true` to preview changes for large updates
-- Start with `validation_mode: "strict"` to catch data quality issues
-- Switch to `lenient` mode for large imports with expected failures
+2. **Validate first** - Use `mode: "dry_run"` to catch errors before actual upload. This saves bandwidth and processing time.
 
-### 3. Creative ID Strategy
-- Use consistent, meaningful creative ID conventions
-- Include format hints in IDs (e.g., `hero_video_30s`, `banner_300x250`)
-- Avoid special characters that might cause URL encoding issues
+3. **Batch assignments** - Include all package assignments in single sync call to avoid race conditions between updates.
 
-### 4. Assignment Management
-- Group related package assignments in single requests
-- Use assignment bulk operations for efficiency
-- Monitor assignment results for failed package assignments
+4. **CDN-hosted assets** - Use publicly accessible CDN URLs for faster processing. Platforms can fetch assets directly without proxy delays.
 
-### 5. Error Recovery
-- Implement retry logic for transient failures
-- Parse detailed error responses to identify data quality issues
-- Use patch mode for correcting specific field errors
+5. **Third-party tags** - Include all required macros:
+   - `${CLICK_URL}` - Click tracking wrapper
+   - `${CACHEBUSTER}` - Cache-busting random number
+   - Platform-specific macros as documented
 
-## Migration from Legacy Creative Tasks
+6. **Brand manifests** - For generative creatives, validate manifest schema before syncing to avoid processing failures.
 
-The `sync_creatives` task replaces previous action-based creative management approaches:
+7. **Check format support** - Use `list_creative_formats` to verify product supports your creative formats before uploading.
 
-**Old Approach:**
-```json
-{
-  "action": "upload",
-  "creatives": [...]
-}
-```
+## Next Steps
 
-**New Approach:**
-```json
-{
-  "creatives": [...] // Automatic upsert behavior
-}
-```
-
-**Key Changes:**
-- No `action` parameter needed - upsert behavior is automatic
-- Bulk operations are the default, not an add-on
-- Assignment management integrated into sync operation
-- More granular control with patch mode and validation modes
-
-## Platform Considerations
-
-### Google Ad Manager
-- Requires policy compliance review for new creatives
-- Supports standard IAB formats with automatic format validation
-- Creative approval typically within 24 hours
-
-### Kevel  
-- Supports custom creative formats and templates
-- Real-time creative decisioning capabilities
-- Flexible template-based native ad support
-
-### Triton Digital
-- Audio-specific platform with specialized format requirements
-- Station-level creative targeting capabilities
-- Supports DAAST and standard audio ad formats
-
-## Related Tasks
-
-- [`list_creatives`](/docs/media-buy/task-reference/list_creatives) - Query creative library with filtering and search
-- [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) - Create campaigns that use library creatives
-- [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) - Discover supported creative formats
-
----
-
-*The sync_creatives task provides the foundation for efficient creative library management in AdCP, enabling bulk operations and flexible update patterns while maintaining data quality and consistency.*
+- [list_creative_formats](/docs/media-buy/task-reference/list_creative_formats) - Check supported formats before upload
+- [Generative Creatives Guide](/docs/creative/generative-creatives) - Generate creatives from brand manifests
+- [get_media_buy_delivery](/docs/media-buy/task-reference/get_media_buy_delivery) - Monitor creative performance
+- [Creative Asset Specifications](/docs/creative/asset-specifications) - Technical requirements for assets
