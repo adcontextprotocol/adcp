@@ -108,26 +108,28 @@ testable: true
 - Mixed testable and non-testable examples (use separate pages)
 
 **Example testable page**:
+
 ```markdown
 ---
 title: get_products
 testable: true
 ---
 
+# get_products
+
 <CodeGroup>
 
-```javascript JavaScript
-// All code on this page is automatically tested
+\`\`\`javascript JavaScript
 import { ADCPMultiAgentClient } from '@adcp/client';
 const client = new ADCPMultiAgentClient([...]);
-```
+\`\`\`
 
-```python Python
-# Complete and runnable Python example
+\`\`\`python Python
 from adcp import ADCPMultiAgentClient
-```
+\`\`\`
 
 </CodeGroup>
+```
 
 **Running tests**:
 ```bash
