@@ -82,6 +82,20 @@ console.log(`Campaign paused: ${result.status}`);
 ### Update Package Budget
 
 ```javascript
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
 // Increase budget for specific package
 const result = await agent.updateMediaBuy({
   media_buy_id: 'mb_12345',
@@ -97,6 +111,20 @@ console.log(`Package budget updated: ${result.packages[0].budget}`);
 ### Change Campaign Dates
 
 ```javascript
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
 // Extend campaign end date
 const result = await agent.updateMediaBuy({
   media_buy_id: 'mb_12345',
@@ -109,6 +137,20 @@ console.log(`Campaign extended to: ${result.end_time}`);
 ### Update Targeting
 
 ```javascript
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
 // Add geographic restrictions to package
 const result = await agent.updateMediaBuy({
   media_buy_id: 'mb_12345',
@@ -127,6 +169,20 @@ console.log('Targeting updated successfully');
 ### Replace Creatives
 
 ```javascript
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
 // Swap out creative assets
 const result = await agent.updateMediaBuy({
   media_buy_id: 'mb_12345',

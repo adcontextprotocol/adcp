@@ -294,10 +294,30 @@ if result.get('portfolio_description'):
 <CodeGroup>
 
 ```javascript JavaScript
+import { ADCPMultiAgentClient } from '@adcp/client';
+
+const client = new ADCPMultiAgentClient([{
+  id: 'test-agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth: {
+    type: 'bearer',
+    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+  }
+}]);
+
+const agent = client.agent('test-agent');
+
 // Use last_updated to determine if cache is stale
 const result = await agent.listAuthorizedProperties();
 
-const cache = getCachedPublisherData();
+// Example cache from previous fetch (in practice, load from storage)
+const cache = {
+  'example-publisher.com': {
+    last_updated: '2024-01-15T10:00:00Z',
+    properties: []
+  }
+};
 
 for (const domain of result.publisher_domains) {
   const cached = cache[domain];
@@ -313,17 +333,36 @@ for (const domain of result.publisher_domains) {
   }
 
   console.log(`${domain}: Fetching updated property definitions`);
-  // Fetch from publisher...
+  // Fetch from publisher's adagents.json...
 }
 ```
 
 ```python Python
+from adcp import ADCPMultiAgentClient
 from datetime import datetime
+
+client = ADCPMultiAgentClient([{
+    'id': 'test-agent',
+    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
+    'protocol': 'mcp',
+    'auth': {
+        'type': 'bearer',
+        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
+    }
+}])
+
+agent = client.agent('test-agent')
 
 # Use last_updated to determine if cache is stale
 result = agent.list_authorized_properties()
 
-cache = get_cached_publisher_data()
+# Example cache from previous fetch (in practice, load from storage)
+cache = {
+    'example-publisher.com': {
+        'last_updated': '2024-01-15T10:00:00Z',
+        'properties': []
+    }
+}
 
 for domain in result['publisher_domains']:
     cached = cache.get(domain)
@@ -337,7 +376,7 @@ for domain in result['publisher_domains']:
             continue
 
     print(f"{domain}: Fetching updated property definitions")
-    # Fetch from publisher...
+    # Fetch from publisher's adagents.json...
 ```
 
 </CodeGroup>
