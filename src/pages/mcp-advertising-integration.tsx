@@ -186,15 +186,15 @@ export default function MCPAdvertisingIntegration() {
               </div>
 
               <div className="text--center margin-top--xl">
-                <Link 
+                <Link
                   className="button button--primary button--lg margin-right--md"
-                  to="/docs/protocols/mcp-guide"
+                  href="https://docs.adcontextprotocol.org/docs/protocols/mcp-guide"
                 >
                   MCP Integration Guide
                 </Link>
-                <Link 
+                <Link
                   className="button button--outline button--secondary button--lg"
-                  to="/docs/intro"
+                  href="https://docs.adcontextprotocol.org/docs/intro"
                 >
                   Get Started
                 </Link>

@@ -249,9 +249,9 @@ const campaign = await adcp.create_media_buy({
               </div>
 
               <div className="text--center margin-top--xl">
-                <Link 
+                <Link
                   className="button button--primary button--lg margin-right--md"
-                  to="/docs/intro"
+                  href="https://docs.adcontextprotocol.org/docs/intro"
                 >
                   Get Started with AdCP
                 </Link>
