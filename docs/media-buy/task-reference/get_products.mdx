@@ -613,7 +613,7 @@ console.log(`First product pricing: ${publicCatalog.products[0].pricing_options?
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent, test_agent_noauth
+from adcp import test_agent, test_agent_no_auth
 
 # WITH authentication - full catalog with pricing
 full_catalog = test_agent.get_products(
@@ -628,7 +628,7 @@ print(f"With auth: {len(full_catalog['products'])} products")
 print(f"First product pricing: {len(full_catalog['products'][0]['pricing_options'])} options")
 
 # WITHOUT authentication - limited public catalog
-public_catalog = test_agent_noauth.get_products(
+public_catalog = test_agent_no_auth.get_products(
     brief='Premium CTV inventory for brand awareness',
     brand_manifest={
         'name': 'Nike',

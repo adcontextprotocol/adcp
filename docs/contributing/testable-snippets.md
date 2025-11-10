@@ -71,7 +71,7 @@ const publicCatalog = await testAgentNoAuth.getProducts({
 
 **Python:**
 ```python
-from adcp.test_helpers import test_agent, test_agent_noauth
+from adcp import test_agent, test_agent_no_auth
 
 # Authenticated access
 full_catalog = test_agent.get_products(
@@ -79,7 +79,7 @@ full_catalog = test_agent.get_products(
 )
 
 # Unauthenticated access
-public_catalog = test_agent_noauth.get_products(
+public_catalog = test_agent_no_auth.get_products(
     brief='Premium CTV inventory'
 )
 ```
