@@ -71,17 +71,21 @@ const publicCatalog = await testAgentNoAuth.getProducts({
 
 **Python:**
 ```python
+import asyncio
 from adcp import test_agent, test_agent_no_auth
 
-# Authenticated access
-full_catalog = test_agent.get_products(
-    brief='Premium CTV inventory'
-)
+async def example():
+    # Authenticated access
+    full_catalog = await test_agent.simple.get_products(
+        brief='Premium CTV inventory'
+    )
 
-# Unauthenticated access
-public_catalog = test_agent_no_auth.get_products(
-    brief='Premium CTV inventory'
-)
+    # Unauthenticated access
+    public_catalog = await test_agent_no_auth.simple.get_products(
+        brief='Premium CTV inventory'
+    )
+
+asyncio.run(example())
 ```
 
 ## Best Practices

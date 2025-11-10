@@ -613,31 +613,35 @@ console.log(`First product pricing: ${publicCatalog.products[0].pricing_options?
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent, test_agent_no_auth
 
-# WITH authentication - full catalog with pricing
-full_catalog = test_agent.get_products(
-    brief='Premium CTV inventory for brand awareness',
-    brand_manifest={
-        'name': 'Nike',
-        'url': 'https://nike.com'
-    }
-)
+async def compare_auth():
+    # WITH authentication - full catalog with pricing
+    full_catalog = await test_agent.simple.get_products(
+        brief='Premium CTV inventory for brand awareness',
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        }
+    )
 
-print(f"With auth: {len(full_catalog['products'])} products")
-print(f"First product pricing: {len(full_catalog['products'][0]['pricing_options'])} options")
+    print(f"With auth: {len(full_catalog['products'])} products")
+    print(f"First product pricing: {len(full_catalog['products'][0]['pricing_options'])} options")
 
-# WITHOUT authentication - limited public catalog
-public_catalog = test_agent_no_auth.get_products(
-    brief='Premium CTV inventory for brand awareness',
-    brand_manifest={
-        'name': 'Nike',
-        'url': 'https://nike.com'
-    }
-)
+    # WITHOUT authentication - limited public catalog
+    public_catalog = await test_agent_no_auth.simple.get_products(
+        brief='Premium CTV inventory for brand awareness',
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        }
+    )
 
-print(f"Without auth: {len(public_catalog['products'])} products")
-print(f"First product pricing: {len(public_catalog['products'][0].get('pricing_options', []))} options")
+    print(f"Without auth: {len(public_catalog['products'])} products")
+    print(f"First product pricing: {len(public_catalog['products'][0].get('pricing_options', []))} options")
+
+asyncio.run(compare_auth())
 ```
 
 </CodeGroup>
