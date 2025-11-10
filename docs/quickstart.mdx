@@ -3,6 +3,7 @@ sidebar_position: 2
 title: Quickstart Guide
 description: Get started with AdCP in 5 minutes
 keywords: [adcp quickstart, getting started, adcp tutorial]
+testable: true
 ---
 
 # AdCP Quickstart
@@ -26,7 +27,7 @@ Discover products from the test agent:
 
 **JavaScript:**
 
-```javascript test=true
+```javascript
 import { ADCPMultiAgentClient } from '@adcp/client';
 
 const client = new ADCPMultiAgentClient([{
@@ -59,7 +60,7 @@ if (result.success && result.data) {
 
 **Python:**
 
-```python test=true
+```python
 import asyncio
 from adcp import ADCPMultiAgentClient, AgentConfig, GetProductsRequest
 
@@ -96,7 +97,7 @@ asyncio.run(main())
 
 **CLI:**
 
-```bash test=true
+```bash
 # Using npx (JavaScript/Node.js)
 npx @adcp/client \
   https://test-agent.adcontextprotocol.org/mcp \

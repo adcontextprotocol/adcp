@@ -10,69 +10,79 @@ Automated testing of documentation examples ensures:
 - Breaking changes are caught immediately
 - Users can trust the documentation
 
-**Important**: The test infrastructure validates code blocks **directly in the documentation files** (`.md` and `.mdx`). When you mark a snippet with `test=true`, that exact code from the documentation is extracted and executed.
+**Important**: The test infrastructure validates code blocks **directly in the documentation files** (`.md` and `.mdx`). When you mark a page with `testable: true` in the frontmatter, ALL code blocks on that page are extracted and executed.
 
-## Marking Snippets for Testing
+## Marking Pages for Testing
 
-To mark a code block for testing, add `test=true` or `testable` after the language identifier:
+To mark an entire page as testable, add `testable: true` to the frontmatter:
 
-### JavaScript/TypeScript Examples
+```markdown
+---
+title: get_products
+sidebar_position: 1
+testable: true
+---
+
+# get_products
+
+...all code examples here will be tested...
+```
+
+**Key principle**: Pages should be EITHER fully testable OR not testable at all. We don't support partially testable pages (mixing testable and non-testable code blocks on the same page).
+
+### Example Code Blocks
+
+Once a page is marked `testable: true`, all code blocks are executed:
 
 ````markdown
-```javascript test=true
-import { AdcpClient } from '@adcp/client';
+```javascript
+import { testAgent } from '@adcp/client/test-helpers';
 
-const client = new AdcpClient({
-  agentUrl: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  bearerToken: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-});
-
-const products = await client.getProducts({
-  promoted_offering: 'Nike Air Max 2024'
+const products = await testAgent.getProducts({
+  brief: 'Premium athletic footwear with innovative cushioning',
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  }
 });
 
 console.log(`Found ${products.products.length} products`);
 ```
 ````
 
-### Bash/curl Examples
+### Using Test Helpers
 
-````markdown
-```bash testable
-curl -X POST https://test-agent.adcontextprotocol.org/mcp \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": "req-123",
-    "method": "tools/call",
-    "params": {
-      "name": "get_products",
-      "arguments": {
-        "promoted_offering": "Nike Air Max 2024"
-      }
-    }
-  }'
+For simpler examples, use the built-in test helpers from client libraries:
+
+**JavaScript:**
+```javascript
+import { testAgent, testAgentNoAuth } from '@adcp/client/test-helpers';
+
+// Authenticated access
+const fullCatalog = await testAgent.getProducts({
+  brief: 'Premium CTV inventory'
+});
+
+// Unauthenticated access
+const publicCatalog = await testAgentNoAuth.getProducts({
+  brief: 'Premium CTV inventory'
+});
 ```
-````
 
-### Python Examples
+**Python:**
+```python
+from adcp.test_helpers import test_agent, test_agent_noauth
 
-````markdown
-```python test=true
-from mcp import Client
+# Authenticated access
+full_catalog = test_agent.get_products(
+    brief='Premium CTV inventory'
+)
 
-client = Client("https://test-agent.adcontextprotocol.org/mcp")
-client.authenticate("1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ")
-
-products = client.call_tool("get_products", {
-    "promoted_offering": "Nike Air Max 2024"
-})
-
-print(f"Found {len(products['products'])} products")
+# Unauthenticated access
+public_catalog = test_agent_noauth.get_products(
+    brief='Premium CTV inventory'
+)
 ```
-````
 
 ## Best Practices
 
@@ -167,26 +177,32 @@ const client = new AdcpClient({
 console.log('Authenticated:', client.isAuthenticated);
 ```
 
-## When NOT to Mark Snippets for Testing
+## When NOT to Mark Pages as Testable
 
-Some code blocks shouldn't be tested:
+Some documentation pages should NOT have `testable: true`:
 
-### 1. Pseudo-code or Conceptual Examples
+### 1. Pages with Pseudo-code or Conceptual Examples
+
+If your page includes conceptual examples that aren't meant to execute:
 
 ```javascript
-// Don't test this - it's conceptual
+// Conceptual workflow - not actual code
 const result = await magicFunction(); // ✗ Not a real function
 ```
 
-### 2. Incomplete Code Fragments
+### 2. Pages with Incomplete Code Fragments
+
+Pages showing partial code snippets for illustration:
 
 ```javascript
-// Don't test - incomplete fragment
+// Incomplete fragment showing field structure
 budget: 10000,
 start_date: '2025-11-01'
 ```
 
-### 3. Configuration/JSON Schema Examples
+### 3. Pages with Configuration/Schema Examples
+
+Documentation showing JSON schemas or configuration structures:
 
 ```json
 {
@@ -195,7 +211,9 @@ start_date: '2025-11-01'
 }
 ```
 
-### 4. Response Examples
+### 4. Pages with Response Examples
+
+Pages showing example API responses (not requests):
 
 ```json
 {
@@ -205,12 +223,13 @@ start_date: '2025-11-01'
 }
 ```
 
-### 5. Language-Specific Features Not Available in Node.js
+### 5. Pages with Mixed Testable and Non-Testable Code
 
-```typescript
-// Don't test - browser-only API
-const file = await window.showOpenFilePicker();
-```
+If your page has SOME runnable code but SOME conceptual code, split into separate pages:
+- One page marked `testable: true` with complete, runnable examples
+- Another page without the flag for conceptual/partial examples
+
+**Remember**: Every code block on a testable page will be executed. If any block can't run, don't mark the page as testable.
 
 ## Running Snippet Tests
 
@@ -219,14 +238,21 @@ const file = await window.showOpenFilePicker();
 Test all documentation snippets:
 
 ```bash
-npm run test:snippets
+npm test
+```
+
+Or specifically run the snippet tests:
+
+```bash
+node tests/snippet-validation.test.js
 ```
 
 This will:
 1. Scan all `.md` and `.mdx` files in `docs/`
-2. Extract code blocks marked with `test=true` or `testable`
-3. Execute each snippet and report results
-4. Exit with error if any tests fail
+2. Find pages with `testable: true` in frontmatter
+3. Extract ALL code blocks from those pages
+4. Execute each snippet and report results
+5. Exit with error if any tests fail
 
 ### In CI/CD
 
@@ -286,13 +312,15 @@ This indicates the `@adcp/client` package needs to be installed.
 
 When adding new documentation:
 
-1. ✅ **DO** mark working examples as testable
-2. ✅ **DO** use test agent credentials in examples
-3. ✅ **DO** test snippets locally before committing
-4. ✅ **DO** keep examples self-contained
-5. ❌ **DON'T** mark incomplete fragments for testing
-6. ❌ **DON'T** mark pseudo-code for testing
-7. ❌ **DON'T** use production credentials in examples
+1. ✅ **DO** mark entire pages as `testable: true` if ALL code blocks are runnable
+2. ✅ **DO** use test helpers from client libraries for simpler examples
+3. ✅ **DO** test snippets locally before committing (`npm test`)
+4. ✅ **DO** keep examples self-contained and complete
+5. ✅ **DO** use test agent credentials in examples
+6. ❌ **DON'T** mark pages with ANY incomplete fragments as testable
+7. ❌ **DON'T** mark pages with pseudo-code as testable
+8. ❌ **DON'T** mix testable and non-testable code on the same page
+9. ❌ **DON'T** use production credentials in examples
 
 ## Questions?
 
