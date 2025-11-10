@@ -74,7 +74,7 @@ Publishers can proactively push reporting data to buyers through webhook notific
 **Example: Offline Delivery**
 Publisher pushes daily report files to buyer's cloud storage:
 ```
-s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.json.gz
+s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.jsonl.gz
 ```
 
 File contains same structure as webhook payload but aggregated across all campaigns. Buyer processes files on their schedule.
@@ -174,7 +174,7 @@ When a reporting webhook is configured, publishers commit to sending:
 - One final notification when the campaign completes
 - If reporting data is delayed beyond the expected delay window, a `"delayed"` notification will be sent
 
-### Webhook Payload
+### Webhook Payload (Real-time)
 
 Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with additional metadata:
 
@@ -210,6 +210,123 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
 - **`sequence_number`**: Sequential notification number (starts at 1)
 - **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
 - **`media_buy_deliveries`**: Array of media buy delivery data (may contain multiple media buys aggregated by publisher)
+
+### Offline File Delivery (Batch)
+
+For offline file delivery, publishers can provide reporting data in JSON Lines (JSONL), CSV, or Parquet format. All formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
+
+**Compression:**
+Files can be compressed with gzip (`.jsonl.gz`, `.csv.gz`, or `.parquet.gz`) for efficient storage and transfer. Compression is recommended for large files.
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+<TabItem value="jsonl" label="JSONL" default>
+
+---
+
+**Structure:**
+
+Each line in the JSONL file contains a complete webhook payload object. Multiple reports can be included by having multiple lines in the file. The structure matches the [webhook payload structure](#webhook-payload-real-time).
+
+**Example:**
+
+```jsonl
+{"notification_type":"scheduled","sequence_number":5,"next_expected_at":"2024-02-06T08:00:00Z","reporting_period":{"start":"2024-02-05T00:00:00Z","end":"2024-02-05T23:59:59Z"},"currency":"USD","media_buy_deliveries":[{"media_buy_id":"mb_001","buyer_ref":"campaign_a","status":"active","totals":{"impressions":125000,"spend":5625.00,"clicks":250,"ctr":0.002,"video_completions":87500,"completion_rate":0.70},"by_package":[{"package_id":"pkg_001","buyer_ref":"ctv_package","impressions":75000,"spend":3375.00,"clicks":150,"video_completions":52500,"pacing_index":0.95,"pricing_model":"cpcv","rate":0.045,"currency":"USD"},{"package_id":"pkg_002","buyer_ref":"audio_package","impressions":50000,"spend":2250.00,"clicks":100,"video_completions":35000,"pacing_index":0.93,"pricing_model":"cpm","rate":45.00,"currency":"USD"}]}]}
+{"notification_type":"scheduled","sequence_number":6,"next_expected_at":"2024-02-07T08:00:00Z","reporting_period":{"start":"2024-02-06T00:00:00Z","end":"2024-02-06T23:59:59Z"},"currency":"USD","media_buy_deliveries":[{"media_buy_id":"mb_002","buyer_ref":"campaign_b","status":"active","totals":{"impressions":200000,"spend":9000.00,"clicks":400,"ctr":0.002,"video_completions":140000,"completion_rate":0.70},"by_package":[{"package_id":"pkg_003","buyer_ref":"display_package","impressions":200000,"spend":9000.00,"clicks":400,"video_completions":140000,"pacing_index":1.02,"pricing_model":"cpm","rate":45.00,"currency":"USD"}]}]}
+```
+
+**File Format:**
+- File extension: `.jsonl` or `.jsonl.gz` (compressed)
+- Compression: Consider using `.gz` compression for large files to reduce storage and transfer costs
+
+---
+
+</TabItem>
+<TabItem value="csv" label="CSV">
+
+---
+
+**Structure:**
+
+CSV format flattens the nested JSON structure into rows. Since CSV cannot natively represent nested arrays, each child element (package) gets its own row with all parent-level data repeated. This is the standard approach for representing hierarchical data in CSV format.
+
+```csv
+reporting_period.start,reporting_period.end,notification_type,sequence_number,next_expected_at,currency,media_buy_deliveries.media_buy_id,media_buy_deliveries.buyer_ref,media_buy_deliveries.status,media_buy_deliveries.totals.impressions,media_buy_deliveries.totals.spend,media_buy_deliveries.totals.clicks,media_buy_deliveries.totals.ctr,media_buy_deliveries.totals.video_completions,media_buy_deliveries.totals.completion_rate,by_package.package_id,by_package.buyer_ref,by_package.impressions,by_package.spend,by_package.clicks,by_package.video_completions,by_package.pacing_index,by_package.pricing_model,by_package.rate,by_package.currency
+```
+
+**CSV Example:**
+
+Each row represents a package with its parent media buy context repeated. Parent-level data (reporting period, media buy totals) is included in every package row:
+
+```csv
+reporting_period.start,reporting_period.end,notification_type,sequence_number,next_expected_at,currency,media_buy_deliveries.media_buy_id,media_buy_deliveries.buyer_ref,media_buy_deliveries.status,media_buy_deliveries.totals.impressions,media_buy_deliveries.totals.spend,media_buy_deliveries.totals.clicks,media_buy_deliveries.totals.ctr,media_buy_deliveries.totals.video_completions,media_buy_deliveries.totals.completion_rate,by_package.package_id,by_package.buyer_ref,by_package.impressions,by_package.spend,by_package.clicks,by_package.video_completions,by_package.pacing_index,by_package.pricing_model,by_package.rate,by_package.currency
+2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,scheduled,5,2024-02-06T08:00:00Z,USD,mb_001,campaign_a,active,125000,5625.00,250,0.002,87500,0.70,pkg_001,ctv_package,75000,3375.00,150,52500,0.95,cpcv,0.045,USD
+2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,scheduled,5,2024-02-06T08:00:00Z,USD,mb_001,campaign_a,active,125000,5625.00,250,0.002,87500,0.70,pkg_002,audio_package,50000,2250.00,100,35000,0.93,cpm,45.00,USD
+2024-02-06T00:00:00Z,2024-02-06T23:59:59Z,scheduled,6,2024-02-07T08:00:00Z,USD,mb_002,campaign_b,active,200000,9000.00,400,0.002,140000,0.70,pkg_003,display_package,200000,9000.00,400,140000,1.02,cpm,45.00,USD
+```
+
+---
+
+</TabItem>
+<TabItem value="parquet" label="Parquet">
+
+---
+
+**Structure:**
+
+Parquet files preserve the nested structure through nested columns. The schema mirrors the JSON structure:
+
+**Schema Structure:**
+```
+reporting_period
+  ├── start (string)
+  └── end (string)
+notification_type (string)
+sequence_number (int64)
+next_expected_at (string)
+currency (string)
+media_buy_deliveries (list)
+  └── element (struct)
+      ├── media_buy_id (string)
+      ├── buyer_ref (string)
+      ├── status (string)
+      ├── totals (struct)
+      │   ├── impressions (int64)
+      │   ├── spend (double)
+      │   ├── clicks (int64)
+      │   ├── ctr (double)
+      │   ├── video_completions (int64)
+      │   └── completion_rate (double)
+      └── by_package (list)
+          └── element (struct)
+              ├── package_id (string)
+              ├── buyer_ref (string)
+              ├── impressions (int64)
+              ├── spend (double)
+              ├── clicks (int64)
+              ├── video_completions (int64)
+              ├── pacing_index (double)
+              ├── pricing_model (string)
+              ├── rate (double)
+              └── currency (string)
+```
+
+**Example Data Representation:**
+
+The Parquet file contains the same data as the JSONL format, but stored in columnar format. For example:
+
+| reporting_period.start | reporting_period.end | currency | media_buy_deliveries[0].media_buy_id | media_buy_deliveries[0].totals.impressions | media_buy_deliveries[0].by_package[0].package_id | media_buy_deliveries[0].by_package[0].pricing_model |
+|------------------------|----------------------|----------|---------------------------------------|-------------------------------------------|---------------------------------------------------|-----------------------------------------------------|
+| 2024-02-05T00:00:00Z   | 2024-02-05T23:59:59Z | USD      | mb_001                                | 125000                                    | pkg_001                                           | cpcv                                                |
+| 2024-02-05T00:00:00Z   | 2024-02-05T23:59:59Z | USD      | mb_001                                | 125000                                    | pkg_002                                           | cpm                                                 |
+| 2024-02-06T00:00:00Z   | 2024-02-06T23:59:59Z | USD      | mb_002                                | 200000                                    | pkg_003                                           | cpm                                                 |
+
+---
+
+</TabItem>
+</Tabs>
 
 ### Timezone Handling
 
