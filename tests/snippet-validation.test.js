@@ -57,9 +57,11 @@ function extractCodeBlocks(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
   const blocks = [];
 
+  // Check if page has testable: true in frontmatter
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+  const isTestablePage = frontmatterMatch && /testable:\s*true/i.test(frontmatterMatch[1]);
+
   // Regex to match code blocks with optional metadata
-  // Matches: ```language [anything] test=true [anything]
-  // Note: Use [^\n]* to capture the entire metadata line
   const codeBlockRegex = /```(\w+)([^\n]*)\n([\s\S]*?)```/g;
 
   let match;
@@ -68,8 +70,14 @@ function extractCodeBlocks(filePath) {
   while ((match = codeBlockRegex.exec(content)) !== null) {
     const language = match[1];
     const metadata = match[2];
-    const shouldTest = /\btest=true\b/.test(metadata) || /\btestable\b/.test(metadata);
     const code = match[3];
+
+    // Test if:
+    // 1. Page has testable: true in frontmatter, OR
+    // 2. Individual block has test=true or testable marker (legacy)
+    const shouldTest = isTestablePage ||
+                      /\btest=true\b/.test(metadata) ||
+                      /\btestable\b/.test(metadata);
 
     blocks.push({
       file: filePath,
