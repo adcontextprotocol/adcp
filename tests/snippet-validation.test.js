@@ -259,10 +259,17 @@ async function testPythonSnippet(snippet) {
     // Write snippet to temporary file
     fs.writeFileSync(tempFile, snippet.code);
 
-    // Execute with Python 3.11 (required for adcp package) from project root
-    const { stdout, stderr } = await execAsync(`python3.11 ${tempFile}`, {
+    // Try uv environment first (if .venv exists), fallback to system python
+    const uvEnvExists = fs.existsSync(path.join(__dirname, '..', '.venv'));
+    const pythonCommand = uvEnvExists
+      ? `source .venv/bin/activate && python ${tempFile}`
+      : `python3 ${tempFile}`;
+
+    // Execute from project root with activated environment
+    const { stdout, stderr } = await execAsync(pythonCommand, {
       timeout: 60000, // 60 second timeout (API calls can take time)
-      cwd: path.join(__dirname, '..') // Run from project root
+      cwd: path.join(__dirname, '..'), // Run from project root
+      shell: '/bin/bash'
     });
 
     return {
@@ -326,12 +333,26 @@ async function validateSnippet(snippet) {
 
         if (!firstCommand) {
           result = { success: false, error: 'No executable command found in bash snippet' };
-        } else if (firstCommand.trim().startsWith('curl')) {
-          result = await testCurlCommand(snippet);
-        } else if (firstCommand.trim().startsWith('npx') || firstCommand.trim().startsWith('uvx')) {
-          result = await testBashCommand(snippet);
         } else {
-          result = { success: false, error: 'Only curl, npx, and uvx commands are tested for bash snippets' };
+          // Extract the command name (first word)
+          const commandName = firstCommand.trim().split(/\s+/)[0];
+
+          // Skip informational commands (installation, navigation, etc.)
+          const SKIP_COMMANDS = ['npm', 'pip', 'pip3', 'cd', 'ls', 'mkdir', 'uv'];
+          if (SKIP_COMMANDS.includes(commandName)) {
+            skippedTests++;
+            log(`  ⊘ SKIPPED (informational command: ${commandName})`, 'warning');
+            return;
+          }
+
+          // Test supported executable commands
+          if (commandName === 'curl') {
+            result = await testCurlCommand(snippet);
+          } else if (commandName === 'npx' || commandName === 'uvx') {
+            result = await testBashCommand(snippet);
+          } else {
+            result = { success: false, error: `Bash command '${commandName}' not supported for testing (only curl, npx, uvx)` };
+          }
         }
         break;
 
