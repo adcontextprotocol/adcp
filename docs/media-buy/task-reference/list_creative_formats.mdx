@@ -68,7 +68,7 @@ Buyers can recursively query creative_agents. **Track visited URLs to avoid infi
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Get full specs for formats returned by get_products
 const result = await testAgent.listCreativeFormats({
@@ -117,7 +117,7 @@ for format in result['formats']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Find formats that accept images and text
 const result = await testAgent.listCreativeFormats({
@@ -159,7 +159,7 @@ for format in result['formats']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Find formats that accept JavaScript or HTML tags
 const result = await testAgent.listCreativeFormats({
@@ -205,7 +205,7 @@ for format in result['formats']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Find video formats
 const result = await testAgent.listCreativeFormats({
@@ -255,7 +255,7 @@ for duration, formats in by_duration.items():
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Find mobile-optimized formats
 const result = await testAgent.listCreativeFormats({
@@ -290,7 +290,7 @@ for format in result['formats']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Find formats that adapt to container size
 const result = await testAgent.listCreativeFormats({

@@ -55,7 +55,7 @@ See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy
 ### Pause Campaign
 
 ```javascript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Pause entire campaign
 const result = await testAgent.updateMediaBuy({
@@ -69,7 +69,7 @@ console.log(`Campaign paused: ${result.status}`);
 ### Update Package Budget
 
 ```javascript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Increase budget for specific package
 const result = await testAgent.updateMediaBuy({
@@ -86,7 +86,7 @@ console.log(`Package budget updated: ${result.packages[0].budget}`);
 ### Change Campaign Dates
 
 ```javascript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Extend campaign end date
 const result = await testAgent.updateMediaBuy({
@@ -100,7 +100,7 @@ console.log(`Campaign extended to: ${result.end_time}`);
 ### Update Targeting
 
 ```javascript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Add geographic restrictions to package
 const result = await testAgent.updateMediaBuy({
@@ -120,7 +120,7 @@ console.log('Targeting updated successfully');
 ### Replace Creatives
 
 ```javascript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Swap out creative assets
 const result = await testAgent.updateMediaBuy({

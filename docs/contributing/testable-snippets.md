@@ -36,7 +36,7 @@ Once a page is marked `testable: true`, all code blocks are executed:
 
 ````markdown
 ```javascript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 const products = await testAgent.getProducts({
   brief: 'Premium athletic footwear with innovative cushioning',
@@ -56,7 +56,7 @@ For simpler examples, use the built-in test helpers from client libraries:
 
 **JavaScript:**
 ```javascript
-import { testAgent, testAgentNoAuth } from '@adcp/client/test-helpers';
+import { testAgent, testAgentNoAuth } from '@adcp/client/testing';
 
 // Authenticated access
 const fullCatalog = await testAgent.getProducts({

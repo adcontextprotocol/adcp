@@ -60,7 +60,7 @@ Unlike traditional SSPs:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Get all authorized publishers
 const result = await testAgent.listAuthorizedProperties();
@@ -95,7 +95,7 @@ for domain in result['publisher_domains']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Check if agent represents specific publishers
 const result = await testAgent.listAuthorizedProperties({
@@ -135,7 +135,7 @@ else:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Step 1: Get authorized publishers
 const authResult = await testAgent.listAuthorizedProperties();
@@ -223,7 +223,7 @@ for domain in auth_result['publisher_domains']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Determine what type of agent this is based on portfolio
 const result = await testAgent.listAuthorizedProperties();
@@ -280,7 +280,7 @@ if result.get('portfolio_description'):
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Use last_updated to determine if cache is stale
 const result = await testAgent.listAuthorizedProperties();

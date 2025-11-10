@@ -55,7 +55,7 @@ See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/get-media-buy-de
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Get single media buy delivery report
 const result = await testAgent.getMediaBuyDelivery({
@@ -91,7 +91,7 @@ print(f"CTR: {result['media_buy_deliveries'][0]['totals']['ctr'] * 100:.2f}%")
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Get all active media buys from context
 const result = await testAgent.getMediaBuyDelivery({
@@ -136,7 +136,7 @@ for delivery in result['media_buy_deliveries']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Get month-to-date performance
 const now = new Date();
@@ -191,7 +191,7 @@ print(f"Peak day: {peak_day['date']} with {peak_day['impressions']:,} impression
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Get both active and paused campaigns
 const result = await testAgent.getMediaBuyDelivery({
@@ -249,7 +249,7 @@ for delivery in by_status['paused']:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/test-helpers';
+import { testAgent } from '@adcp/client/testing';
 
 // Query by buyer reference instead of media buy ID
 const result = await testAgent.getMediaBuyDelivery({
