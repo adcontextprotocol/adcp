@@ -578,6 +578,76 @@ print(f"Found {len(discovery['products'])} products with standard formats only")
 | `INVALID_REQUEST` | Brief too long or malformed filters | Check request parameters |
 | `POLICY_VIOLATION` | Category blocked for advertiser | See policy response message for details |
 
+### Authentication Comparison
+
+See the difference between authenticated and unauthenticated access:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent, testAgentNoAuth } from '@adcp/client/test-helpers';
+
+// WITH authentication - full catalog with pricing
+const fullCatalog = await testAgent.getProducts({
+  brief: 'Premium CTV inventory for brand awareness',
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  }
+});
+
+console.log(`With auth: ${fullCatalog.products.length} products`);
+console.log(`First product pricing: ${fullCatalog.products[0].pricing_options.length} options`);
+
+// WITHOUT authentication - limited public catalog
+const publicCatalog = await testAgentNoAuth.getProducts({
+  brief: 'Premium CTV inventory for brand awareness',
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  }
+});
+
+console.log(`Without auth: ${publicCatalog.products.length} products`);
+console.log(`First product pricing: ${publicCatalog.products[0].pricing_options?.length || 0} options`);
+```
+
+```python Python
+from adcp.test_helpers import test_agent, test_agent_noauth
+
+# WITH authentication - full catalog with pricing
+full_catalog = test_agent.get_products(
+    brief='Premium CTV inventory for brand awareness',
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
+    }
+)
+
+print(f"With auth: {len(full_catalog['products'])} products")
+print(f"First product pricing: {len(full_catalog['products'][0]['pricing_options'])} options")
+
+# WITHOUT authentication - limited public catalog
+public_catalog = test_agent_noauth.get_products(
+    brief='Premium CTV inventory for brand awareness',
+    brand_manifest={
+        'name': 'Nike',
+        'url': 'https://nike.com'
+    }
+)
+
+print(f"Without auth: {len(public_catalog['products'])} products")
+print(f"First product pricing: {len(public_catalog['products'][0].get('pricing_options', []))} options")
+```
+
+</CodeGroup>
+
+**Key Differences:**
+- **Product Count**: Authenticated access returns more products, including private/custom offerings
+- **Pricing Information**: Only authenticated requests receive detailed pricing options (CPM, CPCV, etc.)
+- **Targeting Details**: Custom targeting capabilities may be restricted to authenticated users
+- **Rate Limits**: Unauthenticated requests have lower rate limits
+
 ## Authentication Behavior
 
 - **Without credentials**: Returns limited catalog (run-of-network products), no pricing, no custom offerings

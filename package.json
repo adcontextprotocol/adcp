@@ -43,7 +43,7 @@
     "react-dom": "^18.0.0"
   },
   "devDependencies": {
-    "@adcp/client": "^2.7.1",
+    "@adcp/client": "^3.0.0",
     "@changesets/cli": "^2.29.7",
     "@docusaurus/module-type-aliases": "^3.9.1",
     "@docusaurus/tsconfig": "^3.9.1",
