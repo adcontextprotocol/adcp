@@ -418,9 +418,22 @@ async function runTests() {
   const testableSnippets = allSnippets.filter(s => s.shouldTest);
   log(`Found ${testableSnippets.length} snippets marked for testing\n`, 'info');
 
-  // Run tests on all testable snippets
-  for (const snippet of allSnippets) {
-    await validateSnippet(snippet);
+  // Run tests in parallel on testable snippets only (much faster!)
+  const CONCURRENCY = 5; // Run 5 tests at a time
+  const testableChunks = [];
+  for (let i = 0; i < testableSnippets.length; i += CONCURRENCY) {
+    testableChunks.push(testableSnippets.slice(i, i + CONCURRENCY));
+  }
+
+  for (const chunk of testableChunks) {
+    await Promise.all(chunk.map(snippet => validateSnippet(snippet)));
+  }
+
+  // Also process non-testable snippets (just to count them as skipped)
+  const nonTestableSnippets = allSnippets.filter(s => !s.shouldTest);
+  for (const snippet of nonTestableSnippets) {
+    totalTests++;
+    skippedTests++;
   }
 
   // Print summary
