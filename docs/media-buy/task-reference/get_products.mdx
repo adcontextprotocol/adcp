@@ -1,6 +1,7 @@
 ---
 title: get_products
 sidebar_position: 1
+testable: true
 ---
 # get_products
 
@@ -20,20 +21,9 @@ Discover products with a natural language brief:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
+import { testAgent } from '@adcp/client/testing';
 
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
-const result = await agent.getProducts({
+const result = await testAgent.getProducts({
   brief: 'Premium athletic footwear with innovative cushioning',
   brand_manifest: {
     name: 'Nike',
@@ -41,36 +31,30 @@ const result = await agent.getProducts({
   }
 });
 
-console.log(`Found ${result.products.length} products`);
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} products`);
+}
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+import asyncio
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
+async def discover_products():
+    result = await test_agent.simple.get_products(
+        brief='Premium athletic footwear with innovative cushioning',
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        }
+    )
+    print(f"Found {len(result.products)} products")
 
-agent = client.agent('test-agent')
-result = agent.get_products(
-    brief='Premium athletic footwear with innovative cushioning',
-    brand_manifest={
-        'name': 'Nike',
-        'url': 'https://nike.com'
-    }
-)
-
-print(f"Found {len(result['products'])} products")
+asyncio.run(discover_products())
 ```
 
 ```bash CLI
-npx @adcp/client \
+uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
   '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
@@ -86,20 +70,9 @@ You can also use structured filters instead of (or in addition to) a brief:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
+import { testAgent } from '@adcp/client/testing';
 
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
-const result = await agent.getProducts({
+const result = await testAgent.getProducts({
   filters: {
     format_types: ['video'],
     delivery_type: 'guaranteed',
@@ -107,32 +80,26 @@ const result = await agent.getProducts({
   }
 });
 
-console.log(`Found ${result.products.length} guaranteed video products`);
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} guaranteed video products`);
+}
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+import asyncio
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
+async def discover_with_filters():
+    result = await test_agent.simple.get_products(
+        filters={
+            'format_types': ['video'],
+            'delivery_type': 'guaranteed',
+            'standard_formats_only': True
+        }
+    )
+    print(f"Found {len(result.products)} guaranteed video products")
 
-agent = client.agent('test-agent')
-result = agent.get_products(
-    filters={
-        'format_types': ['video'],
-        'delivery_type': 'guaranteed',
-        'standard_formats_only': True
-    }
-)
-
-print(f"Found {len(result['products'])} guaranteed video products")
+asyncio.run(discover_with_filters())
 ```
 
 </CodeGroup>
@@ -181,53 +148,34 @@ Returns an array of `products`, each containing:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/testing';
 
 // No brief = run-of-network products for maximum reach
-const discovery = await agent.getProducts({
+const result = await testAgent.getProducts({
   filters: {
     delivery_type: 'non_guaranteed'
   }
 });
 
-console.log(`Found ${discovery.products.length} run-of-network products`);
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} run-of-network products`);
+}
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+import asyncio
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
+async def discover_run_of_network():
+    # No brief = run-of-network products for maximum reach
+    result = await test_agent.simple.get_products(
+        filters={
+            'delivery_type': 'non_guaranteed'
+        }
+    )
+    print(f"Found {len(result.products)} run-of-network products")
 
-agent = client.agent('test-agent')
-
-# No brief = run-of-network products for maximum reach
-discovery = agent.get_products(
-    filters={
-        'delivery_type': 'non_guaranteed'
-    }
-)
-
-print(f"Found {len(discovery['products'])} run-of-network products")
+asyncio.run(discover_run_of_network())
 ```
 
 </CodeGroup>
@@ -237,22 +185,10 @@ print(f"Found {len(discovery['products'])} run-of-network products")
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/testing';
 
 // Find products supporting both video and display
-const discovery = await agent.getProducts({
+const result = await testAgent.getProducts({
   brief: 'Brand awareness campaign with video and display',
   brand_manifest: {
     name: 'Nike',
@@ -263,37 +199,30 @@ const discovery = await agent.getProducts({
   }
 });
 
-console.log(`Found ${discovery.products.length} products supporting video and display`);
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} products supporting video and display`);
+}
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+import asyncio
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
+async def discover_multi_format():
+    # Find products supporting both video and display
+    result = await test_agent.simple.get_products(
+        brief='Brand awareness campaign with video and display',
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        },
+        filters={
+            'format_types': ['video', 'display']
+        }
+    )
+    print(f"Found {len(result.products)} products supporting video and display")
 
-agent = client.agent('test-agent')
-
-# Find products supporting both video and display
-discovery = agent.get_products(
-    brief='Brand awareness campaign with video and display',
-    brand_manifest={
-        'name': 'Nike',
-        'url': 'https://nike.com'
-    },
-    filters={
-        'format_types': ['video', 'display']
-    }
-)
-
-print(f"Found {len(discovery['products'])} products supporting video and display")
+asyncio.run(discover_multi_format())
 ```
 
 </CodeGroup>
@@ -303,22 +232,10 @@ print(f"Found {len(discovery['products'])} products supporting video and display
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/testing';
 
 // Find cost-effective products
-const discovery = await agent.getProducts({
+const result = await testAgent.getProducts({
   brief: 'Cost-effective video inventory for $10k budget',
   brand_manifest: {
     name: 'Nike',
@@ -326,48 +243,42 @@ const discovery = await agent.getProducts({
   }
 });
 
-// Filter products by budget
-const budget = 10000;
-const affordable = discovery.products.filter(p => {
-  const lowestCPM = Math.min(...p.pricing_options.map(opt => opt.cpm || Infinity));
-  const estimatedCost = (lowestCPM / 1000) * (p.min_exposures || 10000);
-  return estimatedCost <= budget;
-});
+if (result.success && result.data) {
+  // Filter products by budget
+  const budget = 10000;
+  const affordable = result.data.products.filter(p => {
+    const lowestCPM = Math.min(...p.pricing_options.map(opt => opt.cpm || Infinity));
+    const estimatedCost = (lowestCPM / 1000) * (p.min_exposures || 10000);
+    return estimatedCost <= budget;
+  });
 
-console.log(`Found ${affordable.length} products within $${budget} budget`);
+  console.log(`Found ${affordable.length} products within $${budget} budget`);
+}
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+import asyncio
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
+async def discover_budget_friendly():
+    # Find cost-effective products
+    result = await test_agent.simple.get_products(
+        brief='Cost-effective video inventory for $10k budget',
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        }
+    )
 
-agent = client.agent('test-agent')
+    # Filter products by budget
+    budget = 10000
+    affordable = [p for p in result.products
+        if min((opt.get('cpm', float('inf')) for opt in p['pricing_options'])) / 1000
+            * p.get('min_exposures', 10000) <= budget]
 
-# Find cost-effective products
-discovery = agent.get_products(
-    brief='Cost-effective video inventory for $10k budget',
-    brand_manifest={
-        'name': 'Nike',
-        'url': 'https://nike.com'
-    }
-)
+    print(f"Found {len(affordable)} products within ${budget} budget")
 
-# Filter products by budget
-budget = 10000
-affordable = [p for p in discovery['products']
-    if min((opt.get('cpm', float('inf')) for opt in p['pricing_options'])) / 1000
-        * p.get('min_exposures', 10000) <= budget]
-
-print(f"Found {len(affordable)} products within ${budget} budget")
+asyncio.run(discover_budget_friendly())
 ```
 
 </CodeGroup>
@@ -377,22 +288,10 @@ print(f"Found {len(affordable)} products within ${budget} budget")
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/testing';
 
 // Get products with property tags
-const discovery = await agent.getProducts({
+const result = await testAgent.getProducts({
   brief: 'Sports content',
   brand_manifest: {
     name: 'Nike',
@@ -400,39 +299,33 @@ const discovery = await agent.getProducts({
   }
 });
 
-// Products with property_tags need resolution via list_authorized_properties
-const productsWithTags = discovery.products.filter(p => p.property_tags && p.property_tags.length > 0);
-console.log(`${productsWithTags.length} products use property tags (large networks)`);
+if (result.success && result.data) {
+  // Products with property_tags need resolution via list_authorized_properties
+  const productsWithTags = result.data.products.filter(p => p.property_tags && p.property_tags.length > 0);
+  console.log(`${productsWithTags.length} products use property tags (large networks)`);
+}
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+import asyncio
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
+async def discover_property_tags():
+    # Get products with property tags
+    result = await test_agent.simple.get_products(
+        brief='Sports content',
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        }
+    )
 
-agent = client.agent('test-agent')
+    # Products with property_tags need resolution via list_authorized_properties
+    products_with_tags = [p for p in result.products
+        if p.get('property_tags') and len(p['property_tags']) > 0]
+    print(f"{len(products_with_tags)} products use property tags (large networks)")
 
-# Get products with property tags
-discovery = agent.get_products(
-    brief='Sports content',
-    brand_manifest={
-        'name': 'Nike',
-        'url': 'https://nike.com'
-    }
-)
-
-# Products with property_tags need resolution via list_authorized_properties
-products_with_tags = [p for p in discovery['products']
-    if p.get('property_tags') and len(p['property_tags']) > 0]
-print(f"{len(products_with_tags)} products use property tags (large networks)")
+asyncio.run(discover_property_tags())
 ```
 
 </CodeGroup>
@@ -442,22 +335,10 @@ print(f"{len(products_with_tags)} products use property tags (large networks)")
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/testing';
 
 // Find guaranteed delivery products for measurement
-const discovery = await agent.getProducts({
+const result = await testAgent.getProducts({
   brief: 'Guaranteed delivery for lift study',
   brand_manifest: {
     name: 'Nike',
@@ -469,38 +350,31 @@ const discovery = await agent.getProducts({
   }
 });
 
-console.log(`Found ${discovery.products.length} guaranteed products with 100k+ exposures`);
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} guaranteed products with 100k+ exposures`);
+}
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+import asyncio
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
+async def discover_guaranteed():
+    # Find guaranteed delivery products for measurement
+    result = await test_agent.simple.get_products(
+        brief='Guaranteed delivery for lift study',
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        },
+        filters={
+            'delivery_type': 'guaranteed',
+            'min_exposures': 100000
+        }
+    )
+    print(f"Found {len(result.products)} guaranteed products with 100k+ exposures")
 
-agent = client.agent('test-agent')
-
-# Find guaranteed delivery products for measurement
-discovery = agent.get_products(
-    brief='Guaranteed delivery for lift study',
-    brand_manifest={
-        'name': 'Nike',
-        'url': 'https://nike.com'
-    },
-    filters={
-        'delivery_type': 'guaranteed',
-        'min_exposures': 100000
-    }
-)
-
-print(f"Found {len(discovery['products'])} guaranteed products with 100k+ exposures")
+asyncio.run(discover_guaranteed())
 ```
 
 </CodeGroup>
@@ -510,22 +384,10 @@ print(f"Found {len(discovery['products'])} guaranteed products with 100k+ exposu
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
-
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
+import { testAgent } from '@adcp/client/testing';
 
 // Find products that only accept IAB standard formats
-const discovery = await agent.getProducts({
+const result = await testAgent.getProducts({
   brand_manifest: {
     name: 'Nike',
     url: 'https://nike.com'
@@ -535,36 +397,29 @@ const discovery = await agent.getProducts({
   }
 });
 
-console.log(`Found ${discovery.products.length} products with standard formats only`);
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} products with standard formats only`);
+}
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+import asyncio
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
+async def discover_standard_formats():
+    # Find products that only accept IAB standard formats
+    result = await test_agent.simple.get_products(
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        },
+        filters={
+            'standard_formats_only': True
+        }
+    )
+    print(f"Found {len(result.products)} products with standard formats only")
 
-agent = client.agent('test-agent')
-
-# Find products that only accept IAB standard formats
-discovery = agent.get_products(
-    brand_manifest={
-        'name': 'Nike',
-        'url': 'https://nike.com'
-    },
-    filters={
-        'standard_formats_only': True
-    }
-)
-
-print(f"Found {len(discovery['products'])} products with standard formats only")
+asyncio.run(discover_standard_formats())
 ```
 
 </CodeGroup>
