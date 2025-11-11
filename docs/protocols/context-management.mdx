@@ -127,6 +127,55 @@ The `context_id` maintains conversation state, regardless of protocol:
 
 Note: Long-term task state (like media buy status, creative assets, performance data) is tracked via `task_id`, not `context_id`.
 
+## Application-Level Context
+
+Task request payloads may include an optional `context` object that carries application-level metadata (session hints, correlation tokens, tracking identifiers, etc.). The agent must echo this object back unchanged inside the task payload, including webhook `result` payloads.
+
+### Example: Create media buy with application-level context
+
+```json
+{
+  "tool": "create_media_buy",
+  "arguments": {
+    "buyer_ref": "nike_q1_campaign_2025",
+    "packages": [
+      {
+        "buyer_ref": "nike_ctv_package",
+        "product_id": "ctv_sports_premium",
+        "format_ids": [
+          { "agent_url": "https://creatives.adcontextprotocol.org", "id": "video_standard_30s" }
+        ],
+        "budget": 50000,
+        "pricing_option_id": "cpm-fixed-sports"
+      }
+    ],
+    "start_time": "2025-02-01T00:00:00Z",
+    "end_time": "2025-03-31T23:59:59Z",
+    "context": { "user_id": "user_12345", "ui": "buyer_dashboard" }
+  }
+}
+```
+
+Response (application-level context is repeated inside the payload):
+
+```json
+{
+  "status": "input-required",
+  "message": "Media buy requires manual approval before activation.",
+  "context_id": "ctx_ghi789",
+  "payload": {
+    "buyer_ref": "nike_q1_campaign_2025",
+    "context": { "user_id": "user_12345", "ui": "buyer_dashboard" }
+  }
+}
+```
+
+![Application Context Lifecycle 01](./initator-context-lifecycle-01.png)
+
+![Application Context Lifecycle 02](./initator-context-lifecycle-02.png)
+
+Webhook updates include the same application-level `context` inside the webhook `result` payload.
+
 ## Best Practices
 
 ### For A2A

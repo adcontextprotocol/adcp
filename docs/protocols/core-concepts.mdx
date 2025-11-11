@@ -39,7 +39,7 @@ Every AdCP response has this structure:
   "message": "Found 5 products",  // Always present: human explanation
   "context_id": "ctx-123",         // Session continuity
   "data": {                        // Task-specific structured data
-    "context": {                  // Opaque initiator-provided context, echoed back
+    "context": {                  // Application-level context echoed back
       "ui": "buyer_dashboard"
     },
     "products": [...]
