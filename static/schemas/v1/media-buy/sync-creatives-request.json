@@ -54,11 +54,6 @@
     "push_notification_config": {
       "$ref": "/schemas/v1/core/push-notification-config.json",
       "description": "Optional webhook configuration for async sync notifications. Publisher will send webhook when sync completes if operation takes longer than immediate response time (typically for large bulk operations or manual approval/HITL)."
-    },
-    "context": {
-      "type": "object",
-      "description": "Initiator provided context payload echoed back from the original request. Used to carry per-call metadata such as UI/session hints (e.g., {'ui': 'buyer_dashboard', 'user_id': '123'}) or correlation data. MUST be returned exactly as received.",
-      "additionalProperties": true
     }
   },
   "required": [

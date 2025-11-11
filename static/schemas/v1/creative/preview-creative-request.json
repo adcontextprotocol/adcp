@@ -53,11 +53,6 @@
           "enum": ["url", "html"],
           "default": "url",
           "description": "Output format for previews. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding). Default: 'url' for backward compatibility."
-        },
-        "context": {
-          "type": "object",
-          "description": "Initiator provided context payload echoed back from the original request. Used to carry per-call metadata such as UI/session hints (e.g., {'ui': 'buyer_dashboard', 'user_id': '123'}) or correlation data. MUST be returned exactly as received.",
-          "additionalProperties": true
         }
       },
       "required": [
@@ -137,11 +132,6 @@
           "enum": ["url", "html"],
           "default": "url",
           "description": "Default output format for all requests in this batch. Individual requests can override this. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding)."
-        },
-        "context": {
-          "type": "object",
-          "description": "Initiator provided context payload echoed back from the original request. Used to carry per-call metadata such as UI/session hints (e.g., {'ui': 'buyer_dashboard', 'user_id': '123'}) or correlation data. MUST be returned exactly as received.",
-          "additionalProperties": true
         }
       },
       "required": [

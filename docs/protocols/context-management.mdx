@@ -136,11 +136,12 @@ All tool calls may include an optional `context` object controlled by the tool i
 - Echoing: returned in every protocol response envelope and in webhook payloads
 - Validation: treated as opaque by agents; not validated or interpreted by the protocol
 
-### Example: Create media buy to track user id
+### Example: Create media buy to track user id (protocol-level context)
 
 ```json
 {
   "tool": "create_media_buy",
+  "context": { "user_id": "user_12345" },
   "arguments": {
     "buyer_ref": "nike_q1_campaign_2025",
     "packages": [
@@ -155,13 +156,12 @@ All tool calls may include an optional `context` object controlled by the tool i
       }
     ],
     "start_time": "2025-02-01T00:00:00Z",
-    "end_time": "2025-03-31T23:59:59Z",
-    "context": { "user_id": "user_12345" }
+    "end_time": "2025-03-31T23:59:59Z"
   }
 }
 ```
 
-Response (payload includes initator context):
+Response (protocol envelope echoes initiator context):
 
 ```json
 {

@@ -47,13 +47,18 @@ const response = await mcp.call('get_products', {
 
 ```javascript
 // Pass opaque initiator context; agents must carry it back
-const response = await mcp.call('build_creative', {
-  target_format_id: { agent_url: 'https://creative.agent', id: 'premium_bespoke_display' },
-  creative_manifest: { /* ... */ },
-  context: { ui: 'buyer_dashboard', session: '123' }
-});
+const response = await mcp.call(
+  'build_creative',
+  {
+    target_format_id: { agent_url: 'https://creative.agent', id: 'premium_bespoke_display' },
+    creative_manifest: { /* ... */ }
+  }, 
+  {
+    context: { ui: 'buyer_dashboard', session: '123' }
+  }
+);
 
-// Response will include the same context in the payload
+// Response includes the same context in the protocol envelope
 console.log(response.context); // { ui: 'buyer_dashboard', session: '123' }
 ```
 
