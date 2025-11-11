@@ -166,6 +166,11 @@
         "has_more"
       ],
       "additionalProperties": false
+    },
+    "context": {
+      "type": "object",
+      "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+      "additionalProperties": true
     }
   },
   "required": [

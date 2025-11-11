@@ -94,6 +94,11 @@
             ],
             "additionalProperties": false
           }
+        },
+        "context": {
+          "type": "object",
+          "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+          "additionalProperties": true
         }
       },
       "required": [
@@ -115,6 +120,11 @@
             "$ref": "/schemas/v1/core/error.json"
           },
           "minItems": 1
+        },
+        "context": {
+          "type": "object",
+          "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+          "additionalProperties": true
         }
       },
       "required": ["errors"],

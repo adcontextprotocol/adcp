@@ -47,19 +47,14 @@ const response = await mcp.call('get_products', {
 
 ```javascript
 // Pass opaque initiator context; agents must carry it back
-const response = await mcp.call(
-  'build_creative',
-  {
-    target_format_id: { agent_url: 'https://creative.agent', id: 'premium_bespoke_display' },
-    creative_manifest: { /* ... */ }
-  }, 
-  {
-    context: { ui: 'buyer_dashboard', session: '123' }
-  }
-);
+const response = await mcp.call('build_creative', {
+  target_format_id: { agent_url: 'https://creative.agent', id: 'premium_bespoke_display' },
+  creative_manifest: { /* ... */ },
+  context: { ui: 'buyer_dashboard', session: '123' }
+});
 
-// Response includes the same context in the protocol envelope
-console.log(response.context); // { ui: 'buyer_dashboard', session: '123' }
+// Response includes the same context inside the task payload
+console.log(response.data.context); // { ui: 'buyer_dashboard', session: '123' }
 ```
 
 ## MCP Response Format
@@ -71,13 +66,15 @@ console.log(response.context); // { ui: 'buyer_dashboard', session: '123' }
   "status": "completed",           // Unified status (see Core Concepts)
   "message": "Found 5 products",  // Human-readable summary  
   "context_id": "ctx-abc123",     // MCP session continuity
-  "context": { "ui": "buyer_dashboard" }, // Initiator context
   "data": {                       // Task-specific structured data
+    "context": { "ui": "buyer_dashboard" }, // Initiator context echoed back
     "products": [...],
     "errors": [...]               // Task-level errors/warnings
   }
 }
 ```
+
+**Note:** All protocol envelope fields are returned with every MCP tool response. The task’s domain payload (inside `data`) contains the echoed `context` object alongside task-specific fields (other protocols may use `payload`/`result`).
 
 ### MCP-Specific Fields
 - **context_id**: Session identifier that you must manually manage
