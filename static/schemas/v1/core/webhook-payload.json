@@ -73,6 +73,16 @@
     "error": {
       "type": ["string", "null"],
       "description": "Error message for failed tasks. Only present when status is 'failed'."
+    },
+    "original_request": {
+      "description": "The original request that created this webhook.",
+      "oneOf": [
+        { "$ref": "/schemas/v1/media-buy/create-media-buy-request.json" },
+        { "$ref": "/schemas/v1/media-buy/update-media-buy-request.json" },
+        { "$ref": "/schemas/v1/media-buy/sync-creatives-request.json" },
+        { "$ref": "/schemas/v1/signals/activate-signal-request.json" },
+        { "$ref": "/schemas/v1/signals/get-signals-request.json" }
+      ]
     }
   },
   "required": ["task_id", "task_type", "status", "timestamp"],
@@ -176,6 +186,9 @@
               "field": "packages[0].budget"
             }
           ]
+        },
+        "original_request": {
+          "buyer_ref": "nike_q1_campaign_2024"
         }
       }
     },
