@@ -194,15 +194,15 @@ export default function ProgrammaticAdvertisingProtocol() {
               </div>
 
               <div className="text--center margin-top--xl">
-                <Link 
+                <Link
                   className="button button--primary button--lg margin-right--md"
-                  to="/docs/intro"
+                  href="https://docs.adcontextprotocol.org/docs/intro"
                 >
                   Start Building on AdCP
                 </Link>
-                <Link 
+                <Link
                   className="button button--outline button--secondary button--lg margin-right--md"
-                  to="/docs/media-buy/"
+                  href="https://docs.adcontextprotocol.org/docs/media-buy"
                 >
                   Programmatic API Docs
                 </Link>

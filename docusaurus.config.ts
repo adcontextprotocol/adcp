@@ -93,30 +93,14 @@ const config: Config = {
 
         },
     ],
-    [
-      '@docusaurus/plugin-client-redirects',
-      {
-        redirects: [
-          {
-            to: '/docs/intro/',
-            from: '/docs',
-          },
-        ],
-      },
-    ],
+    // No redirects needed - docs served by Mintlify at docs.adcontextprotocol.org
   ],
 
   presets: [
     [
       'classic',
       {
-        docs: {
-          sidebarPath: './sidebars.ts',
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/adcontextprotocol/adcp/tree/main/',
-        },
+        docs: false, // Docs served by Mintlify at docs.adcontextprotocol.org
         sitemap: {
           changefreq: 'weekly',
           priority: 0.5,

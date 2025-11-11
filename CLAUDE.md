@@ -6,6 +6,27 @@ This guide helps AI assistants understand the AdCP project structure and maintai
 
 The Advertising Context Protocol (AdCP) is an open standard for AI-powered advertising workflows. It provides a unified interface for media buying across diverse advertising platforms.
 
+## Documentation Framework
+
+**CRITICAL**: This project uses TWO documentation systems:
+
+1. **Mintlify** - Primary documentation platform
+   - All documentation in `docs/` directory
+   - Markdown/MDX files served by Mintlify
+   - Uses Mintlify-specific components (`<CodeGroup>`, not Docusaurus `<Tabs>`)
+   - Run with: `mintlify dev` (should use conductor port, not 3000)
+
+2. **Docusaurus** - Legacy/backwards compatibility only
+   - Used for homepage
+   - Used to serve JSON schemas at `/schemas/` endpoints
+   - Will be migrated away from eventually
+   - DO NOT use Docusaurus components in documentation files
+
+**When editing documentation:**
+- ✅ Use Mintlify `<CodeGroup>` for multi-language examples
+- ❌ DO NOT use Docusaurus `import Tabs from '@theme/Tabs'`
+- ❌ DO NOT use `<Tabs>` or `<TabItem>` components
+
 ## Documentation Standards
 
 ### Protocol Specification vs Implementation
@@ -41,6 +62,79 @@ Implementation details can be mentioned as:
 - Focus on capabilities, not implementation
 - Write for an audience implementing the protocol, not using a specific implementation
 - Keep examples generic and illustrative
+
+### Testable Documentation
+
+**IMPORTANT**: All code examples in documentation should be testable when possible.
+
+**How to mark pages as testable**:
+
+Add `testable: true` to the frontmatter of pages where all code examples should be tested:
+
+```markdown
+---
+title: get_products
+sidebar_position: 1
+testable: true
+---
+
+# get_products
+
+...code examples here (no test=true needed in individual blocks)...
+```
+
+**Key principles**:
+1. **Page-level flag** - Use `testable: true` in frontmatter to mark entire page as testable
+2. **Tab titles** - The text after the language becomes the tab title (e.g., "JavaScript", "Python", "CLI")
+3. **Complete examples** - All code on testable pages must be complete and runnable
+4. **Use test credentials** - Use the public test agent credentials in examples
+
+**Supported languages**:
+- `javascript` / `typescript` - Runs with Node.js ESM modules
+- `python` - Runs with Python 3.11+
+- `bash` - Supports `curl`, `npx`, and `uvx` commands
+
+**What gets tested**:
+- All code blocks on pages with `testable: true` frontmatter
+- Code executes without errors
+- API calls succeed (or fail as expected)
+- Output matches expectations
+
+**When NOT to mark page as testable**:
+- Pages with incomplete code fragments
+- Conceptual examples or pseudocode
+- Browser-only code examples
+- Code requiring user interaction
+- Mixed testable and non-testable examples (use separate pages)
+
+**Example testable page**:
+
+```markdown
+---
+title: get_products
+testable: true
+---
+
+# get_products
+
+<CodeGroup>
+
+\`\`\`javascript JavaScript
+import { ADCPMultiAgentClient } from '@adcp/client';
+const client = new ADCPMultiAgentClient([...]);
+\`\`\`
+
+\`\`\`python Python
+from adcp import ADCPMultiAgentClient
+\`\`\`
+
+</CodeGroup>
+```
+
+**Running tests**:
+```bash
+node tests/snippet-validation.test.js
+```
 
 ## JSON Schema Maintenance
 

@@ -1,0 +1,13 @@
+version: 2
+
+# GitGuardian configuration for AdCP repository
+# This file configures what GitGuardian should scan and what to ignore
+
+# Ignore test tokens that are documented and meant to be public
+matches-ignore:
+  - name: Test Agent Authentication Token
+    match: 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
+    comment: |
+      This is a documented test token for the public test agent at
+      https://test-agent.adcontextprotocol.org/mcp. It's intentionally
+      included in documentation examples and has no production access.
