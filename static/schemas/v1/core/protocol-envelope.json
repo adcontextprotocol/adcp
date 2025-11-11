@@ -138,7 +138,7 @@
     "Different protocols may use different serialization formats but maintain the same semantic structure",
     "MCP may represent this via tool response content fields and metadata",
     "A2A may represent this via assistant messages with structured data",
-    "REST may use HTTP headers for status/context and JSON body for payload",
+    "REST may use HTTP headers for status/task metadata and JSON body for payload",
     "The envelope ensures consistent behavior across all protocol implementations"
   ]
 }

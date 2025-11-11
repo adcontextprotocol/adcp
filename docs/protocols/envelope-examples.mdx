@@ -57,8 +57,8 @@ This guide shows how task responses are wrapped by different protocol layers. Th
 
 **Key Points**:
 - Human message in `content[].text`
-- Task payload in `content[].resource.text`
-- Protocol metadata in `metadata` field
+- Task payload in `content[].resource.text` (includes application-level context when present)
+- Protocol metadata in `metadata`
 - MCP doesn't expose `task_id` - async is handled via MCP's progress notifications
 
 ### Async Response (Long-Running Operation)
@@ -176,6 +176,7 @@ X-AdCP-Status: completed
 {
   "message": "Found 3 products matching your criteria for CTV inventory",
   "data": {
+    "context": { "ui": "buyer_dashboard" },
     "products": [...]
   }
 }
@@ -203,6 +204,7 @@ X-AdCP-Task-Id: task_789
   "status_url": "https://sales.example.com/api/v1/tasks/task_789",
   "estimated_duration_seconds": 600,
   "data": {
+    "context": { "ui": "buyer_dashboard" },
     "buyer_ref": "campaign_2024_q1"
   }
 }
@@ -225,6 +227,7 @@ X-AdCP-Status: completed
   "message": "Media buy created successfully",
   "status": "completed",
   "data": {
+    "context": { "ui": "buyer_dashboard" },
     "media_buy_id": "mb_123",
     "buyer_ref": "campaign_2024_q1",
     "packages": [...]
