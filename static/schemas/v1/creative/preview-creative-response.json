@@ -89,11 +89,6 @@
                 "type": "boolean",
                 "description": "Whether this preview request succeeded"
               },
-              "context": {
-                "type": "object",
-                "description": "Initiator-provided context echoed inside the preview payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
-                "additionalProperties": true
-              },
               "response": {
                 "type": "object",
                 "description": "Preview response for successful requests",
@@ -186,6 +181,11 @@
             ]
           },
           "minItems": 1
+        },
+        "context": {
+          "type": "object",
+          "description": "Initiator-provided context echoed inside the preview payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+          "additionalProperties": true
         }
       },
       "required": [
