@@ -349,6 +349,11 @@ This tool follows PATCH update semantics:
 - **Only included fields are modified** - Omitted fields remain unchanged
 - **Null values clear/reset fields** - Where applicable
 - **Packages not mentioned remain unchanged** - Only listed packages are updated
+- **Array fields use replacement semantics** - When you provide an array field (like `creative_ids` or `creatives`), it completely replaces the existing array
+  - To add a creative: Include all existing creative IDs plus the new one
+  - To remove a creative: Include all creative IDs except the one to remove
+  - To replace all creatives: Provide the new complete list
+  - Omitting the field entirely leaves existing assignments unchanged
 
 
 ## Asynchronous Updates
@@ -510,9 +515,45 @@ Updates follow standard A2A task states:
 - `rejected`: Update was rejected by approver
 - `cancelled`: Update was cancelled before completion
 
-### Example 4: Upload New Creatives
+### Example 4: Add Creative to Existing Rotation
 
-You can upload new creative assets as part of an update, similar to create_media_buy:
+To add a creative while keeping existing ones, include all existing creative IDs plus the new one. Due to replacement semantics, you must specify the complete desired list:
+
+#### Request
+```json
+{
+  "buyer_ref": "purina_pet_campaign_q1",
+  "packages": [
+    {
+      "buyer_ref": "purina_ctv_package",
+      "creative_ids": [
+        "purina_hero_30s",        // Existing creative
+        "purina_product_focus_30s", // Existing creative
+        "purina_winter_promo_30s"  // New creative to add
+      ]
+    }
+  ]
+}
+```
+
+#### Response
+**Message**: "CTV package updated with 3 creatives. Added 1 new creative to the rotation. Changes take effect immediately for future impressions."
+
+**Payload**:
+```json
+{
+  "media_buy_id": "gam_1234567890",
+  "buyer_ref": "purina_pet_campaign_q1",
+  "implementation_date": "2024-02-08T00:00:00Z",
+  "affected_packages": [
+    {"package_id": "gam_pkg_001", "buyer_ref": "purina_ctv_package"}
+  ]
+}
+```
+
+### Example 5: Upload New Creative
+
+You can also upload and assign new creative assets in one step:
 
 #### Request
 ```json
@@ -523,7 +564,7 @@ You can upload new creative assets as part of an update, similar to create_media
       "buyer_ref": "purina_ctv_package",
       "creatives": [
         {
-          "buyer_ref": "purina_winter_promo_30s",
+          "creative_id": "purina_winter_promo_30s",
           "format_id": {
             "agent_url": "https://creative.adcontextprotocol.org",
             "id": "video_standard_30s"
@@ -543,8 +584,10 @@ You can upload new creative assets as part of an update, similar to create_media
 }
 ```
 
+**Note**: Using `creatives` replaces all existing creative assignments with just the newly uploaded creative. To keep existing creatives, first upload using `sync_creatives`, then update using `creative_ids` with the complete list.
+
 #### Response
-**Message**: "CTV package updated with 1 new creative. The new creative will begin serving immediately alongside existing creatives in the package rotation."
+**Message**: "CTV package updated with 1 creative. Previous creative assignments have been replaced. The new creative will begin serving immediately."
 
 **Payload**:
 ```json
@@ -566,7 +609,12 @@ You can upload new creative assets as part of an update, similar to create_media
 - Pausing takes effect at the next delivery opportunity
 - Campaign extensions require sufficient remaining budget
 - Creative updates only affect future impressions
-- Use `creative_ids` to reference existing library creatives, or `creatives` to upload new ones
+- **Creative assignment uses replacement semantics**:
+  - Providing `creative_ids` replaces ALL existing assignments with the new list
+  - Providing `creatives` uploads new creatives AND replaces all assignments
+  - Omitting both fields leaves creative assignments unchanged
+  - To add one creative: specify all existing IDs plus the new one
+  - To remove one creative: specify all IDs except the one to remove
 - New creatives uploaded via the `creatives` field are automatically added to the creative library
 - Some platforms may limit which fields can be updated after activation
 - When updating budgets, the system automatically recalculates impression goals based on the package's CPM rate
