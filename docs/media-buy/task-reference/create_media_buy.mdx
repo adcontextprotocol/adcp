@@ -23,7 +23,7 @@ Create a media buy from selected packages. This task handles the complete workfl
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Buyer's reference identifier for this media buy |
 | `packages` | Package[] | Yes | Array of package configurations (see Package Object below) |
-| `brand_manifest` | BrandManifestRef | Yes | Brand information manifest serving as the namespace and identity for this media buy. Required as the primary identifier for campaigns, but **minimal manifests are acceptable** for sales agents focused purely on media buying. Provides brand context for policy checks, creative generation, and optimization when needed. Can be provided as an inline object or URL reference to a hosted manifest. Can be cached and reused across multiple requests. See [Brand Manifest](/docs/creative/brand-manifest) for details and minimal usage patterns. |
+| `brand_manifest` | BrandManifestRef | Yes | Brand information identifying the advertiser. Required so publishers know who they're doing business with for policy compliance and business purposes. **Minimal manifests (just name/URL) are acceptable** for sales agents - additional details like colors, fonts, and assets are only needed for creative generation and optimization. Can be provided as an inline object or URL reference to a hosted manifest. Can be cached and reused across multiple requests. See [Brand Manifest](/docs/creative/brand-manifest) for details and minimal usage patterns. |
 | `promoted_products` | PromotedProducts | No | Products or offerings being promoted in this media buy. Useful for campaign-level reporting, policy compliance, and publisher understanding of what's being advertised. Selects from brand manifest's product catalog using SKUs, tags, categories, or natural language queries. |
 | `po_number` | string | No | Purchase order number for tracking |
 | `start_time` | string | Yes | Campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
@@ -1137,15 +1137,20 @@ If validation fails, return an error:
 
 ## Brand Manifest for Sales Agents
 
-The `brand_manifest` field is **required** as it serves as the primary namespace and identifier for all campaigns. However, **sales agents focused purely on media buying can provide minimal manifests**.
+The `brand_manifest` field is **required** so publishers know who the advertiser is. This is essential for:
+- **Policy compliance**: Publishers need to verify advertisers meet their standards
+- **Business relationship**: Knowing your customer (KYC) requirements
+- **Legal accountability**: Clear identification of who's running ads
 
-### When You Need Policy Checks, Creative Generation, or Optimization
+However, **sales agents focused purely on media buying can provide minimal manifests**.
 
-Provide a full brand manifest with guidelines, assets, and product catalog. See [Brand Manifest](/docs/creative/brand-manifest) for complete documentation.
+### When You Need Creative Generation or Optimization
+
+Provide a full brand manifest with guidelines, assets, colors, fonts, and product catalog. See [Brand Manifest](/docs/creative/brand-manifest) for complete documentation.
 
 ### When You're Only Creating Media Buys
 
-**Minimal manifests are perfectly acceptable.** You just need to identify the brand - AdCP uses this as the campaign namespace:
+**Minimal manifests are perfectly acceptable.** You just need to identify who the advertiser is:
 
 ```json
 {
@@ -1167,16 +1172,16 @@ Or even simpler for brands with URLs:
 ```
 
 **What the minimal manifest provides:**
-- **Campaign grouping**: All media buys for the same brand are linked by the manifest
-- **Basic identity**: Name and URL for reporting and tracking
-- **Future extensibility**: Can be expanded later if you need creative generation or policy checks
+- **Advertiser identity**: Publishers know who's buying ads
+- **Policy validation**: Publishers can check the brand against their policies
+- **Business records**: Clear tracking of which brands are running campaigns
 
 **What you don't need to provide:**
 - Brand colors, fonts, or logos (only needed for creative generation)
-- Product catalogs (only needed if using `promoted_products` field)
+- Product catalogs (only needed if using `promoted_products` field or creative generation)
 - Tone or guidelines (only needed for AI-powered creative generation)
 
-The brand manifest is required by design to ensure proper campaign organization and enable future capabilities, but AdCP doesn't enforce that you provide extensive brand details unless your use case requires them.
+The brand manifest is required so publishers always know their customer, but you don't need to provide extensive brand details unless you're using creative generation or optimization features.
 
 ## Usage Notes
 

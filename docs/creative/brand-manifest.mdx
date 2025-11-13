@@ -6,23 +6,23 @@ keywords: [brand manifest, brand manifest, creative generation, brand guidelines
 
 # Brand Manifest
 
-The **Brand Manifest** is a standardized manifest format that serves as the **namespace and identity** for brands in AdCP. It provides brand context, assets, and product catalogs that can be cached and reused across all media buys and creative generation requests.
+The **Brand Manifest** is a standardized format for identifying the advertiser and providing brand context in AdCP. It tells publishers **who the advertiser is** (for policy compliance and business purposes) and optionally provides brand guidelines, assets, and product catalogs for creative generation.
 
 Brand manifests can be provided either **inline as a JSON object** or **by URL reference** to a hosted manifest file.
 
 ## Overview
 
-Brand cards solve a key problem: how to efficiently provide brand context without requiring complex authorization flows or repeated data entry. By making the brand manifest the central identifier for all advertising activity, AdCP enables:
+Brand manifests solve a key problem: how to efficiently identify advertisers and provide brand context without requiring complex authorization flows or repeated data entry. The brand manifest provides:
 
-- **Natural grouping**: All media buys and creatives for a brand reference the same card
-- **Consistent identity**: Brand guidelines automatically travel with every request
-- **Better caching**: Fetch once, use everywhere
-- **Simplified queries**: "Show me all campaigns for this brand"
-- **Asset discovery**: Creative requests automatically access brand assets
+- **Advertiser identity**: Publishers know who they're doing business with (KYC/policy compliance)
+- **Brand guidelines**: Colors, fonts, tone, and visual identity for creative generation
+- **Asset libraries**: Logos, images, and videos for creative assembly
+- **Product catalogs**: SKUs and offerings for promotional targeting
+- **Consistent identity**: Same brand information reused across all requests
 
 ### Key Benefits
 
-- **Namespace**: Brand card serves as the primary identifier for all advertising activity
+- **Know Your Customer**: Publishers can verify advertisers meet their standards
 - **Minimal Friction**: Start with just a name or URL, expand as needed
 - **Cacheable**: Same brand manifest reused across all requests
 - **Standardized**: Consistent format across all AdCP implementations
@@ -70,7 +70,7 @@ The manifest at the URL must conform to the brand-manifest.json schema.
 
 ### Minimal Manifest (Sales Agents / Media Buying Only)
 
-**If you're building a sales agent focused purely on media buying**, you can provide a minimal manifest. The brand manifest is required as the namespace for campaigns, but you don't need extensive brand details unless you're using policy checks, creative generation, or optimization features.
+**If you're building a sales agent focused purely on media buying**, you can provide a minimal manifest. The brand manifest is required so publishers know who the advertiser is (for policy compliance and business purposes), but you don't need extensive brand details unless you're using creative generation or optimization features.
 
 **Minimal inline manifest:**
 ```json
@@ -93,8 +93,8 @@ The manifest at the URL must conform to the brand-manifest.json schema.
 ```
 
 This minimal approach provides:
-- Campaign namespace and grouping by brand
-- Basic identity for reporting and tracking
+- Advertiser identity for publisher KYC and policy compliance
+- Basic business information for reporting and tracking
 - Future extensibility if you later need creative generation
 
 You can safely skip colors, fonts, logos, product catalogs, and tone unless your use case requires them.
