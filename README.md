@@ -73,13 +73,21 @@ Use AdCP-enabled platforms with your AI assistant:
 
 ```
 adcontextprotocol/
-├── docs/                    # Documentation source files
-│   ├── signals/            # Signals protocol docs
-│   ├── curation/           # Curation protocol (coming soon)
-│   ├── media-buy/          # Media Buy protocol docs
-│   └── reference/          # API reference
-├── src/                    # Website source files
-└── README.md              # This file
+├── mintlify-docs/          # Mintlify documentation (docs.adcontextprotocol.org)
+│   ├── docs/              # Protocol documentation
+│   │   ├── signals/       # Signals protocol
+│   │   ├── media-buy/     # Media Buy protocol
+│   │   └── creatives/     # Creative protocol
+├── server/                # Express server
+│   ├── src/              # TypeScript server code
+│   └── public/           # Static HTML pages (homepage, registry UI)
+├── static/               # Static assets
+│   └── schemas/          # JSON schemas
+├── registry/             # Agent registry
+│   ├── creative/         # Creative agents
+│   ├── media-buy/        # Media buy agents
+│   └── signals/          # Signal agents
+└── README.md            # This file
 ```
 
 ## Community
@@ -117,26 +125,63 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 - **More Coming**: Additional platforms implementing Q1 2025
 
 
-## Documentation Website
+## Development Server
 
-This repository contains the documentation website built with [Docusaurus](https://docusaurus.io/).
+This repository runs a unified Express server that serves everything from a single process:
 
-### Local Development
+- 🏠 **Homepage** at `/`
+- 🤖 **Registry UI** at `/registry`
+- 📋 **JSON Schemas** at `/schemas/*`
+- 🔧 **REST API** at `/api/*`
+- 📡 **MCP Protocol** at `/mcp`
+
+### Quick Start
 
 ```bash
 # Install dependencies
 npm install
 
-# Start development server
+# Start unified server (HTTP mode)
 npm start
 
-# Build for production
+# Start in MCP mode (stdio)
+npm start:mcp
+
+# Run tests
+npm test
+
+# Build TypeScript
 npm run build
+
+# Start Mintlify docs (separate)
+npm run start:mintlify
 ```
 
-### Deployment
+The server runs on port 3000 by default. Visit:
+- http://localhost:3000 - Homepage
+- http://localhost:3000/registry - Agent Registry
+- http://localhost:3000/schemas/v1/index.json - Schema Registry
+- http://localhost:3000/api/agents - REST API
 
-The site automatically deploys to GitHub Pages when changes are pushed to the main branch.
+### Environment Variables
+
+- `PORT` - Server port (default: 3000)
+- `NODE_ENV` - Environment (development|production)
+- `MODE` - Server mode (http|mcp)
+
+### Docker Deployment
+
+```dockerfile
+FROM node:18
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build
+ENV NODE_ENV=production
+EXPOSE 3000
+CMD ["npm", "start"]
+```
 
 ## License
 
