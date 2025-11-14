@@ -15,5 +15,5 @@
     "resolveJsonModule": true,
     "baseUrl": "."
   },
-  "exclude": [".docusaurus", "build", "dist", "node_modules", "server", "src"]
+  "exclude": [".docusaurus", "build", "dist", "node_modules", "server"]
 }
