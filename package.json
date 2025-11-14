@@ -9,7 +9,7 @@
     "build": "tsc --project server/tsconfig.json",
     "build:mintlify": "cd mintlify-docs && mintlify build",
     "deploy:mintlify": "mintlify deploy",
-    "typecheck": "tsc",
+    "typecheck": "tsc --project server/tsconfig.json --noEmit",
     "test:schemas": "node tests/schema-validation.test.js",
     "test:examples": "node tests/example-validation-simple.test.js",
     "test:registry": "vitest run server/tests",
