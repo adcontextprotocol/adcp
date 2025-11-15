@@ -8,6 +8,7 @@
       "type": "object",
       "properties": {
         "type": {
+          "type": "string",
           "const": "platform",
           "description": "Discriminator indicating this is a platform-based deployment"
         },
@@ -45,6 +46,7 @@
       "type": "object",
       "properties": {
         "type": {
+          "type": "string",
           "const": "agent",
           "description": "Discriminator indicating this is an agent URL-based deployment"
         },

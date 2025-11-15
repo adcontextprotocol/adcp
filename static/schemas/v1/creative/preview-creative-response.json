@@ -179,13 +179,13 @@
             "oneOf": [
               {
                 "properties": {
-                  "success": { "const": true }
+                  "success": { "type": "boolean", "const": true }
                 },
                 "required": ["response"]
               },
               {
                 "properties": {
-                  "success": { "const": false }
+                  "success": { "type": "boolean", "const": false }
                 },
                 "required": ["error"]
               }
