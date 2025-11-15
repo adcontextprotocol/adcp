@@ -1,0 +1,15 @@
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/agent.json",
+  "name": "4dvertible Creative Agent",
+  "url": "https://adcp.4dvertible.com",
+  "type": "creative",
+  "protocol": "mcp",
+  "description": "Creative generation agent by Advertible Inc",
+  "mcp_endpoint": "https://adcp.4dvertible.com/mcp",
+  "contact": {
+    "name": "Advertible Inc",
+    "email": "support@advertibleinc.com",
+    "website": "https://www.advertibleinc.com"
+  },
+  "added_date": "2025-10-25"
+}

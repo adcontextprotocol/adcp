@@ -1,0 +1,14 @@
+{
+  "name": "Weather Sales Agent",
+  "url": "https://weather.sales-agent.scope3.com",
+  "type": "sales",
+  "protocol": "mcp",
+  "description": "Weather.com sales agent powered by Scope3",
+  "mcp_endpoint": "https://weather.sales-agent.scope3.com",
+  "contact": {
+    "name": "Scope3",
+    "email": "hello@scope3.com",
+    "website": "https://scope3.com"
+  },
+  "added_date": "2025-10-24"
+}
