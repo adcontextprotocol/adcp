@@ -8,6 +8,7 @@
       "type": "object",
       "properties": {
         "delivery_type": {
+          "type": "string",
           "const": "url",
           "description": "Discriminator indicating VAST is delivered via URL endpoint"
         },
@@ -63,6 +64,7 @@
       "type": "object",
       "properties": {
         "delivery_type": {
+          "type": "string",
           "const": "inline",
           "description": "Discriminator indicating VAST is delivered as inline XML content"
         },
