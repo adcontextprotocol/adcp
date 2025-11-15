@@ -54,9 +54,9 @@ The message is returned differently in each protocol:
 
 ## Response (Payload)
 
-Products include **EITHER** `properties` (for specific property lists) **OR** `property_tags` (for large networks), but never both.
+All products include `publisher_properties` - an array grouping properties by publisher. Each publisher entry includes **EITHER** `property_ids` (specific properties) **OR** `property_tags` (tag-based matching), but never both.
 
-### Option A: Direct Properties
+### Option A: Specific Property IDs
 ```json
 {
   "products": [
@@ -64,18 +64,10 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
       "product_id": "string",
       "name": "string",
       "description": "string",
-      "properties": [
+      "publisher_properties": [
         {
-          "property_type": "website|mobile_app|ctv_app|dooh|podcast|radio|streaming_audio",
-          "name": "string",
-          "identifiers": [
-            {
-              "type": "string",
-              "value": "string"
-            }
-          ],
-          "tags": ["string"],
-          "publisher_domain": "string"
+          "publisher_domain": "example.com",
+          "property_ids": ["main_site", "mobile_app", "ctv_app"]
         }
       ],
       "format_ids": [
@@ -84,23 +76,31 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
           "id": "video_30s_hosted"
         }
       ],
-      "delivery_type": "string",
-      "is_fixed_price": "boolean",
-      "cpm": "number",
-      "min_spend": "number",
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm_standard",
+          "pricing_model": "cpm",
+          "rate": 45.00,
+          "currency": "USD"
+        }
+      ],
+      "delivery_measurement": {
+        "provider": "Google Ad Manager"
+      },
       "measurement": {
-        "type": "string",
-        "attribution": "string",
-        "window": "string",
-        "reporting": "string"
+        "type": "incremental_sales_lift",
+        "attribution": "deterministic_purchase",
+        "window": "30_days",
+        "reporting": "weekly_dashboard"
       },
       "creative_policy": {
-        "co_branding": "string",
-        "landing_page": "string",
-        "templates_available": "boolean"
+        "co_branding": "optional",
+        "landing_page": "any",
+        "templates_available": false
       },
-      "is_custom": "boolean",
-      "brief_relevance": "string"
+      "is_custom": false,
+      "brief_relevance": "Premium video placement with guaranteed delivery"
     }
   ]
 }
@@ -114,7 +114,12 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
       "product_id": "local_radio_midwest",
       "name": "Midwest Radio Network",
       "description": "500+ local radio stations across midwest markets",
-      "property_tags": ["local_radio", "midwest"],
+      "publisher_properties": [
+        {
+          "publisher_domain": "radionetwork.com",
+          "property_tags": ["local_radio", "midwest"]
+        }
+      ],
       "format_ids": [
         {
           "agent_url": "https://creative.adcontextprotocol.org",
@@ -126,10 +131,17 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
         }
       ],
       "delivery_type": "guaranteed",
-      "is_fixed_price": true,
-      "cpm": 25.00,
-      "currency": "USD",
-      "min_spend": 5000
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm_radio",
+          "pricing_model": "cpm",
+          "rate": 25.00,
+          "currency": "USD"
+        }
+      ],
+      "delivery_measurement": {
+        "provider": "Nielsen Audio"
+      }
     }
   ]
 }
@@ -138,27 +150,19 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
 - **product_id**: Unique identifier for the product
 - **name**: Human-readable product name
 - **description**: Detailed description of the product and its inventory
-- **pricing_options**: Array of available pricing models for this product. Each option has a unique `pricing_option_id` that buyers reference in `create_media_buy`. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) for complete documentation of supported pricing models (CPM, CPCV, CPP, CPC, vCPM, flat_rate).
-- **properties**: Array of specific advertising properties covered by this product (see [Property Schema](https://adcontextprotocol.org/schemas/v1/core/property.json))
-  - **property_type**: Type of advertising property ("website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio")
-  - **name**: Human-readable property name
-  - **identifiers**: Array of identifiers for this property
-    - **type**: Type of identifier (e.g., "domain", "bundle_id", "roku_store_id", "podcast_guid")
-    - **value**: The identifier value. For domain type: `"example.com"` matches www.example.com and m.example.com only; `"subdomain.example.com"` matches that specific subdomain; `"*.example.com"` matches all subdomains
-  - **tags**: Optional array of tags for categorization (e.g., network membership, content categories)
-  - **publisher_domain**: Domain where adagents.json should be checked for authorization validation
-- **property_tags**: Array of tags referencing groups of properties (alternative to `properties` array)
-  - Use [`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties) to resolve tags to actual property objects
-  - Recommended for products with large property sets (e.g., radio networks with 1000+ stations)
+- **publisher_properties**: Array of publisher property references grouped by publisher domain (REQUIRED)
+  - **publisher_domain**: Domain where the publisher's adagents.json is hosted (e.g., "cnn.com")
+  - **property_ids**: Array of specific property IDs from the publisher's adagents.json (mutually exclusive with property_tags)
+  - **property_tags**: Array of tags matching multiple properties from the publisher's adagents.json (mutually exclusive with property_ids)
+  - Buyers must fetch actual property definitions from each publisher's adagents.json and validate agent authorization
+  - Use [`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties) to resolve property_tags to full property objects
 - **format_ids**: Array of supported creative format ID objects (structured with `agent_url` and `id` fields) - use `list_creative_formats` to get full format details
 - **delivery_type**: Either `"guaranteed"` or `"non_guaranteed"`
-- **is_fixed_price**: Whether this product has fixed pricing (true) or uses auction (false)
-- **cpm**: Cost per thousand impressions (for guaranteed/fixed price products)
-- **currency**: ISO 4217 currency code (e.g., "USD", "EUR", "GBP")
-- **min_spend**: Minimum budget requirement
+- **pricing_options**: Array of available pricing models for this product (REQUIRED). Each option has a unique `pricing_option_id` that buyers reference in `create_media_buy`. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) for complete documentation of supported pricing models (CPM, CPCV, CPP, CPC, vCPM, flat_rate).
+- **delivery_measurement**: Measurement provider and methodology for delivery metrics (REQUIRED)
+  - **provider**: Measurement provider (e.g., "Google Ad Manager with IAS viewability", "Nielsen DAR")
+  - **notes**: Additional details about measurement methodology (optional)
 - **estimated_exposures**: Estimated exposures/impressions for guaranteed products (optional)
-- **floor_cpm**: Minimum CPM for non-guaranteed products - bids below this are rejected (optional)
-- **recommended_cpm**: Recommended CPM to achieve min_exposures target for non-guaranteed products (optional)
 - **measurement**: Included measurement capabilities (optional)
   - **type**: Type of measurement (e.g., "incremental_sales_lift", "brand_lift", "foot_traffic")
   - **attribution**: Attribution methodology (e.g., "deterministic_purchase", "probabilistic")
@@ -179,21 +183,26 @@ Products include **EITHER** `properties` (for specific property lists) **OR** `p
 
 ## Property Tag Resolution
 
-When products use `property_tags` instead of full `properties` arrays, buyer agents must resolve the tags to actual property objects using [`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties).
+When a product's `publisher_properties` entry uses `property_tags` instead of `property_ids`, buyer agents must resolve the tags to actual property objects using [`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties).
 
 ### Resolution Process
 
-1. **Call list_authorized_properties**: Get all properties from the sales agent (cache this response)
-2. **Filter by tags**: Find properties where the `tags` array includes the referenced tags
+1. **Call list_authorized_properties**: Get all properties from the sales agent for the publisher_domain (cache this response)
+2. **Filter by tags**: Find properties where the `tags` array includes all the referenced tags
 3. **Use for validation**: Use the resolved properties for authorization validation
 
 ### Example
 
-**Product with tags**:
+**Product with property_tags**:
 ```json
 {
-  "product_id": "local_radio_midwest", 
-  "property_tags": ["local_radio", "midwest"]
+  "product_id": "local_radio_midwest",
+  "publisher_properties": [
+    {
+      "publisher_domain": "radionetwork.com",
+      "property_tags": ["local_radio", "midwest"]
+    }
+  ]
 }
 ```
 
@@ -202,18 +211,23 @@ When products use `property_tags` instead of full `properties` arrays, buyer age
 // 1. Get all authorized properties (cache this)
 const authorized = await agent.list_authorized_properties();
 
-// 2. Resolve tags to properties
-const productProperties = authorized.properties.filter(prop => 
+// 2. Filter for the specific publisher
+const publisherProps = authorized.properties.filter(prop =>
+  prop.publisher_domain === "radionetwork.com"
+);
+
+// 3. Resolve tags to properties (must have ALL specified tags)
+const productProperties = publisherProps.filter(prop =>
   prop.tags.includes("local_radio") && prop.tags.includes("midwest")
 );
 
-// 3. Use resolved properties for validation
+// 4. Use resolved properties for validation
 for (const property of productProperties) {
   await validateProperty(property);
 }
 ```
 
-**Why use tags?**: For large networks (e.g., 1847 radio stations), including all properties in every product response would create massive payloads. Tags provide efficient references while maintaining full validation capability.
+**Why use tags?**: For large networks (e.g., 1847 radio stations), including all property_ids in every product response would create massive payloads. Tags provide efficient references while maintaining full validation capability.
 
 ## Buyer Agent Validation
 
@@ -221,14 +235,15 @@ for (const property of productProperties) {
 
 ### Validation Requirements
 
-1. **Get Properties**: For each product, get property objects either:
-   - Directly from the `properties` array, OR
-   - By resolving `property_tags` via [`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties)
-2. **Check Publisher Domains**: For each property, fetch `/.well-known/adagents.json` from `publisher_domain`
-3. **Validate Domain Identifiers**: For website properties, also check each domain identifier
-4. **Validate Agent**: Confirm the sales agent URL appears in `authorized_agents`
-5. **Scope Matching**: Compare `authorized_for` description with product details
-6. **Reject Unauthorized**: Decline products from unauthorized agents
+1. **Get Property References**: For each product's `publisher_properties` entries:
+   - If using `property_ids`: These reference specific properties from the publisher's adagents.json
+   - If using `property_tags`: Resolve tags via [`list_authorized_properties`](/docs/media-buy/task-reference/list_authorized_properties) to get property objects
+2. **Check Publisher Authorization**: For each `publisher_domain`, fetch `/.well-known/adagents.json`
+3. **Validate Agent**: Confirm the sales agent URL appears in `authorized_agents`
+4. **Scope Matching**: Compare `authorized_for` description with product details
+5. **Validate Property Details**: Get full property definitions from publisher's adagents.json using property_ids
+6. **Validate Domain Identifiers**: For website properties, check each domain identifier matches authorization
+7. **Reject Unauthorized**: Decline products from unauthorized agents
 
 ### Example Validation
 
@@ -236,23 +251,21 @@ for (const property of productProperties) {
 ```json
 {
   "product_id": "yahoo-premium-video",
-  "name": "Yahoo Premium Video Package", 
-  "properties": [
+  "name": "Yahoo Premium Video Package",
+  "publisher_properties": [
     {
-      "property_type": "website",
-      "name": "Yahoo News & Finance Network",
-      "identifiers": [
-        {"type": "domain", "value": "yahoo.com"},
-        {"type": "domain", "value": "finance.yahoo.com"},
-        {"type": "network_id", "value": "yahoo_network"}
-      ],
-      "tags": ["yahoo_network", "news_media", "premium_content"],
-      "publisher_domain": "yahoo.com"
+      "publisher_domain": "yahoo.com",
+      "property_ids": ["yahoo_news", "yahoo_finance", "yahoo_sports"]
     }
   ]
 }
 ```
 
+**Validation Steps**:
+1. Fetch `https://yahoo.com/.well-known/adagents.json`
+2. Verify sales agent appears in `authorized_agents`
+3. Fetch property definitions for "yahoo_news", "yahoo_finance", "yahoo_sports" from adagents.json
+4. For each property, validate domain identifiers against authorization
 
 ### Domain Matching Examples
 
@@ -360,15 +373,10 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
       "product_id": "ctv_sports_premium",
       "name": "CTV Sports Premium",
       "description": "Premium CTV inventory on sports content",
-      "properties": [
+      "publisher_properties": [
         {
-          "property_type": "website",
-          "name": "Sports Network",
-          "identifiers": [
-            {"type": "domain", "value": "sportsnetwork.com"}
-          ],
-          "tags": ["sports_content", "premium_content"],
-          "publisher_domain": "sportsnetwork.com"
+          "publisher_domain": "sportsnetwork.com",
+          "property_ids": ["main_ctv", "mobile_app"]
         }
       ],
       "format_ids": [
@@ -378,10 +386,17 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
         }
       ],
       "delivery_type": "guaranteed",
-      "is_fixed_price": true,
-      "cpm": 45.00,
-      "currency": "USD",
-      "min_spend": 10000,
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm_premium",
+          "pricing_model": "cpm",
+          "rate": 45.00,
+          "currency": "USD"
+        }
+      ],
+      "delivery_measurement": {
+        "provider": "Nielsen DAR"
+      },
       "is_custom": false,
       "brief_relevance": "Premium CTV with sports content alignment"
     }
@@ -448,16 +463,30 @@ A2A returns results as artifacts with text and data parts:
               "product_id": "ctv_sports_premium",
               "name": "CTV Sports Premium",
               "description": "Premium CTV inventory on sports content",
+              "publisher_properties": [
+                {
+                  "publisher_domain": "sportsnetwork.com",
+                  "property_ids": ["main_ctv", "mobile_app"]
+                }
+              ],
               "format_ids": [
-        {
-          "agent_url": "https://creative.adcontextprotocol.org",
-          "id": "video_16x9_30s"
-        }
-      ],
+                {
+                  "agent_url": "https://creative.adcontextprotocol.org",
+                  "id": "video_16x9_30s"
+                }
+              ],
               "delivery_type": "guaranteed",
-              "is_fixed_price": true,
-              "cpm": 45.00,
-              "min_spend": 10000,
+              "pricing_options": [
+                {
+                  "pricing_option_id": "cpm_premium",
+                  "pricing_model": "cpm",
+                  "rate": 45.00,
+                  "currency": "USD"
+                }
+              ],
+              "delivery_measurement": {
+                "provider": "Nielsen DAR"
+              },
               "is_custom": false,
               "brief_relevance": "Premium CTV with sports content alignment"
             }
@@ -503,17 +532,47 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
   "products": [
     {
       "product_id": "guaranteed_sports",
-      "is_fixed_price": true,
-      "cpm": 45.00,
-      "currency": "USD",
-      "estimated_exposures": 222000  // Well above 10K minimum
+      "publisher_properties": [
+        {
+          "publisher_domain": "sportsnetwork.com",
+          "property_ids": ["main_site"]
+        }
+      ],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm_standard",
+          "pricing_model": "cpm",
+          "rate": 45.00,
+          "currency": "USD"
+        }
+      ],
+      "delivery_measurement": {
+        "provider": "Nielsen DAR"
+      },
+      "estimated_exposures": 222000
     },
     {
       "product_id": "programmatic_video",
-      "is_fixed_price": false,
-      "currency": "USD",
-      "floor_cpm": 5.00,
-      "recommended_cpm": 12.00  // Bid this to achieve 10K exposures
+      "publisher_properties": [
+        {
+          "publisher_domain": "videoprovider.com",
+          "property_tags": ["programmatic"]
+        }
+      ],
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [
+        {
+          "pricing_option_id": "auction_floor",
+          "pricing_model": "cpm",
+          "currency": "USD",
+          "floor_rate": 5.00,
+          "recommended_rate": 12.00
+        }
+      ],
+      "delivery_measurement": {
+        "provider": "Google Ad Manager"
+      }
     }
   ]
 }
@@ -585,7 +644,7 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
 }
 ```
 ### Response - Products Found with Brief
-**Message**: "I found 3 premium sports-focused products that match your requirements. Connected TV Prime Time offers the best reach at $45 CPM with guaranteed delivery. All options support standard video formats and have availability for your Nike campaign."
+**Message**: "I found 3 premium sports-focused products that match your requirements. Connected TV Prime Time offers the best reach with guaranteed delivery. All options support standard video formats and have availability for your Nike campaign."
 
 **Payload**:
 ```json
@@ -595,6 +654,12 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
       "product_id": "connected_tv_prime",
       "name": "Connected TV - Prime Time",
       "description": "Premium CTV inventory 8PM-11PM",
+      "publisher_properties": [
+        {
+          "publisher_domain": "sportsnetwork.com",
+          "property_ids": ["primetime_ctv"]
+        }
+      ],
       "format_ids": [
         {
           "agent_url": "https://creative.adcontextprotocol.org",
@@ -602,10 +667,17 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
         }
       ],
       "delivery_type": "guaranteed",
-      "is_fixed_price": true,
-      "cpm": 45.00,
-      "currency": "USD",
-      "min_spend": 10000,
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm_primetime",
+          "pricing_model": "cpm",
+          "rate": 45.00,
+          "currency": "USD"
+        }
+      ],
+      "delivery_measurement": {
+        "provider": "Nielsen DAR"
+      },
       "estimated_exposures": 222000,
       "is_custom": false,
       "brief_relevance": "Premium CTV inventory aligns with sports content request and prime time targeting"
@@ -614,7 +686,7 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
 }
 ```
 ### Response - Retail Media Products
-**Message**: "I found 3 products leveraging our pet shopper data. The syndicated Pet Category audience offers the best value at $13.50 CPM with a $10K minimum. For more precision, our Custom Competitive Conquesting audience targets shoppers buying competing brands at $18 CPM with a $50K minimum. All products include incremental sales measurement and automated daily reporting."
+**Message**: "I found 3 products leveraging our pet shopper data. The syndicated Pet Category audience offers the best value with a $10K minimum. For more precision, our Custom Competitive Conquesting audience targets shoppers buying competing brands with a $50K minimum. All products include incremental sales measurement and automated daily reporting."
 
 **Payload**:
 ```json
@@ -624,6 +696,12 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
       "product_id": "albertsons_pet_category_syndicated",
       "name": "Pet Category Shoppers - Syndicated",
       "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days across offsite display and video inventory.",
+      "publisher_properties": [
+        {
+          "publisher_domain": "albertsons.com",
+          "property_tags": ["retail_media_network", "offsite"]
+        }
+      ],
       "format_ids": [
         {
           "agent_url": "https://creative.adcontextprotocol.org",
@@ -635,10 +713,17 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
         }
       ],
       "delivery_type": "guaranteed",
-      "is_fixed_price": true,
-      "cpm": 13.50,
-      "currency": "USD",
-      "min_spend": 10000,
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm_pet_shoppers",
+          "pricing_model": "cpm",
+          "rate": 13.50,
+          "currency": "USD"
+        }
+      ],
+      "delivery_measurement": {
+        "provider": "Albertsons internal measurement with LiveRamp deterministic attribution"
+      },
       "measurement": {
         "type": "incremental_sales_lift",
         "attribution": "deterministic_purchase",
@@ -664,6 +749,12 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
       "product_id": "albertsons_custom_competitive_conquest",
       "name": "Custom: Competitive Dog Food Buyers",
       "description": "Custom audience of Albertsons shoppers who buy competitive dog food brands. Higher precision targeting for conquest campaigns.",
+      "publisher_properties": [
+        {
+          "publisher_domain": "albertsons.com",
+          "property_tags": ["retail_media_network", "offsite"]
+        }
+      ],
       "format_ids": [
         {
           "agent_url": "https://creative.adcontextprotocol.org",
@@ -675,10 +766,17 @@ When buyers specify `min_exposures` in the request, products are filtered to onl
         }
       ],
       "delivery_type": "guaranteed",
-      "is_fixed_price": true,
-      "cpm": 18.00,
-      "currency": "USD",
-      "min_spend": 50000,
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm_conquest",
+          "pricing_model": "cpm",
+          "rate": 18.00,
+          "currency": "USD"
+        }
+      ],
+      "delivery_measurement": {
+        "provider": "Albertsons internal measurement with LiveRamp deterministic attribution"
+      },
       "measurement": {
         "type": "incremental_sales_lift",
         "attribution": "deterministic_purchase",
