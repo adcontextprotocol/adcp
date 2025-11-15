@@ -47,6 +47,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
     {
       "url": "https://agent.example.com",
       "authorized_for": "Official sales agent",
+      "authorization_type": "property_ids",
       "property_ids": ["example_site"]
     }
   ],
@@ -160,6 +161,7 @@ Use `property_ids` to reference specific properties by ID - direct and unambiguo
     {
       "url": "https://cnn-ctv-agent.com",
       "authorized_for": "CNN CTV properties",
+      "authorization_type": "property_ids",
       "property_ids": ["cnn_ctv_app"]
     }
   ]
@@ -200,6 +202,7 @@ Use `property_tags` to reference properties by tag - good for flexible grouping.
     {
       "url": "https://meta-ads.com",
       "authorized_for": "All Meta properties",
+      "authorization_type": "property_tags",
       "property_tags": ["meta_network"]
     }
   ]
@@ -218,6 +221,7 @@ Use `properties` array for inline property definitions (rare - usually propertie
     {
       "url": "https://agent.com",
       "authorized_for": "Specific inventory",
+      "authorization_type": "inline_properties",
       "properties": [
         {
           "property_type": "website",
@@ -243,9 +247,11 @@ Use `publisher_properties` to authorize an agent for properties defined in anoth
     {
       "url": "https://third-party-sales.com",
       "authorized_for": "CNN CTV App only",
+      "authorization_type": "publisher_properties",
       "publisher_properties": [
         {
           "publisher_domain": "cnn.com",
+          "selection_type": "by_id",
           "property_ids": ["cnn_ctv_app"]
         }
       ]
@@ -261,13 +267,16 @@ Use `publisher_properties` to authorize an agent for properties defined in anoth
     {
       "url": "https://ctv-specialist.com",
       "authorized_for": "CTV inventory from multiple publishers",
+      "authorization_type": "publisher_properties",
       "publisher_properties": [
         {
           "publisher_domain": "cnn.com",
+          "selection_type": "by_tag",
           "property_tags": ["ctv"]
         },
         {
           "publisher_domain": "espn.com",
+          "selection_type": "by_tag",
           "property_tags": ["ctv"]
         }
       ]
@@ -357,6 +366,7 @@ Meta manages Instagram, Facebook, and WhatsApp with a single sales agent. This a
     {
       "url": "https://meta-ads.com",
       "authorized_for": "All Meta properties",
+      "authorization_type": "property_tags",
       "property_tags": ["meta_network"]
     }
   ]
@@ -394,6 +404,7 @@ Tumblr authorizes sales only for corporate properties, NOT user blogs. This file
     {
       "url": "https://tumblr-sales.com",
       "authorized_for": "Tumblr corporate properties only",
+      "authorization_type": "property_tags",
       "property_tags": ["corporate"]
     }
   ]
@@ -460,11 +471,13 @@ CNN has CTV properties managed by one agent, and US/international websites by an
     {
       "url": "https://cnn-ctv-agent.com",
       "authorized_for": "CNN CTV properties",
+      "authorization_type": "property_ids",
       "property_ids": ["cnn_ctv_app"]
     },
     {
       "url": "https://cnn-web-agent.com",
       "authorized_for": "CNN US and international websites",
+      "authorization_type": "property_ids",
       "property_ids": ["cnn_web_us", "cnn_web_intl"]
     }
   ]
@@ -497,6 +510,7 @@ Publishers with mobile apps can use property scoping to specify which platforms 
     {
       "url": "https://mobile-agent.com",
       "authorized_for": "Mobile app inventory only",
+      "authorization_type": "inline_properties",
       "properties": [
         {
           "property_type": "mobile_app",
@@ -512,6 +526,7 @@ Publishers with mobile apps can use property scoping to specify which platforms 
     {
       "url": "https://web-agent.com",
       "authorized_for": "Web properties only",
+      "authorization_type": "inline_properties",
       "properties": [
         {
           "property_type": "website",
@@ -592,6 +607,7 @@ Publishers with mobile apps can use property scoping to specify which platforms 
     {
       "url": "https://programmatic-partner.com",
       "authorized_for": "Authorized reseller for display inventory in EMEA region",
+      "authorization_type": "inline_properties",
       "properties": [
         {
           "property_type": "website",
@@ -608,6 +624,7 @@ Publishers with mobile apps can use property scoping to specify which platforms 
     {
       "url": "https://video-specialist.com",
       "authorized_for": "Specialized video advertising for CTV and mobile video",
+      "authorization_type": "inline_properties",
       "properties": [
         {
           "property_type": "ctv_app",
@@ -623,6 +640,7 @@ Publishers with mobile apps can use property scoping to specify which platforms 
     {
       "url": "https://mobile-network.com",
       "authorized_for": "Mobile app advertising for iOS and Android",
+      "authorization_type": "inline_properties",
       "properties": [
         {
           "property_type": "mobile_app",
@@ -980,6 +998,7 @@ Tags enable efficient management of large property portfolios:
     {
       "url": "https://agent@videospecialist.com",
       "authorized_for": "Video inventory only - no display or native formats"
+      // No authorization_type field = authorized for everything
     }
   ]
 }

@@ -14,7 +14,7 @@ Carousel formats use repeatable asset groups to represent:
 - **Story Sequences** - Sequential narrative frames (mobile stories)
 - **Video Playlists** - Multiple video clips displayed in sequence
 
-All carousel formats use `asset_group_id` with `repeatable: true`, `min_count`, and `max_count` to define the structure.
+All carousel formats use `asset_group_id` with `item_type: "repeatable_group"`, `min_count`, and `max_count` to define the structure.
 
 ## Repeatable Asset Groups
 
@@ -32,8 +32,8 @@ Carousel formats define a repeatable asset group containing the assets for each 
   "dimensions": "300x250",
   "assets_required": [
     {
+      "item_type": "repeatable_group",
       "asset_group_id": "product",
-      "repeatable": true,
       "min_count": 3,
       "max_count": 10,
       "assets": [
@@ -60,6 +60,7 @@ Carousel formats define a repeatable asset group containing the assets for each 
       ]
     },
     {
+      "item_type": "individual",
       "asset_id": "brand_logo",
       "asset_type": "image",
       "requirements": {"width": 80, "height": 80}
@@ -82,8 +83,8 @@ Carousel formats define a repeatable asset group containing the assets for each 
   "dimensions": "300x600",
   "assets_required": [
     {
+      "item_type": "repeatable_group",
       "asset_group_id": "product",
-      "repeatable": true,
       "min_count": 2,
       "max_count": 5,
       "assets": [
@@ -126,8 +127,8 @@ Carousel formats define a repeatable asset group containing the assets for each 
   "dimensions": "728x90",
   "assets_required": [
     {
+      "item_type": "repeatable_group",
       "asset_group_id": "slide",
-      "repeatable": true,
       "min_count": 3,
       "max_count": 8,
       "assets": [
@@ -160,8 +161,8 @@ Carousel formats define a repeatable asset group containing the assets for each 
   "dimensions": "1080x1920",
   "assets_required": [
     {
+      "item_type": "repeatable_group",
       "asset_group_id": "frame",
-      "repeatable": true,
       "min_count": 3,
       "max_count": 7,
       "assets": [
@@ -188,6 +189,7 @@ Carousel formats define a repeatable asset group containing the assets for each 
       ]
     },
     {
+      "item_type": "individual",
       "asset_id": "brand_logo",
       "asset_type": "image",
       "requirements": {"width": 100, "height": 100}
@@ -207,8 +209,8 @@ Carousel formats define a repeatable asset group containing the assets for each 
   "type": "video",
   "assets_required": [
     {
+      "item_type": "repeatable_group",
       "asset_group_id": "clip",
-      "repeatable": true,
       "min_count": 2,
       "max_count": 5,
       "assets": [
@@ -429,7 +431,10 @@ Individual assets within a group can be marked `"required": false`:
 
 ```json
 {
+  "item_type": "repeatable_group",
   "asset_group_id": "slide",
+  "min_count": 3,
+  "max_count": 8,
   "assets": [
     {
       "asset_id": "image",
@@ -538,8 +543,8 @@ https://track.brand.com/view?buy={MEDIA_BUY_ID}&item={CAROUSEL_INDEX}&total={CAR
   "dimensions": "300x600",
   "assets_required": [
     {
+      "item_type": "repeatable_group",
       "asset_group_id": "product",
-      "repeatable": true,
       "min_count": 3,
       "max_count": 6,
       "assets": [
@@ -573,11 +578,13 @@ https://track.brand.com/view?buy={MEDIA_BUY_ID}&item={CAROUSEL_INDEX}&total={CAR
       ]
     },
     {
+      "item_type": "individual",
       "asset_id": "brand_logo",
       "asset_type": "image",
       "requirements": {"width": 80, "height": 80}
     },
     {
+      "item_type": "individual",
       "asset_id": "cta_text",
       "asset_type": "text",
       "requirements": {"max_length": 15}

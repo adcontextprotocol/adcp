@@ -113,6 +113,11 @@
             "description": "Individual asset requirement",
             "type": "object",
             "properties": {
+              "item_type": {
+                "type": "string",
+                "const": "individual",
+                "description": "Discriminator indicating this is an individual asset requirement"
+              },
               "asset_id": {
                 "type": "string",
                 "description": "Unique identifier for this asset. Creative manifests MUST use this exact value as the key in the assets object."
@@ -136,20 +141,20 @@
                 "additionalProperties": true
               }
             },
-            "required": ["asset_id", "asset_type"]
+            "required": ["item_type", "asset_id", "asset_type"]
           },
           {
             "description": "Repeatable asset group (for carousels, slideshows, playlists, etc.)",
             "type": "object",
             "properties": {
+              "item_type": {
+                "type": "string",
+                "const": "repeatable_group",
+                "description": "Discriminator indicating this is a repeatable asset group"
+              },
               "asset_group_id": {
                 "type": "string",
                 "description": "Identifier for this asset group (e.g., 'product', 'slide', 'card')"
-              },
-              "repeatable": {
-                "type": "boolean",
-                "description": "Indicates this is a repeatable asset group",
-                "enum": [true]
               },
               "min_count": {
                 "type": "integer",
@@ -194,7 +199,7 @@
                 }
               }
             },
-            "required": ["asset_group_id", "repeatable", "min_count", "max_count", "assets"]
+            "required": ["item_type", "asset_group_id", "min_count", "max_count", "assets"]
           }
         ]
       }
