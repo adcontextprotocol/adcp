@@ -1,5 +1,678 @@
 # Changelog
 
+## 2.5.0
+
+### Minor Changes
+
+- cbc95ae: Add explicit discriminator fields to discriminated union types for better TypeScript type generation
+
+  **Schema Changes:**
+
+  - **product.json**: Add `selection_type` discriminator ("by_id" | "by_tag") to `publisher_properties` items
+  - **adagents.json**: Add `authorization_type` discriminator ("property_ids" | "property_tags" | "inline_properties" | "publisher_properties") to `authorized_agents` items, and nested `selection_type` discriminator to `publisher_properties` arrays
+  - **format.json**: Add `item_type` discriminator ("individual" | "repeatable_group") to `assets_required` items
+
+  **Rationale:**
+
+  Without explicit discriminators, TypeScript generators produce poor types - either massive unions with broken type narrowing or generic index signatures. With discriminators, TypeScript can properly narrow types and provide excellent IDE autocomplete.
+
+  **Migration Guide:**
+
+  All schema changes are **additive** - new required discriminator fields are added to existing structures:
+
+  **Product Schema (`publisher_properties`):**
+
+  ```json
+  // Before
+  {
+    "publisher_domain": "cnn.com",
+    "property_ids": ["cnn_ctv_app"]
+  }
+
+  // After
+  {
+    "publisher_domain": "cnn.com",
+    "selection_type": "by_id",
+    "property_ids": ["cnn_ctv_app"]
+  }
+  ```
+
+  **AdAgents Schema (`authorized_agents`):**
+
+  ```json
+  // Before
+  {
+    "url": "https://agent.com",
+    "authorized_for": "All inventory",
+    "property_ids": ["site_123"]
+  }
+
+  // After
+  {
+    "url": "https://agent.com",
+    "authorized_for": "All inventory",
+    "authorization_type": "property_ids",
+    "property_ids": ["site_123"]
+  }
+  ```
+
+  **Format Schema (`assets_required`):**
+
+  ```json
+  // Before
+  {
+    "asset_group_id": "product",
+    "repeatable": true,
+    "min_count": 3,
+    "max_count": 10,
+    "assets": [...]
+  }
+
+  // After
+  {
+    "item_type": "repeatable_group",
+    "asset_group_id": "product",
+    "min_count": 3,
+    "max_count": 10,
+    "assets": [...]
+  }
+  ```
+
+  Note: The `repeatable` field has been removed from format.json as it's redundant with the `item_type` discriminator.
+
+  **Validation Impact:**
+
+  Schemas now have stricter validation - implementations must include the discriminator fields. This ensures type safety and eliminates ambiguity when parsing union types.
+
+- 161cb4e: Add required package-level pricing fields to delivery reporting schema to match documentation.
+
+  **Schema Changes:**
+
+  - Added required `pricing_model` field to `by_package` items in `get-media-buy-delivery-response.json`
+  - Added required `rate` field to `by_package` items for pricing rate information
+  - Added required `currency` field to `by_package` items to support per-package currency
+
+  These required fields enable buyers to see pricing information directly in delivery reports for better cost analysis and reconciliation, as documented in the recently enhanced reporting documentation (#179).
+
+- a8471c4: Enforce atomic operation semantics with success XOR error response pattern. Task response schemas now use `oneOf` discriminators to ensure responses contain either complete success data OR error information, never both, never neither.
+
+  **Response Pattern:**
+
+  All mutating operations (create, update, build) now enforce strict either/or semantics:
+
+  1. **Success response** - Operation completed fully:
+
+     ```json
+     {
+       "media_buy_id": "mb_123",
+       "buyer_ref": "campaign_2024_q1",
+       "packages": [...]
+     }
+     ```
+
+  2. **Error response** - Operation failed completely:
+     ```json
+     {
+       "errors": [
+         {
+           "code": "INVALID_TARGETING",
+           "message": "Tuesday-only targeting not supported",
+           "suggestion": "Remove day-of-week constraint or select all days"
+         }
+       ]
+     }
+     ```
+
+  **Why This Matters:**
+
+  Partial success in advertising operations is dangerous and can lead to unintended spend or incorrect targeting. For example:
+
+  - Buyer requests "US targeting + Tuesday-only dayparting"
+  - Partial success returns created media buy without Tuesday constraint
+  - Buyer might not notice error, campaign runs with wrong targeting
+  - Result: Budget spent on unwanted inventory
+
+  The `oneOf` discriminator enforces atomic semantics at the schema level - operations either succeed completely or fail completely. Buyers must explicitly choose to modify their requirements rather than having the system silently omit constraints.
+
+  **Updated Schemas:**
+
+  All mutating operation schemas now use `oneOf` with explicit success/error branches:
+
+  **Media Buy Operations:**
+
+  - `create-media-buy-response.json` - Success requires `media_buy_id`, `buyer_ref`, `packages`; Error requires `errors` array
+  - `update-media-buy-response.json` - Success requires `media_buy_id`, `buyer_ref`; Error requires `errors` array
+  - `build-creative-response.json` - Success requires `creative_manifest`; Error requires `errors` array
+  - `provide-performance-feedback-response.json` - Success requires `success: true`; Error requires `errors` array
+  - `sync-creatives-response.json` - Success requires `creatives` array (with per-item results); Error requires `errors` array (operation-level failures only)
+
+  **Signals Operations:**
+
+  - `activate-signal-response.json` - Success requires `decisioning_platform_segment_id`; Error requires `errors` array
+
+  **Webhook Validation:**
+
+  - `webhook-payload.json` - Uses conditional validation (`if/then` with `allOf`) to validate result field against the appropriate task response schema based on task_type. Ensures webhook results are properly validated against their respective task schemas.
+
+  **Schema Structure:**
+
+  ```json
+  {
+    "oneOf": [
+      {
+        "description": "Success response",
+        "required": ["media_buy_id", "buyer_ref", "packages"],
+        "not": { "required": ["errors"] }
+      },
+      {
+        "description": "Error response",
+        "required": ["errors"],
+        "not": { "required": ["media_buy_id", "buyer_ref", "packages"] }
+      }
+    ]
+  }
+  ```
+
+  The `not` constraints ensure responses cannot contain both success and error fields simultaneously.
+
+  **Benefits:**
+
+  - **Safety**: Prevents dangerous partial success scenarios in advertising operations
+  - **Clarity**: Unambiguous success vs failure - no mixed signals
+  - **Validation**: Schema-level enforcement of atomic semantics
+  - **Consistency**: All mutating operations follow same pattern
+
+  **Batch Operations Pattern**
+
+  `sync_creatives` uses a two-level error model that distinguishes:
+
+  - **Operation-level failures** (oneOf error branch): Authentication failed, service down, invalid request format - no creatives processed
+  - **Per-item failures**: Individual creative validation errors (action='failed' within the creatives array) - rest of batch still processed
+
+  This provides best-effort batch semantics (process what you can, report what failed) while maintaining atomic operation boundaries (either you can process the batch OR you can't).
+
+  **Migration:**
+
+  This is a backward-compatible change. Existing valid responses (success with all required fields) continue to validate successfully. The change prevents invalid responses (missing required success fields or mixing success/error fields) that were technically possible but semantically incorrect.
+
+  **Alignment with Protocol Standards:**
+
+  This pattern aligns with both MCP and A2A error handling:
+
+  - **MCP**: Tool returns either result content OR sets `isError: true`, not both
+  - **A2A**: Task reaches terminal state `completed` OR `failed`, not both
+  - **AdCP**: Task payload contains success data XOR errors, enforced at schema level
+
+- 0b76037: Add batch preview and direct HTML embedding support to `preview_creative` task for dramatically faster preview workflows.
+
+  **Enhancements:**
+
+  1. **Batch Mode** - Preview 1-50 creatives in one API call (5-10x faster)
+
+     - Request includes `requests` array instead of single creative
+     - Response returns `results` array with success/error per creative
+     - Supports partial success (some succeed, others fail)
+     - Order preservation (results match request order)
+
+  2. **Direct HTML Embedding** - Skip iframes entirely with `output_format: "html"`
+     - Request includes `output_format: "html"` parameter
+     - Response includes `preview_html` field with raw HTML
+     - No iframe overhead - embed HTML directly in page
+     - Perfect for grids of 50+ previews
+     - Batch-level and per-request `output_format` support
+
+  **Benefits:**
+
+  - **Performance**: 5-10x faster for 10+ creatives (single HTTP round trip)
+  - **Scalability**: No 50 iframe requests for preview grids
+  - **Flexibility**: Mix formats and output types in one batch
+  - **Developer Experience**: Simpler grid rendering with direct HTML
+
+  **Backward Compatibility:**
+
+  - Existing requests unchanged (same request/response structure)
+  - Default `output_format: "url"` maintains iframe behavior
+  - Schema uses `oneOf` for seamless mode detection
+  - No breaking changes
+
+  **Use Cases:**
+
+  - Bulk creative review UIs with 50+ preview grids
+  - Campaign management dashboards
+  - A/B testing creative variations
+  - Multi-format preview generation
+
+  **Schema Changes:**
+
+  - `/schemas/v1/creative/preview-creative-request.json`:
+    - Accepts single OR batch requests via `oneOf`
+    - New `output_format` parameter ("url" | "html")
+  - `/schemas/v1/creative/preview-creative-response.json`:
+    - Returns single OR batch responses via `oneOf`
+    - New `preview_html` field in renders (alternative to `preview_url`)
+
+  **Documentation Improvements:**
+
+  - **Common Workflows** section with real-world examples:
+    - Format showcase pages (catalog of all available formats)
+    - Creative review grids (campaign approval workflows)
+    - Web component integration patterns
+  - **Best Practices** section covering:
+    - When to use URL vs HTML output
+    - Batch request optimization strategies
+    - Three production-ready architecture patterns
+    - Caching strategies for URLs vs HTML
+    - Error handling patterns
+  - Clear guidance on building efficient applications with 50+ preview grids
+
+- 32ca877: Consolidate agent registry into main repository and unify server architecture.
+
+  **Breaking Changes:**
+
+  - Agent registry moved from separate repository into `/registry` directory
+  - Unified Express server now serves homepage, registry UI, schemas, and API endpoints
+  - Updated server dependencies and structure
+
+  **New Features:**
+
+  - Single unified server for all AdCP services (homepage, registry, schemas, API, MCP)
+  - Updated homepage with working documentation links
+  - Slack community navigation link
+  - Applied 4dvertible → Advertible Inc rebranding (registry PR #8)
+
+  **Documentation:**
+
+  - Consolidated UNIFIED-SERVER.md, CONSOLIDATION.md, and REGISTRY.md content into main README
+  - Updated repository structure documentation
+  - Added Docker deployment instructions
+
+- 2a126fe: - Enhanced `get_media_buy_delivery` response to include package-level pricing information: `pricing_model`, `rate`, and `currency` fields added to `by_package` section.
+
+  - Added offline file delivery examples for JSON Lines (JSONL), CSV, and Parquet formats.
+  - Added tab structure to list different formats of offline delivery files in optimization reporting documentation.
+  - Updated all delivery reporting examples to include new pricing fields.
+  - Added comprehensive JSONL, CSV, and Parquet format examples with schema documentation.
+
+  **Impact:**
+
+  - Buyers can now see pricing information directly in delivery reports for better cost analysis.
+  - Publishers have clearer guidance on structured batch reporting formats that maintain nested data.
+  - Documentation provides a detailed examples for implementing offline file delivery.
+
+- 4bf2874: Application-Level Context in Task Payloads
+
+  - Task request schemas now accept an optional `context` object provided by the initiator
+  - Task response payloads (and webhook `result` payloads) echo the same `context`
+
+- 649aa2d: Add activation key support for signal protocol with permission-based access. Enables signal agents and buyers to receive activation keys (segment IDs or key-value pairs) based on authenticated permissions.
+
+  **Breaking Changes:**
+
+  - `activate_signal` response: Changed from single `activation_key` field to `deployments` array
+  - Both `get_signals` and `activate_signal` now consistently use `destinations` (plural)
+
+  **New Features:**
+
+  - Universal `activation-key.json` schema supporting segment IDs and key-value pairs
+  - Flexible destination model supporting DSP platforms (string) and sales agents (URL)
+  - Permission-based key inclusion determined by signal agent authentication
+  - Buyers with multi-platform credentials receive keys for all authorized platforms
+
+  **New Schemas:**
+
+  - `activation-key.json` - Universal activation key supporting segment_id and key_value types
+
+  **Modified Schemas:**
+
+  - `get-signals-request.json` - destinations array with platform OR agent_url
+  - `get-signals-response.json` - deployments include activation_key when authorized
+  - `activate-signal-request.json` - destinations array (plural)
+  - `activate-signal-response.json` - deployments array with per-destination keys
+
+  **Security:**
+
+  - Removed `requester` flag (can't be spoofed)
+  - Signal agent validates caller has access to requested destinations
+  - Permission-based access control via authentication layer
+
+- 17f3a16: Add discriminator fields to multiple schemas for improved TypeScript type safety and reduced union signature complexity.
+
+  **Breaking Changes**: The following schemas now require discriminator fields:
+
+  **Signal Schemas:**
+
+  - `destination.json`: Added discriminator with `type: "platform"` or `type: "agent"`
+  - `deployment.json`: Added discriminator with `type: "platform"` or `type: "agent"`
+
+  **Creative Asset Schemas:**
+
+  - `sub-asset.json`: Added discriminator with `asset_kind: "media"` or `asset_kind: "text"`
+  - `vast-asset.json`: Added discriminator with `delivery_type: "url"` or `delivery_type: "inline"`
+  - `daast-asset.json`: Added discriminator with `delivery_type: "url"` or `delivery_type: "inline"`
+
+  **Preview Response Schemas:**
+
+  - `preview-render.json`: NEW schema extracting render object with proper `oneOf` discriminated union
+  - `preview-creative-response.json`: Refactored to use `$ref` to `preview-render.json` instead of inline `allOf`/`if`/`then` patterns
+
+  **Benefits:**
+
+  - Reduces TypeScript union signature count significantly (estimated ~45 to ~20)
+  - Enables proper discriminated unions in TypeScript across all schemas
+  - Eliminates broken index signature intersections from `allOf`/`if`/`then` patterns
+  - Improves IDE autocomplete and type checking
+  - Provides type-safe discrimination between variants
+  - Single source of truth for shared schema structures (DRY principle)
+  - 51% reduction in preview response schema size (380 → 188 lines)
+
+  **Migration Guide:**
+
+  ### Signal Destinations and Deployments
+
+  **Before:**
+
+  ```json
+  {
+    "destinations": [
+      {
+        "platform": "the-trade-desk",
+        "account": "agency-123"
+      }
+    ]
+  }
+  ```
+
+  **After:**
+
+  ```json
+  {
+    "destinations": [
+      {
+        "type": "platform",
+        "platform": "the-trade-desk",
+        "account": "agency-123"
+      }
+    ]
+  }
+  ```
+
+  For agent URLs:
+
+  ```json
+  {
+    "destinations": [
+      {
+        "type": "agent",
+        "agent_url": "https://wonderstruck.salesagents.com"
+      }
+    ]
+  }
+  ```
+
+  ### Sub-Assets
+
+  **Before:**
+
+  ```json
+  {
+    "asset_type": "headline",
+    "asset_id": "main_headline",
+    "content": "Premium Products"
+  }
+  ```
+
+  **After:**
+
+  ```json
+  {
+    "asset_kind": "text",
+    "asset_type": "headline",
+    "asset_id": "main_headline",
+    "content": "Premium Products"
+  }
+  ```
+
+  For media assets:
+
+  ```json
+  {
+    "asset_kind": "media",
+    "asset_type": "product_image",
+    "asset_id": "hero_image",
+    "content_uri": "https://cdn.example.com/image.jpg"
+  }
+  ```
+
+  ### VAST/DAAST Assets
+
+  **Before:**
+
+  ```json
+  {
+    "url": "https://vast.example.com/tag",
+    "vast_version": "4.2"
+  }
+  ```
+
+  **After:**
+
+  ```json
+  {
+    "delivery_type": "url",
+    "url": "https://vast.example.com/tag",
+    "vast_version": "4.2"
+  }
+  ```
+
+  For inline content:
+
+  ```json
+  {
+    "delivery_type": "inline",
+    "content": "<VAST version=\"4.2\">...</VAST>",
+    "vast_version": "4.2"
+  }
+  ```
+
+  ### Preview Render Output Format
+
+  **Note:** The `output_format` discriminator already existed in the schema. This change improves TypeScript type generation by replacing `allOf`/`if`/`then` conditional logic with proper `oneOf` discriminated unions. **No API changes required** - responses remain identical.
+
+  **Schema pattern (existing behavior, better typing):**
+
+  ```json
+  {
+    "renders": [
+      {
+        "render_id": "primary",
+        "output_format": "url",
+        "preview_url": "https://...",
+        "role": "primary"
+      }
+    ]
+  }
+  ```
+
+  The `output_format` field acts as a discriminator:
+
+  - `"url"` → only `preview_url` field present
+  - `"html"` → only `preview_html` field present
+  - `"both"` → both `preview_url` and `preview_html` fields present
+
+- b7745a4: - Standardize webhook payload: protocol envelope at top-level; task-specific data moved under result.
+  - Result schema is bound to task_type via JSON Schema refs; result MAY be present for any status (including failed).
+  - Error remains a string; can appear alongside result.
+  - Required fields updated to: task_id, task_type, status, timestamp. Domain is no longer required.
+  - Docs updated to reflect envelope + result model.
+  - Compatibility: non-breaking for users of adcp/client (already expects result); breaking for direct webhook consumers that parsed task fields at the root.
+- 058ee19: Add visual card support for products and formats. Publishers and creative agents can now include optional card definitions that reference card formats and provide visual assets for display in user interfaces.
+
+  **New schema fields:**
+
+  - `product_card` and `product_card_detailed` fields in Product schema (both optional)
+  - `format_card` and `format_card_detailed` fields in Format schema (both optional)
+
+  **Two-tier card system:**
+
+  - **Standard cards**: Compact 300x400px cards (2x density support) for browsing grids
+  - **Detailed cards**: Responsive layout with description alongside hero carousel, markdown specs below
+
+  **Rendering flexibility:**
+
+  - Cards can be rendered dynamically via `preview_creative` task
+  - Or pre-generated and served as static CDN assets
+  - Publishers/agents choose based on infrastructure
+
+  **Standard card format definitions:**
+
+  - `product_card_standard`, `product_card_detailed`, `format_card_standard`, `format_card_detailed`
+  - Will be added to the reference creative-agent repository
+  - Protocol specification only defines the schema fields, not the format implementations
+
+  **Deprecation:**
+
+  - `preview_image` field in Format schema is now deprecated (but remains functional)
+  - Will be removed in v3.0.0
+  - Migrate to `format_card` for better flexibility and structure
+
+  **Benefits:**
+
+  - Improved product/format discovery UX with visual cards
+  - Detailed cards provide media-kit-style presentation (description left, carousel right, specs below)
+  - Consistent card rendering across implementations
+  - Uses AdCP's own creative format system for extensibility
+  - Non-breaking: Completely additive, existing implementations continue to work
+
+### Patch Changes
+
+- 16f632a: Add explicit type declarations to discriminator fields in JSON schemas.
+
+  All discriminator fields using `const` now include explicit `"type"` declarations (e.g., `"type": "string", "const": "value"`). This enables TypeScript generators to produce proper literal types instead of `Any`, improving type safety and IDE autocomplete.
+
+  **Fixed schemas:**
+
+  - daast-asset.json: delivery_type discriminators
+  - vast-asset.json: delivery_type discriminators
+  - preview-render.json: output_format discriminators
+  - deployment.json: type discriminators
+  - sub-asset.json: asset_kind discriminators
+  - preview-creative-response.json: response_type and success discriminators
+
+  **Documentation:**
+
+  - Updated CLAUDE.md with best practices for discriminator field typing
+
+- b09ddd6: Update homepage documentation links to external docs site. All documentation links on the homepage, navigation, and footer now point to https://docs.adcontextprotocol.org instead of local paths, directing users to the hosted documentation site.
+- 8904e6c: Fix broken documentation links for Mintlify deployment.
+
+  Converted all relative internal links to absolute Mintlify-compatible paths with `/docs/` prefix. This fixes 389 broken links across 50 documentation files that were causing 404 errors when users clicked them on docs.adcontextprotocol.org.
+
+  **Technical details:**
+
+  - Changed relative paths like `./reference/release-notes` to absolute `/docs/reference/release-notes`
+  - Mintlify requires absolute paths with `/docs/` prefix and no file extensions
+  - Links now match Mintlify's URL structure and routing expectations
+
+  Fixes #167
+
+- ddeef70: Fix Slack working group invite link in community documentation. The previous invite URL was not functional; replaced with working invite link for the agenticads Slack workspace.
+- 259727a: Add discriminator fields to preview_creative request and response schemas.
+
+  **Changes:**
+
+  - Added `request_type` discriminator to preview-creative-request.json ("single" | "batch")
+  - Added `response_type` discriminator to preview-creative-response.json ("single" | "batch")
+
+  **Why:**
+  Explicit discriminator fields enable TypeScript generators to produce proper discriminated unions with excellent type narrowing and IDE autocomplete. Without discriminators, generators produce index signatures or massive union types with poor type safety.
+
+  **Migration:**
+  Request format:
+
+  ```json
+  // Before
+  { "format_id": {...}, "creative_manifest": {...} }
+
+  // After (single)
+  { "request_type": "single", "format_id": {...}, "creative_manifest": {...} }
+
+  // Before
+  { "requests": [...] }
+
+  // After (batch)
+  { "request_type": "batch", "requests": [...] }
+  ```
+
+  Response format:
+
+  ```json
+  // Before
+  { "previews": [...], "expires_at": "..." }
+
+  // After (single)
+  { "response_type": "single", "previews": [...], "expires_at": "..." }
+
+  // Before
+  { "results": [...] }
+
+  // After (batch)
+  { "response_type": "batch", "results": [...] }
+  ```
+
+- 435a624: Add output_format discriminator to preview render schema for improved validation performance.
+
+  Replaces oneOf constraint on render objects with an explicit output_format field ("url", "html", or "both") that indicates which preview fields are present. This eliminates the need for validators to try all three combinations when validating preview responses, significantly improving validation speed for responses with multiple renders (companion ads, multi-placement formats).
+
+  **Schema change:**
+
+  - Added required `output_format` field to render objects in preview-creative-response.json
+  - Replaced `oneOf` validation with conditional `allOf` based on discriminator value
+  - Updated field descriptions to reference the discriminator
+
+  **Backward compatibility:**
+
+  - Breaking change: Existing preview responses must add the output_format field
+  - Creative agents implementing preview_creative task must update responses
+
+- 10cc797: Refactor signals schemas to use reusable core destination and deployment schemas.
+
+  **Changes:**
+
+  - Created `/schemas/v1/core/destination.json` - reusable schema for signal activation destinations (DSPs, sales agents, etc.)
+  - Created `/schemas/v1/core/deployment.json` - reusable schema for signal deployment status and activation keys
+  - Updated all signals task schemas to reference the new core schemas instead of duplicating definitions
+  - Added destination and deployment to schema registry index
+
+  **Benefits:**
+
+  - Eliminates schema duplication across 4 signal task schemas
+  - Ensures consistent validation of destination and deployment objects
+  - Improves type safety - single source of truth for these data structures
+  - Simplifies maintenance - changes to destination/deployment structure only need updates in one place
+
+  **Affected schemas:**
+
+  - `get-signals-request.json` - destinations array now uses `$ref` to core destination schema
+  - `get-signals-response.json` - deployments array now uses `$ref` to core deployment schema
+  - `activate-signal-request.json` - destinations array now uses `$ref` to core destination schema
+  - `activate-signal-response.json` - deployments array now uses `$ref` to core deployment schema
+
+  This is a non-breaking change - the validation behavior remains identical, only the schema structure is improved.
+
+- 4c76776: Restore axe_include_segment and axe_exclude_segment targeting fields
+
+  These fields were accidentally removed from the targeting schema and have been restored to enable AXE segment targeting functionality.
+
+  **Restored fields:**
+
+  - `axe_include_segment` - AXE segment ID to include for targeting
+  - `axe_exclude_segment` - AXE segment ID to exclude from targeting
+
+  **Updated documentation:**
+
+  - Added AXE segment fields to create_media_buy task reference
+  - Added detailed parameter descriptions in targeting advanced topics
+
 ## 2.3.0
 
 ### Minor Changes
