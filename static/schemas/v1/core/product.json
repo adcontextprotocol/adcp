@@ -21,34 +21,60 @@
       "type": "array",
       "description": "Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization.",
       "items": {
-        "type": "object",
-        "properties": {
-          "publisher_domain": {
-            "type": "string",
-            "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-          },
-          "property_ids": {
-            "type": "array",
-            "description": "Specific property IDs from the publisher's adagents.json. Mutually exclusive with property_tags.",
-            "items": {
-              "type": "string",
-              "pattern": "^[a-z0-9_]+$"
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "publisher_domain": {
+                "type": "string",
+                "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "selection_type": {
+                "type": "string",
+                "const": "by_id",
+                "description": "Discriminator indicating selection by specific property IDs"
+              },
+              "property_ids": {
+                "type": "array",
+                "description": "Specific property IDs from the publisher's adagents.json",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$"
+                },
+                "minItems": 1
+              }
             },
-            "minItems": 1
+            "required": ["publisher_domain", "selection_type", "property_ids"],
+            "additionalProperties": false
           },
-          "property_tags": {
-            "type": "array",
-            "description": "Property tags from the publisher's adagents.json. Product covers all properties with these tags. Mutually exclusive with property_ids.",
-            "items": {
-              "type": "string",
-              "pattern": "^[a-z0-9_]+$"
+          {
+            "type": "object",
+            "properties": {
+              "publisher_domain": {
+                "type": "string",
+                "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "selection_type": {
+                "type": "string",
+                "const": "by_tag",
+                "description": "Discriminator indicating selection by property tags"
+              },
+              "property_tags": {
+                "type": "array",
+                "description": "Property tags from the publisher's adagents.json. Product covers all properties with these tags",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$"
+                },
+                "minItems": 1
+              }
             },
-            "minItems": 1
+            "required": ["publisher_domain", "selection_type", "property_tags"],
+            "additionalProperties": false
           }
-        },
-        "required": ["publisher_domain"],
-        "additionalProperties": false
+        ]
       },
       "minItems": 1
     },
