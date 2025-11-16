@@ -7,7 +7,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: var(--ifm-font-family-base, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif); line-height: 1.6; color: #333; background: #f5f5f5; padding-top: 60px; }
-        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem 0; text-align: center; }
+        header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 2rem 0; text-align: center; }
         h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
         .subtitle { font-size: 1.1rem; opacity: 0.9; }
         .container { max-width: 1400px; margin: 2rem auto; padding: 0 1rem; }
@@ -15,20 +15,20 @@
         /* Tabs */
         .tabs { display: flex; gap: 0.5rem; border-bottom: 2px solid #ddd; margin-bottom: 2rem; }
         .tab { padding: 1rem 2rem; background: white; border: none; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 1rem; font-weight: 600; color: #666; transition: all 0.2s; }
-        .tab:hover { color: #667eea; }
-        .tab.active { color: #667eea; background: white; border-bottom: 3px solid #667eea; }
+        .tab:hover { color: #10b981; }
+        .tab.active { color: #10b981; background: white; border-bottom: 3px solid #10b981; }
 
         /* Search and Filters */
         .search-filters { background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .search-box { margin-bottom: 1rem; }
         .search-box input { width: 100%; padding: 0.75rem; border: 2px solid #ddd; border-radius: 6px; font-size: 1rem; }
-        .search-box input:focus { outline: none; border-color: #667eea; }
+        .search-box input:focus { outline: none; border-color: #10b981; }
         .filter-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
         .filter-group { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
         .filter-group label { font-weight: 600; font-size: 0.9rem; color: #666; }
         .filter-btn { padding: 0.5rem 1rem; background: #f9fafb; border: 2px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
-        .filter-btn:hover { border-color: #667eea; color: #667eea; }
-        .filter-btn.active { background: #667eea; border-color: #667eea; color: white; }
+        .filter-btn:hover { border-color: #10b981; color: #10b981; }
+        .filter-btn.active { background: #10b981; border-color: #10b981; color: white; }
 
         /* Agent Grid */
         .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem; }
@@ -37,7 +37,7 @@
         .agent-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem; }
         .agent-title { flex: 1; }
         .agent-name { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; }
-        .agent-url { font-size: 0.85rem; color: #667eea; }
+        .agent-url { font-size: 0.85rem; color: #10b981; }
         .status-badge { padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
         .status-badge.online { background: #d1fae5; color: #065f46; }
         .status-badge.offline { background: #fee2e2; color: #991b1b; }
@@ -51,16 +51,16 @@
         .format-badge { padding: 0.25rem 0.75rem; background: #dbeafe; color: #1e40af; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
 
         /* Detail Page */
-        .back-btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: white; border: 2px solid #667eea; color: #667eea; border-radius: 6px; text-decoration: none; font-weight: 600; margin-bottom: 2rem; }
-        .back-btn:hover { background: #667eea; color: white; }
-        .detail-hero { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 3rem 0; }
+        .back-btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: white; border: 2px solid #10b981; color: #10b981; border-radius: 6px; text-decoration: none; font-weight: 600; margin-bottom: 2rem; }
+        .back-btn:hover { background: #10b981; color: white; }
+        .detail-hero { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 3rem 0; }
         .detail-hero h2 { font-size: 2rem; margin-bottom: 0.5rem; }
         .detail-content { background: white; margin-top: -2rem; border-radius: 12px 12px 0 0; padding: 2rem; }
         .detail-section { margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid #eee; }
         .detail-section:last-child { border-bottom: none; }
-        .detail-section h3 { font-size: 1.3rem; margin-bottom: 1rem; color: #667eea; display: flex; align-items: center; gap: 0.5rem; }
+        .detail-section h3 { font-size: 1.3rem; margin-bottom: 1rem; color: #10b981; display: flex; align-items: center; gap: 0.5rem; }
         .tools-list, .publishers-grid { display: grid; gap: 1rem; }
-        .tool-item, .publisher-item { background: #f9fafb; padding: 1rem; border-radius: 6px; border-left: 3px solid #667eea; }
+        .tool-item, .publisher-item { background: #f9fafb; padding: 1rem; border-radius: 6px; border-left: 3px solid #10b981; }
         .tool-name { font-weight: 600; font-family: 'Monaco', monospace; margin-bottom: 0.25rem; }
         .tool-description { font-size: 0.9rem; color: #666; }
         .publisher-domain { font-weight: 600; margin-bottom: 0.25rem; }
@@ -74,18 +74,18 @@
 
         footer { background: white; border-top: 2px solid #eee; padding: 2rem; margin-top: 3rem; }
         .footer-content { max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
-        .footer-section h3 { font-size: 1.1rem; margin-bottom: 1rem; color: #667eea; }
-        .mcp-box { background: #f9fafb; padding: 1rem; border-radius: 6px; border-left: 3px solid #667eea; }
+        .footer-section h3 { font-size: 1.1rem; margin-bottom: 1rem; color: #10b981; }
+        .mcp-box { background: #f9fafb; padding: 1rem; border-radius: 6px; border-left: 3px solid #10b981; }
         .mcp-box code { background: #ede9fe; padding: 0.25rem 0.5rem; border-radius: 4px; font-family: Monaco, monospace; font-size: 0.9rem; color: #5b21b6; }
         .mcp-url { background: #ede9fe; padding: 0.75rem; border-radius: 6px; margin: 0.75rem 0; font-family: Monaco, monospace; font-size: 0.95rem; word-break: break-all; color: #5b21b6; }
         .footer-links { text-align: center; margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #eee; color: #666; }
-        .footer-links a { color: #667eea; text-decoration: none; margin: 0 1rem; }
+        .footer-links a { color: #10b981; text-decoration: none; margin: 0 1rem; }
 
         /* Quick Links Section */
         .quick-links { max-width: 1400px; margin: -1rem auto 2rem; padding: 0 1rem; }
         .quick-links-container { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
         .quick-link { flex: 1; min-width: 250px; max-width: 400px; background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-decoration: none; color: inherit; transition: all 0.2s; border: 2px solid transparent; cursor: pointer; }
-        .quick-link:hover { transform: translateY(-4px); box-shadow: 0 6px 16px rgba(0,0,0,0.15); border-color: #667eea; }
+        .quick-link:hover { transform: translateY(-4px); box-shadow: 0 6px 16px rgba(0,0,0,0.15); border-color: #10b981; }
         .quick-link-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
         .quick-link-title { font-size: 1.2rem; font-weight: 600; color: #333; margin-bottom: 0.25rem; }
         .quick-link-desc { font-size: 0.9rem; color: #666; }
@@ -172,25 +172,9 @@
     </style>
 </head>
 <body>
-    <!-- Top Navigation - Matches Homepage Exactly -->
-    <nav aria-label="Main" class="theme-layout-navbar navbar navbar--fixed-top">
-      <div class="navbar__inner">
-        <div class="theme-layout-navbar-left navbar__items">
-          <a class="navbar__brand" href="/">
-            <div class="navbar__logo">
-              <img src="/adcp_logo.svg" alt="AdCP Logo" class="themedComponent_mlkZ themedComponent--light_NVdE">
-            </div>
-            <b class="navbar__title text--truncate">AdCP</b>
-          </a>
-          <a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="navbar__item navbar__link">Docs</a>
-          <a href="/registry" class="navbar__item navbar__link" style="color: #667eea; font-weight: 600;">Agent Registry</a>
-          <a href="https://adcontextprotocol.org/adagents" class="navbar__item navbar__link">AdAgents Manager</a>
-        </div>
-        <div class="theme-layout-navbar-right navbar__items navbar__items--right">
-          <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__item navbar__link">GitHub</a>
-        </div>
-      </div>
-    </nav>
+    <!-- Navigation (loaded by nav.js) -->
+    <div id="adcp-nav"></div>
+    <script src="/nav.js"></script>
 
     <header>
         <h1>AdCP Agent Registry</h1>
@@ -320,9 +304,9 @@
                 <h3>📚 Resources</h3>
                 <p style="margin-bottom: 0.5rem;">Learn more about the Ad Context Protocol:</p>
                 <ul style="list-style: none; padding: 0;">
-                    <li style="margin: 0.5rem 0;"><a href="https://adcontextprotocol.org" target="_blank" style="color: #667eea; text-decoration: none;">→ AdCP Documentation</a></li>
-                    <li style="margin: 0.5rem 0;"><a href="/api/agents" style="color: #667eea; text-decoration: none;">→ REST API</a></li>
-                    <li style="margin: 0.5rem 0;"><a href="https://github.com/adcontextprotocol" target="_blank" style="color: #667eea; text-decoration: none;">→ GitHub</a></li>
+                    <li style="margin: 0.5rem 0;"><a href="https://adcontextprotocol.org" target="_blank" style="color: #10b981; text-decoration: none;">→ AdCP Documentation</a></li>
+                    <li style="margin: 0.5rem 0;"><a href="/api/agents" style="color: #10b981; text-decoration: none;">→ REST API</a></li>
+                    <li style="margin: 0.5rem 0;"><a href="https://github.com/adcontextprotocol" target="_blank" style="color: #10b981; text-decoration: none;">→ GitHub</a></li>
                 </ul>
             </div>
         </div>
@@ -936,7 +920,7 @@
                         </div>
                         <div class="detail-section">
                             <details style="cursor: pointer;">
-                                <summary style="font-size: 1.3rem; font-weight: 600; color: #667eea; list-style: none; display: flex; align-items: center; gap: 0.5rem;">
+                                <summary style="font-size: 1.3rem; font-weight: 600; color: #10b981; list-style: none; display: flex; align-items: center; gap: 0.5rem;">
                                     <span style="transition: transform 0.2s;">▶</span>
                                     📦 Public Products
                                 </summary>
@@ -945,7 +929,7 @@
                         </div>
                         <div class="detail-section">
                             <details style="cursor: pointer;">
-                                <summary style="font-size: 1.3rem; font-weight: 600; color: #667eea; list-style: none; display: flex; align-items: center; gap: 0.5rem;">
+                                <summary style="font-size: 1.3rem; font-weight: 600; color: #10b981; list-style: none; display: flex; align-items: center; gap: 0.5rem;">
                                     <span style="transition: transform 0.2s;">▶</span>
                                     🎨 Creative Formats
                                 </summary>
@@ -966,7 +950,7 @@
                 html += `
                     <div class="detail-section">
                         <details style="cursor: pointer;">
-                            <summary style="font-size: 1.3rem; font-weight: 600; color: #667eea; list-style: none; display: flex; align-items: center; gap: 0.5rem;">
+                            <summary style="font-size: 1.3rem; font-weight: 600; color: #10b981; list-style: none; display: flex; align-items: center; gap: 0.5rem;">
                                 <span style="transition: transform 0.2s;">▶</span>
                                 🛠️ Tools (${agentWithCaps.capabilities?.tools_count || 0})
                             </summary>
@@ -992,8 +976,8 @@
                                     <strong>Contact Information</strong><br>
                                     <div style="margin-top: 0.5rem;">
                                         ${agent.contact.name}<br>
-                                        <a href="mailto:${agent.contact.email}" style="color: #667eea;">${agent.contact.email}</a>
-                                        ${agent.contact.website ? `<br><a href="${agent.contact.website}" target="_blank" style="color: #667eea;">${agent.contact.website}</a>` : ''}
+                                        <a href="mailto:${agent.contact.email}" style="color: #10b981;">${agent.contact.email}</a>
+                                        ${agent.contact.website ? `<br><a href="${agent.contact.website}" target="_blank" style="color: #10b981;">${agent.contact.website}</a>` : ''}
                                     </div>
                                 </div>
                             ` : ''}
@@ -1070,7 +1054,7 @@
                         <div class="tool-item">
                             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
                                 <div class="tool-name">${index + 1}. ${tool.name}</div>
-                                ${hasSchema ? `<details style="font-size: 0.75rem; color: #667eea; cursor: pointer;">
+                                ${hasSchema ? `<details style="font-size: 0.75rem; color: #10b981; cursor: pointer;">
                                     <summary>Schema</summary>
                                     <pre style="margin-top: 0.5rem; background: #f9fafb; padding: 0.5rem; border-radius: 4px; overflow-x: auto; font-size: 0.7rem; max-height: 200px;">${JSON.stringify(tool.input_schema, null, 2)}</pre>
                                 </details>` : ''}
@@ -1147,7 +1131,7 @@
                                         </div>
                                     ` : ''}
                                     ${p.metadata ? `<details style="margin-top: 0.75rem; font-size: 0.85rem;">
-                                        <summary style="cursor: pointer; color: #667eea;">Additional metadata</summary>
+                                        <summary style="cursor: pointer; color: #10b981;">Additional metadata</summary>
                                         <pre style="margin-top: 0.5rem; background: #f9fafb; padding: 0.5rem; border-radius: 4px; overflow-x: auto;">${JSON.stringify(p.metadata, null, 2)}</pre>
                                     </details>` : ''}
                                 </div>
@@ -1261,10 +1245,10 @@
                     const description = typeof format === 'object' ? format.description : null;
 
                     html += `
-                        <div style="background: #f9fafb; padding: 1rem; border-radius: 6px; border-left: 3px solid #667eea;">
+                        <div style="background: #f9fafb; padding: 1rem; border-radius: 6px; border-left: 3px solid #10b981;">
                             <div style="font-weight: 600; margin-bottom: 0.5rem;">${formatName}</div>
                             ${dimensions ? `<div style="font-size: 0.85rem; color: #666;">📐 ${dimensions}</div>` : ''}
-                            ${type ? `<div style="font-size: 0.75rem; color: #667eea; margin-top: 0.25rem; text-transform: capitalize;">${type}</div>` : ''}
+                            ${type ? `<div style="font-size: 0.75rem; color: #10b981; margin-top: 0.25rem; text-transform: capitalize;">${type}</div>` : ''}
                             ${description ? `<div style="font-size: 0.85rem; color: #666; margin-top: 0.5rem;">${description}</div>` : ''}
                         </div>
                     `;
@@ -1327,7 +1311,7 @@
                 let html = '<div style="display: grid; gap: 1rem;">';
                 products.forEach(product => {
                     html += `
-                        <div style="background: #f9fafb; padding: 1rem; border-radius: 6px; border-left: 3px solid #667eea;">
+                        <div style="background: #f9fafb; padding: 1rem; border-radius: 6px; border-left: 3px solid #10b981;">
                             <div style="font-weight: 600; margin-bottom: 0.5rem;">${product.name || product.id || 'Unnamed Product'}</div>
                             ${product.description ? `<div style="font-size: 0.9rem; color: #666; margin-bottom: 0.5rem;">${product.description}</div>` : ''}
                             ${product.inventory_type ? `<div style="font-size: 0.85rem; color: #666;"><strong>Type:</strong> ${product.inventory_type}</div>` : ''}
@@ -1454,9 +1438,9 @@
             buttons.forEach(btn => {
                 if (btn.dataset.type === type) {
                     btn.classList.add('active');
-                    btn.style.background = '#667eea';
+                    btn.style.background = '#10b981';
                     btn.style.color = 'white';
-                    btn.style.borderColor = '#667eea';
+                    btn.style.borderColor = '#10b981';
                 } else {
                     btn.classList.remove('active');
                     btn.style.background = 'white';
@@ -1503,7 +1487,7 @@
                             ${dimensions?.min_width || dimensions?.min_height ? `<div><strong>Responsive:</strong> Yes (${dimensions.min_width || 0}×${dimensions.min_height || 0} to ${dimensions.max_width || width}×${dimensions.max_height || height})</div>` : ''}
                         </div>
                         ${format.example_url ? `
-                            <a href="${format.example_url}" target="_blank" style="display: inline-block; padding: 0.75rem 1.5rem; background: #667eea; color: white; text-decoration: none; border-radius: 6px; margin-top: 1rem;">
+                            <a href="${format.example_url}" target="_blank" style="display: inline-block; padding: 0.75rem 1.5rem; background: #10b981; color: white; text-decoration: none; border-radius: 6px; margin-top: 1rem;">
                                 View Examples & Demos →
                             </a>
                         ` : ''}
@@ -1512,14 +1496,6 @@
             `;
 
             document.body.appendChild(modal);
-        }
-
-        // Update docs links to point to local Mintlify when running locally
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            const docsUrl = 'http://localhost:3001';
-            document.querySelectorAll('a[href="https://docs.adcontextprotocol.org"]').forEach(link => {
-                link.href = docsUrl;
-            });
         }
     </script>
 </body>

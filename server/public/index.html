@@ -101,7 +101,6 @@
             color: white;
             padding: 120px 2rem 80px;
             text-align: center;
-            margin-top: 60px;
         }
 
         .hero h1 {
@@ -273,25 +272,9 @@
     </style>
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar">
-        <div class="navbar__inner">
-            <div class="navbar__items">
-                <a class="navbar__brand" href="/">
-                    <div class="navbar__logo">
-                        <img src="/adcp_logo.svg" alt="AdCP Logo">
-                    </div>
-                    <b class="navbar__title">AdCP</b>
-                </a>
-                <a href="https://docs.adcontextprotocol.org" class="navbar__link">Docs</a>
-                <a href="/registry" class="navbar__link">Agent Registry</a>
-                <a href="https://adcontextprotocol.org/adagents" class="navbar__link">AdAgents Manager</a>
-            </div>
-            <div class="navbar__items">
-                <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
-            </div>
-        </div>
-    </nav>
+    <!-- Navigation (loaded by nav.js) -->
+    <div id="adcp-nav"></div>
+    <script src="/nav.js"></script>
 
     <!-- Hero Section -->
     <section class="hero">
@@ -347,22 +330,11 @@
                 <a href="https://docs.adcontextprotocol.org" class="footer-link">Documentation</a>
                 <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a>
                 <a href="/registry" class="footer-link">Agent Registry</a>
-                <a href="https://adcontextprotocol.org/adagents" class="footer-link">AdAgents Manager</a>
             </div>
             <p class="footer-text">
                 © 2024 Ad Context Protocol. Open source under MIT License.
             </p>
         </div>
     </footer>
-
-    <script>
-        // Update docs links to point to local Mintlify when running locally
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            const docsUrl = 'http://localhost:3001';
-            document.querySelectorAll('a[href="https://docs.adcontextprotocol.org"]').forEach(link => {
-                link.href = docsUrl;
-            });
-        }
-    </script>
 </body>
 </html>

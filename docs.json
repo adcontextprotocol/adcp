@@ -14,14 +14,18 @@
   },
   "topbarLinks": [
     {
+      "name": "Agent Registry",
+      "url": "https://adcontextprotocol.org/registry"
+    },
+    {
+      "name": "AdAgents Manager",
+      "url": "https://adcontextprotocol.org/adagents"
+    },
+    {
       "name": "GitHub",
       "url": "https://github.com/adcontextprotocol/adcp"
     }
   ],
-  "topbarCtaButton": {
-    "name": "Roadmap",
-    "url": "https://github.com/adcontextprotocol/adcp/projects/1"
-  },
   "anchors": [
     {
       "name": "GitHub Discussions",

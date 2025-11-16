@@ -6,6 +6,7 @@
     "start": "tsx watch server/src/index.ts",
     "start:mcp": "MODE=mcp tsx watch server/src/index.ts",
     "start:mintlify": "bash scripts/start-mintlify.sh",
+    "dev": "CONDUCTOR_PORT=55020 concurrently --names \"HTTP,DOCS\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run start\" \"npm run start:mintlify\"",
     "build": "tsc --project server/tsconfig.json",
     "build:mintlify": "cd mintlify-docs && mintlify build",
     "deploy:mintlify": "mintlify deploy",
@@ -26,6 +27,7 @@
   "dependencies": {
     "@adcp/client": "^2.7.2",
     "@modelcontextprotocol/sdk": "^1.0.4",
+    "axios": "^1.13.2",
     "express": "^4.18.2",
     "zod": "^4.1.12"
   },
@@ -37,6 +39,7 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "c8": "^10.1.3",
+    "concurrently": "^9.2.1",
     "glob": "^11.0.3",
     "husky": "^9.0.11",
     "mintlify": "^4.2.177",
