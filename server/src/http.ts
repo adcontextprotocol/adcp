@@ -9,6 +9,7 @@ import { CapabilityDiscovery } from "./capabilities.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { getPropertyIndex, createMCPClient, createA2AClient } from "@adcp/client";
+import { AdAgentsManager } from "./adagents-manager.js";
 import type { AgentType, AgentWithStats } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,6 +25,7 @@ export class HTTPServer {
   private publisherTracker: PublisherTracker;
   private propertiesService: PropertiesService;
 
+  private adagentsManager: AdAgentsManager;
   constructor() {
     this.app = express();
     this.registry = new Registry();
@@ -33,6 +35,7 @@ export class HTTPServer {
     this.capabilityDiscovery = new CapabilityDiscovery();
     this.publisherTracker = new PublisherTracker();
     this.propertiesService = new PropertiesService();
+    this.adagentsManager = new AdAgentsManager();
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -359,6 +362,115 @@ export class HTTPServer {
         });
       } catch (error) {
         res.status(500).json({
+          error: error instanceof Error ? error.message : "Validation failed",
+        });
+      }
+    });
+
+
+    // AdAgents.json validation endpoint
+    this.app.post("/api/adagents/validate", async (req, res) => {
+      try {
+        const { domain } = req.body;
+
+        if (!domain) {
+          return res.status(400).json({
+            success: false,
+            error: "Domain is required",
+          });
+        }
+
+        const validation = await this.adagentsManager.validateDomain(domain);
+        const found = validation.status_code === 200;
+
+        let agent_cards: any[] | undefined;
+        if (found && validation.raw_data?.authorized_agents) {
+          agent_cards = await this.adagentsManager.validateAgentCards(
+            validation.raw_data.authorized_agents
+          );
+        }
+
+        res.json({
+          success: true,
+          domain: validation.domain,
+          found,
+          validation,
+          agent_cards,
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : "Validation failed",
+        });
+      }
+    });
+
+    // AdAgents.json creation endpoint
+    this.app.post("/api/adagents/create", async (req, res) => {
+      try {
+        const {
+          authorized_agents,
+          include_schema = true,
+          include_timestamp = true,
+        } = req.body;
+
+        if (!authorized_agents || !Array.isArray(authorized_agents)) {
+          return res.status(400).json({
+            success: false,
+            error: "authorized_agents array is required",
+          });
+        }
+
+        const validation = this.adagentsManager.validateProposed(authorized_agents);
+
+        if (!validation.valid) {
+          return res.status(400).json({
+            success: false,
+            error: "Invalid agent configuration",
+            validation,
+          });
+        }
+
+        const adagents_json = this.adagentsManager.createAdAgentsJson(
+          authorized_agents,
+          include_schema,
+          include_timestamp
+        );
+
+        res.json({
+          success: true,
+          adagents_json,
+          validation,
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : "Creation failed",
+        });
+      }
+    });
+
+    // Agent cards validation endpoint
+    this.app.post("/api/adagents/validate-cards", async (req, res) => {
+      try {
+        const { agents } = req.body;
+
+        if (!agents || !Array.isArray(agents)) {
+          return res.status(400).json({
+            success: false,
+            error: "agents array is required",
+          });
+        }
+
+        const results = await this.adagentsManager.validateAgentCards(agents);
+
+        res.json({
+          success: true,
+          results,
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
           error: error instanceof Error ? error.message : "Validation failed",
         });
       }
@@ -823,6 +935,14 @@ export class HTTPServer {
         ? path.join(__dirname, "../server/public/registry.html")
         : path.join(__dirname, "../public/registry.html");
       res.sendFile(registryPath);
+    });
+
+    // AdAgents UI route - serve adagents.html at /adagents
+    this.app.get("/adagents", (req, res) => {
+      const adagentsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/adagents.html")
+        : path.join(__dirname, "../public/adagents.html");
+      res.sendFile(adagentsPath);
     });
   }
 
