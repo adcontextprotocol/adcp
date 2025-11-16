@@ -7,6 +7,13 @@ title: adagents.json Tech Spec
 
 The `adagents.json` file provides a standardized way for publishers to declare which sales agents are authorized to sell their advertising inventory. This specification addresses authorization transparency and helps prevent unauthorized reselling of publisher inventory.
 
+<Tip>
+**🔧 Management Tools Available**
+- **[AdAgents.json Manager](https://adcontextprotocol.org/adagents)** - Validate existing files or create new ones with guided validation
+- **[Agent Registry](https://adcontextprotocol.org/registry)** - Browse all available AdCP agents
+</Tip>
+
+
 ## File Location
 
 Publishers must host the `adagents.json` file at:
@@ -1312,6 +1319,23 @@ The `authorized_for` field allows publishers to specify:
 
 ## Schema Validation
 
+### Option 1: Web-Based Manager (Recommended)
+
+Use the **[AdAgents.json Manager](https://adcontextprotocol.org/adagents)** for the easiest validation experience:
+
+- ✅ Validates your live domain's adagents.json file
+- ✅ Checks agent card endpoints automatically
+- ✅ Provides detailed error messages and warnings
+- ✅ Creates properly formatted files with guided input
+- ✅ No installation required
+
+**To validate:**
+1. Visit [adcontextprotocol.org/adagents](https://adcontextprotocol.org/adagents)
+2. Enter your domain name
+3. Get instant validation results with actionable feedback
+
+### Option 2: Command Line
+
 Validate your `adagents.json` file using the JSON schema:
 
 ```bash
@@ -1324,13 +1348,14 @@ ajv validate -s https://adcontextprotocol.org/schemas/v1/adagents.json -d your-a
 
 ## Implementation Checklist
 
-- [ ] Create `adagents.json` with required fields
+- [ ] Create `adagents.json` with required fields (use the [AdAgents Manager](https://adcontextprotocol.org/adagents) for guided creation)
 - [ ] Use clear, specific `authorized_for` descriptions
 - [ ] Host at `/.well-known/adagents.json` on your domain
-- [ ] Validate against JSON schema
+- [ ] Validate against JSON schema (use [AdAgents Manager](https://adcontextprotocol.org/adagents) or ajv-cli)
 - [ ] Ensure HTTPS serving with HTTP 200 response
 - [ ] Configure robots.txt to allow crawling
 - [ ] Test agent discovery process
+- [ ] Verify agent cards are accessible (automatic in [AdAgents Manager](https://adcontextprotocol.org/adagents))
 - [ ] Set up monitoring for file accessibility
 - [ ] Document authorization policies for your team
 - [ ] Plan regular review schedule for authorized agents
@@ -1341,4 +1366,3 @@ This v1 specification focuses on publisher-level authorization for simplicity an
 - Fine-grained app or property-specific authorization
 - Integration with emerging app identification standards
 - Enhanced metadata for programmatic buying
-- Support for dynamic authorization updates

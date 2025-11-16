@@ -130,8 +130,9 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 This repository runs a unified Express server that serves everything from a single process:
 
 - 🏠 **Homepage** at `/`
-- 🤖 **Registry UI** at `/registry`
-- 📋 **JSON Schemas** at `/schemas/*`
+- 🤖 **Agent Registry** at `/registry` - Browse and test all AdCP agents
+- 📋 **AdAgents Manager** at `/adagents` - Validate and create adagents.json files
+- 📄 **JSON Schemas** at `/schemas/*`
 - 🔧 **REST API** at `/api/*`
 - 📡 **MCP Protocol** at `/mcp`
 
@@ -159,7 +160,8 @@ npm run start:mintlify
 
 The server runs on port 3000 by default. Visit:
 - http://localhost:3000 - Homepage
-- http://localhost:3000/registry - Agent Registry
+- http://localhost:3000/registry - 🤖 **Agent Registry** (browse and test AdCP agents)
+- http://localhost:3000/adagents - 📋 **AdAgents.json Manager** (validate and create adagents.json files)
 - http://localhost:3000/schemas/v1/index.json - Schema Registry
 - http://localhost:3000/api/agents - REST API
 

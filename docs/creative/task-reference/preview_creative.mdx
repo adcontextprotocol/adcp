@@ -95,9 +95,10 @@ Embed directly in your page:
 
 **Benefits:** No iframe overhead, faster load times, better for grids of 50+ previews.
 
-:::warning Security Consideration
+<Warning>
+Security Consideration
 Only use `output_format: "html"` with **trusted creative agents**. Direct HTML embedding bypasses iframe sandboxing. For third-party or untrusted creatives, use `output_format: "url"` (default) which provides iframe isolation. Consider HTML sanitization if accepting user-generated creative content.
-:::
+</Warning>
 
 ### Batch Preview (Multiple Creatives)
 

@@ -2,8 +2,8 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "logo": {
-    "light": "/static/img/logo.svg",
-    "dark": "/static/img/logo.svg"
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
   },
   "favicon": "/static/img/favicon.ico",
   "theme": "mint",
@@ -14,14 +14,18 @@
   },
   "topbarLinks": [
     {
+      "name": "Agent Registry",
+      "url": "https://adcontextprotocol.org/registry"
+    },
+    {
+      "name": "AdAgents Manager",
+      "url": "https://adcontextprotocol.org/adagents"
+    },
+    {
       "name": "GitHub",
       "url": "https://github.com/adcontextprotocol/adcp"
     }
   ],
-  "topbarCtaButton": {
-    "name": "Roadmap",
-    "url": "https://github.com/adcontextprotocol/adcp/projects/1"
-  },
   "anchors": [
     {
       "name": "GitHub Discussions",

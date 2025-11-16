@@ -8,6 +8,7 @@ import { CrawlerService } from "./crawler.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
+import { AdAgentsManager } from "./adagents-manager.js";
 import { getPropertyIndex, createMCPClient, createA2AClient } from "@adcp/client";
 import type { AgentType, AgentWithStats } from "./types.js";
 
@@ -23,11 +24,13 @@ export class HTTPServer {
   private capabilityDiscovery: CapabilityDiscovery;
   private publisherTracker: PublisherTracker;
   private propertiesService: PropertiesService;
+  private adagentsManager: AdAgentsManager;
 
   constructor() {
     this.app = express();
     this.registry = new Registry();
     this.validator = new AgentValidator();
+    this.adagentsManager = new AdAgentsManager();
     this.healthChecker = new HealthChecker();
     this.crawler = new CrawlerService();
     this.capabilityDiscovery = new CapabilityDiscovery();
@@ -363,6 +366,10 @@ export class HTTPServer {
         });
       }
     });
+
+
+
+
 
     // Simple REST API endpoint - for web apps and quick integrations
     this.app.get("/agents", async (req, res) => {
@@ -809,11 +816,11 @@ export class HTTPServer {
       res.json({ status: "ok" });
     });
 
-    // Homepage route - serve homepage.html at root
+    // Homepage route - serve index.html at root
     this.app.get("/", (req, res) => {
       const homepagePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/homepage.html")
-        : path.join(__dirname, "../public/homepage.html");
+        ? path.join(__dirname, "../server/public/index.html")
+        : path.join(__dirname, "../public/index.html");
       res.sendFile(homepagePath);
     });
 
@@ -824,6 +831,165 @@ export class HTTPServer {
         : path.join(__dirname, "../public/registry.html");
       res.sendFile(registryPath);
     });
+
+    // AdAgents Manager UI route - serve adagents.html at /adagents
+    this.app.get("/adagents", (req, res) => {
+      const adagentsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/adagents.html")
+        : path.join(__dirname, "../public/adagents.html");
+      res.sendFile(adagentsPath);
+    });
+
+    // AdAgents API Routes
+    // Validate domain's adagents.json
+    this.app.post("/api/adagents/validate", async (req, res) => {
+      try {
+        const { domain } = req.body;
+
+        if (!domain || domain.trim().length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Domain is required',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        console.log(`Validating adagents.json for domain: ${domain}`);
+
+        // Validate the domain's adagents.json
+        const validation = await this.adagentsManager.validateDomain(domain);
+
+        let agentCards = undefined;
+
+        // If adagents.json is found and has agents, validate their cards
+        if (validation.valid && validation.raw_data?.authorized_agents?.length > 0) {
+          console.log(`Validating ${validation.raw_data.authorized_agents.length} agent cards`);
+          agentCards = await this.adagentsManager.validateAgentCards(validation.raw_data.authorized_agents);
+        }
+
+        return res.json({
+          success: true,
+          data: {
+            domain: validation.domain,
+            found: validation.status_code === 200,
+            validation,
+            agent_cards: agentCards,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error('Failed to validate domain:', error instanceof Error ? error.message : String(error));
+        return res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    // Create adagents.json file
+    this.app.post("/api/adagents/create", async (req, res) => {
+      try {
+        const {
+          authorized_agents,
+          include_schema = true,
+          include_timestamp = true,
+          properties,
+        } = req.body;
+
+        if (!authorized_agents || !Array.isArray(authorized_agents)) {
+          return res.status(400).json({
+            success: false,
+            error: 'authorized_agents array is required',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        if (authorized_agents.length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'At least one authorized agent is required',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        console.log(
+          `Creating adagents.json with ${authorized_agents.length} agents and ${properties?.length || 0} properties`
+        );
+
+        // Validate the proposed structure
+        const validation = this.adagentsManager.validateProposed(authorized_agents);
+
+        if (!validation.valid) {
+          return res.status(400).json({
+            success: false,
+            error: `Validation failed: ${validation.errors.map((e: any) => e.message).join(', ')}`,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        // Create the adagents.json content
+        const adagentsJson = this.adagentsManager.createAdAgentsJson(
+          authorized_agents,
+          include_schema,
+          include_timestamp,
+          properties
+        );
+
+        return res.json({
+          success: true,
+          data: {
+            success: true,
+            adagents_json: adagentsJson,
+            validation,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error('Failed to create adagents.json:', error instanceof Error ? error.message : String(error));
+        return res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
+    // Validate agent cards only (utility endpoint)
+    this.app.post("/api/adagents/validate-cards", async (req, res) => {
+      try {
+        const { agent_urls } = req.body;
+
+        if (!agent_urls || !Array.isArray(agent_urls) || agent_urls.length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'agent_urls array with at least one URL is required',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        console.log(`Validating ${agent_urls.length} agent cards`);
+
+        const agents = agent_urls.map((url: string) => ({ url, authorized_for: 'validation' }));
+        const agentCards = await this.adagentsManager.validateAgentCards(agents);
+
+        return res.json({
+          success: true,
+          data: {
+            agent_cards: agentCards,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error('Failed to validate agent cards:', error instanceof Error ? error.message : String(error));
+        return res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString(),
+        });
+      }
+    });
+
   }
 
   async start(port: number = 3000): Promise<void> {
