@@ -6,7 +6,7 @@
     <title>AdCP Agent Registry</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
+        body { font-family: var(--ifm-font-family-base, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif); line-height: 1.6; color: #333; background: #f5f5f5; padding-top: 60px; }
         header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem 0; text-align: center; }
         h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
         .subtitle { font-size: 1.1rem; opacity: 0.9; }
@@ -96,10 +96,102 @@
         details summary { user-select: none; }
         details summary::-webkit-details-marker { display: none; }
 
+        /* Docusaurus-style Navbar */
+        .theme-layout-navbar {
+            background: #fff;
+            box-shadow: 0 1px 2px 0 rgba(0,0,0,.1);
+            height: 60px;
+            padding: 0 1rem;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+
+        .navbar--fixed-top {
+            position: fixed;
+            top: 0;
+            width: 100%;
+        }
+
+        .navbar__inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1440px;
+            margin: 0 auto;
+            height: 100%;
+        }
+
+        .navbar__items {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .navbar__brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .navbar__logo img {
+            height: 32px;
+            width: 32px;
+        }
+
+        .navbar__title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #000;
+        }
+
+        .text--truncate {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .navbar__item {
+            text-decoration: none;
+            color: #000;
+            font-weight: 500;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.25rem;
+            transition: background-color 0.2s;
+        }
+
+        .navbar__link:hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
         @media (max-width: 768px) { .footer-content { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
+    <!-- Top Navigation - Matches Homepage Exactly -->
+    <nav aria-label="Main" class="theme-layout-navbar navbar navbar--fixed-top">
+      <div class="navbar__inner">
+        <div class="theme-layout-navbar-left navbar__items">
+          <a class="navbar__brand" href="/">
+            <div class="navbar__logo">
+              <img src="/adcp_logo.svg" alt="AdCP Logo" class="themedComponent_mlkZ themedComponent--light_NVdE">
+            </div>
+            <b class="navbar__title text--truncate">AdCP</b>
+          </a>
+          <a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="navbar__item navbar__link">Docs</a>
+          <a href="/registry" class="navbar__item navbar__link" style="color: #667eea; font-weight: 600;">Agent Registry</a>
+          <a href="https://adcontextprotocol.org/adagents" class="navbar__item navbar__link">AdAgents Manager</a>
+        </div>
+        <div class="theme-layout-navbar-right navbar__items navbar__items--right">
+          <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__item navbar__link">GitHub</a>
+        </div>
+      </div>
+    </nav>
+
     <header>
         <h1>AdCP Agent Registry</h1>
         <p class="subtitle">Discover agents for advertising automation</p>
@@ -1420,6 +1512,14 @@
             `;
 
             document.body.appendChild(modal);
+        }
+
+        // Update docs links to point to local Mintlify when running locally
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            const docsUrl = 'http://localhost:3001';
+            document.querySelectorAll('a[href="https://docs.adcontextprotocol.org"]').forEach(link => {
+                link.href = docsUrl;
+            });
         }
     </script>
 </body>
