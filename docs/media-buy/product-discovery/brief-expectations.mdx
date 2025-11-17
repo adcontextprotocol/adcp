@@ -13,60 +13,76 @@ A brief in AdCP is a natural language description of campaign requirements that 
 
 ## Required Components
 
-Every brief interaction MUST include:
+Every `get_products` and `create_media_buy` request MUST include:
 
-### Promoted Offering
+### Brand Manifest
 
-The `promoted_offering` field is **required** in all `get_products` and `create_media_buy` requests. It must clearly describe:
+The `brand_manifest` field is **required** in all requests. It identifies the advertiser brand:
 
-- **The advertiser/brand** making the request
-- **What is being promoted** (product, service, cause, candidate, program, etc.)
-- **Key attributes or positioning** of the offering
-
-Example:
 ```json
 {
-  "promoted_offering": "Nike Air Max 2024 - the latest innovation in cushioning technology featuring sustainable materials, targeting runners and fitness enthusiasts"
+  "brand_manifest": {
+    "name": "Nike",
+    "url": "https://nike.com",
+    "category": "athletic_apparel"
+  }
+}
+```
+
+This enables publishers to:
+- Apply policy restrictions (age-gated, prohibited categories, etc.)
+- Verify brand identity
+- Enforce brand safety standards
+
+### Brief Field
+
+The `brief` field describes **what is being promoted** and **campaign requirements**:
+
+```json
+{
+  "brief": "Nike Air Max 2024 - the latest innovation in cushioning technology featuring sustainable materials, targeting runners and fitness enthusiasts"
 }
 ```
 
 ## When Briefs Are Optional
 
-The `brief` field is **optional** because there are valid scenarios where buyers don't need product recommendations:
+The `brief` field is **optional** because there are valid scenarios where buyers want the standard catalog:
 
-### Run-of-Network Scenarios
-When buyers want broad reach with their own targeting:
-- Buyers bring their own audience segments via AXE
-- They want **run-of-network inventory** (broadest reach products)
-- Targeting will be handled through real-time decisioning
-- Publisher should return high-volume, broad-reach products
-- Not the entire catalog, but products designed for scale
+### Standard Catalog Discovery
+When buyers want to see what's available without targeting:
+- Get the publisher's **standard product catalog**
+- No audience targeting or niche products
+- Returns baseline offerings available to all advertisers
+- Useful for initial discovery and planning
 
-### Direct Product Selection
-When buyers know exactly what they want:
-- They have specific product IDs from previous campaigns
-- They're buying based on negotiated deals
-- They're replenishing always-on campaigns
+### Scenarios for No Brief:
+1. **Initial exploration** - Understanding publisher's inventory
+2. **Buyer-driven targeting** - Bring your own audience segments via AXE
+3. **Direct product selection** - Already know specific product IDs
+4. **Always-on campaigns** - Replenishing existing campaigns
 
-### Example: Run-of-Network with Buyer Targeting
+### Example: Standard Catalog Request
 ```json
 {
-  "promoted_offering": "Nike Air Max 2024 - athletic footwear",
-  "brief": null,  // No brief = run-of-network request
+  "brand_manifest": {
+    "name": "Nike",
+    "url": "https://nike.com"
+  },
+  "brief": null,  // No brief = standard catalog
   "filters": {
-    "delivery_type": "non_guaranteed",  // Programmatic inventory
-    "format_types": ["display", "video"],  // Formats they have creatives for
-    "standard_formats_only": true  // Ensure compatibility
+    "delivery_type": "non_guaranteed",
+    "format_types": ["display", "video"],
+    "standard_formats_only": true
   }
 }
 ```
 
 In this case:
-1. Publisher returns **run-of-network products** (broad reach inventory)
-2. Not niche or highly targeted products
-3. Products optimized for scale and reach
-4. Buyer applies their own targeting through AXE
-5. Focus is on volume and efficiency, not audience matching
+1. Publisher returns **standard catalog products**
+2. Not personalized or brief-matched products
+3. Baseline inventory available to this advertiser
+4. Buyer can apply their own targeting through AXE
+5. Focus is on discovering available inventory
 
 ## Core Brief Components
 
@@ -197,23 +213,23 @@ Example in brief: *"Avoid news, political content, and competitive automotive br
 
 Publishers should handle briefs at different completeness levels:
 
-### No Brief (Run-of-Network)
+### No Brief (Standard Catalog)
 ```json
 {
-  "promoted_offering": "Acme Corp project management software",
-  "brief": null,  // Signals run-of-network request
+  "brand_manifest": {"name": "Acme Corp", "url": "https://acmecorp.com"},
+  "brief": null,  // Signals standard catalog request
   "filters": {
     "delivery_type": "non_guaranteed",
     "standard_formats_only": true
   }
 }
 ```
-**Publisher Response**: Return run-of-network products (broad reach inventory optimized for scale). No targeted/niche products. No recommendations needed.
+**Publisher Response**: Return standard catalog products (broad reach inventory optimized for scale). No targeted/niche products. No recommendations needed.
 
 ### Minimal Brief
 ```json
 {
-  "promoted_offering": "Acme Corp project management software",
+  "brand_manifest": {"name": "Acme Corp", "url": "https://acmecorp.com"},
   "brief": "Reach business decision makers"
 }
 ```
@@ -222,8 +238,8 @@ Publishers should handle briefs at different completeness levels:
 ### Standard Brief
 ```json
 {
-  "promoted_offering": "Acme Corp project management software - cloud-based solution for remote teams",
-  "brief": "Reach IT decision makers in tech companies with 50-500 employees, $25K budget for Q1, focusing on driving free trial signups"
+  "brand_manifest": {"name": "Acme Corp", "url": "https://acmecorp.com"},
+  "brief": "Acme Corp project management software - cloud-based solution for remote teams. Reach IT decision makers in tech companies with 50-500 employees, $25K budget for Q1, focusing on driving free trial signups"
 }
 ```
 **Publisher Response**: Provide relevant product recommendations with clear rationale.
@@ -231,8 +247,8 @@ Publishers should handle briefs at different completeness levels:
 ### Comprehensive Brief
 ```json
 {
-  "promoted_offering": "Acme Corp project management software - cloud-based solution for remote teams with AI-powered automation",
-  "brief": "Drive 500 free trial signups from IT decision makers and project managers at tech companies (50-500 employees) in SF Bay Area and NYC. $25K budget for March 1-31, measured by $50 CPA. We have video and display creatives. Avoid competitor content and news sites."
+  "brand_manifest": {"name": "Acme Corp", "url": "https://acmecorp.com"},
+  "brief": "Acme Corp project management software - cloud-based solution for remote teams with AI-powered automation. Drive 500 free trial signups from IT decision makers and project managers at tech companies (50-500 employees) in SF Bay Area and NYC. $25K budget for March 1-31, measured by $50 CPA. We have video and display creatives. Avoid competitor content and news sites."
 }
 ```
 **Publisher Response**: Provide optimized product mix with detailed performance projections.
@@ -305,7 +321,7 @@ Publishers should implement NLP to extract:
 ## Best Practices
 
 ### DO:
-- ✅ Include both advertiser and product in promoted_offering
+- ✅ Include both advertiser and product in brand_manifest and brief
 - ✅ Specify measurable success criteria
 - ✅ Provide clear timing requirements
 - ✅ Describe target audience in detail
@@ -317,16 +333,16 @@ Publishers should implement NLP to extract:
 - ❌ Provide vague objectives like "good performance"
 - ❌ Omit timing without expecting clarification requests
 - ❌ Use undefined abbreviations or jargon
-- ❌ Contradict between brief and promoted_offering
+- ❌ Contradict between brief and brand_manifest
 - ❌ Include sensitive or confidential information
 - ❌ Assume publisher knowledge of your business
 
 ## Examples
 
-### Run-of-Network (No Brief)
+### Standard Catalog (No Brief)
 ```json
 {
-  "promoted_offering": "Ford F-150 Lightning - electric pickup truck",
+  "brand_manifest": {"name": "Ford", "url": "https://ford.com"},
   "brief": null,
   "filters": {
     "delivery_type": "non_guaranteed",

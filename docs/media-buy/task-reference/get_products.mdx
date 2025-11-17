@@ -73,6 +73,10 @@ You can also use structured filters instead of (or in addition to) a brief:
 import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.getProducts({
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  },
   filters: {
     format_types: ['video'],
     delivery_type: 'guaranteed',
@@ -91,6 +95,10 @@ from adcp import test_agent
 
 async def discover_with_filters():
     result = await test_agent.simple.get_products(
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        },
         filters={
             'format_types': ['video'],
             'delivery_type': 'guaranteed',
@@ -132,33 +140,37 @@ Returns an array of `products`, each containing:
 | `product_id` | string | Unique product identifier |
 | `name` | string | Human-readable product name |
 | `description` | string | Detailed product description |
+| `publisher_properties` | PublisherProperty[] | Array of publisher entries, each with `publisher_domain` and either `property_ids` or `property_tags` |
 | `format_ids` | FormatID[] | Supported creative format IDs |
 | `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |
+| `delivery_measurement` | DeliveryMeasurement | How delivery is measured (impressions, views, etc.) |
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.) |
-| `properties` | Property[] | Specific properties (for direct property lists) |
-| `property_tags` | PropertyTag[] | Property tags (for large networks) |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
 
 **See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/get-products-response.json)
 
 ## Common Scenarios
 
-### Run-of-Network Discovery
+### Standard Catalog Discovery
 
 <CodeGroup>
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
-// No brief = run-of-network products for maximum reach
+// No brief = standard catalog products for maximum reach
 const result = await testAgent.getProducts({
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  },
   filters: {
     delivery_type: 'non_guaranteed'
   }
 });
 
 if (result.success && result.data) {
-  console.log(`Found ${result.data.products.length} run-of-network products`);
+  console.log(`Found ${result.data.products.length} standard catalog products`);
 }
 ```
 
@@ -166,16 +178,20 @@ if (result.success && result.data) {
 import asyncio
 from adcp import test_agent
 
-async def discover_run_of_network():
-    # No brief = run-of-network products for maximum reach
+async def discover_standard_catalog():
+    # No brief = standard catalog products for maximum reach
     result = await test_agent.simple.get_products(
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        },
         filters={
             'delivery_type': 'non_guaranteed'
         }
     )
-    print(f"Found {len(result.products)} run-of-network products")
+    print(f"Found {len(result.products)} standard catalog products")
 
-asyncio.run(discover_run_of_network())
+asyncio.run(discover_standard_catalog())
 ```
 
 </CodeGroup>
@@ -300,8 +316,10 @@ const result = await testAgent.getProducts({
 });
 
 if (result.success && result.data) {
-  // Products with property_tags need resolution via list_authorized_properties
-  const productsWithTags = result.data.products.filter(p => p.property_tags && p.property_tags.length > 0);
+  // Products with property_tags in publisher_properties need resolution via list_authorized_properties
+  const productsWithTags = result.data.products.filter(p =>
+    p.publisher_properties?.some(pub => pub.property_tags && pub.property_tags.length > 0)
+  );
   console.log(`${productsWithTags.length} products use property tags (large networks)`);
 }
 ```
@@ -320,9 +338,9 @@ async def discover_property_tags():
         }
     )
 
-    # Products with property_tags need resolution via list_authorized_properties
+    # Products with property_tags in publisher_properties need resolution via list_authorized_properties
     products_with_tags = [p for p in result.products
-        if p.get('property_tags') and len(p['property_tags']) > 0]
+        if any(pub.get('property_tags') for pub in p.get('publisher_properties', []))]
     print(f"{len(products_with_tags)} products use property tags (large networks)")
 
 asyncio.run(discover_property_tags())
@@ -508,7 +526,7 @@ asyncio.run(compare_auth())
 
 ## Authentication Behavior
 
-- **Without credentials**: Returns limited catalog (run-of-network products), no pricing, no custom offerings
+- **Without credentials**: Returns limited catalog (standard catalog products), no pricing, no custom offerings
 - **With credentials**: Returns complete catalog with pricing and custom products
 
 See [Authentication Guide](/docs/reference/authentication) for details.

@@ -8,29 +8,33 @@ AdCP includes comprehensive policy compliance features to ensure brand safety an
 
 ## Overview
 
-Policy compliance in AdCP centers around the `promoted_offering` field - a required description of the advertiser and what is being promoted. This enables publishers to:
+Policy compliance in AdCP centers around the `brand_manifest` - a required description of the advertiser brand. This enables publishers to:
 
 - Filter inappropriate advertisers before showing inventory
 - Enforce category-specific restrictions
 - Maintain brand safety standards
 - Comply with regulatory requirements
 
-## Promoted Offering Description
+## Brand Manifest
 
-All product discovery and media buy creation requests must include a clear `promoted_offering` field that describes:
+All product discovery and media buy creation requests must include a `brand_manifest` that describes the advertiser brand:
 
-- The advertiser/brand making the request
-- What is being promoted (product, service, cause, candidate, program, etc.)
-- Key attributes or positioning of the offering
+```json
+{
+  "name": "Nike",
+  "url": "https://nike.com",
+  "category": "athletic_apparel"
+}
+```
 
-For comprehensive guidance on brief structure and the role of `promoted_offering`, see [Brief Expectations](/docs/media-buy/product-discovery/brief-expectations).
+The manifest provides:
+- **name**: The advertiser/brand making the request
+- **url**: Brand's primary website for verification
+- **category** (optional): Industry category for policy filtering
 
-### Examples
+Combined with the `brief` field (which describes what's being promoted), publishers have full context for policy decisions.
 
-Good promoted offering descriptions:
-- "Nike Air Max 2024 - the latest innovation in cushioning technology featuring sustainable materials, targeting runners and fitness enthusiasts"
-- "PetSmart's Spring Sale Event - 20% off all dog and cat food brands, plus free grooming consultation with purchase"
-- "Biden for President 2024 - political campaign promoting Democratic candidate's re-election bid"
+For comprehensive guidance on briefs and brand information, see [Brief Expectations](/docs/media-buy/product-discovery/brief-expectations).
 
 ## Policy Check Implementation
 
@@ -40,24 +44,33 @@ Publishers must implement policy checks at two key points in the workflow:
 
 When a `get_products` request is received, the publisher should:
 
-1. Validate that the `promoted_offering` is present and meaningful
-2. Extract advertiser and category information
+1. Validate that the `brand_manifest` is present and meaningful
+2. Extract brand and category information
 3. Check against publisher policies
 4. Filter out unsuitable products
 
 **Example Policy Check Flow:**
 ```python
-def check_promoted_offering_policy(promoted_offering: str) -> PolicyResult:
-    # Extract advertiser and category
-    advertiser, category = extract_advertiser_info(promoted_offering)
-    
+def check_brand_policy(brand_manifest: dict) -> PolicyResult:
+    # Extract brand information
+    brand_name = brand_manifest.get("name")
+    brand_url = brand_manifest.get("url")
+    category = brand_manifest.get("category")
+
+    # Verify brand identity if needed
+    if not verify_brand_domain(brand_name, brand_url):
+        return PolicyResult(
+            status="blocked",
+            message="Brand verification failed"
+        )
+
     # Check blocked categories
     if category in BLOCKED_CATEGORIES:
         return PolicyResult(
             status="blocked",
             message=f"{category} advertising is not permitted on this publisher"
         )
-    
+
     # Check restricted categories
     if category in RESTRICTED_CATEGORIES:
         return PolicyResult(
@@ -65,7 +78,7 @@ def check_promoted_offering_policy(promoted_offering: str) -> PolicyResult:
             message=f"{category} advertising requires manual approval",
             contact="sales@publisher.com"
         )
-    
+
     return PolicyResult(status="allowed", category=category)
 ```
 
@@ -73,7 +86,7 @@ def check_promoted_offering_policy(promoted_offering: str) -> PolicyResult:
 
 When creating a media buy:
 
-1. Validate the `promoted_offering` against publisher policies
+1. Validate the `brand_manifest` against publisher policies
 2. Ensure consistency with the campaign brief
 3. Flag for manual review if needed
 4. Return appropriate errors for violations
@@ -83,7 +96,7 @@ When creating a media buy:
 The protocol defines three compliance statuses:
 
 ### `allowed`
-The promoted offering passes initial policy checks. Products are returned normally.
+The brand passes initial policy checks. Products are returned normally.
 
 ```json
 {
@@ -95,7 +108,7 @@ The promoted offering passes initial policy checks. Products are returned normal
 ```
 
 ### `restricted`
-The advertiser category requires manual approval before products can be shown.
+The brand category requires manual approval before products can be shown.
 
 ```json
 {
@@ -109,7 +122,7 @@ The advertiser category requires manual approval before products can be shown.
 ```
 
 ### `blocked`
-The advertiser category cannot be supported by this publisher.
+The brand category cannot be supported by this publisher.
 
 ```json
 {
@@ -123,7 +136,7 @@ The advertiser category cannot be supported by this publisher.
 
 ## Creative Validation
 
-All uploaded creatives should be validated against the declared `promoted_offering`:
+All uploaded creatives should be validated against the declared `brand_manifest`:
 
 1. **Automated Analysis**: Use creative recognition to verify brand consistency
 2. **Human Review**: Manual verification for sensitive categories
@@ -172,8 +185,8 @@ For policy violations during media buy creation:
 {
   "error": {
     "code": "POLICY_VIOLATION",
-    "message": "Offering category not permitted on this publisher",
-    "field": "promoted_offering",
+    "message": "Brand category not permitted on this publisher",
+    "field": "brand_manifest",
     "suggestion": "Contact publisher for category approval process"
   }
 }
