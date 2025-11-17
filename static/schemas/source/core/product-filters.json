@@ -34,6 +34,38 @@
       "type": "integer",
       "description": "Minimum exposures/impressions needed for measurement validity",
       "minimum": 1
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Campaign start date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Campaign end date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
+    },
+    "budget_range": {
+      "type": "object",
+      "description": "Budget range to filter appropriate products",
+      "properties": {
+        "min": {
+          "type": "number",
+          "description": "Minimum budget amount",
+          "minimum": 0
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum budget amount",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP') for budget filtering",
+      "pattern": "^[A-Z]{3}$"
     }
   },
   "additionalProperties": false
