@@ -172,7 +172,10 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
         }
       }
     ],
-    "promoted_offering": "Nike Air Max 2024 - premium running shoes",
+    "brand_manifest": {
+      "name": "Nike",
+      "url": "https://nike.com"
+    },
     "po_number": "PO-2024-Q1-001",
     "start_time": "2024-02-01T00:00:00Z",
     "end_time": "2024-03-31T23:59:59Z",
@@ -319,7 +322,10 @@ await a2a.send({
                 }
               }
             ],
-            "promoted_offering": "Nike Air Max 2024 - premium running shoes",
+            "brand_manifest": {
+              "name": "Nike",
+              "url": "https://nike.com"
+            },
             "po_number": "PO-2024-Q1-001",
             "start_time": "2024-02-01T00:00:00Z",
             "end_time": "2024-03-31T23:59:59Z"
@@ -385,7 +391,10 @@ This example shows polling, but MCP implementations may also support webhooks or
   "arguments": {
     "buyer_ref": "large_campaign_2024",
     "packages": [...],
-    "promoted_offering": "High-value campaign requiring approval",
+    "brand_manifest": {
+      "name": "ACME Corporation",
+      "url": "https://acmecorp.com"
+    },
     "po_number": "PO-2024-LARGE-001",
     "start_time": "2024-02-01T00:00:00Z",
     "end_time": "2024-06-30T23:59:59Z"
@@ -447,7 +456,10 @@ A2A can use Server-Sent Events for real-time streaming or webhooks for push noti
   "input": {
     "buyer_ref": "large_campaign_2024",
     "packages": [...],
-    "promoted_offering": "High-value campaign requiring approval",
+    "brand_manifest": {
+      "name": "ACME Corporation",
+      "url": "https://acmecorp.com"
+    },
     "po_number": "PO-2024-LARGE-001",
     "start_time": "2024-02-01T00:00:00Z",
     "end_time": "2024-06-30T23:59:59Z"
@@ -498,7 +510,10 @@ data: {"status": {"state": "completed"}, "artifacts": [{
   "input": {
     "buyer_ref": "large_campaign_2024",
     "packages": [...],
-    "promoted_offering": "High-value campaign requiring approval",
+    "brand_manifest": {
+      "name": "ACME Corporation",
+      "url": "https://acmecorp.com"
+    },
     "po_number": "PO-2024-LARGE-001",
     "start_time": "2024-02-01T00:00:00Z",
     "end_time": "2024-06-30T23:59:59Z"
@@ -731,7 +746,10 @@ Create a media buy and upload creatives in a single API call. This eliminates th
       }
     }
   ],
-  "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs, promoting the new salmon and rice formula for sensitive skin and stomachs",
+  "brand_manifest": {
+    "name": "Purina",
+    "url": "https://purina.com"
+  },
   "po_number": "PO-2024-Q1-0123",
   "start_time": "2024-02-01T00:00:00Z",
   "end_time": "2024-02-29T23:59:59Z"
@@ -770,7 +788,10 @@ Create a media buy and upload creatives in a single API call. This eliminates th
       }
     }
   ],
-  "promoted_offering": "Purina Pro Plan dog food - premium nutrition tailored for dogs' specific needs",
+  "brand_manifest": {
+    "name": "Purina",
+    "url": "https://purina.com"
+  },
   "po_number": "PO-2024-RETAIL-0456",
   "start_time": "2024-02-01T00:00:00Z",
   "end_time": "2024-03-31T23:59:59Z"
@@ -1047,7 +1068,10 @@ response = await mcp.call_tool("create_media_buy", {
             }
         }
     ],
-    "promoted_offering": "ESPN+ streaming service - exclusive UFC fights and soccer leagues, promoting annual subscription",
+    "brand_manifest": {
+      "name": "ESPN",
+      "url": "https://espn.com"
+    },
     "po_number": "PO-2024-001",
     "start_time": "2024-02-01T00:00:00Z",
     "end_time": "2024-03-31T23:59:59Z"
@@ -1201,22 +1225,22 @@ The brand manifest is required so publishers always know their customer, but you
 
 ## Policy Compliance
 
-The `promoted_offering` is validated during media buy creation. If a policy violation is detected, the API will return an error:
+The brand and promoted products are validated during media buy creation. If a policy violation is detected, the API will return an error:
 
 ```json
 {
   "error": {
     "code": "POLICY_VIOLATION",
-    "message": "Offering category not permitted on this publisher",
-    "field": "promoted_offering",
+    "message": "Brand or product category not permitted on this publisher",
+    "field": "brand_manifest",
     "suggestion": "Contact publisher for category approval process"
   }
 }
 ```
 
 Publishers should ensure that:
-- The promoted offering aligns with the selected packages
-- Any uploaded creatives match the declared offering
+- The brand and promoted products align with the selected packages
+- Any uploaded creatives match the declared brand and products
 - The campaign complies with all applicable advertising policies
 
 ## Implementation Guide
