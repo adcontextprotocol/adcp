@@ -8,6 +8,7 @@
       "type": "object",
       "properties": {
         "asset_kind": {
+          "type": "string",
           "const": "media",
           "description": "Discriminator indicating this is a media asset with content_uri"
         },
@@ -32,6 +33,7 @@
       "type": "object",
       "properties": {
         "asset_kind": {
+          "type": "string",
           "const": "text",
           "description": "Discriminator indicating this is a text asset with content"
         },

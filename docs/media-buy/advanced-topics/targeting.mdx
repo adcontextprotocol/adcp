@@ -229,6 +229,18 @@ All targeting parameters use the `any_of` operator pattern for inclusive targeti
 - **Use cases**: Hyper-local campaigns, ZIP-level restrictions
 - **Note**: Not all publishers support postal-level targeting
 
+### axe_include_segment
+- **Description**: AXE segment ID to include for targeting
+- **Format**: String segment identifier
+- **Examples**: `"x8dj3k"`, `"segment_auto_intenders_2024"`
+- **Use cases**: Advanced audience targeting with Agentic eXecution Engine (AXE)
+
+### axe_exclude_segment
+- **Description**: AXE segment ID to exclude from targeting
+- **Format**: String segment identifier
+- **Examples**: `"x9m2p"`, `"segment_existing_customers"`
+- **Use cases**: Exclusion targeting with Agentic eXecution Engine (AXE)
+
 ### frequency_cap
 - **Description**: Limit ad exposure frequency per user
 - **Format**: Frequency cap object with impressions, duration, and scope

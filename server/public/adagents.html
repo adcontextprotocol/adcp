@@ -1,0 +1,3364 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AdAgents.json Manager - AdCP Testing Framework</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* CSS Custom Properties for Theming */
+      :root {
+        /* Primary gradients */
+        --primary-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        --warning-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        --danger-gradient: linear-gradient(135deg, #fc466b 0%, #3f5efb 100%);
+
+        /* Glass morphism effects */
+        --glass-bg: rgba(255, 255, 255, 0.1);
+        --glass-border: rgba(255, 255, 255, 0.2);
+        --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+
+        /* Semantic colors */
+        --surface-primary: rgba(255, 255, 255, 0.95);
+        --surface-secondary: rgba(248, 250, 252, 0.8);
+        --text-primary: #1a202c;
+        --text-secondary: #4a5568;
+        --text-muted: #718096;
+
+        /* Interactive colors */
+        --accent-blue: #4299e1;
+        --accent-purple: #9f7aea;
+        --accent-green: #48bb78;
+        --accent-orange: #ed8936;
+
+        /* Animation timing */
+        --timing-fast: 0.2s;
+        --timing-normal: 0.4s;
+        --timing-slow: 0.6s;
+        --easing: cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      /* Modern Typography System */
+      body {
+        font-family:
+          'Inter',
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+        line-height: 1.6;
+        color: var(--text-primary);
+        font-weight: 400;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        position: relative;
+      }
+
+      /* Background Elements */
+      body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background:
+          radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 40% 80%, rgba(120, 119, 198, 0.2) 0%, transparent 50%);
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      /* Top Navigation */
+      .top-nav {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+      }
+
+      .nav-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        height: 60px;
+      }
+
+      .nav-brand h2 {
+        color: white;
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 30px;
+      }
+
+      .nav-link {
+        color: rgba(255, 255, 255, 0.8);
+        text-decoration: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        transition: all 0.3s ease;
+        font-weight: 500;
+        font-size: 14px;
+      }
+
+      .nav-link:hover {
+        color: white;
+        background: rgba(255, 255, 255, 0.1);
+        transform: translateY(-1px);
+      }
+
+      .nav-link.active {
+        color: white;
+        background: rgba(255, 255, 255, 0.2);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      /* Main Content */
+      .main-content {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 40px 20px;
+        position: relative;
+        z-index: 2;
+      }
+
+      /* Page Header */
+      .page-header {
+        text-align: center;
+        margin-bottom: 50px;
+      }
+
+      .page-header h1 {
+        color: white;
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0 0 15px 0;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .page-header p {
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 1.1rem;
+        margin: 0;
+        max-width: 600px;
+        margin: 0 auto;
+      }
+
+      /* Glass-morphic Card Design */
+      .section {
+        background: var(--surface-primary);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 16px;
+        padding: 32px;
+        margin-bottom: 32px;
+        box-shadow:
+          0 8px 32px rgba(0, 0, 0, 0.08),
+          0 1px 3px rgba(0, 0, 0, 0.12);
+        transition: all var(--timing-normal) var(--easing);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: var(--primary-gradient);
+        border-radius: 16px 16px 0 0;
+      }
+
+      .section h3 {
+        color: var(--text-primary);
+        margin: 0 0 20px 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .section h4 {
+        color: var(--text-secondary);
+        margin: 0 0 15px 0;
+        font-size: 1.2rem;
+        font-weight: 600;
+      }
+
+      /* Modern Button System */
+      .btn {
+        background: var(--primary-gradient);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all var(--timing-fast) var(--easing);
+        text-decoration: none;
+        display: inline-block;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+      }
+
+      .btn:active {
+        transform: translateY(0);
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .btn-secondary {
+        background: #6c757d;
+        box-shadow: 0 2px 8px rgba(108, 117, 125, 0.3);
+      }
+
+      .btn-secondary:hover {
+        box-shadow: 0 4px 16px rgba(108, 117, 125, 0.4);
+      }
+
+      /* Form Elements */
+      input[type='text'],
+      input[type='url'],
+      textarea {
+        width: 100%;
+        padding: 12px 16px;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: all var(--timing-fast) var(--easing);
+        font-family: inherit;
+        box-sizing: border-box;
+      }
+
+      input[type='text']:focus,
+      input[type='url']:focus,
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent-blue);
+        box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 120px;
+        font-family: 'Monaco', 'Courier New', monospace;
+      }
+
+      /* Agent Entry Styling */
+      .agent-entry {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 12px;
+        padding: 16px;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        background: #f8fafc;
+        transition: all var(--timing-fast) var(--easing);
+      }
+
+      .agent-entry:hover {
+        border-color: var(--accent-blue);
+        background: #f1f5f9;
+      }
+
+      .agent-entry input {
+        margin: 0;
+      }
+
+      .agent-entry .btn {
+        padding: 8px 12px;
+        margin: 0;
+        align-self: flex-start;
+      }
+
+      /* Property Entry Styling */
+      .property-entry {
+        padding: 20px;
+        margin-bottom: 16px;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        background: #f8fafc;
+        transition: all var(--timing-fast) var(--easing);
+      }
+
+      .property-entry:hover {
+        border-color: var(--accent-purple);
+        background: #f1f5f9;
+      }
+
+      .property-entry-header {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+        align-items: flex-start;
+      }
+
+      .property-entry-header input,
+      .property-entry-header select {
+        flex: 1;
+      }
+
+      .property-identifiers {
+        margin-left: 20px;
+        padding: 12px;
+        background: white;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+      }
+
+      .identifier-entry {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+        align-items: center;
+      }
+
+      .identifier-entry select,
+      .identifier-entry input {
+        margin: 0;
+      }
+
+      .identifier-entry select {
+        flex: 1;
+      }
+
+      .identifier-entry input {
+        flex: 2;
+      }
+
+      .identifier-entry .btn {
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+
+      /* Tab Styling */
+      .tab-btn {
+        background: none;
+        border: none;
+        border-bottom: 3px solid transparent;
+        padding: 12px 24px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all var(--timing-fast) var(--easing);
+      }
+
+      .tab-btn:hover {
+        color: var(--text-primary);
+        background: rgba(102, 126, 234, 0.05);
+      }
+
+      .tab-btn.active {
+        color: var(--accent-blue);
+        border-bottom-color: var(--accent-blue);
+      }
+
+      .tab-content {
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Property/Agent Card Styling */
+      .dashboard-card {
+        background: white;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+        transition: all var(--timing-fast) var(--easing);
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+      }
+
+      .dashboard-card:hover {
+        border-color: var(--accent-blue);
+        box-shadow: 0 4px 12px rgba(66, 153, 225, 0.1);
+      }
+
+      .dashboard-card-content {
+        flex: 1;
+      }
+
+      .dashboard-card-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 8px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .dashboard-card-meta {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+      }
+
+      .dashboard-card-tags {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+
+      .dashboard-card-tag {
+        font-size: 11px;
+        background: #f1f5f9;
+        color: #475569;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-weight: 600;
+      }
+
+      .dashboard-card-tag.assigned {
+        background: #dbeafe;
+        color: #1e40af;
+      }
+
+      .dashboard-card-tag.warning {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .dashboard-card-actions {
+        display: flex;
+        gap: 8px;
+        flex-direction: column;
+      }
+
+      .dashboard-card-actions .btn {
+        padding: 8px 16px;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+
+      /* Empty State */
+      .empty-state {
+        background: #f8fafc;
+        border: 2px dashed #cbd5e0;
+        border-radius: 12px;
+        padding: 48px 32px;
+        text-align: center;
+        color: #718096;
+      }
+
+      .empty-state-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+      }
+
+      .empty-state h4 {
+        margin: 0 0 8px 0;
+        color: #4a5568;
+      }
+
+      .empty-state p {
+        margin: 0 0 16px 0;
+        font-size: 14px;
+      }
+
+      /* Modal Styling */
+      .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 20px;
+      }
+
+      .modal-content {
+        background: white;
+        border-radius: 16px;
+        max-width: 700px;
+        width: 100%;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      .modal-header {
+        padding: 24px;
+        border-bottom: 2px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .modal-header h3 {
+        margin: 0;
+        font-size: 22px;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #718096;
+        transition: color var(--timing-fast);
+      }
+
+      .modal-close:hover {
+        color: #dc3545;
+      }
+
+      .modal-body {
+        padding: 24px;
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .modal-footer {
+        padding: 20px 24px;
+        border-top: 2px solid #e2e8f0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-group label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: var(--text-primary);
+        font-size: 14px;
+      }
+
+      .form-group input,
+      .form-group select,
+      .form-group textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: border-color var(--timing-fast);
+        box-sizing: border-box;
+      }
+
+      .form-group input:focus,
+      .form-group select:focus,
+      .form-group textarea:focus {
+        outline: none;
+        border-color: var(--accent-blue);
+      }
+
+      .form-group textarea {
+        resize: vertical;
+        font-family: inherit;
+      }
+
+      .checkbox-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 200px;
+        overflow-y: auto;
+        padding: 12px;
+        background: #f8fafc;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+      }
+
+      .checkbox-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        border-radius: 6px;
+        transition: background var(--timing-fast);
+      }
+
+      .checkbox-item:hover {
+        background: white;
+      }
+
+      .checkbox-item input[type='checkbox'] {
+        width: auto;
+        margin: 0;
+      }
+
+      .checkbox-item label {
+        margin: 0;
+        font-weight: normal;
+        cursor: pointer;
+      }
+
+      .identifier-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .identifier-item {
+        display: grid;
+        grid-template-columns: auto auto 1fr;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .identifier-item input[type='checkbox'] {
+        width: auto;
+        margin: 0;
+      }
+
+      .identifier-item label {
+        margin: 0;
+        font-weight: normal;
+        min-width: 100px;
+        white-space: nowrap;
+      }
+
+      .identifier-item input[type='text'] {
+        width: 100%;
+      }
+
+      .identifier-item .btn {
+        padding: 10px 14px;
+        font-size: 13px;
+      }
+
+      /* Results Display */
+      .validation-result {
+        margin-top: 20px;
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+      }
+
+      .result-success {
+        background: #f0fdf4;
+        border-color: #bbf7d0;
+        color: #166534;
+      }
+
+      .result-warning {
+        background: #fffbeb;
+        border-color: #fcd34d;
+        color: #92400e;
+      }
+
+      .result-error {
+        background: #fef2f2;
+        border-color: #fca5a5;
+        color: #dc2626;
+      }
+
+      /* JSON Output */
+      .json-output-container {
+        position: relative;
+        margin-top: 20px;
+      }
+
+      .json-output {
+        width: 100%;
+        height: 300px;
+        font-family: 'Monaco', 'Courier New', monospace;
+        font-size: 13px;
+        padding: 16px;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        background: #f8fafc;
+        resize: vertical;
+        box-sizing: border-box;
+      }
+
+      .copy-btn {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+
+      /* Responsive Design */
+      @media (max-width: 768px) {
+        .main-content {
+          padding: 20px 10px;
+        }
+
+        .page-header h1 {
+          font-size: 2rem;
+        }
+
+        .section {
+          padding: 20px;
+        }
+
+        .agent-entry {
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .nav-container {
+          padding: 0 15px;
+        }
+
+        .nav-links {
+          gap: 15px;
+        }
+
+        .nav-link {
+          padding: 6px 12px;
+          font-size: 13px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .page-header h1 {
+          font-size: 1.8rem;
+        }
+
+        .section {
+          padding: 16px;
+          margin-bottom: 20px;
+        }
+
+        .btn {
+          padding: 10px 16px;
+          font-size: 13px;
+        }
+      }
+
+      /* Loading States */
+      .loading {
+        opacity: 0.6;
+        pointer-events: none;
+      }
+
+      /* Utility Classes */
+      .text-center {
+        text-align: center;
+      }
+      .mb-1 {
+        margin-bottom: 8px;
+      }
+      .mb-2 {
+        margin-bottom: 16px;
+      }
+      .mb-3 {
+        margin-bottom: 24px;
+      }
+      .flex {
+        display: flex;
+      }
+      .gap-2 {
+        gap: 8px;
+      }
+      .gap-3 {
+        gap: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+      <div class="nav-container">
+        <div class="nav-brand">
+          <h2>AdCP Testing Framework</h2>
+        </div>
+        <div class="nav-links">
+          <a href="/" class="nav-link">🧪 Media Buy Testing</a>
+          <a href="/creative-testing.html" class="nav-link">🎨 Creative Agent Testing</a>
+          <a href="/adagents.html" class="nav-link active">🔗 AdAgents Manager</a>
+        </div>
+      </div>
+    </nav>
+
+    <div class="main-content">
+      <!-- Page Header -->
+      <div class="page-header">
+        <h1>🔗 AdAgents.json Manager</h1>
+        <p>
+          Validate, create, and manage adagents.json files for the Ad Context Protocol. Ensure your domain properly
+          declares authorized sales agents according to the AdCP specification.
+        </p>
+      </div>
+
+      <!-- Unified AdAgents Manager Section -->
+      <div class="section">
+        <h3>Manage Your AdAgents.json</h3>
+        <p style="color: #666; margin-bottom: 20px">
+          Enter your domain to validate, view, or edit your adagents.json file. If you don't have one yet, we'll help
+          you create it.
+        </p>
+
+        <div style="display: flex; gap: 12px; margin-bottom: 20px">
+          <input
+            type="text"
+            id="domain-input"
+            placeholder="example.com"
+            style="flex: 1; padding: 12px; font-size: 15px"
+            onkeypress="if(event.key === 'Enter') startManaging()"
+          />
+          <button class="btn" onclick="startManaging()" id="start-btn">Get Started →</button>
+        </div>
+
+        <!-- Validation Results (shown if file exists) -->
+        <div id="validation-results" style="display: none; margin-bottom: 20px">
+          <!-- Validation results will be populated here -->
+        </div>
+
+        <!-- Dashboard (hidden initially) -->
+        <div id="creator-form" style="display: none">
+          <!-- Header Bar -->
+          <div
+            id="dashboard-header"
+            style="
+              background: #e8f4fd;
+              border: 1px solid #bee5eb;
+              border-radius: 8px;
+              padding: 16px;
+              margin-bottom: 20px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              flex-wrap: wrap;
+              gap: 12px;
+            "
+          >
+            <div>
+              <h4 style="margin: 0 0 4px 0; color: #0c5460">
+                📍 adagents.json for <span id="user-domain-display"></span>
+              </h4>
+              <p style="margin: 0; font-size: 13px; color: #0c5460">
+                <span id="file-status">No file found • Creating new</span>
+              </p>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+              <button class="btn" onclick="importFile()" style="padding: 8px 16px; font-size: 13px">📥 Import</button>
+              <button class="btn" onclick="exportFile()" style="padding: 8px 16px; font-size: 13px">📤 Export</button>
+              <button class="btn" onclick="copyJson()" style="padding: 8px 16px; font-size: 13px">📋 Copy JSON</button>
+              <button class="btn" onclick="downloadJson()" style="padding: 8px 16px; font-size: 13px">
+                💾 Download
+              </button>
+            </div>
+          </div>
+
+          <!-- Tabs -->
+          <div style="border-bottom: 2px solid #e2e8f0; margin-bottom: 24px">
+            <div style="display: flex; gap: 4px">
+              <button class="tab-btn active" onclick="switchTab('properties')" id="properties-tab">
+                🏢 Properties (<span id="properties-count">0</span>)
+              </button>
+              <button class="tab-btn" onclick="switchTab('tags')" id="tags-tab">
+                🏷️ Tags (<span id="tags-count">0</span>)
+              </button>
+              <button class="tab-btn" onclick="switchTab('agents')" id="agents-tab">
+                👥 Agents (<span id="agents-count">0</span>)
+              </button>
+            </div>
+          </div>
+
+          <!-- Properties Tab Content -->
+          <div id="properties-tab-content" class="tab-content">
+            <div id="properties-cards-list">
+              <!-- Property cards will be added here -->
+            </div>
+
+            <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap">
+              <button class="btn" onclick="addProperty('website')">➕ Add Website</button>
+              <button class="btn" onclick="addProperty('ctv_app')">➕ Add CTV App</button>
+              <button class="btn" onclick="addProperty('mobile_app')">➕ Add Mobile App</button>
+              <button class="btn" onclick="showMorePropertyTypes()">➕ More Types ▼</button>
+            </div>
+
+            <!-- Bulk Tag Operations (shown when in bulk mode) -->
+            <div
+              id="bulk-tag-operations"
+              style="
+                display: none;
+                margin-top: 20px;
+                padding: 16px;
+                background: #f8fafc;
+                border: 2px solid #e2e8f0;
+                border-radius: 12px;
+              "
+            >
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
+                <strong><span id="bulk-selected-count">0</span> properties selected</strong>
+                <button class="btn btn-secondary" onclick="cancelBulkMode()" style="padding: 6px 12px; font-size: 13px">
+                  ✖️ Cancel
+                </button>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center">
+                <select
+                  id="bulk-tag-select"
+                  style="flex: 1; padding: 8px; border: 1px solid #cbd5e0; border-radius: 6px"
+                >
+                  <option value="">Select a tag...</option>
+                </select>
+                <button class="btn" onclick="bulkAddTag()" style="padding: 8px 16px">➕ Add Tag</button>
+                <button class="btn" onclick="bulkRemoveTag()" style="padding: 8px 16px; background: #dc3545">
+                  ➖ Remove Tag
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tags Tab Content -->
+          <div id="tags-tab-content" class="tab-content" style="display: none">
+            <div id="tags-list">
+              <!-- Tag chips will be added here -->
+            </div>
+
+            <div style="margin-top: 20px; display: flex; gap: 12px; align-items: center">
+              <input
+                type="text"
+                id="new-tag-input"
+                placeholder="Enter new tag name..."
+                style="flex: 1; padding: 10px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 14px"
+              />
+              <button class="btn" onclick="createTag()">➕ Create Tag</button>
+              <button class="btn btn-secondary" onclick="enableBulkTagMode()">🏷️ Bulk Tag Properties</button>
+            </div>
+
+            <div
+              style="
+                margin-top: 20px;
+                padding: 12px;
+                background: #f8fafc;
+                border-radius: 8px;
+                font-size: 13px;
+                color: #718096;
+              "
+            >
+              💡 <strong>Tip:</strong> Tags help organize your properties. Use bulk operations to quickly tag multiple
+              properties at once.
+            </div>
+          </div>
+
+          <!-- Agents Tab Content -->
+          <div id="agents-tab-content" class="tab-content" style="display: none">
+            <div id="agents-cards-list">
+              <!-- Agent cards will be added here -->
+            </div>
+
+            <div style="margin-top: 20px">
+              <button class="btn" onclick="addAgent()">➕ Add Agent</button>
+            </div>
+          </div>
+
+          <!-- Bottom Actions -->
+          <div
+            style="
+              margin-top: 24px;
+              padding-top: 20px;
+              border-top: 2px solid #e2e8f0;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            "
+          >
+            <button class="btn btn-secondary" onclick="resetCreator()">⬅️ Back to Domain Entry</button>
+            <button class="btn" onclick="toggleJsonPreview()" id="json-preview-toggle">📄 View JSON ▼</button>
+          </div>
+
+          <!-- Expandable JSON Preview -->
+          <div
+            id="json-preview-panel"
+            style="display: none; margin-top: 16px; border: 2px solid #e2e8f0; border-radius: 12px; overflow: hidden"
+          >
+            <div
+              style="
+                background: #f8fafc;
+                padding: 12px;
+                border-bottom: 1px solid #e2e8f0;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+            >
+              <strong>Live JSON Preview</strong>
+              <div style="display: flex; gap: 8px">
+                <button class="btn" onclick="copyJson()" style="padding: 6px 12px; font-size: 12px">📋 Copy</button>
+                <button class="btn" onclick="downloadJson()" style="padding: 6px 12px; font-size: 12px">
+                  💾 Download
+                </button>
+              </div>
+            </div>
+            <textarea
+              id="json-output"
+              readonly
+              style="
+                width: 100%;
+                height: 300px;
+                font-family: 'Monaco', 'Courier New', monospace;
+                font-size: 13px;
+                padding: 16px;
+                border: none;
+                background: #1a202c;
+                color: #f7fafc;
+                resize: vertical;
+                box-sizing: border-box;
+              "
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- Property Editor Modal -->
+        <div id="property-modal" class="modal" style="display: none">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="property-modal-title">Edit Property</h3>
+              <button class="modal-close" onclick="closePropertyModal()">✖️</button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" id="property-edit-index" />
+
+              <div class="form-group">
+                <label>Property Type</label>
+                <select id="property-type" onchange="updatePropertyForm()">
+                  <option value="website">🌐 Website</option>
+                  <option value="mobile_app">📱 Mobile App</option>
+                  <option value="ctv_app">📺 CTV App</option>
+                  <option value="podcast">🎙️ Podcast</option>
+                  <option value="radio">📻 Radio</option>
+                  <option value="streaming_audio">🎵 Streaming Audio</option>
+                  <option value="dooh">🏙️ DOOH</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>Property Name</label>
+                <input
+                  type="text"
+                  id="property-name"
+                  placeholder="e.g., CNN Main Website"
+                  oninput="updatePropertyForm()"
+                />
+              </div>
+
+              <div class="form-group">
+                <label>Property ID <span style="font-size: 12px; color: #666">(auto-generated)</span></label>
+                <input type="text" id="property-id" placeholder="e.g., cnn_main_website" />
+              </div>
+
+              <div id="property-type-form">
+                <!-- Dynamic form content based on property type -->
+              </div>
+
+              <div class="form-group">
+                <label>Tags <span style="font-size: 12px; color: #666">(optional)</span></label>
+                <div
+                  id="property-tags-checkboxes"
+                  style="
+                    max-height: 150px;
+                    overflow-y: auto;
+                    padding: 8px;
+                    border: 1px solid #cbd5e0;
+                    border-radius: 6px;
+                  "
+                >
+                  <!-- Dynamically populated with tag checkboxes -->
+                </div>
+                <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center">
+                  <input
+                    type="text"
+                    id="quick-add-tag"
+                    placeholder="Type to create new tag..."
+                    style="flex: 1; padding: 6px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 13px"
+                  />
+                  <button class="btn" onclick="quickCreateTag()" style="padding: 6px 12px; font-size: 13px">
+                    ➕ Add
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" onclick="closePropertyModal()">Cancel</button>
+              <button class="btn" onclick="saveProperty()">💾 Save Property</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent Editor Modal -->
+        <div id="agent-modal" class="modal" style="display: none">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 id="agent-modal-title">Edit Agent</h3>
+              <button class="modal-close" onclick="closeAgentModal()">✖️</button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" id="agent-edit-index" />
+
+              <div class="form-group">
+                <label>Agent URL</label>
+                <input type="url" id="agent-url" placeholder="https://agent.example.com" />
+              </div>
+
+              <div class="form-group">
+                <label>Authorized For</label>
+                <textarea
+                  id="agent-authorized-for"
+                  rows="3"
+                  placeholder="e.g., Authorized to sell all display and video advertising inventory"
+                ></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>Property Access</label>
+
+                <div style="margin-bottom: 16px">
+                  <label
+                    style="
+                      display: block;
+                      padding: 8px;
+                      cursor: pointer;
+                      border: 2px solid #e2e8f0;
+                      border-radius: 8px;
+                      margin-bottom: 8px;
+                    "
+                  >
+                    <input
+                      type="radio"
+                      name="agent-access-type"
+                      value="all"
+                      checked
+                      onchange="updateAgentAccessOptions()"
+                      style="margin-right: 8px"
+                    />
+                    <strong>Can sell all properties</strong>
+                    <p style="margin: 4px 0 0 24px; font-size: 13px; color: #666">
+                      Agent has access to all current and future properties
+                    </p>
+                  </label>
+
+                  <label
+                    style="
+                      display: block;
+                      padding: 8px;
+                      cursor: pointer;
+                      border: 2px solid #e2e8f0;
+                      border-radius: 8px;
+                      margin-bottom: 8px;
+                    "
+                  >
+                    <input
+                      type="radio"
+                      name="agent-access-type"
+                      value="properties"
+                      onchange="updateAgentAccessOptions()"
+                      style="margin-right: 8px"
+                    />
+                    <strong>Can sell specific properties</strong>
+                    <p style="margin: 4px 0 0 24px; font-size: 13px; color: #666">
+                      Select individual properties by name
+                    </p>
+                  </label>
+
+                  <label
+                    style="display: block; padding: 8px; cursor: pointer; border: 2px solid #e2e8f0; border-radius: 8px"
+                  >
+                    <input
+                      type="radio"
+                      name="agent-access-type"
+                      value="tags"
+                      onchange="updateAgentAccessOptions()"
+                      style="margin-right: 8px"
+                    />
+                    <strong>Can sell properties by tag</strong>
+                    <p style="margin: 4px 0 0 24px; font-size: 13px; color: #666">
+                      Select properties that have specific tags
+                    </p>
+                  </label>
+                </div>
+
+                <!-- Property selection (shown when "properties" is selected) -->
+                <div
+                  id="agent-property-selection"
+                  style="
+                    display: none;
+                    padding: 12px;
+                    background: #f8fafc;
+                    border-radius: 8px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                  "
+                >
+                  <div id="agent-property-checkboxes">
+                    <!-- Dynamically populated -->
+                  </div>
+                </div>
+
+                <!-- Tag selection (shown when "tags" is selected) -->
+                <div
+                  id="agent-tag-selection"
+                  style="
+                    display: none;
+                    padding: 12px;
+                    background: #f8fafc;
+                    border-radius: 8px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                  "
+                >
+                  <div id="agent-tag-checkboxes">
+                    <!-- Dynamically populated -->
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" onclick="closeAgentModal()">Cancel</button>
+              <button class="btn" onclick="saveAgent()">💾 Save Agent</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Help Section -->
+      <div class="section">
+        <h3>📚 Need Help?</h3>
+        <p style="color: #666; margin-bottom: 16px">
+          Learn more about the AdCP specification and adagents.json format:
+        </p>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px">
+          <a href="https://adcontextprotocol.org" target="_blank" class="btn" style="text-decoration: none">
+            📖 AdCP Documentation
+          </a>
+          <a
+            href="https://bokonads.com/p/adcp-basics-authorized-properties"
+            target="_blank"
+            class="btn btn-secondary"
+            style="text-decoration: none"
+          >
+            📝 Properties Guide
+          </a>
+          <button class="btn btn-secondary" onclick="toggleSpecDetails()">📋 View Specification Details</button>
+        </div>
+
+        <div id="spec-details" style="display: none">
+          <h4>AdCP Specification Details</h4>
+          <p style="color: #666; margin-bottom: 16px">
+            The adagents.json file must be hosted at <code>/.well-known/adagents.json</code> and follow the AdCP
+            specification:
+          </p>
+
+          <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0">
+            <h4>Required Structure (AdCP v2.2.0):</h4>
+            <pre
+              style="
+                background: #1a202c;
+                color: #f7fafc;
+                padding: 16px;
+                border-radius: 8px;
+                overflow-x: auto;
+                font-size: 13px;
+              "
+            >
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "authorized_agents": [
+    {
+      "url": "https://agent.example.com",
+      "authorized_for": "Description of authorization scope",
+      "property_ids": ["website_main", "ctv_app"]
+    }
+  ],
+  "properties": [
+    {
+      "property_id": "website_main",
+      "property_type": "website",
+      "name": "Main Website",
+      "identifiers": [
+        { "type": "domain", "value": "example.com" }
+      ],
+      "tags": ["premium"]
+    }
+  ],
+  "last_updated": "2025-01-10T12:00:00Z"
+}</pre
+            >
+
+            <div style="margin-top: 16px">
+              <h4>Key Requirements:</h4>
+              <ul style="margin: 8px 0; padding-left: 20px">
+                <li><strong>HTTPS Required:</strong> All agent URLs must use HTTPS</li>
+                <li>
+                  <strong>Authorization Scope:</strong> 1-500 characters describing what each agent is authorized to do
+                </li>
+                <li>
+                  <strong>Property IDs (Optional):</strong> List specific properties each agent can sell. If omitted,
+                  agent can sell all properties.
+                </li>
+                <li>
+                  <strong>Properties Array (Optional):</strong> Declare your digital inventory (websites, apps, etc.)
+                  with unique identifiers
+                </li>
+                <li><strong>Domain Matching:</strong> Agents validate authorization based on publisher domain</li>
+                <li><strong>Agent Cards:</strong> Each agent should provide a valid agent card at their endpoint</li>
+              </ul>
+            </div>
+
+            <div style="margin-top: 16px">
+              <p style="color: #666; font-size: 14px; margin: 0">
+                <strong>Note:</strong> This tool validates against the AdCP adagents.json specification. The structure
+                and requirements shown above reflect the current protocol standards.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Toggle spec details
+      function toggleSpecDetails() {
+        const details = document.getElementById('spec-details');
+        const btn = event.target;
+        if (details.style.display === 'none') {
+          details.style.display = 'block';
+          btn.textContent = '📋 Hide Specification Details';
+        } else {
+          details.style.display = 'none';
+          btn.textContent = '📋 View Specification Details';
+        }
+      }
+    </script>
+
+    <script>
+      // ============================================================================
+      // AdAgents.json Management Functions
+      // ============================================================================
+
+      async function validateDomain() {
+        const domain = document.getElementById('domain-input').value.trim();
+        const validateBtn = document.getElementById('validate-btn');
+        const resultsDiv = document.getElementById('validation-results');
+
+        if (!domain) {
+          alert('Please enter a domain name');
+          return;
+        }
+
+        validateBtn.disabled = true;
+        validateBtn.textContent = '🔄 Validating...';
+        resultsDiv.style.display = 'none';
+
+        try {
+          console.log(`Validating adagents.json for domain: ${domain}`);
+
+          const response = await fetch('/api/adagents/validate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ domain }),
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            displayValidationResults(result.data);
+            console.log(`Domain validation completed for ${domain}`);
+          } else {
+            throw new Error(result.error || 'Validation failed');
+          }
+        } catch (error) {
+          console.error(`Domain validation failed: ${error.message}`);
+          resultsDiv.innerHTML = `
+                    <div class="validation-result result-error">
+                        <strong>❌ Validation Error</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+          resultsDiv.style.display = 'block';
+        } finally {
+          validateBtn.disabled = false;
+          validateBtn.textContent = '🔍 Validate Domain';
+        }
+      }
+
+      function displayValidationResults(data) {
+        const resultsDiv = document.getElementById('validation-results');
+        const { domain, found, validation, agent_cards } = data;
+
+        let html = `<h4>Validation Results for ${domain}</h4>`;
+
+        // Overall status
+        if (found && validation.valid) {
+          html += `
+                    <div class="validation-result result-success">
+                        <strong>✅ Valid AdAgents.json Found</strong><br>
+                        Found at: <code>${validation.url}</code>
+                    </div>
+                `;
+        } else if (found && !validation.valid) {
+          html += `
+                    <div class="validation-result result-warning">
+                        <strong>⚠️ AdAgents.json Found but Invalid</strong><br>
+                        Found at: <code>${validation.url}</code>
+                    </div>
+                `;
+        } else {
+          html += `
+                    <div class="validation-result result-error">
+                        <strong>❌ No AdAgents.json Found</strong><br>
+                        Expected at: <code>https://${domain}/.well-known/adagents.json</code>
+                    </div>
+                `;
+        }
+
+        // Validation errors and warnings
+        if (validation.errors.length > 0 || validation.warnings.length > 0) {
+          html += '<div style="margin-top: 20px;">';
+
+          if (validation.errors.length > 0) {
+            html += '<h5>❌ Errors:</h5><ul style="margin-bottom: 10px;">';
+            validation.errors.forEach(error => {
+              html += `<li style="color: #dc2626;"><strong>${error.field}:</strong> ${error.message}</li>`;
+            });
+            html += '</ul>';
+          }
+
+          if (validation.warnings.length > 0) {
+            html += '<h5>⚠️ Warnings:</h5><ul>';
+            validation.warnings.forEach(warning => {
+              html += `<li style="color: #92400e;"><strong>${warning.field}:</strong> ${warning.message}`;
+              if (warning.suggestion) {
+                html += `<br><em>Suggestion: ${warning.suggestion}</em>`;
+              }
+              html += '</li>';
+            });
+            html += '</ul>';
+          }
+          html += '</div>';
+        }
+
+        // Agent cards validation
+        if (agent_cards && agent_cards.length > 0) {
+          html += '<h5>🔍 Agent Card Validation:</h5>';
+          html += '<div style="background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;">';
+
+          agent_cards.forEach(card => {
+            const status = card.valid ? '✅' : '❌';
+            const statusColor = card.valid ? '#166534' : '#dc2626';
+
+            // Extract agent name from card data if available
+            let agentName = '';
+            if (card.valid && card.card_data && card.card_data.name) {
+              agentName = ` - ${card.card_data.name}`;
+            }
+
+            // Show which endpoint was used for successful validations
+            let endpointInfo = '';
+            if (card.valid && card.card_endpoint) {
+              const endpointPath = card.card_endpoint.replace(card.agent_url, '');
+              if (endpointPath === '/.well-known/agent-card.json') {
+                endpointInfo = ' <span style="color: #059669; font-size: 11px;">[A2A]</span>';
+              } else if (endpointPath === '') {
+                endpointInfo = ' <span style="color: #7c3aed; font-size: 11px;">[Root]</span>';
+              } else {
+                endpointInfo = ` <span style="color: #7c3aed; font-size: 11px;">[${endpointPath}]</span>`;
+              }
+            }
+
+            html += `
+                        <div style="margin-bottom: 10px; padding: 12px; border-left: 4px solid ${statusColor}; background: white; border-radius: 4px;">
+                            <strong>${status} ${card.agent_url}${agentName}</strong>${endpointInfo}
+                            ${
+                              card.response_time_ms
+                                ? `<span style="color: #666; font-size: 12px;"> (${card.response_time_ms}ms)</span>`
+                                : ''
+                            }
+                            ${card.status_code ? `<br><em>HTTP ${card.status_code}</em>` : ''}
+                            ${
+                              card.errors.length > 0
+                                ? `<br><span style="color: #dc2626;">Errors: ${card.errors.join(', ')}</span>`
+                                : ''
+                            }
+                        </div>
+                    `;
+          });
+          html += '</div>';
+        }
+
+        // Raw data
+        if (validation.raw_data) {
+          html += `
+                    <details style="margin-top: 20px;">
+                        <summary style="cursor: pointer; font-weight: bold; color: var(--text-secondary);">📄 Raw AdAgents.json Data</summary>
+                        <pre style="background: #1a202c; color: #f7fafc; padding: 16px; border-radius: 8px; margin-top: 12px; font-size: 12px; overflow-x: auto;">${JSON.stringify(
+                          validation.raw_data,
+                          null,
+                          2
+                        )}</pre>
+                    </details>
+                `;
+        }
+
+        resultsDiv.innerHTML = html;
+        resultsDiv.style.display = 'block';
+      }
+
+      function addAgentEntry() {
+        const agentsList = document.getElementById('agents-list');
+        const newEntry = document.createElement('div');
+        newEntry.className = 'agent-entry';
+
+        newEntry.innerHTML = `
+                <input type="url" placeholder="https://agent.example.com" style="flex: 2;" class="agent-url">
+                <input type="text" placeholder="Authorized for all products and services" style="flex: 3;" class="agent-auth">
+                <input type="text" placeholder="property_id1, property_id2 (optional)" style="flex: 2;" class="agent-property-ids" title="Comma-separated list of property IDs this agent can sell">
+                <button class="btn" onclick="removeAgentEntry(this)" style="background: #dc3545;">✖️</button>
+            `;
+
+        agentsList.appendChild(newEntry);
+      }
+
+      function removeAgentEntry(button) {
+        const agentsList = document.getElementById('agents-list');
+        if (agentsList.children.length > 1) {
+          button.parentElement.remove();
+        } else {
+          alert('At least one agent is required');
+        }
+      }
+
+      function loadExampleAgents() {
+        // Clear existing entries
+        const agentsList = document.getElementById('agents-list');
+        agentsList.innerHTML = '';
+
+        // Add example entries
+        const examples = [
+          {
+            url: 'https://test-agent.adcontextprotocol.org',
+            auth: 'Authorized for all display and video advertising products',
+            propertyIds: 'website_main, ctv_app',
+          },
+          {
+            url: 'https://agent2.example.com',
+            auth: 'Authorized for premium inventory and high-value campaigns only',
+            propertyIds: 'website_main',
+          },
+        ];
+
+        examples.forEach(example => {
+          const newEntry = document.createElement('div');
+          newEntry.className = 'agent-entry';
+
+          newEntry.innerHTML = `
+                    <input type="url" placeholder="https://agent.example.com" style="flex: 2;" class="agent-url" value="${example.url}">
+                    <input type="text" placeholder="Authorized for all products and services" style="flex: 3;" class="agent-auth" value="${example.auth}">
+                    <input type="text" placeholder="property_id1, property_id2 (optional)" style="flex: 2;" class="agent-property-ids" value="${example.propertyIds}" title="Comma-separated list of property IDs this agent can sell">
+                    <button class="btn" onclick="removeAgentEntry(this)" style="background: #dc3545;">✖️</button>
+                `;
+
+          agentsList.appendChild(newEntry);
+        });
+
+        console.log('Loaded example adagents configuration');
+      }
+
+      // ============================================================================
+      // Dashboard State Management
+      // ============================================================================
+
+      // In-memory state (represents the adagents.json file)
+      const state = {
+        domain: '',
+        properties: [],
+        agents: [],
+        tags: [],
+        fileFound: false,
+        bulkSelectMode: false,
+        selectedPropertyIds: [],
+      };
+
+      const PROPERTY_TYPES = ['website', 'mobile_app', 'ctv_app', 'dooh', 'podcast', 'radio', 'streaming_audio'];
+
+      const IDENTIFIER_TYPES = [
+        'domain',
+        'subdomain',
+        'ios_bundle',
+        'android_package',
+        'apple_app_store_id',
+        'google_play_id',
+        'amazon_app_store_id',
+        'roku_channel_id',
+        'samsung_app_id',
+        'lg_channel_id',
+        'vizio_app_id',
+        'fire_tv_app_id',
+        'dooh_venue_id',
+        'podcast_rss_feed',
+        'spotify_show_id',
+        'apple_podcast_id',
+        'iab_tech_lab_domain_id',
+        'custom',
+      ];
+
+      // ============================================================================
+      // Tab Management
+      // ============================================================================
+
+      function switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`${tabName}-tab`).classList.add('active');
+
+        // Update tab content
+        document.querySelectorAll('.tab-content').forEach(content => (content.style.display = 'none'));
+        document.getElementById(`${tabName}-tab-content`).style.display = 'block';
+      }
+
+      function toggleJsonPreview() {
+        const panel = document.getElementById('json-preview-panel');
+        const toggle = document.getElementById('json-preview-toggle');
+
+        if (panel.style.display === 'none') {
+          panel.style.display = 'block';
+          toggle.textContent = '📄 Hide JSON ▲';
+          updateJsonPreview();
+        } else {
+          panel.style.display = 'none';
+          toggle.textContent = '📄 View JSON ▼';
+        }
+      }
+
+      // ============================================================================
+      // State Management & Rendering
+      // ============================================================================
+
+      function updateJsonPreview() {
+        const adagents = {
+          $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
+          authorized_agents: state.agents.map(agent => {
+            const agentObj = {
+              url: agent.url,
+              authorized_for: agent.authorized_for,
+            };
+            if (agent.property_ids && agent.property_ids.length > 0) {
+              agentObj.property_ids = agent.property_ids;
+            }
+            return agentObj;
+          }),
+          last_updated: new Date().toISOString(),
+        };
+
+        if (state.properties.length > 0) {
+          adagents.properties = state.properties;
+        }
+
+        document.getElementById('json-output').value = JSON.stringify(adagents, null, 2);
+      }
+
+      function updateCounts() {
+        document.getElementById('properties-count').textContent = state.properties.length;
+        document.getElementById('tags-count').textContent = state.tags.length;
+        document.getElementById('agents-count').textContent = state.agents.length;
+      }
+
+      function renderProperties() {
+        const container = document.getElementById('properties-cards-list');
+
+        if (state.properties.length === 0) {
+          container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📦</div>
+                        <h4>No Properties Added</h4>
+                        <p>Properties are optional. Add them if you want to control which agents can sell specific inventory.</p>
+                        <p style="font-size: 13px; color: #a0aec0;">
+                            <strong>Skip this step</strong> to allow all agents to sell all your inventory.<br>
+                            <strong>Add properties</strong> to restrict specific agents to specific inventory.
+                        </p>
+                    </div>
+                `;
+          return;
+        }
+
+        container.innerHTML = state.properties
+          .map((prop, index) => {
+            const icon = getPropertyIcon(prop.property_type);
+            const identifierCount = prop.identifiers.length;
+            const assignedAgents = state.agents.filter(
+              a => a.property_ids && a.property_ids.includes(prop.property_id)
+            ).length;
+
+            let assignmentTag = '';
+            if (assignedAgents === 0) {
+              assignmentTag = `<span class="dashboard-card-tag warning">⚠️ All agents can sell</span>`;
+            } else {
+              assignmentTag = `<span class="dashboard-card-tag assigned">🔗 ${assignedAgents} agent${
+                assignedAgents > 1 ? 's' : ''
+              } assigned</span>`;
+            }
+
+            return `
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-content">
+                            <div class="dashboard-card-title">
+                                ${icon} ${prop.property_id}
+                            </div>
+                            <div class="dashboard-card-meta">
+                                ${formatPropertyType(prop.property_type)} • ${prop.name}
+                            </div>
+                            <div class="dashboard-card-meta" style="font-size: 13px; color: #718096;">
+                                ${identifierCount} identifier${identifierCount > 1 ? 's' : ''}
+                                ${prop.tags && prop.tags.length > 0 ? ` • Tags: ${prop.tags.join(', ')}` : ''}
+                            </div>
+                            <div class="dashboard-card-tags">
+                                ${assignmentTag}
+                            </div>
+                        </div>
+                        <div class="dashboard-card-actions">
+                            <button class="btn" onclick="editProperty(${index})">✏️ Edit</button>
+                            <button class="btn" onclick="removeProperty(${index})" style="background: #dc3545;">🗑️ Remove</button>
+                        </div>
+                    </div>
+                `;
+          })
+          .join('');
+      }
+
+      function renderAgents() {
+        const container = document.getElementById('agents-cards-list');
+
+        if (state.agents.length === 0) {
+          container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👥</div>
+                        <h4>No Agents Added</h4>
+                        <p>Add at least one authorized sales agent to generate a valid adagents.json file.</p>
+                    </div>
+                `;
+          return;
+        }
+
+        container.innerHTML = state.agents
+          .map((agent, index) => {
+            let propertyInfo = '';
+            if (!agent.property_ids || agent.property_ids.length === 0) {
+              propertyInfo = '<span class="dashboard-card-tag">Can sell: All properties</span>';
+            } else {
+              // Check if using tags (prefixed with 'tag:')
+              const tagIds = agent.property_ids.filter(id => id.startsWith('tag:'));
+              if (tagIds.length > 0) {
+                const tagNames = tagIds.map(id => id.replace('tag:', '')).join(', ');
+                propertyInfo = `<span class="dashboard-card-tag assigned">Can sell tags: ${tagNames}</span>`;
+              } else {
+                // Regular property IDs
+                const propNames = agent.property_ids
+                  .map(id => {
+                    const prop = state.properties.find(p => p.property_id === id);
+                    return prop ? prop.property_id : `${id} (missing)`;
+                  })
+                  .join(', ');
+                propertyInfo = `<span class="dashboard-card-tag assigned">Can sell: ${propNames}</span>`;
+              }
+            }
+
+            return `
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-content">
+                            <div class="dashboard-card-title">
+                                🤝 ${agent.url}
+                            </div>
+                            <div class="dashboard-card-meta">
+                                ${agent.authorized_for}
+                            </div>
+                            <div class="dashboard-card-tags">
+                                ${propertyInfo}
+                            </div>
+                        </div>
+                        <div class="dashboard-card-actions">
+                            <button class="btn" onclick="editAgent(${index})">✏️ Edit</button>
+                            <button class="btn" onclick="removeAgent(${index})" style="background: #dc3545;">🗑️ Remove</button>
+                        </div>
+                    </div>
+                `;
+          })
+          .join('');
+      }
+
+      function renderTags() {
+        const container = document.getElementById('tags-list');
+
+        if (state.tags.length === 0) {
+          container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏷️</div>
+                        <h4>No Tags Created</h4>
+                        <p>Create tags to organize your properties. Tags make it easy to group and manage related properties.</p>
+                    </div>
+                `;
+          return;
+        }
+
+        container.innerHTML = state.tags
+          .map((tag, index) => {
+            // Count how many properties use this tag
+            const propertyCount = state.properties.filter(p => p.tags && p.tags.includes(tag)).length;
+
+            return `
+                    <div class="dashboard-card" style="display: inline-block; min-width: 200px; margin-right: 12px; margin-bottom: 12px;">
+                        <div class="dashboard-card-content">
+                            <div class="dashboard-card-title">
+                                🏷️ ${tag}
+                            </div>
+                            <div class="dashboard-card-meta" style="font-size: 13px; color: #718096;">
+                                Used by ${propertyCount} ${propertyCount === 1 ? 'property' : 'properties'}
+                            </div>
+                        </div>
+                        <div class="dashboard-card-actions">
+                            <button class="btn" onclick="removeTag(${index})" style="background: #dc3545; padding: 6px 12px; font-size: 13px;">🗑️ Delete</button>
+                        </div>
+                    </div>
+                `;
+          })
+          .join('');
+
+        // Update bulk tag select dropdown
+        const bulkSelect = document.getElementById('bulk-tag-select');
+        if (bulkSelect) {
+          bulkSelect.innerHTML =
+            '<option value="">Select a tag...</option>' +
+            state.tags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
+        }
+      }
+
+      function render() {
+        renderProperties();
+        renderTags();
+        renderAgents();
+        updateCounts();
+        updateJsonPreview();
+      }
+
+      // ============================================================================
+      // Helper Functions
+      // ============================================================================
+
+      function getPropertyIcon(type) {
+        const icons = {
+          website: '🌐',
+          mobile_app: '📱',
+          ctv_app: '📺',
+          dooh: '🏙️',
+          podcast: '🎙️',
+          radio: '📻',
+          streaming_audio: '🎵',
+        };
+        return icons[type] || '📦';
+      }
+
+      function formatPropertyType(type) {
+        return type
+          .split('_')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+      }
+
+      function generateSemanticId(name, type) {
+        if (!name) return `${type}_${Date.now()}`;
+
+        const sanitized = name
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '')
+          .replace(/\s+/g, '_')
+          .substring(0, 30);
+
+        return sanitized || `${type}_${Date.now()}`;
+      }
+
+      // ============================================================================
+      // Property CRUD Operations with Modal
+      // ============================================================================
+
+      function addProperty(type) {
+        document.getElementById('property-edit-index').value = '-1'; // -1 means new
+        document.getElementById('property-modal-title').textContent = `Add ${formatPropertyType(type)}`;
+        document.getElementById('property-type').value = type;
+        document.getElementById('property-name').value = '';
+        document.getElementById('property-id').value = '';
+
+        updatePropertyForm();
+        updatePropertyTagCheckboxes([]);
+        document.getElementById('property-modal').style.display = 'flex';
+      }
+
+      function editProperty(index) {
+        const property = state.properties[index];
+
+        document.getElementById('property-edit-index').value = index;
+        document.getElementById('property-modal-title').textContent = 'Edit Property';
+        document.getElementById('property-type').value = property.property_type;
+        document.getElementById('property-name').value = property.name;
+        document.getElementById('property-id').value = property.property_id;
+
+        updatePropertyForm(property.identifiers);
+        updatePropertyTagCheckboxes(property.tags || []);
+        document.getElementById('property-modal').style.display = 'flex';
+      }
+
+      function updatePropertyTagCheckboxes(selectedTags) {
+        const container = document.getElementById('property-tags-checkboxes');
+
+        if (state.tags.length === 0) {
+          container.innerHTML =
+            '<p style="color: #999; font-size: 13px; padding: 8px;">No tags available. Create a tag below.</p>';
+          return;
+        }
+
+        container.innerHTML = state.tags
+          .map(tag => {
+            const checked = selectedTags.includes(tag) ? 'checked' : '';
+            return `
+                    <label style="display: block; padding: 4px 0; cursor: pointer;">
+                        <input type="checkbox" value="${tag}" ${checked} style="margin-right: 6px;">
+                        ${tag}
+                    </label>
+                `;
+          })
+          .join('');
+      }
+
+      function closePropertyModal() {
+        document.getElementById('property-modal').style.display = 'none';
+      }
+
+      function updatePropertyForm(existingIdentifiers = []) {
+        const type = document.getElementById('property-type').value;
+        const formContainer = document.getElementById('property-type-form');
+        const name = document.getElementById('property-name').value;
+
+        // Auto-generate ID when name changes
+        if (name && document.getElementById('property-edit-index').value === '-1') {
+          document.getElementById('property-id').value = generateSemanticId(name, type);
+        }
+
+        // Build type-specific form
+        if (type === 'website') {
+          const existingDomain = existingIdentifiers.find(i => i.type === 'domain');
+          const includeSubdomains = existingDomain?.include_subdomains !== false; // Default to true
+
+          formContainer.innerHTML = `
+                    <div class="form-group">
+                        <label>Primary Domain</label>
+                        <input type="text" id="identifier-domain" placeholder="e.g., cnn.com" value="${
+                          existingDomain?.value || ''
+                        }">
+                    </div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="include-subdomains" ${
+                              includeSubdomains ? 'checked' : ''
+                            } style="margin-right: 8px;">
+                            Include all subdomains
+                        </label>
+                        <p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">
+                            ℹ️ When checked, applies to all subdomains (e.g., www.cnn.com, sports.cnn.com).<br>
+                            When unchecked, only applies to the exact domain specified.
+                        </p>
+                    </div>
+                `;
+        } else if (type === 'ctv_app') {
+          const platforms = [
+            { key: 'roku_channel_id', label: 'Roku', placeholder: 'Channel ID' },
+            { key: 'fire_tv_app_id', label: 'Fire TV', placeholder: 'ASIN' },
+            { key: 'apple_tv_bundle', label: 'Apple TV', placeholder: 'Bundle ID (com.example.app)' },
+            { key: 'samsung_app_id', label: 'Samsung TV', placeholder: 'App ID' },
+            { key: 'lg_channel_id', label: 'LG', placeholder: 'Channel ID' },
+            { key: 'vizio_app_id', label: 'Vizio', placeholder: 'App ID' },
+          ];
+
+          formContainer.innerHTML = `
+                    <div class="form-group">
+                        <label>Available on Platforms</label>
+                        <p style="font-size: 12px; color: #666; margin: 4px 0 12px 0;">Select and enter IDs for each platform where your app is available.</p>
+                        <div class="identifier-list">
+                            ${platforms
+                              .map(p => {
+                                const existing = existingIdentifiers.find(i => i.type === p.key);
+                                return `
+                                    <div class="identifier-item">
+                                        <input type="checkbox" id="platform-${p.key}" ${
+                                          existing ? 'checked' : ''
+                                        } onchange="togglePlatformInput('${p.key}')">
+                                        <label for="platform-${p.key}">${p.label}</label>
+                                        <input type="text" id="identifier-${p.key}" placeholder="${
+                                          p.placeholder
+                                        }" value="${existing?.value || ''}" ${!existing ? 'disabled' : ''}>
+                                    </div>
+                                `;
+                              })
+                              .join('')}
+                        </div>
+                    </div>
+                `;
+        } else if (type === 'mobile_app') {
+          const platforms = [
+            { key: 'ios_bundle', label: 'iOS', placeholder: 'Bundle ID (com.example.app)' },
+            { key: 'android_package', label: 'Android', placeholder: 'Package name (com.example.app)' },
+            { key: 'apple_app_store_id', label: 'Apple App Store', placeholder: 'App Store ID' },
+            { key: 'google_play_id', label: 'Google Play', placeholder: 'Play Store ID' },
+          ];
+
+          formContainer.innerHTML = `
+                    <div class="form-group">
+                        <label>Available on Platforms</label>
+                        <div class="identifier-list">
+                            ${platforms
+                              .map(p => {
+                                const existing = existingIdentifiers.find(i => i.type === p.key);
+                                return `
+                                    <div class="identifier-item">
+                                        <input type="checkbox" id="platform-${p.key}" ${
+                                          existing ? 'checked' : ''
+                                        } onchange="togglePlatformInput('${p.key}')">
+                                        <label for="platform-${p.key}">${p.label}</label>
+                                        <input type="text" id="identifier-${p.key}" placeholder="${
+                                          p.placeholder
+                                        }" value="${existing?.value || ''}" ${!existing ? 'disabled' : ''}>
+                                    </div>
+                                `;
+                              })
+                              .join('')}
+                        </div>
+                    </div>
+                `;
+        } else if (type === 'podcast') {
+          const platforms = [
+            { key: 'podcast_rss_feed', label: 'RSS Feed', placeholder: 'https://...' },
+            { key: 'spotify_show_id', label: 'Spotify', placeholder: 'Show ID' },
+            { key: 'apple_podcast_id', label: 'Apple Podcasts', placeholder: 'Podcast ID' },
+          ];
+
+          formContainer.innerHTML = `
+                    <div class="form-group">
+                        <label>Podcast Identifiers</label>
+                        <div class="identifier-list">
+                            ${platforms
+                              .map(p => {
+                                const existing = existingIdentifiers.find(i => i.type === p.key);
+                                return `
+                                    <div class="identifier-item">
+                                        <input type="checkbox" id="platform-${p.key}" ${
+                                          existing ? 'checked' : ''
+                                        } onchange="togglePlatformInput('${p.key}')">
+                                        <label for="platform-${p.key}">${p.label}</label>
+                                        <input type="text" id="identifier-${p.key}" placeholder="${
+                                          p.placeholder
+                                        }" value="${existing?.value || ''}" ${!existing ? 'disabled' : ''}>
+                                    </div>
+                                `;
+                              })
+                              .join('')}
+                        </div>
+                    </div>
+                `;
+        } else {
+          // Generic identifier form for other types
+          formContainer.innerHTML = `
+                    <div class="form-group">
+                        <label>Identifier Value</label>
+                        <input type="text" id="identifier-custom" placeholder="Enter identifier" value="${
+                          existingIdentifiers[0]?.value || ''
+                        }">
+                    </div>
+                `;
+        }
+      }
+
+      function togglePlatformInput(key) {
+        const checkbox = document.getElementById(`platform-${key}`);
+        const input = document.getElementById(`identifier-${key}`);
+        input.disabled = !checkbox.checked;
+        if (!checkbox.checked) {
+          input.value = '';
+        }
+      }
+
+      function saveProperty() {
+        const index = parseInt(document.getElementById('property-edit-index').value);
+        const type = document.getElementById('property-type').value;
+        const name = document.getElementById('property-name').value.trim();
+        const propertyId = document.getElementById('property-id').value.trim();
+
+        // Collect selected tags from checkboxes
+        const selectedTags = [];
+        document.querySelectorAll('#property-tags-checkboxes input[type="checkbox"]:checked').forEach(checkbox => {
+          selectedTags.push(checkbox.value);
+        });
+
+        if (!name) {
+          alert('Property name is required');
+          return;
+        }
+
+        if (!propertyId) {
+          alert('Property ID is required');
+          return;
+        }
+
+        // Collect identifiers based on type
+        const identifiers = [];
+
+        if (type === 'website') {
+          const domain = document.getElementById('identifier-domain').value.trim();
+          if (domain) {
+            const includeSubdomains = document.getElementById('include-subdomains')?.checked;
+            const identifier = { type: 'domain', value: domain };
+
+            // Only add include_subdomains if explicitly set to false (default is true per spec)
+            if (includeSubdomains === false) {
+              identifier.include_subdomains = false;
+            }
+
+            identifiers.push(identifier);
+          }
+        } else if (type === 'ctv_app' || type === 'mobile_app' || type === 'podcast') {
+          // Collect all checked platforms
+          document.querySelectorAll('#property-type-form input[type="checkbox"]:checked').forEach(checkbox => {
+            const key = checkbox.id.replace('platform-', '');
+            const input = document.getElementById(`identifier-${key}`);
+            if (input && input.value.trim()) {
+              identifiers.push({ type: key, value: input.value.trim() });
+            }
+          });
+        } else {
+          // Generic type
+          const custom = document.getElementById('identifier-custom').value.trim();
+          if (custom) {
+            identifiers.push({ type: 'custom', value: custom });
+          }
+        }
+
+        if (identifiers.length === 0) {
+          alert('At least one identifier is required');
+          return;
+        }
+
+        const property = {
+          property_id: propertyId,
+          property_type: type,
+          name: name,
+          identifiers: identifiers,
+          tags: selectedTags,
+        };
+
+        if (index === -1) {
+          // New property
+          state.properties.push(property);
+        } else {
+          // Update existing
+          state.properties[index] = property;
+        }
+
+        closePropertyModal();
+        render();
+      }
+
+      function removeProperty(index) {
+        if (confirm(`Remove property "${state.properties[index].property_id}"?`)) {
+          state.properties.splice(index, 1);
+          render();
+        }
+      }
+
+      function showMorePropertyTypes() {
+        const types = ['dooh', 'podcast', 'radio', 'streaming_audio'];
+        const choice = prompt(`Enter property type:\n${types.join(', ')}`);
+        if (choice && types.includes(choice)) {
+          addProperty(choice);
+        }
+      }
+
+      // ============================================================================
+      // Tag Management Functions
+      // ============================================================================
+
+      function createTag() {
+        const tagName = document.getElementById('new-tag-input').value.trim();
+        if (!tagName) {
+          alert('Please enter a tag name');
+          return;
+        }
+
+        if (state.tags.includes(tagName)) {
+          alert('This tag already exists');
+          return;
+        }
+
+        state.tags.push(tagName);
+        state.tags.sort(); // Keep tags alphabetically sorted
+        document.getElementById('new-tag-input').value = '';
+        render();
+      }
+
+      function quickCreateTag() {
+        const tagName = document.getElementById('quick-add-tag').value.trim();
+        if (!tagName) {
+          return;
+        }
+
+        if (!state.tags.includes(tagName)) {
+          state.tags.push(tagName);
+          state.tags.sort();
+        }
+
+        document.getElementById('quick-add-tag').value = '';
+
+        // Update the property tag checkboxes
+        const index = parseInt(document.getElementById('property-edit-index').value);
+        const currentTags = [];
+        document.querySelectorAll('#property-tags-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+          currentTags.push(cb.value);
+        });
+        currentTags.push(tagName);
+
+        updatePropertyTagCheckboxes(currentTags);
+      }
+
+      function removeTag(index) {
+        const tag = state.tags[index];
+        if (!confirm(`Delete tag "${tag}"? This will remove it from all properties.`)) {
+          return;
+        }
+
+        // Remove tag from all properties
+        state.properties.forEach(prop => {
+          if (prop.tags) {
+            prop.tags = prop.tags.filter(t => t !== tag);
+          }
+        });
+
+        // Remove from tags list
+        state.tags.splice(index, 1);
+        render();
+      }
+
+      // ============================================================================
+      // Bulk Tag Operations
+      // ============================================================================
+
+      function enableBulkTagMode() {
+        if (state.properties.length === 0) {
+          alert('No properties to tag. Add properties first.');
+          return;
+        }
+
+        state.bulkSelectMode = true;
+        state.selectedPropertyIds = [];
+
+        // Switch to properties tab
+        switchTab('properties');
+
+        // Show bulk operations panel
+        document.getElementById('bulk-tag-operations').style.display = 'block';
+
+        // Update properties to show checkboxes
+        renderPropertiesWithCheckboxes();
+      }
+
+      function cancelBulkMode() {
+        state.bulkSelectMode = false;
+        state.selectedPropertyIds = [];
+        document.getElementById('bulk-tag-operations').style.display = 'none';
+        render();
+      }
+
+      function togglePropertySelection(propertyId) {
+        const index = state.selectedPropertyIds.indexOf(propertyId);
+        if (index > -1) {
+          state.selectedPropertyIds.splice(index, 1);
+        } else {
+          state.selectedPropertyIds.push(propertyId);
+        }
+        document.getElementById('bulk-selected-count').textContent = state.selectedPropertyIds.length;
+      }
+
+      function bulkAddTag() {
+        const tag = document.getElementById('bulk-tag-select').value;
+        if (!tag) {
+          alert('Please select a tag');
+          return;
+        }
+
+        if (state.selectedPropertyIds.length === 0) {
+          alert('Please select properties first');
+          return;
+        }
+
+        // Add tag to selected properties
+        state.selectedPropertyIds.forEach(propId => {
+          const property = state.properties.find(p => p.property_id === propId);
+          if (property) {
+            if (!property.tags) {
+              property.tags = [];
+            }
+            if (!property.tags.includes(tag)) {
+              property.tags.push(tag);
+            }
+          }
+        });
+
+        cancelBulkMode();
+      }
+
+      function bulkRemoveTag() {
+        const tag = document.getElementById('bulk-tag-select').value;
+        if (!tag) {
+          alert('Please select a tag');
+          return;
+        }
+
+        if (state.selectedPropertyIds.length === 0) {
+          alert('Please select properties first');
+          return;
+        }
+
+        // Remove tag from selected properties
+        state.selectedPropertyIds.forEach(propId => {
+          const property = state.properties.find(p => p.property_id === propId);
+          if (property && property.tags) {
+            property.tags = property.tags.filter(t => t !== tag);
+          }
+        });
+
+        cancelBulkMode();
+      }
+
+      function renderPropertiesWithCheckboxes() {
+        const container = document.getElementById('properties-cards-list');
+
+        if (state.properties.length === 0) {
+          container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📦</div>
+                        <h4>No Properties Added</h4>
+                        <p>Add properties first to use bulk tag operations.</p>
+                    </div>
+                `;
+          return;
+        }
+
+        container.innerHTML = state.properties
+          .map(prop => {
+            const icon = getPropertyIcon(prop.property_type);
+            const identifierCount = prop.identifiers.length;
+            const isSelected = state.selectedPropertyIds.includes(prop.property_id);
+
+            return `
+                    <div class="dashboard-card" style="border: ${
+                      isSelected ? '2px solid #3b82f6' : '2px solid #e2e8f0'
+                    };">
+                        <div class="dashboard-card-content">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" ${isSelected ? 'checked' : ''}
+                                       onchange="togglePropertySelection('${prop.property_id}')"
+                                       style="margin-right: 12px; width: 18px; height: 18px;">
+                                <div style="flex: 1;">
+                                    <div class="dashboard-card-title">
+                                        ${icon} ${prop.property_id}
+                                    </div>
+                                    <div class="dashboard-card-meta">
+                                        ${formatPropertyType(prop.property_type)} • ${prop.name}
+                                    </div>
+                                    <div class="dashboard-card-meta" style="font-size: 13px; color: #718096;">
+                                        ${identifierCount} identifier${identifierCount > 1 ? 's' : ''}
+                                        ${prop.tags && prop.tags.length > 0 ? ` • Tags: ${prop.tags.join(', ')}` : ''}
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                `;
+          })
+          .join('');
+      }
+
+      // ============================================================================
+      // Agent CRUD Operations with Modal
+      // ============================================================================
+
+      function addAgent() {
+        document.getElementById('agent-edit-index').value = '-1';
+        document.getElementById('agent-modal-title').textContent = 'Add Agent';
+        document.getElementById('agent-url').value = '';
+        document.getElementById('agent-authorized-for').value = '';
+
+        // Default to "all" access
+        document.querySelector('input[name="agent-access-type"][value="all"]').checked = true;
+        updateAgentAccessOptions();
+        updateAgentPropertyCheckboxes([]);
+        updateAgentTagCheckboxes([]);
+
+        document.getElementById('agent-modal').style.display = 'flex';
+      }
+
+      function editAgent(index) {
+        const agent = state.agents[index];
+
+        document.getElementById('agent-edit-index').value = index;
+        document.getElementById('agent-modal-title').textContent = 'Edit Agent';
+        document.getElementById('agent-url').value = agent.url;
+        document.getElementById('agent-authorized-for').value = agent.authorized_for;
+
+        // Determine access type based on what's set
+        let accessType = 'all';
+        let selectedItems = [];
+
+        if (agent.property_ids && agent.property_ids.length > 0) {
+          // Check if any property_ids are tags (prefixed with 'tag:')
+          const tagIds = agent.property_ids.filter(id => id.startsWith('tag:'));
+          if (tagIds.length > 0) {
+            accessType = 'tags';
+            selectedItems = tagIds.map(id => id.replace('tag:', ''));
+          } else {
+            accessType = 'properties';
+            selectedItems = agent.property_ids;
+          }
+        }
+
+        document.querySelector(`input[name="agent-access-type"][value="${accessType}"]`).checked = true;
+        updateAgentAccessOptions();
+        updateAgentPropertyCheckboxes(accessType === 'properties' ? selectedItems : []);
+        updateAgentTagCheckboxes(accessType === 'tags' ? selectedItems : []);
+
+        document.getElementById('agent-modal').style.display = 'flex';
+      }
+
+      function closeAgentModal() {
+        document.getElementById('agent-modal').style.display = 'none';
+      }
+
+      function updateAgentAccessOptions() {
+        const selectedType = document.querySelector('input[name="agent-access-type"]:checked').value;
+
+        document.getElementById('agent-property-selection').style.display =
+          selectedType === 'properties' ? 'block' : 'none';
+        document.getElementById('agent-tag-selection').style.display = selectedType === 'tags' ? 'block' : 'none';
+      }
+
+      function updateAgentPropertyCheckboxes(selectedIds) {
+        const container = document.getElementById('agent-property-checkboxes');
+
+        if (state.properties.length === 0) {
+          container.innerHTML =
+            '<p style="color: #666; font-size: 13px; margin: 0;">No properties available. Add properties first.</p>';
+          return;
+        }
+
+        container.innerHTML = state.properties
+          .map(
+            prop => `
+                <label style="display: block; padding: 4px 0; cursor: pointer;">
+                    <input type="checkbox" value="${prop.property_id}" ${
+                      selectedIds.includes(prop.property_id) ? 'checked' : ''
+                    } style="margin-right: 6px;">
+                    ${getPropertyIcon(prop.property_type)} ${prop.property_id} - ${prop.name}
+                </label>
+            `
+          )
+          .join('');
+      }
+
+      function updateAgentTagCheckboxes(selectedTags) {
+        const container = document.getElementById('agent-tag-checkboxes');
+
+        if (state.tags.length === 0) {
+          container.innerHTML =
+            '<p style="color: #666; font-size: 13px; margin: 0;">No tags available. Create tags first.</p>';
+          return;
+        }
+
+        container.innerHTML = state.tags
+          .map(
+            tag => `
+                <label style="display: block; padding: 4px 0; cursor: pointer;">
+                    <input type="checkbox" value="${tag}" ${
+                      selectedTags.includes(tag) ? 'checked' : ''
+                    } style="margin-right: 6px;">
+                    🏷️ ${tag}
+                </label>
+            `
+          )
+          .join('');
+      }
+
+      function saveAgent() {
+        const index = parseInt(document.getElementById('agent-edit-index').value);
+        const url = document.getElementById('agent-url').value.trim();
+        const authorizedFor = document.getElementById('agent-authorized-for').value.trim();
+
+        if (!url) {
+          alert('Agent URL is required');
+          return;
+        }
+
+        if (!authorizedFor) {
+          alert('Authorization scope is required');
+          return;
+        }
+
+        const accessType = document.querySelector('input[name="agent-access-type"]:checked').value;
+        const propertyIds = [];
+
+        if (accessType === 'properties') {
+          // Collect selected property IDs
+          document.querySelectorAll('#agent-property-checkboxes input[type="checkbox"]:checked').forEach(checkbox => {
+            propertyIds.push(checkbox.value);
+          });
+        } else if (accessType === 'tags') {
+          // Collect selected tags and prefix with 'tag:'
+          document.querySelectorAll('#agent-tag-checkboxes input[type="checkbox"]:checked').forEach(checkbox => {
+            propertyIds.push('tag:' + checkbox.value);
+          });
+        }
+        // If accessType === 'all', propertyIds stays empty (which means all properties)
+
+        const agent = {
+          url: url,
+          authorized_for: authorizedFor,
+          property_ids: propertyIds,
+        };
+
+        // Remove property_ids if empty (cleaner JSON)
+        if (propertyIds.length === 0) {
+          delete agent.property_ids;
+        }
+
+        if (index === -1) {
+          state.agents.push(agent);
+        } else {
+          state.agents[index] = agent;
+        }
+
+        closeAgentModal();
+        render();
+      }
+
+      function removeAgent(index) {
+        if (confirm(`Remove agent "${state.agents[index].url}"?`)) {
+          state.agents.splice(index, 1);
+          render();
+        }
+      }
+
+      // ============================================================================
+      // JSON Import/Export
+      // ============================================================================
+
+      function importFile() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = e => {
+          const file = e.target.files[0];
+          const reader = new FileReader();
+          reader.onload = event => {
+            try {
+              const data = JSON.parse(event.target.result);
+              state.agents = data.authorized_agents || [];
+              state.properties = data.properties || [];
+              render();
+              alert('File imported successfully!');
+            } catch (error) {
+              alert(`Import failed: ${error.message}`);
+            }
+          };
+          reader.readAsText(file);
+        };
+        input.click();
+      }
+
+      function exportFile() {
+        const data = {
+          $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
+          authorized_agents: state.agents,
+          last_updated: new Date().toISOString(),
+        };
+
+        // Only include properties if there are any
+        if (state.properties.length > 0) {
+          data.properties = state.properties;
+        }
+
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `adagents-${state.domain}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function copyJson() {
+        updateJsonPreview();
+        const textarea = document.getElementById('json-output');
+        textarea.select();
+        document.execCommand('copy');
+        alert('JSON copied to clipboard!');
+      }
+
+      function downloadJson() {
+        exportFile();
+      }
+
+      // ============================================================================
+      // Initialize Dashboard (Update startCreating function)
+      // ============================================================================
+
+      // ============================================================================
+      // Unified Entry Point
+      // ============================================================================
+
+      async function startManaging() {
+        const domainInput = document.getElementById('domain-input').value.trim();
+        if (!domainInput) {
+          alert('Please enter a domain name');
+          return;
+        }
+
+        const normalizedDomain = domainInput.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        state.domain = normalizedDomain;
+
+        // Disable input while loading
+        const startBtn = document.getElementById('start-btn');
+        startBtn.disabled = true;
+        startBtn.textContent = 'Loading...';
+
+        // Show dashboard immediately
+        document.getElementById('user-domain-display').textContent = normalizedDomain;
+        document.getElementById('creator-form').style.display = 'block';
+        document.getElementById('file-status').textContent = 'Checking for existing file...';
+
+        // Try to fetch and validate existing file
+        try {
+          const response = await fetch('/api/adagents/validate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ domain: normalizedDomain }),
+          });
+          const result = await response.json();
+
+          if (result.success && result.data.found && result.data.validation.raw_data) {
+            // File exists and is valid
+            state.fileFound = true;
+            const lastUpdated = result.data.validation.raw_data.last_updated
+              ? new Date(result.data.validation.raw_data.last_updated).toLocaleDateString()
+              : 'Unknown';
+            document.getElementById('file-status').innerHTML = `✅ Found • Last updated: ${lastUpdated}`;
+
+            // Show validation summary
+            showValidationSummary(result.data.validation);
+
+            // Parse existing file into dashboard
+            if (result.data.validation.raw_data.authorized_agents) {
+              state.agents = result.data.validation.raw_data.authorized_agents;
+            }
+            if (result.data.validation.raw_data.properties) {
+              state.properties = result.data.validation.raw_data.properties;
+
+              // Extract all unique tags from properties
+              const allTags = new Set();
+              state.properties.forEach(prop => {
+                if (prop.tags && Array.isArray(prop.tags)) {
+                  prop.tags.forEach(tag => allTags.add(tag));
+                }
+              });
+              state.tags = Array.from(allTags).sort();
+            }
+          } else {
+            // File doesn't exist or is invalid
+            state.fileFound = false;
+            document.getElementById('file-status').textContent = 'No file found • Creating new';
+
+            // Only show validation errors if file exists but has errors (not 404)
+            if (result.data && result.data.validation && result.data.validation.status_code !== 404) {
+              showValidationSummary(result.data.validation);
+            } else {
+              // Hide validation summary for 404s
+              document.getElementById('validation-results').style.display = 'none';
+            }
+          }
+        } catch (error) {
+          console.log('Could not fetch existing file:', error);
+          state.fileFound = false;
+          document.getElementById('file-status').textContent = 'No file found • Creating new';
+          document.getElementById('validation-results').style.display = 'none';
+        }
+
+        // Render dashboard
+        render();
+
+        // Re-enable button
+        startBtn.disabled = false;
+        startBtn.textContent = 'Get Started →';
+      }
+
+      function showValidationSummary(validationData) {
+        const resultsDiv = document.getElementById('validation-results');
+
+        if (!validationData) {
+          resultsDiv.style.display = 'none';
+          return;
+        }
+
+        const { valid, errors = [], warnings = [] } = validationData;
+
+        if (errors.length === 0 && warnings.length === 0) {
+          resultsDiv.style.display = 'none';
+          return;
+        }
+
+        let html = '<div style="background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;">';
+
+        if (valid) {
+          html += '<h4 style="color: #16a34a; margin: 0 0 12px 0;">✅ Valid File</h4>';
+        } else {
+          html += '<h4 style="color: #dc2626; margin: 0 0 12px 0;">❌ Invalid File</h4>';
+        }
+
+        if (errors.length > 0) {
+          html +=
+            '<div style="margin-bottom: 12px;"><strong>Errors:</strong><ul style="margin: 4px 0; padding-left: 20px;">';
+          errors.forEach(err => {
+            html += `<li style="color: #dc2626;">${err.message}</li>`;
+          });
+          html += '</ul></div>';
+        }
+
+        if (warnings.length > 0) {
+          html += '<div><strong>Warnings:</strong><ul style="margin: 4px 0; padding-left: 20px;">';
+          warnings.forEach(warn => {
+            html += `<li style="color: #f59e0b;">${warn.message}</li>`;
+          });
+          html += '</ul></div>';
+        }
+
+        html += '</div>';
+        resultsDiv.innerHTML = html;
+        resultsDiv.style.display = 'block';
+      }
+
+      function addPropertyEntry() {
+        const propertiesList = document.getElementById('properties-list');
+        const propertyId = `property_${Date.now()}`;
+
+        const newProperty = document.createElement('div');
+        newProperty.className = 'property-entry';
+        newProperty.dataset.propertyId = propertyId;
+
+        newProperty.innerHTML = `
+                <div class="property-entry-header">
+                    <input type="text" placeholder="Property ID (e.g., website_main)" class="property-id" value="${propertyId}">
+                    <select class="property-type">
+                        ${PROPERTY_TYPES.map(type => `<option value="${type}">${type}</option>`).join('')}
+                    </select>
+                    <input type="text" placeholder="Property Name" class="property-name">
+                    <input type="text" placeholder="Tags (comma-separated)" class="property-tags">
+                    <button class="btn" onclick="removePropertyEntry(this)" style="background: #dc3545;">✖️</button>
+                </div>
+                <div class="property-identifiers">
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block; font-size: 14px;">Identifiers:</label>
+                    <div class="identifiers-list"></div>
+                    <button class="btn" onclick="addIdentifierEntry(this)" style="margin-top: 8px; padding: 6px 12px; font-size: 13px;">➕ Add Identifier</button>
+                </div>
+            `;
+
+        propertiesList.appendChild(newProperty);
+
+        // Add one identifier by default
+        addIdentifierEntry(newProperty.querySelector('.property-identifiers button'));
+      }
+
+      function removePropertyEntry(button) {
+        button.closest('.property-entry').remove();
+      }
+
+      function addIdentifierEntry(button) {
+        const identifiersList = button.parentElement.querySelector('.identifiers-list');
+
+        const newIdentifier = document.createElement('div');
+        newIdentifier.className = 'identifier-entry';
+
+        newIdentifier.innerHTML = `
+                <select class="identifier-type">
+                    ${IDENTIFIER_TYPES.map(type => `<option value="${type}">${type}</option>`).join('')}
+                </select>
+                <input type="text" placeholder="Identifier value" class="identifier-value">
+                <button class="btn" onclick="removeIdentifierEntry(this)" style="background: #dc3545; padding: 6px 10px;">✖️</button>
+            `;
+
+        identifiersList.appendChild(newIdentifier);
+      }
+
+      function removeIdentifierEntry(button) {
+        const identifiersList = button.closest('.identifiers-list');
+        if (identifiersList.children.length > 1) {
+          button.parentElement.remove();
+        } else {
+          alert('At least one identifier is required per property');
+        }
+      }
+
+      function loadExampleProperties() {
+        const propertiesList = document.getElementById('properties-list');
+        propertiesList.innerHTML = '';
+
+        const examples = [
+          {
+            property_id: 'website_main',
+            property_type: 'website',
+            name: 'Main Website',
+            identifiers: [{ type: 'domain', value: 'example.com' }],
+            tags: ['web', 'premium'],
+          },
+          {
+            property_id: 'ctv_app',
+            property_type: 'ctv_app',
+            name: 'Connected TV App',
+            identifiers: [
+              { type: 'roku_channel_id', value: '12345' },
+              { type: 'fire_tv_app_id', value: 'B00ABC123' },
+            ],
+            tags: ['ctv', 'streaming'],
+          },
+        ];
+
+        examples.forEach(example => {
+          const newProperty = document.createElement('div');
+          newProperty.className = 'property-entry';
+          newProperty.dataset.propertyId = example.property_id;
+
+          newProperty.innerHTML = `
+                    <div class="property-entry-header">
+                        <input type="text" placeholder="Property ID" class="property-id" value="${example.property_id}">
+                        <select class="property-type">
+                            ${PROPERTY_TYPES.map(
+                              type =>
+                                `<option value="${type}" ${
+                                  type === example.property_type ? 'selected' : ''
+                                }>${type}</option>`
+                            ).join('')}
+                        </select>
+                        <input type="text" placeholder="Property Name" class="property-name" value="${example.name}">
+                        <input type="text" placeholder="Tags (comma-separated)" class="property-tags" value="${
+                          example.tags?.join(', ') || ''
+                        }">
+                        <button class="btn" onclick="removePropertyEntry(this)" style="background: #dc3545;">✖️</button>
+                    </div>
+                    <div class="property-identifiers">
+                        <label style="font-weight: 600; margin-bottom: 8px; display: block; font-size: 14px;">Identifiers:</label>
+                        <div class="identifiers-list">
+                            ${example.identifiers
+                              .map(
+                                id => `
+                                <div class="identifier-entry">
+                                    <select class="identifier-type">
+                                        ${IDENTIFIER_TYPES.map(
+                                          type =>
+                                            `<option value="${type}" ${
+                                              type === id.type ? 'selected' : ''
+                                            }>${type}</option>`
+                                        ).join('')}
+                                    </select>
+                                    <input type="text" placeholder="Identifier value" class="identifier-value" value="${
+                                      id.value
+                                    }">
+                                    <button class="btn" onclick="removeIdentifierEntry(this)" style="background: #dc3545; padding: 6px 10px;">✖️</button>
+                                </div>
+                            `
+                              )
+                              .join('')}
+                        </div>
+                        <button class="btn" onclick="addIdentifierEntry(this)" style="margin-top: 8px; padding: 6px 12px; font-size: 13px;">➕ Add Identifier</button>
+                    </div>
+                `;
+
+          propertiesList.appendChild(newProperty);
+        });
+
+        console.log('Loaded example properties configuration');
+      }
+
+      async function generateAdAgentsJson() {
+        const agentEntries = document.querySelectorAll('.agent-entry');
+        const authorizedAgents = [];
+
+        for (const entry of agentEntries) {
+          const url = entry.querySelector('.agent-url').value.trim();
+          const authorizedFor = entry.querySelector('.agent-auth').value.trim();
+          const propertyIds = entry.querySelector('.agent-property-ids').value.trim();
+
+          if (!url || !authorizedFor) {
+            alert('Please fill in all agent URL and authorization fields');
+            return;
+          }
+
+          const agent = { url, authorized_for: authorizedFor };
+
+          // Add property_ids if specified
+          if (propertyIds) {
+            agent.property_ids = propertyIds
+              .split(',')
+              .map(id => id.trim())
+              .filter(id => id);
+          }
+
+          authorizedAgents.push(agent);
+        }
+
+        // Collect properties
+        const propertyEntries = document.querySelectorAll('.property-entry');
+        const properties = [];
+
+        for (const entry of propertyEntries) {
+          const propertyId = entry.querySelector('.property-id').value.trim();
+          const propertyType = entry.querySelector('.property-type').value;
+          const propertyName = entry.querySelector('.property-name').value.trim();
+          const propertyTags = entry.querySelector('.property-tags').value.trim();
+
+          if (!propertyId || !propertyName) {
+            alert('Please fill in property ID and name for all properties');
+            return;
+          }
+
+          // Collect identifiers
+          const identifierEntries = entry.querySelectorAll('.identifier-entry');
+          const identifiers = [];
+
+          for (const idEntry of identifierEntries) {
+            const type = idEntry.querySelector('.identifier-type').value;
+            const value = idEntry.querySelector('.identifier-value').value.trim();
+
+            if (!value) {
+              alert(`Please fill in all identifier values for property ${propertyId}`);
+              return;
+            }
+
+            identifiers.push({ type, value });
+          }
+
+          if (identifiers.length === 0) {
+            alert(`Property ${propertyId} must have at least one identifier`);
+            return;
+          }
+
+          const property = {
+            property_id: propertyId,
+            property_type: propertyType,
+            name: propertyName,
+            identifiers,
+          };
+
+          // Add tags if specified
+          if (propertyTags) {
+            property.tags = propertyTags
+              .split(',')
+              .map(tag => tag.trim())
+              .filter(tag => tag);
+          }
+
+          properties.push(property);
+        }
+
+        const generateBtn = document.getElementById('generate-btn');
+        generateBtn.disabled = true;
+        generateBtn.textContent = '🔄 Generating...';
+
+        try {
+          console.log(
+            `Generating adagents.json with ${authorizedAgents.length} agents and ${properties.length} properties`
+          );
+
+          const requestBody = {
+            authorized_agents: authorizedAgents,
+            include_schema: true,
+            include_timestamp: true,
+          };
+
+          // Only include properties if there are any
+          if (properties.length > 0) {
+            requestBody.properties = properties;
+          }
+
+          const response = await fetch('/api/adagents/create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            document.getElementById('json-output').value = result.data.adagents_json;
+            document.getElementById('generated-json').style.display = 'block';
+            document.getElementById('validate-cards-btn').style.display = 'inline-block';
+
+            console.log('AdAgents.json generated successfully');
+
+            // Show validation results if any issues
+            if (result.data.validation.warnings.length > 0) {
+              alert(
+                `Generated successfully with ${result.data.validation.warnings.length} warnings. Check console for details.`
+              );
+              console.warn('Validation warnings:', result.data.validation.warnings);
+            }
+          } else {
+            throw new Error(result.error || 'Generation failed');
+          }
+        } catch (error) {
+          console.error(`AdAgents.json generation failed: ${error.message}`);
+          alert(`Generation failed: ${error.message}`);
+        } finally {
+          generateBtn.disabled = false;
+          generateBtn.textContent = '🚀 Generate JSON';
+        }
+      }
+
+      async function validateAgentCards() {
+        const agentUrls = Array.from(document.querySelectorAll('.agent-url'))
+          .map(input => input.value.trim())
+          .filter(url => url);
+
+        if (agentUrls.length === 0) {
+          alert('No agent URLs to validate');
+          return;
+        }
+
+        const validateBtn = document.getElementById('validate-cards-btn');
+        validateBtn.disabled = true;
+        validateBtn.textContent = '🔄 Validating...';
+
+        try {
+          console.log(`Validating ${agentUrls.length} agent cards`);
+
+          const response = await fetch('/api/adagents/validate-cards', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ agent_urls: agentUrls }),
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            displayAgentCardsResults(result.data.agent_cards);
+            console.log('Agent cards validation completed');
+          } else {
+            throw new Error(result.error || 'Validation failed');
+          }
+        } catch (error) {
+          console.error(`Agent cards validation failed: ${error.message}`);
+          alert(`Validation failed: ${error.message}`);
+        } finally {
+          validateBtn.disabled = false;
+          validateBtn.textContent = '🔍 Validate Cards';
+        }
+      }
+
+      function displayAgentCardsResults(agentCards) {
+        const resultsDiv = document.getElementById('agent-cards-results');
+
+        let html = '<h4>Agent Cards Validation Results</h4>';
+        html += '<div style="background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;">';
+
+        agentCards.forEach(card => {
+          const status = card.valid ? '✅' : '❌';
+          const statusColor = card.valid ? '#166534' : '#dc2626';
+
+          html += `
+                    <div style="margin-bottom: 10px; padding: 12px; border-left: 4px solid ${statusColor}; background: white; border-radius: 4px;">
+                        <strong>${status} ${card.agent_url}</strong>
+                        ${
+                          card.response_time_ms
+                            ? `<span style="color: #666; font-size: 12px;"> (${card.response_time_ms}ms)</span>`
+                            : ''
+                        }
+                        ${card.status_code ? `<br><em>HTTP ${card.status_code}</em>` : ''}
+                        ${
+                          card.errors.length > 0
+                            ? `<br><span style="color: #dc2626;">Issues: ${card.errors.join(', ')}</span>`
+                            : ''
+                        }
+                        ${
+                          card.valid && card.card_data
+                            ? `<br><span style="color: #166534;">✅ Agent card found and valid</span>`
+                            : ''
+                        }
+                    </div>
+                `;
+        });
+
+        html += '</div>';
+        resultsDiv.innerHTML = html;
+        resultsDiv.style.display = 'block';
+      }
+
+      function copyToClipboard(textareaId) {
+        const textarea = document.getElementById(textareaId);
+        textarea.select();
+        textarea.setSelectionRange(0, 99999); // For mobile devices
+
+        try {
+          document.execCommand('copy');
+          // Provide visual feedback
+          const button = event.target;
+          const originalText = button.textContent;
+          button.textContent = '✅ Copied!';
+          setTimeout(() => {
+            button.textContent = originalText;
+          }, 2000);
+
+          console.log('AdAgents.json copied to clipboard');
+        } catch (err) {
+          console.error('Failed to copy to clipboard:', err);
+          alert('Failed to copy to clipboard');
+        }
+      }
+
+      function downloadAdAgentsJson() {
+        const jsonContent = document.getElementById('json-output').value;
+
+        if (!jsonContent) {
+          alert('No JSON content to download');
+          return;
+        }
+
+        const blob = new Blob([jsonContent], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'adagents.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        console.log('AdAgents.json file downloaded');
+      }
+
+      function clearGenerated() {
+        document.getElementById('generated-json').style.display = 'none';
+        document.getElementById('validate-cards-btn').style.display = 'none';
+        document.getElementById('agent-cards-results').style.display = 'none';
+        document.getElementById('json-output').value = '';
+      }
+
+      async function startCreating() {
+        const domain = document.getElementById('creator-domain-input').value.trim();
+        const startBtn = document.getElementById('start-creating-btn');
+
+        if (!domain) {
+          alert('Please enter a domain name');
+          return;
+        }
+
+        // Normalize domain (remove protocol, www, trailing slash)
+        const normalizedDomain = domain
+          .replace(/^https?:\/\//, '')
+          .replace(/^www\./, '')
+          .replace(/\/$/, '');
+
+        startBtn.disabled = true;
+        startBtn.textContent = '🔄 Checking domain...';
+
+        try {
+          // First validate domain to see if adagents.json exists
+          console.log(`Checking existing adagents.json for domain: ${normalizedDomain}`);
+
+          const response = await fetch('/api/adagents/validate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ domain: normalizedDomain }),
+          });
+
+          const result = await response.json();
+          let isUpdate = false;
+          let existingAgents = [];
+
+          if (result.success && result.data.found && result.data.validation.valid) {
+            // Valid adagents.json exists - this is an update
+            isUpdate = true;
+            if (result.data.validation.raw_data && result.data.validation.raw_data.authorized_agents) {
+              existingAgents = result.data.validation.raw_data.authorized_agents;
+            }
+            console.log(`Found existing valid adagents.json with ${existingAgents.length} agents`);
+          } else {
+            console.log(`No valid adagents.json found - will create new file`);
+          }
+
+          // Update UI based on create vs update mode
+          updateUIForCreateOrUpdate(normalizedDomain, isUpdate, existingAgents);
+
+          // Hide domain step, show creation form
+          document.getElementById('creator-domain-step').style.display = 'none';
+          document.getElementById('creator-form').style.display = 'block';
+
+          startBtn.disabled = false;
+          startBtn.textContent = '▶️ Start Creating';
+        } catch (error) {
+          console.error(`Error checking domain: ${error.message}`);
+          // On error, default to create mode
+          updateUIForCreateOrUpdate(normalizedDomain, false, []);
+
+          // Hide domain step, show creation form
+          document.getElementById('creator-domain-step').style.display = 'none';
+          document.getElementById('creator-form').style.display = 'block';
+
+          startBtn.disabled = false;
+          startBtn.textContent = '▶️ Start Creating';
+        }
+      }
+
+      function updateUIForCreateOrUpdate(normalizedDomain, isUpdate, existingAgents) {
+        // Update section title and description
+        const sectionTitle = document.getElementById('creator-section-title');
+        const sectionDescription = document.getElementById('creator-section-description');
+
+        if (isUpdate) {
+          sectionTitle.innerHTML = '📝 Update AdAgents.json';
+          sectionDescription.textContent =
+            'Update the existing adagents.json file for your domain. Modify authorized sales agents and generate an updated compliant file ready for deployment.';
+        } else {
+          sectionTitle.innerHTML = '📝 Create AdAgents.json';
+          sectionDescription.textContent =
+            'Create a properly formatted adagents.json file for your domain. Add authorized sales agents and generate a compliant file ready for deployment.';
+        }
+
+        // Update personalized instructions
+        document.getElementById('user-domain-display').textContent = normalizedDomain;
+        document.getElementById('user-file-path').textContent = `https://${normalizedDomain}/.well-known/adagents.json`;
+        document.getElementById('generated-domain-display').textContent = normalizedDomain;
+        document.getElementById('reminder-file-path').textContent =
+          `https://${normalizedDomain}/.well-known/adagents.json`;
+
+        // Pre-populate agents if updating
+        if (isUpdate && existingAgents.length > 0) {
+          const agentsList = document.getElementById('agents-list');
+          agentsList.innerHTML = '';
+
+          existingAgents.forEach(agent => {
+            const newEntry = document.createElement('div');
+            newEntry.className = 'agent-entry';
+            const propertyIds = agent.property_ids ? agent.property_ids.join(', ') : '';
+
+            newEntry.innerHTML = `
+                        <input type="url" placeholder="https://agent.example.com" style="flex: 2;" class="agent-url" value="${agent.url}">
+                        <input type="text" placeholder="Authorized for all products and services" style="flex: 3;" class="agent-auth" value="${agent.authorized_for}">
+                        <input type="text" placeholder="property_id1, property_id2 (optional)" style="flex: 2;" class="agent-property-ids" value="${propertyIds}" title="Comma-separated list of property IDs this agent can sell">
+                        <button class="btn" onclick="removeAgentEntry(this)" style="background: #dc3545;">✖️</button>
+                    `;
+
+            agentsList.appendChild(newEntry);
+          });
+
+          console.log(`Pre-populated ${existingAgents.length} existing agents for update`);
+        }
+
+        // Update personalized instructions based on create/update mode
+        const instructionsHeading = document.querySelector('#personalized-instructions h4');
+        const step2Title = document.getElementById('step-2-title');
+        if (isUpdate) {
+          instructionsHeading.innerHTML = `📍 File Update Instructions for <span id="user-domain-display">${normalizedDomain}</span>`;
+          step2Title.textContent = 'Step 2: Update Authorized Agents';
+        } else {
+          instructionsHeading.innerHTML = `📍 File Placement Instructions for <span id="user-domain-display">${normalizedDomain}</span>`;
+          step2Title.textContent = 'Step 2: Add Authorized Agents';
+        }
+      }
+
+      function resetCreator() {
+        // Clear state
+        state.domain = '';
+        state.properties = [];
+        state.agents = [];
+        state.fileFound = false;
+
+        // Clear form data
+        document.getElementById('creator-domain-input').value = '';
+        document.getElementById('json-output').value = '';
+
+        // Hide dashboard, show domain entry
+        document.getElementById('creator-form').style.display = 'none';
+        document.getElementById('creator-domain-step').style.display = 'block';
+
+        // Reset JSON preview
+        document.getElementById('json-preview-panel').style.display = 'none';
+        document.getElementById('json-preview-toggle').textContent = '📄 View JSON ▼';
+
+        console.log('Reset adagents.json creator to domain entry step');
+      }
+
+      // Initialize with one example agent entry
+      document.addEventListener('DOMContentLoaded', function () {
+        console.log('AdAgents.json Manager initialized');
+      });
+    </script>
+      <!-- Shared Navigation -->
+    <script src="/nav.js"></script>
+  </body>
+</html>

@@ -15,6 +15,7 @@ The simplest preview request returns a single URL you can iframe:
 
 ```json
 {
+  "request_type": "single",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "native_responsive"
@@ -27,6 +28,7 @@ Response:
 
 ```json
 {
+  "response_type": "single",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/abc123",
@@ -55,6 +57,7 @@ For faster rendering and grid layouts, request HTML directly instead of URLs:
 
 ```json
 {
+  "request_type": "single",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "native_responsive"
@@ -68,6 +71,7 @@ Response contains raw HTML:
 
 ```json
 {
+  "response_type": "single",
   "previews": [
     {
       "preview_html": "<div class=\"creative\"><img src=\"...\"/><h3>Headline</h3></div>",
@@ -91,9 +95,10 @@ Embed directly in your page:
 
 **Benefits:** No iframe overhead, faster load times, better for grids of 50+ previews.
 
-:::warning Security Consideration
+<Warning>
+Security Consideration
 Only use `output_format: "html"` with **trusted creative agents**. Direct HTML embedding bypasses iframe sandboxing. For third-party or untrusted creatives, use `output_format: "url"` (default) which provides iframe isolation. Consider HTML sanitization if accepting user-generated creative content.
-:::
+</Warning>
 
 ### Batch Preview (Multiple Creatives)
 
@@ -101,6 +106,7 @@ Preview multiple different creatives in one API call (5-10x faster):
 
 ```json
 {
+  "request_type": "batch",
   "requests": [
     {
       "format_id": {
@@ -124,6 +130,7 @@ Response contains results in the same order:
 
 ```json
 {
+  "response_type": "batch",
   "results": [
     {
       "success": true,
@@ -270,7 +277,7 @@ The `preview_creative` task supports two modes:
 
 ## Request Parameters
 
-The request format depends on the mode:
+The request format depends on the mode. To enable proper type generation in TypeScript and other languages, requests and responses use explicit discriminator fields (`request_type` and `response_type`) to distinguish between single and batch modes.
 
 ### Single Mode Parameters
 
@@ -278,6 +285,7 @@ Use these top-level fields to preview one creative:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `request_type` | string | Yes | Discriminator field with value `"single"` |
 | `format_id` | FormatID | Yes | Format identifier for rendering (structured object with agent_url and id) |
 | `creative_manifest` | object | Yes | Complete creative manifest with all required assets |
 | `inputs` | array | No | Array of input sets for generating multiple preview variants |
@@ -290,7 +298,8 @@ Use a top-level `requests` array to preview multiple creatives:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `requests` | array | Yes | Array of 1-50 preview requests. Each item has the same structure as single mode parameters (including `output_format`). |
+| `request_type` | string | Yes | Discriminator field with value `"batch"` |
+| `requests` | array | Yes | Array of 1-50 preview requests. Each item has the same structure as single mode parameters (excluding `request_type`). |
 | `output_format` | string | No | Default output format for all requests. Individual requests can override this with their own `output_format`. |
 
 ### Creative Manifest Structure
@@ -354,6 +363,7 @@ The response format depends on the request mode:
 
 ```json
 {
+  "response_type": "single",
   "previews": "array",
   "interactive_url": "string",
   "expires_at": "string"
@@ -361,6 +371,7 @@ The response format depends on the request mode:
 ```
 
 **Field Descriptions:**
+- **response_type**: Discriminator field with value `"single"`
 - **previews**: Array of preview variants. One preview per input set from the request. If no inputs provided, returns a single default preview.
 - **interactive_url**: Optional URL to interactive testing page with controls to switch between variants
 - **expires_at**: ISO 8601 timestamp when preview links expire
@@ -369,6 +380,7 @@ The response format depends on the request mode:
 
 ```json
 {
+  "response_type": "batch",
   "results": [
     {
       "success": true,
@@ -391,9 +403,10 @@ The response format depends on the request mode:
 ```
 
 **Field Descriptions:**
+- **response_type**: Discriminator field with value `"batch"`
 - **results**: Array of preview results matching the order of requests
 - **success**: Whether this specific preview request succeeded
-- **response**: Preview response for successful requests (same structure as single mode)
+- **response**: Preview response for successful requests (excludes `response_type` field)
 - **error**: Error information for failed requests (code, message, optional details)
 
 ### Preview Variant Structure
@@ -466,6 +479,7 @@ Request previews for desktop, mobile, and tablet:
 
 ```json
 {
+  "request_type": "single",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "native_responsive"
@@ -524,6 +538,7 @@ Response:
 
 ```json
 {
+  "response_type": "single",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/abc123/desktop",
@@ -574,6 +589,7 @@ Preview three different banner creatives in one API call:
 
 ```json
 {
+  "request_type": "batch",
   "requests": [
     {
       "format_id": {
@@ -645,6 +661,7 @@ Response contains results in the same order:
 
 ```json
 {
+  "response_type": "batch",
   "results": [
     {
       "success": true,
@@ -733,6 +750,7 @@ Request HTML directly for 50 creatives to build a preview grid without 50 iframe
 
 ```json
 {
+  "request_type": "batch",
   "output_format": "html",
   "requests": [
     {
@@ -758,6 +776,7 @@ Response with HTML for direct embedding:
 
 ```json
 {
+  "response_type": "batch",
   "results": [
     {
       "success": true,
@@ -836,6 +855,7 @@ Preview a dynamic creative with different geographic and device contexts:
 
 ```json
 {
+  "request_type": "single",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_dynamic_300x250"
@@ -887,6 +907,7 @@ Response:
 
 ```json
 {
+  "response_type": "single",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/xyz789/nyc-mobile",
@@ -926,6 +947,7 @@ Preview an audio ad with AI-generated host reads for different podcast contexts:
 
 ```json
 {
+  "request_type": "single",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "audio_host_read_30s"
@@ -971,6 +993,7 @@ Response:
 
 ```json
 {
+  "response_type": "single",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/audio123/weather",
@@ -1019,6 +1042,7 @@ Preview a video creative with geo-specific end cards:
 
 ```json
 {
+  "request_type": "single",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_vast"
@@ -1062,6 +1086,7 @@ Response:
 
 ```json
 {
+  "response_type": "single",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/video456/us-ne",
@@ -1095,12 +1120,13 @@ Response:
 
 Each `preview_url` returns an HTML page with an embedded video player showing the geo-specific variant.
 
-### Example 4: Dynamic Creative with Template Variables
+### Example 5: Dynamic Creative with Template Variables
 
 Preview a dynamic creative that uses template variables for personalization:
 
 ```json
 {
+  "request_type": "single",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "native_responsive"
@@ -1152,6 +1178,7 @@ Response:
 
 ```json
 {
+  "response_type": "single",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/dynamic123/a",
@@ -1179,12 +1206,13 @@ Response:
 }
 ```
 
-### Example 5: Video Preview with Optimization Hints
+### Example 6: Video Preview with Optimization Hints
 
 Response showing optional hints and embedding metadata:
 
 ```json
 {
+  "response_type": "single",
   "previews": [
     {
       "preview_url": "https://creative-agent.example.com/preview/video789",

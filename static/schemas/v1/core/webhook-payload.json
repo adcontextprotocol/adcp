@@ -70,6 +70,7 @@
       "type": ["object"],
       "description": "Task-specific payload for this status update. Validated against the appropriate response schema based on task_type."
     },
+
     "error": {
       "type": ["string", "null"],
       "description": "Error message for failed tasks. Only present when status is 'failed'."

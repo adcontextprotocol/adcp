@@ -8,6 +8,11 @@
       "type": "object",
       "description": "Single creative preview request",
       "properties": {
+        "request_type": {
+          "type": "string",
+          "const": "single",
+          "description": "Discriminator indicating this is a single preview request"
+        },
         "format_id": {
           "$ref": "/schemas/v1/core/format-id.json",
           "description": "Format identifier for rendering the preview"
@@ -53,9 +58,15 @@
           "enum": ["url", "html"],
           "default": "url",
           "description": "Output format for previews. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding). Default: 'url' for backward compatibility."
+        },
+        "context": {
+          "type": "object",
+          "description": "Initiator-provided context included in the request payload. Agents must echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
+          "additionalProperties": true
         }
       },
       "required": [
+        "request_type",
         "format_id",
         "creative_manifest"
       ],
@@ -65,6 +76,11 @@
       "type": "object",
       "description": "Batch preview request for multiple creatives (5-10x faster than individual calls)",
       "properties": {
+        "request_type": {
+          "type": "string",
+          "const": "batch",
+          "description": "Discriminator indicating this is a batch preview request"
+        },
         "requests": {
           "type": "array",
           "description": "Array of preview requests (1-50 items). Each follows the single request structure.",
@@ -132,9 +148,15 @@
           "enum": ["url", "html"],
           "default": "url",
           "description": "Default output format for all requests in this batch. Individual requests can override this. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding)."
+        },
+        "context": {
+          "type": "object",
+          "description": "Initiator-provided context included in the request payload. Agents must echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
+          "additionalProperties": true
         }
       },
       "required": [
+        "request_type",
         "requests"
       ],
       "additionalProperties": false

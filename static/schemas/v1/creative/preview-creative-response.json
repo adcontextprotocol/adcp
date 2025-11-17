@@ -8,6 +8,11 @@
       "type": "object",
       "description": "Single preview response - each preview URL returns an HTML page that can be embedded in an iframe",
       "properties": {
+        "response_type": {
+          "type": "string",
+          "const": "single",
+          "description": "Discriminator indicating this is a single preview response"
+        },
         "previews": {
           "type": "array",
           "description": "Array of preview variants. Each preview corresponds to an input set from the request. If no inputs were provided, returns a single default preview.",
@@ -62,9 +67,15 @@
           "type": "string",
           "format": "date-time",
           "description": "ISO 8601 timestamp when preview links expire"
+        },
+        "context": {
+          "type": "object",
+          "description": "Initiator-provided context echoed inside the preview payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+          "additionalProperties": true
         }
       },
       "required": [
+        "response_type",
         "previews",
         "expires_at"
       ],
@@ -74,6 +85,11 @@
       "type": "object",
       "description": "Batch preview response - contains results for multiple creative requests",
       "properties": {
+        "response_type": {
+          "type": "string",
+          "const": "batch",
+          "description": "Discriminator indicating this is a batch preview response"
+        },
         "results": {
           "type": "array",
           "description": "Array of preview results corresponding to each request in the same order. results[0] is the result for requests[0], results[1] for requests[1], etc. Order is guaranteed even when some requests fail. Each result contains either a successful preview response or an error.",
@@ -163,22 +179,28 @@
             "oneOf": [
               {
                 "properties": {
-                  "success": { "const": true }
+                  "success": { "type": "boolean", "const": true }
                 },
                 "required": ["response"]
               },
               {
                 "properties": {
-                  "success": { "const": false }
+                  "success": { "type": "boolean", "const": false }
                 },
                 "required": ["error"]
               }
             ]
           },
           "minItems": 1
+        },
+        "context": {
+          "type": "object",
+          "description": "Initiator-provided context echoed inside the preview payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+          "additionalProperties": true
         }
       },
       "required": [
+        "response_type",
         "results"
       ],
       "additionalProperties": false

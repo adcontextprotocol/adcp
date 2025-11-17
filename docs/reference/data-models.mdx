@@ -129,9 +129,12 @@ Protocol-level response wrapper (MCP/A2A).
 interface ProtocolResponse {
   message: string;              // Human-readable summary (protocol level)
   context_id?: string;          // Session continuity (protocol level)
-  data: any;                   // AdCP task-specific response data
+  context?: any;                // initiator-provided context (echoed back)
+  data: any;                    // AdCP task-specific response data
 }
 ```
+
+Note: `context` is set by the tool initiator on the request and must be carried back unchanged by agents in responses and webhooks.
 
 **Note**: Individual AdCP task schemas contain only the application-level data that goes in the `data` field of the protocol response. Task-specific errors are included within each task's response schema, not at the protocol level.
 
@@ -229,6 +232,44 @@ AdCP uses [semantic versioning](https://semver.org/):
 - Breaking changes require client updates
 - Servers may support multiple major versions during transition
 - Migration guides provided for breaking changes
+
+## JSON Schema Best Practices
+
+### Discriminated Unions
+
+AdCP schemas use discriminated unions for type safety. All discriminator fields include explicit type declarations for proper TypeScript code generation.
+
+**Pattern:**
+```json
+{
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "platform" },
+        "platform": { "type": "string" }
+      },
+      "required": ["type", "platform"]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "agent" },
+        "agent_url": { "type": "string" }
+      },
+      "required": ["type", "agent_url"]
+    }
+  ]
+}
+```
+
+**Why this matters**: Including `"type": "string"` before `"const"` enables TypeScript generators to produce proper literal types (e.g., `Literal["platform"]`) instead of `Any`, improving type safety and IDE autocomplete.
+
+**Examples in AdCP schemas**:
+- `deployment.json`: `type: "platform" | "agent"`
+- `sub-asset.json`: `asset_kind: "media" | "text"`
+- `vast-asset.json`: `delivery_type: "url" | "inline"`
+- `preview-render.json`: `output_format: "url" | "html" | "both"`
 
 ## JSON Schema Registry
 

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/agent.json",
+  "name": "Test Sales Agent",
+  "url": "https://test-sales.example.com",
+  "type": "sales",
+  "protocol": "mcp",
+  "description": "Test sales agent for unit tests",
+  "mcp_endpoint": "https://test-sales.example.com/mcp",
+  "contact": {
+    "name": "Test Team",
+    "email": "test@example.com",
+    "website": "https://example.com"
+  },
+  "added_date": "2025-01-22"
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "domain": "test.example.com",
+  "authorized_agents": [
+    {
+      "url": "https://test-sales.example.com",
+      "authorized_for": "Selling inventory on test.example.com"
+    }
+  ],
+  "properties": [
+    {
+      "type": "domain",
+      "identifier": "test.example.com",
+      "tags": ["test", "example"],
+      "publisher_domains": ["test.example.com"]
+    }
+  ]
+}

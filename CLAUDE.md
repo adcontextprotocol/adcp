@@ -219,7 +219,7 @@ When making documentation changes:
     {
       "type": "object",
       "properties": {
-        "discriminator_field": { "const": "variant_a" },
+        "discriminator_field": { "type": "string", "const": "variant_a" },
         "field_a": { "type": "string" }
       },
       "required": ["discriminator_field", "field_a"]
@@ -227,7 +227,7 @@ When making documentation changes:
     {
       "type": "object",
       "properties": {
-        "discriminator_field": { "const": "variant_b" },
+        "discriminator_field": { "type": "string", "const": "variant_b" },
         "field_b": { "type": "number" }
       },
       "required": ["discriminator_field", "field_b"]
@@ -235,6 +235,8 @@ When making documentation changes:
   ]
 }
 ```
+
+**CRITICAL**: Always include explicit `"type"` before `"const"` in discriminator fields. This enables TypeScript generators to produce proper literal types (e.g., `Literal["variant_a"]`) instead of `Any`.
 
 **Pattern to AVOID:**
 ```json
@@ -258,11 +260,13 @@ When making documentation changes:
 }
 ```
 
-**Discriminator Naming Conventions:**
+**Discriminator Field Requirements:**
+- **ALWAYS** include explicit `"type"` declaration before `"const"` (e.g., `{ "type": "string", "const": "value" }`)
 - Use semantic names that describe what's being discriminated
 - Common patterns: `type`, `kind`, `delivery_type`, `output_format`, `asset_kind`
 - Keep discriminator values lowercase with underscores
-- Use string const values, not enums (better for TypeScript)
+- Use string const values for strings, boolean const for booleans
+- Match the `"type"` to the const value type (string, boolean, number, etc.)
 
 **Examples from AdCP:**
 - `destination.json`: `type: "platform" | "agent"`

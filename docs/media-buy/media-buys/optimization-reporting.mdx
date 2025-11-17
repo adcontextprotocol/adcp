@@ -218,13 +218,8 @@ For offline file delivery, publishers can provide reporting data in JSON Lines (
 **Compression:**
 Files can be compressed with gzip (`.jsonl.gz`, `.csv.gz`, or `.parquet.gz`) for efficient storage and transfer. Compression is recommended for large files.
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
 <Tabs>
-<TabItem value="jsonl" label="JSONL" default>
-
----
+  <Tab title="JSONL">
 
 **Structure:**
 
@@ -241,12 +236,8 @@ Each line in the JSONL file contains a complete webhook payload object. Multiple
 - File extension: `.jsonl` or `.jsonl.gz` (compressed)
 - Compression: Consider using `.gz` compression for large files to reduce storage and transfer costs
 
----
-
-</TabItem>
-<TabItem value="csv" label="CSV">
-
----
+</Tab>
+<Tab title="CSV">
 
 **Structure:**
 
@@ -267,12 +258,8 @@ reporting_period.start,reporting_period.end,notification_type,sequence_number,ne
 2024-02-06T00:00:00Z,2024-02-06T23:59:59Z,scheduled,6,2024-02-07T08:00:00Z,USD,mb_002,campaign_b,active,200000,9000.00,400,0.002,140000,0.70,pkg_003,display_package,200000,9000.00,400,140000,1.02,cpm,45.00,USD
 ```
 
----
-
-</TabItem>
-<TabItem value="parquet" label="Parquet">
-
----
+  </Tab>
+  <Tab title="Parquet">
 
 **Structure:**
 
@@ -323,9 +310,7 @@ The Parquet file contains the same data as the JSONL format, but stored in colum
 | 2024-02-05T00:00:00Z   | 2024-02-05T23:59:59Z | USD      | mb_001                                | 125000                                    | pkg_002                                           | cpm                                                 |
 | 2024-02-06T00:00:00Z   | 2024-02-06T23:59:59Z | USD      | mb_002                                | 200000                                    | pkg_003                                           | cpm                                                 |
 
----
-
-</TabItem>
+  </Tab>
 </Tabs>
 
 ### Timezone Handling
