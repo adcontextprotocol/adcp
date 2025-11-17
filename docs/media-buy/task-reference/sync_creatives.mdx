@@ -29,6 +29,7 @@ The `sync_creatives` task provides a powerful, efficient approach to creative li
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `creatives` | array | Yes | Array of creative assets to sync (max 100) |
+| `creative_ids` | array | No | Optional filter to limit sync scope to specific creative IDs (max 100). When provided, only these creatives are affected. Useful for partial updates and error recovery. |
 | `patch` | boolean | No | Partial update mode (default: false) |
 | `dry_run` | boolean | No | Preview changes without applying (default: false) |
 | `validation_mode` | enum | No | Validation strictness: "strict" or "lenient" (default: "strict") |
@@ -406,7 +407,115 @@ Preview changes before applying them:
 }
 ```
 
-### Example 6: Library Replacement (Advanced)
+### Example 6: Scoped Update with creative_ids Filter
+
+Update only specific creatives without affecting the rest of the library:
+
+```json
+{
+  "creative_ids": ["hero_video_30s", "banner_300x250"],
+  "patch": true,
+  "creatives": [
+    {
+      "creative_id": "hero_video_30s",
+      "assets": {
+        "vast_tag": {
+          "asset_type": "vast",
+          "delivery_type": "url",
+          "url": "https://vast.example.com/updated-video"
+        }
+      }
+    },
+    {
+      "creative_id": "banner_300x250",
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.example.com/updated-banner.jpg"
+        }
+      }
+    }
+  ]
+}
+```
+
+**Why use `creative_ids` filter:**
+- **Scoped updates**: Only specified creatives are modified, even with 100+ creatives in library
+- **Error recovery**: After partial failure, re-sync only the failed creatives
+- **Performance**: Publisher can optimize processing when scope is known upfront
+- **Safety**: Explicit targeting reduces risk of unintended changes
+
+Without `creative_ids`, all creatives in the library would need to be included in the request to preserve them (replacement semantics).
+
+### Example 7: Error Recovery Workflow
+
+After a bulk sync with validation errors, retry only the failed creatives:
+
+**Initial bulk sync (3 out of 100 fail):**
+```json
+{
+  "creatives": [/* 100 creatives */],
+  "validation_mode": "lenient"
+}
+```
+
+**Response identifies failures:**
+```json
+{
+  "status": "completed",
+  "creatives": [
+    {"creative_id": "valid_1", "action": "created"},
+    {"creative_id": "valid_2", "action": "created"},
+    // ... 97 successful
+    {"creative_id": "failed_1", "action": "failed", "errors": ["Invalid asset URL"]},
+    {"creative_id": "failed_2", "action": "failed", "errors": ["Missing format_id"]},
+    {"creative_id": "failed_3", "action": "failed", "errors": ["Invalid dimensions"]}
+  ]
+}
+```
+
+**Retry only the 3 failed creatives (after fixing issues):**
+```json
+{
+  "creative_ids": ["failed_1", "failed_2", "failed_3"],
+  "creatives": [
+    {
+      "creative_id": "failed_1",
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.example.com/corrected-banner.jpg",
+          "width": 300,
+          "height": 250
+        }
+      }
+    },
+    {
+      "creative_id": "failed_2",
+      "name": "Corrected Creative",
+      "format_id": {
+        "agent_url": "https://creatives.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "assets": {/* corrected assets */}
+    },
+    {
+      "creative_id": "failed_3",
+      "assets": {
+        "banner_image": {
+          "width": 300,  // Fixed: was 320
+          "height": 250
+        }
+      }
+    }
+  ],
+  "validation_mode": "strict"
+}
+```
+
+The `creative_ids` filter ensures only these 3 creatives are processed, leaving the other 97 untouched.
+
+### Example 8: Library Replacement (Advanced)
 
 Replace entire creative library with new set (use with extreme caution):
 
@@ -512,7 +621,14 @@ When assignments fail, they're reported within each creative's result:
 ### 5. Error Recovery
 - Implement retry logic for transient failures
 - Parse detailed error responses to identify data quality issues
+- Use `creative_ids` filter to retry only failed creatives after bulk operations
 - Use patch mode for correcting specific field errors
+
+### 6. Scoped Updates
+- Use `creative_ids` filter when updating a small subset of a large library
+- Reduces request/response size and processing time
+- Makes intent explicit: "only touch these creatives, leave others alone"
+- Enables safe parallel updates by different systems/teams
 
 ## Migration from Legacy Creative Tasks
 
