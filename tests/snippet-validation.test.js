@@ -289,14 +289,16 @@ async function testPythonSnippet(snippet) {
       error: stderr
     };
   } catch (error) {
-    // Python tests may fail with async cleanup errors but still produce valid output
-    // If we got stdout output, treat it as a success (the actual test ran)
+    // WORKAROUND: Python MCP SDK has async cleanup bug (exit code 1)
+    // See PYTHON_MCP_ASYNC_BUG.md for details
+    // Ignore exit codes for Python tests - check for stdout instead
+    // Waiting for upstream fix in mcp package (currently 1.21.0)
     if (error.stdout && error.stdout.trim().length > 0) {
       return {
         success: true,
         output: error.stdout,
         error: error.stderr,
-        warning: 'Test produced output but exited with non-zero code (likely async cleanup issue)'
+        warning: 'Python MCP async cleanup bug - ignoring exit code (see PYTHON_MCP_ASYNC_BUG.md)'
       };
     }
 
