@@ -88,6 +88,20 @@
             "type": "string"
           }
         },
+        "media_buy_ids": {
+          "type": "array",
+          "description": "Filter creatives assigned to any of these media buys",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buyer_refs": {
+          "type": "array",
+          "description": "Filter creatives assigned to media buys with any of these buyer references",
+          "items": {
+            "type": "string"
+          }
+        },
         "unassigned": {
           "type": "boolean",
           "description": "Filter for unassigned creatives when true, assigned creatives when false"
@@ -233,6 +247,23 @@
           "status"
         ],
         "include_assignments": false
+      }
+    },
+    {
+      "description": "Find creatives used in specific media buys",
+      "data": {
+        "filters": {
+          "media_buy_ids": ["mb_123", "mb_456"]
+        },
+        "include_assignments": true
+      }
+    },
+    {
+      "description": "Find creatives for campaigns with specific buyer references",
+      "data": {
+        "filters": {
+          "buyer_refs": ["campaign_abc", "campaign_xyz"]
+        }
       }
     }
   ]
