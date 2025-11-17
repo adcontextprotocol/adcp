@@ -1,6 +1,7 @@
 ---
 title: get_media_buy_delivery
 sidebar_position: 6
+testable: true
 ---
 
 # get_media_buy_delivery
@@ -70,7 +71,7 @@ console.log(`CTR: ${(result.media_buy_deliveries[0].totals.ctr * 100).toFixed(2)
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent
+from adcp import test_agent
 
 # Get single media buy delivery report
 result = test_agent.get_media_buy_delivery(
@@ -111,7 +112,7 @@ result.media_buy_deliveries.forEach(delivery => {
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent
+from adcp import test_agent
 
 # Get all active media buys from context
 result = test_agent.get_media_buy_delivery(
@@ -161,7 +162,7 @@ console.log(`Peak day: ${peakDay.date} with ${peakDay.impressions.toLocaleString
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent
+from adcp import test_agent
 from datetime import date
 
 # Get month-to-date performance
@@ -218,7 +219,7 @@ byStatus.paused?.forEach(delivery => {
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent
+from adcp import test_agent
 from collections import defaultdict
 
 # Get both active and paused campaigns
@@ -268,7 +269,7 @@ result.media_buy_deliveries.forEach(delivery => {
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent
+from adcp import test_agent
 
 # Query by buyer reference instead of media buy ID
 result = test_agent.get_media_buy_delivery(

@@ -1,6 +1,7 @@
 ---
 title: list_authorized_properties
 sidebar_position: 1.5
+testable: true
 ---
 
 # list_authorized_properties
@@ -75,7 +76,7 @@ result.publisher_domains.forEach(domain => {
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent
+from adcp import test_agent
 
 # Get all authorized publishers
 result = test_agent.list_authorized_properties()
@@ -113,7 +114,7 @@ if (result.publisher_domains.length > 0) {
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent
+from adcp import test_agent
 
 # Check if agent represents specific publishers
 result = test_agent.list_authorized_properties(
@@ -178,7 +179,7 @@ for (const domain of authResult.publisher_domains) {
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent
+from adcp import test_agent
 import requests
 
 # Step 1: Get authorized publishers
@@ -250,7 +251,7 @@ if (result.portfolio_description) {
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent
+from adcp import test_agent
 
 # Determine what type of agent this is based on portfolio
 result = test_agent.list_authorized_properties()
@@ -312,7 +313,7 @@ for (const domain of result.publisher_domains) {
 ```
 
 ```python Python
-from adcp.test_helpers import test_agent
+from adcp import test_agent
 from datetime import datetime
 
 # Use last_updated to determine if cache is stale
