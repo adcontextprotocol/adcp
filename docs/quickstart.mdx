@@ -3,6 +3,7 @@ sidebar_position: 2
 title: Quickstart Guide
 description: Get started with AdCP in 5 minutes
 keywords: [adcp quickstart, getting started, adcp tutorial]
+testable: true
 ---
 
 # AdCP Quickstart
@@ -24,23 +25,12 @@ pip install adcp          # Python
 
 Discover products from the test agent:
 
-**JavaScript:**
+<CodeGroup>
 
-```javascript
-import { ADCPMultiAgentClient } from '@adcp/client';
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
 
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
-const result = await agent.getProducts({
+const result = await testAgent.getProducts({
   brief: 'Premium athletic footwear with innovative cushioning',
   brand_manifest: {
     name: 'Nike',
@@ -57,46 +47,21 @@ if (result.success && result.data) {
 }
 ```
 
-**Python:**
-
-```python
+```python Python
 import asyncio
-from adcp import ADCPMultiAgentClient, AgentConfig, GetProductsRequest
+from adcp import test_agent
 
-async def main():
-    client = ADCPMultiAgentClient([
-        AgentConfig(
-            id='test-agent',
-            agent_uri='https://test-agent.adcontextprotocol.org/mcp',
-            protocol='mcp',
-            auth_token='1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-        )
-    ])
-
-    agent = client.agent('test-agent')
-    result = await agent.get_products(
-        GetProductsRequest(
-            brief='Premium athletic footwear with innovative cushioning',
-            brand_manifest={
-                'name': 'Nike',
-                'url': 'https://nike.com'
-            }
-        )
+async def discover():
+    result = await test_agent.simple.get_products(
+        brand_manifest={'name': 'Nike', 'url': 'https://nike.com'},
+        brief='Premium athletic footwear with innovative cushioning'
     )
+    print(f"✓ Found {len(result.products)} matching products")
 
-    if result.success and result.data:
-        print(f"✓ Found {len(result.data.products)} matching products")
-    elif result.error:
-        print(f"Error: {result.error}")
-    else:
-        print(f"Status: {result.status}")
-
-asyncio.run(main())
+asyncio.run(discover())
 ```
 
-**CLI:**
-
-```bash
+```bash CLI
 # Using npx (JavaScript/Node.js)
 npx @adcp/client \
   https://test-agent.adcontextprotocol.org/mcp \
@@ -111,6 +76,25 @@ uvx adcp \
   '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
+
+</CodeGroup>
+
+## What's Next?
+
+Now that you've seen basic product discovery, explore:
+
+- **[Task Reference](/docs/media-buy/task-reference/)** - Complete API documentation
+- **[Testable Examples](/docs/media-buy/task-reference/get_products)** - Working code examples for all tasks
+- **[Media Buy Lifecycle](/docs/media-buy/media-buys/)** - Full campaign workflow
+- **[Protocol Guides](/docs/protocols/)** - MCP and A2A integration
+
+## Need Help?
+
+- Try examples at **[testing.adcontextprotocol.org](https://testing.adcontextprotocol.org)**
+- Read the **[Introduction](/docs/intro)** for concepts
+- Check **[Authentication](/docs/reference/authentication)** for production setup
+
+## Test Agent Credentials
 
 **Test agent credentials** (free to use):
 - **Agent URL**: `https://test-agent.adcontextprotocol.org/mcp`
