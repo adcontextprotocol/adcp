@@ -2,14 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/v1/core/destination.json",
   "title": "Destination",
-  "description": "A destination platform where signals can be activated (DSP, sales agent, etc.)",
+  "description": "A deployment target where signals can be activated (DSP, sales agent, etc.)",
   "oneOf": [
     {
       "type": "object",
       "properties": {
         "type": {
           "const": "platform",
-          "description": "Discriminator indicating this is a platform-based destination"
+          "description": "Discriminator indicating this is a platform-based deployment"
         },
         "platform": {
           "type": "string",
@@ -28,12 +28,12 @@
       "properties": {
         "type": {
           "const": "agent",
-          "description": "Discriminator indicating this is an agent URL-based destination"
+          "description": "Discriminator indicating this is an agent URL-based deployment"
         },
         "agent_url": {
           "type": "string",
           "format": "uri",
-          "description": "URL identifying the destination agent (for sales agents, etc.)"
+          "description": "URL identifying the deployment agent (for sales agents, etc.)"
         },
         "account": {
           "type": "string",

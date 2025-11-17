@@ -19,7 +19,7 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `signal_spec` | string | Yes | Natural language description of the desired signals |
-| `deliver_to` | DeliverTo | Yes | Destination platforms where signals need to be activated (see Deliver To Object below) |
+| `deliver_to` | DeliverTo | Yes | Deployment targets where signals need to be activated (see Deliver To Object below) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below) |
 | `max_results` | number | No | Maximum number of results to return |
 
@@ -27,12 +27,12 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `destinations` | Destination[] | Yes | List of destination platforms (DSPs, sales agents, etc.) - see Destination Object below |
+| `deployments` | Destination[] | Yes | List of deployment targets (DSPs, sales agents, etc.) - see Destination Object below |
 | `countries` | string[] | Yes | Countries where signals will be used (ISO codes) |
 
 ### Destination Object
 
-Each destination uses a `type` field to discriminate between platform-based and agent-based destinations:
+Each deployment target uses a `type` field to discriminate between platform-based and agent-based deployments:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -43,11 +43,11 @@ Each destination uses a `type` field to discriminate between platform-based and 
 
 *`platform` is required when `type="platform"`, `agent_url` is required when `type="agent"`.
 
-**Activation Keys**: If the authenticated caller has access to any of the destinations in the request, the signal agent will include `activation_key` fields in the response for those destinations (when `is_live: true`).
+**Activation Keys**: If the authenticated caller has access to any of the deployment targets in the request, the signal agent will include `activation_key` fields in the response for those deployments (when `is_live: true`).
 
 **Permission Model**: The signal agent determines key inclusion based on the caller's authentication and authorization. For example:
-- A sales agent receives keys for destinations matching its `agent_url`
-- A buyer with credentials for multiple DSP platforms receives keys for all those platforms
+- A sales agent receives keys for deployments matching its `agent_url`
+- A buyer with credentials for multiple DSP platforms receives keys for all those deployments
 - Access is determined by the signal agent's permission system, not by flags in the request
 
 ### Filters Object
@@ -116,8 +116,8 @@ The response structure is identical across protocols, with only the transport wr
   - **deployments**: Array of destination deployments
     - **agent_url**: URL identifying the destination agent
     - **account**: Account identifier if applicable
-    - **is_live**: Whether signal is currently active on this destination
-    - **activation_key**: The key to use for targeting (see Activation Key below). **Only present if `is_live=true` AND this destination has `requester=true` in the request.**
+    - **is_live**: Whether signal is currently active on this deployment
+    - **activation_key**: The key to use for targeting (see Activation Key below). **Only present if `is_live=true` AND this deployment has `requester=true` in the request.**
     - **estimated_activation_duration_minutes**: Time to activate if not live
   - **pricing**: Pricing information
     - **cpm**: Cost per thousand impressions
@@ -125,7 +125,7 @@ The response structure is identical across protocols, with only the transport wr
 
 ### Activation Key Object
 
-The activation key represents how to use the signal on a destination platform. It can be either a segment ID or a key-value pair:
+The activation key represents how to use the signal on a deployment target. It can be either a segment ID or a key-value pair:
 
 **Segment ID format:**
 ```json
@@ -158,7 +158,7 @@ A sales agent querying for signals. Because the authenticated caller is wonderst
   "arguments": {
     "signal_spec": "High-income households interested in luxury goods",
     "deliver_to": {
-      "destinations": [
+      "deployments": [
         {
           "type": "agent",
           "agent_url": "https://wonderstruck.salesagents.com"
@@ -177,7 +177,7 @@ A sales agent querying for signals. Because the authenticated caller is wonderst
 
 ### MCP Response - With Activation Key
 
-Because the authenticated caller matches the destination, the response includes the activation key:
+Because the authenticated caller matches the deployment target, the response includes the activation key:
 
 ```json
 {
@@ -222,7 +222,7 @@ A buyer checking availability across multiple DSP platforms:
   "arguments": {
     "signal_spec": "High-income households interested in luxury goods",
     "deliver_to": {
-      "destinations": [
+      "deployments": [
         {
           "type": "platform",
           "platform": "the-trade-desk",
@@ -312,7 +312,7 @@ await a2a.send({
         parameters: {
           signal_spec: "High-income households interested in luxury goods",
           deliver_to: {
-            destinations: [
+            deployments: [
               {
                 type: "agent",
                 agent_url: "https://thetradedesk.com",
@@ -504,10 +504,10 @@ Discover all available deployments across platforms:
 
 ## Usage Notes
 
-1. **Authentication-Based Keys**: Activation keys are only returned when the authenticated caller matches one of the destinations
+1. **Authentication-Based Keys**: Activation keys are only returned when the authenticated caller matches one of the deployment targets
 2. **Permission Security**: The signal agent determines key inclusion based on caller identity, not request flags
 3. **Deployment Status**: Check `is_live` to determine if activation is needed
-4. **Multiple Destinations**: Query multiple destinations to check availability across platforms
+4. **Multiple Deployments**: Query multiple deployment targets to check availability across platforms
 5. **Activation Required**: If `is_live` is false, use the `activate_signal` task
 6. **The message field** provides a quick summary of the most relevant findings
 
