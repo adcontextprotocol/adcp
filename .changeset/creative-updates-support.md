@@ -8,16 +8,17 @@ Previously, buyers could only reference existing library creatives using simple 
 
 **New Capabilities:**
 
-1. **Upload creatives during updates** - Use `creatives` field to upload and assign new creative assets
+1. **Upload creatives with weight and placement** - Use `creatives` field to upload and assign new creative assets with optional weight and placement_ids configuration in one step
 2. **Update weights and placement targeting** - Use `creative_assignments` field to modify rotation weights (0-100) and placement targeting for existing creatives
 3. **Three assignment methods** - Choose the right approach for your use case:
    - `creative_ids`: Simple creative list (add/remove creatives)
-   - `creatives`: Upload brand new creative assets
-   - `creative_assignments`: Granular control over weights and placement targeting
+   - `creatives`: Upload brand new creative assets with optional weight/placement configuration
+   - `creative_assignments`: Granular control over weights and placement targeting for existing creatives
 
 **Schema Changes:**
 - Added `creatives` field to package update objects (max 100 creatives)
 - Added `creative_assignments` field with weight and placement_ids support
+- Extended `creative-asset.json` with optional `weight` and `placement_ids` fields for assignment configuration during upload
 - All three fields use replacement semantics for predictable behavior
 
 **Documentation Updates:**

@@ -634,9 +634,9 @@ Use `creative_assignments` to update weights or placement targeting. You can als
 }
 ```
 
-### Example 7: Upload New Creative
+### Example 7: Upload New Creative with Weight and Placement
 
-You can also upload and assign new creative assets in one step:
+You can upload and assign new creative assets with weight and placement targeting in one step:
 
 #### Request
 ```json
@@ -653,13 +653,15 @@ You can also upload and assign new creative assets in one step:
             "id": "video_standard_30s"
           },
           "name": "Purina Winter Sale 30s Video",
-          "assets": [
-            {
+          "assets": {
+            "video": {
               "asset_kind": "media",
               "delivery_type": "url",
               "url": "https://cdn.purina.com/ads/winter-sale-30s.mp4"
             }
-          ]
+          },
+          "weight": 100,
+          "placement_ids": ["living_room_smart_tv", "bedroom_streaming_device"]
         }
       ]
     }
@@ -667,7 +669,7 @@ You can also upload and assign new creative assets in one step:
 }
 ```
 
-**Note**: Using `creatives` replaces all existing creative assignments with just the newly uploaded creative. To keep existing creatives, first upload using `sync_creatives`, then update using `creative_ids` with the complete list.
+**Note**: Using `creatives` replaces all existing creative assignments with just the newly uploaded creative. The `weight` and `placement_ids` fields are optional - they configure how the creative is assigned to this package but are not stored in the creative library. To keep existing creatives while uploading new ones, first upload using `sync_creatives` (without weight/placement), then update using `creative_assignments` with the complete list including weights/placements.
 
 #### Response
 **Message**: "CTV package updated with 1 creative. Previous creative assignments have been replaced. The new creative will begin serving immediately."
@@ -702,9 +704,10 @@ You can also upload and assign new creative assets in one step:
   - To update weights/placements only: use `creative_assignments` with same creative_ids but different weights/placement_ids
 - Choose the right field for your use case:
   - `creative_ids`: Simple list changes (add/remove creatives, no weights/placements needed)
-  - `creatives`: Upload brand new creative assets during update
+  - `creatives`: Upload brand new creative assets with optional weight/placement configuration
   - `creative_assignments`: Update weights or placement targeting for existing creatives
 - New creatives uploaded via the `creatives` field are automatically added to the creative library
+- **Weight and placement in creative uploads**: When using `creatives`, you can optionally include `weight` and `placement_ids` in each creative object to configure assignment at upload time. These fields affect only the assignment to this package - they are not stored in the creative library.
 - Some platforms may limit which fields can be updated after activation
 - When updating budgets, the system automatically recalculates impression goals based on the package's CPM rate
 
