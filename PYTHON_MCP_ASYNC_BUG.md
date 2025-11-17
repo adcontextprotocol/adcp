@@ -81,7 +81,14 @@ Adding explicit cleanup with `await test_agent.close()` does not resolve the iss
 
 ## Root Cause
 
-The issue appears to be in how the MCP client's `streamablehttp_client` async generator handles cleanup when the script exits. The generator is being closed in a different async task context than where it was created, causing the `anyio` cancel scope violation.
+The issue is in the MCP Python SDK (`mcp` package, version 1.21.0). The `streamablehttp_client` async generator handles cleanup when the script exits, but the generator is being closed in a different async task context than where it was created, causing the `anyio` cancel scope violation.
+
+**Upstream Issues**: This is a known bug in the MCP Python SDK:
+- [Issue #521](https://github.com/modelcontextprotocol/python-sdk/issues/521) - SSE client cleanup (closed as user-resolved, not officially fixed)
+- [Issue #252](https://github.com/modelcontextprotocol/python-sdk/issues/252) - stdio cleanup (fixed in PR #353, resolved May 23, 2025)
+- [Issue #79](https://github.com/modelcontextprotocol/python-sdk/issues/79) - AsyncExitStack issue
+
+**Current MCP Version**: The `adcp==1.4.1` package depends on `mcp==1.21.0` (released November 6, 2025). The latest available version is `mcp==1.21.1` (released November 13, 2025).
 
 ## Files Affected
 
@@ -89,9 +96,26 @@ In the AdCP testable documentation project, this affects:
 - All Python examples using `test_agent.simple.*` methods
 - Approximately 9 test cases in `tests/snippet-validation.test.js`
 
-## Expected Fix
+## Potential Solutions
 
-The MCP client should properly clean up async generators without raising exceptions, or provide a documented cleanup method that prevents the error.
+### 1. Upgrade to Latest MCP SDK
+Upgrade `mcp` from 1.21.0 to 1.21.1 to see if the issue is resolved. However, based on the upstream issues:
+- Issue #252 was fixed in May 2025 for `stdio_client`
+- Issue #521 (SSE client) was closed as user-resolved, not officially fixed
+- The `streamablehttp_client` appears to still have this issue in 1.21.0
+
+**Likelihood of fix**: Low - the issue persists across multiple client types and versions. The streamable HTTP client may not be fixed yet.
+
+### 2. Wait for Upstream Fix
+The MCP Python SDK needs to properly handle async generator cleanup across all client types (`sse_client`, `stdio_client`, `streamablehttp_client`) to avoid cancel scope violations.
+
+### 3. Workaround in AdCP Client
+The `adcp` Python client could implement a workaround by:
+- Managing the MCP client lifecycle more carefully
+- Ensuring all async cleanup happens in the same task context
+- Using `AsyncExitStack` more carefully to avoid cross-task cleanup
+
+However, this is difficult since the issue is in the underlying MCP SDK's async generator implementation.
 
 ## Additional Context
 
