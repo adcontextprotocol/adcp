@@ -1,6 +1,7 @@
 ---
 title: sync_creatives
 sidebar_position: 4
+testable: true
 ---
 
 # sync_creatives
@@ -19,20 +20,9 @@ Upload creatives with package assignments:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
+import { testAgent } from '@adcp/client/testing';
 
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
-const result = await agent.syncCreatives({
+const result = await testAgent.syncCreatives({
   media_buy_id: 'mb_12345',
   creatives: [{
     creative_id: 'creative_video_001',
@@ -56,20 +46,9 @@ console.log(`Synced ${result.creatives.length} creatives`);
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
-result = agent.sync_creatives(
+result = test_agent.sync_creatives(
     media_buy_id='mb_12345',
     creatives=[{
         'creative_id': 'creative_video_001',
@@ -153,21 +132,9 @@ Upload multiple creatives and assign them to packages in one call:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
+import { testAgent } from '@adcp/client/testing';
 
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
-
-const result = await agent.syncCreatives({
+const result = await testAgent.syncCreatives({
   media_buy_id: 'mb_12345',
   creatives: [
     {
@@ -229,21 +196,9 @@ result.creatives.forEach(creative => {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
-
-result = agent.sync_creatives(
+result = test_agent.sync_creatives(
     media_buy_id='mb_12345',
     creatives=[
         {
@@ -312,21 +267,9 @@ Update package assignments without re-uploading assets:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient} from '@adcp/client';
+import { testAgent } from '@adcp/client/testing';
 
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
-
-const result = await agent.syncCreatives({
+const result = await testAgent.syncCreatives({
   media_buy_id: 'mb_12345',
   mode: 'patch',
   creatives: [{
@@ -347,21 +290,9 @@ console.log('Updated assignments for creative:', result.creatives[0].creative_id
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
-
-result = agent.sync_creatives(
+result = test_agent.sync_creatives(
     media_buy_id='mb_12345',
     mode='patch',
     creatives=[{
@@ -390,21 +321,9 @@ Use third-party ad serving with HTML/JavaScript tags:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
+import { testAgent } from '@adcp/client/testing';
 
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
-
-const result = await agent.syncCreatives({
+const result = await testAgent.syncCreatives({
   media_buy_id: 'mb_12345',
   creatives: [{
     creative_id: 'creative_3p_001',
@@ -430,21 +349,9 @@ console.log('Third-party tag uploaded:', result.creatives[0].creative_id);
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
-
-result = agent.sync_creatives(
+result = test_agent.sync_creatives(
     media_buy_id='mb_12345',
     creatives=[{
         'creative_id': 'creative_3p_001',
@@ -478,21 +385,9 @@ Use the creative agent to generate creatives from a brand manifest. See the [Gen
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
+import { testAgent } from '@adcp/client/testing';
 
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
-
-const result = await agent.syncCreatives({
+const result = await testAgent.syncCreatives({
   media_buy_id: 'mb_12345',
   creatives: [{
     creative_id: 'creative_gen_001',
@@ -516,21 +411,9 @@ console.log('Generative creative synced:', result.creatives[0].creative_id);
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
-
-result = agent.sync_creatives(
+result = test_agent.sync_creatives(
     media_buy_id='mb_12345',
     creatives=[{
         'creative_id': 'creative_gen_001',
@@ -562,21 +445,9 @@ Validate creative configuration without uploading:
 <CodeGroup>
 
 ```javascript JavaScript
-import { ADCPMultiAgentClient } from '@adcp/client';
+import { testAgent } from '@adcp/client/testing';
 
-const client = new ADCPMultiAgentClient([{
-  id: 'test-agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
-  protocol: 'mcp',
-  auth: {
-    type: 'bearer',
-    token: '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-  }
-}]);
-
-const agent = client.agent('test-agent');
-
-const result = await agent.syncCreatives({
+const result = await testAgent.syncCreatives({
   media_buy_id: 'mb_12345',
   mode: 'dry_run',
   creatives: [{
@@ -606,21 +477,9 @@ if (result.errors && result.errors.length > 0) {
 ```
 
 ```python Python
-from adcp import ADCPMultiAgentClient
+from adcp import test_agent
 
-client = ADCPMultiAgentClient([{
-    'id': 'test-agent',
-    'agent_uri': 'https://test-agent.adcontextprotocol.org/mcp',
-    'protocol': 'mcp',
-    'auth': {
-        'type': 'bearer',
-        'token': '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ'
-    }
-}])
-
-agent = client.agent('test-agent')
-
-result = agent.sync_creatives(
+result = test_agent.sync_creatives(
     media_buy_id='mb_12345',
     mode='dry_run',
     creatives=[{
