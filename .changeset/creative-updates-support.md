@@ -2,19 +2,35 @@
 "adcontextprotocol": minor
 ---
 
-Add support for uploading new creatives via update_media_buy task and clarify replacement semantics for creative assignments.
+Add comprehensive creative management to update_media_buy with support for uploading new creatives, updating weights, and managing placement targeting.
 
-Previously, buyers could only reference existing library creatives using `creative_ids` when updating a media buy. Now they can also upload new creative assets directly using the `creatives` field in package updates, matching the functionality available in create_media_buy.
+Previously, buyers could only reference existing library creatives using simple `creative_ids` when updating a media buy. This limited the ability to adjust creative rotation weights or placement targeting without recreating the entire campaign.
 
-**Changes:**
-- Added `creatives` field to package update objects in update-media-buy-request.json schema
+**New Capabilities:**
+
+1. **Upload creatives during updates** - Use `creatives` field to upload and assign new creative assets
+2. **Update weights and placement targeting** - Use `creative_assignments` field to modify rotation weights (0-100) and placement targeting for existing creatives
+3. **Three assignment methods** - Choose the right approach for your use case:
+   - `creative_ids`: Simple creative list (add/remove creatives)
+   - `creatives`: Upload brand new creative assets
+   - `creative_assignments`: Granular control over weights and placement targeting
+
+**Schema Changes:**
+- Added `creatives` field to package update objects (max 100 creatives)
+- Added `creative_assignments` field with weight and placement_ids support
+- All three fields use replacement semantics for predictable behavior
+
+**Documentation Updates:**
 - Documented replacement semantics for array fields in PATCH updates
 - Added examples showing how to add, remove, or replace creative assignments
-- Clarified that providing `creative_ids` or `creatives` replaces all existing assignments
-- New creatives are automatically added to the creative library when uploaded
+- Added example showing weight and placement targeting updates
+- Clarified field selection guidance in usage notes
 
 **Replacement Semantics:**
-- Array fields (like `creative_ids` and `creatives`) use replacement semantics
-- To add a creative: include all existing IDs plus the new one
-- To remove a creative: include all IDs except the one to remove
+- Array fields use complete replacement (not merge or append)
+- To add a creative: include all existing assignments plus the new one
+- To remove a creative: include all assignments except the one to remove
+- To update weights/placements: use `creative_assignments` with modified values
 - Omitting the field leaves existing assignments unchanged
+
+This brings update_media_buy to feature parity with create_media_buy while adding the ability to fine-tune creative rotation and targeting post-launch.

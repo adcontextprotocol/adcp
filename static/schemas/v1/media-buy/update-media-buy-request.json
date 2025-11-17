@@ -73,6 +73,13 @@
               "$ref": "/schemas/v1/core/creative-asset.json"
             },
             "maxItems": 100
+          },
+          "creative_assignments": {
+            "type": "array",
+            "description": "Full creative assignment objects with weights and placement targeting (alternative to creative_ids - provides granular control over weights and placement targeting). Uses replacement semantics like creative_ids.",
+            "items": {
+              "$ref": "/schemas/v1/core/creative-assignment.json"
+            }
           }
         },
         "oneOf": [

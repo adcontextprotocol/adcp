@@ -38,10 +38,13 @@ Update campaign and package settings. This task supports partial updates and han
 | `bid_price` | number | No | Updated bid price for auction-based pricing options (only applies to auction packages) |
 | `active` | boolean | No | Pause/resume specific package |
 | `targeting_overlay` | TargetingOverlay | No | Update targeting for this package (see Targeting Overlay Object in create_media_buy) |
-| `creative_ids` | string[] | No | Update creative assignments (references existing library creatives) |
+| `creative_ids` | string[] | No | Simple creative assignments (references existing library creatives) - use for basic creative list updates |
 | `creatives` | CreativeAsset[] | No | Full creative objects to upload and assign to this package (alternative to creative_ids - creatives will be added to library). Supports both static and generative creatives. Max 100 creatives. |
+| `creative_assignments` | CreativeAssignment[] | No | Full assignment objects with weights and placement targeting (alternative to creative_ids - provides granular control). Each assignment includes creative_id, optional weight (0-100), and optional placement_ids array. |
 
 *Either `package_id` or `buyer_ref` must be provided
+
+**Creative Assignment Fields**: You can provide ONE of: `creative_ids` (simple), `creatives` (upload new), or `creative_assignments` (granular control). All three use replacement semantics.
 
 ## Webhook Configuration (Task-Specific)
 
@@ -349,10 +352,11 @@ This tool follows PATCH update semantics:
 - **Only included fields are modified** - Omitted fields remain unchanged
 - **Null values clear/reset fields** - Where applicable
 - **Packages not mentioned remain unchanged** - Only listed packages are updated
-- **Array fields use replacement semantics** - When you provide an array field (like `creative_ids` or `creatives`), it completely replaces the existing array
-  - To add a creative: Include all existing creative IDs plus the new one
-  - To remove a creative: Include all creative IDs except the one to remove
-  - To replace all creatives: Provide the new complete list
+- **Array fields use replacement semantics** - When you provide an array field (like `creative_ids`, `creatives`, or `creative_assignments`), it completely replaces the existing array
+  - To add a creative: Include all existing assignments plus the new one
+  - To remove a creative: Include all assignments except the one to remove
+  - To update weights/placements: Use `creative_assignments` with modified values
+  - To replace all: Provide the new complete list
   - Omitting the field entirely leaves existing assignments unchanged
 
 
@@ -551,7 +555,50 @@ To add a creative while keeping existing ones, include all existing creative IDs
 }
 ```
 
-### Example 5: Upload New Creative
+### Example 5: Update Creative Weights and Placement Targeting
+
+Use `creative_assignments` to update weights or placement targeting without changing which creatives are assigned:
+
+#### Request
+```json
+{
+  "buyer_ref": "purina_pet_campaign_q1",
+  "packages": [
+    {
+      "buyer_ref": "purina_ctv_package",
+      "creative_assignments": [
+        {
+          "creative_id": "purina_hero_30s",
+          "weight": 70,
+          "placement_ids": ["living_room_smart_tv"]
+        },
+        {
+          "creative_id": "purina_product_focus_30s",
+          "weight": 30,
+          "placement_ids": ["bedroom_streaming_device"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Response
+**Message**: "CTV package creative rotation updated. Hero creative now weighted 70% (previously 50%) and assigned to living room placement. Product focus creative now weighted 30% and assigned to bedroom placement. Changes take effect immediately for future impressions."
+
+**Payload**:
+```json
+{
+  "media_buy_id": "gam_1234567890",
+  "buyer_ref": "purina_pet_campaign_q1",
+  "implementation_date": "2024-02-08T00:00:00Z",
+  "affected_packages": [
+    {"package_id": "gam_pkg_001", "buyer_ref": "purina_ctv_package"}
+  ]
+}
+```
+
+### Example 6: Upload New Creative
 
 You can also upload and assign new creative assets in one step:
 
@@ -610,11 +657,17 @@ You can also upload and assign new creative assets in one step:
 - Campaign extensions require sufficient remaining budget
 - Creative updates only affect future impressions
 - **Creative assignment uses replacement semantics**:
-  - Providing `creative_ids` replaces ALL existing assignments with the new list
-  - Providing `creatives` uploads new creatives AND replaces all assignments
-  - Omitting both fields leaves creative assignments unchanged
-  - To add one creative: specify all existing IDs plus the new one
-  - To remove one creative: specify all IDs except the one to remove
+  - Providing `creative_ids` replaces ALL existing assignments with the new list (simple, no weights/placements)
+  - Providing `creatives` uploads new creatives AND replaces all assignments (upload + assign)
+  - Providing `creative_assignments` replaces ALL existing assignments with granular control (weights + placements)
+  - Omitting all three fields leaves creative assignments unchanged
+  - To add one creative: specify all existing assignments plus the new one
+  - To remove one creative: specify all assignments except the one to remove
+  - To update weights/placements only: use `creative_assignments` with same creative_ids but different weights/placement_ids
+- Choose the right field for your use case:
+  - `creative_ids`: Simple list changes (add/remove creatives, no weights/placements needed)
+  - `creatives`: Upload brand new creative assets during update
+  - `creative_assignments`: Update weights or placement targeting for existing creatives
 - New creatives uploaded via the `creatives` field are automatically added to the creative library
 - Some platforms may limit which fields can be updated after activation
 - When updating budgets, the system automatically recalculates impression goals based on the package's CPM rate
