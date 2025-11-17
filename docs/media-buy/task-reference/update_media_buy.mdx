@@ -555,9 +555,45 @@ To add a creative while keeping existing ones, include all existing creative IDs
 }
 ```
 
-### Example 5: Update Creative Weights and Placement Targeting
+### Example 5: Remove Creative from Rotation
 
-Use `creative_assignments` to update weights or placement targeting without changing which creatives are assigned:
+To remove a creative, specify only the creatives you want to keep (omit the one to remove):
+
+#### Request
+```json
+{
+  "buyer_ref": "purina_pet_campaign_q1",
+  "packages": [
+    {
+      "buyer_ref": "purina_ctv_package",
+      "creative_ids": [
+        "purina_hero_30s",
+        "purina_winter_promo_30s"
+        // purina_product_focus_30s is NOT included, so it will be removed
+      ]
+    }
+  ]
+}
+```
+
+#### Response
+**Message**: "CTV package updated with 2 creatives. Removed 1 creative from rotation (purina_product_focus_30s). Remaining creatives will continue serving. Changes take effect immediately for future impressions."
+
+**Payload**:
+```json
+{
+  "media_buy_id": "gam_1234567890",
+  "buyer_ref": "purina_pet_campaign_q1",
+  "implementation_date": "2024-02-08T00:00:00Z",
+  "affected_packages": [
+    {"package_id": "gam_pkg_001", "buyer_ref": "purina_ctv_package"}
+  ]
+}
+```
+
+### Example 6: Update Creative Weights and Placement Targeting
+
+Use `creative_assignments` to update weights or placement targeting. You can also remove creatives by omitting them from the list:
 
 #### Request
 ```json
@@ -598,7 +634,7 @@ Use `creative_assignments` to update weights or placement targeting without chan
 }
 ```
 
-### Example 6: Upload New Creative
+### Example 7: Upload New Creative
 
 You can also upload and assign new creative assets in one step:
 
