@@ -96,6 +96,135 @@ Publishers declare support for offline delivery in product capabilities:
 }
 ```
 
+### Offline File Delivery (Batch)
+
+For offline file delivery, publishers can provide reporting data in JSON Lines (JSONL), CSV, or Parquet format. All formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
+
+Files can be compressed with gzip (`.jsonl.gz`, `.csv.gz`, `.parquet.gz`) to reduce storage and transfer costs.
+
+<Tabs>
+<Tab title="JSONL">
+
+**JSON Lines (JSONL)** - Recommended for most use cases
+
+One JSON object per line (newline-delimited JSON). Preserves full nested structure from webhook payloads. Easy to parse line-by-line for streaming processing.
+
+**Example JSONL file:**
+```jsonl
+{"notification_type": "scheduled", "sequence_number": 1, "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_deliveries": [{"media_buy_id": "mb_001", "buyer_ref": "campaign_a", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}]}
+{"notification_type": "scheduled", "sequence_number": 2, "reporting_period": {"start": "2024-02-06T00:00:00Z", "end": "2024-02-06T23:59:59Z"}, "currency": "USD", "media_buy_deliveries": [{"media_buy_id": "mb_001", "buyer_ref": "campaign_a", "status": "active", "totals": {"impressions": 52000, "spend": 1820.00, "clicks": 104, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 31000, "spend": 1085.00, "pacing_index": 0.97, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 21000, "spend": 735.00, "pacing_index": 0.99, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}]}
+```
+
+**File naming:**
+```
+s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.jsonl.gz
+```
+
+</Tab>
+<Tab title="CSV">
+
+**CSV** - For tabular analysis
+
+Flattened structure suitable for spreadsheet tools. May require multiple files for nested data (one file per dimension). Best for simple aggregations without dimensional breakdowns.
+
+**Example CSV structure:**
+```csv
+notification_type,sequence_number,reporting_period_start,reporting_period_end,currency,media_buy_id,buyer_ref,status,impressions,spend,clicks,ctr
+scheduled,1,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002
+scheduled,2,2024-02-06T00:00:00Z,2024-02-06T23:59:59Z,USD,mb_001,campaign_a,active,52000,1820.00,104,0.002
+```
+
+**File naming:**
+```
+s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.csv.gz
+```
+
+</Tab>
+<Tab title="Parquet">
+
+**Parquet** - For high-volume analytics
+
+Columnar format optimized for analytics workloads. Excellent compression ratios. Supports nested structures natively. Best for data warehouses and big data processing.
+
+**Example Parquet schema:**
+```json
+{
+  "type": "record",
+  "name": "MediaBuyDelivery",
+  "fields": [
+    {"name": "notification_type", "type": "string"},
+    {"name": "sequence_number", "type": "int"},
+    {"name": "reporting_period", "type": {
+      "type": "record",
+      "name": "ReportingPeriod",
+      "fields": [
+        {"name": "start", "type": "string"},
+        {"name": "end", "type": "string"}
+      ]
+    }},
+    {"name": "currency", "type": "string"},
+    {"name": "media_buy_deliveries", "type": {
+      "type": "array",
+      "items": {
+        "type": "record",
+        "name": "MediaBuyDeliveryItem",
+        "fields": [
+          {"name": "media_buy_id", "type": "string"},
+          {"name": "buyer_ref", "type": "string"},
+          {"name": "status", "type": "string"},
+          {"name": "totals", "type": {
+            "type": "record",
+            "name": "Totals",
+            "fields": [
+              {"name": "impressions", "type": "long"},
+              {"name": "spend", "type": "double"},
+              {"name": "clicks", "type": "long"},
+              {"name": "ctr", "type": "double"}
+            ]
+          }},
+          {"name": "by_package", "type": {
+            "type": "array",
+            "items": {
+              "type": "record",
+              "name": "PackageDelivery",
+              "fields": [
+                {"name": "package_id", "type": "string"},
+                {"name": "impressions", "type": "long"},
+                {"name": "spend", "type": "double"},
+                {"name": "pacing_index", "type": "double"},
+                {"name": "pricing_model", "type": "string"},
+                {"name": "rate", "type": "double"},
+                {"name": "currency", "type": "string"}
+              ]
+            }
+          }}
+        ]
+      }
+    }}
+  ]
+}
+```
+
+**File naming:**
+```
+s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.parquet.gz
+```
+
+</Tab>
+</Tabs>
+
+**File Structure:**
+Each file contains the same structure as webhook payloads, with one payload per line (JSONL) or row (CSV/Parquet). Files may contain:
+- Single media buy delivery data
+- Aggregated delivery data for multiple media buys
+- Multiple reporting periods (one per line/row)
+
+**Processing Recommendations:**
+- Process files in chronological order using file timestamps
+- Handle duplicate files gracefully (idempotent processing)
+- Validate file integrity using checksums if provided
+- Monitor for missing files and alert on gaps
+
 ### Webhook Configuration
 
 Configure reporting webhooks when creating a media buy using the `reporting_webhook` parameter:
