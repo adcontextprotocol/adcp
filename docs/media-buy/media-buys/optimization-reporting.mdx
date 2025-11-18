@@ -102,47 +102,37 @@ For offline file delivery, publishers can provide reporting data in JSON Lines (
 
 Files can be compressed with gzip (`.jsonl.gz`, `.csv.gz`, `.parquet.gz`) to reduce storage and transfer costs.
 
-<Tabs>
-<Tab title="JSONL">
+#### JSON Lines (JSONL)
 
-**JSON Lines (JSONL)** - Recommended for most use cases
+**Recommended for most use cases**
 
-One JSON object per line (newline-delimited JSON). Preserves full nested structure from webhook payloads. Easy to parse line-by-line for streaming processing.
+One media buy delivery per line (newline-delimited JSON). Each line contains a single media buy delivery object with its reporting period and package-level data. Preserves full nested structure. Easy to parse line-by-line for streaming processing.
 
 **Example JSONL file:**
 ```jsonl
-{"notification_type": "scheduled", "sequence_number": 1, "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_deliveries": [{"media_buy_id": "mb_001", "buyer_ref": "campaign_a", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}]}
-{"notification_type": "scheduled", "sequence_number": 2, "reporting_period": {"start": "2024-02-06T00:00:00Z", "end": "2024-02-06T23:59:59Z"}, "currency": "USD", "media_buy_deliveries": [{"media_buy_id": "mb_001", "buyer_ref": "campaign_a", "status": "active", "totals": {"impressions": 52000, "spend": 1820.00, "clicks": 104, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 31000, "spend": 1085.00, "pacing_index": 0.97, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 21000, "spend": 735.00, "pacing_index": 0.99, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}]}
+{"reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_001", "buyer_ref": "campaign_a", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
+{"reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_002", "buyer_ref": "campaign_b", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
+{"reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_003", "buyer_ref": "campaign_c", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
 ```
 
-**File naming:**
-```
-s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.jsonl.gz
-```
+#### CSV
 
-</Tab>
-<Tab title="CSV">
+**For tabular analysis**
 
-**CSV** - For tabular analysis
-
-Flattened structure suitable for spreadsheet tools. May require multiple files for nested data (one file per dimension). Best for simple aggregations without dimensional breakdowns.
+CSV files require unnesting nested arrays. Each record should be unnested to the `by_package` level, meaning one row per package with parent-level data (reporting period, media buy info, totals) duplicated.
 
 **Example CSV structure:**
 ```csv
-notification_type,sequence_number,reporting_period_start,reporting_period_end,currency,media_buy_id,buyer_ref,status,impressions,spend,clicks,ctr
-scheduled,1,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002
-scheduled,2,2024-02-06T00:00:00Z,2024-02-06T23:59:59Z,USD,mb_001,campaign_a,active,52000,1820.00,104,0.002
+reporting_period.start,reporting_period.end,currency,media_buy_id,buyer_ref,status,totals.impressions,totals.spend,totals.clicks,totals.ctr,by_package.package_id,by_package.impressions,by_package.spend,by_package.clicks,by_package.pacing_index,by_package.pricing_model,by_package.rate,by_package.currency
+2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
+2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
+2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_002,campaign_b,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
+2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_003,campaign_c,active,75000,3375.00,150,0.002,pkg_004,75000,3375.00,150,0.96,cpcv,0.045,USD
 ```
 
-**File naming:**
-```
-s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.csv.gz
-```
+#### Parquet
 
-</Tab>
-<Tab title="Parquet">
-
-**Parquet** - For high-volume analytics
+**For high-volume analytics**
 
 Columnar format optimized for analytics workloads. Excellent compression ratios. Supports nested structures natively. Best for data warehouses and big data processing.
 
@@ -152,8 +142,6 @@ Columnar format optimized for analytics workloads. Excellent compression ratios.
   "type": "record",
   "name": "MediaBuyDelivery",
   "fields": [
-    {"name": "notification_type", "type": "string"},
-    {"name": "sequence_number", "type": "int"},
     {"name": "reporting_period", "type": {
       "type": "record",
       "name": "ReportingPeriod",
@@ -163,41 +151,32 @@ Columnar format optimized for analytics workloads. Excellent compression ratios.
       ]
     }},
     {"name": "currency", "type": "string"},
-    {"name": "media_buy_deliveries", "type": {
+    {"name": "media_buy_id", "type": "string"},
+    {"name": "buyer_ref", "type": "string"},
+    {"name": "status", "type": "string"},
+    {"name": "totals", "type": {
+      "type": "record",
+      "name": "Totals",
+      "fields": [
+        {"name": "impressions", "type": "long"},
+        {"name": "spend", "type": "double"},
+        {"name": "clicks", "type": "long"},
+        {"name": "ctr", "type": "double"}
+      ]
+    }},
+    {"name": "by_package", "type": {
       "type": "array",
       "items": {
         "type": "record",
-        "name": "MediaBuyDeliveryItem",
+        "name": "PackageDelivery",
         "fields": [
-          {"name": "media_buy_id", "type": "string"},
-          {"name": "buyer_ref", "type": "string"},
-          {"name": "status", "type": "string"},
-          {"name": "totals", "type": {
-            "type": "record",
-            "name": "Totals",
-            "fields": [
-              {"name": "impressions", "type": "long"},
-              {"name": "spend", "type": "double"},
-              {"name": "clicks", "type": "long"},
-              {"name": "ctr", "type": "double"}
-            ]
-          }},
-          {"name": "by_package", "type": {
-            "type": "array",
-            "items": {
-              "type": "record",
-              "name": "PackageDelivery",
-              "fields": [
-                {"name": "package_id", "type": "string"},
-                {"name": "impressions", "type": "long"},
-                {"name": "spend", "type": "double"},
-                {"name": "pacing_index", "type": "double"},
-                {"name": "pricing_model", "type": "string"},
-                {"name": "rate", "type": "double"},
-                {"name": "currency", "type": "string"}
-              ]
-            }
-          }}
+          {"name": "package_id", "type": "string"},
+          {"name": "impressions", "type": "long"},
+          {"name": "spend", "type": "double"},
+          {"name": "pacing_index", "type": "double"},
+          {"name": "pricing_model", "type": "string"},
+          {"name": "rate", "type": "double"},
+          {"name": "currency", "type": "string"}
         ]
       }
     }}
@@ -205,19 +184,11 @@ Columnar format optimized for analytics workloads. Excellent compression ratios.
 }
 ```
 
-**File naming:**
-```
-s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.parquet.gz
-```
-
-</Tab>
-</Tabs>
-
 **File Structure:**
-Each file contains the same structure as webhook payloads, with one payload per line (JSONL) or row (CSV/Parquet). Files may contain:
-- Single media buy delivery data
-- Aggregated delivery data for multiple media buys
-- Multiple reporting periods (one per line/row)
+Each file contains one media buy delivery per line (JSONL) or row (CSV/Parquet). Files may contain:
+- Multiple media buy deliveries (one per line/row)
+- Multiple reporting periods for the same media buy (separate rows)
+- Multiple media buys (each with its own rows)
 
 **Processing Recommendations:**
 - Process files in chronological order using file timestamps
