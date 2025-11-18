@@ -1,10 +1,8 @@
 ---
-"adcontextprotocol": major
+"adcontextprotocol": minor
 ---
 
 Add explicit `is_fixed` discriminator field to all pricing option schemas for consistent discrimination.
-
-**Breaking Change**: All pricing options now require the `is_fixed` field.
 
 **What Changed:**
 - Fixed-rate options (CPM, vCPM, CPC, CPV, CPCV, CPP, Flat Rate): Now include `is_fixed: true` as a required field
