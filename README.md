@@ -45,8 +45,8 @@ Discover and activate data signals using natural language.
 - **Transparent Pricing**: CPM and revenue share models
 - **Real-time Status**: Track activation and deployment progress
 
-### 📍 Curation Protocol - Coming Soon
-Curate media inventory based on context and brand safety requirements.
+### 📍 Deals Protocol - RFC/v0.1
+Discover and activate pre-packaged and ad-hoc inventory deals.
 
 ### 💰 Media Buy Protocol - RFC/v0.1  
 Execute and optimize media buys programmatically across platforms.

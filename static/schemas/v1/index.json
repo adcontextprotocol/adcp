@@ -144,6 +144,18 @@
         "deployment": {
           "$ref": "/schemas/v1/core/deployment.json",
           "description": "A signal deployment to a specific destination platform with activation status and key"
+        },
+        "deal": {
+          "$ref": "/schemas/v1/core/deal.json",
+          "description": "A deal package representing pre-packaged or ad-hoc inventory from publishers or ad decisioning platforms"
+        },
+        "deal-pricing": {
+          "$ref": "/schemas/v1/core/deal-pricing.json",
+          "description": "Pricing information for a deal, including pricing type and optional margin for curated deals"
+        },
+        "deal-targeting": {
+          "$ref": "/schemas/v1/core/deal-targeting.json",
+          "description": "Targeting parameters for a deal (geo, devices, allow/block lists, segments)"
         }
       }
     },
@@ -406,6 +418,31 @@
           "response": {
             "$ref": "/schemas/v1/signals/activate-signal-response.json",
             "description": "Response payload for activate_signal task"
+          }
+        }
+      }
+    },
+    "deals": {
+      "description": "Deals protocol task request/response schemas",
+      "tasks": {
+        "get-deals": {
+          "request": {
+            "$ref": "/schemas/v1/deals/get-deals-request.json",
+            "description": "Request parameters for discovering deal packages based on description and filters"
+          },
+          "response": {
+            "$ref": "/schemas/v1/deals/get-deals-response.json",
+            "description": "Response payload for get_deals task"
+          }
+        },
+        "activate-deal": {
+          "request": {
+            "$ref": "/schemas/v1/deals/activate-deal-request.json",
+            "description": "Request parameters for activating a deal on a specific destination platform"
+          },
+          "response": {
+            "$ref": "/schemas/v1/deals/activate-deal-response.json",
+            "description": "Response payload for activate_deal task"
           }
         }
       }
