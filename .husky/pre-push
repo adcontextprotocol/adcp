@@ -3,7 +3,20 @@
 # Verify version sync before pushing
 npm run verify-version-sync
 
-# Skip Docusaurus build - production uses Mintlify
-# Docusaurus build fails on Mintlify-specific syntax (e.g., <Tab> components)
-# If you need to validate Docusaurus build, run: npm run build
-# npm run build
+# Validate Mintlify docs before pushing
+# Production uses Mintlify, so we validate with Mintlify checks
+echo "🔍 Validating Mintlify documentation..."
+
+# Check for broken internal links
+npx --yes mintlify@latest broken-links || {
+  echo "❌ Mintlify broken links check failed. Please fix broken links before pushing."
+  exit 1
+}
+
+# Check for accessibility issues (warn only, don't fail)
+npx --yes mintlify@latest a11y || {
+  echo "⚠️  Mintlify accessibility check found issues. Review and fix if needed."
+  # Don't fail on a11y warnings, just warn
+}
+
+echo "✅ Mintlify documentation validation passed"
