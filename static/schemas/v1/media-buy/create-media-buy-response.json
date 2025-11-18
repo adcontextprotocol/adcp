@@ -57,7 +57,9 @@
       ],
       "additionalProperties": false,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -78,15 +80,36 @@
           "additionalProperties": true
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": false,
       "not": {
         "anyOf": [
-          {"required": ["media_buy_id"]},
-          {"required": ["buyer_ref"]},
-          {"required": ["packages"]}
+          {
+            "required": [
+              "media_buy_id"
+            ]
+          },
+          {
+            "required": [
+              "buyer_ref"
+            ]
+          },
+          {
+            "required": [
+              "packages"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "ext": {
+      "type": "object",
+      "description": "Extension object for response-scoped implementation-specific metadata. Use for processing diagnostics, debug information, or operation-specific hints. Separate from domain object extensions which represent persistent state. See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
+      "additionalProperties": true
+    }
+  }
 }

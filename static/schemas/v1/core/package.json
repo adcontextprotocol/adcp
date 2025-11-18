@@ -58,6 +58,11 @@
     },
     "status": {
       "$ref": "/schemas/v1/enums/package-status.json"
+    },
+    "ext": {
+      "type": "object",
+      "description": "Extension object for implementation-specific data. Implementers SHOULD namespace custom fields to avoid collisions (e.g., 'pod_position_*', 'companion_*', 'delivery_*'). See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
+      "additionalProperties": true
     }
   },
   "required": ["package_id", "status"],

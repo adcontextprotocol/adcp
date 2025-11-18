@@ -21,6 +21,11 @@
       "type": "object",
       "description": "Initiator-provided context included in the request payload. Agentsmust echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
       "additionalProperties": true
+    },
+    "ext": {
+      "type": "object",
+      "description": "Extension object for request-scoped implementation-specific parameters. Unlike 'context' which is echoed unchanged, extensions MAY affect task behavior. Implementers SHOULD namespace custom fields (e.g., 'buyer_*', 'test_*', 'trace_*'). See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
+      "additionalProperties": true
     }
   },
   "required": [

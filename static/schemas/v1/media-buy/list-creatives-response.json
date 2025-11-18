@@ -123,17 +123,39 @@
             "patternProperties": {
               "^[a-zA-Z0-9_-]+$": {
                 "oneOf": [
-                  {"$ref": "/schemas/v1/core/assets/image-asset.json"},
-                  {"$ref": "/schemas/v1/core/assets/video-asset.json"},
-                  {"$ref": "/schemas/v1/core/assets/audio-asset.json"},
-                  {"$ref": "/schemas/v1/core/assets/text-asset.json"},
-                  {"$ref": "/schemas/v1/core/assets/html-asset.json"},
-                  {"$ref": "/schemas/v1/core/assets/css-asset.json"},
-                  {"$ref": "/schemas/v1/core/assets/javascript-asset.json"},
-                  {"$ref": "/schemas/v1/core/assets/vast-asset.json"},
-                  {"$ref": "/schemas/v1/core/assets/daast-asset.json"},
-                  {"$ref": "/schemas/v1/core/promoted-offerings.json"},
-                  {"$ref": "/schemas/v1/core/assets/url-asset.json"}
+                  {
+                    "$ref": "/schemas/v1/core/assets/image-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/v1/core/assets/video-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/v1/core/assets/audio-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/v1/core/assets/text-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/v1/core/assets/html-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/v1/core/assets/css-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/v1/core/assets/javascript-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/v1/core/assets/vast-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/v1/core/assets/daast-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/v1/core/promoted-offerings.json"
+                  },
+                  {
+                    "$ref": "/schemas/v1/core/assets/url-asset.json"
+                  }
                 ]
               }
             }
@@ -301,6 +323,11 @@
     "context": {
       "type": "object",
       "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+      "additionalProperties": true
+    },
+    "ext": {
+      "type": "object",
+      "description": "Extension object for response-scoped implementation-specific metadata. Use for processing diagnostics, debug information, or operation-specific hints. Separate from domain object extensions which represent persistent state. See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
       "additionalProperties": true
     }
   },

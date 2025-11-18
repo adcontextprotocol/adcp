@@ -55,7 +55,10 @@
         },
         "output_format": {
           "type": "string",
-          "enum": ["url", "html"],
+          "enum": [
+            "url",
+            "html"
+          ],
           "default": "url",
           "description": "Output format for previews. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding). Default: 'url' for backward compatibility."
         },
@@ -129,7 +132,10 @@
               },
               "output_format": {
                 "type": "string",
-                "enum": ["url", "html"],
+                "enum": [
+                  "url",
+                  "html"
+                ],
                 "default": "url",
                 "description": "Output format for this preview. 'url' returns preview_url, 'html' returns preview_html."
               }
@@ -145,7 +151,10 @@
         },
         "output_format": {
           "type": "string",
-          "enum": ["url", "html"],
+          "enum": [
+            "url",
+            "html"
+          ],
           "default": "url",
           "description": "Default output format for all requests in this batch. Individual requests can override this. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding)."
         },
@@ -161,5 +170,12 @@
       ],
       "additionalProperties": false
     }
-  ]
+  ],
+  "properties": {
+    "ext": {
+      "type": "object",
+      "description": "Extension object for request-scoped implementation-specific parameters. Unlike 'context' which is echoed unchanged, extensions MAY affect task behavior. Implementers SHOULD namespace custom fields (e.g., 'buyer_*', 'test_*', 'trace_*'). See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
+      "additionalProperties": true
+    }
+  }
 }

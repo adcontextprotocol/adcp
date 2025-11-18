@@ -202,6 +202,11 @@
       },
       "required": ["format_id", "manifest"],
       "additionalProperties": false
+    },
+    "ext": {
+      "type": "object",
+      "description": "Extension object for implementation-specific data. Implementers SHOULD namespace custom fields to avoid collisions (e.g., 'roku_*', 'ttd_*', 'meta_*'). See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
+      "additionalProperties": true
     }
   },
   "required": [

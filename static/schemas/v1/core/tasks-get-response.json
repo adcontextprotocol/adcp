@@ -16,7 +16,10 @@
     "domain": {
       "type": "string",
       "description": "AdCP domain this task belongs to",
-      "enum": ["media-buy", "signals"]
+      "enum": [
+        "media-buy",
+        "signals"
+      ]
     },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",
@@ -87,7 +90,10 @@
             "domain": {
               "type": "string",
               "description": "AdCP domain where error occurred",
-              "enum": ["media-buy", "signals"]
+              "enum": [
+                "media-buy",
+                "signals"
+              ]
             },
             "operation": {
               "type": "string",
@@ -102,7 +108,10 @@
           "additionalProperties": true
         }
       },
-      "required": ["code", "message"],
+      "required": [
+        "code",
+        "message"
+      ],
       "additionalProperties": false
     },
     "history": {
@@ -118,7 +127,10 @@
           },
           "type": {
             "type": "string",
-            "enum": ["request", "response"],
+            "enum": [
+              "request",
+              "response"
+            ],
             "description": "Whether this was a request from client or response from server"
           },
           "data": {
@@ -127,7 +139,11 @@
             "additionalProperties": true
           }
         },
-        "required": ["timestamp", "type", "data"],
+        "required": [
+          "timestamp",
+          "type",
+          "data"
+        ],
         "additionalProperties": false
       }
     },
@@ -135,8 +151,20 @@
       "type": "object",
       "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
       "additionalProperties": true
+    },
+    "ext": {
+      "type": "object",
+      "description": "Extension object for response-scoped implementation-specific metadata. Use for processing diagnostics, debug information, or operation-specific hints. Separate from domain object extensions which represent persistent state. See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
+      "additionalProperties": true
     }
   },
-  "required": ["task_id", "task_type", "domain", "status", "created_at", "updated_at"],
+  "required": [
+    "task_id",
+    "task_type",
+    "domain",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
   "additionalProperties": false
 }
