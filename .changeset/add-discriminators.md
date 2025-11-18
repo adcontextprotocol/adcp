@@ -6,8 +6,8 @@ Add explicit discriminator fields to discriminated union types for better TypeSc
 
 **Schema Changes:**
 
-- **product.json**: Add `selection_type` discriminator ("by_id" | "by_tag") to `publisher_properties` items
-- **adagents.json**: Add `authorization_type` discriminator ("property_ids" | "property_tags" | "inline_properties" | "publisher_properties") to `authorized_agents` items, and nested `selection_type` discriminator to `publisher_properties` arrays
+- **product.json**: Add `selection_type` discriminator ("all" | "by_id" | "by_tag") to `publisher_properties` items. The new "all" variant enables representing all properties from a publisher domain without requiring explicit IDs or tags.
+- **adagents.json**: Add `authorization_type` discriminator ("property_ids" | "property_tags" | "inline_properties" | "publisher_properties") to `authorized_agents` items, and nested `selection_type` discriminator ("all" | "by_id" | "by_tag") to `publisher_properties` arrays
 - **format.json**: Add `item_type` discriminator ("individual" | "repeatable_group") to `assets_required` items
 
 **Rationale:**
@@ -20,17 +20,23 @@ All schema changes are **additive** - new required discriminator fields are adde
 
 **Product Schema (`publisher_properties`):**
 ```json
-// Before
+// Before (property IDs)
 {
   "publisher_domain": "cnn.com",
   "property_ids": ["cnn_ctv_app"]
 }
 
-// After
+// After (property IDs)
 {
   "publisher_domain": "cnn.com",
   "selection_type": "by_id",
   "property_ids": ["cnn_ctv_app"]
+}
+
+// New: All properties from publisher
+{
+  "publisher_domain": "cnn.com",
+  "selection_type": "all"
 }
 ```
 
