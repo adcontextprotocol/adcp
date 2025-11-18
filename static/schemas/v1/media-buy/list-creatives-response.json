@@ -117,11 +117,6 @@
             "format": "date-time",
             "description": "When the creative was last modified"
           },
-          "media_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "URL of the creative file (for hosted assets)"
-          },
           "assets": {
             "type": "object",
             "description": "Assets for this creative, keyed by asset_role",
@@ -142,26 +137,6 @@
                 ]
               }
             }
-          },
-          "click_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "Landing page URL for the creative"
-          },
-          "duration": {
-            "type": "number",
-            "description": "Duration in milliseconds (for video/audio)",
-            "minimum": 0
-          },
-          "width": {
-            "type": "number",
-            "description": "Width in pixels (for video/display)",
-            "minimum": 0
-          },
-          "height": {
-            "type": "number",
-            "description": "Height in pixels (for video/display)",
-            "minimum": 0
           },
           "tags": {
             "type": "array",
@@ -375,10 +350,6 @@
                 "vast_version": "4.1"
               }
             },
-            "click_url": "https://example.com/products",
-            "duration": 30000,
-            "width": 1920,
-            "height": 1080,
             "tags": [
               "q1_2024",
               "video",
