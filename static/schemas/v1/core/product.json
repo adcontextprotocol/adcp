@@ -21,6 +21,9 @@
       "type": "array",
       "description": "Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. DISCRIMINATOR FIELD: selection_type determines which fields are present and how properties are selected.",
       "items": {
+        "discriminator": {
+          "propertyName": "selection_type"
+        },
         "oneOf": [
           {
             "type": "object",
