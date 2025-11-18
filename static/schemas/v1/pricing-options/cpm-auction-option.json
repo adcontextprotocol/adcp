@@ -20,6 +20,11 @@
       "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP", "JPY"]
     },
+    "is_fixed": {
+      "type": "boolean",
+      "description": "Whether this is a fixed rate (true) or auction-based (false)",
+      "const": false
+    },
     "price_guidance": {
       "type": "object",
       "description": "Pricing guidance for auction-based CPM bidding",
@@ -58,6 +63,6 @@
       "minimum": 0
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "price_guidance", "currency"],
+  "required": ["pricing_option_id", "pricing_model", "price_guidance", "currency", "is_fixed"],
   "additionalProperties": false
 }
