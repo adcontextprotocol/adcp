@@ -76,6 +76,7 @@
   "examples": [
     {
       "brand_manifest": {
+        "name": "Brand Name",
         "url": "https://brand.com"
       },
       "product_selectors": {
