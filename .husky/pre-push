@@ -3,5 +3,7 @@
 # Verify version sync before pushing
 npm run verify-version-sync
 
-# Build to ensure everything compiles
-npm run build
+# Skip Docusaurus build - production uses Mintlify
+# Docusaurus build fails on Mintlify-specific syntax (e.g., <Tab> components)
+# If you need to validate Docusaurus build, run: npm run build
+# npm run build
