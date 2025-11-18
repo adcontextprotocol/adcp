@@ -180,11 +180,28 @@
                       "type": "number",
                       "description": "Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)",
                       "minimum": 0
+                    },
+                    "pricing_model": {
+                      "$ref": "/schemas/v1/enums/pricing-model.json",
+                      "description": "The pricing model used for this package (e.g., cpm, cpcv, cpp). Indicates how the package is billed and which metrics are most relevant for optimization."
+                    },
+                    "rate": {
+                      "type": "number",
+                      "description": "The pricing rate for this package in the specified currency. For fixed-rate pricing, this is the agreed rate (e.g., CPM rate of 12.50 means $12.50 per 1,000 impressions). For auction-based pricing, this represents the effective rate based on actual delivery.",
+                      "minimum": 0
+                    },
+                    "currency": {
+                      "type": "string",
+                      "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for this package's pricing. Indicates the currency in which the rate and spend values are denominated. Different packages can use different currencies when supported by the publisher.",
+                      "pattern": "^[A-Z]{3}$"
                     }
                   },
                   "required": [
                     "package_id",
-                    "spend"
+                    "spend",
+                    "pricing_model",
+                    "rate",
+                    "currency"
                   ]
                 }
               ]
@@ -236,6 +253,11 @@
       "items": {
         "$ref": "/schemas/v1/core/error.json"
       }
+    },
+    "context": {
+      "type": "object",
+      "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+      "additionalProperties": true
     }
   },
   "required": [

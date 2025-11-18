@@ -1,0 +1,13 @@
+{
+  "name": "AccuWeather Sales Agent",
+  "url": "https://sales-agent.accuweather.com",
+  "type": "sales",
+  "description": "AccuWeather media sales agent",
+  "mcp_endpoint": "https://sales-agent.accuweather.com",
+  "contact": {
+    "name": "AccuWeather",
+    "email": "sales@accuweather.com",
+    "website": "https://accuweather.com"
+  },
+  "added_date": "2025-01-22"
+}

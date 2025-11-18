@@ -44,49 +44,9 @@
           },
           "deployments": {
             "type": "array",
-            "description": "Array of platform deployments",
+            "description": "Array of destination deployments",
             "items": {
-              "type": "object",
-              "properties": {
-                "platform": {
-                  "type": "string",
-                  "description": "Platform name"
-                },
-                "account": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Specific account if applicable"
-                },
-                "is_live": {
-                  "type": "boolean",
-                  "description": "Whether signal is currently active"
-                },
-                "scope": {
-                  "type": "string",
-                  "description": "Deployment scope",
-                  "enum": [
-                    "platform-wide",
-                    "account-specific"
-                  ]
-                },
-                "decisioning_platform_segment_id": {
-                  "type": "string",
-                  "description": "Platform-specific segment ID"
-                },
-                "estimated_activation_duration_minutes": {
-                  "type": "number",
-                  "description": "Time to activate if not live",
-                  "minimum": 0
-                }
-              },
-              "required": [
-                "platform",
-                "is_live",
-                "scope"
-              ],
-              "additionalProperties": false
+              "$ref": "/schemas/v1/core/deployment.json"
             }
           },
           "pricing": {
@@ -130,6 +90,11 @@
       "items": {
         "$ref": "/schemas/v1/core/error.json"
       }
+    },
+    "context": {
+      "type": "object",
+      "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+      "additionalProperties": true
     }
   },
   "required": [

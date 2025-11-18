@@ -43,6 +43,20 @@ const response = await mcp.call('get_products', {
 });
 ```
 
+### Tool Call with Application-Level Context
+
+```javascript
+// Pass opaque application-level context; agents must carry it back
+const response = await mcp.call('build_creative', {
+  target_format_id: { agent_url: 'https://creative.agent', id: 'premium_bespoke_display' },
+  creative_manifest: { /* ... */ },
+  context: { ui: 'buyer_dashboard', session: '123' }
+});
+
+// Response includes the same context inside the task payload
+console.log(response.data.context); // { ui: 'buyer_dashboard', session: '123' }
+```
+
 ## MCP Response Format
 
 **New in AdCP 1.6.0**: All responses include unified status field.
@@ -53,6 +67,7 @@ const response = await mcp.call('get_products', {
   "message": "Found 5 products",  // Human-readable summary  
   "context_id": "ctx-abc123",     // MCP session continuity
   "data": {                       // Task-specific structured data
+    "context": { "ui": "buyer_dashboard" }, // Application-level context echoed back
     "products": [...],
     "errors": [...]               // Task-level errors/warnings
   }
@@ -61,6 +76,7 @@ const response = await mcp.call('get_products', {
 
 ### MCP-Specific Fields
 - **context_id**: Session identifier that you must manually manage
+- **context**: Opaque initiator-provided metadata echoed by agents
 - **data**: Direct JSON structure (vs. A2A's artifact parts)
 - **status**: Same values as A2A protocol for consistency
 

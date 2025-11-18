@@ -187,19 +187,34 @@ HTML5 creative assets for rich media formats and third-party display tags.
 
 VAST (Video Ad Serving Template) tags for third-party video ad serving.
 
+**URL Delivery:**
 ```json
 {
   "asset_type": "vast",
   "required": true,
+  "delivery_type": "url",
   "url": "https://vast.example.com/video/123",
   "vast_version": "4.1",
   "vpaid_enabled": false
 }
 ```
 
+**Inline Delivery:**
+```json
+{
+  "asset_type": "vast",
+  "required": true,
+  "delivery_type": "inline",
+  "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<VAST version=\"4.2\">...</VAST>",
+  "vast_version": "4.2",
+  "vpaid_enabled": false
+}
+```
+
 **Properties:**
-- `url`: URL endpoint that returns VAST XML
-- `content`: Inline VAST XML content (alternative to URL)
+- `delivery_type`: "url" or "inline" (required discriminator)
+- `url`: URL endpoint that returns VAST XML (required when delivery_type is "url")
+- `content`: Inline VAST XML content (required when delivery_type is "inline")
 - `vast_version`: VAST specification version (2.0, 3.0, 4.0, 4.1, 4.2)
 - `vpaid_enabled`: Whether VPAID (Video Player-Ad Interface Definition) is supported
 - `max_wrapper_depth`: Maximum allowed wrapper/redirect depth
@@ -216,18 +231,32 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 
 DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
 
+**URL Delivery:**
 ```json
 {
   "asset_type": "daast",
   "required": true,
+  "delivery_type": "url",
   "url": "https://daast.example.com/audio/456",
   "daast_version": "1.0"
 }
 ```
 
+**Inline Delivery:**
+```json
+{
+  "asset_type": "daast",
+  "required": true,
+  "delivery_type": "inline",
+  "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<DAAST version=\"1.0\">...</DAAST>",
+  "daast_version": "1.0"
+}
+```
+
 **Properties:**
-- `url`: URL endpoint that returns DAAST XML
-- `content`: Inline DAAST XML content (alternative to URL)
+- `delivery_type`: "url" or "inline" (required discriminator)
+- `url`: URL endpoint that returns DAAST XML (required when delivery_type is "url")
+- `content`: Inline DAAST XML content (required when delivery_type is "inline")
 - `daast_version`: DAAST specification version (1.0, 1.1)
 - `duration_ms`: Expected audio duration in milliseconds (if known)
 - `tracking_events`: Array of supported tracking events

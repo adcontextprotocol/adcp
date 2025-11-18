@@ -19,36 +19,85 @@
     },
     "publisher_properties": {
       "type": "array",
-      "description": "Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization.",
+      "description": "Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency.",
       "items": {
-        "type": "object",
-        "properties": {
-          "publisher_domain": {
-            "type": "string",
-            "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-          },
-          "property_ids": {
-            "type": "array",
-            "description": "Specific property IDs from the publisher's adagents.json. Mutually exclusive with property_tags.",
-            "items": {
-              "type": "string",
-              "pattern": "^[a-z0-9_]+$"
-            },
-            "minItems": 1
-          },
-          "property_tags": {
-            "type": "array",
-            "description": "Property tags from the publisher's adagents.json. Product covers all properties with these tags. Mutually exclusive with property_ids.",
-            "items": {
-              "type": "string",
-              "pattern": "^[a-z0-9_]+$"
-            },
-            "minItems": 1
-          }
+        "discriminator": {
+          "propertyName": "selection_type"
         },
-        "required": ["publisher_domain"],
-        "additionalProperties": false
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Select all properties from the publisher domain",
+            "properties": {
+              "publisher_domain": {
+                "type": "string",
+                "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "selection_type": {
+                "type": "string",
+                "const": "all",
+                "description": "Discriminator indicating all properties from this publisher are included"
+              }
+            },
+            "required": ["publisher_domain", "selection_type"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Select specific properties by ID",
+            "properties": {
+              "publisher_domain": {
+                "type": "string",
+                "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "selection_type": {
+                "type": "string",
+                "const": "by_id",
+                "description": "Discriminator indicating selection by specific property IDs"
+              },
+              "property_ids": {
+                "type": "array",
+                "description": "Specific property IDs from the publisher's adagents.json",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$"
+                },
+                "minItems": 1
+              }
+            },
+            "required": ["publisher_domain", "selection_type", "property_ids"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Select properties by tag membership",
+            "properties": {
+              "publisher_domain": {
+                "type": "string",
+                "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "selection_type": {
+                "type": "string",
+                "const": "by_tag",
+                "description": "Discriminator indicating selection by property tags"
+              },
+              "property_tags": {
+                "type": "array",
+                "description": "Property tags from the publisher's adagents.json. Product covers all properties with these tags",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$"
+                },
+                "minItems": 1
+              }
+            },
+            "required": ["publisher_domain", "selection_type", "property_tags"],
+            "additionalProperties": false
+          }
+        ]
       },
       "minItems": 1
     },
@@ -119,6 +168,40 @@
       "type": "string",
       "format": "date-time",
       "description": "Expiration timestamp for custom products"
+    },
+    "product_card": {
+      "type": "object",
+      "description": "Optional standard visual card (300x400px) for displaying this product in user interfaces. Can be rendered via preview_creative or pre-generated.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/v1/core/format-id.json",
+          "description": "Creative format defining the card layout (typically product_card_standard)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": ["format_id", "manifest"],
+      "additionalProperties": false
+    },
+    "product_card_detailed": {
+      "type": "object",
+      "description": "Optional detailed card with carousel and full specifications. Provides rich product presentation similar to media kit pages.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/v1/core/format-id.json",
+          "description": "Creative format defining the detailed card layout (typically product_card_detailed)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the detailed card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": ["format_id", "manifest"],
+      "additionalProperties": false
     }
   },
   "required": [

@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/destination.json",
+  "title": "Destination",
+  "description": "A destination platform where signals can be activated (DSP, sales agent, etc.)",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "platform",
+          "description": "Discriminator indicating this is a platform-based destination"
+        },
+        "platform": {
+          "type": "string",
+          "description": "Platform identifier for DSPs (e.g., 'the-trade-desk', 'amazon-dsp')"
+        },
+        "account": {
+          "type": "string",
+          "description": "Optional account identifier on the platform"
+        }
+      },
+      "required": ["type", "platform"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "agent",
+          "description": "Discriminator indicating this is an agent URL-based destination"
+        },
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL identifying the destination agent (for sales agents, etc.)"
+        },
+        "account": {
+          "type": "string",
+          "description": "Optional account identifier on the agent"
+        }
+      },
+      "required": ["type", "agent_url"],
+      "additionalProperties": false
+    }
+  ]
+}

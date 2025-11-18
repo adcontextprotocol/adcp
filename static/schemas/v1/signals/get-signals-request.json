@@ -11,44 +11,15 @@
     },
     "deliver_to": {
       "type": "object",
-      "description": "Where the signals need to be delivered",
+      "description": "Destination platforms where signals need to be activated",
       "properties": {
-        "platforms": {
-          "oneOf": [
-            {
-              "type": "string",
-              "const": "all"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ],
-          "description": "Target platforms for signal deployment"
-        },
-        "accounts": {
+        "destinations": {
           "type": "array",
-          "description": "Specific platform-account combinations",
+          "description": "List of destination platforms (DSPs, sales agents, etc.). If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
           "items": {
-            "type": "object",
-            "properties": {
-              "platform": {
-                "type": "string",
-                "description": "Platform identifier"
-              },
-              "account": {
-                "type": "string",
-                "description": "Account identifier on that platform"
-              }
-            },
-            "required": [
-              "platform",
-              "account"
-            ],
-            "additionalProperties": false
-          }
+            "$ref": "/schemas/v1/core/destination.json"
+          },
+          "minItems": 1
         },
         "countries": {
           "type": "array",
@@ -60,7 +31,7 @@
         }
       },
       "required": [
-        "platforms",
+        "destinations",
         "countries"
       ],
       "additionalProperties": false
@@ -106,6 +77,11 @@
       "type": "integer",
       "description": "Maximum number of results to return",
       "minimum": 1
+    },
+    "context": {
+      "type": "object",
+      "description": "Initiator-provided context included in the request payload. Agents must echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
+      "additionalProperties": true
     }
   },
   "required": [

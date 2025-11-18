@@ -20,6 +20,11 @@
       "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP", "JPY"]
     },
+    "is_fixed": {
+      "type": "boolean",
+      "description": "Whether this is a fixed rate (true) or auction-based (false)",
+      "const": false
+    },
     "price_guidance": {
       "type": "object",
       "description": "Statistical guidance for auction pricing",
@@ -58,6 +63,6 @@
       "minimum": 0
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "currency", "price_guidance"],
+  "required": ["pricing_option_id", "pricing_model", "currency", "price_guidance", "is_fixed"],
   "additionalProperties": false
 }

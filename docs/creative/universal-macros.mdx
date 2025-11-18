@@ -167,13 +167,14 @@ For video ads in commercial breaks:
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_vast"
   },
-  "assets": [
-    {
-      "asset_id": "vast_xml",
-      "asset_type": "vast_xml",
-      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<VAST version=\"4.2\">\n  <Ad>\n    <InLine>\n      <Impression><![CDATA[https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pkg={PACKAGE_ID}&cre={CREATIVE_ID}&device={DEVICE_ID}&domain={DOMAIN}&cb=[CACHEBUSTING]]]></Impression>\n      <Creatives>\n        <Creative>\n          <Linear>\n            <Duration>00:00:30</Duration>\n            <TrackingEvents>\n              <Tracking event=\"firstQuartile\"><![CDATA[https://track.brand.com/q1?buy={MEDIA_BUY_ID}&cb=[CACHEBUSTING]]]></Tracking>\n              <Tracking event=\"complete\"><![CDATA[https://track.brand.com/complete?buy={MEDIA_BUY_ID}&cb=[CACHEBUSTING]]]></Tracking>\n            </TrackingEvents>\n            <VideoClicks>\n              <ClickThrough><![CDATA[https://brand.com/spring?campaign={MEDIA_BUY_ID}]]></ClickThrough>\n            </VideoClicks>\n            <MediaFiles>\n              <MediaFile delivery=\"progressive\" type=\"video/mp4\" width=\"1920\" height=\"1080\">\n                <![CDATA[https://cdn.brand.com/videos/spring_30s.mp4]]>\n              </MediaFile>\n            </MediaFiles>\n          </Linear>\n        </Creative>\n      </Creatives>\n    </InLine>\n  </Ad>\n</VAST>"
+  "assets": {
+    "vast_xml": {
+      "asset_type": "vast",
+      "delivery_type": "inline",
+      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<VAST version=\"4.2\">\n  <Ad>\n    <InLine>\n      <Impression><![CDATA[https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pkg={PACKAGE_ID}&cre={CREATIVE_ID}&device={DEVICE_ID}&domain={DOMAIN}&cb=[CACHEBUSTING]]]></Impression>\n      <Creatives>\n        <Creative>\n          <Linear>\n            <Duration>00:00:30</Duration>\n            <TrackingEvents>\n              <Tracking event=\"firstQuartile\"><![CDATA[https://track.brand.com/q1?buy={MEDIA_BUY_ID}&cb=[CACHEBUSTING]]]></Tracking>\n              <Tracking event=\"complete\"><![CDATA[https://track.brand.com/complete?buy={MEDIA_BUY_ID}&cb=[CACHEBUSTING]]]></Tracking>\n            </TrackingEvents>\n            <VideoClicks>\n              <ClickThrough><![CDATA[https://brand.com/spring?campaign={MEDIA_BUY_ID}]]></ClickThrough>\n            </VideoClicks>\n            <MediaFiles>\n              <MediaFile delivery=\"progressive\" type=\"video/mp4\" width=\"1920\" height=\"1080\">\n                <![CDATA[https://cdn.brand.com/videos/spring_30s.mp4]]>\n              </MediaFile>\n            </MediaFiles>\n          </Linear>\n        </Creative>\n      </Creatives>\n    </InLine>\n  </Ad>\n</VAST>",
+      "vast_version": "4.2"
     }
-  ]
+  }
 }
 ```
 

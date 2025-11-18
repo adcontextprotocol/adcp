@@ -125,6 +125,7 @@ async function runTests() {
   await validateExample(
     {
       "brand_manifest": {
+        "name": "Nike",
         "url": "https://brand.nike.com/manifest.json"
       },
       "brief": "Premium video inventory"
@@ -137,7 +138,12 @@ async function runTests() {
     {
       "signal_spec": "High-income households",
       "deliver_to": {
-        "platforms": ["the-trade-desk"],
+        "destinations": [
+          {
+            "type": "platform",
+            "platform": "the-trade-desk"
+          }
+        ],
         "countries": ["US"]
       }
     },

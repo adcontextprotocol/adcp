@@ -38,7 +38,12 @@ Every AdCP response has this structure:
   "status": "completed",           // Always present: what state we're in
   "message": "Found 5 products",  // Always present: human explanation
   "context_id": "ctx-123",         // Session continuity
-  "data": {...}                    // Task-specific structured data
+  "data": {                        // Task-specific structured data
+    "context": {                  // Application-level context echoed back
+      "ui": "buyer_dashboard"
+    },
+    "products": [...]
+  }
 }
 ```
 

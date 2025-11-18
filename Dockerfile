@@ -7,26 +7,39 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (skip postinstall scripts like husky)
-RUN npm ci --omit=dev --ignore-scripts
+# Install ALL dependencies (including dev dependencies for TypeScript build)
+RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY . .
 
-# Build the static site
+# Build the TypeScript server
 RUN npm run build
 
-# Use nginx to serve static files
-FROM nginx:alpine
+# Production stage
+FROM node:20-alpine
 
-# Copy built site from builder stage
-COPY --from=builder /app/build /usr/share/nginx/html
+# Set working directory
+WORKDIR /app
 
-# Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# Copy package files
+COPY package*.json ./
 
-# Expose port 8080 (Fly.io default)
+# Install only production dependencies
+RUN npm ci --omit=dev --ignore-scripts
+
+# Copy built files from builder
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/server/public ./server/public
+COPY --from=builder /app/static ./static
+COPY --from=builder /app/registry ./registry
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=8080
+
+# Expose port
 EXPOSE 8080
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start the server
+CMD ["node", "dist/index.js"]

@@ -25,6 +25,11 @@
       "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP", "JPY"]
     },
+    "is_fixed": {
+      "type": "boolean",
+      "description": "Whether this is a fixed rate (true) or auction-based (false)",
+      "const": true
+    },
     "parameters": {
       "type": "object",
       "description": "CPV-specific parameters defining the view threshold",
@@ -62,6 +67,6 @@
       "minimum": 0
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "rate", "currency", "parameters"],
+  "required": ["pricing_option_id", "pricing_model", "rate", "currency", "is_fixed", "parameters"],
   "additionalProperties": false
 }

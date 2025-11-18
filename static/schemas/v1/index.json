@@ -136,6 +136,14 @@
         "webhook-payload": {
           "$ref": "/schemas/v1/core/webhook-payload.json",
           "description": "Webhook payload structure sent when async task status changes - protocol-level fields at top-level (operation_id, task_type, status, etc.) and task-specific payload nested under 'result'"
+        },
+        "destination": {
+          "$ref": "/schemas/v1/core/destination.json",
+          "description": "A destination platform where signals can be activated (DSP, sales agent, etc.)"
+        },
+        "deployment": {
+          "$ref": "/schemas/v1/core/deployment.json",
+          "description": "A signal deployment to a specific destination platform with activation status and key"
         }
       }
     },
@@ -407,10 +415,6 @@
       "$ref": "/schemas/v1/adagents.json",
       "file_location": "/.well-known/adagents.json",
       "purpose": "Declares which sales agents are authorized to sell a publisher's advertising inventory"
-    },
-    "standard-formats": {
-      "description": "Standard creative formats registry and schemas (formats will be provided by reference creative agent)",
-      "$ref": "/schemas/v1/standard-formats/index.json"
     }
   },
   "usage": {

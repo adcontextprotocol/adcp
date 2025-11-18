@@ -68,15 +68,9 @@
     },
     "result": {
       "type": ["object"],
-      "description": "Task-specific payload for this status update. For 'completed', contains the final result. For 'input-required', may contain approval or clarification context. Optional for non-terminal updates.",
-      "oneOf": [
-        { "$ref": "/schemas/v1/media-buy/create-media-buy-response.json" },
-        { "$ref": "/schemas/v1/media-buy/update-media-buy-response.json" },
-        { "$ref": "/schemas/v1/media-buy/sync-creatives-response.json" },
-        { "$ref": "/schemas/v1/signals/activate-signal-response.json" },
-        { "$ref": "/schemas/v1/signals/get-signals-response.json" }
-      ]
+      "description": "Task-specific payload for this status update. Validated against the appropriate response schema based on task_type."
     },
+
     "error": {
       "type": ["string", "null"],
       "description": "Error message for failed tasks. Only present when status is 'failed'."
@@ -84,6 +78,78 @@
   },
   "required": ["task_id", "task_type", "status", "timestamp"],
   "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "task_type": {"const": "create_media_buy"}
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "/schemas/v1/media-buy/create-media-buy-response.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "task_type": {"const": "update_media_buy"}
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "/schemas/v1/media-buy/update-media-buy-response.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "task_type": {"const": "sync_creatives"}
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "/schemas/v1/media-buy/sync-creatives-response.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "task_type": {"const": "activate_signal"}
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "/schemas/v1/signals/activate-signal-response.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "task_type": {"const": "get_signals"}
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "/schemas/v1/signals/get-signals-response.json"
+          }
+        }
+      }
+    }
+  ],
   "notes": [
     "Webhooks are ONLY triggered when the initial response status is 'submitted' (long-running operations)",
     "Webhook payloads include protocol-level fields (operation_id, task_type, status, optional task_id/context_id/timestamp/message) and the task-specific payload nested under 'result'",
@@ -104,7 +170,13 @@
         "context_id": "ctx_abc123",
         "message": "Campaign budget $150K requires VP approval to proceed",
         "result": {
-          "buyer_ref": "nike_q1_campaign_2024"
+          "errors": [
+            {
+              "code": "APPROVAL_REQUIRED",
+              "message": "Budget exceeds auto-approval threshold of $100K. Awaiting VP approval before media buy creation.",
+              "field": "packages[0].budget"
+            }
+          ]
         }
       }
     },

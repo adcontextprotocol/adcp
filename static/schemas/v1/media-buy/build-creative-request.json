@@ -16,6 +16,11 @@
     "target_format_id": {
       "$ref": "/schemas/v1/core/format-id.json",
       "description": "Format ID to generate. The format definition specifies required input assets and output structure."
+    },
+    "context": {
+      "type": "object",
+      "description": "Initiator-provided context included in the request payload. Agentsmust echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
+      "additionalProperties": true
     }
   },
   "required": [

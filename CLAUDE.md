@@ -102,12 +102,89 @@ Update JSON schemas whenever you:
 When making documentation changes:
 1. ✅ Identify affected schemas in `static/schemas/v1/`
 2. ✅ Update request schemas (if changing task parameters)
-3. ✅ Update response schemas (if changing response structure)  
+3. ✅ Update response schemas (if changing response structure)
 4. ✅ Update core data models (if changing object definitions)
 5. ✅ Update enum schemas (if changing allowed values)
 6. ✅ Verify cross-references (`$ref` links) are still valid
 7. ✅ Test schema validation with example data
 8. ✅ Update schema descriptions to match documentation
+
+### Discriminated Union Types
+
+**CRITICAL**: Always use explicit discriminator fields for union types to enable proper TypeScript type generation.
+
+**Why Discriminators Matter:**
+- **Without discriminators**: TypeScript generators produce index signatures (`{ [k: string]: unknown }`) or massive union types with poor type narrowing
+- **With discriminators**: TypeScript produces proper discriminated unions with excellent IDE autocomplete and type safety
+- **Impact**: Can reduce union signature count by 50%+ and eliminate broken type intersections
+
+**Pattern to Use:**
+```json
+{
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "discriminator_field": { "type": "string", "const": "variant_a" },
+        "field_a": { "type": "string" }
+      },
+      "required": ["discriminator_field", "field_a"]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "discriminator_field": { "type": "string", "const": "variant_b" },
+        "field_b": { "type": "number" }
+      },
+      "required": ["discriminator_field", "field_b"]
+    }
+  ]
+}
+```
+
+**CRITICAL**: Always include explicit `"type"` before `"const"` in discriminator fields. This enables TypeScript generators to produce proper literal types (e.g., `Literal["variant_a"]`) instead of `Any`.
+
+**Pattern to AVOID:**
+```json
+{
+  "properties": { /* all fields optional */ },
+  "allOf": [
+    { "if": {...}, "then": {...} }  // ❌ TypeScript can't generate good types from this
+  ]
+}
+```
+
+**or:**
+```json
+{
+  "properties": { /* shared fields */ },
+  "oneOf": [
+    { "required": ["field_a"] },
+    { "required": ["field_b"] }
+  ]
+  // ❌ No discriminator means TypeScript can't narrow types
+}
+```
+
+**Discriminator Field Requirements:**
+- **ALWAYS** include explicit `"type"` declaration before `"const"` (e.g., `{ "type": "string", "const": "value" }`)
+- Use semantic names that describe what's being discriminated
+- Common patterns: `type`, `kind`, `delivery_type`, `output_format`, `asset_kind`
+- Keep discriminator values lowercase with underscores
+- Use string const values for strings, boolean const for booleans
+- Match the `"type"` to the const value type (string, boolean, number, etc.)
+
+**Examples from AdCP:**
+- `destination.json`: `type: "platform" | "agent"`
+- `sub-asset.json`: `asset_kind: "media" | "text"`
+- `vast-asset.json`: `delivery_type: "url" | "inline"`
+- `preview-render.json`: `output_format: "url" | "html" | "both"`
+
+**When to Use:**
+- ✅ Object has mutually exclusive fields (either field_a OR field_b)
+- ✅ Different variants require different required fields
+- ✅ Schema will be used for TypeScript generation
+- ✅ Variants represent conceptually distinct alternatives
 
 ### Schema Location Map
 
@@ -571,10 +648,19 @@ Automation can't write good explanations or migration guides - that requires hum
 #### `category` and `is_standard` (Removed in v1.10.0)
 - **Why removed**: Information is redundant with source location
 - **Migration**:
-  - Standard formats are defined in `/schemas/v1/standard-formats/` directory
+  - Standard formats are defined in the creative-agent repository
   - Custom formats have an `agent_url` pointing to a non-standard creative agent
   - Format location/source already indicates whether it's standard or custom
 - **Rationale**: These fields carried information already expressed by the format's authoritative source. Adding explicit fields was redundant and increased maintenance burden.
+
+#### `preview_image` (Deprecated in v2.5.0, will be removed in v3.0.0)
+- **Why deprecated**: Static image URLs lack flexibility for rich card presentations
+- **Migration**: Use `format_card` and optionally `format_card_detailed` fields instead
+  - `format_card` provides structured card definition with format_id and manifest
+  - Supports dynamic generation via `preview_creative` or pre-rendered CDN assets
+  - Detailed cards enable carousel + markdown specs for comprehensive format documentation
+- **Backward compatibility**: Field remains functional but should not be used in new implementations
+- **Rationale**: Card system uses AdCP's own creative format infrastructure for extensibility and consistency
 
 ## Common Tasks
 
@@ -712,30 +798,14 @@ When addressing code review feedback:
 
 ### Standard Formats Architecture
 
-The simplified standard formats structure:
-
-```
-static/schemas/v1/standard-formats/
-├── index.json                 # Registry of all standard formats
-├── asset-types/              # Reusable asset type definitions
-│   ├── image.json
-│   ├── video.json
-│   └── text.json
-├── display/                  # Display format definitions
-│   ├── display_300x250.json
-│   └── mobile_interstitial_320x480.json
-├── video/                    # Video format definitions
-│   ├── video_skippable_15s.json
-│   └── video_story_vertical.json
-└── native/                   # Native format definitions
-    └── native_responsive.json
-```
+Standard creative formats are maintained in the separate **creative-agent repository**, not in this protocol specification repo.
 
 Key principles:
 - Each format is self-contained with all requirements
 - No cross-references to placement or selection schemas
 - Assets are defined inline with clear specifications
 - Format categories match industry standards (display, video, native, etc.)
+- The reference creative agent at `https://creative.adcontextprotocol.org` serves these formats
 
 ## Documentation Structure Theory & Learnings
 
