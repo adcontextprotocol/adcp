@@ -53,150 +53,25 @@ Stay informed of important campaign events:
 - **Performance notifications** for significant changes
 - **Budget warnings** before limits are reached
 
-## Webhook-Based Reporting
+## Delivery Methods
 
 Publishers can proactively push reporting data to buyers through webhook notifications or offline file delivery. This eliminates continuous polling and provides timely campaign insights.
 
-### Delivery Methods
-
-**1. Webhook Push (Real-time)** - HTTP POST to buyer endpoint
+**Webhook Push (Real-time)** - HTTP POST to buyer endpoint
 - Best for: Most buyer-seller relationships
 - Latency: Near real-time (seconds to minutes)
 - Cost: Standard webhook infrastructure
 
-**2. Offline File Delivery (Batch)** - Cloud storage bucket push
+**Offline File Delivery (Batch)** - Cloud storage bucket push
 - Best for: Large buyer-seller pairs (high volume)
 - Latency: Scheduled batch delivery (hourly/daily)
 - Cost: Significantly lower ($0.01-0.10 per GB vs. $0.50-2.00 per 1M webhooks)
 - Format: JSON Lines, CSV, or Parquet files
 - Storage: S3, GCS, Azure Blob Storage
 
-**Example: Offline Delivery**
-Publisher pushes daily report files to buyer's cloud storage:
-```
-s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.json.gz
-```
+### Webhook-Based Reporting
 
-File contains same structure as webhook payload but aggregated across all campaigns. Buyer processes files on their schedule.
-
-**When to Use Offline Delivery:**
-- \>100 active campaigns with same buyer
-- Hourly reporting requirements (24x cost reduction)
-- High data volume (detailed breakdowns, dimensional data)
-- Buyer has batch processing infrastructure
-
-Publishers declare support for offline delivery in product capabilities:
-```json
-{
-  "reporting_capabilities": {
-    "supports_webhooks": true,
-    "supports_offline_delivery": true,
-    "offline_delivery_protocols": ["s3", "gcs"]
-  }
-}
-```
-
-### Offline File Delivery (Batch)
-
-For offline file delivery, publishers can provide reporting data in JSON Lines (JSONL), CSV, or Parquet format. All formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
-
-Files can be compressed with gzip (`.jsonl.gz`, `.csv.gz`, `.parquet.gz`) to reduce storage and transfer costs.
-
-#### JSON Lines (JSONL)
-
-**Recommended for most use cases**
-
-One media buy delivery per line (newline-delimited JSON). Each line contains a single media buy delivery object with its reporting period and package-level data. Preserves full nested structure. Easy to parse line-by-line for streaming processing.
-
-**Example JSONL file:**
-```jsonl
-{"reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_001", "buyer_ref": "campaign_a", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
-{"reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_002", "buyer_ref": "campaign_b", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
-{"reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_003", "buyer_ref": "campaign_c", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
-```
-
-#### CSV
-
-**For tabular analysis**
-
-CSV files require unnesting nested arrays. Each record should be unnested to the `by_package` level, meaning one row per package with parent-level data (reporting period, media buy info, totals) duplicated.
-
-**Example CSV structure:**
-```csv
-reporting_period.start,reporting_period.end,currency,media_buy_id,buyer_ref,status,totals.impressions,totals.spend,totals.clicks,totals.ctr,by_package.package_id,by_package.impressions,by_package.spend,by_package.clicks,by_package.pacing_index,by_package.pricing_model,by_package.rate,by_package.currency
-2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
-2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
-2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_002,campaign_b,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
-2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_003,campaign_c,active,75000,3375.00,150,0.002,pkg_004,75000,3375.00,150,0.96,cpcv,0.045,USD
-```
-
-#### Parquet
-
-**For high-volume analytics**
-
-Columnar format optimized for analytics workloads. Excellent compression ratios. Supports nested structures natively. Best for data warehouses and big data processing.
-
-**Example Parquet schema:**
-```json
-{
-  "type": "record",
-  "name": "MediaBuyDelivery",
-  "fields": [
-    {"name": "reporting_period", "type": {
-      "type": "record",
-      "name": "ReportingPeriod",
-      "fields": [
-        {"name": "start", "type": "string"},
-        {"name": "end", "type": "string"}
-      ]
-    }},
-    {"name": "currency", "type": "string"},
-    {"name": "media_buy_id", "type": "string"},
-    {"name": "buyer_ref", "type": "string"},
-    {"name": "status", "type": "string"},
-    {"name": "totals", "type": {
-      "type": "record",
-      "name": "Totals",
-      "fields": [
-        {"name": "impressions", "type": "long"},
-        {"name": "spend", "type": "double"},
-        {"name": "clicks", "type": "long"},
-        {"name": "ctr", "type": "double"}
-      ]
-    }},
-    {"name": "by_package", "type": {
-      "type": "array",
-      "items": {
-        "type": "record",
-        "name": "PackageDelivery",
-        "fields": [
-          {"name": "package_id", "type": "string"},
-          {"name": "impressions", "type": "long"},
-          {"name": "spend", "type": "double"},
-          {"name": "pacing_index", "type": "double"},
-          {"name": "pricing_model", "type": "string"},
-          {"name": "rate", "type": "double"},
-          {"name": "currency", "type": "string"}
-        ]
-      }
-    }}
-  ]
-}
-```
-
-**File Structure:**
-Each file contains one media buy delivery per line (JSONL) or row (CSV/Parquet). Files may contain:
-- Multiple media buy deliveries (one per line/row)
-- Multiple reporting periods for the same media buy (separate rows)
-- Multiple media buys (each with its own rows)
-
-**Processing Recommendations:**
-- Process files in chronological order using file timestamps
-- Handle duplicate files gracefully (idempotent processing)
-- Validate file integrity using checksums if provided
-- Monitor for missing files and alert on gaps
-
-### Webhook Configuration
+#### Webhook Configuration
 
 Configure reporting webhooks when creating a media buy using the `reporting_webhook` parameter:
 
@@ -238,7 +113,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 - Credentials exchanged out-of-band during publisher onboarding
 - See [Webhook Security](/docs/protocols/core-concepts.mdx#security) for implementation details
 
-### Supported Frequencies
+#### Supported Frequencies
 
 Publishers declare supported reporting frequencies in the product's `reporting_capabilities`. Publishers are **not required** to support all frequencies - choose what makes operational sense for your platform.
 
@@ -248,7 +123,7 @@ Publishers declare supported reporting frequencies in the product's `reporting_c
 
 **Cost Consideration:** Hourly webhooks generate 24x more traffic than daily. Large buyer-seller pairs may prefer offline reporting mechanisms (see below) for cost efficiency.
 
-### Available Metrics
+#### Available Metrics
 
 Publishers declare which metrics they can provide in `reporting_capabilities.available_metrics`. Common metrics include:
 
@@ -264,7 +139,7 @@ Publishers declare which metrics they can provide in `reporting_capabilities.ava
 
 Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
 
-### Publisher Commitment
+#### Publisher Commitment
 
 When a reporting webhook is configured, publishers commit to sending:
 
@@ -274,7 +149,7 @@ When a reporting webhook is configured, publishers commit to sending:
 - One final notification when the campaign completes
 - If reporting data is delayed beyond the expected delay window, a `"delayed"` notification will be sent
 
-### Webhook Payload
+#### Webhook Payload
 
 Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with additional metadata:
 
@@ -311,7 +186,7 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
 - **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
 - **`media_buy_deliveries`**: Array of media buy delivery data (may contain multiple media buys aggregated by publisher)
 
-### Timezone Handling
+#### Timezone Handling
 
 **All reporting MUST use UTC.** This eliminates DST complexity, simplifies reconciliation, and ensures consistent 24-hour reporting periods.
 
@@ -339,7 +214,7 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
 }
 ```
 
-### Delayed Reporting
+#### Delayed Reporting
 
 If reporting data is not available within the product's `expected_delay_minutes`, publishers send a notification with `notification_type: "delayed"`:
 
@@ -354,7 +229,7 @@ If reporting data is not available within the product's `expected_delay_minutes`
 
 This prevents buyers from incorrectly assuming a missed notification.
 
-### Webhook Aggregation
+#### Webhook Aggregation
 
 Publishers SHOULD aggregate webhooks to reduce call volume when multiple media buys share:
 - Same webhook URL
@@ -477,9 +352,9 @@ function processAggregatedWebhook(webhook) {
 - Don't retry the entire webhook - buyers can poll individual campaigns if needed
 - Track partial delivery rates in monitoring to detect systemic issues
 
-### Privacy and Compliance
+#### Privacy and Compliance
 
-#### PII Scrubbing for GDPR/CCPA
+##### PII Scrubbing for GDPR/CCPA
 
 Publishers MUST scrub personally identifiable information (PII) from all webhook payloads to ensure GDPR and CCPA compliance. Reporting webhooks should contain only aggregated, anonymized metrics.
 
@@ -548,7 +423,7 @@ Publishers MUST scrub personally identifiable information (PII) from all webhook
 - Implement proper data retention policies
 - Include webhook data in privacy policies and user disclosures
 
-### Implementation Best Practices
+#### Implementation Best Practices
 
 1. **Handle Arrays**: Always process `media_buy_deliveries` as an array, even if it contains one element
 2. **Idempotent Handlers**: Process duplicate notifications safely (webhooks use at-least-once delivery)
@@ -559,7 +434,7 @@ Publishers MUST scrub personally identifiable information (PII) from all webhook
 7. **Validate Metrics**: Ensure requested metrics are in product's `available_metrics`
 8. **PII Compliance**: Never include user-level data in webhook payloads
 
-### Webhook Health Monitoring
+#### Webhook Health Monitoring
 
 Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Management](/docs/protocols/task-management)).
 
@@ -573,6 +448,132 @@ When a media buy is created with `reporting_webhook` configured, the publisher c
 
 If webhook delivery fails persistently (circuit breaker opens), publishers update the task status to indicate the issue. Buyers detect this through normal task monitoring.
 
+### Offline-File-Delivery-Based Reporting
+
+**Example: Offline Delivery**
+Publisher pushes daily report files to buyer's cloud storage:
+```
+s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.json.gz
+```
+
+File contains same structure as webhook payload but aggregated across all campaigns. Buyer processes files on their schedule.
+
+**When to Use Offline Delivery:**
+- \>100 active campaigns with same buyer
+- Hourly reporting requirements (24x cost reduction)
+- High data volume (detailed breakdowns, dimensional data)
+- Buyer has batch processing infrastructure
+
+Publishers declare support for offline delivery in product capabilities:
+```json
+{
+  "reporting_capabilities": {
+    "supports_webhooks": true,
+    "supports_offline_delivery": true,
+    "offline_delivery_protocols": ["s3", "gcs"]
+  }
+}
+```
+
+For offline file delivery, publishers can provide reporting data in JSON Lines (JSONL), CSV, or Parquet format. All formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
+
+Files can be compressed with gzip (`.jsonl.gz`, `.csv.gz`, `.parquet.gz`) to reduce storage and transfer costs.
+
+#### JSON Lines (JSONL)
+
+One media buy delivery per line (newline-delimited JSON). Each line contains a single media buy delivery object with its reporting period and package-level data. Preserves full nested structure. Easy to parse line-by-line for streaming processing.
+
+**Example JSONL file:**
+```jsonl
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_001", "buyer_ref": "campaign_a", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_002", "buyer_ref": "campaign_b", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_003", "buyer_ref": "campaign_c", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
+```
+
+#### CSV
+
+**For tabular analysis**
+
+CSV files require unnesting nested arrays. Each record should be unnested to the `by_package` level, meaning one row per package with parent-level data (reporting period, media buy info, totals) duplicated.
+
+**Example CSV structure:**
+```csv
+notification_type,sequence_number,next_expected_at,reporting_period.start,reporting_period.end,currency,media_buy_id,buyer_ref,status,totals.impressions,totals.spend,totals.clicks,totals.ctr,by_package.package_id,by_package.impressions,by_package.spend,by_package.clicks,by_package.pacing_index,by_package.pricing_model,by_package.rate,by_package.currency
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_002,campaign_b,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_003,campaign_c,active,75000,3375.00,150,0.002,pkg_004,75000,3375.00,150,0.96,cpcv,0.045,USD
+```
+
+#### Parquet
+
+**For high-volume analytics**
+
+Columnar format optimized for analytics workloads. Excellent compression ratios. Supports nested structures natively. Best for data warehouses and big data processing.
+
+**Example Parquet schema:**
+```json
+{
+  "type": "record",
+  "name": "MediaBuyDelivery",
+  "fields": [
+    {"name": "notification_type", "type": "string"},
+    {"name": "sequence_number", "type": "int"},
+    {"name": "next_expected_at", "type": "string"},
+    {"name": "reporting_period", "type": {
+      "type": "record",
+      "name": "ReportingPeriod",
+      "fields": [
+        {"name": "start", "type": "string"},
+        {"name": "end", "type": "string"}
+      ]
+    }},
+    {"name": "currency", "type": "string"},
+    {"name": "media_buy_id", "type": "string"},
+    {"name": "buyer_ref", "type": "string"},
+    {"name": "status", "type": "string"},
+    {"name": "totals", "type": {
+      "type": "record",
+      "name": "Totals",
+      "fields": [
+        {"name": "impressions", "type": "long"},
+        {"name": "spend", "type": "double"},
+        {"name": "clicks", "type": "long"},
+        {"name": "ctr", "type": "double"}
+      ]
+    }},
+    {"name": "by_package", "type": {
+      "type": "array",
+      "items": {
+        "type": "record",
+        "name": "PackageDelivery",
+        "fields": [
+          {"name": "package_id", "type": "string"},
+          {"name": "impressions", "type": "long"},
+          {"name": "spend", "type": "double"},
+          {"name": "pacing_index", "type": "double"},
+          {"name": "pricing_model", "type": "string"},
+          {"name": "rate", "type": "double"},
+          {"name": "currency", "type": "string"}
+        ]
+      }
+    }}
+  ]
+}
+```
+
+**File Structure:**
+Each file contains one media buy delivery per line (JSONL) or row (CSV/Parquet). Files may contain:
+- Multiple media buy deliveries (one per line/row)
+- Multiple reporting periods for the same media buy (separate rows)
+- Multiple media buys (each with its own rows)
+
+**Processing Recommendations:**
+- Process files in chronological order using file timestamps
+- Handle duplicate files gracefully (idempotent processing)
+- Validate file integrity using checksums if provided
+- Monitor for missing files and alert on gaps
+
 ## Data Reconciliation
 
 **The `get_media_buy_delivery` API is the authoritative source of truth for all campaign metrics**, regardless of whether you use webhooks, offline delivery, or polling.
@@ -583,7 +584,7 @@ Reconciliation is important for **any reporting delivery method** because:
 - **Polling**: May miss data during API outages
 - **Late-arriving data**: Impressions can arrive 24-48+ hours after initial reporting (all methods)
 
-### Reconciliation Process
+#### Reconciliation Process
 
 Buyers SHOULD periodically reconcile delivered data against API to ensure accuracy:
 
@@ -662,7 +663,7 @@ async function reconcileWebhookData(mediaBuyId, startDate, endDate) {
 - Use API data for all financial reporting and invoicing
 - Document reconciliation process for audit compliance
 
-### Late-Arriving Impressions
+#### Late-Arriving Impressions
 
 Ad serving data often arrives with delays due to attribution windows, offline tracking, and pipeline latency. Publishers declare `expected_delay_minutes` in `reporting_capabilities`:
 - **Display/Video**: Typically 4-6 hours
@@ -719,7 +720,7 @@ function processWebhook(webhook) {
 
 With polling-only, buyers detect adjustments through reconciliation by comparing API results over time.
 
-### Webhook Reliability
+#### Webhook Reliability
 
 Reporting webhooks follow AdCP's standard webhook reliability patterns:
 
