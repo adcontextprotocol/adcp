@@ -61,11 +61,12 @@
       "additionalProperties": false
     },
     "ext": {
-      "type": "object",
-      "description": "Extension object for implementation-specific data. Implementers SHOULD namespace custom fields to avoid collisions (e.g., 'ai_generated', 'brand_safety_*', 'localization_*'). See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
-      "additionalProperties": true
+      "$ref": "/schemas/v1/core/object-ext.json"
     }
   },
-  "required": ["format_id", "assets"],
+  "required": [
+    "format_id",
+    "assets"
+  ],
   "additionalProperties": false
 }

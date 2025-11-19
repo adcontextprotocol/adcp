@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/object-ext.json",
+  "title": "Object Extension Object",
+  "description": "Extension object for implementation-specific data on domain objects. Implementers SHOULD namespace custom fields to avoid collisions (e.g., 'roku_*', 'ttd_*', 'platform_*'). See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
+  "type": "object",
+  "additionalProperties": true
+}

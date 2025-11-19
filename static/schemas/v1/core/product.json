@@ -40,7 +40,10 @@
                 "description": "Discriminator indicating all properties from this publisher are included"
               }
             },
-            "required": ["publisher_domain", "selection_type"],
+            "required": [
+              "publisher_domain",
+              "selection_type"
+            ],
             "additionalProperties": false
           },
           {
@@ -67,7 +70,11 @@
                 "minItems": 1
               }
             },
-            "required": ["publisher_domain", "selection_type", "property_ids"],
+            "required": [
+              "publisher_domain",
+              "selection_type",
+              "property_ids"
+            ],
             "additionalProperties": false
           },
           {
@@ -94,7 +101,11 @@
                 "minItems": 1
               }
             },
-            "required": ["publisher_domain", "selection_type", "property_tags"],
+            "required": [
+              "publisher_domain",
+              "selection_type",
+              "property_tags"
+            ],
             "additionalProperties": false
           }
         ]
@@ -148,7 +159,9 @@
           "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly')"
         }
       },
-      "required": ["provider"]
+      "required": [
+        "provider"
+      ]
     },
     "reporting_capabilities": {
       "$ref": "/schemas/v1/core/reporting-capabilities.json"
@@ -183,7 +196,10 @@
           "additionalProperties": true
         }
       },
-      "required": ["format_id", "manifest"],
+      "required": [
+        "format_id",
+        "manifest"
+      ],
       "additionalProperties": false
     },
     "product_card_detailed": {
@@ -200,13 +216,14 @@
           "additionalProperties": true
         }
       },
-      "required": ["format_id", "manifest"],
+      "required": [
+        "format_id",
+        "manifest"
+      ],
       "additionalProperties": false
     },
     "ext": {
-      "type": "object",
-      "description": "Extension object for implementation-specific data. Implementers SHOULD namespace custom fields to avoid collisions (e.g., 'roku_*', 'ttd_*', 'meta_*'). See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
-      "additionalProperties": true
+      "$ref": "/schemas/v1/core/object-ext.json"
     }
   },
   "required": [

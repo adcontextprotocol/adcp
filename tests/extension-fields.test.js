@@ -93,6 +93,28 @@ const EXTENSIBLE_SCHEMAS = [
   'core/package.json'
 ];
 
+// Helper to check if ext field is valid (either inline or $ref)
+function validateExtField(extProperty, expectedRef) {
+  if (!extProperty) {
+    throw new Error('ext property not found in schema');
+  }
+
+  // Check if using $ref (preferred)
+  if (extProperty.$ref) {
+    if (expectedRef && extProperty.$ref !== expectedRef) {
+      throw new Error(`ext $ref should be ${expectedRef}, got ${extProperty.$ref}`);
+    }
+    return 'ref';
+  }
+
+  // Check if inline (legacy)
+  if (extProperty.type === 'object' && extProperty.additionalProperties === true) {
+    return 'inline';
+  }
+
+  throw new Error('ext property must either be $ref or inline object with additionalProperties');
+}
+
 async function runTests() {
   log('🧪 Starting Extension Fields Validation Tests');
   log('==============================================');
@@ -102,15 +124,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/product.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    if (!schema.properties.ext) {
-      throw new Error('ext property not found in schema');
-    }
-    if (schema.properties.ext.type !== 'object') {
-      throw new Error('ext property must be type object');
-    }
-    if (schema.properties.ext.additionalProperties !== true) {
-      throw new Error('ext property must allow additionalProperties');
-    }
+    validateExtField(schema.properties.ext, '/schemas/v1/core/object-ext.json');
     return true;
   });
 
@@ -118,15 +132,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/media-buy.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    if (!schema.properties.ext) {
-      throw new Error('ext property not found in schema');
-    }
-    if (schema.properties.ext.type !== 'object') {
-      throw new Error('ext property must be type object');
-    }
-    if (schema.properties.ext.additionalProperties !== true) {
-      throw new Error('ext property must allow additionalProperties');
-    }
+    validateExtField(schema.properties.ext, '/schemas/v1/core/object-ext.json');
     return true;
   });
 
@@ -134,15 +140,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/creative-manifest.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    if (!schema.properties.ext) {
-      throw new Error('ext property not found in schema');
-    }
-    if (schema.properties.ext.type !== 'object') {
-      throw new Error('ext property must be type object');
-    }
-    if (schema.properties.ext.additionalProperties !== true) {
-      throw new Error('ext property must allow additionalProperties');
-    }
+    validateExtField(schema.properties.ext, '/schemas/v1/core/object-ext.json');
     return true;
   });
 
@@ -150,15 +148,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/package.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    if (!schema.properties.ext) {
-      throw new Error('ext property not found in schema');
-    }
-    if (schema.properties.ext.type !== 'object') {
-      throw new Error('ext property must be type object');
-    }
-    if (schema.properties.ext.additionalProperties !== true) {
-      throw new Error('ext property must allow additionalProperties');
-    }
+    validateExtField(schema.properties.ext, '/schemas/v1/core/object-ext.json');
     return true;
   });
 
@@ -370,15 +360,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    if (!schema.properties.ext) {
-      throw new Error('ext property not found in request schema');
-    }
-    if (schema.properties.ext.type !== 'object') {
-      throw new Error('ext property must be type object');
-    }
-    if (schema.properties.ext.additionalProperties !== true) {
-      throw new Error('ext property must allow additionalProperties');
-    }
+    validateExtField(schema.properties.ext, '/schemas/v1/core/request-ext.json');
     return true;
   });
 
@@ -414,15 +396,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    if (!schema.properties.ext) {
-      throw new Error('ext property not found at response schema top level');
-    }
-    if (schema.properties.ext.type !== 'object') {
-      throw new Error('ext property must be type object');
-    }
-    if (schema.properties.ext.additionalProperties !== true) {
-      throw new Error('ext property must allow additionalProperties');
-    }
+    validateExtField(schema.properties.ext, '/schemas/v1/core/response-ext.json');
     return true;
   });
 

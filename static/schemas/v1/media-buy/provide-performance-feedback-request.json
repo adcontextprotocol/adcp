@@ -78,9 +78,7 @@
       "additionalProperties": true
     },
     "ext": {
-      "type": "object",
-      "description": "Extension object for request-scoped implementation-specific parameters. Unlike 'context' which is echoed unchanged, extensions MAY affect task behavior. Implementers SHOULD namespace custom fields (e.g., 'buyer_*', 'test_*', 'trace_*'). See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
-      "additionalProperties": true
+      "$ref": "/schemas/v1/core/request-ext.json"
     }
   },
   "required": [

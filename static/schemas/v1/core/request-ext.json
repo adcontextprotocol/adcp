@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/core/request-ext.json",
+  "title": "Request Extension Object",
+  "description": "Extension object for request-scoped implementation-specific parameters. Unlike 'context' which is echoed unchanged, extensions MAY affect task behavior. Implementers SHOULD namespace custom fields to avoid collisions (e.g., 'buyer_*', 'test_*', 'trace_*'). See https://docs.adcontextprotocol.org/reference/extensions for conventions and examples.",
+  "type": "object",
+  "additionalProperties": true
+}
