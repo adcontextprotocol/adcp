@@ -144,6 +144,10 @@
         "deployment": {
           "$ref": "/schemas/v1/core/deployment.json",
           "description": "A signal deployment to a specific destination platform with activation status and key"
+        },
+        "publisher-property-selector": {
+          "$ref": "/schemas/v1/core/publisher-property-selector.json",
+          "description": "Selects properties from a publisher's adagents.json - supports three patterns: all properties, specific IDs, or by tags"
         }
       }
     },

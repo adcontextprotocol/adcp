@@ -198,60 +198,7 @@
                 "type": "array",
                 "description": "Properties from other publisher domains this agent is authorized for. Each entry specifies a publisher domain and which of their properties this agent can sell",
                 "items": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "publisher_domain": {
-                          "type": "string",
-                          "description": "Domain where the publisher's adagents.json is hosted (e.g., 'cnn.com')",
-                          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-                        },
-                        "selection_type": {
-                          "type": "string",
-                          "const": "by_id",
-                          "description": "Discriminator indicating selection by specific property IDs"
-                        },
-                        "property_ids": {
-                          "type": "array",
-                          "description": "Specific property IDs from the publisher's adagents.json properties array",
-                          "items": {
-                            "type": "string",
-                            "pattern": "^[a-z0-9_]+$"
-                          },
-                          "minItems": 1
-                        }
-                      },
-                      "required": ["publisher_domain", "selection_type", "property_ids"],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "publisher_domain": {
-                          "type": "string",
-                          "description": "Domain where the publisher's adagents.json is hosted (e.g., 'cnn.com')",
-                          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-                        },
-                        "selection_type": {
-                          "type": "string",
-                          "const": "by_tag",
-                          "description": "Discriminator indicating selection by property tags"
-                        },
-                        "property_tags": {
-                          "type": "array",
-                          "description": "Property tags from the publisher's adagents.json tags. Agent is authorized for all properties with these tags",
-                          "items": {
-                            "type": "string",
-                            "pattern": "^[a-z0-9_]+$"
-                          },
-                          "minItems": 1
-                        }
-                      },
-                      "required": ["publisher_domain", "selection_type", "property_tags"],
-                      "additionalProperties": false
-                    }
-                  ]
+                  "$ref": "/schemas/v1/core/publisher-property-selector.json"
                 },
                 "minItems": 1
               }
