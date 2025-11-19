@@ -175,23 +175,25 @@ for (const domain of domains) {
 // When evaluating a product
 const product = await salesAgent.call('get_products', {brief: "Chicago radio ads"});
 
-// Resolve property tags if used
-let propertiesToValidate = product.properties || [];
-if (product.property_tags) {
-  propertiesToValidate = allProperties.filter(p => 
-    product.property_tags.every(tag => p.tags.includes(tag))
-  );
-}
-
-// Validate authorization for each property
-const authorized = propertiesToValidate.every(property => {
-  const domain = property.publisher_domain;
+// Validate authorization for each publisher in publisher_properties
+const authorized = product.publisher_properties.every(pubProp => {
+  const domain = pubProp.publisher_domain;
   const adagents = authorizationCache[domain];
-  
+
   if (!adagents) return false; // No adagents.json found
-  
-  return adagents.authorized_agents.some(agent => 
-    agent.agent_id === salesAgent.id && 
+
+  // Get properties from this publisher
+  const publisherProps = allProperties.filter(p => p.publisher_domain === domain);
+
+  // Resolve property_tags to actual properties if needed
+  let propertiesToCheck = pubProp.property_ids
+    ? publisherProps.filter(p => pubProp.property_ids.includes(p.property_id))
+    : publisherProps.filter(p => pubProp.property_tags.every(tag => p.tags.includes(tag)));
+
+  // Validate authorization for these properties
+  return propertiesToCheck.every(property =>
+    adagents.authorized_agents.some(agent =>
+      agent.agent_id === salesAgent.id && 
     isCurrentlyAuthorized(agent.authorization_scope)
   );
 });

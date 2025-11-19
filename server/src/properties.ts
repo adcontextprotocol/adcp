@@ -1,4 +1,4 @@
-import { AgentClient } from "@adcp/client";
+import { AdCPClient } from "@adcp/client";
 import type { Agent } from "./types.js";
 import { AgentValidator } from "./validator.js";
 
@@ -48,7 +48,8 @@ export class PropertiesService {
         agent_uri: agent.url,
         protocol: (agent.protocol || "mcp") as "mcp" | "a2a",
       };
-      const client = new AgentClient(agentConfig);
+      const multiClient = new AdCPClient([agentConfig]);
+      const client = multiClient.agent(agent.name);
       const result = await client.executeTask("list_authorized_properties", {});
 
       if (result.success && result.data) {

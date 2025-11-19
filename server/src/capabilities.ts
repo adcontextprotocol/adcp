@@ -102,14 +102,15 @@ export class CapabilityDiscovery {
 
   private async discoverMCPTools(url: string): Promise<ToolCapability[]> {
     try {
-      // Use ADCPClient's getAgentInfo which works for both MCP and A2A
-      const { ADCPClient } = await import("@adcp/client");
-      const client = new ADCPClient({
+      // Use AdCPClient to connect to agent
+      const { AdCPClient } = await import("@adcp/client");
+      const multiClient = new AdCPClient([{
         id: "discovery",
         name: "Discovery Client",
         agent_uri: url,
         protocol: "mcp",
-      });
+      }]);
+      const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
       console.log(`MCP discovery for ${url}: found ${agentInfo.tools.length} tools`);
@@ -128,14 +129,15 @@ export class CapabilityDiscovery {
 
   private async discoverA2ATools(url: string): Promise<ToolCapability[]> {
     try {
-      // Use ADCPClient's getAgentInfo which works for both MCP and A2A
-      const { ADCPClient } = await import("@adcp/client");
-      const client = new ADCPClient({
+      // Use AdCPClient to connect to agent
+      const { AdCPClient } = await import("@adcp/client");
+      const multiClient = new AdCPClient([{
         id: "discovery",
         name: "Discovery Client",
         agent_uri: url,
         protocol: "a2a",
-      });
+      }]);
+      const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
       console.log(`A2A discovery for ${url}: found ${agentInfo.tools.length} tools`);
