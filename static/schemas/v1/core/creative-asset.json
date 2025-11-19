@@ -73,6 +73,20 @@
     "approved": {
       "type": "boolean",
       "description": "For generative creatives: set to true to approve and finalize, false to request regeneration with updated assets/message. Omit for non-generative creatives."
+    },
+    "weight": {
+      "type": "number",
+      "description": "Optional delivery weight for creative rotation when uploading via create_media_buy or update_media_buy (0-100). If omitted, platform determines rotation. Only used during upload to media buy - not stored in creative library.",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "placement_ids": {
+      "type": "array",
+      "description": "Optional array of placement IDs where this creative should run when uploading via create_media_buy or update_media_buy. References placement_id values from the product's placements array. If omitted, creative runs on all placements. Only used during upload to media buy - not stored in creative library.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
     }
   },
   "required": ["creative_id", "name", "format_id", "assets"],

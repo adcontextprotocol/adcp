@@ -13,6 +13,14 @@
       },
       "maxItems": 100
     },
+    "creative_ids": {
+      "type": "array",
+      "description": "Optional filter to limit sync scope to specific creative IDs. When provided, only these creatives will be created/updated. Other creatives in the library are unaffected (even with patch=true). Useful for partial updates and error recovery.",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 100
+    },
     "patch": {
       "type": "boolean",
       "default": false,
@@ -128,6 +136,31 @@
               "holiday",
               "q4_2024"
             ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Partial update using creative_ids filter",
+      "data": {
+        "creative_ids": ["hero_video_30s", "banner_300x250"],
+        "patch": true,
+        "creatives": [
+          {
+            "creative_id": "hero_video_30s",
+            "assets": {
+              "video": {
+                "url": "https://cdn.example.com/updated-hero.mp4"
+              }
+            }
+          },
+          {
+            "creative_id": "banner_300x250",
+            "assets": {
+              "image": {
+                "url": "https://cdn.example.com/updated-banner.png"
+              }
+            }
           }
         ]
       }
