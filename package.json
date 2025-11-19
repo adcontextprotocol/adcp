@@ -13,9 +13,11 @@
     "typecheck": "tsc --project server/tsconfig.json --noEmit",
     "test:schemas": "node tests/schema-validation.test.js",
     "test:examples": "node tests/example-validation-simple.test.js",
+    "test:snippets": "node tests/snippet-validation.test.js",
     "test:registry": "vitest run server/tests",
     "generate-openapi": "node scripts/generate-openapi.js",
     "test": "npm run test:schemas && npm run test:examples && npm run typecheck",
+    "test:all": "npm run test:schemas && npm run test:examples && npm run test:snippets && npm run typecheck",
     "precommit": "npm test",
     "prepare": "husky",
     "changeset": "changeset",
@@ -25,7 +27,7 @@
     "verify-version-sync": "node scripts/verify-version-sync.js"
   },
   "dependencies": {
-    "@adcp/client": "^2.7.2",
+    "@adcp/client": "^3.0.3",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "axios": "^1.7.0",
     "express": "^4.18.2",

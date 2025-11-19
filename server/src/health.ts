@@ -37,14 +37,15 @@ export class HealthChecker {
 
   private async tryMCP(agent: Agent, startTime: number): Promise<AgentHealth> {
     try {
-      // Use ADCPClient to handle MCP protocol complexity (sessions, SSE, etc.)
-      const { ADCPClient } = await import("@adcp/client");
-      const client = new ADCPClient({
+      // Use AdCPClient to handle MCP protocol complexity (sessions, SSE, etc.)
+      const { AdCPClient } = await import("@adcp/client");
+      const multiClient = new AdCPClient([{
         id: "health-check",
         name: "Health Checker",
         agent_uri: agent.url,
         protocol: "mcp",
-      });
+      }]);
+      const client = multiClient.agent("health-check");
 
       const agentInfo = await client.getAgentInfo();
       const responseTime = Date.now() - startTime;

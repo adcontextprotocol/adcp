@@ -694,13 +694,14 @@ export class HTTPServer {
             const params = args?.params || {};
 
             try {
-              const { AgentClient } = await import("@adcp/client");
-              const client = new AgentClient({
+              const { AdCPClient } = await import("@adcp/client");
+              const multiClient = new AdCPClient([{
                 id: "registry",
                 name: "Registry Query",
                 agent_uri: agentUrl,
                 protocol: "mcp",
-              });
+              }]);
+              const client = multiClient.agent("registry");
 
               const result = await client.executeTask("get_products", params);
 
@@ -739,13 +740,14 @@ export class HTTPServer {
             const params = args?.params || {};
 
             try {
-              const { AgentClient } = await import("@adcp/client");
-              const client = new AgentClient({
+              const { AdCPClient } = await import("@adcp/client");
+              const multiClient = new AdCPClient([{
                 id: "registry",
                 name: "Registry Query",
                 agent_uri: agentUrl,
                 protocol: "mcp",
-              });
+              }]);
+              const client = multiClient.agent("registry");
 
               const result = await client.executeTask("list_creative_formats", params);
 

@@ -6,6 +6,27 @@ This guide helps AI assistants understand the AdCP project structure and maintai
 
 The Advertising Context Protocol (AdCP) is an open standard for AI-powered advertising workflows. It provides a unified interface for media buying across diverse advertising platforms.
 
+## Documentation Framework
+
+**CRITICAL**: This project uses TWO documentation systems:
+
+1. **Mintlify** - Primary documentation platform
+   - All documentation in `docs/` directory
+   - Markdown/MDX files served by Mintlify
+   - Uses Mintlify-specific components (`<CodeGroup>`, not Docusaurus `<Tabs>`)
+   - Run with: `mintlify dev` (should use conductor port, not 3000)
+
+2. **Docusaurus** - Legacy/backwards compatibility only
+   - Used for homepage
+   - Used to serve JSON schemas at `/schemas/` endpoints
+   - Will be migrated away from eventually
+   - DO NOT use Docusaurus components in documentation files
+
+**When editing documentation:**
+- ✅ Use Mintlify `<CodeGroup>` for multi-language examples
+- ❌ DO NOT use Docusaurus `import Tabs from '@theme/Tabs'`
+- ❌ DO NOT use `<Tabs>` or `<TabItem>` components
+
 ## Documentation Standards
 
 ### Protocol Specification vs Implementation
@@ -41,6 +62,178 @@ Implementation details can be mentioned as:
 - Focus on capabilities, not implementation
 - Write for an audience implementing the protocol, not using a specific implementation
 - Keep examples generic and illustrative
+
+### Schema Compliance - CRITICAL RULE
+
+**🚨 ABSOLUTE REQUIREMENT: All documentation, code examples, and API usage MUST match the current JSON schemas exactly.**
+
+**The schemas in `/static/schemas/v1/` are the SINGLE SOURCE OF TRUTH.**
+
+**Rules:**
+1. ❌ **NEVER document fields that don't exist in the schema**
+2. ❌ **NEVER show examples using non-existent fields**
+3. ❌ **NEVER mark schema-violating examples as `test=false` to "keep them around"**
+4. ✅ **ALWAYS verify fields exist in schema before documenting**
+5. ✅ **ALWAYS remove or fix examples that don't match schema**
+6. ✅ **ALWAYS update documentation when schemas change**
+
+**If a field doesn't exist in the schema:**
+- ❌ Don't document it "for future use"
+- ❌ Don't mark examples as non-testable and keep them
+- ✅ **Remove the field from documentation entirely**
+- ✅ **Remove any examples showing that field**
+- ✅ If needed, file a schema issue to add the field properly
+
+**Enforcement:**
+- All testable pages MUST pass validation against current schemas
+- No exceptions for "planned features" or "future fields"
+- Examples violating schemas must be removed, not marked `test=false`
+
+**How to verify schema compliance:**
+```bash
+# Check what fields exist in a schema
+cat static/schemas/v1/core/creative-asset.json
+
+# Test specific documentation file
+npm test -- --file docs/media-buy/task-reference/sync_creatives.mdx
+
+# Fields must exist in schema, not just in wishful thinking
+```
+
+### Testable Documentation
+
+**IMPORTANT**: All code examples in documentation should be testable when possible.
+
+**How to mark pages as testable**:
+
+Add `testable: true` to the frontmatter of pages where all code examples should be tested:
+
+```markdown
+---
+title: get_products
+sidebar_position: 1
+testable: true
+---
+
+# get_products
+
+...code examples here (no test=true needed in individual blocks)...
+```
+
+**Key principles**:
+1. **Page-level flag** - Use `testable: true` in frontmatter to mark entire page as testable
+2. **Tab titles** - The text after the language becomes the tab title (e.g., "JavaScript", "Python", "CLI")
+3. **Complete examples** - All code on testable pages must be complete and runnable
+4. **Use test credentials** - Use the public test agent credentials in examples
+5. **Schema compliance** - All examples must match current schemas exactly
+6. **Error handling** - ALL examples must check discriminated union responses for errors before accessing success fields
+
+**Supported languages**:
+- `javascript` / `typescript` - Runs with Node.js ESM modules
+- `python` - Runs with Python 3.11+
+- `bash` - Supports `curl`, `npx`, and `uvx` commands
+
+**What gets tested**:
+- All code blocks on pages with `testable: true` frontmatter
+- Code executes without errors
+- API calls succeed (or fail as expected)
+- Output matches expectations
+- **Fields match current schemas**
+
+**When NOT to mark page as testable**:
+- Pages with incomplete code fragments
+- Conceptual examples or pseudocode
+- Browser-only code examples
+- Code requiring user interaction
+- Mixed testable and non-testable examples (use separate pages)
+
+**Example testable page**:
+
+```markdown
+---
+title: get_products
+testable: true
+---
+
+# get_products
+
+<CodeGroup>
+
+\`\`\`javascript JavaScript
+import { ADCPMultiAgentClient } from '@adcp/client';
+const client = new ADCPMultiAgentClient([...]);
+\`\`\`
+
+\`\`\`python Python
+from adcp import ADCPMultiAgentClient
+\`\`\`
+
+</CodeGroup>
+```
+
+**Running tests**:
+```bash
+node tests/snippet-validation.test.js
+```
+
+### Discriminated Union Error Handling - CRITICAL PATTERN
+
+**🚨 ABSOLUTE REQUIREMENT: Always check for errors before accessing success fields in discriminated union responses.**
+
+Many AdCP responses use discriminated unions with two variants:
+1. **Success variant** - Has data fields (e.g., `creatives`, `products`, `packages`)
+2. **Error variant** - Has `errors` array field
+
+**The fields are mutually exclusive** - a response has EITHER success fields OR an `errors` field, never both.
+
+**Required Pattern**:
+
+**JavaScript:**
+```javascript
+const result = await testAgent.syncCreatives({...});
+
+// ALWAYS check for errors first
+if (result.errors) {
+  console.error('Operation failed:', result.errors);
+} else {
+  // Safe to access success fields
+  console.log(`Success: ${result.creatives.length} items`);
+}
+```
+
+**Python:**
+```python
+result = await test_agent.simple.sync_creatives(...)
+
+# ALWAYS check for errors first
+if hasattr(result, 'errors') and result.errors:
+    print('Operation failed:', result.errors)
+else:
+    # Safe to access success fields
+    print(f"Success: {len(result.creatives)} items")
+```
+
+**Why This Matters:**
+- Accessing `result.creatives` when `errors` is present = `undefined` (JS) or `AttributeError` (Python)
+- Makes examples fail in confusing ways
+- Hides the actual error from the user
+- Violates schema contract
+
+**Common Discriminated Union Responses:**
+- `sync_creatives` - Either `creatives` OR `errors`
+- `create_media_buy` - Either `media_buy_id` + `packages` OR `errors`
+- `get_products` - Either `products` OR `errors`
+- `list_creative_formats` - Either `formats` OR `errors`
+
+**NEVER:**
+❌ Access success fields without checking for errors first
+❌ Assume the operation succeeded
+❌ Write examples that will crash on error responses
+
+**ALWAYS:**
+✅ Check for `errors` field first
+✅ Handle both success and error cases
+✅ Log errors clearly when they occur
 
 ## JSON Schema Maintenance
 

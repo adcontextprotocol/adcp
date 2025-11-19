@@ -56,8 +56,11 @@ Each format includes an `agent_url` field indicating its authoritative source.
 ```javascript
 // Find products for your campaign
 const products = await get_products({
-  brief: "Premium video inventory for sports fans",
-  promoted_offering: "Nike Air Max 2024"
+  brand_manifest: {
+    name: "Nike",
+    url: "https://nike.com"
+  },
+  brief: "Nike Air Max 2024 launch campaign"
 });
 // Products return: format_ids: ["video_15s_hosted", "homepage_takeover_2024"]
 
@@ -101,7 +104,11 @@ if (response.creative_agents) {
 
 // Find products supporting your creative capabilities
 const products = await get_products({
-  promoted_offering: "Nike Air Max 2024",
+  brand_manifest: {
+    name: "Nike",
+    url: "https://nike.com"
+  },
+  brief: "Nike Air Max 2024 launch campaign",
   filters: {
     format_ids: allFormats.map(f => f.format_id)
   }

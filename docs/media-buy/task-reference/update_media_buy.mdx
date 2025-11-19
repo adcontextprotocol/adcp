@@ -1,525 +1,282 @@
 ---
 title: update_media_buy
-sidebar_position: 7
+sidebar_position: 8
+testable: true
 ---
 
 # update_media_buy
 
-Update campaign and package settings. This task supports partial updates and handles any required approvals.
+Modify an existing media buy using PATCH semantics. Supports campaign-level and package-level updates.
 
-**Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
+**Response Time**: Instant to days (status: `completed`, `working` < 120s, or `submitted` for manual review)
 
+**PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json)
+**Request Schema**: [`/schemas/v1/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-request.json)
+**Response Schema**: [`/schemas/v1/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json)
 
 ## Request Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `media_buy_id` | string | No* | Publisher's ID of the media buy to update |
-| `buyer_ref` | string | No* | Buyer's reference for the media buy to update |
-| `active` | boolean | No | Pause/resume the entire media buy |
-| `start_time` | string | No | New campaign start time: `"asap"` to start as soon as possible, or ISO 8601 date-time for scheduled start |
-| `end_time` | string | No | New end date/time in ISO 8601 format (UTC unless timezone specified) |
-| `packages` | PackageUpdate[] | No | Package-specific updates (see Package Update Object below) |
-| `push_notification_config` | PushNotificationConfig | No | Optional webhook for async update notifications (see Webhook Configuration below) |
+| `media_buy_id` | string | Yes* | Publisher's media buy identifier to update |
+| `buyer_ref` | string | Yes* | Your reference for the media buy to update |
+| `start_time` | string | No | Updated campaign start time |
+| `end_time` | string | No | Updated campaign end time |
+| `active` | boolean | No | Pause/resume entire media buy |
+| `packages` | PackageUpdate[] | No | Package-level updates (see below) |
 
-*Either `media_buy_id` or `buyer_ref` must be provided
+*Either `media_buy_id` OR `buyer_ref` is required (not both)
 
 ### Package Update Object
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `package_id` | string | No* | Publisher's ID of package to update |
-| `buyer_ref` | string | No* | Buyer's reference for the package to update |
-| `budget` | number | No | Updated budget allocation for this package in the currency specified by the pricing option |
-| `pacing` | string | No | Pacing strategy: `"even"`, `"asap"`, or `"front_loaded"` |
-| `bid_price` | number | No | Updated bid price for auction-based pricing options (only applies to auction packages) |
-| `active` | boolean | No | Pause/resume specific package |
-| `targeting_overlay` | TargetingOverlay | No | Update targeting for this package (see Targeting Overlay Object in create_media_buy) |
-| `creative_ids` | string[] | No | Update creative assignments |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `package_id` | string | Publisher's package identifier to update |
+| `buyer_ref` | string | Your reference for the package to update |
+| `active` | boolean | Pause/resume specific package |
+| `budget` | number | Updated budget allocation |
+| `pacing` | string | Updated pacing strategy |
+| `bid_price` | number | Updated bid price (auction products only) |
+| `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
+| `creative_ids` | string[] | Replace assigned creatives |
 
-*Either `package_id` or `buyer_ref` must be provided
+*Either `package_id` OR `buyer_ref` is required for each package update
 
-## Webhook Configuration (Task-Specific)
+## Response
 
-For long-running updates (typically requiring approval workflows), you can provide a task-specific webhook to be notified when the update completes:
+Returns updated media buy with status:
 
-```json
-{
-  "buyer_ref": "nike_q1_campaign_2024",
-  "packages": [
-    {
-      "buyer_ref": "nike_ctv_sports_package",
-      "budget": 150000
-    }
-  ],
-  "push_notification_config": {
-    "url": "https://buyer.com/webhooks/media-buy-updates",
-    "authentication": {
-      "schemes": ["HMAC-SHA256"],
-      "credentials": "shared_secret_32_chars"
-    }
-  }
-}
-```
+| Field | Description |
+|-------|-------------|
+| `media_buy_id` | Media buy identifier |
+| `status` | Update status (`"completed"`, `"working"`, `"submitted"`) |
+| `packages` | Updated packages with new values |
+| `message` | Human-readable update description |
 
-**When webhooks are sent:**
-- Update requires manual approval (status: `submitted` → `completed`)
-- Update takes longer than ~120 seconds (status: `working` → `completed`)
+See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json) for complete field list.
 
-**Webhook payload:**
-- Protocol fields at top-level (operation_id, task_type, status, etc.)
-- `result` contains update_media_buy payload, including media_buy_id, affected_packages, implementation_date
+## Common Scenarios
 
-See [Webhook Security](/docs/protocols/core-concepts.mdx#security) for authentication details.
+**Note**: These examples use `buyer_ref` to reference media buys and packages by your own identifiers. You can also use the publisher's `media_buy_id` and `package_id` if you prefer.
 
-## Response (Message)
+### Pause Campaign
 
-The response includes a human-readable message that:
-- Confirms what changes were made and their impact
-- Explains approval requirements if applicable
-- Provides context on budget and pacing changes
-- Describes when changes take effect
-
-The message is returned differently in each protocol:
-- **MCP**: Returned as a `message` field in the JSON response
-- **A2A**: Returned as a text part in the artifact
-
-## Response (Payload)
-
-```json
-{
-  "media_buy_id": "string",
-  "buyer_ref": "string",
-  "implementation_date": "string",
-  "affected_packages": [
-    {
-      "package_id": "string",
-      "buyer_ref": "string"
-    }
-  ]
-}
-```
-
-### Field Descriptions
-
-- **media_buy_id**: Publisher's identifier for the media buy
-- **buyer_ref**: Buyer's reference identifier for the media buy
-- **implementation_date**: ISO 8601 timestamp when changes take effect
-- **affected_packages**: Array of packages that were modified
-  - **package_id**: Publisher's package identifier
-  - **buyer_ref**: Buyer's reference for the package
-
-## Protocol-Specific Examples
-
-The AdCP payload is identical across protocols. Only the request/response wrapper differs.
-
-### MCP Request
-```json
-{
-  "tool": "update_media_buy",
-  "arguments": {
-    "buyer_ref": "nike_q1_campaign_2024",
-    "packages": [
-      {
-        "buyer_ref": "nike_ctv_sports_package",
-        "budget": 100000
-      }
-    ]
-  }
-}
-```
-
-### MCP Response (Synchronous)
-```json
-{
-  "message": "Successfully updated media buy. CTV package budget increased to $100,000.",
-  "status": "completed",
-  "media_buy_id": "mb_12345",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "implementation_date": "2024-02-01T00:00:00Z",
-  "affected_packages": [
-    {
-      "package_id": "pkg_12345_001",
-      "buyer_ref": "nike_ctv_sports_package"
-    }
-  ]
-}
-```
-
-### MCP Response (Asynchronous)
-```json
-{
-  "task_id": "task_update_456",
-  "status": "working",
-  "message": "Processing media buy update..."
-}
-```
-
-### A2A Request
-
-#### Natural Language Invocation
 ```javascript
-await a2a.send({
-  message: {
-    parts: [{
-      kind: "text",
-      text: "Please update my Nike Q1 campaign budget to $150,000 with front-loaded pacing. Also increase the CTV sports package budget to $100,000."
-    }]
-  }
+import { testAgent } from '@adcp/client/testing';
+
+// Pause entire campaign using your reference
+const result = await testAgent.updateMediaBuy({
+  buyer_ref: 'mb_summer_2025',
+  active: false
 });
+
+console.log(`Campaign paused`);
 ```
 
-#### Explicit Skill Invocation
+### Update Package Budget
+
 ```javascript
-await a2a.send({
-  message: {
-    parts: [{
-      kind: "data",
-      data: {
-        skill: "update_media_buy",
-        parameters: {
-          buyer_ref: "nike_q1_campaign_2024",
-          packages: [
-            {
-              buyer_ref: "nike_ctv_sports_package",
-              budget: 100000
-            }
-          ]
-        }
-      }
-    }]
-  }
-});
-```
+import { testAgent } from '@adcp/client/testing';
 
-### A2A Response (Synchronous)
-A2A returns results as artifacts:
-```json
-{
-  "artifacts": [{
-    "name": "update_confirmation",
-    "parts": [
-      {
-        "kind": "text",
-        "text": "Successfully updated media buy. CTV package budget increased to $100,000."
-      },
-      {
-        "kind": "data",
-        "data": {
-          "media_buy_id": "mb_12345",
-          "buyer_ref": "nike_q1_campaign_2024",
-          "implementation_date": "2024-02-01T00:00:00Z",
-          "affected_packages": [
-            {"package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package"}
-          ]
-        }
-      }
-    ]
+// Increase budget for specific package using your reference
+const result = await testAgent.updateMediaBuy({
+  buyer_ref: 'mb_summer_2025',
+  packages: [{
+    buyer_ref: 'pkg_premium',
+    budget: 25000  // Increased from 15000
   }]
-}
+});
+
+console.log(`Package budget updated to ${result.packages[0].budget}`);
 ```
 
-### A2A Response (Asynchronous with SSE)
-```json
-{
-  "task_id": "task_update_456",
-  "status": "working",
-  "updates": "https://ad-server.example.com/sse/task_update_456"
-}
+### Change Campaign Dates
+
+```javascript
+import { testAgent } from '@adcp/client/testing';
+
+// Extend campaign end date
+const result = await testAgent.updateMediaBuy({
+  buyer_ref: 'mb_summer_2025',
+  end_time: '2025-09-30T23:59:59Z'  // Extended from original end date
+});
+
+console.log(`Campaign extended to: ${result.end_time}`);
 ```
 
-SSE Updates:
-```
-event: status
-data: {"status": "working", "message": "Validating update parameters..."}
+### Update Targeting
 
-event: status
-data: {"status": "working", "message": "Applying budget changes to packages..."}
+```javascript
+import { testAgent } from '@adcp/client/testing';
 
-event: completed
-data: {"artifacts": [{"name": "update_confirmation", "parts": [{"kind": "text", "text": "Successfully updated media buy."}, {"kind": "data", "data": {"media_buy_id": "mb_12345", "buyer_ref": "nike_q1_campaign_2024", "implementation_date": "2024-02-01T00:00:00Z", "affected_packages": [{"package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package"}]}}]}]}
-```
-
-### Key Differences
-- **MCP**: Direct tool call with arguments, returns flat JSON response
-- **A2A**: Skill invocation with input, returns artifacts with text and data parts
-- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
-
-## Scenarios
-
-### Example 1: Campaign Pause
-
-#### Request
-```json
-{
-  "buyer_ref": "purina_pet_campaign_q1",
-  "active": false
-}
-```
-
-#### Response
-**Message**: "Campaign paused successfully. All 2 packages have stopped delivering impressions. You've spent $16,875 of your $50,000 budget (33.8%). Campaign can be resumed at any time to continue delivery."
-
-**Payload**:
-```json
-{
-  "media_buy_id": "gam_1234567890",
-  "buyer_ref": "purina_pet_campaign_q1",
-  "implementation_date": "2024-02-08T00:00:00Z",
-  "affected_packages": [
-    {"package_id": "gam_pkg_001", "buyer_ref": "purina_ctv_package"},
-    {"package_id": "gam_pkg_002", "buyer_ref": "purina_audio_package"}
-  ]
-}
-```
-
-### Example 2: Complex Update
-
-#### Request
-```json
-{
-  "buyer_ref": "purina_pet_campaign_q1",
-  "end_time": "2024-02-28T23:59:59Z",
-  "packages": [
-    {
-      "buyer_ref": "purina_ctv_package",
-      "budget": 45000,
-      "pacing": "front_loaded"
-    },
-    {
-      "buyer_ref": "purina_audio_package",
-      "active": false
+// Add geographic restrictions to package
+const result = await testAgent.updateMediaBuy({
+  buyer_ref: 'mb_summer_2025',
+  packages: [{
+    buyer_ref: 'pkg_premium',
+    targeting_overlay: {
+      geo_country_any_of: ['US', 'CA'],
+      geo_region_any_of: ['CA', 'NY', 'TX', 'ON', 'QC']
     }
-  ]
-}
+  }]
+});
+
+console.log('Targeting updated successfully');
 ```
 
-#### Response - Immediate Update
-**Message**: "Campaign updated successfully. CTV package budget increased to $45,000 and switched to front-loaded pacing to allocate more remaining budget earlier in the remaining campaign period. Audio package has been paused. Campaign extended through February 28. Changes take effect immediately."
+### Replace Creatives
 
-**Payload**:
-```json
-{
-  "media_buy_id": "gam_1234567890",
-  "buyer_ref": "purina_pet_campaign_q1",
-  "implementation_date": "2024-02-08T00:00:00Z",
-  "affected_packages": [
-    {"package_id": "gam_pkg_001", "buyer_ref": "purina_ctv_package"},
-    {"package_id": "gam_pkg_002", "buyer_ref": "purina_audio_package"}
-  ]
-}
+```javascript
+import { testAgent } from '@adcp/client/testing';
+
+// Swap out creative assets
+const result = await testAgent.updateMediaBuy({
+  buyer_ref: 'mb_summer_2025',
+  packages: [{
+    buyer_ref: 'pkg_premium',
+    creative_ids: ['creative_video_002', 'creative_display_002']
+  }]
+});
+
+console.log(`Assigned ${result.packages[0].creative_ids.length} new creatives`);
 ```
 
-### Example 3: Update Requiring Approval
+## What Can Be Updated
 
-#### Request
-```json
-{
-  "buyer_ref": "purina_pet_campaign_q1",
-  "packages": [
-    {
-      "buyer_ref": "purina_ctv_package",
-      "budget": 150000
-    }
-  ]
-}
-```
+### Campaign-Level Updates
 
-#### Response - Pending Approval
-**Message**: "CTV package budget increase to $150,000 requires manual approval due to the significant change (+400%). This typically takes 2-4 hours during business hours. Your campaign continues to deliver at the current budget until approved. I'll notify you once the increase is approved."
+✅ **Can update:**
+- Start/end times (subject to seller approval)
+- Campaign status (active/paused/cancelled)
+- Reporting webhook configuration
 
-**Payload**:
-```json
-{
-  "media_buy_id": "gam_1234567890",
-  "buyer_ref": "purina_pet_campaign_q1",
-  "implementation_date": null,
-  "affected_packages": []
+❌ **Cannot update:**
+- Media buy ID
+- Buyer reference
+- Brand manifest
+- Original package product IDs
+
+### Package-Level Updates
+
+✅ **Can update:**
+- Budget allocation
+- Pacing strategy
+- Bid prices (auction products)
+- Targeting overlays
+- Creative assignments
+- Package status
+
+❌ **Cannot update:**
+- Package ID
+- Product ID
+- Pricing option ID
+- Format IDs (creatives must match existing formats)
+
+## Update Approval
+
+Some updates require seller approval and return `status: "submitted"`:
+
+- **Significant budget increases** (threshold varies by seller)
+- **Date range changes** affecting inventory availability
+- **Targeting changes** that alter campaign scope
+- **Creative changes** requiring policy review
+
+When approval is needed:
+```javascript
+if (result.status === 'submitted') {
+  console.log('Update requires approval:', result.message);
+  // Set up status monitoring
 }
 ```
 
 ## PATCH Semantics
 
-This tool follows PATCH update semantics:
+Only specified fields are updated:
 
-- **Only included fields are modified** - Omitted fields remain unchanged
-- **Null values clear/reset fields** - Where applicable
-- **Packages not mentioned remain unchanged** - Only listed packages are updated
-
-
-## Asynchronous Updates
-
-Both MCP and A2A support asynchronous updates for operations that may take time or require approval:
-
-### MCP Asynchronous Flow
-
-1. Initial request returns immediately with task_id and status "working"
-2. Client polls using update_media_buy_status with the task_id
-3. Final status includes the complete update results
-
-### A2A Asynchronous Flow
-
-1. Initial request returns task_id with SSE URL or webhook configuration
-2. Updates stream via SSE or push to webhooks
-3. Final event includes complete artifacts with update results
-
-### Human-in-the-Loop Scenarios
-
-When updates require approval:
-
-```json
-{
-  "status": "input-required",
-  "message": "Budget increase requires advertiser approval",
-  "responsible_party": "advertiser",
-  "estimated_time": "2-4 hours"
-}
+```javascript
+// This update ONLY changes budget - all other fields unchanged
+await testAgent.updateMediaBuy({
+  buyer_ref: 'mb_summer_2025',
+  packages: [{
+    buyer_ref: 'pkg_premium',
+    budget: 25000
+  }]
+});
 ```
 
-The system will:
-1. Notify the responsible party
-2. Maintain current campaign settings
-3. Apply changes only after approval
-4. Send status updates throughout the process
+To replace arrays (like creative_ids), provide the complete new array:
 
-## Campaign-Level vs Package-Level Updates
-
-The `update_media_buy` tool provides a unified interface that supports both campaign-level and package-level updates in a single call:
-
-### Campaign-Level Updates
-- `active`: Pause/resume entire campaign
-- `budget`: Adjust overall budget configuration
-- `start_time`: Change campaign start date/time
-- `end_time`: Extend or shorten campaign
-- `targeting_overlay`: Update global targeting
-- `pacing`: Change delivery strategy
-
-### Package-Level Updates
-- Apply different changes to multiple packages in one call
-- Each package can have different update parameters
-- Update multiple packages in one call
-- Each package update is processed independently
-- Returns immediately on first error
-
-## Status Checking
-
-### MCP Status Checking
-
-For MCP implementations, use the `update_media_buy_status` endpoint to check the status of an asynchronous media buy update.
-
-#### Request
-```json
-{
-  "task_id": "task_update_456"  // Required - from update_media_buy response
-}
+```javascript
+// Replaces ALL creatives with new list
+packages: [{
+  buyer_ref: 'pkg_premium',
+  creative_ids: ['creative_video_002', 'creative_display_002']
+}]
 ```
-
-#### Response Examples
-
-**Processing:**
-```json
-{
-  "message": "Media buy update in progress - applying changes",
-  "task_id": "task_update_456",
-  "status": "working",
-  "progress": {
-    "completed": 1,
-    "total": 2,
-    "unit_type": "packages",
-    "responsible_party": "system"
-  }
-}
-```
-
-**Completed:**
-```json
-{
-  "message": "Successfully updated media buy",
-  "task_id": "task_update_456",
-  "status": "completed",
-  "media_buy_id": "mb_12345",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "implementation_date": "2024-02-08T00:00:00Z",
-  "affected_packages": [
-    {"package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package"}
-  ]
-}
-```
-
-**Pending Approval:**
-```json
-{
-  "message": "Media buy update requires approval. Finance team must approve budget increase.",
-  "task_id": "task_update_456",
-  "status": "input-required",
-  "responsible_party": "advertiser"
-}
-```
-
-### A2A Status Checking
-
-For A2A implementations, task status is delivered via:
-1. **Polling**: Client can poll using the task_id
-2. **Server-Sent Events (SSE)**: Real-time updates via the `updates` URL
-3. **Webhooks**: Push notifications to registered endpoints
-
-## Usage Notes
-
-- Updates typically take effect immediately unless approval is required
-- Budget increases may require approval based on publisher policies
-- Pausing a campaign preserves all settings and can be resumed anytime
-- Package-level updates override campaign-level settings
-- Some updates may affect how remaining budget is allocated over remaining time
-
-## Platform Implementation
-
-How updates map to different platforms:
-
-- **GAM**: Maps to Order and LineItem updates
-- **Kevel**: Maps to Campaign and Flight updates  
-- **Triton**: Maps to Campaign and Flight updates
 
 ## Error Handling
 
-All update operations return a standardized response:
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `INVALID_REQUEST` | Invalid field values | Check request against schema |
+| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
+| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify package_id |
+| `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
+| `POLICY_VIOLATION` | Update violates content policy | Review policy message |
+| `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
 
-```json
-{
-    "status": "completed" | "failed" | "working" | "rejected",
-    "implementation_date": "2024-01-20T10:00:00Z",  // When change takes effect
-    "reason": "Error description if failed",
-    "detail": "Additional context or task ID for pending states"
+## Async Workflows
+
+Updates may be asynchronous, especially with seller approval:
+
+```javascript
+const result = await agent.updateMediaBuy({...});
+
+if (result.status === 'working') {
+  // Poll for completion after a few seconds
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  // Check status via protocol-specific mechanism
+}
+
+if (result.status === 'submitted') {
+  // Manual approval required (hours to days)
+  console.log('Awaiting seller approval:', result.message);
 }
 ```
 
-### Task States
+See [Task Management](/docs/protocols/task-management) for protocol-specific async patterns.
 
-Updates follow standard A2A task states:
+## Best Practices
 
-**Normal Flow States:**
-- `working`: Update is being processed
-- `input-required`: Awaiting approval or additional information
-- `completed`: Update successfully applied
+**1. Use Precise Updates**
+Update only what needs to change - don't resend unchanged values.
 
-**Error States:**
-- `failed`: Update could not be completed
-- `rejected`: Update was rejected by approver
-- `cancelled`: Update was cancelled before completion
+**2. Budget Increases**
+Small incremental increases are more likely to be auto-approved than large jumps.
 
-## Usage Notes
+**3. Pause Before Major Changes**
+Pause campaigns before making significant targeting or creative changes.
 
-- Updates may require platform approval depending on the changes
-- Budget increases typically process immediately
-- Budget decreases may have restrictions based on delivered spend
-- Pausing takes effect at the next delivery opportunity
-- Campaign extensions require sufficient remaining budget
-- Creative updates only affect future impressions
-- Some platforms may limit which fields can be updated after activation
-- When updating budgets, the system automatically recalculates impression goals based on the package's CPM rate
+**4. Test with Small Changes**
+Test update workflows with minor changes before critical campaign modifications.
 
-## Design Note
+**5. Monitor Status**
+Always check response status and message for approval requirements or errors.
 
-Adding new packages post-creation is not yet supported. This functionality is under consideration for a future version.
+## Next Steps
+
+After updating a media buy:
+
+1. **Verify Changes**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) to confirm updates
+2. **Upload New Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) if creative_ids changed
+3. **Monitor Performance**: Track impact of changes on campaign metrics
+4. **Optimize Further**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for ongoing optimization
+
+## Learn More
+
+- [Media Buy Lifecycle](/docs/media-buy/media-buys/) - Complete campaign workflow
+- [Targeting](/docs/media-buy/advanced-topics/targeting) - Targeting overlays and restrictions
+- [Task Management](/docs/protocols/task-management) - Async patterns and status checking
+- [create_media_buy](/docs/media-buy/task-reference/create_media_buy) - Initial campaign creation

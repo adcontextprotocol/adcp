@@ -1,4 +1,4 @@
-import { AgentClient } from "@adcp/client";
+import { AdCPClient } from "@adcp/client";
 import type { Agent, FormatInfo } from "./types.js";
 
 export interface AgentFormatsProfile {
@@ -29,7 +29,8 @@ export class FormatsService {
         agent_uri: agent.url,
         protocol: (agent.protocol || "mcp") as "mcp" | "a2a",
       };
-      const client = new AgentClient(agentConfig);
+      const multiClient = new AdCPClient([agentConfig]);
+      const client = multiClient.agent(agent.name);
       const result = await client.executeTask("list_creative_formats", {});
 
       if (result.success && result.data) {
