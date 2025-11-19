@@ -76,17 +76,21 @@ result.publisher_domains.forEach(domain => {
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
 
-# Get all authorized publishers
-result = test_agent.list_authorized_properties()
+async def main():
+    # Get all authorized publishers
+    result = await test_agent.simple.list_authorized_properties()
 
-print(f"Agent represents {len(result['publisher_domains'])} publishers")
-print(f"Primary channels: {', '.join(result.get('primary_channels', []))}")
-print(f"Countries: {', '.join(result.get('primary_countries', []))}")
+    print(f"Agent represents {len(result['publisher_domains'])} publishers")
+    print(f"Primary channels: {', '.join(result.get('primary_channels', []))}")
+    print(f"Countries: {', '.join(result.get('primary_countries', []))}")
 
-for domain in result['publisher_domains']:
-    print(f"- {domain}")
+    for domain in result['publisher_domains']:
+        print(f"- {domain}")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -114,19 +118,23 @@ if (result.publisher_domains.length > 0) {
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
 
-# Check if agent represents specific publishers
-result = test_agent.list_authorized_properties(
-    publisher_domains=['cnn.com', 'espn.com']
-)
+async def main():
+    # Check if agent represents specific publishers
+    result = await test_agent.simple.list_authorized_properties(
+        publisher_domains=['cnn.com', 'espn.com']
+    )
 
-if result['publisher_domains']:
-    print(f"Agent represents {len(result['publisher_domains'])} of requested publishers")
-    for domain in result['publisher_domains']:
-        print(f"✓ {domain}")
-else:
-    print('Agent does not represent any of the requested publishers')
+    if result['publisher_domains']:
+        print(f"Agent represents {len(result['publisher_domains'])} of requested publishers")
+        for domain in result['publisher_domains']:
+            print(f"✓ {domain}")
+    else:
+        print('Agent does not represent any of the requested publishers')
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -179,42 +187,46 @@ for (const domain of authResult.publisher_domains) {
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
 import requests
 
-# Step 1: Get authorized publishers
-auth_result = test_agent.list_authorized_properties()
+async def main():
+    # Step 1: Get authorized publishers
+    auth_result = await test_agent.simple.list_authorized_properties()
 
-# Step 2: Fetch property definitions from each publisher
-publisher_properties = {}
+    # Step 2: Fetch property definitions from each publisher
+    publisher_properties = {}
 
-for domain in auth_result['publisher_domains']:
-    try:
-        response = requests.get(f"https://{domain}/.well-known/adagents.json")
-        adagents = response.json()
+    for domain in auth_result['publisher_domains']:
+        try:
+            response = requests.get(f"https://{domain}/.well-known/adagents.json")
+            adagents = response.json()
 
-        # Find this agent in publisher's authorized list
-        agent_auth = next(
-            (a for a in adagents['authorized_agents'] if a['url'] == 'https://test-agent.adcontextprotocol.org/mcp'),
-            None
-        )
+            # Find this agent in publisher's authorized list
+            agent_auth = next(
+                (a for a in adagents['authorized_agents'] if a['url'] == 'https://test-agent.adcontextprotocol.org/mcp'),
+                None
+            )
 
-        if agent_auth:
-            # Resolve authorized properties based on scope
-            if 'property_ids' in agent_auth:
-                properties = [p for p in adagents['properties']
-                             if p['property_id'] in agent_auth['property_ids']]
-            elif 'property_tags' in agent_auth:
-                properties = [p for p in adagents['properties']
-                             if any(tag in agent_auth['property_tags']
-                                   for tag in p.get('tags', []))]
-            else:
-                properties = adagents['properties']  # All properties
+            if agent_auth:
+                # Resolve authorized properties based on scope
+                if 'property_ids' in agent_auth:
+                    properties = [p for p in adagents['properties']
+                                 if p['property_id'] in agent_auth['property_ids']]
+                elif 'property_tags' in agent_auth:
+                    properties = [p for p in adagents['properties']
+                                 if any(tag in agent_auth['property_tags']
+                                       for tag in p.get('tags', []))]
+                else:
+                    properties = adagents['properties']  # All properties
 
-            publisher_properties[domain] = properties
-            print(f"{domain}: {len(properties)} properties authorized")
-    except Exception as error:
-        print(f"Failed to fetch {domain}: {error}")
+                publisher_properties[domain] = properties
+                print(f"{domain}: {len(properties)} properties authorized")
+        except Exception as error:
+            print(f"Failed to fetch {domain}: {error}")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -251,27 +263,31 @@ if (result.portfolio_description) {
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
 
-# Determine what type of agent this is based on portfolio
-result = test_agent.list_authorized_properties()
+async def main():
+    # Determine what type of agent this is based on portfolio
+    result = await test_agent.simple.list_authorized_properties()
 
-# Check for CTV specialists
-if 'ctv' in result.get('primary_channels', []):
-    print('CTV specialist')
+    # Check for CTV specialists
+    if 'ctv' in result.get('primary_channels', []):
+        print('CTV specialist')
 
-# Check geographic focus
-if 'US' in result.get('primary_countries', []):
-    print('US market focus')
+    # Check geographic focus
+    if 'US' in result.get('primary_countries', []):
+        print('US market focus')
 
-# Check for multi-channel capability
-channels = result.get('primary_channels', [])
-if len(channels) > 2:
-    print(f"Multi-channel agent ({', '.join(channels)})")
+    # Check for multi-channel capability
+    channels = result.get('primary_channels', [])
+    if len(channels) > 2:
+        print(f"Multi-channel agent ({', '.join(channels)})")
 
-# Read portfolio description
-if result.get('portfolio_description'):
-    print(f"\nAbout: {result['portfolio_description']}")
+    # Read portfolio description
+    if result.get('portfolio_description'):
+        print(f"\nAbout: {result['portfolio_description']}")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -313,33 +329,37 @@ for (const domain of result.publisher_domains) {
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
 from datetime import datetime
 
-# Use last_updated to determine if cache is stale
-result = test_agent.list_authorized_properties()
+async def main():
+    # Use last_updated to determine if cache is stale
+    result = await test_agent.simple.list_authorized_properties()
 
-# Example cache from previous fetch (in practice, load from storage)
-cache = {
-    'example-publisher.com': {
-        'last_updated': '2024-01-15T10:00:00Z',
-        'properties': []
+    # Example cache from previous fetch (in practice, load from storage)
+    cache = {
+        'example-publisher.com': {
+            'last_updated': '2024-01-15T10:00:00Z',
+            'properties': []
+        }
     }
-}
 
-for domain in result['publisher_domains']:
-    cached = cache.get(domain)
+    for domain in result['publisher_domains']:
+        cached = cache.get(domain)
 
-    if cached and result.get('last_updated'):
-        cached_date = datetime.fromisoformat(cached['last_updated'])
-        agent_date = datetime.fromisoformat(result['last_updated'])
+        if cached and result.get('last_updated'):
+            cached_date = datetime.fromisoformat(cached['last_updated'])
+            agent_date = datetime.fromisoformat(result['last_updated'])
 
-        if cached_date >= agent_date:
-            print(f"{domain}: Using cached data (still fresh)")
-            continue
+            if cached_date >= agent_date:
+                print(f"{domain}: Using cached data (still fresh)")
+                continue
 
-    print(f"{domain}: Fetching updated property definitions")
-    # Fetch from publisher's adagents.json...
+        print(f"{domain}: Fetching updated property definitions")
+        # Fetch from publisher's adagents.json...
+
+asyncio.run(main())
 ```
 
 </CodeGroup>

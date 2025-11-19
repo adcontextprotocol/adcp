@@ -19,24 +19,29 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `media_buy_id` | string | Yes | Media buy identifier to update |
+| `media_buy_id` | string | Yes* | Publisher's media buy identifier to update |
+| `buyer_ref` | string | Yes* | Your reference for the media buy to update |
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
-| `status` | string | No | Change status (`"active"`, `"paused"`, `"cancelled"`) |
+| `active` | boolean | No | Pause/resume entire media buy |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
-| `reporting_webhook` | ReportingWebhook | No | Update or add webhook configuration |
+
+*Either `media_buy_id` OR `buyer_ref` is required (not both)
 
 ### Package Update Object
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `package_id` | string | Package identifier to update |
-| `status` | string | Package status (`"active"`, `"paused"`, `"cancelled"`) |
+| `package_id` | string | Publisher's package identifier to update |
+| `buyer_ref` | string | Your reference for the package to update |
+| `active` | boolean | Pause/resume specific package |
 | `budget` | number | Updated budget allocation |
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only) |
 | `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
 | `creative_ids` | string[] | Replace assigned creatives |
+
+*Either `package_id` OR `buyer_ref` is required for each package update
 
 ## Response
 
@@ -53,18 +58,20 @@ See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy
 
 ## Common Scenarios
 
+**Note**: These examples use `buyer_ref` to reference media buys and packages by your own identifiers. You can also use the publisher's `media_buy_id` and `package_id` if you prefer.
+
 ### Pause Campaign
 
 ```javascript
 import { testAgent } from '@adcp/client/testing';
 
-// Pause entire campaign
+// Pause entire campaign using your reference
 const result = await testAgent.updateMediaBuy({
-  media_buy_id: 'mb_12345',
-  status: 'paused'
+  buyer_ref: 'mb_summer_2025',
+  active: false
 });
 
-console.log(`Campaign paused: ${result.status}`);
+console.log(`Campaign paused`);
 ```
 
 ### Update Package Budget
@@ -72,16 +79,16 @@ console.log(`Campaign paused: ${result.status}`);
 ```javascript
 import { testAgent } from '@adcp/client/testing';
 
-// Increase budget for specific package
+// Increase budget for specific package using your reference
 const result = await testAgent.updateMediaBuy({
-  media_buy_id: 'mb_12345',
+  buyer_ref: 'mb_summer_2025',
   packages: [{
-    package_id: 'pkg_67890',
+    buyer_ref: 'pkg_premium',
     budget: 25000  // Increased from 15000
   }]
 });
 
-console.log(`Package budget updated: ${result.packages[0].budget}`);
+console.log(`Package budget updated to ${result.packages[0].budget}`);
 ```
 
 ### Change Campaign Dates
@@ -91,8 +98,8 @@ import { testAgent } from '@adcp/client/testing';
 
 // Extend campaign end date
 const result = await testAgent.updateMediaBuy({
-  media_buy_id: 'mb_12345',
-  end_time: '2025-03-31T23:59:59Z'  // Extended from original end date
+  buyer_ref: 'mb_summer_2025',
+  end_time: '2025-09-30T23:59:59Z'  // Extended from original end date
 });
 
 console.log(`Campaign extended to: ${result.end_time}`);
@@ -105,11 +112,11 @@ import { testAgent } from '@adcp/client/testing';
 
 // Add geographic restrictions to package
 const result = await testAgent.updateMediaBuy({
-  media_buy_id: 'mb_12345',
+  buyer_ref: 'mb_summer_2025',
   packages: [{
-    package_id: 'pkg_67890',
+    buyer_ref: 'pkg_premium',
     targeting_overlay: {
-      geo_country_any_of: ['US', 'CA'],  // Expanded from US-only
+      geo_country_any_of: ['US', 'CA'],
       geo_region_any_of: ['CA', 'NY', 'TX', 'ON', 'QC']
     }
   }]
@@ -125,10 +132,10 @@ import { testAgent } from '@adcp/client/testing';
 
 // Swap out creative assets
 const result = await testAgent.updateMediaBuy({
-  media_buy_id: 'mb_12345',
+  buyer_ref: 'mb_summer_2025',
   packages: [{
-    package_id: 'pkg_67890',
-    creative_ids: ['creative_new_1', 'creative_new_2']  // Replace existing
+    buyer_ref: 'pkg_premium',
+    creative_ids: ['creative_video_002', 'creative_display_002']
   }]
 });
 
@@ -189,10 +196,10 @@ Only specified fields are updated:
 
 ```javascript
 // This update ONLY changes budget - all other fields unchanged
-await agent.updateMediaBuy({
-  media_buy_id: 'mb_12345',
+await testAgent.updateMediaBuy({
+  buyer_ref: 'mb_summer_2025',
   packages: [{
-    package_id: 'pkg_67890',
+    buyer_ref: 'pkg_premium',
     budget: 25000
   }]
 });
@@ -203,8 +210,8 @@ To replace arrays (like creative_ids), provide the complete new array:
 ```javascript
 // Replaces ALL creatives with new list
 packages: [{
-  package_id: 'pkg_67890',
-  creative_ids: ['new_creative_1', 'new_creative_2']
+  buyer_ref: 'pkg_premium',
+  creative_ids: ['creative_video_002', 'creative_display_002']
 }]
 ```
 

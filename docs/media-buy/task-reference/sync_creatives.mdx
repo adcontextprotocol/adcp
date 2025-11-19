@@ -6,7 +6,7 @@ testable: true
 
 # sync_creatives
 
-Upload and manage creative assets for media buys. Supports bulk uploads, upsert semantics, and third-party tags.
+Upload and manage creative assets for media buys. Supports bulk uploads, upsert semantics, and generative creatives.
 
 **Response Time**: Instant to minutes (depends on file processing and validation)
 
@@ -15,7 +15,7 @@ Upload and manage creative assets for media buys. Supports bulk uploads, upsert 
 
 ## Quick Start
 
-Upload creatives with package assignments:
+Upload creative assets:
 
 <CodeGroup>
 
@@ -23,7 +23,6 @@ Upload creatives with package assignments:
 import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.syncCreatives({
-  media_buy_id: 'mb_12345',
   creatives: [{
     creative_id: 'creative_video_001',
     name: 'Summer Sale 30s',
@@ -31,14 +30,14 @@ const result = await testAgent.syncCreatives({
       agent_url: 'https://creatives.adcontextprotocol.org',
       id: 'video_standard_30s'
     },
-    assets: [{
-      asset_type: 'video',
-      url: 'https://cdn.example.com/summer-sale-30s.mp4'
-    }],
-    package_assignments: [{
-      package_id: 'pkg_67890',
-      status: 'active'
-    }]
+    assets: {
+      video: {
+        url: 'https://cdn.example.com/summer-sale-30s.mp4',
+        width: 1920,
+        height: 1080,
+        duration_ms: 30000
+      }
+    }
   }]
 });
 
@@ -46,29 +45,32 @@ console.log(`Synced ${result.creatives.length} creatives`);
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
 
-result = test_agent.sync_creatives(
-    media_buy_id='mb_12345',
-    creatives=[{
-        'creative_id': 'creative_video_001',
-        'name': 'Summer Sale 30s',
-        'format_id': {
-            'agent_url': 'https://creatives.adcontextprotocol.org',
-            'id': 'video_standard_30s'
-        },
-        'assets': [{
-            'asset_type': 'video',
-            'url': 'https://cdn.example.com/summer-sale-30s.mp4'
-        }],
-        'package_assignments': [{
-            'package_id': 'pkg_67890',
-            'status': 'active'
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        creatives=[{
+            'creative_id': 'creative_video_001',
+            'name': 'Summer Sale 30s',
+            'format_id': {
+                'agent_url': 'https://creatives.adcontextprotocol.org',
+                'id': 'video_standard_30s'
+            },
+            'assets': {
+                'video': {
+                    'url': 'https://cdn.example.com/summer-sale-30s.mp4',
+                    'width': 1920,
+                    'height': 1080,
+                    'duration_ms': 30000
+                }
+            }
         }]
-    }]
-)
+    )
 
-print(f"Synced {len(result['creatives'])} creatives")
+    print(f"Synced {len(result.creatives)} creatives")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -77,9 +79,12 @@ print(f"Synced {len(result['creatives'])} creatives")
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `media_buy_id` | string | Yes | Media buy to sync creatives for |
-| `creatives` | Creative[] | Yes | Creative assets to upload/update |
-| `mode` | string | No | Sync mode: `"upsert"` (default), `"dry_run"`, `"patch"` |
+| `creatives` | Creative[] | Yes | Creative assets to upload/update (max 100) |
+| `assignments` | object | No | Map of creative_id to array of package_ids for bulk assignment |
+| `patch` | boolean | No | When true, only provided fields are updated (default: false) |
+| `dry_run` | boolean | No | When true, preview changes without applying them (default: false) |
+| `validation_mode` | string | No | Validation strictness: `"strict"` (default) or `"lenient"` |
+| `delete_missing` | boolean | No | When true, creatives not in this sync are archived (default: false) |
 
 ### Creative Object
 
@@ -88,25 +93,43 @@ print(f"Synced {len(result['creatives'])} creatives")
 | `creative_id` | string | Yes | Unique identifier for this creative |
 | `name` | string | Yes | Human-readable name |
 | `format_id` | FormatId | Yes | Format specification (structured object with `agent_url` and `id`) |
-| `assets` | Asset[] | Yes* | Asset files (URLs or inline). *Not required for third-party tags |
-| `third_party_tag` | string | No | Third-party ad tag (HTML/JavaScript) |
-| `package_assignments` | Assignment[] | No | Package assignments with status |
-| `brand_safe` | boolean | No | Brand safety certification flag |
+| `assets` | object | Yes | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`) |
+| `tags` | string[] | No | Searchable tags for creative organization |
 
-### Asset Object
+### Asset Structure
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `asset_type` | string | Yes | Type: `"video"`, `"image"`, `"html"`, `"javascript"`, etc. |
-| `url` | string | Yes* | Public CDN URL to asset file. *Not required if using inline content |
-| `content` | string | No | Inline asset content (base64 for binary, plain text for HTML/JS) |
+Assets are keyed by role name. Each role contains the asset details:
 
-### Package Assignment Object
+```json test=false
+{
+  "assets": {
+    "video": {
+      "url": "https://cdn.example.com/video.mp4",
+      "width": 1920,
+      "height": 1080,
+      "duration_ms": 30000
+    },
+    "thumbnail": {
+      "url": "https://cdn.example.com/thumb.jpg",
+      "width": 300,
+      "height": 250
+    }
+  }
+}
+```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `package_id` | string | Yes | Package to assign creative to |
-| `status` | string | No | Assignment status: `"active"` (default), `"paused"` |
+### Assignments Structure
+
+Assignments are at the request level, mapping creative IDs to package IDs:
+
+```json test=false
+{
+  "assignments": {
+    "creative_video_001": ["pkg_premium", "pkg_standard"],
+    "creative_display_002": ["pkg_standard"]
+  }
+}
+```
 
 ## Response
 
@@ -125,9 +148,9 @@ print(f"Synced {len(result['creatives'])} creatives")
 
 ## Common Scenarios
 
-### Bulk Upload with Assignments
+### Bulk Upload
 
-Upload multiple creatives and assign them to packages in one call:
+Upload multiple creatives in one call:
 
 <CodeGroup>
 
@@ -135,7 +158,6 @@ Upload multiple creatives and assign them to packages in one call:
 import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.syncCreatives({
-  media_buy_id: 'mb_12345',
   creatives: [
     {
       creative_id: 'creative_display_001',
@@ -144,15 +166,13 @@ const result = await testAgent.syncCreatives({
         agent_url: 'https://creatives.adcontextprotocol.org',
         id: 'display_300x250'
       },
-      assets: [{
-        asset_type: 'image',
-        url: 'https://cdn.example.com/banner-300x250.jpg'
-      }],
-      package_assignments: [
-        { package_id: 'pkg_premium', status: 'active' },
-        { package_id: 'pkg_standard', status: 'active' }
-      ],
-      brand_safe: true
+      assets: {
+        image: {
+          url: 'https://cdn.example.com/banner-300x250.jpg',
+          width: 300,
+          height: 250
+        }
+      }
     },
     {
       creative_id: 'creative_video_002',
@@ -161,14 +181,14 @@ const result = await testAgent.syncCreatives({
         agent_url: 'https://creatives.adcontextprotocol.org',
         id: 'video_standard_15s'
       },
-      assets: [{
-        asset_type: 'video',
-        url: 'https://cdn.example.com/demo-15s.mp4'
-      }],
-      package_assignments: [
-        { package_id: 'pkg_premium', status: 'active' }
-      ],
-      brand_safe: true
+      assets: {
+        video: {
+          url: 'https://cdn.example.com/demo-15s.mp4',
+          width: 1920,
+          height: 1080,
+          duration_ms: 15000
+        }
+      }
     },
     {
       creative_id: 'creative_display_002',
@@ -177,14 +197,13 @@ const result = await testAgent.syncCreatives({
         agent_url: 'https://creatives.adcontextprotocol.org',
         id: 'display_728x90'
       },
-      assets: [{
-        asset_type: 'image',
-        url: 'https://cdn.example.com/banner-728x90.jpg'
-      }],
-      package_assignments: [
-        { package_id: 'pkg_standard', status: 'active' }
-      ],
-      brand_safe: true
+      assets: {
+        image: {
+          url: 'https://cdn.example.com/banner-728x90.jpg',
+          width: 728,
+          height: 90
+        }
+      }
     }
   ]
 });
@@ -196,184 +215,132 @@ result.creatives.forEach(creative => {
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
 
-result = test_agent.sync_creatives(
-    media_buy_id='mb_12345',
-    creatives=[
-        {
-            'creative_id': 'creative_display_001',
-            'name': 'Summer Sale Banner 300x250',
-            'format_id': {
-                'agent_url': 'https://creatives.adcontextprotocol.org',
-                'id': 'display_300x250'
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        creatives=[
+            {
+                'creative_id': 'creative_display_001',
+                'name': 'Summer Sale Banner 300x250',
+                'format_id': {
+                    'agent_url': 'https://creatives.adcontextprotocol.org',
+                    'id': 'display_300x250'
+                },
+                'assets': {
+                    'image': {
+                        'url': 'https://cdn.example.com/banner-300x250.jpg',
+                        'width': 300,
+                        'height': 250
+                    }
+                }
             },
-            'assets': [{
-                'asset_type': 'image',
-                'url': 'https://cdn.example.com/banner-300x250.jpg'
-            }],
-            'package_assignments': [
-                {'package_id': 'pkg_premium', 'status': 'active'},
-                {'package_id': 'pkg_standard', 'status': 'active'}
-            ],
-            'brand_safe': True
-        },
-        {
-            'creative_id': 'creative_video_002',
-            'name': 'Product Demo 15s',
-            'format_id': {
-                'agent_url': 'https://creatives.adcontextprotocol.org',
-                'id': 'video_standard_15s'
+            {
+                'creative_id': 'creative_video_002',
+                'name': 'Product Demo 15s',
+                'format_id': {
+                    'agent_url': 'https://creatives.adcontextprotocol.org',
+                    'id': 'video_standard_15s'
+                },
+                'assets': {
+                    'video': {
+                        'url': 'https://cdn.example.com/demo-15s.mp4',
+                        'width': 1920,
+                        'height': 1080,
+                        'duration_ms': 15000
+                    }
+                }
             },
-            'assets': [{
-                'asset_type': 'video',
-                'url': 'https://cdn.example.com/demo-15s.mp4'
-            }],
-            'package_assignments': [
-                {'package_id': 'pkg_premium', 'status': 'active'}
-            ],
-            'brand_safe': True
-        },
-        {
-            'creative_id': 'creative_display_002',
-            'name': 'Summer Sale Banner 728x90',
-            'format_id': {
-                'agent_url': 'https://creatives.adcontextprotocol.org',
-                'id': 'display_728x90'
-            },
-            'assets': [{
-                'asset_type': 'image',
-                'url': 'https://cdn.example.com/banner-728x90.jpg'
-            }],
-            'package_assignments': [
-                {'package_id': 'pkg_standard', 'status': 'active'}
-            ],
-            'brand_safe': True
-        }
-    ]
-)
+            {
+                'creative_id': 'creative_display_002',
+                'name': 'Summer Sale Banner 728x90',
+                'format_id': {
+                    'agent_url': 'https://creatives.adcontextprotocol.org',
+                    'id': 'display_728x90'
+                },
+                'assets': {
+                    'image': {
+                        'url': 'https://cdn.example.com/banner-728x90.jpg',
+                        'width': 728,
+                        'height': 90
+                    }
+                }
+            }
+        ]
+    )
 
-print(f"Successfully synced {len(result['creatives'])} creatives")
-for creative in result['creatives']:
-    print(f"  {creative['name']}: {creative['platform_creative_id']}")
+    print(f"Successfully synced {len(result.creatives)} creatives")
+    for creative in result.creatives:
+        print(f"  {creative.name}: {creative.platform_creative_id}")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
 
-### Patch Update (Change Assignments Only)
+### Patch Update
 
-Update package assignments without re-uploading assets:
+Update creative metadata while providing asset reference:
 
 <CodeGroup>
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
+// Note: Schema currently requires assets field even in patch mode
 const result = await testAgent.syncCreatives({
-  media_buy_id: 'mb_12345',
-  mode: 'patch',
+  patch: true,
   creatives: [{
     creative_id: 'creative_video_001',
-    name: 'Summer Sale 30s',
+    name: 'Summer Sale 30s - Updated Title',
     format_id: {
       agent_url: 'https://creatives.adcontextprotocol.org',
       id: 'video_standard_30s'
     },
-    package_assignments: [
-      { package_id: 'pkg_premium', status: 'active' },
-      { package_id: 'pkg_standard', status: 'paused' }
-    ]
+    assets: {
+      video: {
+        url: 'https://cdn.example.com/summer-sale-30s.mp4',
+        width: 1920,
+        height: 1080,
+        duration_ms: 30000
+      }
+    }
   }]
 });
 
-console.log('Updated assignments for creative:', result.creatives[0].creative_id);
+console.log('Updated creative:', result.creatives[0].creative_id);
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
 
-result = test_agent.sync_creatives(
-    media_buy_id='mb_12345',
-    mode='patch',
-    creatives=[{
-        'creative_id': 'creative_video_001',
-        'name': 'Summer Sale 30s',
-        'format_id': {
-            'agent_url': 'https://creatives.adcontextprotocol.org',
-            'id': 'video_standard_30s'
-        },
-        'package_assignments': [
-            {'package_id': 'pkg_premium', 'status': 'active'},
-            {'package_id': 'pkg_standard', 'status': 'paused'}
-        ]
-    }]
-)
-
-print(f"Updated assignments for creative: {result['creatives'][0]['creative_id']}")
-```
-
-</CodeGroup>
-
-### Third-Party Ad Tags
-
-Use third-party ad serving with HTML/JavaScript tags:
-
-<CodeGroup>
-
-```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-
-const result = await testAgent.syncCreatives({
-  media_buy_id: 'mb_12345',
-  creatives: [{
-    creative_id: 'creative_3p_001',
-    name: 'DCM Tag - Summer Campaign',
-    format_id: {
-      agent_url: 'https://creatives.adcontextprotocol.org',
-      id: 'display_300x250'
-    },
-    third_party_tag: `
-      <script src="https://ad.doubleclick.net/ddm/trackimp/N1234.5678?ord=${CACHEBUSTER}"></script>
-      <a href="${CLICK_URL}https://example.com/landing">
-        <img src="https://ad.doubleclick.net/ddm/ad/N1234.5678;sz=300x250;ord=${CACHEBUSTER}"/>
-      </a>
-    `,
-    package_assignments: [{
-      package_id: 'pkg_standard',
-      status: 'active'
-    }]
-  }]
-});
-
-console.log('Third-party tag uploaded:', result.creatives[0].creative_id);
-```
-
-```python Python
-from adcp import test_agent
-
-result = test_agent.sync_creatives(
-    media_buy_id='mb_12345',
-    creatives=[{
-        'creative_id': 'creative_3p_001',
-        'name': 'DCM Tag - Summer Campaign',
-        'format_id': {
-            'agent_url': 'https://creatives.adcontextprotocol.org',
-            'id': 'display_300x250'
-        },
-        'third_party_tag': '''
-            <script src="https://ad.doubleclick.net/ddm/trackimp/N1234.5678?ord=${CACHEBUSTER}"></script>
-            <a href="${CLICK_URL}https://example.com/landing">
-                <img src="https://ad.doubleclick.net/ddm/ad/N1234.5678;sz=300x250;ord=${CACHEBUSTER}"/>
-            </a>
-        ''',
-        'package_assignments': [{
-            'package_id': 'pkg_standard',
-            'status': 'active'
+async def main():
+    # Note: Schema currently requires assets field even in patch mode
+    result = await test_agent.simple.sync_creatives(
+        patch=True,
+        creatives=[{
+            'creative_id': 'creative_video_001',
+            'name': 'Summer Sale 30s - Updated Title',
+            'format_id': {
+                'agent_url': 'https://creatives.adcontextprotocol.org',
+                'id': 'video_standard_30s'
+            },
+            'assets': {
+                'video': {
+                    'url': 'https://cdn.example.com/summer-sale-30s.mp4',
+                    'width': 1920,
+                    'height': 1080,
+                    'duration_ms': 30000
+                }
+            }
         }]
-    }]
-)
+    )
 
-print(f"Third-party tag uploaded: {result['creatives'][0]['creative_id']}")
+    print(f"Updated creative: {result.creatives[0].creative_id}")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -388,7 +355,6 @@ Use the creative agent to generate creatives from a brand manifest. See the [Gen
 import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.syncCreatives({
-  media_buy_id: 'mb_12345',
   creatives: [{
     creative_id: 'creative_gen_001',
     name: 'AI-Generated Summer Banner',
@@ -396,14 +362,11 @@ const result = await testAgent.syncCreatives({
       agent_url: 'https://creatives.adcontextprotocol.org',
       id: 'display_300x250'
     },
-    assets: [{
-      asset_type: 'manifest',
-      url: 'https://cdn.example.com/brand-manifest.json'
-    }],
-    package_assignments: [{
-      package_id: 'pkg_standard',
-      status: 'active'
-    }]
+    assets: {
+      manifest: {
+        url: 'https://cdn.example.com/brand-manifest.json'
+      }
+    }
   }]
 });
 
@@ -411,29 +374,29 @@ console.log('Generative creative synced:', result.creatives[0].creative_id);
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
 
-result = test_agent.sync_creatives(
-    media_buy_id='mb_12345',
-    creatives=[{
-        'creative_id': 'creative_gen_001',
-        'name': 'AI-Generated Summer Banner',
-        'format_id': {
-            'agent_url': 'https://creatives.adcontextprotocol.org',
-            'id': 'display_300x250'
-        },
-        'assets': [{
-            'asset_type': 'manifest',
-            'url': 'https://cdn.example.com/brand-manifest.json'
-        }],
-        'package_assignments': [{
-            'package_id': 'pkg_standard',
-            'status': 'active'
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        creatives=[{
+            'creative_id': 'creative_gen_001',
+            'name': 'AI-Generated Summer Banner',
+            'format_id': {
+                'agent_url': 'https://creatives.adcontextprotocol.org',
+                'id': 'display_300x250'
+            },
+            'assets': {
+                'manifest': {
+                    'url': 'https://cdn.example.com/brand-manifest.json'
+                }
+            }
         }]
-    }]
-)
+    )
 
-print(f"Generative creative synced: {result['creatives'][0]['creative_id']}")
+    print(f"Generative creative synced: {result.creatives[0].creative_id}")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -448,8 +411,7 @@ Validate creative configuration without uploading:
 import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.syncCreatives({
-  media_buy_id: 'mb_12345',
-  mode: 'dry_run',
+  dry_run: true,
   creatives: [{
     creative_id: 'creative_test_001',
     name: 'Test Creative',
@@ -457,14 +419,14 @@ const result = await testAgent.syncCreatives({
       agent_url: 'https://creatives.adcontextprotocol.org',
       id: 'video_standard_30s'
     },
-    assets: [{
-      asset_type: 'video',
-      url: 'https://cdn.example.com/test-video.mp4'
-    }],
-    package_assignments: [{
-      package_id: 'pkg_unknown',
-      status: 'active'
-    }]
+    assets: {
+      video: {
+        url: 'https://cdn.example.com/test-video.mp4',
+        width: 1920,
+        height: 1080,
+        duration_ms: 30000
+      }
+    }
   }]
 });
 
@@ -477,35 +439,38 @@ if (result.errors && result.errors.length > 0) {
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
 
-result = test_agent.sync_creatives(
-    media_buy_id='mb_12345',
-    mode='dry_run',
-    creatives=[{
-        'creative_id': 'creative_test_001',
-        'name': 'Test Creative',
-        'format_id': {
-            'agent_url': 'https://creatives.adcontextprotocol.org',
-            'id': 'video_standard_30s'
-        },
-        'assets': [{
-            'asset_type': 'video',
-            'url': 'https://cdn.example.com/test-video.mp4'
-        }],
-        'package_assignments': [{
-            'package_id': 'pkg_unknown',
-            'status': 'active'
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        dry_run=True,
+        creatives=[{
+            'creative_id': 'creative_test_001',
+            'name': 'Test Creative',
+            'format_id': {
+                'agent_url': 'https://creatives.adcontextprotocol.org',
+                'id': 'video_standard_30s'
+            },
+            'assets': {
+                'video': {
+                    'url': 'https://cdn.example.com/test-video.mp4',
+                    'width': 1920,
+                    'height': 1080,
+                    'duration_ms': 30000
+                }
+            }
         }]
-    }]
-)
+    )
 
-if result.get('errors'):
-    print('Validation errors found:')
-    for error in result['errors']:
-        print(f"  - {error['message']}")
-else:
-    print('Validation passed! Ready to sync.')
+    if hasattr(result, 'errors') and result.errors:
+        print('Validation errors found:')
+        for error in result.errors:
+            print(f"  - {error.message}")
+    else:
+        print('Validation passed! Ready to sync.')
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -537,7 +502,6 @@ else:
 | `INVALID_FORMAT` | Format not supported by product | Check product's supported formats via `list_creative_formats` |
 | `ASSET_PROCESSING_FAILED` | Asset file corrupt or invalid | Verify asset meets format requirements (codec, dimensions, duration) |
 | `PACKAGE_NOT_FOUND` | Package ID doesn't exist in media buy | Verify `package_id` from `create_media_buy` response |
-| `THIRD_PARTY_TAG_INVALID` | 3P tag failed validation | Check tag syntax and required macros (`${CLICK_URL}`, `${CACHEBUSTER}`) |
 | `BRAND_SAFETY_VIOLATION` | Creative failed brand safety scan | Review content against publisher's brand safety guidelines |
 | `FORMAT_MISMATCH` | Assets don't match format requirements | Verify asset types and specifications match format definition |
 | `DUPLICATE_CREATIVE_ID` | Creative ID already exists in different media buy | Use unique `creative_id` or sync to correct media buy |
@@ -552,14 +516,9 @@ else:
 
 4. **CDN-hosted assets** - Use publicly accessible CDN URLs for faster processing. Platforms can fetch assets directly without proxy delays.
 
-5. **Third-party tags** - Include all required macros:
-   - `${CLICK_URL}` - Click tracking wrapper
-   - `${CACHEBUSTER}` - Cache-busting random number
-   - Platform-specific macros as documented
+5. **Brand manifests** - For generative creatives, validate manifest schema before syncing to avoid processing failures.
 
-6. **Brand manifests** - For generative creatives, validate manifest schema before syncing to avoid processing failures.
-
-7. **Check format support** - Use `list_creative_formats` to verify product supports your creative formats before uploading.
+6. **Check format support** - Use `list_creative_formats` to verify product supports your creative formats before uploading.
 
 ## Next Steps
 

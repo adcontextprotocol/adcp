@@ -24,18 +24,19 @@ wheels = [
 
 [[package]]
 name = "adcp"
-version = "1.4.1"
+version = "2.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk" },
+    { name = "email-validator" },
     { name = "httpx" },
     { name = "mcp" },
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/06/ce/76bb84c57e0f5fea28fc5e67141a4d38d96cd032b5706aca286a6f2cb8cd/adcp-1.4.1.tar.gz", hash = "sha256:443627155cd35589c6f5741f600a34cabf8f3b462fa892d6007f53e47a1db2f1", size = 84310, upload-time = "2025-11-11T13:47:12.681Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/d5/3c03c882212833b80ac6b04df80511860d4d2f0e3e139ff00eefae0b8d07/adcp-2.6.0.tar.gz", hash = "sha256:a9cb17b3392209ac571f175b13e258f42ec44d4c4b1c23d37dff7360d00b4af4", size = 138665, upload-time = "2025-11-19T00:10:20.267Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/bb/c456327e26952dd352cd95e439657f825deb2df87ee3dee0c407ec2737b4/adcp-1.4.1-py3-none-any.whl", hash = "sha256:ea01eca56f78c26086b956afd22da33d3c50218e46881a3e44f675bb49772b2b", size = 67949, upload-time = "2025-11-11T13:47:11.158Z" },
+    { url = "https://files.pythonhosted.org/packages/74/95/650f7b4508cfcdc6af1a484ca93399ab9bb660219f28b96b85e10b4702a9/adcp-2.6.0-py3-none-any.whl", hash = "sha256:578b172db2c52cd36d98e04485bba6793ba3a06f221091834db16c7706da969e", size = 162968, upload-time = "2025-11-19T00:10:18.985Z" },
 ]
 
 [[package]]
@@ -47,7 +48,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "adcp", specifier = "==1.4.1" }]
+requires-dist = [{ name = "adcp", specifier = "==2.6.0" }]
 
 [[package]]
 name = "annotated-types"
@@ -323,6 +324,28 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/99/55/181022996c4063fc0e7666a47049a1ca705abb9c8a13830f074edb347495/cryptography-46.0.3-pp311-pypy311_pp73-manylinux_2_34_aarch64.whl", hash = "sha256:9394673a9f4de09e28b5356e7fff97d778f8abad85c9d5ac4a4b7e25a0de7717", size = 4242957, upload-time = "2025-10-15T23:18:22.18Z" },
     { url = "https://files.pythonhosted.org/packages/ba/af/72cd6ef29f9c5f731251acadaeb821559fe25f10852f44a63374c9ca08c1/cryptography-46.0.3-pp311-pypy311_pp73-manylinux_2_34_x86_64.whl", hash = "sha256:94cd0549accc38d1494e1f8de71eca837d0509d0d44bf11d158524b0e12cebf9", size = 4409447, upload-time = "2025-10-15T23:18:24.209Z" },
     { url = "https://files.pythonhosted.org/packages/0d/c3/e90f4a4feae6410f914f8ebac129b9ae7a8c92eb60a638012dde42030a9d/cryptography-46.0.3-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:6b5063083824e5509fdba180721d55909ffacccc8adbec85268b48439423d78c", size = 3438528, upload-time = "2025-10-15T23:18:26.227Z" },
+]
+
+[[package]]
+name = "dnspython"
+version = "2.8.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/8c/8b/57666417c0f90f08bcafa776861060426765fdb422eb10212086fb811d26/dnspython-2.8.0.tar.gz", hash = "sha256:181d3c6996452cb1189c4046c61599b84a5a86e099562ffde77d26984ff26d0f", size = 368251, upload-time = "2025-09-07T18:58:00.022Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ba/5a/18ad964b0086c6e62e2e7500f7edc89e3faa45033c71c1893d34eed2b2de/dnspython-2.8.0-py3-none-any.whl", hash = "sha256:01d9bbc4a2d76bf0db7c1f729812ded6d912bd318d3b1cf81d30c0f845dbf3af", size = 331094, upload-time = "2025-09-07T18:57:58.071Z" },
+]
+
+[[package]]
+name = "email-validator"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dnspython" },
+    { name = "idna" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f5/22/900cb125c76b7aaa450ce02fd727f452243f2e91a61af068b40adba60ea9/email_validator-2.3.0.tar.gz", hash = "sha256:9fc05c37f2f6cf439ff414f8fc46d917929974a82244c20eb10231ba60c54426", size = 51238, upload-time = "2025-08-26T13:09:06.831Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/de/15/545e2b6cf2e3be84bc1ed85613edd75b8aea69807a71c26f4ca6a9258e82/email_validator-2.3.0-py3-none-any.whl", hash = "sha256:80f13f623413e6b197ae73bb10bf4eb0908faf509ad8362c5edeb0be7fd450b4", size = 35604, upload-time = "2025-08-26T13:09:05.858Z" },
 ]
 
 [[package]]

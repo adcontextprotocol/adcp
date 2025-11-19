@@ -14,6 +14,12 @@
  * - Uses https://test-agent.adcontextprotocol.org for testing
  * - MCP token: 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
  * - A2A token: L4UCklW_V_40eTdWuQYF6HD5GWeKkgV8U6xxK-jwNO8
+ *
+ * Usage:
+ * - npm test                          # Test only changed/new files
+ * - npm test -- --file path/to/file   # Test specific file
+ * - npm test -- --clear-cache         # Clear cache and test all files
+ * - npm test -- --all                 # Test all files (ignore cache)
  */
 
 const fs = require('fs');
@@ -21,20 +27,32 @@ const path = require('path');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const glob = require('glob');
+const crypto = require('crypto');
 
 const execAsync = promisify(exec);
 
 // Configuration
 const DOCS_BASE_DIR = path.join(__dirname, '../docs');
+const CACHE_FILE = path.join(__dirname, '.tested-files.json');
 const TEST_AGENT_URL = 'https://test-agent.adcontextprotocol.org';
 const MCP_TOKEN = '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
 const A2A_TOKEN = 'L4UCklW_V_40eTdWuQYF6HD5GWeKkgV8U6xxK-jwNO8';
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+const specificFile = args.includes('--file') ? args[args.indexOf('--file') + 1] : null;
+const clearCache = args.includes('--clear-cache');
+const testAll = args.includes('--all');
 
 // Test statistics
 let totalTests = 0;
 let passedTests = 0;
 let failedTests = 0;
 let skippedTests = 0;
+let cachedFiles = 0;
+
+// File cache for tracking tested files
+let fileCache = {};
 
 // Logging utilities
 function log(message, type = 'info') {
@@ -46,6 +64,52 @@ function log(message, type = 'info') {
     dim: '\x1b[2m'
   };
   console.log(`${colors[type]}${message}\x1b[0m`);
+}
+
+// Cache management utilities
+function loadCache() {
+  if (clearCache) {
+    log('Clearing cache...', 'info');
+    if (fs.existsSync(CACHE_FILE)) {
+      fs.unlinkSync(CACHE_FILE);
+    }
+    return {};
+  }
+
+  if (fs.existsSync(CACHE_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+    } catch (error) {
+      log(`Warning: Failed to load cache: ${error.message}`, 'warning');
+      return {};
+    }
+  }
+  return {};
+}
+
+function saveCache(cache) {
+  try {
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+  } catch (error) {
+    log(`Warning: Failed to save cache: ${error.message}`, 'warning');
+  }
+}
+
+function getFileHash(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  return crypto.createHash('md5').update(content).digest('hex');
+}
+
+function isFileCached(filePath, cache) {
+  if (testAll) return false; // --all flag bypasses cache
+  if (specificFile) return false; // Testing specific file bypasses cache
+
+  const relativePath = path.relative(DOCS_BASE_DIR, filePath);
+  const currentHash = getFileHash(filePath);
+
+  return cache[relativePath] &&
+         cache[relativePath].hash === currentHash &&
+         cache[relativePath].passed === true;
 }
 
 /**
@@ -270,17 +334,16 @@ async function testPythonSnippet(snippet) {
     // Write snippet to temporary file
     fs.writeFileSync(tempFile, snippet.code);
 
-    // Try uv environment first (if .venv exists), fallback to system python
-    const uvEnvExists = fs.existsSync(path.join(__dirname, '..', '.venv'));
-    const pythonCommand = uvEnvExists
-      ? `source .venv/bin/activate && python ${tempFile}`
+    // Use virtualenv Python directly (no activation needed - much faster!)
+    const venvPython = path.join(__dirname, '..', '.venv', 'bin', 'python');
+    const pythonCommand = fs.existsSync(venvPython)
+      ? `${venvPython} ${tempFile}`
       : `python3 ${tempFile}`;
 
-    // Execute from project root with activated environment
+    // Execute from project root
     const { stdout, stderr } = await execAsync(pythonCommand, {
       timeout: 60000, // 60 second timeout (API calls can take time)
-      cwd: path.join(__dirname, '..'), // Run from project root
-      shell: '/bin/bash'
+      cwd: path.join(__dirname, '..') // Run from project root
     });
 
     return {
@@ -291,14 +354,31 @@ async function testPythonSnippet(snippet) {
   } catch (error) {
     // WORKAROUND: Python MCP SDK has async cleanup bug (exit code 1)
     // See PYTHON_MCP_ASYNC_BUG.md for details
-    // Ignore exit codes for Python tests - check for stdout instead
+    // Ignore exit codes for Python tests if we see the async cleanup bug
     // Waiting for upstream fix in mcp package (currently 1.21.0)
+    const hasAsyncCleanupBug = error.stderr && (
+      error.stderr.includes('an error occurred during closing of asynchronous generator') ||
+      error.stderr.includes('streamablehttp_client') ||
+      error.stderr.includes('async_generator object')
+    );
+
+    // If we have stdout output OR it's the known async bug, treat as success
     if (error.stdout && error.stdout.trim().length > 0) {
       return {
         success: true,
         output: error.stdout,
         error: error.stderr,
-        warning: 'Python MCP async cleanup bug - ignoring exit code (see PYTHON_MCP_ASYNC_BUG.md)'
+        warning: hasAsyncCleanupBug ? 'Python MCP async cleanup bug - ignoring (see PYTHON_MCP_ASYNC_BUG.md)' : undefined
+      };
+    }
+
+    // If it's ONLY the async cleanup bug with no other errors, pass
+    if (hasAsyncCleanupBug && !error.stderr.includes('Traceback') && !error.stderr.includes('Error:')) {
+      return {
+        success: true,
+        output: error.stdout || '',
+        error: error.stderr,
+        warning: 'Python MCP async cleanup bug - no actual errors (see PYTHON_MCP_ASYNC_BUG.md)'
       };
     }
 
@@ -426,45 +506,150 @@ async function runTests() {
   log('Documentation Snippet Validation', 'info');
   log('=================================\n', 'info');
 
+  // Load cache
+  fileCache = loadCache();
+
+  if (specificFile) {
+    log(`Testing specific file: ${specificFile}\n`, 'info');
+  } else if (clearCache) {
+    log('Cache cleared - testing all files\n', 'info');
+  } else if (testAll) {
+    log('Testing all files (cache ignored)\n', 'info');
+  } else {
+    const cachedCount = Object.keys(fileCache).length;
+    if (cachedCount > 0) {
+      log(`Found cache with ${cachedCount} previously tested files\n`, 'info');
+    }
+  }
+
   log(`Searching for documentation files in: ${DOCS_BASE_DIR}`, 'info');
 
-  const docFiles = findDocFiles();
+  let docFiles = findDocFiles();
+
+  // Filter to specific file if requested
+  if (specificFile) {
+    const absolutePath = path.isAbsolute(specificFile)
+      ? specificFile
+      : path.join(process.cwd(), specificFile);
+    docFiles = docFiles.filter(f => f === absolutePath);
+    if (docFiles.length === 0) {
+      log(`Error: File not found: ${specificFile}`, 'error');
+      process.exit(1);
+    }
+  }
+
   log(`Found ${docFiles.length} documentation files\n`, 'info');
 
-  // Extract all code blocks
-  const allSnippets = [];
+  // Group files by cached status
+  const filesToTest = [];
+  const cachedPassedFiles = [];
+
   for (const file of docFiles) {
+    if (isFileCached(file, fileCache)) {
+      cachedPassedFiles.push(file);
+      cachedFiles++;
+    } else {
+      filesToTest.push(file);
+    }
+  }
+
+  if (cachedPassedFiles.length > 0) {
+    log(`Skipping ${cachedPassedFiles.length} files (already passed, unchanged)`, 'dim');
+  }
+
+  if (filesToTest.length === 0) {
+    log('\n✅ All files already tested and passing!', 'success');
+    log('   Use --all to re-test everything, or --clear-cache to reset', 'dim');
+    process.exit(0);
+  }
+
+  log(`Testing ${filesToTest.length} files...\n`, 'info');
+
+  // Track results by file
+  const fileResults = {};
+
+  // Extract and test code blocks file by file
+  for (const file of filesToTest) {
+    const relativePath = path.relative(DOCS_BASE_DIR, file);
+    log(`\nTesting file: ${relativePath}`, 'info');
+
     const snippets = extractCodeBlocks(file);
-    allSnippets.push(...snippets);
+    const testableSnippets = snippets.filter(s => s.shouldTest);
+    const nonTestableSnippets = snippets.filter(s => !s.shouldTest);
+
+    if (testableSnippets.length === 0) {
+      log(`  No testable snippets in this file`, 'dim');
+      fileResults[relativePath] = { passed: true, hash: getFileHash(file), testCount: 0 };
+      continue;
+    }
+
+    log(`  Found ${testableSnippets.length} testable snippets`, 'dim');
+
+    const fileStartPassed = passedTests;
+    const fileStartFailed = failedTests;
+
+    // Run tests in parallel for this file
+    const CONCURRENCY = 20;
+    const testableChunks = [];
+    for (let i = 0; i < testableSnippets.length; i += CONCURRENCY) {
+      testableChunks.push(testableSnippets.slice(i, i + CONCURRENCY));
+    }
+
+    for (const chunk of testableChunks) {
+      await Promise.all(chunk.map(snippet => validateSnippet(snippet)));
+    }
+
+    // Count non-testable snippets as skipped
+    for (const snippet of nonTestableSnippets) {
+      totalTests++;
+      skippedTests++;
+    }
+
+    const filePassed = passedTests - fileStartPassed;
+    const fileFailed = failedTests - fileStartFailed;
+    const fileTestCount = filePassed + fileFailed;
+
+    // Store file result
+    const allFilePassed = fileFailed === 0 && fileTestCount > 0;
+    fileResults[relativePath] = {
+      passed: allFilePassed,
+      hash: getFileHash(file),
+      testCount: fileTestCount,
+      passedCount: filePassed,
+      failedCount: fileFailed
+    };
+
+    if (allFilePassed) {
+      log(`  ✅ File passed (${filePassed}/${fileTestCount} snippets)`, 'success');
+    } else if (fileFailed > 0) {
+      log(`  ❌ File failed (${filePassed}/${fileTestCount} passed, ${fileFailed} failed)`, 'error');
+    }
   }
 
-  log(`Extracted ${allSnippets.length} code blocks total`, 'info');
-  const testableSnippets = allSnippets.filter(s => s.shouldTest);
-  log(`Found ${testableSnippets.length} snippets marked for testing\n`, 'info');
-
-  // Run tests in parallel on testable snippets only (much faster!)
-  const CONCURRENCY = 5; // Run 5 tests at a time
-  const testableChunks = [];
-  for (let i = 0; i < testableSnippets.length; i += CONCURRENCY) {
-    testableChunks.push(testableSnippets.slice(i, i + CONCURRENCY));
+  // Update cache with new results
+  for (const [relativePath, result] of Object.entries(fileResults)) {
+    if (result.passed) {
+      fileCache[relativePath] = {
+        hash: result.hash,
+        passed: true,
+        testedAt: new Date().toISOString()
+      };
+    } else {
+      // Remove failed files from cache
+      delete fileCache[relativePath];
+    }
   }
 
-  for (const chunk of testableChunks) {
-    await Promise.all(chunk.map(snippet => validateSnippet(snippet)));
-  }
-
-  // Also process non-testable snippets (just to count them as skipped)
-  const nonTestableSnippets = allSnippets.filter(s => !s.shouldTest);
-  for (const snippet of nonTestableSnippets) {
-    totalTests++;
-    skippedTests++;
-  }
+  saveCache(fileCache);
 
   // Print summary
   log('\n=================================', 'info');
   log('Test Summary', 'info');
   log('=================================', 'info');
-  log(`Total snippets found: ${allSnippets.length}`, 'info');
+  log(`Files tested: ${filesToTest.length}`, 'info');
+  if (cachedFiles > 0) {
+    log(`Files cached (skipped): ${cachedFiles}`, 'dim');
+  }
   log(`Tests run: ${totalTests}`, 'info');
   log(`Passed: ${passedTests}`, 'success');
   log(`Failed: ${failedTests}`, failedTests > 0 ? 'error' : 'info');
@@ -473,13 +658,17 @@ async function runTests() {
   // Exit with error code if any tests failed
   if (failedTests > 0) {
     log('\n❌ Some snippet tests failed', 'error');
+    log('Fix the failing snippets, then run again to test only changed files', 'dim');
     process.exit(1);
-  } else if (passedTests === 0 && testableSnippets.length === 0) {
+  } else if (passedTests === 0 && totalTests === 0) {
     log('\n⚠️  No testable snippets found. Mark snippets with "test=true" to enable testing.', 'warning');
     log('   Example: ```javascript test=true', 'dim');
     process.exit(0);
   } else {
     log('\n✅ All snippet tests passed!', 'success');
+    if (filesToTest.length > 0) {
+      log(`${filesToTest.length} files added to cache`, 'dim');
+    }
     process.exit(0);
   }
 }

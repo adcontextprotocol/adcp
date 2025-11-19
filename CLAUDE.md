@@ -63,6 +63,43 @@ Implementation details can be mentioned as:
 - Write for an audience implementing the protocol, not using a specific implementation
 - Keep examples generic and illustrative
 
+### Schema Compliance - CRITICAL RULE
+
+**🚨 ABSOLUTE REQUIREMENT: All documentation, code examples, and API usage MUST match the current JSON schemas exactly.**
+
+**The schemas in `/static/schemas/v1/` are the SINGLE SOURCE OF TRUTH.**
+
+**Rules:**
+1. ❌ **NEVER document fields that don't exist in the schema**
+2. ❌ **NEVER show examples using non-existent fields**
+3. ❌ **NEVER mark schema-violating examples as `test=false` to "keep them around"**
+4. ✅ **ALWAYS verify fields exist in schema before documenting**
+5. ✅ **ALWAYS remove or fix examples that don't match schema**
+6. ✅ **ALWAYS update documentation when schemas change**
+
+**If a field doesn't exist in the schema:**
+- ❌ Don't document it "for future use"
+- ❌ Don't mark examples as non-testable and keep them
+- ✅ **Remove the field from documentation entirely**
+- ✅ **Remove any examples showing that field**
+- ✅ If needed, file a schema issue to add the field properly
+
+**Enforcement:**
+- All testable pages MUST pass validation against current schemas
+- No exceptions for "planned features" or "future fields"
+- Examples violating schemas must be removed, not marked `test=false`
+
+**How to verify schema compliance:**
+```bash
+# Check what fields exist in a schema
+cat static/schemas/v1/core/creative-asset.json
+
+# Test specific documentation file
+npm test -- --file docs/media-buy/task-reference/sync_creatives.mdx
+
+# Fields must exist in schema, not just in wishful thinking
+```
+
 ### Testable Documentation
 
 **IMPORTANT**: All code examples in documentation should be testable when possible.
@@ -88,6 +125,7 @@ testable: true
 2. **Tab titles** - The text after the language becomes the tab title (e.g., "JavaScript", "Python", "CLI")
 3. **Complete examples** - All code on testable pages must be complete and runnable
 4. **Use test credentials** - Use the public test agent credentials in examples
+5. **Schema compliance** - All examples must match current schemas exactly
 
 **Supported languages**:
 - `javascript` / `typescript` - Runs with Node.js ESM modules
@@ -99,6 +137,7 @@ testable: true
 - Code executes without errors
 - API calls succeed (or fail as expected)
 - Output matches expectations
+- **Fields match current schemas**
 
 **When NOT to mark page as testable**:
 - Pages with incomplete code fragments
