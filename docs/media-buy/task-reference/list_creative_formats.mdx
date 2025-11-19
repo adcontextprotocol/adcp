@@ -75,11 +75,11 @@ import { testAgent } from '@adcp/client/testing';
 const result = await testAgent.listCreativeFormats({
   format_ids: [
     {
-      agent_url: 'https://creatives.adcontextprotocol.org',
+      agent_url: 'https://creative.adcontextprotocol.org',
       id: 'video_15s_hosted'
     },
     {
-      agent_url: 'https://creatives.adcontextprotocol.org',
+      agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250'
     }
   ]
@@ -97,11 +97,11 @@ from adcp import test_agent
 result = test_agent.list_creative_formats(
     format_ids=[
         {
-            'agent_url': 'https://creatives.adcontextprotocol.org',
+            'agent_url': 'https://creative.adcontextprotocol.org',
             'id': 'video_15s_hosted'
         },
         {
-            'agent_url': 'https://creatives.adcontextprotocol.org',
+            'agent_url': 'https://creative.adcontextprotocol.org',
             'id': 'display_300x250'
         }
     ]
