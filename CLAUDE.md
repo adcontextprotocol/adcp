@@ -126,6 +126,7 @@ testable: true
 3. **Complete examples** - All code on testable pages must be complete and runnable
 4. **Use test credentials** - Use the public test agent credentials in examples
 5. **Schema compliance** - All examples must match current schemas exactly
+6. **Error handling** - ALL examples must check discriminated union responses for errors before accessing success fields
 
 **Supported languages**:
 - `javascript` / `typescript` - Runs with Node.js ESM modules
@@ -174,6 +175,65 @@ from adcp import ADCPMultiAgentClient
 ```bash
 node tests/snippet-validation.test.js
 ```
+
+### Discriminated Union Error Handling - CRITICAL PATTERN
+
+**🚨 ABSOLUTE REQUIREMENT: Always check for errors before accessing success fields in discriminated union responses.**
+
+Many AdCP responses use discriminated unions with two variants:
+1. **Success variant** - Has data fields (e.g., `creatives`, `products`, `packages`)
+2. **Error variant** - Has `errors` array field
+
+**The fields are mutually exclusive** - a response has EITHER success fields OR an `errors` field, never both.
+
+**Required Pattern**:
+
+**JavaScript:**
+```javascript
+const result = await testAgent.syncCreatives({...});
+
+// ALWAYS check for errors first
+if (result.errors) {
+  console.error('Operation failed:', result.errors);
+} else {
+  // Safe to access success fields
+  console.log(`Success: ${result.creatives.length} items`);
+}
+```
+
+**Python:**
+```python
+result = await test_agent.simple.sync_creatives(...)
+
+# ALWAYS check for errors first
+if hasattr(result, 'errors') and result.errors:
+    print('Operation failed:', result.errors)
+else:
+    # Safe to access success fields
+    print(f"Success: {len(result.creatives)} items")
+```
+
+**Why This Matters:**
+- Accessing `result.creatives` when `errors` is present = `undefined` (JS) or `AttributeError` (Python)
+- Makes examples fail in confusing ways
+- Hides the actual error from the user
+- Violates schema contract
+
+**Common Discriminated Union Responses:**
+- `sync_creatives` - Either `creatives` OR `errors`
+- `create_media_buy` - Either `media_buy_id` + `packages` OR `errors`
+- `get_products` - Either `products` OR `errors`
+- `list_creative_formats` - Either `formats` OR `errors`
+
+**NEVER:**
+❌ Access success fields without checking for errors first
+❌ Assume the operation succeeded
+❌ Write examples that will crash on error responses
+
+**ALWAYS:**
+✅ Check for `errors` field first
+✅ Handle both success and error cases
+✅ Log errors clearly when they occur
 
 ## JSON Schema Maintenance
 

@@ -41,7 +41,12 @@ const result = await testAgent.syncCreatives({
   }]
 });
 
-console.log(`Synced ${result.creatives.length} creatives`);
+// Check for operation-level errors first
+if (result.errors) {
+  console.error('Operation failed:', result.errors);
+} else {
+  console.log(`Synced ${result.creatives.length} creatives`);
+}
 ```
 
 ```python Python
@@ -68,7 +73,11 @@ async def main():
         }]
     )
 
-    print(f"Synced {len(result.creatives)} creatives")
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        print('Operation failed:', result.errors)
+    else:
+        print(f"Synced {len(result.creatives)} creatives")
 
 asyncio.run(main())
 ```
@@ -208,10 +217,15 @@ const result = await testAgent.syncCreatives({
   ]
 });
 
-console.log(`Successfully synced ${result.creatives.length} creatives`);
-result.creatives.forEach(creative => {
+// Check for operation-level errors first
+if (result.errors) {
+  console.error('Operation failed:', result.errors);
+} else {
+  console.log(`Successfully synced ${result.creatives.length} creatives`);
+  result.creatives.forEach(creative => {
   console.log(`  ${creative.name}: ${creative.platform_creative_id}`);
 });
+}
 ```
 
 ```python Python
@@ -270,9 +284,13 @@ async def main():
         ]
     )
 
-    print(f"Successfully synced {len(result.creatives)} creatives")
-    for creative in result.creatives:
-        print(f"  {creative.name}: {creative.platform_creative_id}")
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        print('Operation failed:', result.errors)
+    else:
+        print(f"Successfully synced {len(result.creatives)} creatives")
+        for creative in result.creatives:
+            print(f"  {creative.name}: {creative.platform_creative_id}")
 
 asyncio.run(main())
 ```
@@ -309,7 +327,12 @@ const result = await testAgent.syncCreatives({
   }]
 });
 
-console.log('Updated creative:', result.creatives[0].creative_id);
+// Check for operation-level errors first
+if (result.errors) {
+  console.error('Operation failed:', result.errors);
+} else {
+  console.log('Updated creative:', result.creatives[0].creative_id);
+}
 ```
 
 ```python Python
@@ -338,7 +361,11 @@ async def main():
         }]
     )
 
-    print(f"Updated creative: {result.creatives[0].creative_id}")
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        print('Operation failed:', result.errors)
+    else:
+        print(f"Updated creative: {result.creatives[0].creative_id}")
 
 asyncio.run(main())
 ```
@@ -370,7 +397,12 @@ const result = await testAgent.syncCreatives({
   }]
 });
 
-console.log('Generative creative synced:', result.creatives[0].creative_id);
+// Check for operation-level errors first
+if (result.errors) {
+  console.error('Operation failed:', result.errors);
+} else {
+  console.log('Generative creative synced:', result.creatives[0].creative_id);
+}
 ```
 
 ```python Python
@@ -394,7 +426,11 @@ async def main():
         }]
     )
 
-    print(f"Generative creative synced: {result.creatives[0].creative_id}")
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        print('Operation failed:', result.errors)
+    else:
+        print(f"Generative creative synced: {result.creatives[0].creative_id}")
 
 asyncio.run(main())
 ```
