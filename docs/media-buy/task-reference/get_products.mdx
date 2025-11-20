@@ -33,6 +33,33 @@ const result = await testAgent.getProducts({
 
 if (result.success && result.data) {
   console.log(`Found ${result.data.products.length} products`);
+
+  // Expected response structure
+  const expectedResponse = {
+    products: [{
+      product_id: "string",
+      name: "string",
+      description: "string",
+      publisher_properties: [{
+        publisher_domain: "string",
+        property_ids: ["string"]
+      }],
+      format_ids: ["string"],
+      delivery_type: "guaranteed",
+      delivery_measurement: {
+        metric: "impressions",
+        min_exposures: 1000000
+      },
+      pricing_options: [{
+        type: "cpm",
+        price_micro_usd: 25000000
+      }],
+      brief_relevance: "string"
+    }]
+  };
+
+  // In tests, this validates the response structure
+  // validateResponseShape(result.data, expectedResponse);
 }
 ```
 
