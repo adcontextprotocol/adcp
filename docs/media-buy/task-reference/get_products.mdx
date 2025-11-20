@@ -495,8 +495,10 @@ const fullCatalog = await testAgent.getProducts({
   }
 });
 
-console.log(`With auth: ${fullCatalog.products.length} products`);
-console.log(`First product pricing: ${fullCatalog.products[0].pricing_options.length} options`);
+if (fullCatalog.success) {
+  console.log(`With auth: ${fullCatalog.data.products.length} products`);
+  console.log(`First product pricing: ${fullCatalog.data.products[0].pricing_options.length} options`);
+}
 
 // WITHOUT authentication - limited public catalog
 const publicCatalog = await testAgentNoAuth.getProducts({
@@ -507,8 +509,10 @@ const publicCatalog = await testAgentNoAuth.getProducts({
   }
 });
 
-console.log(`Without auth: ${publicCatalog.products.length} products`);
-console.log(`First product pricing: ${publicCatalog.products[0].pricing_options?.length || 0} options`);
+if (publicCatalog.success) {
+  console.log(`Without auth: ${publicCatalog.data.products.length} products`);
+  console.log(`First product pricing: ${publicCatalog.data.products[0].pricing_options?.length || 0} options`);
+}
 ```
 
 ```python Python
