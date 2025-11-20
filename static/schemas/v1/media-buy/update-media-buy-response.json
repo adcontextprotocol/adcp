@@ -27,24 +27,9 @@
         },
         "affected_packages": {
           "type": "array",
-          "description": "Array of packages that were modified",
+          "description": "Array of packages that were modified with complete state information",
           "items": {
-            "type": "object",
-            "properties": {
-              "package_id": {
-                "type": "string",
-                "description": "Publisher's package identifier"
-              },
-              "buyer_ref": {
-                "type": "string",
-                "description": "Buyer's reference for the package"
-              }
-            },
-            "required": [
-              "package_id",
-              "buyer_ref"
-            ],
-            "additionalProperties": false
+            "$ref": "/schemas/v1/core/package.json"
           }
         },
         "context": {
