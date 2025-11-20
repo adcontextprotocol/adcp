@@ -16,9 +16,10 @@
  * @param {object} actual - The actual response from the API
  * @param {object} expected - The expected response shape from documentation
  * @param {string} path - Current path in the object (for error messages)
+ * @param {WeakSet} visited - Set of visited objects (for circular reference detection)
  * @throws {Error} If validation fails
  */
-function validateResponseShape(actual, expected, path = 'response') {
+function validateResponseShape(actual, expected, path = 'response', visited = new WeakSet()) {
   // Both null/undefined is OK
   if (expected === null || expected === undefined) {
     if (actual !== null && actual !== undefined) {
@@ -41,14 +42,22 @@ function validateResponseShape(actual, expected, path = 'response') {
     throw new Error(`${path}: Expected type ${expectedType}, got ${actualType}`);
   }
 
+  // Check for circular references in objects and arrays
+  if (expectedType === 'object' || expectedType === 'array') {
+    if (visited.has(actual)) {
+      throw new Error(`${path}: Circular reference detected`);
+    }
+    visited.add(actual);
+  }
+
   // Validate based on type
   switch (expectedType) {
     case 'object':
-      validateObject(actual, expected, path);
+      validateObject(actual, expected, path, visited);
       break;
 
     case 'array':
-      validateArray(actual, expected, path);
+      validateArray(actual, expected, path, visited);
       break;
 
     case 'string':
@@ -66,7 +75,7 @@ function validateResponseShape(actual, expected, path = 'response') {
 /**
  * Validates object structure
  */
-function validateObject(actual, expected, path) {
+function validateObject(actual, expected, path, visited) {
   // Check all expected fields are present
   for (const key in expected) {
     if (!Object.prototype.hasOwnProperty.call(actual, key)) {
@@ -74,7 +83,7 @@ function validateObject(actual, expected, path) {
     }
 
     // Recursively validate nested structure
-    validateResponseShape(actual[key], expected[key], `${path}.${key}`);
+    validateResponseShape(actual[key], expected[key], `${path}.${key}`, visited);
   }
 
   // Note: We don't check for extra fields in actual
@@ -84,7 +93,7 @@ function validateObject(actual, expected, path) {
 /**
  * Validates array structure
  */
-function validateArray(actual, expected, path) {
+function validateArray(actual, expected, path, visited) {
   // If expected is empty array, actual must also be an array (any length OK)
   if (expected.length === 0) {
     // Just check it's an array, allow any content
@@ -101,7 +110,7 @@ function validateArray(actual, expected, path) {
 
   // Check each element in actual matches the template structure
   actual.forEach((item, index) => {
-    validateResponseShape(item, template, `${path}[${index}]`);
+    validateResponseShape(item, template, `${path}[${index}]`, visited);
   });
 }
 

@@ -167,6 +167,60 @@ function findDocFiles() {
 }
 
 /**
+ * Check if stdout contains a failed API response by parsing JSON
+ * More robust than regex - handles complex objects and avoids false positives
+ */
+function checkForFailedApiResponse(stdout) {
+  if (!stdout) return null;
+
+  try {
+    // Try to parse entire stdout as JSON first
+    const parsed = JSON.parse(stdout);
+    if (parsed && parsed.success === false) {
+      return extractErrorMessage(parsed);
+    }
+  } catch {
+    // Not valid JSON, try line-by-line
+    const lines = stdout.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith('{')) continue;
+
+      try {
+        const obj = JSON.parse(trimmed);
+        if (obj && obj.success === false) {
+          return extractErrorMessage(obj);
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract error message from API response object
+ * Handles string errors, nested objects, and missing error field
+ */
+function extractErrorMessage(responseObj) {
+  if (!responseObj.error) {
+    return 'API returned success: false';
+  }
+
+  if (typeof responseObj.error === 'string') {
+    // Truncate very long errors
+    return responseObj.error.length > 200
+      ? responseObj.error.substring(0, 200) + '...'
+      : responseObj.error;
+  }
+
+  // Handle nested error objects
+  return JSON.stringify(responseObj.error);
+}
+
+/**
  * Test a JavaScript/TypeScript snippet
  */
 async function testJavaScriptSnippet(snippet) {
@@ -189,13 +243,8 @@ async function testJavaScriptSnippet(snippet) {
     const hasRealErrors = stderr && !stderr.includes('[MODULE_TYPELESS_PACKAGE_JSON]');
 
     // Check if the output contains a failed API response (result.success === false)
-    const hasFailedApiResponse = stdout && /['"']success['"']\s*:\s*false/.test(stdout);
-
-    if (hasFailedApiResponse) {
-      // Extract error message if present
-      const errorMatch = stdout.match(/['"']error['"']\s*:\s*['"']([^'"]+)['"']/);
-      const apiError = errorMatch ? errorMatch[1] : 'API returned success: false';
-
+    const apiError = checkForFailedApiResponse(stdout);
+    if (apiError) {
       return {
         success: false,
         error: `API call failed: ${apiError}`,
@@ -214,12 +263,8 @@ async function testJavaScriptSnippet(snippet) {
     // If we got stdout output, treat it as a success (the actual test ran)
     if (error.stdout && error.stdout.trim().length > 0) {
       // But check if it's a failed API response
-      const hasFailedApiResponse = /['"']success['"']\s*:\s*false/.test(error.stdout);
-
-      if (hasFailedApiResponse) {
-        const errorMatch = error.stdout.match(/['"']error['"']\s*:\s*['"']([^'"]+)['"']/);
-        const apiError = errorMatch ? errorMatch[1] : 'API returned success: false';
-
+      const apiError = checkForFailedApiResponse(error.stdout);
+      if (apiError) {
         return {
           success: false,
           error: `API call failed: ${apiError}`,
@@ -385,7 +430,6 @@ async function testPythonSnippet(snippet) {
   } catch (error) {
     // WORKAROUND: Python MCP SDK has async cleanup bug (exit code 1)
     // See PYTHON_MCP_ASYNC_BUG.md for details
-    // Ignore exit codes for Python tests if we see the async cleanup bug
     // Waiting for upstream fix in mcp package (currently 1.21.0)
     const hasAsyncCleanupBug = error.stderr && (
       error.stderr.includes('an error occurred during closing of asynchronous generator') ||
@@ -393,37 +437,33 @@ async function testPythonSnippet(snippet) {
       error.stderr.includes('async_generator object')
     );
 
-    // If we have stdout output AND it's the async cleanup bug, treat as success
-    if (hasAsyncCleanupBug && error.stdout && error.stdout.trim().length > 0) {
+    const hasOutput = error.stdout && error.stdout.trim().length > 0;
+
+    // If we have output, treat as success (test logic ran)
+    if (hasOutput) {
+      const warning = hasAsyncCleanupBug
+        ? 'Python MCP async cleanup bug - ignoring (see PYTHON_MCP_ASYNC_BUG.md)'
+        : 'Test produced output but exited with non-zero code';
+
       return {
         success: true,
         output: error.stdout,
         error: error.stderr,
-        warning: 'Python MCP async cleanup bug - ignoring (see PYTHON_MCP_ASYNC_BUG.md)'
+        warning
       };
     }
 
-    // If we have stdout output but no async bug, still treat as success
-    // (the actual test logic ran successfully)
-    if (error.stdout && error.stdout.trim().length > 0) {
-      return {
-        success: true,
-        output: error.stdout,
-        error: error.stderr,
-        warning: 'Test produced output but exited with non-zero code'
-      };
-    }
-
-    // If it's ONLY the async cleanup bug with no stdout, pass anyway
+    // If it's ONLY the async cleanup bug with no output, still pass
     if (hasAsyncCleanupBug) {
       return {
         success: true,
-        output: error.stdout || '',
+        output: '',
         error: error.stderr,
         warning: 'Python MCP async cleanup bug - no output (see PYTHON_MCP_ASYNC_BUG.md)'
       };
     }
 
+    // Real failure - no output and not the async bug
     return {
       success: false,
       error: error.message,
@@ -522,6 +562,7 @@ async function validateSnippet(snippet) {
     } else {
       failedTests++;
       log(`  ✗ FAILED`, 'error');
+      log(`    Location: ${snippet.file}:${snippet.line}`, 'error');
       log(`    Error: ${result.error}`, 'error');
       if (result.code) log(`    Exit code: ${result.code}`, 'error');
       if (result.signal) log(`    Signal: ${result.signal}`, 'error');
@@ -536,6 +577,7 @@ async function validateSnippet(snippet) {
   } catch (error) {
     failedTests++;
     log(`  ✗ FAILED (unexpected error)`, 'error');
+    log(`    Location: ${snippet.file}:${snippet.line}`, 'error');
     log(`    ${error.message}`, 'error');
   }
 }
