@@ -11,6 +11,8 @@
  * - Exact numeric values (prices, budgets will vary)
  * - Extra fields in response (allows implementation to return more data)
  *
+ * For more thorough validation including value checks, use validateResponse().
+ *
  * @param {object} actual - The actual response from the API
  * @param {object} expected - The expected response shape from documentation
  * @param {string} path - Current path in the object (for error messages)
@@ -103,4 +105,91 @@ function validateArray(actual, expected, path) {
   });
 }
 
-module.exports = { validateResponseShape };
+/**
+ * Validates that an actual API response matches expected values (stricter than validateResponseShape).
+ *
+ * This function checks everything validateResponseShape does, PLUS:
+ * - Enum values are valid (e.g., delivery_type must be "guaranteed" or "non_guaranteed")
+ * - Numeric ranges are sensible (e.g., CPM > 0)
+ * - String patterns match (e.g., IDs, URLs)
+ * - Consistency rules (e.g., if is_fixed_price, pricing must have fixed price)
+ *
+ * Use this for targeted integration tests where you control the test data.
+ * Use validateResponseShape() for documentation examples where data varies.
+ *
+ * @param {object} actual - The actual response from the API
+ * @param {object} constraints - Constraints to validate (enum values, ranges, etc.)
+ * @param {string} path - Current path in the object (for error messages)
+ * @throws {Error} If validation fails
+ */
+function validateResponse(actual, constraints, path = 'response') {
+  // First validate structure
+  validateResponseShape(actual, constraints.shape || constraints, path);
+
+  // Then validate specific values if constraints provided
+  if (constraints.enums) {
+    validateEnums(actual, constraints.enums, path);
+  }
+
+  if (constraints.ranges) {
+    validateRanges(actual, constraints.ranges, path);
+  }
+
+  if (constraints.patterns) {
+    validatePatterns(actual, constraints.patterns, path);
+  }
+
+  if (constraints.consistency) {
+    constraints.consistency.forEach(rule => rule(actual, path));
+  }
+}
+
+/**
+ * Validate enum fields have allowed values
+ */
+function validateEnums(actual, enums, path) {
+  for (const [field, allowedValues] of Object.entries(enums)) {
+    const value = getNestedValue(actual, field);
+    if (value !== undefined && !allowedValues.includes(value)) {
+      throw new Error(`${path}.${field}: Invalid value "${value}". Must be one of: ${allowedValues.join(', ')}`);
+    }
+  }
+}
+
+/**
+ * Validate numeric fields are within valid ranges
+ */
+function validateRanges(actual, ranges, path) {
+  for (const [field, range] of Object.entries(ranges)) {
+    const value = getNestedValue(actual, field);
+    if (value !== undefined) {
+      if (range.min !== undefined && value < range.min) {
+        throw new Error(`${path}.${field}: Value ${value} is below minimum ${range.min}`);
+      }
+      if (range.max !== undefined && value > range.max) {
+        throw new Error(`${path}.${field}: Value ${value} is above maximum ${range.max}`);
+      }
+    }
+  }
+}
+
+/**
+ * Validate string fields match expected patterns
+ */
+function validatePatterns(actual, patterns, path) {
+  for (const [field, pattern] of Object.entries(patterns)) {
+    const value = getNestedValue(actual, field);
+    if (value !== undefined && !pattern.test(value)) {
+      throw new Error(`${path}.${field}: Value "${value}" does not match pattern ${pattern}`);
+    }
+  }
+}
+
+/**
+ * Get nested value from object using dot notation
+ */
+function getNestedValue(obj, path) {
+  return path.split('.').reduce((acc, part) => acc?.[part], obj);
+}
+
+module.exports = { validateResponseShape, validateResponse };
