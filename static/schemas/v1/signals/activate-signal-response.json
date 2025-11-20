@@ -6,12 +6,12 @@
   "type": "object",
   "oneOf": [
     {
-      "description": "Success response - signal activated successfully to one or more destinations",
+      "description": "Success response - signal activated successfully to one or more deployment targets",
       "type": "object",
       "properties": {
         "deployments": {
           "type": "array",
-          "description": "Array of deployment results for each destination",
+          "description": "Array of deployment results for each deployment target",
           "items": {
             "$ref": "/schemas/v1/core/deployment.json"
           }

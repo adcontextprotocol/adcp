@@ -44,7 +44,7 @@
           },
           "deployments": {
             "type": "array",
-            "description": "Array of destination deployments",
+            "description": "Array of deployment targets",
             "items": {
               "$ref": "/schemas/v1/core/deployment.json"
             }

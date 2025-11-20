@@ -11,11 +11,11 @@
     },
     "deliver_to": {
       "type": "object",
-      "description": "Destination platforms where signals need to be activated",
+      "description": "Deployment targets where signals need to be activated",
       "properties": {
-        "destinations": {
+        "deployments": {
           "type": "array",
-          "description": "List of destination platforms (DSPs, sales agents, etc.). If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
+          "description": "List of deployment targets (DSPs, sales agents, etc.). If the authenticated caller matches one of these deployment targets, activation keys will be included in the response.",
           "items": {
             "$ref": "/schemas/v1/core/destination.json"
           },
@@ -31,7 +31,7 @@
         }
       },
       "required": [
-        "destinations",
+        "deployments",
         "countries"
       ],
       "additionalProperties": false
