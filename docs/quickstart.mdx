@@ -125,18 +125,6 @@ To work with real publishers:
 
 You need separate credentials for each sales agent you work with.
 
-## Dry Run Mode
-
-Test without spending money by adding the `X-Dry-Run: true` header:
-
-```javascript
-const result = await agent.createMediaBuy(request, { dryRun: true });
-```
-
-Dry run mode validates requests and returns simulated responses without creating real campaigns.
-
-[Learn more about testing →](/docs/media-buy/advanced-topics/testing)
-
 ## Protocol Choice
 
 AdCP works over MCP or A2A protocols. The tasks are identical - choose based on your integration:
@@ -165,16 +153,3 @@ Verify:
 - Auth header is included: `Authorization: Bearer <token>`
 - Token is valid and not expired
 - Agent requires authentication for this operation
-
-### Async Task Status
-
-Some operations return immediately with a `task_id` for long-running work:
-
-```javascript
-if (result.status === 'pending') {
-  // Check status later or provide webhook
-  console.log(`Task ID: ${result.task_id}`);
-}
-```
-
-[Learn about async operations →](/docs/media-buy/advanced-topics/)

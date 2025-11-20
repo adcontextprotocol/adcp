@@ -42,17 +42,22 @@ if (result.success && result.data) {
       description: "Premium CTV inventory during live sports programming with guaranteed delivery",
       publisher_properties: [{
         publisher_domain: "sports-network.com",
-        property_ids: ["live-nfl", "live-nba"]
+        property_ids: ["live-nfl", "live-nba"],
+        selection_type: "by_id"
       }],
       format_ids: ["video_15s_vast", "video_30s_vast"],
       delivery_type: "guaranteed",
       delivery_measurement: {
         metric: "impressions",
-        min_exposures: 1000000
+        min_exposures: 1000000,
+        provider: "third_party"
       },
       pricing_options: [{
-        type: "cpm",
-        price_micro_usd: 25000000  // $25.00 CPM
+        pricing_option_id: "cpm_usd_fixed",
+        pricing_model: "cpm",
+        rate: 25.00,
+        currency: "USD",
+        is_fixed: true
       }],
       brief_relevance: "Premium sports inventory matches your athletic footwear campaign targeting active audiences"
     }]
@@ -498,6 +503,8 @@ const fullCatalog = await testAgent.getProducts({
 if (fullCatalog.success) {
   console.log(`With auth: ${fullCatalog.data.products.length} products`);
   console.log(`First product pricing: ${fullCatalog.data.products[0].pricing_options.length} options`);
+} else {
+  console.error(`Failed to get products: ${fullCatalog.error}`);
 }
 
 // WITHOUT authentication - limited public catalog
@@ -512,6 +519,8 @@ const publicCatalog = await testAgentNoAuth.getProducts({
 if (publicCatalog.success) {
   console.log(`Without auth: ${publicCatalog.data.products.length} products`);
   console.log(`First product pricing: ${publicCatalog.data.products[0].pricing_options?.length || 0} options`);
+} else {
+  console.error(`Failed to get products: ${publicCatalog.error}`);
 }
 ```
 

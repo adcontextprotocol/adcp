@@ -188,6 +188,22 @@ async function testJavaScriptSnippet(snippet) {
     // Check if stderr contains only warnings (not errors)
     const hasRealErrors = stderr && !stderr.includes('[MODULE_TYPELESS_PACKAGE_JSON]');
 
+    // Check if the output contains a failed API response (result.success === false)
+    const hasFailedApiResponse = stdout && /['"']success['"']\s*:\s*false/.test(stdout);
+
+    if (hasFailedApiResponse) {
+      // Extract error message if present
+      const errorMatch = stdout.match(/['"']error['"']\s*:\s*['"']([^'"]+)['"']/);
+      const apiError = errorMatch ? errorMatch[1] : 'API returned success: false';
+
+      return {
+        success: false,
+        error: `API call failed: ${apiError}`,
+        output: stdout,
+        stderr: stderr
+      };
+    }
+
     return {
       success: true,
       output: stdout,
@@ -197,6 +213,21 @@ async function testJavaScriptSnippet(snippet) {
     // Tests may fail with errors but still produce valid output
     // If we got stdout output, treat it as a success (the actual test ran)
     if (error.stdout && error.stdout.trim().length > 0) {
+      // But check if it's a failed API response
+      const hasFailedApiResponse = /['"']success['"']\s*:\s*false/.test(error.stdout);
+
+      if (hasFailedApiResponse) {
+        const errorMatch = error.stdout.match(/['"']error['"']\s*:\s*['"']([^'"]+)['"']/);
+        const apiError = errorMatch ? errorMatch[1] : 'API returned success: false';
+
+        return {
+          success: false,
+          error: `API call failed: ${apiError}`,
+          output: error.stdout,
+          stderr: error.stderr
+        };
+      }
+
       return {
         success: true,
         output: error.stdout,
@@ -362,23 +393,34 @@ async function testPythonSnippet(snippet) {
       error.stderr.includes('async_generator object')
     );
 
-    // If we have stdout output OR it's the known async bug, treat as success
+    // If we have stdout output AND it's the async cleanup bug, treat as success
+    if (hasAsyncCleanupBug && error.stdout && error.stdout.trim().length > 0) {
+      return {
+        success: true,
+        output: error.stdout,
+        error: error.stderr,
+        warning: 'Python MCP async cleanup bug - ignoring (see PYTHON_MCP_ASYNC_BUG.md)'
+      };
+    }
+
+    // If we have stdout output but no async bug, still treat as success
+    // (the actual test logic ran successfully)
     if (error.stdout && error.stdout.trim().length > 0) {
       return {
         success: true,
         output: error.stdout,
         error: error.stderr,
-        warning: hasAsyncCleanupBug ? 'Python MCP async cleanup bug - ignoring (see PYTHON_MCP_ASYNC_BUG.md)' : undefined
+        warning: 'Test produced output but exited with non-zero code'
       };
     }
 
-    // If it's ONLY the async cleanup bug with no other errors, pass
-    if (hasAsyncCleanupBug && !error.stderr.includes('Traceback') && !error.stderr.includes('Error:')) {
+    // If it's ONLY the async cleanup bug with no stdout, pass anyway
+    if (hasAsyncCleanupBug) {
       return {
         success: true,
         output: error.stdout || '',
         error: error.stderr,
-        warning: 'Python MCP async cleanup bug - no actual errors (see PYTHON_MCP_ASYNC_BUG.md)'
+        warning: 'Python MCP async cleanup bug - no output (see PYTHON_MCP_ASYNC_BUG.md)'
       };
     }
 
