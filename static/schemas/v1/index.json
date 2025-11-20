@@ -205,6 +205,14 @@
         "task-type": {
           "$ref": "/schemas/v1/enums/task-type.json",
           "description": "Valid AdCP task types across all domains (create_media_buy, update_media_buy, sync_creatives, activate_signal, get_signals)"
+        },
+        "asset-content-type": {
+          "$ref": "/schemas/v1/enums/asset-content-type.json",
+          "description": "Types of content that can be used as creative assets (image, video, html, etc.)"
+        },
+        "format-category": {
+          "$ref": "/schemas/v1/enums/format-category.json",
+          "description": "High-level categories for creative formats (audio, video, display, native, dooh, rich_media, universal)"
         }
       }
     },

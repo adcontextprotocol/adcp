@@ -28,9 +28,8 @@
       "description": "Optional URL to showcase page with examples and interactive demos of this format"
     },
     "type": {
-      "type": "string",
-      "description": "Media type of this format - determines rendering method and asset requirements",
-      "enum": ["audio", "video", "display", "native", "dooh", "rich_media", "universal"]
+      "$ref": "/schemas/v1/enums/format-category.json",
+      "description": "Media type of this format - determines rendering method and asset requirements"
     },
     "renders": {
       "type": "array",
@@ -123,9 +122,8 @@
                 "description": "Unique identifier for this asset. Creative manifests MUST use this exact value as the key in the assets object."
               },
               "asset_type": {
-                "type": "string",
-                "description": "Type of asset",
-                "enum": ["image", "video", "audio", "vast", "daast", "text", "markdown", "html", "css", "javascript", "url", "webhook", "promoted_offerings"]
+                "$ref": "/schemas/v1/enums/asset-content-type.json",
+                "description": "Type of asset"
               },
               "asset_role": {
                 "type": "string",
@@ -177,9 +175,8 @@
                       "description": "Identifier for this asset within the group"
                     },
                     "asset_type": {
-                      "type": "string",
-                      "description": "Type of asset",
-                      "enum": ["image", "video", "audio", "vast", "daast", "text", "markdown", "html", "css", "javascript", "url", "webhook", "promoted_offerings"]
+                      "$ref": "/schemas/v1/enums/asset-content-type.json",
+                      "description": "Type of asset"
                     },
                     "asset_role": {
                       "type": "string",
