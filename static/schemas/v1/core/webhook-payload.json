@@ -197,7 +197,19 @@
           "packages": [
             {
               "package_id": "pkg_12345_001",
-              "buyer_ref": "nike_ctv_package"
+              "buyer_ref": "nike_ctv_package",
+              "product_id": "ctv_sports_premium",
+              "budget": 60000,
+              "pacing": "even",
+              "pricing_option_id": "cpm-fixed-sports",
+              "status": "active",
+              "creative_assignments": [],
+              "format_ids_to_provide": [
+                {
+                  "agent_url": "https://creative.adcontextprotocol.org",
+                  "id": "video_standard_30s"
+                }
+              ]
             }
           ]
         }

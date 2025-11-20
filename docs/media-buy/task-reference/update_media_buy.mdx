@@ -50,8 +50,10 @@ Returns updated media buy with status:
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
+| `buyer_ref` | Buyer's reference identifier |
 | `status` | Update status (`"completed"`, `"working"`, `"submitted"`) |
-| `packages` | Updated packages with new values |
+| `affected_packages` | Array of full Package objects showing complete state after update |
+| `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `message` | Human-readable update description |
 
 See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json) for complete field list.
@@ -88,7 +90,7 @@ const result = await testAgent.updateMediaBuy({
   }]
 });
 
-console.log(`Package budget updated to ${result.packages[0].budget}`);
+console.log(`Package budget updated to ${result.affected_packages[0].budget}`);
 ```
 
 ### Change Campaign Dates
@@ -139,7 +141,7 @@ const result = await testAgent.updateMediaBuy({
   }]
 });
 
-console.log(`Assigned ${result.packages[0].creative_ids.length} new creatives`);
+console.log(`Assigned ${result.affected_packages[0].creative_assignments.length} new creatives`);
 ```
 
 ## What Can Be Updated
