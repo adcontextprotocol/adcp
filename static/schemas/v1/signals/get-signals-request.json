@@ -44,12 +44,7 @@
           "type": "array",
           "description": "Filter by catalog type",
           "items": {
-            "type": "string",
-            "enum": [
-              "marketplace",
-              "custom",
-              "owned"
-            ]
+            "$ref": "/schemas/v1/enums/signal-catalog-type.json"
           }
         },
         "data_providers": {

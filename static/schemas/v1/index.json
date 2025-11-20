@@ -213,6 +213,130 @@
         "format-category": {
           "$ref": "/schemas/v1/enums/format-category.json",
           "description": "High-level categories for creative formats (audio, video, display, native, dooh, rich_media, universal)"
+        },
+        "vast-version": {
+          "$ref": "/schemas/v1/enums/vast-version.json",
+          "description": "Supported VAST specification versions (2.0, 3.0, 4.0, 4.1, 4.2)"
+        },
+        "vast-tracking-event": {
+          "$ref": "/schemas/v1/enums/vast-tracking-event.json",
+          "description": "Standard VAST tracking events for video playback and interaction"
+        },
+        "property-type": {
+          "$ref": "/schemas/v1/enums/property-type.json",
+          "description": "Types of advertising properties (website, mobile_app, ctv_app, dooh, podcast, radio, streaming_audio)"
+        },
+        "dimension-unit": {
+          "$ref": "/schemas/v1/enums/dimension-unit.json",
+          "description": "Units of measurement for creative format dimensions (px, dp, inches, cm)"
+        },
+        "co-branding-requirement": {
+          "$ref": "/schemas/v1/enums/co-branding-requirement.json",
+          "description": "Co-branding policy for creatives (required, optional, none)"
+        },
+        "landing-page-requirement": {
+          "$ref": "/schemas/v1/enums/landing-page-requirement.json",
+          "description": "Landing page policy for creative destinations (any, retailer_site_only, must_include_retailer)"
+        },
+        "daast-version": {
+          "$ref": "/schemas/v1/enums/daast-version.json",
+          "description": "Supported DAAST specification versions (1.0, 1.1)"
+        },
+        "daast-tracking-event": {
+          "$ref": "/schemas/v1/enums/daast-tracking-event.json",
+          "description": "Standard DAAST tracking events for audio playback and interaction"
+        },
+        "signal-catalog-type": {
+          "$ref": "/schemas/v1/enums/signal-catalog-type.json",
+          "description": "Types of signal catalogs (marketplace, custom, owned)"
+        },
+        "metric-type": {
+          "$ref": "/schemas/v1/enums/metric-type.json",
+          "description": "Performance metric types for feedback and optimization"
+        },
+        "feedback-source": {
+          "$ref": "/schemas/v1/enums/feedback-source.json",
+          "description": "Source of performance feedback data"
+        },
+        "creative-agent-capability": {
+          "$ref": "/schemas/v1/enums/creative-agent-capability.json",
+          "description": "Capabilities supported by creative agents (validation, assembly, generation, preview)"
+        },
+        "adcp-domain": {
+          "$ref": "/schemas/v1/enums/adcp-domain.json",
+          "description": "AdCP protocol domains (media-buy, signals)"
+        },
+        "http-method": {
+          "$ref": "/schemas/v1/enums/http-method.json",
+          "description": "HTTP methods for webhook requests (GET, POST)"
+        },
+        "webhook-response-type": {
+          "$ref": "/schemas/v1/enums/webhook-response-type.json",
+          "description": "Expected response content types from webhooks"
+        },
+        "webhook-security-method": {
+          "$ref": "/schemas/v1/enums/webhook-security-method.json",
+          "description": "Security methods for webhook authentication"
+        },
+        "javascript-module-type": {
+          "$ref": "/schemas/v1/enums/javascript-module-type.json",
+          "description": "JavaScript module format types (esm, commonjs, script)"
+        },
+        "markdown-flavor": {
+          "$ref": "/schemas/v1/enums/markdown-flavor.json",
+          "description": "Markdown specification flavors (commonmark, gfm)"
+        },
+        "url-asset-type": {
+          "$ref": "/schemas/v1/enums/url-asset-type.json",
+          "description": "Types of URL assets (clickthrough, tracker_pixel, tracker_script)"
+        },
+        "validation-mode": {
+          "$ref": "/schemas/v1/enums/validation-mode.json",
+          "description": "Creative validation strictness levels (strict, lenient)"
+        },
+        "creative-action": {
+          "$ref": "/schemas/v1/enums/creative-action.json",
+          "description": "Actions taken on creatives during sync (created, updated, unchanged, failed, deleted)"
+        },
+        "notification-type": {
+          "$ref": "/schemas/v1/enums/notification-type.json",
+          "description": "Types of delivery notifications (scheduled, final, delayed, adjusted)"
+        },
+        "reporting-frequency": {
+          "$ref": "/schemas/v1/enums/reporting-frequency.json",
+          "description": "Frequencies for delivery reports (hourly, daily, monthly)"
+        },
+        "available-metric": {
+          "$ref": "/schemas/v1/enums/available-metric.json",
+          "description": "Standard delivery and performance metrics for reporting"
+        },
+        "preview-output-format": {
+          "$ref": "/schemas/v1/enums/preview-output-format.json",
+          "description": "Output formats for creative previews (url, html)"
+        },
+        "sort-direction": {
+          "$ref": "/schemas/v1/enums/sort-direction.json",
+          "description": "Sort direction for list queries (asc, desc)"
+        },
+        "history-entry-type": {
+          "$ref": "/schemas/v1/enums/history-entry-type.json",
+          "description": "Type of task history entry (request, response)"
+        },
+        "feed-format": {
+          "$ref": "/schemas/v1/enums/feed-format.json",
+          "description": "Product catalog feed formats"
+        },
+        "update-frequency": {
+          "$ref": "/schemas/v1/enums/update-frequency.json",
+          "description": "Frequency of product catalog updates"
+        },
+        "auth-scheme": {
+          "$ref": "/schemas/v1/enums/auth-scheme.json",
+          "description": "Authentication schemes for push notifications"
+        },
+        "creative-sort-field": {
+          "$ref": "/schemas/v1/enums/creative-sort-field.json",
+          "description": "Fields available for sorting creative listings"
         }
       }
     },

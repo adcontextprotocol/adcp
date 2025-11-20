@@ -11,8 +11,7 @@
       "description": "Webhook URL to call for dynamic content"
     },
     "method": {
-      "type": "string",
-      "enum": ["GET", "POST"],
+      "$ref": "/schemas/v1/enums/http-method.json",
       "default": "POST",
       "description": "HTTP method"
     },
@@ -38,8 +37,7 @@
       "description": "Universal macros that must be provided for webhook to function"
     },
     "response_type": {
-      "type": "string",
-      "enum": ["html", "json", "xml", "javascript"],
+      "$ref": "/schemas/v1/enums/webhook-response-type.json",
       "description": "Expected content type of webhook response"
     },
     "security": {
@@ -47,8 +45,7 @@
       "description": "Security configuration for webhook calls",
       "properties": {
         "method": {
-          "type": "string",
-          "enum": ["hmac_sha256", "api_key", "none"],
+          "$ref": "/schemas/v1/enums/webhook-security-method.json",
           "description": "Authentication method"
         },
         "hmac_header": {

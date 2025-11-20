@@ -22,27 +22,12 @@
     "status_filter": {
       "oneOf": [
         {
-          "type": "string",
-          "enum": [
-            "active",
-            "pending",
-            "paused",
-            "completed",
-            "failed",
-            "all"
-          ]
+          "$ref": "/schemas/v1/enums/media-buy-status.json"
         },
         {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "active",
-              "pending",
-              "paused",
-              "completed",
-              "failed"
-            ]
+            "$ref": "/schemas/v1/enums/media-buy-status.json"
           }
         }
       ],

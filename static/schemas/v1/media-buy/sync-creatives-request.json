@@ -43,11 +43,7 @@
       "description": "When true, preview changes without applying them. Returns what would be created/updated/deleted."
     },
     "validation_mode": {
-      "type": "string",
-      "enum": [
-        "strict",
-        "lenient"
-      ],
+      "$ref": "/schemas/v1/enums/validation-mode.json",
       "default": "strict",
       "description": "Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid creatives and reports errors."
     },

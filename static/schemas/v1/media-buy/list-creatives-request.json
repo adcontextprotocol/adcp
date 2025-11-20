@@ -104,24 +104,12 @@
       "description": "Sorting parameters",
       "properties": {
         "field": {
-          "type": "string",
-          "enum": [
-            "created_date",
-            "updated_date",
-            "name",
-            "status",
-            "assignment_count",
-            "performance_score"
-          ],
+          "$ref": "/schemas/v1/enums/creative-sort-field.json",
           "default": "created_date",
           "description": "Field to sort by"
         },
         "direction": {
-          "type": "string",
-          "enum": [
-            "asc",
-            "desc"
-          ],
+          "$ref": "/schemas/v1/enums/sort-direction.json",
           "default": "desc",
           "description": "Sort direction"
         }

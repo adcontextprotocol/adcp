@@ -34,11 +34,7 @@
               "type": "string"
             },
             "direction": {
-              "type": "string",
-              "enum": [
-                "asc",
-                "desc"
-              ]
+              "$ref": "/schemas/v1/enums/sort-direction.json"
             }
           }
         }

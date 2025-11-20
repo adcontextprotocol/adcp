@@ -6,14 +6,12 @@
   "type": "object",
   "properties": {
     "co_branding": {
-      "type": "string",
-      "description": "Co-branding requirement",
-      "enum": ["required", "optional", "none"]
+      "$ref": "/schemas/v1/enums/co-branding-requirement.json",
+      "description": "Co-branding requirement"
     },
     "landing_page": {
-      "type": "string",
-      "description": "Landing page requirements",
-      "enum": ["any", "retailer_site_only", "must_include_retailer"]
+      "$ref": "/schemas/v1/enums/landing-page-requirement.json",
+      "description": "Landing page requirements"
     },
     "templates_available": {
       "type": "boolean",

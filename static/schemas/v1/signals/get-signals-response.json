@@ -24,13 +24,8 @@
             "description": "Detailed signal description"
           },
           "signal_type": {
-            "type": "string",
-            "description": "Type of signal",
-            "enum": [
-              "marketplace",
-              "custom",
-              "owned"
-            ]
+            "$ref": "/schemas/v1/enums/signal-catalog-type.json",
+            "description": "Type of signal"
           },
           "data_provider": {
             "type": "string",

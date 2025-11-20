@@ -14,8 +14,7 @@
       "description": "Language code (e.g., 'en', 'es', 'fr')"
     },
     "markdown_flavor": {
-      "type": "string",
-      "enum": ["commonmark", "gfm"],
+      "$ref": "/schemas/v1/enums/markdown-flavor.json",
       "default": "commonmark",
       "description": "Markdown flavor used. CommonMark for strict compatibility, GFM for tables/task lists/strikethrough."
     },

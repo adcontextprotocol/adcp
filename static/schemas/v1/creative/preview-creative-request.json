@@ -54,8 +54,7 @@
           "description": "Specific template ID for custom format rendering"
         },
         "output_format": {
-          "type": "string",
-          "enum": ["url", "html"],
+          "$ref": "/schemas/v1/enums/preview-output-format.json",
           "default": "url",
           "description": "Output format for previews. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding). Default: 'url' for backward compatibility."
         },
@@ -128,8 +127,7 @@
                 "description": "Specific template ID for custom format rendering"
               },
               "output_format": {
-                "type": "string",
-                "enum": ["url", "html"],
+                "$ref": "/schemas/v1/enums/preview-output-format.json",
                 "default": "url",
                 "description": "Output format for this preview. 'url' returns preview_url, 'html' returns preview_html."
               }
@@ -144,8 +142,7 @@
           "maxItems": 50
         },
         "output_format": {
-          "type": "string",
-          "enum": ["url", "html"],
+          "$ref": "/schemas/v1/enums/preview-output-format.json",
           "default": "url",
           "description": "Default output format for all requests in this batch. Individual requests can override this. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding)."
         },

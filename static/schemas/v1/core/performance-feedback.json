@@ -45,28 +45,12 @@
       "minimum": 0
     },
     "metric_type": {
-      "type": "string",
-      "description": "The business metric being measured",
-      "enum": [
-        "overall_performance",
-        "conversion_rate",
-        "brand_lift", 
-        "click_through_rate",
-        "completion_rate",
-        "viewability",
-        "brand_safety",
-        "cost_efficiency"
-      ]
+      "$ref": "/schemas/v1/enums/metric-type.json",
+      "description": "The business metric being measured"
     },
     "feedback_source": {
-      "type": "string",
-      "description": "Source of the performance data",
-      "enum": [
-        "buyer_attribution",
-        "third_party_measurement",
-        "platform_analytics", 
-        "verification_partner"
-      ]
+      "$ref": "/schemas/v1/enums/feedback-source.json",
+      "description": "Source of the performance data"
     },
     "status": {
       "type": "string",

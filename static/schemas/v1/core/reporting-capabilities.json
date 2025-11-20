@@ -9,8 +9,7 @@
       "type": "array",
       "description": "Supported reporting frequency options",
       "items": {
-        "type": "string",
-        "enum": ["hourly", "daily", "monthly"]
+        "$ref": "/schemas/v1/enums/reporting-frequency.json"
       },
       "minItems": 1,
       "uniqueItems": true
@@ -34,8 +33,7 @@
       "type": "array",
       "description": "Metrics available in reporting. Impressions and spend are always implicitly included.",
       "items": {
-        "type": "string",
-        "enum": ["impressions", "spend", "clicks", "ctr", "video_completions", "completion_rate", "conversions", "viewability", "engagement_rate"]
+        "$ref": "/schemas/v1/enums/available-metric.json"
       },
       "uniqueItems": true,
       "examples": [
