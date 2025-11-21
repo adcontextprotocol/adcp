@@ -159,6 +159,7 @@ const task = await a2a.send({
   "taskId": "task-123",         // A2A task identifier
   "contextId": "ctx-456",       // Automatic context management
   "artifacts": [{               // A2A-specific artifact structure
+    "artifactId": "artifact-product-catalog-abc",
     "name": "product_catalog",
     "parts": [
       {
@@ -166,7 +167,7 @@ const task = await a2a.send({
         "text": "Found 12 video products perfect for pet food campaigns"
       },
       {
-        "kind": "data", 
+        "kind": "data",
         "data": {
           "products": [...],
           "total": 12
@@ -186,15 +187,23 @@ const task = await a2a.send({
 ### Processing Artifacts
 ```javascript
 function processA2aResponse(response) {
-  // Extract human message
-  const message = response.artifacts?.[0]?.parts
-    ?.find(p => p.kind === 'text')?.text;
-    
-  // Extract structured data
-  const data = response.artifacts?.[0]?.parts
-    ?.find(p => p.kind === 'data')?.data;
-    
-  return { message, data, status: response.status };
+  // A2A responses may contain multiple artifacts - iterate through them
+  const artifacts = response.artifacts || [];
+
+  // For simple single-artifact responses, access first artifact
+  const artifact = artifacts[0];
+  if (artifact) {
+    const message = artifact.parts?.find(p => p.kind === 'text')?.text;
+    const data = artifact.parts?.find(p => p.kind === 'data')?.data;
+    return {
+      artifactId: artifact.artifactId,
+      message,
+      data,
+      status: response.status
+    };
+  }
+
+  return { status: response.status };
 }
 ```
 
