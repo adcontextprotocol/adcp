@@ -170,7 +170,7 @@ AdCP responses over A2A **MUST** include at least one `DataPart` (kind: 'data') 
         "text": "Found 12 video products perfect for pet food campaigns"
       },
       {
-        "kind": "data",          // Required - contains AdCP response payload
+        "kind": "data",
         "data": {
           "products": [...],
           "total": 12
@@ -194,19 +194,24 @@ AdCP responses over A2A **MUST** include at least one `DataPart` (kind: 'data') 
 AdCP responses use the **last `DataPart` as authoritative** when multiple data parts exist (e.g., from streaming operations):
 
 ```javascript
-// Extract the artifact (currently AdCP returns single artifact per response)
-const artifact = response.artifacts?.[0];
+function processA2aResponse(response) {
+  // A2A responses may contain multiple artifacts - iterate through them
+  const artifacts = response.artifacts || [];
 
-if (artifact) {
-  const message = artifact.parts?.find(p => p.kind === 'text')?.text;
-  const data = artifact.parts?.find(p => p.kind === 'data')?.data;
+  // For simple single-artifact responses, access first artifact
+  const artifact = artifacts[0];
+  if (artifact) {
+    const message = artifact.parts?.find(p => p.kind === 'text')?.text;
+    const data = artifact.parts?.find(p => p.kind === 'data')?.data;
+    return {
+      artifactId: artifact.artifactId,
+      message,
+      data,
+      status: response.status
+    };
+  }
 
-  return {
-    artifactId: artifact.artifactId,
-    message,
-    data,
-    status: response.status
-  };
+  return { status: response.status };
 }
 
 return { status: response.status };

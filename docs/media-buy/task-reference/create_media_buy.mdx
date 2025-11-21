@@ -465,6 +465,7 @@ data: {"message": "Validating packages..."}
 data: {"message": "Checking inventory availability..."}
 data: {"message": "Creating campaign in ad server..."}
 data: {"status": {"state": "completed"}, "artifacts": [{
+  "artifactId": "artifact-mb-conf-abc123",
   "name": "media_buy_confirmation",
   "parts": [
     {"kind": "text", "text": "Successfully created $100,000 media buy. Upload creatives by Jan 30."},
@@ -607,7 +608,7 @@ data: {"message": "Sales team notified. Expected review time: 2-4 hours"}
 data: {"message": "First approval received from regional manager"}
 data: {"message": "Second approval received from finance team"}
 data: {"status": {"state": "completed"}, "artifacts": [{
-  "artifactId": "artifact-mb-large-xyz",
+  "artifactId": "artifact-mb-approval-xyz789",
   "name": "media_buy_confirmation",
   "parts": [
     {"kind": "text", "text": "Media buy approved and created successfully. $500,000 campaign scheduled Feb 1 - Jun 30. Upload creatives by Jan 30."},
@@ -906,11 +907,20 @@ Example error response:
 
 ```json
 {
-  "errors": [{
-    "code": "FORMAT_INCOMPATIBLE",
-    "message": "Product 'prod_d979b543' does not support format 'display_728x90'",
-    "field": "packages[0].format_ids",
-    "suggestion": "Use display_300x250_image, display_300x250_html, or display_300x250_generative formats"
+  "taskId": "task-mb-webhook-001",
+  "contextId": "ctx-conversation-xyz",
+  "status": {"state": "completed"},
+  "artifacts": [{
+    "artifactId": "artifact-mb-webhook-def456",
+    "name": "media_buy_confirmation",
+    "parts": [
+      {"kind": "data", "data": {
+        "media_buy_id": "mb_789456",
+        "buyer_ref": "large_campaign_2024",
+        "creative_deadline": "2024-01-30T23:59:59Z",
+        "packages": [...]
+      }}
+    ]
   }]
 }
 ```
