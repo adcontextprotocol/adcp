@@ -103,8 +103,7 @@
                 "type": "array",
                 "description": "Property IDs this agent is authorized for. Resolved against the top-level properties array in this file",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[a-z0-9_]+$"
+                  "$ref": "/schemas/v1/core/property-id.json"
                 },
                 "minItems": 1
               }
@@ -135,8 +134,7 @@
                 "type": "array",
                 "description": "Tags identifying which properties this agent is authorized for. Resolved against the top-level properties array in this file using tag matching",
                 "items": {
-                  "type": "string",
-                  "pattern": "^[a-z0-9_]+$"
+                  "$ref": "/schemas/v1/core/property-tag.json"
                 },
                 "minItems": 1
               }
