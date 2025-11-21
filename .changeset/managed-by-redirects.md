@@ -4,7 +4,7 @@
 
 Add `authoritative_file` redirect field to adagents.json specification.
 
-Publishers can now delegate their advertising operations to a third-party manager by specifying the full URL of the authoritative adagents.json file. When present, buyer agents should fetch and use the file at this URL instead of the local file.
+Publishers can now delegate their **entire adagents.json file** (properties + authorization) to a third-party manager by specifying the full URL where the complete, authoritative file is hosted. When present, buyer agents should fetch and use that file instead of the local file - replacing both the property list and the authorized agents.
 
 **New schema field:**
 - `authoritative_file` - Optional HTTPS URL pointing to the authoritative adagents.json file
@@ -17,10 +17,11 @@ Publishers can now delegate their advertising operations to a third-party manage
 - Each property gets a distinct, cacheable URL
 
 **Common use cases (ownership/management delegation):**
-- Multi-brand corporations (Instagram/Facebook owned by Meta delegate to Meta)
-- Subsidiary relationships (local news sites delegate to parent media company)
+- Multi-brand corporations (Instagram/Facebook owned by Meta delegate complete file to Meta)
+- Subsidiary relationships (local news sites delegate complete file to parent media company)
 - Publisher consortiums (member publishers delegate to centralized management)
-- White-label platforms (publishers using platform delegate to platform provider)
+- Ad server / platform hosting (publisher's properties and authorization managed by their ad server/SSP)
+- White-label platforms (publishers using platform delegate complete file to platform provider)
 
 **NOT for (use standard authorization patterns instead):**
 - Sales representation (e.g., DOOH networks selling venues they don't own)
@@ -39,4 +40,6 @@ Publishers can now delegate their advertising operations to a third-party manage
 - Added DOOH counter-example showing proper sales representation pattern (NO delegation)
 - Security considerations including SSRF protection
 
-**Key insight from ads.txt:** Like MANAGERDOMAIN, `authoritative_file` is about **business relationships** (who manages authorization), not just technical redirection. Unlike MANAGERDOMAIN, it provides actual delegation with property-specific files instead of just metadata.
+**Key insight from ads.txt:** Like MANAGERDOMAIN, `authoritative_file` is about **business relationships** (who manages the file), not just technical redirection. Unlike MANAGERDOMAIN, it provides actual delegation with property-specific files instead of just metadata.
+
+**Critical understanding:** The authoritative file replaces the ENTIRE local file - both properties and authorized_agents. This is especially powerful for platform/ad server hosting, where the property list comes from the same database as ad serving, ensuring single source of truth.

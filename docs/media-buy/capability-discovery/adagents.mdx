@@ -103,9 +103,11 @@ The optional `contact` object identifies who manages this `adagents.json` file -
 
 ## Authoritative File Redirects
 
-The optional `authoritative_file` field enables publishers to delegate **authorization file management** to another entity by specifying the exact URL of the authoritative adagents.json file. When present, buyer agents should fetch and use the file at this URL instead of the local file.
+The optional `authoritative_file` field enables publishers to delegate **their entire adagents.json file** to another entity by specifying the exact URL where the complete, authoritative file is hosted. When present, buyer agents should fetch and use that file instead of the local file - replacing **both the property list and the authorized agents**.
 
-**Critical distinction:** This is for **ownership/management delegation**, not sales representation. The delegating publisher must control their domain and choose to have someone else manage their authorization file.
+**What gets replaced:** The ENTIRE file - properties, tags, authorized_agents, everything. The authoritative file is the complete source of truth for what properties exist and who can sell them.
+
+**Critical distinction:** This is for **ownership/management delegation**, not sales representation. The delegating publisher must control their domain and choose to have someone else host their complete authorization file.
 
 **Why full URLs matter:**
 - Managers can serve property-specific files (e.g., `meta.com/.well-known/adagents/instagram.json`)
@@ -115,10 +117,11 @@ The optional `authoritative_file` field enables publishers to delegate **authori
 - Each property gets a distinct, cacheable URL
 
 **Valid use cases (publisher controls domain):**
-- **Multi-brand corporations**: Instagram/Facebook/WhatsApp (owned by Meta) delegate to Meta
-- **Subsidiary relationships**: Local news site delegates to parent media company
+- **Multi-brand corporations**: Instagram/Facebook/WhatsApp (owned by Meta) delegate complete file to Meta
+- **Subsidiary relationships**: Local news site delegates complete file to parent media company
 - **Publisher consortiums**: Member publishers delegate to consortium's centralized management
-- **White-label platforms**: Publishers using platform delegate to platform provider (if publisher owns domain)
+- **Ad server / platform hosting**: Publisher's properties and authorization managed by their ad server or SSP platform
+- **White-label platforms**: Publishers using platform delegate complete file to platform provider
 
 **NOT for (these use standard authorization patterns):**
 - **Sales representation**: DOOH network selling venues they don't own - venues don't have domains to delegate from
@@ -149,27 +152,80 @@ Manager hosts separate files for each property:
 - By domain: `meta.com/.well-known/adagents/instagram.com.json`
 - Nested: `meta.com/.well-known/adagents/social/instagram.json`
 
-### Dynamic Generation with Query Parameters
+### Dynamic Generation: Platform/Ad Server Hosting
 
-Manager dynamically generates files based on query parameters:
+Publisher delegates to their ad server or SSP platform, which dynamically generates the COMPLETE file (properties + authorization) from their system of record:
 
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
   "contact": {
-    "name": "Venue Operations"
+    "name": "Example Publisher",
+    "email": "ads@publisher.com",
+    "domain": "publisher.com"
   },
-  "authoritative_file": "https://manager.clearchannel.com/adagents?domain=timessquare-venue.com"
+  "authoritative_file": "https://adserver.example.com/adagents?publisher=publisher.com"
 }
 ```
 
-**What happens**: Manager's server receives the request, generates the appropriate authorization file on-the-fly based on the `domain` parameter, and returns it.
+**What the platform returns** (dynamically generated from ad server database):
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "contact": {
+    "name": "Example Ad Server",
+    "domain": "adserver.example.com"
+  },
+  "properties": [
+    {
+      "property_type": "website",
+      "name": "Publisher Main Site",
+      "identifiers": [
+        {"type": "domain", "value": "publisher.com"}
+      ],
+      "publisher_domain": "publisher.com",
+      "tags": ["web", "news"]
+    },
+    {
+      "property_type": "mobile_app",
+      "name": "Publisher Mobile App",
+      "identifiers": [
+        {"type": "ios_bundle", "value": "com.publisher.app"},
+        {"type": "android_package", "value": "com.publisher.app"}
+      ],
+      "publisher_domain": "publisher.com",
+      "tags": ["mobile", "news"]
+    }
+    // Properties pulled from ad server's property database
+  ],
+  "tags": {
+    "web": {"name": "Web Properties", "description": "Website inventory"},
+    "mobile": {"name": "Mobile Apps", "description": "Mobile app inventory"}
+  },
+  "authorized_agents": [
+    {
+      "url": "https://sales.publisher.com",
+      "authorized_for": "Direct sales",
+      "authorization_type": "property_tags",
+      "property_tags": ["web", "mobile"]
+    },
+    {
+      "url": "https://programmatic.adserver.example.com",
+      "authorized_for": "Programmatic sales through platform",
+      "authorization_type": "property_tags",
+      "property_tags": ["web", "mobile"]
+    }
+  ],
+  "last_updated": "2025-01-10T16:00:00Z"
+}
+```
 
-**Benefits of dynamic generation:**
-- No static file maintenance per property
-- Can pull from database or configuration
-- Enables real-time authorization updates
-- Supports thousands of properties without file proliferation
+**Benefits of platform hosting:**
+- **Single source of truth**: Properties and authorization pulled from same database as ad serving
+- **Real-time accuracy**: Changes in ad server immediately reflected in adagents.json
+- **No manual maintenance**: Publisher doesn't manage static files
+- **Property discovery**: Platform knows exactly what properties exist and their configuration
+- **Automatic updates**: New properties auto-appear when added to ad server
 
 ### Minimal Redirect
 
