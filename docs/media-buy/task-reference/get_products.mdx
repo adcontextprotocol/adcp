@@ -33,6 +33,38 @@ const result = await testAgent.getProducts({
 
 if (result.success && result.data) {
   console.log(`Found ${result.data.products.length} products`);
+
+  // Expected response structure
+  const expectedResponse = {
+    products: [{
+      product_id: "connected_tv_premium",
+      name: "Connected TV - Premium Sports",
+      description: "Premium CTV inventory during live sports programming with guaranteed delivery",
+      publisher_properties: [{
+        publisher_domain: "sports-network.com",
+        property_ids: ["live-nfl", "live-nba"],
+        selection_type: "by_id"
+      }],
+      format_ids: ["video_15s_vast", "video_30s_vast"],
+      delivery_type: "guaranteed",
+      delivery_measurement: {
+        metric: "impressions",
+        min_exposures: 1000000,
+        provider: "third_party"
+      },
+      pricing_options: [{
+        pricing_option_id: "cpm_usd_fixed",
+        pricing_model: "cpm",
+        rate: 25.00,
+        currency: "USD",
+        is_fixed: true
+      }],
+      brief_relevance: "Premium sports inventory matches your athletic footwear campaign targeting active audiences"
+    }]
+  };
+
+  // In tests, this validates the response structure
+  // validateResponseShape(result.data, expectedResponse);
 }
 ```
 
@@ -468,8 +500,12 @@ const fullCatalog = await testAgent.getProducts({
   }
 });
 
-console.log(`With auth: ${fullCatalog.products.length} products`);
-console.log(`First product pricing: ${fullCatalog.products[0].pricing_options.length} options`);
+if (fullCatalog.success) {
+  console.log(`With auth: ${fullCatalog.data.products.length} products`);
+  console.log(`First product pricing: ${fullCatalog.data.products[0].pricing_options.length} options`);
+} else {
+  console.error(`Failed to get products: ${fullCatalog.error}`);
+}
 
 // WITHOUT authentication - limited public catalog
 const publicCatalog = await testAgentNoAuth.getProducts({
@@ -480,8 +516,12 @@ const publicCatalog = await testAgentNoAuth.getProducts({
   }
 });
 
-console.log(`Without auth: ${publicCatalog.products.length} products`);
-console.log(`First product pricing: ${publicCatalog.products[0].pricing_options?.length || 0} options`);
+if (publicCatalog.success) {
+  console.log(`Without auth: ${publicCatalog.data.products.length} products`);
+  console.log(`First product pricing: ${publicCatalog.data.products[0].pricing_options?.length || 0} options`);
+} else {
+  console.error(`Failed to get products: ${publicCatalog.error}`);
+}
 ```
 
 ```python Python
