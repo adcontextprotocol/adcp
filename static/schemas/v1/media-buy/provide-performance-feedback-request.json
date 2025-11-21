@@ -10,6 +10,11 @@
       "description": "Publisher's media buy identifier",
       "minLength": 1
     },
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference for the media buy",
+      "minLength": 1
+    },
     "measurement_period": {
       "type": "object",
       "description": "Time period for performance measurement",
@@ -62,10 +67,21 @@
       "additionalProperties": true
     }
   },
-  "required": [
-    "media_buy_id",
-    "measurement_period",
-    "performance_index"
+  "oneOf": [
+    {
+      "required": [
+        "media_buy_id",
+        "measurement_period",
+        "performance_index"
+      ]
+    },
+    {
+      "required": [
+        "buyer_ref",
+        "measurement_period",
+        "performance_index"
+      ]
+    }
   ],
   "additionalProperties": false
 }
