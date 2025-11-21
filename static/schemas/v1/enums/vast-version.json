@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/enums/vast-version.json",
+  "title": "VAST Version",
+  "description": "Supported VAST (Video Ad Serving Template) specification versions",
+  "type": "string",
+  "enum": ["2.0", "3.0", "4.0", "4.1", "4.2"]
+}

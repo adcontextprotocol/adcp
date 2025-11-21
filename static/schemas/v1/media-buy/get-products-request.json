@@ -28,12 +28,7 @@
           "type": "array",
           "description": "Filter by format types",
           "items": {
-            "type": "string",
-            "enum": [
-              "video",
-              "display",
-              "audio"
-            ]
+            "$ref": "/schemas/v1/enums/format-category.json"
           }
         },
         "format_ids": {

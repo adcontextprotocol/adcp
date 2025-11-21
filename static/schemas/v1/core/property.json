@@ -11,8 +11,7 @@
       "pattern": "^[a-z0-9_]+$"
     },
     "property_type": {
-      "type": "string",
-      "enum": ["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"],
+      "$ref": "/schemas/v1/enums/property-type.json",
       "description": "Type of advertising property"
     },
     "name": {

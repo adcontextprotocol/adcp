@@ -90,8 +90,7 @@
                 "pattern": "^\\d+:\\d+$"
               },
               "unit": {
-                "type": "string",
-                "enum": ["px", "dp", "inches", "cm"],
+                "$ref": "/schemas/v1/enums/dimension-unit.json",
                 "default": "px",
                 "description": "Unit of measurement for dimensions"
               }

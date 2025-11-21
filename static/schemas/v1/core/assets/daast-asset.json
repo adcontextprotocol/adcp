@@ -18,8 +18,7 @@
           "description": "URL endpoint that returns DAAST XML"
         },
         "daast_version": {
-          "type": "string",
-          "enum": ["1.0", "1.1"],
+          "$ref": "/schemas/v1/enums/daast-version.json",
           "description": "DAAST specification version"
         },
         "duration_ms": {
@@ -30,20 +29,7 @@
         "tracking_events": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "start",
-              "firstQuartile",
-              "midpoint",
-              "thirdQuartile",
-              "complete",
-              "impression",
-              "pause",
-              "resume",
-              "skip",
-              "mute",
-              "unmute"
-            ]
+            "$ref": "/schemas/v1/enums/daast-tracking-event.json"
           },
           "description": "Tracking events supported by this DAAST tag"
         },
@@ -68,8 +54,7 @@
           "description": "Inline DAAST XML content"
         },
         "daast_version": {
-          "type": "string",
-          "enum": ["1.0", "1.1"],
+          "$ref": "/schemas/v1/enums/daast-version.json",
           "description": "DAAST specification version"
         },
         "duration_ms": {
@@ -80,20 +65,7 @@
         "tracking_events": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "start",
-              "firstQuartile",
-              "midpoint",
-              "thirdQuartile",
-              "complete",
-              "impression",
-              "pause",
-              "resume",
-              "skip",
-              "mute",
-              "unmute"
-            ]
+            "$ref": "/schemas/v1/enums/daast-tracking-event.json"
           },
           "description": "Tracking events supported by this DAAST tag"
         },

@@ -10,22 +10,14 @@
       "description": "Filter criteria for querying tasks",
       "properties": {
         "domain": {
-          "type": "string",
-          "description": "Filter by single AdCP domain",
-          "enum": [
-            "media-buy",
-            "signals"
-          ]
+          "$ref": "/schemas/v1/enums/adcp-domain.json",
+          "description": "Filter by single AdCP domain"
         },
         "domains": {
           "type": "array",
           "description": "Filter by multiple AdCP domains",
           "items": {
-            "type": "string",
-            "enum": [
-              "media-buy",
-              "signals"
-            ]
+            "$ref": "/schemas/v1/enums/adcp-domain.json"
           }
         },
         "status": {
@@ -106,11 +98,7 @@
           "description": "Field to sort by"
         },
         "direction": {
-          "type": "string",
-          "enum": [
-            "asc",
-            "desc"
-          ],
+          "$ref": "/schemas/v1/enums/sort-direction.json",
           "default": "desc",
           "description": "Sort direction"
         }

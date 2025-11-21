@@ -24,14 +24,7 @@
                 "description": "Creative ID from the request"
               },
               "action": {
-                "type": "string",
-                "enum": [
-                  "created",
-                  "updated",
-                  "unchanged",
-                  "failed",
-                  "deleted"
-                ],
+                "$ref": "/schemas/v1/enums/creative-action.json",
                 "description": "Action taken for this creative"
               },
               "platform_id": {

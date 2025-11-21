@@ -18,9 +18,8 @@
       "description": "Type of AdCP operation that triggered this webhook. Enables webhook handlers to route to appropriate processing logic."
     },
     "domain": {
-      "type": "string",
-      "description": "AdCP domain this task belongs to. Helps classify the operation type at a high level.",
-      "enum": ["media-buy", "signals"]
+      "$ref": "/schemas/v1/enums/adcp-domain.json",
+      "description": "AdCP domain this task belongs to. Helps classify the operation type at a high level."
     },
     "status": {
       "$ref": "/schemas/v1/enums/task-status.json",

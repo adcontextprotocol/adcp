@@ -10,8 +10,7 @@
       "description": "JavaScript content"
     },
     "module_type": {
-      "type": "string",
-      "enum": ["esm", "commonjs", "script"],
+      "$ref": "/schemas/v1/enums/javascript-module-type.json",
       "description": "JavaScript module type"
     }
   },

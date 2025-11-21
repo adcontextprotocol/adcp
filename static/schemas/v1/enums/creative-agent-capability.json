@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/enums/creative-agent-capability.json",
+  "title": "Creative Agent Capability",
+  "description": "Capabilities supported by creative agents for format handling",
+  "type": "string",
+  "enum": ["validation", "assembly", "generation", "preview"]
+}

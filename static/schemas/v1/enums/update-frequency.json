@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/v1/enums/update-frequency.json",
+  "title": "Update Frequency",
+  "description": "Frequency of product catalog updates",
+  "type": "string",
+  "enum": ["realtime", "hourly", "daily", "weekly"]
+}
