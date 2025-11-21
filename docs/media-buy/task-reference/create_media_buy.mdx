@@ -189,37 +189,469 @@ Add geographic restrictions and frequency capping:
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
-const result = await testAgent.createMediaBuy({
-  buyer_ref: 'regional_campaign_2025',
-  brand_manifest: {
-    name: 'Regional Retailer',
-    url: 'https://example-retailer.com'
-  },
-  packages: [{
-    buyer_ref: 'ctv_regional',
-    product_id: 'prod_d979b543',
-    pricing_option_id: 'cpm_usd_auction',
-    format_ids: [{
-      agent_url: 'https://creative.adcontextprotocol.org',
-      id: 'display_300x250_image'
-    }],
-    budget: 50000,
-    targeting_overlay: {
-      geo_country_any_of: ['US'],
-      geo_region_any_of: ['CA', 'NY'],
-      frequency_cap: {
-        suppress_minutes: 60
+The message is returned differently in each protocol:
+- **MCP**: Returned as a `message` field in the JSON response
+- **A2A**: Returned as a text part in the artifact
+
+## Response (Payload)
+
+```json
+{
+  "media_buy_id": "string",
+  "buyer_ref": "string",
+  "creative_deadline": "string",
+  "packages": [
+    {
+      "package_id": "string",
+      "buyer_ref": "string",
+      "product_id": "string",
+      "budget": 50000,
+      "pacing": "even",
+      "pricing_option_id": "string",
+      "status": "active",
+      "creative_assignments": [],
+      "format_ids_to_provide": []
+    }
+  ]
+}
+```
+
+### Field Descriptions
+
+- **media_buy_id**: Publisher's unique identifier for the created media buy
+- **buyer_ref**: Buyer's reference identifier for this media buy
+- **creative_deadline**: ISO 8601 timestamp for creative upload deadline
+- **packages**: Array of created packages with complete state information (full Package objects)
+  - **package_id**: Publisher's unique identifier for the package
+  - **buyer_ref**: Buyer's reference identifier for the package
+  - **product_id**: ID of the product this package is based on
+  - **budget**: Budget allocation for this package
+  - **pacing**: Pacing strategy (even, asap, front_loaded)
+  - **pricing_option_id**: Selected pricing option ID
+  - **status**: Current package status
+  - **creative_assignments**: Array of creative assignments for this package
+  - **format_ids_to_provide**: Format IDs that will be provided for this package
+
+## Protocol-Specific Examples
+
+The AdCP payload is identical across protocols. Only the request/response wrapper differs.
+
+### MCP Request
+```json
+{
+  "tool": "create_media_buy",
+  "arguments": {
+    "buyer_ref": "nike_q1_campaign_2024",
+    "packages": [
+      {
+        "buyer_ref": "nike_ctv_sports_package",
+        "product_id": "ctv_sports_premium",
+        "format_ids": [
+          {
+            "agent_url": "https://creative.adcontextprotocol.org",
+            "id": "video_standard_30s"
+          },
+          {
+            "agent_url": "https://creative.adcontextprotocol.org",
+            "id": "video_standard_15s"
+          }
+        ],
+        "budget": 60000,
+        "pacing": "even",
+        "pricing_option_id": "cpm-fixed-sports",
+        "targeting_overlay": {
+          "geo_country_any_of": ["US"],
+          "geo_region_any_of": ["CA", "NY"],
+          "axe_include_segment": "x8dj3k"
+        },
+        "creative_ids": ["creative_abc123", "creative_def456"]
+      },
+      {
+        "buyer_ref": "nike_audio_drive_package",
+        "product_id": "audio_drive_time",
+        "format_ids": [
+          {
+            "agent_url": "https://creative.adcontextprotocol.org",
+            "id": "audio_standard_30s"
+          }
+        ],
+        "budget": 40000,
+        "pacing": "front_loaded",
+        "pricing_option_id": "cpm-fixed-audio",
+        "targeting_overlay": {
+          "geo_country_any_of": ["US"],
+          "geo_region_any_of": ["CA"],
+          "axe_exclude_segment": "x9m2p"
+        }
+      }
+    ],
+    "brand_manifest": {
+      "name": "Nike",
+      "url": "https://nike.com"
+    },
+    "po_number": "PO-2024-Q1-001",
+    "start_time": "2024-02-01T00:00:00Z",
+    "end_time": "2024-03-31T23:59:59Z",
+    "reporting_webhook": {
+      "url": "https://buyer.example.com/webhooks/reporting",
+      "auth_type": "bearer",
+      "auth_token": "secret_reporting_token_xyz",
+      "reporting_frequency": "daily",
+      "requested_metrics": ["impressions", "spend", "video_completions", "completion_rate"]
+    }
+  }
+}
+```
+
+### MCP Response (Synchronous)
+```json
+{
+  "message": "Successfully created $100,000 media buy. Upload creatives by Jan 30. Campaign will run from Feb 1 to Mar 31.",
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_12345_001",
+      "buyer_ref": "nike_ctv_sports_package"
+    },
+    {
+      "package_id": "pkg_12345_002",
+      "buyer_ref": "nike_audio_drive_package"
+    }
+  ]
+}
+```
+
+### MCP Response (Partial Success with Errors)
+```json
+{
+  "message": "Media buy created but some packages had issues. Review targeting for best performance.",
+  "media_buy_id": "mb_12346",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_12346_001",
+      "buyer_ref": "nike_ctv_sports_package"
+    }
+  ],
+  "errors": [
+    {
+      "code": "TARGETING_TOO_NARROW",
+      "message": "Package targeting yielded 0 available impressions",
+      "field": "packages[1].targeting_overlay",
+      "suggestion": "Broaden geographic targeting or remove segment exclusions",
+      "details": {
+        "requested_budget": 40000,
+        "available_impressions": 0,
+        "affected_package": "nike_audio_drive_package"
       }
     }
-  }],
-  start_time: 'asap',
-  end_time: '2025-12-31T23:59:59Z'
-});
+  ]
+}
+```
 
-if (result.errors) {
-  console.error('Creation failed:', result.errors);
-} else {
-  console.log(`Campaign ${result.media_buy_id} created with targeting`);
+### MCP Response (Asynchronous)
+```json
+{
+  "task_id": "task_456",
+  "status": "working",
+  "message": "Creating media buy...",
+  "poll_url": "/tasks/task_456"
+}
+```
+
+### A2A Request
+
+#### Natural Language Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "text",
+      text: "Create a $100K Nike campaign from Feb 1 to Mar 31. Use the CTV sports and audio drive time products we discussed. Split budget 60/40."
+    }]
+  }
+});
+```
+
+#### Explicit Skill Invocation
+```javascript
+await a2a.send({
+  message: {
+    parts: [
+      {
+        kind: "text",
+        text: "Creating Nike Q1 campaign"  // Optional context
+      },
+      {
+        kind: "data",
+        data: {
+          skill: "create_media_buy",  // Must match skill name in Agent Card
+          parameters: {
+            "buyer_ref": "nike_q1_campaign_2024",
+            "packages": [
+              {
+                "buyer_ref": "nike_ctv_sports_package",
+                "product_id": "ctv_sports_premium",
+                "format_ids": [
+                  {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "video_standard_30s"
+                  },
+                  {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "video_standard_15s"
+                  }
+                ],
+                "budget": 60000,
+                "pacing": "even",
+                "pricing_option_id": "cpm-fixed-sports",
+                "targeting_overlay": {
+                  "geo_country_any_of": ["US"],
+                  "geo_region_any_of": ["CA", "NY"],
+                  "axe_include_segment": "x8dj3k"
+                },
+                "creative_ids": ["creative_abc123", "creative_def456"]
+              },
+              {
+                "buyer_ref": "nike_audio_drive_package",
+                "product_id": "audio_drive_time",
+                "format_ids": [
+                  {
+                    "agent_url": "https://creative.adcontextprotocol.org",
+                    "id": "audio_standard_30s"
+                  }
+                ],
+                "budget": 40000,
+                "pacing": "front_loaded",
+                "pricing_option_id": "cpm-fixed-audio",
+                "targeting_overlay": {
+                  "geo_country_any_of": ["US"],
+                  "geo_region_any_of": ["CA"],
+                  "axe_exclude_segment": "x9m2p"
+                }
+              }
+            ],
+            "brand_manifest": {
+              "name": "Nike",
+              "url": "https://nike.com"
+            },
+            "po_number": "PO-2024-Q1-001",
+            "start_time": "2024-02-01T00:00:00Z",
+            "end_time": "2024-03-31T23:59:59Z"
+          }
+        }
+      }
+    ]
+  }
+});
+```
+
+### A2A Response (with streaming)
+Initial response:
+```json
+{
+  "taskId": "task-mb-001",
+  "status": { "state": "working" }
+}
+```
+
+Then via Server-Sent Events:
+```
+data: {"message": "Validating packages..."}
+data: {"message": "Checking inventory availability..."}
+data: {"message": "Creating campaign in ad server..."}
+data: {"status": {"state": "completed"}, "artifacts": [{
+  "name": "media_buy_confirmation",
+  "parts": [
+    {"kind": "text", "text": "Successfully created $100,000 media buy. Upload creatives by Jan 30."},
+    {"kind": "data", "data": {
+      "media_buy_id": "mb_12345",
+      "buyer_ref": "nike_q1_campaign_2024",
+      "creative_deadline": "2024-01-30T23:59:59Z",
+      "packages": [
+        {"package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package"},
+        {"package_id": "pkg_12345_002", "buyer_ref": "nike_audio_drive_package"}
+      ]
+    }}
+  ]
+}]}
+```
+
+### Key Differences
+- **MCP**: May return synchronously or asynchronously with updates via:
+  - Polling (calling status endpoints)
+  - Webhooks (push notifications to callback URLs)
+  - Streaming (WebSockets or SSE)
+- **A2A**: Always returns task with updates via:
+  - Server-Sent Events (SSE) for real-time streaming
+  - Webhooks (push notifications) for long-running tasks
+- **Payload**: The `parameters` field in A2A contains the exact same structure as MCP's `arguments`
+
+## Human-in-the-Loop Examples
+
+### MCP with Manual Approval (Polling Example)
+
+This example shows polling, but MCP implementations may also support webhooks or streaming for real-time updates.
+
+**Initial Request:**
+```json
+{
+  "tool": "create_media_buy",
+  "arguments": {
+    "buyer_ref": "large_campaign_2024",
+    "packages": [...],
+    "brand_manifest": {
+      "name": "ACME Corporation",
+      "url": "https://acmecorp.com"
+    },
+    "po_number": "PO-2024-LARGE-001",
+    "start_time": "2024-02-01T00:00:00Z",
+    "end_time": "2024-06-30T23:59:59Z"
+  }
+}
+```
+
+**Response (Asynchronous):**
+```json
+{
+  "task_id": "task_456",
+  "status": "working",
+  "message": "Large budget requires sales team approval. Expected review time: 2-4 hours.",
+  "context_id": "ctx-mb-456"
+}
+```
+
+**Client checks status (via polling in this example):**
+```json
+{
+  "tool": "create_media_buy_status",
+  "arguments": {
+    "context_id": "ctx-mb-456"
+  }
+}
+```
+
+**Status Response (Still pending):**
+```json
+{
+  "status": "working",
+  "message": "Awaiting manual approval. Sales team reviewing. 1 of 2 approvals received.",
+  "context_id": "ctx-mb-456",
+  "responsible_party": "publisher",
+  "estimated_completion": "2024-01-15T16:00:00Z"
+}
+```
+
+**Status Response (Approved):**
+```json
+{
+  "status": "completed",
+  "message": "Media buy approved and created. Upload creatives by Jan 30.",
+  "media_buy_id": "mb_789456",
+  "buyer_ref": "large_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [...]
+}
+```
+
+### A2A with Manual Approval (SSE Example)
+
+A2A can use Server-Sent Events for real-time streaming or webhooks for push notifications.
+
+**Initial Request with SSE:**
+```json
+{
+  "message": {
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "create_media_buy",
+        "parameters": {
+          "buyer_ref": "large_campaign_2024",
+          "packages": [...],
+          "brand_manifest": {
+            "name": "ACME Corporation",
+            "url": "https://acmecorp.com"
+          },
+          "po_number": "PO-2024-LARGE-001",
+          "start_time": "2024-02-01T00:00:00Z",
+          "end_time": "2024-06-30T23:59:59Z"
+        }
+      }
+    }]
+  }
+}
+```
+
+**Initial Response:**
+```json
+{
+  "taskId": "task-mb-large-001",
+  "contextId": "ctx-conversation-xyz",
+  "status": { 
+    "state": "working",
+    "message": "Large budget requires sales team approval"
+  }
+}
+```
+
+**SSE Updates (Human approval process):**
+```
+data: {"message": "Validating campaign requirements..."}
+data: {"message": "Budget exceeds auto-approval threshold. Routing to sales team..."}
+data: {"message": "Sales team notified. Expected review time: 2-4 hours"}
+data: {"message": "First approval received from regional manager"}
+data: {"message": "Second approval received from finance team"}
+data: {"status": {"state": "completed"}, "artifacts": [{
+  "artifactId": "artifact-mb-large-xyz",
+  "name": "media_buy_confirmation",
+  "parts": [
+    {"kind": "text", "text": "Media buy approved and created successfully. $500,000 campaign scheduled Feb 1 - Jun 30. Upload creatives by Jan 30."},
+    {"kind": "data", "data": {
+      "media_buy_id": "mb_789456",
+      "buyer_ref": "large_campaign_2024",
+      "creative_deadline": "2024-01-30T23:59:59Z",
+      "packages": [...]
+    }}
+  ]
+}]}
+```
+
+### A2A with Webhooks (Long-Running Task)
+
+**Initial Request with Webhook Configuration:**
+```json
+{
+  "message": {
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "create_media_buy",
+        "parameters": {
+          "buyer_ref": "large_campaign_2024",
+          "packages": [...],
+          "brand_manifest": {
+            "name": "ACME Corporation",
+            "url": "https://acmecorp.com"
+          },
+          "po_number": "PO-2024-LARGE-001",
+          "start_time": "2024-02-01T00:00:00Z",
+          "end_time": "2024-06-30T23:59:59Z"
+        }
+      }
+    }]
+  },
+  "configuration": {
+    "pushNotificationConfig": {
+      "url": "https://buyer.example.com/webhooks/adcp",
+      "authType": "bearer",
+      "authToken": "secret-token-xyz"
+    }
+  }
 }
 ```
 
