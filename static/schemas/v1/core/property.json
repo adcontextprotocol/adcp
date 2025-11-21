@@ -6,9 +6,8 @@
   "type": "object",
   "properties": {
     "property_id": {
-      "type": "string",
-      "description": "Unique identifier for this property (optional). Enables referencing properties by ID instead of repeating full objects. Recommended format: lowercase with underscores (e.g., 'cnn_ctv_app', 'instagram_mobile')",
-      "pattern": "^[a-z0-9_]+$"
+      "$ref": "/schemas/v1/core/property-id.json",
+      "description": "Unique identifier for this property (optional). Enables referencing properties by ID instead of repeating full objects."
     },
     "property_type": {
       "$ref": "/schemas/v1/enums/property-type.json",
@@ -42,9 +41,7 @@
       "type": "array",
       "description": "Tags for categorization and grouping (e.g., network membership, content categories)",
       "items": {
-        "type": "string",
-        "pattern": "^[a-z0-9_]+$",
-        "description": "Lowercase tag with underscores (e.g., 'conde_nast_network', 'premium_content')"
+        "$ref": "/schemas/v1/core/property-tag.json"
       },
       "uniqueItems": true
     },

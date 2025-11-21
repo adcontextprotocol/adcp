@@ -160,6 +160,14 @@
         "signal-filters": {
           "$ref": "/schemas/v1/core/signal-filters.json",
           "description": "Filters to refine signal discovery results"
+        },
+        "property-id": {
+          "$ref": "/schemas/v1/core/property-id.json",
+          "description": "Identifier for a publisher property - lowercase alphanumeric with underscores only"
+        },
+        "property-tag": {
+          "$ref": "/schemas/v1/core/property-tag.json",
+          "description": "Tag for categorizing publisher properties - lowercase alphanumeric with underscores only"
         }
       }
     },
