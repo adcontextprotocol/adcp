@@ -195,14 +195,13 @@ AdCP responses use the **last `DataPart` as authoritative** when multiple data p
 
 ```javascript
 function processA2aResponse(response) {
-  // A2A responses may contain multiple artifacts - iterate through them
-  const artifacts = response.artifacts || [];
+  // Extract the artifact (currently AdCP returns single artifact per response)
+  const artifact = response.artifacts?.[0];
 
-  // For simple single-artifact responses, access first artifact
-  const artifact = artifacts[0];
   if (artifact) {
     const message = artifact.parts?.find(p => p.kind === 'text')?.text;
     const data = artifact.parts?.find(p => p.kind === 'data')?.data;
+
     return {
       artifactId: artifact.artifactId,
       message,
