@@ -558,7 +558,9 @@ class AdCPOrchestrator:
                             }
                         }]
                     },
-                    "push_notification_config": webhook_config
+                    "configuration": {
+                        "pushNotificationConfig": webhook_config
+                    }
                 })
             
             # 4. Handle response with unified status handling
