@@ -73,12 +73,12 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - **`tag_id`** *(optional)*: TAG Certified Against Fraud ID
 - **`properties`** *(optional)*: Array of properties covered by this file (same structure as `list_authorized_properties`)
 - **`tags`** *(optional)*: Metadata for property tags (same structure as `list_authorized_properties`)
-- **`authorized_agents`** *(required unless `managed_by` is present)*: Array of authorized sales agents
+- **`authorized_agents`** *(required unless `authoritative_file` is present)*: Array of authorized sales agents
   - **`url`** *(required)*: Agent's API endpoint URL
   - **`authorized_for`** *(required)*: Human-readable authorization description
   - **`property_tags`** *(optional)*: Tags identifying which properties this agent represents (resolved against top-level `properties`)
   - **`properties`** *(optional)*: Explicit property list (alternative to `property_tags`)
-- **`managed_by`** *(optional, alternative to `authorized_agents`)*: Domain of entity managing this publisher's ad operations. When present, buyer agents should fetch and use the adagents.json from this domain instead
+- **`authoritative_file`** *(optional, alternative to `authorized_agents`)*: Full URL to the authoritative adagents.json file for this publisher. When present, buyer agents should fetch and use the file at this URL instead. Enables delegation to third-party managers who can serve property-specific files (static or dynamically generated)
 - **`last_updated`** *(optional)*: ISO 8601 timestamp of last modification
 
 ## Contact Information
@@ -101,32 +101,26 @@ The optional `contact` object identifies who manages this `adagents.json` file -
 
 **Recommended fields**: Include `email`, `domain`, and `seller_id` when available to facilitate verification and communication.
 
-## Managed By Redirects
+## Authoritative File Redirects
 
-The optional `managed_by` field enables publishers to delegate their advertising operations to a third-party manager. When present, buyer agents should fetch the authoritative `adagents.json` from the managing domain instead.
+The optional `authoritative_file` field enables publishers to delegate their advertising operations to a third-party manager by specifying the exact URL of the authoritative adagents.json file. When present, buyer agents should fetch and use the file at this URL instead of the local file.
+
+**Why full URLs matter:**
+- Managers can serve property-specific files (e.g., `meta.com/.well-known/adagents/instagram.json`)
+- Supports both static files and dynamic generation (e.g., `?domain=instagram.com`)
+- No ambiguity about which file to fetch
+- Managers can organize files however they want
+- Each property gets a distinct, cacheable URL
 
 **Common use cases:**
-- **Multi-brand networks**: Instagram, Facebook, and WhatsApp redirect to `meta.com`
-- **DOOH networks**: Individual venue domains redirect to network operator (e.g., `clearchannel.com`)
-- **Publisher consortiums**: Member publishers redirect to consortium's centralized ad operations
-- **White-label platforms**: Publishers redirect to their platform provider's authorization
+- **Multi-brand networks**: Instagram/Facebook/WhatsApp redirect to property-specific Meta files
+- **DOOH networks**: Individual venue domains redirect to venue-specific network files
+- **Publisher consortiums**: Member publishers redirect to consortium's per-publisher files
+- **White-label platforms**: Publishers redirect to platform provider with dynamic generation
 
-### Simple Redirect
+### Static Property-Specific Files
 
-Minimal redirect with just the managing domain:
-
-```json
-{
-  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
-  "managed_by": "meta.com"
-}
-```
-
-**What happens**: When buyer agents fetch `instagram.com/.well-known/adagents.json`, they find `managed_by: "meta.com"` and immediately fetch `meta.com/.well-known/adagents.json` for the actual authorization data.
-
-### Redirect with Contact Info
-
-Include contact information for the local property even when redirecting:
+Manager hosts separate files for each property:
 
 ```json
 {
@@ -136,28 +130,69 @@ Include contact information for the local property even when redirecting:
     "email": "adops@instagram.com",
     "domain": "instagram.com"
   },
-  "managed_by": "meta.com",
+  "authoritative_file": "https://meta.com/.well-known/adagents/instagram.json",
   "last_updated": "2025-01-10T18:00:00Z"
 }
 ```
 
-**Why include contact**: Even though authorization comes from `meta.com`, property-specific questions may go to the Instagram team.
+**What happens**: Buyer agents fetch `instagram.com/.well-known/adagents.json`, find the `authoritative_file` URL, then fetch `https://meta.com/.well-known/adagents/instagram.json` for Instagram-specific authorization.
 
-### Validation Flow with managed_by
+**Organizational patterns:**
+- By property: `meta.com/.well-known/adagents/instagram.json`
+- By domain: `meta.com/.well-known/adagents/instagram.com.json`
+- Nested: `meta.com/.well-known/adagents/social/instagram.json`
 
-When buyer agents encounter a `managed_by` field:
+### Dynamic Generation with Query Parameters
 
-1. **Detect redirect**: Parse the publisher's adagents.json and find `managed_by` field
-2. **Follow redirect**: Fetch `/.well-known/adagents.json` from the managing domain
-3. **Validate authorization**: Check if the sales agent is authorized in the manager's file
+Manager dynamically generates files based on query parameters:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "contact": {
+    "name": "Venue Operations"
+  },
+  "authoritative_file": "https://manager.clearchannel.com/adagents?domain=timessquare-venue.com"
+}
+```
+
+**What happens**: Manager's server receives the request, generates the appropriate authorization file on-the-fly based on the `domain` parameter, and returns it.
+
+**Benefits of dynamic generation:**
+- No static file maintenance per property
+- Can pull from database or configuration
+- Enables real-time authorization updates
+- Supports thousands of properties without file proliferation
+
+### Minimal Redirect
+
+Simplest possible redirect:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "authoritative_file": "https://meta.com/.well-known/adagents/instagram.json"
+}
+```
+
+### Validation Flow with authoritative_file
+
+When buyer agents encounter an `authoritative_file` field:
+
+1. **Detect redirect**: Parse the publisher's adagents.json and find `authoritative_file` URL
+2. **Follow redirect**: Fetch the file at the specified URL
+3. **Validate authorization**: Check if the sales agent is authorized in the fetched file
 4. **Prevent loops**: Track redirect chain and reject if loop detected or depth > 3
-5. **Cache both**: Cache both the redirect and the manager's authorization data
+5. **Cache by URL**: Cache the fetched file with the authoritative URL as key
+6. **Preserve contact**: Keep original domain's contact info for property-specific questions
 
 **Security considerations:**
-- Redirects MUST use HTTPS
-- Buyer agents MUST detect and reject redirect loops
+- Authoritative URLs MUST use HTTPS
+- Buyer agents MUST validate URL format before fetching
+- Buyer agents MUST detect and reject redirect loops (if authoritative file has another redirect)
 - Maximum redirect depth should be limited (recommended: 3)
 - Original domain's contact info should be preserved for property-specific questions
+- URLs should be validated against SSRF attacks (no localhost, private IPs, etc.)
 
 ## Property Declaration
 
@@ -375,9 +410,9 @@ If `property_ids`, `property_tags`, `properties`, and `publisher_properties` are
 
 ## Real-World Examples
 
-### Example 1: Meta Network with Managed By Redirects
+### Example 1: Meta Network with Property-Specific Files
 
-Meta manages Instagram, Facebook, and WhatsApp with a single sales agent. Each property redirects to the central Meta authorization:
+Meta manages Instagram, Facebook, and WhatsApp, with each property redirecting to its own property-specific authorization file at Meta:
 
 **instagram.com/.well-known/adagents.json:**
 ```json
@@ -388,7 +423,7 @@ Meta manages Instagram, Facebook, and WhatsApp with a single sales agent. Each p
     "email": "adops@instagram.com",
     "domain": "instagram.com"
   },
-  "managed_by": "meta.com",
+  "authoritative_file": "https://meta.com/.well-known/adagents/instagram.json",
   "last_updated": "2025-01-10T18:00:00Z"
 }
 ```
@@ -402,12 +437,12 @@ Meta manages Instagram, Facebook, and WhatsApp with a single sales agent. Each p
     "email": "adops@facebook.com",
     "domain": "facebook.com"
   },
-  "managed_by": "meta.com",
+  "authoritative_file": "https://meta.com/.well-known/adagents/facebook.json",
   "last_updated": "2025-01-10T18:00:00Z"
 }
 ```
 
-**meta.com/.well-known/adagents.json** (authoritative file):
+**meta.com/.well-known/adagents/instagram.json** (authoritative file for Instagram):
 
 **Note**: `publisher_domain` is optional in adagents.json when properties are for the same domain where the file is hosted. It's included here because these are cross-domain properties (Instagram, Facebook, WhatsApp) all managed by Meta.
 
@@ -754,9 +789,9 @@ Publishers with mobile apps can use property scoping to specify which platforms 
 }
 ```
 
-### DOOH Network with Managed By
+### DOOH Network with Dynamic Generation
 
-Individual venue domains redirect to the network operator:
+Clear Channel manages hundreds of venue domains. Instead of maintaining separate static files, they use dynamic generation:
 
 **timessquare-venue.com/.well-known/adagents.json:**
 ```json
@@ -766,12 +801,23 @@ Individual venue domains redirect to the network operator:
     "name": "Times Square Venue Operations",
     "email": "venue@timessquare-venue.com"
   },
-  "managed_by": "clearchannel.com",
+  "authoritative_file": "https://clearchannel.com/adagents?venue=timessquare",
   "last_updated": "2025-01-10T14:00:00Z"
 }
 ```
 
-**clearchannel.com/.well-known/adagents.json** (network-level authorization):
+**airportmall-venue.com/.well-known/adagents.json:**
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "contact": {
+    "name": "Airport Mall Venue Operations"
+  },
+  "authoritative_file": "https://clearchannel.com/adagents?venue=airportmall"
+}
+```
+
+**clearchannel.com/adagents?venue=timessquare** (dynamically generated):
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
@@ -788,13 +834,17 @@ Individual venue domains redirect to the network operator:
         {"type": "network_id", "value": "clear_channel_tsq"}
       ],
       "publisher_domain": "timessquare-venue.com",
-      "tags": ["clear_channel_network", "nyc_metro"]
+      "tags": ["clear_channel_network", "nyc_metro", "high_traffic"]
     }
   ],
   "tags": {
     "clear_channel_network": {
       "name": "Clear Channel Network",
       "description": "All Clear Channel DOOH properties"
+    },
+    "high_traffic": {
+      "name": "High Traffic Locations",
+      "description": "Premium high-traffic venues"
     }
   },
   "authorized_agents": [
@@ -815,7 +865,7 @@ Individual venue domains redirect to the network operator:
 }
 ```
 
-**Why this pattern**: Individual venues don't need to maintain separate adagents.json files. The network operator manages all authorization centrally.
+**Why this pattern**: Clear Channel can manage hundreds of venues without maintaining separate static files for each. The server generates venue-specific authorization on-demand from a database.
 
 ## Crawling and Discovery
 

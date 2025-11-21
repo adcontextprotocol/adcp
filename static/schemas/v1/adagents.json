@@ -215,11 +215,11 @@
       "format": "date-time",
       "description": "ISO 8601 timestamp indicating when this file was last updated"
     },
-    "managed_by": {
+    "authoritative_file": {
       "type": "string",
-      "format": "hostname",
-      "description": "Domain of the entity managing this publisher's advertising operations. When present, buyers should fetch and use the adagents.json file from this domain instead. Enables publishers to delegate ad operations to third-party managers (e.g., instagram.com managed_by meta.com).",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "format": "uri",
+      "description": "URL of the authoritative adagents.json file for this publisher. When present, buyers should fetch and use the file at this URL instead of the local file. Enables publishers to delegate ad operations to third-party managers who can host property-specific authorization files (e.g., https://meta.com/.well-known/adagents/instagram.json). Supports both static files and dynamic generation.",
+      "pattern": "^https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(/.*)?$"
     }
   },
   "additionalProperties": false,
@@ -229,8 +229,8 @@
       "description": "Standard adagents.json with direct agent authorization"
     },
     {
-      "required": ["managed_by"],
-      "description": "Redirect to managing entity's adagents.json"
+      "required": ["authoritative_file"],
+      "description": "Redirect to authoritative adagents.json file at specified URL"
     }
   ],
   "examples": [
@@ -406,12 +406,19 @@
         "email": "adops@instagram.com",
         "domain": "instagram.com"
       },
-      "managed_by": "meta.com",
+      "authoritative_file": "https://meta.com/.well-known/adagents/instagram.json",
       "last_updated": "2025-01-10T18:00:00Z"
     },
     {
       "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
-      "managed_by": "clearchannel.com"
+      "authoritative_file": "https://clearchannel.com/.well-known/adagents/timessquare-venue.json"
+    },
+    {
+      "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+      "contact": {
+        "name": "Venue Operations"
+      },
+      "authoritative_file": "https://manager.example.com/adagents?domain=venue123.com"
     }
   ]
 }
