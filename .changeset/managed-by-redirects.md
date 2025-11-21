@@ -16,11 +16,15 @@ Publishers can now delegate their advertising operations to a third-party manage
 - Managers can organize files however they want (path-based, query params, etc.)
 - Each property gets a distinct, cacheable URL
 
-**Common use cases:**
-- Multi-brand networks (Instagram/Facebook redirect to property-specific Meta files)
-- DOOH networks (venues redirect with dynamic generation from database)
-- Publisher consortiums (members redirect to per-publisher consortium files)
-- White-label platforms (publishers redirect with query-based dynamic generation)
+**Common use cases (ownership/management delegation):**
+- Multi-brand corporations (Instagram/Facebook owned by Meta delegate to Meta)
+- Subsidiary relationships (local news sites delegate to parent media company)
+- Publisher consortiums (member publishers delegate to centralized management)
+- White-label platforms (publishers using platform delegate to platform provider)
+
+**NOT for (use standard authorization patterns instead):**
+- Sales representation (e.g., DOOH networks selling venues they don't own)
+- Ad network relationships (use authorized_agents, not delegation)
 
 **Schema changes:**
 - Added optional `authoritative_file` field with HTTPS URL validation
@@ -29,7 +33,10 @@ Publishers can now delegate their advertising operations to a third-party manage
 
 **Documentation updates:**
 - New "Authoritative File Redirects" section explaining full URL approach
-- Documented static vs dynamic generation patterns
+- Clear distinction: ownership/management delegation vs sales representation
 - Updated Real-World Examples showing Meta with property-specific files
-- Added DOOH example with dynamic generation for hundreds of venues
+- Added subsidiary relationship example (regional media company with local news sites)
+- Added DOOH counter-example showing proper sales representation pattern (NO delegation)
 - Security considerations including SSRF protection
+
+**Key insight from ads.txt:** Like MANAGERDOMAIN, `authoritative_file` is about **business relationships** (who manages authorization), not just technical redirection. Unlike MANAGERDOMAIN, it provides actual delegation with property-specific files instead of just metadata.

@@ -103,20 +103,27 @@ The optional `contact` object identifies who manages this `adagents.json` file -
 
 ## Authoritative File Redirects
 
-The optional `authoritative_file` field enables publishers to delegate their advertising operations to a third-party manager by specifying the exact URL of the authoritative adagents.json file. When present, buyer agents should fetch and use the file at this URL instead of the local file.
+The optional `authoritative_file` field enables publishers to delegate **authorization file management** to another entity by specifying the exact URL of the authoritative adagents.json file. When present, buyer agents should fetch and use the file at this URL instead of the local file.
+
+**Critical distinction:** This is for **ownership/management delegation**, not sales representation. The delegating publisher must control their domain and choose to have someone else manage their authorization file.
 
 **Why full URLs matter:**
 - Managers can serve property-specific files (e.g., `meta.com/.well-known/adagents/instagram.json`)
-- Supports both static files and dynamic generation (e.g., `?domain=instagram.com`)
+- Supports both static files and dynamic generation (e.g., `?brand=subsidiary-name`)
 - No ambiguity about which file to fetch
 - Managers can organize files however they want
 - Each property gets a distinct, cacheable URL
 
-**Common use cases:**
-- **Multi-brand networks**: Instagram/Facebook/WhatsApp redirect to property-specific Meta files
-- **DOOH networks**: Individual venue domains redirect to venue-specific network files
-- **Publisher consortiums**: Member publishers redirect to consortium's per-publisher files
-- **White-label platforms**: Publishers redirect to platform provider with dynamic generation
+**Valid use cases (publisher controls domain):**
+- **Multi-brand corporations**: Instagram/Facebook/WhatsApp (owned by Meta) delegate to Meta
+- **Subsidiary relationships**: Local news site delegates to parent media company
+- **Publisher consortiums**: Member publishers delegate to consortium's centralized management
+- **White-label platforms**: Publishers using platform delegate to platform provider (if publisher owns domain)
+
+**NOT for (these use standard authorization patterns):**
+- **Sales representation**: DOOH network selling venues they don't own - venues don't have domains to delegate from
+- **Ad network relationships**: Independent publishers working with ad networks - use authorized_agents instead
+- **Reseller relationships**: Use the authorization_type patterns, not delegation
 
 ### Static Property-Specific Files
 
@@ -789,40 +796,96 @@ Publishers with mobile apps can use property scoping to specify which platforms 
 }
 ```
 
-### DOOH Network with Dynamic Generation
+### Example 3: Media Company with Local Subsidiaries
 
-Clear Channel manages hundreds of venue domains. Instead of maintaining separate static files, they use dynamic generation:
+A regional media company owns dozens of local news sites. Each site has its own domain but delegates authorization management to the parent company:
 
-**timessquare-venue.com/.well-known/adagents.json:**
+**springfield-news.com/.well-known/adagents.json:**
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
   "contact": {
-    "name": "Times Square Venue Operations",
-    "email": "venue@timessquare-venue.com"
+    "name": "Springfield News",
+    "email": "advertising@springfield-news.com",
+    "domain": "springfield-news.com"
   },
-  "authoritative_file": "https://clearchannel.com/adagents?venue=timessquare",
+  "authoritative_file": "https://regionalmedia.com/.well-known/adagents/springfield-news.json",
   "last_updated": "2025-01-10T14:00:00Z"
 }
 ```
 
-**airportmall-venue.com/.well-known/adagents.json:**
+**riverside-herald.com/.well-known/adagents.json:**
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
   "contact": {
-    "name": "Airport Mall Venue Operations"
+    "name": "Riverside Herald"
   },
-  "authoritative_file": "https://clearchannel.com/adagents?venue=airportmall"
+  "authoritative_file": "https://regionalmedia.com/.well-known/adagents/riverside-herald.json"
 }
 ```
 
-**clearchannel.com/adagents?venue=timessquare** (dynamically generated):
+**regionalmedia.com/.well-known/adagents/springfield-news.json** (authoritative for Springfield News):
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "contact": {
+    "name": "Regional Media Group",
+    "email": "adops@regionalmedia.com",
+    "domain": "regionalmedia.com"
+  },
+  "properties": [
+    {
+      "property_type": "website",
+      "name": "Springfield News",
+      "identifiers": [
+        {"type": "domain", "value": "springfield-news.com"}
+      ],
+      "publisher_domain": "springfield-news.com",
+      "tags": ["regional_media_network", "local_news", "midwest"]
+    }
+  ],
+  "tags": {
+    "regional_media_network": {
+      "name": "Regional Media Network",
+      "description": "All Regional Media Group properties"
+    },
+    "local_news": {
+      "name": "Local News Sites",
+      "description": "Community journalism properties"
+    }
+  },
+  "authorized_agents": [
+    {
+      "url": "https://sales.regionalmedia.com",
+      "authorized_for": "Direct sales for Regional Media properties",
+      "authorization_type": "property_tags",
+      "property_tags": ["regional_media_network"]
+    },
+    {
+      "url": "https://programmatic-partner.com",
+      "authorized_for": "Programmatic sales for all local news properties",
+      "authorization_type": "property_tags",
+      "property_tags": ["local_news"]
+    }
+  ],
+  "last_updated": "2025-01-10T14:15:00Z"
+}
+```
+
+**Why this pattern works**: Regional Media Group owns all the subsidiary domains, so each can legitimately delegate to the parent. The parent can manage authorization centrally while preserving local brand identity and contact info.
+
+### Example 4: DOOH Network (Sales Representation - NO Delegation)
+
+For comparison, here's how a DOOH network like Clear Channel should handle authorization - **without** using `authoritative_file`, because they don't own venue domains:
+
+**clearchannel.com/.well-known/adagents.json:**
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
   "contact": {
     "name": "Clear Channel Outdoor",
+    "email": "adops@clearchannel.com",
     "domain": "clearchannel.com"
   },
   "properties": [
@@ -833,18 +896,23 @@ Clear Channel manages hundreds of venue domains. Instead of maintaining separate
         {"type": "venue_id", "value": "TSQ_001"},
         {"type": "network_id", "value": "clear_channel_tsq"}
       ],
-      "publisher_domain": "timessquare-venue.com",
       "tags": ["clear_channel_network", "nyc_metro", "high_traffic"]
+    },
+    {
+      "property_type": "dooh",
+      "name": "Airport Mall Digital",
+      "identifiers": [
+        {"type": "venue_id", "value": "APT_MALL_045"},
+        {"type": "network_id", "value": "clear_channel_airports"}
+      ],
+      "tags": ["clear_channel_network", "airports", "high_dwell"]
     }
+    // ... hundreds more DOOH properties
   ],
   "tags": {
     "clear_channel_network": {
       "name": "Clear Channel Network",
-      "description": "All Clear Channel DOOH properties"
-    },
-    "high_traffic": {
-      "name": "High Traffic Locations",
-      "description": "Premium high-traffic venues"
+      "description": "All Clear Channel represented DOOH properties"
     }
   },
   "authorized_agents": [
@@ -865,7 +933,7 @@ Clear Channel manages hundreds of venue domains. Instead of maintaining separate
 }
 ```
 
-**Why this pattern**: Clear Channel can manage hundreds of venues without maintaining separate static files for each. The server generates venue-specific authorization on-demand from a database.
+**Why NO delegation**: DOOH venues don't have domains to host adagents.json files. Clear Channel directly lists all properties they represent in their own file. This is **sales representation**, not ownership delegation.
 
 ## Crawling and Discovery
 
