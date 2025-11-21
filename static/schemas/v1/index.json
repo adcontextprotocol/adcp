@@ -148,6 +148,18 @@
         "publisher-property-selector": {
           "$ref": "/schemas/v1/core/publisher-property-selector.json",
           "description": "Selects properties from a publisher's adagents.json - supports three patterns: all properties, specific IDs, or by tags"
+        },
+        "product-filters": {
+          "$ref": "/schemas/v1/core/product-filters.json",
+          "description": "Structured filters for product discovery"
+        },
+        "creative-filters": {
+          "$ref": "/schemas/v1/core/creative-filters.json",
+          "description": "Filter criteria for querying creative assets from the centralized library"
+        },
+        "signal-filters": {
+          "$ref": "/schemas/v1/core/signal-filters.json",
+          "description": "Filters to refine signal discovery results"
         }
       }
     },
