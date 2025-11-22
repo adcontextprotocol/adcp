@@ -111,37 +111,168 @@ This document defines the **canonical structure** for AdCP responses transmitted
 
 **If your implementation adds wrappers**, this is a bug that should be fixed in the framework layer, not worked around in client code.
 
-## Response Extraction Pattern
+## Canonical Client Behavior
 
-### Last Data Part is Authoritative
+This section defines EXACTLY how clients MUST extract AdCP responses from A2A protocol responses.
 
-When multiple `DataPart` elements exist, **the last one contains the authoritative task result**:
+### Quick Reference
+
+| Status | DataPart Required? | Schema Validation? | Returns |
+|--------|-------------------|-------------------|---------|
+| `working` | ❌ No | ❌ No | `{ status, taskId, message }` |
+| `submitted` | ❌ No | ❌ No | `{ status, taskId, message }` |
+| `input-required` | ❌ No | ❌ No | `{ status, taskId, message }` |
+| `completed` | ✅ Yes | ✅ Yes | `{ status, taskId, message, data }` |
+| `failed` | ✅ Yes | ✅ Yes | `{ status, taskId, message, data }` |
+
+**Key Insight**: Interim statuses are status updates. Final statuses contain AdCP task results.
+
+### Rule 1: Status-Based Handling
+
+Clients MUST branch on `status` field to determine whether AdCP payload extraction is required:
 
 ```javascript
-function extractAdcpResponse(a2aResponse) {
-  const dataParts = a2aResponse.artifacts?.[0]?.parts
+function handleA2aResponse(response) {
+  const status = response.status;
+
+  // INTERIM STATUSES - No AdCP extraction
+  if (['working', 'submitted', 'input-required'].includes(status)) {
+    return {
+      status: status,
+      taskId: response.taskId,
+      contextId: response.contextId,
+      message: extractTextPart(response),
+      // No data field - this is a status update, not a result
+    };
+  }
+
+  // FINAL STATUSES - Extract AdCP payload
+  if (['completed', 'failed'].includes(status)) {
+    return {
+      status: status,
+      taskId: response.taskId,
+      contextId: response.contextId,
+      message: extractTextPart(response),
+      data: extractDataPart(response),  // AdCP payload
+    };
+  }
+
+  throw new Error(`Unknown A2A status: ${status}`);
+}
+```
+
+**Critical**: Clients MUST NOT attempt to extract DataPart or validate against AdCP schemas for interim statuses.
+
+### Rule 2: Data Part Extraction (Final Responses Only)
+
+When status is `completed` or `failed`, extract the last DataPart:
+
+```javascript
+function extractDataPart(response) {
+  const dataParts = response.artifacts?.[0]?.parts
     ?.filter(p => p.kind === 'data') || [];
 
   if (dataParts.length === 0) {
-    throw new Error('No data part found in A2A response');
+    throw new Error('Final response (completed/failed) missing required DataPart');
   }
 
   // Use LAST data part as authoritative
-  const data = dataParts[dataParts.length - 1].data;
+  const lastDataPart = dataParts[dataParts.length - 1];
+  const payload = lastDataPart.data;
 
-  // Extract optional human message
-  const message = a2aResponse.artifacts?.[0]?.parts
-    ?.find(p => p.kind === 'text')?.text;
+  // CRITICAL: Payload MUST be direct AdCP response
+  // If wrapper detected, reject the response
+  if (payload.response !== undefined && typeof payload.response === 'object') {
+    throw new Error(
+      'Invalid response format: DataPart contains wrapper object. ' +
+      'Expected direct AdCP payload (e.g., {products: [...]}) ' +
+      'but received {response: {products: [...]}}. ' +
+      'This is a server-side bug that must be fixed.'
+    );
+  }
 
-  return {
-    status: a2aResponse.status,
-    message,
-    data,
-    taskId: a2aResponse.taskId,
-    contextId: a2aResponse.contextId
-  };
+  return payload;
 }
 ```
+
+### Rule 3: Text Part Extraction (All Responses)
+
+TextPart is optional but recommended in all responses:
+
+```javascript
+function extractTextPart(response) {
+  const textPart = response.artifacts?.[0]?.parts
+    ?.find(p => p.kind === 'text');
+
+  return textPart?.text || null;
+}
+```
+
+### Rule 4: Schema Validation
+
+Schema validation MUST only occur for final responses:
+
+```javascript
+function validateResponse(response, taskName) {
+  const status = response.status;
+
+  // SKIP VALIDATION for interim responses
+  if (['working', 'submitted', 'input-required'].includes(status)) {
+    return; // No validation - these are status updates
+  }
+
+  // VALIDATE final responses only
+  if (['completed', 'failed'].includes(status)) {
+    const data = extractDataPart(response);
+    const schema = loadSchema(`${taskName}-response.json`);
+
+    if (!validateAgainstSchema(data, schema)) {
+      throw new Error(
+        `Response payload does not match ${taskName} schema. ` +
+        `Ensure DataPart contains direct AdCP response structure.`
+      );
+    }
+  }
+}
+```
+
+### Complete Example
+
+Putting it all together:
+
+```javascript
+async function executeTask(taskName, params) {
+  const response = await a2aClient.send({
+    task: taskName,
+    params: params
+  });
+
+  // 1. Status-based handling
+  const result = handleA2aResponse(response);
+
+  // 2. Validate if final response
+  if (result.data) {
+    validateResponse(response, taskName);
+  }
+
+  return result;
+}
+
+// Usage
+const result = await executeTask('get_products', {
+  brief: 'CTV inventory in California'
+});
+
+if (result.status === 'working') {
+  console.log('Still processing:', result.message);
+  // No result.data available yet
+} else if (result.status === 'completed') {
+  console.log('Success:', result.message);
+  console.log('Products:', result.data.products); // AdCP payload
+}
+```
+
+## Last Data Part Authority Pattern
 
 <details>
 <summary><strong>Why this pattern?</strong></summary>
@@ -175,6 +306,89 @@ During streaming operations, intermediate responses may include old progress dat
 
 **Note:** This is an AdCP-specific convention, not required by A2A protocol. Document this in your Agent Card when serving non-AdCP clients.
 </details>
+
+## Test Cases
+
+### ✅ Correct Behavior
+
+```javascript
+// Test 1: Working status - no DataPart extraction
+const workingResponse = {
+  status: 'working',
+  taskId: 'task_123',
+  artifacts: [{
+    parts: [
+      { kind: 'text', text: 'Processing...' }
+    ]
+  }]
+};
+
+const result1 = handleA2aResponse(workingResponse);
+assert(result1.data === undefined, 'Working status should not have data');
+assert(result1.message === 'Processing...', 'Should extract message');
+
+// Test 2: Completed status - extract DataPart
+const completedResponse = {
+  status: 'completed',
+  taskId: 'task_123',
+  artifacts: [{
+    parts: [
+      { kind: 'text', text: 'Found 3 products' },
+      { kind: 'data', data: { products: [...] } }
+    ]
+  }]
+};
+
+const result2 = handleA2aResponse(completedResponse);
+assert(result2.data !== undefined, 'Completed status must have data');
+assert(Array.isArray(result2.data.products), 'Data should be direct AdCP payload');
+
+// Test 3: Wrapper detection
+const wrappedResponse = {
+  status: 'completed',
+  taskId: 'task_123',
+  artifacts: [{
+    parts: [
+      { kind: 'data', data: { response: { products: [...] } } }
+    ]
+  }]
+};
+
+assert.throws(() => {
+  extractDataPart(wrappedResponse);
+}, /Invalid response format.*wrapper/);
+```
+
+### ❌ Incorrect Behavior (Common Mistakes)
+
+```javascript
+// WRONG: Extracting DataPart from interim status
+function badHandleWorking(response) {
+  // ❌ This tries to extract data from working status
+  const data = extractDataPart(response); // Will throw!
+  return { status: 'working', data };
+}
+
+// WRONG: Validating interim responses
+function badValidation(response) {
+  // ❌ This validates all responses, including interim
+  validateResponse(response, 'get_products'); // Fails on working!
+}
+
+// WRONG: Not checking for wrappers
+function badExtraction(response) {
+  const payload = response.artifacts[0].parts[0].data;
+  // ❌ Returns { response: { products: [...] } } instead of { products: [...] }
+  return payload; // Client receives wrong structure!
+}
+
+// WRONG: Accessing nested response field
+function badClientUsage(result) {
+  // ❌ Client code shouldn't need to do this
+  const products = result.data.response.products;
+  // Should be: result.data.products
+}
+```
 
 ## Error Handling
 
