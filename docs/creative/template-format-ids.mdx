@@ -51,8 +51,8 @@ There are **two types of format definitions**, which produce **three types of fo
    - Used in placements to accept any dimensions
 
 3. **Parameterized format_id** - Template format with parameters
-   - Example: `{id: "display_static", width: 300, height: 250, unit: "px"}`
-   - Used in creatives to specify exact dimensions
+   - Example: `{id: "display_static", width: 300, height: 250}`
+   - Used in creatives to specify exact dimensions (in pixels)
 
 ### Template Format Definition
 
@@ -94,7 +94,7 @@ Format definition that accepts parameters:
 ```
 
 **Key fields:**
-- `accepts_parameters: ["dimensions"]` - Format accepts dimensions (width/height/unit) in format_id
+- `accepts_parameters: ["dimensions"]` - Format accepts dimensions (width/height in pixels) in format_id
 - `renders[].parameters_from_format_id: true` - Render parameters come from format_id
 - `requirements.parameters_from_format_id: true` - Asset parameters must match format_id
 
@@ -108,8 +108,7 @@ Creative specifies exact dimensions in format_id to use the template format:
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_static",
     "width": 300,
-    "height": 250,
-    "unit": "px"
+    "height": 250
   },
   "assets": {
     "banner_image": {
@@ -191,9 +190,8 @@ Publishers can specify supported dimensions in two ways:
 ### Visual Formats (Display, DOOH, Native)
 
 **Fields:**
-- `width` (number, minimum: 1) - Width in specified units
-- `height` (number, minimum: 1) - Height in specified units
-- `unit` (enum) - px, in, cm, mm, pt (defaults to 'px')
+- `width` (integer, minimum: 1) - Width in pixels
+- `height` (integer, minimum: 1) - Height in pixels
 
 **Example:**
 ```json
@@ -201,8 +199,7 @@ Publishers can specify supported dimensions in two ways:
   "agent_url": "https://creative.adcontextprotocol.org",
   "id": "display_static",
   "width": 300,
-  "height": 250,
-  "unit": "px"
+  "height": 250
 }
 ```
 
@@ -223,8 +220,8 @@ Publishers can specify supported dimensions in two ways:
 ### Combined (Video with Dimensions)
 
 **Fields:**
-- `width`, `height`, `unit` - Video frame dimensions
-- `duration_ms` - Video length in milliseconds
+- `width`, `height` (integers) - Video frame dimensions in pixels
+- `duration_ms` (number) - Video length in milliseconds
 
 **Example:**
 ```json
@@ -233,8 +230,7 @@ Publishers can specify supported dimensions in two ways:
   "id": "video_hosted",
   "width": 1920,
   "height": 1080,
-  "duration_ms": 30000,
-  "unit": "px"
+  "duration_ms": 30000
 }
 ```
 
@@ -288,15 +284,14 @@ Publishers can specify supported dimensions in two ways:
 }
 ```
 
-**Creative with physical dimensions:**
+**Creative with pixel dimensions:**
 ```json
 {
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "dooh_static",
-    "width": 48,
-    "height": 14,
-    "unit": "in"
+    "width": 1920,
+    "height": 560
   },
   "assets": {...}
 }
@@ -311,8 +306,8 @@ Generative formats specify which output formats they can produce:
 {
   "format_id": {"agent_url": "...", "id": "display_generative"},
   "output_format_ids": [
-    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"},
-    {"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"}
+    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
+    {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
   ]
 }
 ```
@@ -358,8 +353,8 @@ Sales agents return products with placement-specific format constraints:
   "products": [{
     "placements": [{
       "format_ids": [
-        {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"},
-        {"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"}
+        {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
+        {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
       ]
     }]
   }]
@@ -405,8 +400,8 @@ Sales agents return products with placement-specific format constraints:
 - OR list specific parameterized formats to constrain dimensions:
   ```json
   [
-    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"},
-    {"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"}
+    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
+    {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
   ]
   ```
 
@@ -435,7 +430,6 @@ Two format_ids are **identical** if and only if:
 - `id` matches exactly
 - `width` matches exactly (if present)
 - `height` matches exactly (if present)
-- `unit` matches exactly (if present)
 - `duration_ms` matches exactly (if present)
 
 ### Canonicalization
@@ -444,34 +438,28 @@ When comparing format_ids for equality or caching:
 
 **Required fields:**
 - Both `width` and `height` must be present together (cannot specify only one)
-- When width/height are present, `unit` is REQUIRED (not optional)
+- All dimensions are in pixels (integers)
 
 **Numeric precision:**
-- Numbers are compared as JSON numbers (300.0 equals 300)
-- For pixels, use integers (300px not 300.5px)
-- For physical units (inches, cm), decimals are allowed (0.5in, 7.62cm)
+- Width and height are integers (300 not 300.5)
+- Duration can be decimal (30000.5ms for fractional seconds)
 
 **Field order:**
 - JSON field order does NOT matter for equality
 - `{"width": 300, "height": 250}` equals `{"height": 250, "width": 300}`
 
-**Unit conversion:**
-- Format IDs are compared WITHOUT unit conversion
-- `300px` is NOT equal to `7.62cm` even if physically equivalent
-- Unit field is part of identity, not just metadata
-
 **Example equivalence:**
 ```json
 // These are IDENTICAL format IDs
-{"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"}
-{"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"}
+{"agent_url": "...", "id": "display_static", "width": 300, "height": 250}
+{"agent_url": "...", "id": "display_static", "width": 300, "height": 250}
 
 // These are DIFFERENT format IDs
-{"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"}
-{"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"}
+{"agent_url": "...", "id": "display_static", "width": 300, "height": 250}
+{"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
 
 // INVALID - partial dimensions not allowed (schema validation will reject)
-{"agent_url": "...", "id": "display_static", "width": 300}  // ❌ Missing height and unit
+{"agent_url": "...", "id": "display_static", "width": 300}  // ❌ Missing height
 ```
 
 ## Matching Logic
@@ -493,12 +481,12 @@ When comparing format_ids for equality or caching:
 ```json
 // Placement specifies exact dimensions
 {"format_ids": [
-  {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"}
+  {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}
 ]}
 
 // Creative matches only if exact equality
-{"format_id": {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"}}  // ✅ Match
-{"format_id": {"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"}}   // ❌ Different dimensions
+{"format_id": {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}}  // ✅ Match
+{"format_id": {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}}   // ❌ Different dimensions
 {"format_id": {"agent_url": "...", "id": "display_static"}}                                              // ❌ Missing dimensions
 ```
 

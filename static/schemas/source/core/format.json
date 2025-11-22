@@ -55,37 +55,37 @@
           },
           "dimensions": {
             "type": "object",
-            "description": "Dimensions for this rendered piece",
+            "description": "Dimensions for this rendered piece (in pixels)",
             "properties": {
               "width": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Fixed width in specified units"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Fixed width in pixels"
               },
               "height": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Fixed height in specified units"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Fixed height in pixels"
               },
               "min_width": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Minimum width for responsive renders"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Minimum width in pixels for responsive renders"
               },
               "min_height": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Minimum height for responsive renders"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Minimum height in pixels for responsive renders"
               },
               "max_width": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Maximum width for responsive renders"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum width in pixels for responsive renders"
               },
               "max_height": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Maximum height for responsive renders"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum height in pixels for responsive renders"
               },
               "responsive": {
                 "type": "object",
@@ -100,14 +100,8 @@
                 "type": "string",
                 "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1')",
                 "pattern": "^\\d+:\\d+$"
-              },
-              "unit": {
-                "$ref": "/schemas/enums/dimension-unit.json",
-                "default": "px",
-                "description": "Unit of measurement for dimensions"
               }
-            },
-            "required": ["unit"]
+            }
           }
         },
         "required": ["role"],

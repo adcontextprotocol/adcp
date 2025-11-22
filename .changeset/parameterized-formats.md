@@ -11,10 +11,11 @@ Add template formats with dimension parameters to eliminate format explosion for
 **Key Changes:**
 
 1. **Format ID Schema** - Added optional dimension and duration fields
-   - `width`, `height`, `unit` - For visual formats (display, DOOH, native)
-   - `duration_ms` - Duration in milliseconds for time-based formats (video, audio)
+   - `width`, `height` (integers) - Pixel dimensions for visual formats (display, DOOH, native)
+   - `duration_ms` (number) - Duration in milliseconds for time-based formats (video, audio)
    - Fields are optional - omitting them references template formats without parameters
    - Including them creates parameterized format IDs
+   - All dimensions are pixels (no unit field needed)
 
 2. **Format Schema** - Added capability and reference indicators
    - `accepts_parameters` - Array listing which parameters format accepts (["dimensions"], ["duration"], or ["dimensions", "duration"])
@@ -35,7 +36,7 @@ Add template formats with dimension parameters to eliminate format explosion for
 **Benefits:**
 - ✅ Scalable to unlimited format variants without explosion
 - ✅ Parameterized format IDs enable caching and deduplication
-- ✅ Type-safe (dimensions are numbers, not encoded strings)
+- ✅ Type-safe (dimensions are integers in pixels, not encoded strings)
 - ✅ Creatives are self-contained with dimensions in format_id
 - ✅ Publisher control via template vs parameterized format_ids
 - ✅ Backward compatible - formats without optional fields unchanged
@@ -93,15 +94,16 @@ Add template formats with dimension parameters to eliminate format explosion for
 ```json
 {
   "format_ids": [
-    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"},
-    {"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"}
+    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
+    {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
     // Accepts only these exact dimensions
   ]
 }
 ```
 
 **Documentation:**
-- New comprehensive guide at `/docs/creative/deterministic-format-ids.mdx`
+- New comprehensive guide at `/docs/creative/template-format-ids.mdx`
 - Examples for display, video, audio, and DOOH use cases
-- Migration guidance from concrete to deterministic formats
+- All dimensions in pixels (integers) - no unit field needed
+- Migration guidance from concrete to template formats
 - Validation and matching logic documentation
