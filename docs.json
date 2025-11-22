@@ -58,7 +58,8 @@
                 "group": "Choose Your Protocol",
                 "pages": [
                   "docs/protocols/mcp-guide",
-                  "docs/protocols/a2a-guide"
+                  "docs/protocols/a2a-guide",
+                  "docs/protocols/a2a-response-format"
                 ]
               },
               "docs/protocols/protocol-comparison",
