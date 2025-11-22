@@ -65,7 +65,7 @@ When the same concept appears in multiple places with different subsets:
 ```json
 // enums/asset-content-type.json - Single source of truth
 {
-  "$id": "/schemas/v1/enums/asset-content-type.json",
+  "$id": "/schemas/v2/enums/asset-content-type.json",
   "type": "string",
   "enum": ["image", "video", "audio", "text", "html", "javascript", ...]
 }
@@ -73,7 +73,7 @@ When the same concept appears in multiple places with different subsets:
 // brand-manifest.json - References full enum
 {
   "asset_type": {
-    "$ref": "/schemas/v1/enums/asset-content-type.json",
+    "$ref": "/schemas/v2/enums/asset-content-type.json",
     "description": "Type of asset. Note: Brand manifests typically contain basic media assets (image, video, audio, text)."
   }
 }
@@ -83,7 +83,7 @@ When the same concept appears in multiple places with different subsets:
   "asset_types": {
     "type": "array",
     "items": {
-      "$ref": "/schemas/v1/enums/asset-content-type.json"
+      "$ref": "/schemas/v2/enums/asset-content-type.json"
     }
   }
 }
@@ -99,10 +99,10 @@ When the same concept appears in multiple places with different subsets:
 
 ### Enum File Structure
 
-All enums should live in `/schemas/v1/enums/` with descriptive names:
+All enums should live in `/schemas/v2/enums/` with descriptive names:
 
 ```
-/schemas/v1/enums/
+/schemas/v2/enums/
   asset-content-type.json      # What IS this asset?
   format-category.json         # Where does this ad DISPLAY?
   pricing-model.json           # How is this PRICED?
@@ -184,7 +184,7 @@ All `$ref` paths should be absolute from schema root:
 
 ```json
 // ✅ GOOD: Absolute path
-"$ref": "/schemas/v1/enums/asset-content-type.json"
+"$ref": "/schemas/v2/enums/asset-content-type.json"
 
 // ❌ BAD: Relative path
 "$ref": "../../enums/asset-content-type.json"
@@ -263,7 +263,7 @@ Good schema design guides implementers toward correct usage:
 
 When in doubt about schema design decisions:
 
-1. Check existing patterns in `/schemas/v1/`
+1. Check existing patterns in `/schemas/v2/`
 2. Consider impact on type generation
 3. Ask: "Will this name collision cause issues?"
 4. Prefer specificity over brevity

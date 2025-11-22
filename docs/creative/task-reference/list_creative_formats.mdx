@@ -11,8 +11,8 @@ Returns full specifications for all creative formats provided by this creative a
 
 **Authentication**: None required - this endpoint must be publicly accessible for format discovery
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/creative/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v1/creative/list-creative-formats-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/creative/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v1/creative/list-creative-formats-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v2/creative/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/creative/list-creative-formats-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v2/creative/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/creative/list-creative-formats-response.json)
 
 ## Recursive Discovery Model
 
@@ -86,7 +86,7 @@ Buyers can recursively query creative_agents to discover all available formats. 
   - `generation`: Can generate creatives from prompts (AI/DCO)
   - `preview`: Can generate preview renderings
 - **formats**: Array of complete format definitions
-  - See [Format schema](https://adcontextprotocol.org/schemas/v1/core/format.json) for full specification
+  - See [Format schema](https://adcontextprotocol.org/schemas/v2/core/format.json) for full specification
 
 ## Example 1: Find Formats by Asset Types
 

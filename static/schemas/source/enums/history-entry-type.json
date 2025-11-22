@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/history-entry-type.json",
+  "title": "History Entry Type",
+  "description": "Type of entry in task execution history",
+  "type": "string",
+  "enum": ["request", "response"]
+}

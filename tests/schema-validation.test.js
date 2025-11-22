@@ -9,7 +9,7 @@ const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
-const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/v1');
+const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
 // Initialize AJV with formats and custom loader
 const ajv = new Ajv({ 
@@ -22,8 +22,8 @@ addFormats(ajv);
 
 // Schema loader for resolving $ref
 async function loadExternalSchema(uri) {
-  if (uri.startsWith('/schemas/v1/')) {
-    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/v1/', ''));
+  if (uri.startsWith('/schemas/')) {
+    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
     try {
       const content = fs.readFileSync(schemaPath, 'utf8');
       return JSON.parse(content);
@@ -120,8 +120,8 @@ function validateSchemaStructure(schemaPath, schema) {
   }
   
   // Validate $id format (should be relative path)
-  if (!schema.$id.startsWith('/schemas/v1/')) {
-    return `Invalid $id format: ${schema.$id} (should start with /schemas/v1/)`;
+  if (!schema.$id.startsWith('/schemas/')) {
+    return `Invalid $id format: ${schema.$id} (should start with /schemas/)`;
   }
   
   return true;

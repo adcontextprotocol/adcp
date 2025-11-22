@@ -184,7 +184,9 @@
           {
             "group": "Reference",
             "pages": [
+              "docs/reference/release-notes",
               "docs/reference/changelog",
+              "docs/reference/schema-versioning",
               "docs/reference/error-codes",
               "docs/reference/data-models",
               "docs/reference/authentication",

@@ -11,7 +11,7 @@ Core data structures used throughout AdCP.
 
 Represents available advertising inventory.
 
-**JSON Schema**: [`https://adcontextprotocol.org/schemas/v1/core/product.json`](https://adcontextprotocol.org/schemas/v1/core/product.json)
+**JSON Schema**: [`https://adcontextprotocol.org/schemas/v2/core/product.json`](https://adcontextprotocol.org/schemas/v2/core/product.json)
 
 ```typescript
 interface Product {
@@ -36,7 +36,7 @@ interface Product {
 
 Represents a purchased advertising campaign.
 
-**JSON Schema**: [`https://adcontextprotocol.org/schemas/v1/core/media-buy.json`](https://adcontextprotocol.org/schemas/v1/core/media-buy.json)
+**JSON Schema**: [`https://adcontextprotocol.org/schemas/v2/core/media-buy.json`](https://adcontextprotocol.org/schemas/v2/core/media-buy.json)
 
 ```typescript
 interface MediaBuy {
@@ -54,7 +54,7 @@ interface MediaBuy {
 
 A specific product within a media buy (line item).
 
-**JSON Schema**: [`https://adcontextprotocol.org/schemas/v1/core/package.json`](https://adcontextprotocol.org/schemas/v1/core/package.json)
+**JSON Schema**: [`https://adcontextprotocol.org/schemas/v2/core/package.json`](https://adcontextprotocol.org/schemas/v2/core/package.json)
 
 ```typescript
 interface Package {
@@ -72,7 +72,7 @@ interface Package {
 
 Uploaded creative content.
 
-**JSON Schema**: [`https://adcontextprotocol.org/schemas/v1/core/creative-asset.json`](https://adcontextprotocol.org/schemas/v1/core/creative-asset.json)
+**JSON Schema**: [`https://adcontextprotocol.org/schemas/v2/core/creative-asset.json`](https://adcontextprotocol.org/schemas/v2/core/creative-asset.json)
 
 ```typescript
 interface CreativeAsset {
@@ -92,7 +92,7 @@ interface CreativeAsset {
 
 Assignment of a creative asset to a package.
 
-**JSON Schema**: [`https://adcontextprotocol.org/schemas/v1/core/creative-assignment.json`](https://adcontextprotocol.org/schemas/v1/core/creative-assignment.json)
+**JSON Schema**: [`https://adcontextprotocol.org/schemas/v2/core/creative-assignment.json`](https://adcontextprotocol.org/schemas/v2/core/creative-assignment.json)
 
 ```typescript
 interface CreativeAssignment {
@@ -105,7 +105,7 @@ interface CreativeAssignment {
 
 Audience targeting criteria.
 
-**JSON Schema**: [`https://adcontextprotocol.org/schemas/v1/core/targeting.json`](https://adcontextprotocol.org/schemas/v1/core/targeting.json)
+**JSON Schema**: [`https://adcontextprotocol.org/schemas/v2/core/targeting.json`](https://adcontextprotocol.org/schemas/v2/core/targeting.json)
 
 ```typescript
 interface Targeting {
@@ -123,7 +123,7 @@ interface Targeting {
 
 Protocol-level response wrapper (MCP/A2A).
 
-**JSON Schema**: [`https://adcontextprotocol.org/schemas/v1/core/response.json`](https://adcontextprotocol.org/schemas/v1/core/response.json)
+**JSON Schema**: [`https://adcontextprotocol.org/schemas/v2/core/response.json`](https://adcontextprotocol.org/schemas/v2/core/response.json)
 
 ```typescript
 interface ProtocolResponse {
@@ -142,7 +142,7 @@ Note: `context` is set by the tool initiator on the request and must be carried 
 
 Standard error structure for task-specific errors and warnings.
 
-**JSON Schema**: [`https://adcontextprotocol.org/schemas/v1/core/error.json`](https://adcontextprotocol.org/schemas/v1/core/error.json)
+**JSON Schema**: [`https://adcontextprotocol.org/schemas/v2/core/error.json`](https://adcontextprotocol.org/schemas/v2/core/error.json)
 
 ```typescript
 interface Error {
@@ -160,26 +160,26 @@ interface Error {
 ## Common Enums
 
 ```typescript
-// Delivery Types - Schema: /schemas/v1/enums/delivery-type.json
+// Delivery Types - Schema: /schemas/v2/enums/delivery-type.json
 type DeliveryType = 'guaranteed' | 'non_guaranteed';
 
-// Media Buy Status - Schema: /schemas/v1/enums/media-buy-status.json
+// Media Buy Status - Schema: /schemas/v2/enums/media-buy-status.json
 type MediaBuyStatus = 'pending_activation' | 'active' | 'paused' | 'completed';
 
-// Creative Status - Schema: /schemas/v1/enums/creative-status.json
+// Creative Status - Schema: /schemas/v2/enums/creative-status.json
 type CreativeStatus = 'processing' | 'approved' | 'rejected' | 'pending_review';
 
-// Pacing - Schema: /schemas/v1/enums/pacing.json
+// Pacing - Schema: /schemas/v2/enums/pacing.json
 type Pacing = 'even' | 'asap' | 'front_loaded';
 ```
 
 **Additional Enum Schemas**:
-- [`delivery-type.json`](https://adcontextprotocol.org/schemas/v1/enums/delivery-type.json) - guaranteed vs non_guaranteed
-- [`media-buy-status.json`](https://adcontextprotocol.org/schemas/v1/enums/media-buy-status.json) - Media buy lifecycle status
-- [`package-status.json`](https://adcontextprotocol.org/schemas/v1/enums/package-status.json) - Package lifecycle status
-- [`creative-status.json`](https://adcontextprotocol.org/schemas/v1/enums/creative-status.json) - Creative review status
-- [`pacing.json`](https://adcontextprotocol.org/schemas/v1/enums/pacing.json) - Budget pacing strategies
-- [`frequency-cap-scope.json`](https://adcontextprotocol.org/schemas/v1/enums/frequency-cap-scope.json) - Frequency cap scope
+- [`delivery-type.json`](https://adcontextprotocol.org/schemas/v2/enums/delivery-type.json) - guaranteed vs non_guaranteed
+- [`media-buy-status.json`](https://adcontextprotocol.org/schemas/v2/enums/media-buy-status.json) - Media buy lifecycle status
+- [`package-status.json`](https://adcontextprotocol.org/schemas/v2/enums/package-status.json) - Package lifecycle status
+- [`creative-status.json`](https://adcontextprotocol.org/schemas/v2/enums/creative-status.json) - Creative review status
+- [`pacing.json`](https://adcontextprotocol.org/schemas/v2/enums/pacing.json) - Budget pacing strategies
+- [`frequency-cap-scope.json`](https://adcontextprotocol.org/schemas/v2/enums/frequency-cap-scope.json) - Frequency cap scope
 
 ## Schema Versioning
 
@@ -189,11 +189,11 @@ AdCP uses **path-based versioning** where the schema URL indicates the version, 
 
 The version is embedded in the schema URL path:
 ```
-/schemas/v1/media-buy/create-media-buy-request.json
+/schemas/v2/media-buy/create-media-buy-request.json
 /schemas/v2/media-buy/create-media-buy-request.json
 ```
 
-**Single Source of Truth**: The schema registry at `/schemas/v1/index.json` contains the current version number.
+**Single Source of Truth**: The schema registry at `/schemas/v2/index.json` contains the current version number.
 
 ### Version Format
 
@@ -212,7 +212,7 @@ AdCP uses [semantic versioning](https://semver.org/):
 ### Version Negotiation
 
 **Client Behavior:**
-- Reference the desired schema version in your implementation (e.g., `/schemas/v1/`)
+- Reference the desired schema version in your implementation (e.g., `/schemas/v2/`)
 - The schema path you use determines the version you're implementing
 - Check the schema registry's `adcp_version` field to confirm compatibility
 
@@ -273,4 +273,4 @@ AdCP schemas use discriminated unions for type safety. All discriminator fields 
 
 ## JSON Schema Registry
 
-View all available schemas: [`https://adcontextprotocol.org/schemas/v1/index.json`](https://adcontextprotocol.org/schemas/v1/index.json)
+View all available schemas: [`https://adcontextprotocol.org/schemas/v2/index.json`](https://adcontextprotocol.org/schemas/v2/index.json)
