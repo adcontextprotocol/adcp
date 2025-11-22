@@ -50,7 +50,7 @@
     },
     "properties": {
       "type": "array",
-      "description": "Array of all properties covered by this adagents.json file. Same structure as list_authorized_properties response.",
+      "description": "Array of all properties covered by this adagents.json file. Defines the canonical property list that authorized agents reference.",
       "items": {
         "$ref": "/schemas/v1/core/property.json"
       },
@@ -58,7 +58,7 @@
     },
     "tags": {
       "type": "object",
-      "description": "Metadata for each tag referenced by properties. Same structure as list_authorized_properties response.",
+      "description": "Metadata for each tag referenced by properties. Provides human-readable context for property tag values.",
       "additionalProperties": {
         "type": "object",
         "properties": {
