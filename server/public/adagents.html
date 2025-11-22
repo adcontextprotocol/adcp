@@ -80,62 +80,6 @@
         z-index: 1;
       }
 
-      /* Top Navigation */
-      .top-nav {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 1000;
-      }
-
-      .nav-container {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 0 20px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        height: 60px;
-      }
-
-      .nav-brand h2 {
-        color: white;
-        margin: 0;
-        font-size: 18px;
-        font-weight: 600;
-      }
-
-      .nav-links {
-        display: flex;
-        gap: 30px;
-      }
-
-      .nav-link {
-        color: rgba(255, 255, 255, 0.8);
-        text-decoration: none;
-        padding: 8px 16px;
-        border-radius: 6px;
-        transition: all 0.3s ease;
-        font-weight: 500;
-        font-size: 14px;
-      }
-
-      .nav-link:hover {
-        color: white;
-        background: rgba(255, 255, 255, 0.1);
-        transform: translateY(-1px);
-      }
-
-      .nav-link.active {
-        color: white;
-        background: rgba(255, 255, 255, 0.2);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      }
-
       /* Main Content */
       .main-content {
         max-width: 1200px;
@@ -813,19 +757,9 @@
     </style>
   </head>
   <body>
-    <!-- Top Navigation -->
-    <nav class="top-nav">
-      <div class="nav-container">
-        <div class="nav-brand">
-          <h2>AdCP Testing Framework</h2>
-        </div>
-        <div class="nav-links">
-          <a href="/" class="nav-link">🧪 Media Buy Testing</a>
-          <a href="/creative-testing.html" class="nav-link">🎨 Creative Agent Testing</a>
-          <a href="/adagents.html" class="nav-link active">🔗 AdAgents Manager</a>
-        </div>
-      </div>
-    </nav>
+    <!-- Navigation (loaded by nav.js) -->
+    <div id="adcp-nav"></div>
+    <script src="/nav.js"></script>
 
     <div class="main-content">
       <!-- Page Header -->
