@@ -38,12 +38,28 @@ export interface AgentCardValidationResult {
   card_endpoint?: string;
 }
 
-export interface AdAgentsJson {
+export interface AdAgentsJsonInline {
   $schema?: string;
   authorized_agents: AuthorizedAgent[];
   properties?: any[];
+  tags?: Record<string, { name: string; description: string }>;
+  contact?: {
+    name: string;
+    email?: string;
+    domain?: string;
+    seller_id?: string;
+    tag_id?: string;
+  };
   last_updated?: string;
 }
+
+export interface AdAgentsJsonReference {
+  $schema?: string;
+  authoritative_location: string;
+  last_updated?: string;
+}
+
+export type AdAgentsJson = AdAgentsJsonInline | AdAgentsJsonReference;
 
 export class AdAgentsManager {
   
@@ -91,7 +107,24 @@ export class AdAgentsManager {
       result.raw_data = response.data;
 
       // Parse and validate JSON structure
-      const adagentsData = response.data;
+      let adagentsData = response.data;
+
+      // Check if this is a URL reference
+      if (this.isUrlReference(adagentsData)) {
+        // Follow the reference to get the authoritative file
+        const authoritativeData = await this.fetchAuthoritativeFile(
+          adagentsData.authoritative_location,
+          result
+        );
+
+        if (authoritativeData) {
+          adagentsData = authoritativeData;
+        } else {
+          // Error already added to result by fetchAuthoritativeFile
+          return result;
+        }
+      }
+
       this.validateStructure(adagentsData, result);
       this.validateContent(adagentsData, result);
 
@@ -129,6 +162,96 @@ export class AdAgentsManager {
     }
 
     return result;
+  }
+
+  /**
+   * Type guard to check if data is a URL reference
+   */
+  private isUrlReference(data: any): data is AdAgentsJsonReference {
+    return (
+      typeof data === 'object' &&
+      data !== null &&
+      'authoritative_location' in data &&
+      typeof data.authoritative_location === 'string'
+    );
+  }
+
+  /**
+   * Fetches the authoritative adagents.json file from a URL reference
+   */
+  private async fetchAuthoritativeFile(
+    url: string,
+    result: AdAgentsValidationResult
+  ): Promise<AdAgentsJsonInline | null> {
+    try {
+      // Validate URL format
+      try {
+        const parsedUrl = new URL(url);
+        if (!parsedUrl.protocol.startsWith('https:')) {
+          result.errors.push({
+            field: 'authoritative_location',
+            message: 'Authoritative location must use HTTPS',
+            severity: 'error'
+          });
+          return null;
+        }
+      } catch {
+        result.errors.push({
+          field: 'authoritative_location',
+          message: 'authoritative_location must be a valid URL',
+          severity: 'error'
+        });
+        return null;
+      }
+
+      // Fetch the authoritative file
+      const response = await axios.get(url, {
+        timeout: 10000,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'AdCP-Testing-Framework/1.0'
+        },
+        validateStatus: () => true
+      });
+
+      if (response.status !== 200) {
+        result.errors.push({
+          field: 'authoritative_location',
+          message: `Failed to fetch authoritative file: HTTP ${response.status}`,
+          severity: 'error'
+        });
+        return null;
+      }
+
+      const authData = response.data;
+
+      // Ensure the authoritative file is not also a reference (prevent infinite loops)
+      if (this.isUrlReference(authData)) {
+        result.errors.push({
+          field: 'authoritative_location',
+          message: 'Authoritative file cannot be another URL reference (nested references not allowed)',
+          severity: 'error'
+        });
+        return null;
+      }
+
+      return authData;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        result.errors.push({
+          field: 'authoritative_location',
+          message: `Failed to fetch authoritative file: ${error.message}`,
+          severity: 'error'
+        });
+      } else {
+        result.errors.push({
+          field: 'authoritative_location',
+          message: 'Unknown error fetching authoritative file',
+          severity: 'error'
+        });
+      }
+      return null;
+    }
   }
 
   /**
@@ -202,7 +325,7 @@ export class AdAgentsManager {
       result.warnings.push({
         field: '$schema',
         message: 'Consider adding $schema field for validation',
-        suggestion: 'Add "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json"'
+        suggestion: 'Add "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json"'
       });
     }
 
@@ -453,7 +576,7 @@ export class AdAgentsManager {
     }
 
     if (includeSchema) {
-      adagents.$schema = 'https://adcontextprotocol.org/schemas/v1/adagents.json';
+      adagents.$schema = 'https://adcontextprotocol.org/schemas/v2/adagents.json';
     }
 
     if (includeTimestamp) {
@@ -468,7 +591,7 @@ export class AdAgentsManager {
    */
   validateProposed(agents: AuthorizedAgent[]): AdAgentsValidationResult {
     const mockData = {
-      $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
+      $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
       authorized_agents: agents,
       last_updated: new Date().toISOString()
     };

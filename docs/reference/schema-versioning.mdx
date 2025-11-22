@@ -1,0 +1,239 @@
+---
+title: Schema Versioning
+description: Understanding AdCP schema versioning and how to reference schemas in your applications
+keywords: [versioning, schemas, compatibility, migration]
+sidebar_position: 11
+---
+
+# Schema Versioning
+
+AdCP uses semantic versioning for schemas with multiple access patterns to balance stability and convenience.
+
+## Version Paths
+
+All AdCP schemas are available at multiple paths:
+
+### Exact Version (Recommended for Production)
+```
+/schemas/2.5.0/core/product.json
+```
+- **Pin to specific release** - URL never changes
+- **Guaranteed stability** - Schema won't update unexpectedly
+- **Best for**: Production applications, SDK generation, CI/CD validation
+
+### Major Version Alias (Recommended for Documentation)
+```
+/schemas/v2/core/product.json
+```
+- **Tracks latest 2.x release** - Automatically updates with minor/patch releases
+- **Backward compatible** - No breaking changes within major version
+- **Best for**: Documentation examples, development, staying current
+
+### Latest Alias (Use with Caution)
+```
+/schemas/latest/core/product.json
+```
+- **Always current** - Points to newest release
+- **May include breaking changes** - Can jump major versions
+- **Best for**: Exploration, prototyping, bleeding edge development
+
+### Legacy Compatibility (v1)
+```
+/schemas/v2/core/product.json
+```
+- **Backward compatibility** - Alias to latest 2.x for existing clients
+- **Deprecated** - Use `/schemas/v2/` for new code
+- **Best for**: Maintaining existing integrations during migration
+
+## Choosing the Right Path
+
+### For Application Code
+
+```javascript
+// Production - pin exact version
+const SCHEMA_VERSION = '2.5.0';
+const schema = await fetch(`https://adcp.org/schemas/${SCHEMA_VERSION}/core/product.json`);
+
+// Development - track major version
+const schema = await fetch('https://adcp.org/schemas/v2/core/product.json');
+```
+
+### For SDK Generation
+
+Always use exact versions to ensure generated types match your target protocol version:
+
+```bash
+# TypeScript SDK generation
+npx json-schema-to-typescript \
+  https://adcp.org/schemas/2.5.0/core/product.json \
+  --output types/product.d.ts
+
+# Python SDK generation
+datamodel-codegen \
+  --url https://adcp.org/schemas/2.5.0/core/product.json \
+  --output models/product.py
+```
+
+### For Validation
+
+```javascript
+// Validate against specific version
+import Ajv from 'ajv';
+const ajv = new Ajv();
+
+const schema = await fetch('https://adcp.org/schemas/2.5.0/core/product.json');
+const validate = ajv.compile(await schema.json());
+
+if (!validate(data)) {
+  console.error('Validation failed:', validate.errors);
+}
+```
+
+## Client Libraries
+
+AdCP provides official client libraries for JavaScript/TypeScript and Python:
+
+### JavaScript/TypeScript
+
+[![npm version](https://img.shields.io/npm/v/@adcp/client)](https://www.npmjs.com/package/@adcp/client)
+
+```bash
+npm install @adcp/client
+```
+
+- **NPM**: [@adcp/client](https://www.npmjs.com/package/@adcp/client)
+- **GitHub**: [adcp-client](https://github.com/adcontextprotocol/adcp-client)
+- **Documentation**: [Quickstart Guide](/docs/quickstart)
+
+### Python
+
+[![PyPI version](https://img.shields.io/pypi/v/adcp)](https://pypi.org/project/adcp/)
+
+```bash
+pip install adcp
+```
+
+- **PyPI**: [adcp](https://pypi.org/project/adcp/)
+- **GitHub**: [adcp-python](https://github.com/adcontextprotocol/adcp-python)
+- **Documentation**: [Quickstart Guide](/docs/quickstart)
+
+Client libraries automatically handle schema version compatibility. Always use the latest client library version for the best experience.
+
+## Schema Updates and Breaking Changes
+
+### Within a Major Version (2.x)
+
+Minor and patch updates are **backward compatible**:
+- ✅ New optional fields
+- ✅ New enum values (append-only)
+- ✅ Documentation improvements
+- ✅ Bug fixes in validation
+
+**Safe to use**: `/schemas/v2/` will track these automatically.
+
+### Major Version Changes (2.x → 3.x)
+
+Breaking changes require a new major version:
+- ⚠️ Removing fields
+- ⚠️ Changing field types
+- ⚠️ Making optional fields required
+- ⚠️ Removing enum values
+
+**Requires migration**: Must update to `/schemas/v3/` explicitly.
+
+## Migration Guide
+
+### From v1 to v2
+
+If you're currently using `/schemas/v2/`:
+
+1. **No immediate action required** - v1 is an alias to v2
+2. **Update references** when convenient:
+   ```diff
+   - const schema = await fetch('/schemas/v2/core/product.json');
+   + const schema = await fetch('/schemas/v2/core/product.json');
+   ```
+3. **Consider pinning** for production stability:
+   ```javascript
+   const schema = await fetch('/schemas/2.5.0/core/product.json');
+   ```
+
+### From Exact Version to Major Alias
+
+If you want to track the latest 2.x:
+
+```diff
+- const schema = await fetch('/schemas/2.4.0/core/product.json');
++ const schema = await fetch('/schemas/v2/core/product.json');
+```
+
+**Trade-off**: Automatic updates vs. explicit control.
+
+## Best Practices
+
+### 1. Production Applications
+- **Pin exact versions** in production config
+- **Test before upgrading** to new minor versions
+- **Review changelogs** for each update
+
+### 2. Development Workflow
+- **Use major version alias** (`/schemas/v2/`) during development
+- **Pin exact version** before production deployment
+- **Document version** in README and package.json
+
+### 3. SDK Generation
+- **Always use exact versions** for type generation
+- **Regenerate types** when upgrading protocol versions
+- **Commit generated files** to track changes
+
+### 4. Documentation and Examples
+- **Use major version aliases** to stay current
+- **Show exact versions** in production examples
+- **Document compatibility** requirements
+
+## Version Discovery
+
+### Check Current Version
+
+```bash
+# Get schema registry with version info
+curl https://adcp.org/schemas/v2/index.json | jq '.adcp_version'
+# Output: "2.5.0"
+
+# Get version from specific release
+curl https://adcp.org/schemas/2.5.0/index.json | jq '.adcp_version'
+# Output: "2.5.0"
+```
+
+### List Available Versions
+
+Check the [Release Notes](/docs/reference/release-notes) or [GitHub Releases](https://github.com/adcontextprotocol/adcp/releases) for all available versions.
+
+## FAQ
+
+### Q: Will `/schemas/v2/` stop working?
+**A**: No. It's now a permanent alias to the latest 2.x release for backward compatibility.
+
+### Q: Should I use `/schemas/latest/`?
+**A**: Only for exploration and development. Never in production—it may include breaking changes.
+
+### Q: How often do schemas update?
+**A**: Following semantic versioning:
+- **Patch** (2.5.1): Bug fixes, no API changes
+- **Minor** (2.6.0): New features, backward compatible
+- **Major** (3.0.0): Breaking changes
+
+### Q: Can I host schemas myself?
+**A**: Yes! Schemas are open source. Clone the repository and serve from your own CDN.
+
+### Q: What if a schema URL returns 404?
+**A**: Check that:
+1. The version exists (see release notes)
+2. The path is correct (check [schema registry](https://adcp.org/schemas/v2/index.json))
+3. You're using the correct domain (adcp.org or adcontextprotocol.org)
+
+## Related Resources
+
+- [Release Notes](/docs/reference/release-notes) - Version history and migration guides
+- [CHANGELOG](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md) - Detailed technical changes
+- [GitHub Releases](https://github.com/adcontextprotocol/adcp/releases) - Download specific versions

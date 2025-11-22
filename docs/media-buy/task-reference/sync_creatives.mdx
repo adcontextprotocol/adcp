@@ -10,8 +10,8 @@ Upload and manage creative assets for media buys. Supports bulk uploads, upsert 
 
 **Response Time**: Instant to minutes (depends on file processing and validation)
 
-**Request Schema**: [`/schemas/v1/media-buy/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/sync-creatives-request.json)
-**Response Schema**: [`/schemas/v1/media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/sync-creatives-response.json)
+**Request Schema**: [`/schemas/v2/media-buy/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-response.json)
 
 ## Quick Start
 
@@ -89,8 +89,8 @@ asyncio.run(main())
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `creatives` | Creative[] | Yes | Creative assets to upload/update (max 100) |
+| `creative_ids` | string[] | No | Optional filter to limit sync scope to specific creative IDs. Only these creatives are affected, others remain untouched. Useful for partial updates and error recovery. |
 | `assignments` | object | No | Map of creative_id to array of package_ids for bulk assignment |
-| `patch` | boolean | No | When true, only provided fields are updated (default: false) |
 | `dry_run` | boolean | No | When true, preview changes without applying them (default: false) |
 | `validation_mode` | string | No | Validation strictness: `"strict"` (default) or `"lenient"` |
 | `delete_missing` | boolean | No | When true, creatives not in this sync are archived (default: false) |
@@ -153,7 +153,7 @@ Assignments are at the request level, mapping creative IDs to package IDs:
 - `platform_creative_id` - Platform's internal ID
 - Processing status and timestamps
 
-**See schema for complete field list**: [sync-creatives-response.json](https://adcontextprotocol.org/schemas/v1/media-buy/sync-creatives-response.json)
+**See schema for complete field list**: [sync-creatives-response.json](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-response.json)
 
 ## Common Scenarios
 
@@ -291,81 +291,6 @@ async def main():
         print(f"Successfully synced {len(result.creatives)} creatives")
         for creative in result.creatives:
             print(f"  {creative.name}: {creative.platform_creative_id}")
-
-asyncio.run(main())
-```
-
-</CodeGroup>
-
-### Patch Update
-
-Update creative metadata while providing asset reference:
-
-<CodeGroup>
-
-```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-
-// Note: Schema currently requires assets field even in patch mode
-const result = await testAgent.syncCreatives({
-  patch: true,
-  creatives: [{
-    creative_id: 'creative_video_001',
-    name: 'Summer Sale 30s - Updated Title',
-    format_id: {
-      agent_url: 'https://creative.adcontextprotocol.org',
-      id: 'video_standard_30s'
-    },
-    assets: {
-      video: {
-        url: 'https://cdn.example.com/summer-sale-30s.mp4',
-        width: 1920,
-        height: 1080,
-        duration_ms: 30000
-      }
-    }
-  }]
-});
-
-// Check for operation-level errors first
-if (result.errors) {
-  console.error('Operation failed:', result.errors);
-} else {
-  console.log('Updated creative:', result.creatives[0].creative_id);
-}
-```
-
-```python Python
-import asyncio
-from adcp import test_agent
-
-async def main():
-    # Note: Schema currently requires assets field even in patch mode
-    result = await test_agent.simple.sync_creatives(
-        patch=True,
-        creatives=[{
-            'creative_id': 'creative_video_001',
-            'name': 'Summer Sale 30s - Updated Title',
-            'format_id': {
-                'agent_url': 'https://creative.adcontextprotocol.org',
-                'id': 'video_standard_30s'
-            },
-            'assets': {
-                'video': {
-                    'url': 'https://cdn.example.com/summer-sale-30s.mp4',
-                    'width': 1920,
-                    'height': 1080,
-                    'duration_ms': 30000
-                }
-            }
-        }]
-    )
-
-    # Check for operation-level errors first
-    if hasattr(result, 'errors') and result.errors:
-        print('Operation failed:', result.errors)
-    else:
-        print(f"Updated creative: {result.creatives[0].creative_id}")
 
 asyncio.run(main())
 ```
@@ -511,19 +436,126 @@ asyncio.run(main())
 
 </CodeGroup>
 
+### Scoped Update with creative_ids Filter
+
+Update only specific creatives from a large library without affecting others:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+
+// Update just 2 creatives out of 100+ in the library
+const result = await testAgent.syncCreatives({
+  creative_ids: ['creative_video_001', 'creative_display_001'],
+  creatives: [
+    {
+      creative_id: 'creative_video_001',
+      name: 'Summer Sale 30s - Updated',
+      format_id: {
+        agent_url: 'https://creative.adcontextprotocol.org',
+        id: 'video_standard_30s'
+      },
+      assets: {
+        video: {
+          url: 'https://cdn.example.com/updated-video.mp4',
+          width: 1920,
+          height: 1080,
+          duration_ms: 30000
+        }
+      }
+    },
+    {
+      creative_id: 'creative_display_001',
+      name: 'Summer Sale Banner - Updated',
+      format_id: {
+        agent_url: 'https://creative.adcontextprotocol.org',
+        id: 'display_300x250'
+      },
+      assets: {
+        image: {
+          url: 'https://cdn.example.com/updated-banner.jpg',
+          width: 300,
+          height: 250
+        }
+      }
+    }
+  ]
+});
+
+if (result.errors) {
+  console.error('Update failed:', result.errors);
+} else {
+  console.log(`Updated ${result.creatives.length} creatives, others untouched`);
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def main():
+    # Update just 2 creatives out of 100+ in the library
+    result = await test_agent.simple.sync_creatives(
+        creative_ids=['creative_video_001', 'creative_display_001'],
+        creatives=[
+            {
+                'creative_id': 'creative_video_001',
+                'name': 'Summer Sale 30s - Updated',
+                'format_id': {
+                    'agent_url': 'https://creative.adcontextprotocol.org',
+                    'id': 'video_standard_30s'
+                },
+                'assets': {
+                    'video': {
+                        'url': 'https://cdn.example.com/updated-video.mp4',
+                        'width': 1920,
+                        'height': 1080,
+                        'duration_ms': 30000
+                    }
+                }
+            },
+            {
+                'creative_id': 'creative_display_001',
+                'name': 'Summer Sale Banner - Updated',
+                'format_id': {
+                    'agent_url': 'https://creative.adcontextprotocol.org',
+                    'id': 'display_300x250'
+                },
+                'assets': {
+                    'image': {
+                        'url': 'https://cdn.example.com/updated-banner.jpg',
+                        'width': 300,
+                        'height': 250
+                    }
+                }
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        print('Update failed:', result.errors)
+    else:
+        print(f"Updated {len(result.creatives)} creatives, others untouched")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+**Why use creative_ids filter:**
+- Scoped updates: Only specified creatives modified, even with 100+ in library
+- Error recovery: Retry only failed creatives after bulk sync validation failures
+- Performance: Publisher can optimize processing when scope is known upfront
+- Safety: Explicit targeting reduces risk of unintended changes
+
 ## Sync Modes
 
 ### Upsert (default)
 - Creates new creatives or updates existing by `creative_id`
 - Merges package assignments (additive)
-- Full asset replacement if assets provided
-- Use when initially uploading or doing complete updates
-
-### Patch
-- Updates only specified fields
-- Additive package assignments (doesn't remove existing)
-- Does not replace assets unless explicitly provided
-- Use when modifying assignments without re-uploading assets
+- Updates provided fields, leaves others unchanged
+- Use `creative_ids` filter to limit scope to specific creatives
 
 ### Dry Run
 - Validates request without making changes

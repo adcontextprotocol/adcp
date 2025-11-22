@@ -71,8 +71,8 @@ List and filter async tasks across your account to enable state reconciliation a
 
 **Response Time**: ~1 second (simple database lookup)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/core/tasks-list-request.json`](https://adcontextprotocol.org/schemas/v1/core/tasks-list-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/core/tasks-list-response.json`](https://adcontextprotocol.org/schemas/v1/core/tasks-list-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v2/core/tasks-list-request.json`](https://adcontextprotocol.org/schemas/v2/core/tasks-list-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v2/core/tasks-list-response.json`](https://adcontextprotocol.org/schemas/v2/core/tasks-list-response.json)
 
 ### Request Parameters
 
@@ -243,8 +243,8 @@ Poll a specific task by ID to check status, progress, and retrieve results when 
 
 **Response Time**: ~1 second (simple database lookup)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/core/tasks-get-request.json`](https://adcontextprotocol.org/schemas/v1/core/tasks-get-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/core/tasks-get-response.json`](https://adcontextprotocol.org/schemas/v1/core/tasks-get-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v2/core/tasks-get-request.json`](https://adcontextprotocol.org/schemas/v2/core/tasks-get-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v2/core/tasks-get-response.json`](https://adcontextprotocol.org/schemas/v2/core/tasks-get-response.json)
 
 ### Request Parameters
 
@@ -466,7 +466,7 @@ const response = await session.call('create_media_buy',
 
 When a task's status changes, the publisher POSTs a payload with protocol fields at the top-level and the task-specific payload nested under `result` to your webhook URL.
 
-**Webhook Payload Schema**: [`https://adcontextprotocol.org/schemas/v1/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v1/core/webhook-payload.json)
+**Webhook Payload Schema**: [`https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json)
 
 **Top-level fields:**
 - `operation_id` (required) — Correlates a sequence of updates for this operation

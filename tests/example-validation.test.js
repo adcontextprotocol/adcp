@@ -9,7 +9,7 @@ const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
-const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/v1');
+const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
 // Initialize AJV with formats
 const ajv = new Ajv({ 
@@ -21,8 +21,8 @@ addFormats(ajv);
 
 // Schema loader for resolving $ref
 async function loadExternalSchema(uri) {
-  if (uri.startsWith('/schemas/v1/')) {
-    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/v1/', ''));
+  if (uri.startsWith('/schemas/source/')) {
+    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/source/', ''));
     try {
       const content = fs.readFileSync(schemaPath, 'utf8');
       return JSON.parse(content);
@@ -317,7 +317,7 @@ async function runTests() {
   test('Product example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.product, 
-    '/schemas/v1/core/product.json', 
+    '/schemas/source/core/product.json', 
     'Product example'
   );
 });
@@ -325,7 +325,7 @@ async function runTests() {
 test('Media Buy example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.mediaBuy, 
-    '/schemas/v1/core/media-buy.json', 
+    '/schemas/source/core/media-buy.json', 
     'Media Buy example'
   );
 });
@@ -333,7 +333,7 @@ test('Media Buy example validates against schema', () => {
 test('Package example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.package, 
-    '/schemas/v1/core/package.json', 
+    '/schemas/source/core/package.json', 
     'Package example'
   );
 });
@@ -341,7 +341,7 @@ test('Package example validates against schema', () => {
 test('Creative Asset example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.creativeAsset, 
-    '/schemas/v1/core/creative-asset.json', 
+    '/schemas/source/core/creative-asset.json', 
     'Creative Asset example'
   );
 });
@@ -349,7 +349,7 @@ test('Creative Asset example validates against schema', () => {
 test('Targeting example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.targeting, 
-    '/schemas/v1/core/targeting.json', 
+    '/schemas/source/core/targeting.json', 
     'Targeting example'
   );
 });
@@ -357,7 +357,7 @@ test('Targeting example validates against schema', () => {
 test('Frequency Cap example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.frequencyCap, 
-    '/schemas/v1/core/frequency-cap.json', 
+    '/schemas/source/core/frequency-cap.json', 
     'Frequency Cap example'
   );
 });
@@ -365,7 +365,7 @@ test('Frequency Cap example validates against schema', () => {
 test('Format example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.format, 
-    '/schemas/v1/core/format.json', 
+    '/schemas/source/core/format.json', 
     'Format example'
   );
 });
@@ -373,7 +373,7 @@ test('Format example validates against schema', () => {
 test('Measurement example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.measurement, 
-    '/schemas/v1/core/measurement.json', 
+    '/schemas/source/core/measurement.json', 
     'Measurement example'
   );
 });
@@ -381,7 +381,7 @@ test('Measurement example validates against schema', () => {
 test('Creative Policy example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.creativePolicy, 
-    '/schemas/v1/core/creative-policy.json', 
+    '/schemas/source/core/creative-policy.json', 
     'Creative Policy example'
   );
 });
@@ -389,7 +389,7 @@ test('Creative Policy example validates against schema', () => {
 test('Error example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.error, 
-    '/schemas/v1/core/error.json', 
+    '/schemas/source/core/error.json', 
     'Error example'
   );
 });
@@ -397,7 +397,7 @@ test('Error example validates against schema', () => {
 test('Response example validates against schema', () => {
   return validateAgainstSchema(
     exampleData.response, 
-    '/schemas/v1/core/response.json', 
+    '/schemas/source/core/response.json', 
     'Response example'
   );
 });
@@ -406,7 +406,7 @@ test('Response example validates against schema', () => {
 test('get_products request validates against schema', () => {
   return validateAgainstSchema(
     exampleData.getProductsRequest, 
-    '/schemas/v1/media-buy/get-products-request.json', 
+    '/schemas/source/media-buy/get-products-request.json', 
     'get_products request'
   );
 });
@@ -414,7 +414,7 @@ test('get_products request validates against schema', () => {
 test('get_products response validates against schema', () => {
   return validateAgainstSchema(
     exampleData.getProductsResponse, 
-    '/schemas/v1/media-buy/get-products-response.json', 
+    '/schemas/source/media-buy/get-products-response.json', 
     'get_products response'
   );
 });
@@ -422,7 +422,7 @@ test('get_products response validates against schema', () => {
 test('create_media_buy request validates against schema', () => {
   return validateAgainstSchema(
     exampleData.createMediaBuyRequest, 
-    '/schemas/v1/media-buy/create-media-buy-request.json', 
+    '/schemas/source/media-buy/create-media-buy-request.json', 
     'create_media_buy request'
   );
 });
@@ -430,7 +430,7 @@ test('create_media_buy request validates against schema', () => {
 test('create_media_buy response validates against schema', () => {
   return validateAgainstSchema(
     exampleData.createMediaBuyResponse,
-    '/schemas/v1/media-buy/create-media-buy-response.json',
+    '/schemas/source/media-buy/create-media-buy-response.json',
     'create_media_buy response'
   );
 });
@@ -438,7 +438,7 @@ test('create_media_buy response validates against schema', () => {
 test('create_media_buy request with ASAP start validates against schema', () => {
   return validateAgainstSchema(
     exampleData.createMediaBuyRequestAsap,
-    '/schemas/v1/media-buy/create-media-buy-request.json',
+    '/schemas/source/media-buy/create-media-buy-request.json',
     'create_media_buy request with ASAP start'
   );
 });
@@ -446,7 +446,7 @@ test('create_media_buy request with ASAP start validates against schema', () => 
 test('get_signals request validates against schema', () => {
   return validateAgainstSchema(
     exampleData.getSignalsRequest, 
-    '/schemas/v1/signals/get-signals-request.json', 
+    '/schemas/source/signals/get-signals-request.json', 
     'get_signals request'
   );
 });
@@ -454,7 +454,7 @@ test('get_signals request validates against schema', () => {
 test('get_signals response validates against schema', () => {
   return validateAgainstSchema(
     exampleData.getSignalsResponse, 
-    '/schemas/v1/signals/get-signals-response.json', 
+    '/schemas/source/signals/get-signals-response.json', 
     'get_signals response'
   );
 });
@@ -462,7 +462,7 @@ test('get_signals response validates against schema', () => {
 test('activate_signal request validates against schema', () => {
   return validateAgainstSchema(
     exampleData.activateSignalRequest, 
-    '/schemas/v1/signals/activate-signal-request.json', 
+    '/schemas/source/signals/activate-signal-request.json', 
     'activate_signal request'
   );
 });
@@ -470,7 +470,7 @@ test('activate_signal request validates against schema', () => {
 test('activate_signal response validates against schema', () => {
   return validateAgainstSchema(
     exampleData.activateSignalResponse, 
-    '/schemas/v1/signals/activate-signal-response.json', 
+    '/schemas/source/signals/activate-signal-response.json', 
     'activate_signal response'
   );
 });

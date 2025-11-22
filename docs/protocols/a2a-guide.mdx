@@ -152,7 +152,10 @@ const task = await a2a.send({
 
 **New in AdCP 1.6.0**: All responses include unified status field.
 
-### Response Structure
+### Canonical Response Structure
+
+AdCP responses over A2A **MUST** include at least one `DataPart` (kind: 'data') containing the task response. A `TextPart` (kind: 'text') for human-readable messages is **recommended** but optional.
+
 ```json
 {
   "status": "completed",        // Unified status (see Core Concepts)
@@ -162,11 +165,11 @@ const task = await a2a.send({
     "name": "product_catalog",
     "parts": [
       {
-        "kind": "text",
+        "kind": "text",          // Optional but recommended
         "text": "Found 12 video products perfect for pet food campaigns"
       },
       {
-        "kind": "data", 
+        "kind": "data",          // Required - contains AdCP response payload
         "data": {
           "products": [...],
           "total": 12
@@ -177,26 +180,29 @@ const task = await a2a.send({
 }
 ```
 
+**For complete canonical format specification, see [A2A Response Format](/docs/protocols/a2a-response-format).**
+
 ### A2A-Specific Fields
 - **taskId**: A2A task identifier for streaming updates
 - **contextId**: Automatically managed by A2A protocol
-- **artifacts**: Multi-part deliverables (vs. MCP's direct data field)
-- **status**: Same values as MCP for consistency
+- **artifacts**: Multi-part deliverables with text and data parts
+- **status**: Same values as MCP for consistency (A2A TaskState enum)
 
 ### Processing Artifacts
+
+AdCP responses use the **last `DataPart` as authoritative** when multiple data parts exist (e.g., from streaming operations):
+
 ```javascript
-function processA2aResponse(response) {
-  // Extract human message
-  const message = response.artifacts?.[0]?.parts
-    ?.find(p => p.kind === 'text')?.text;
-    
-  // Extract structured data
-  const data = response.artifacts?.[0]?.parts
-    ?.find(p => p.kind === 'data')?.data;
-    
-  return { message, data, status: response.status };
-}
+// Extract AdCP data from A2A response
+const data = response.artifacts?.[0]?.parts
+  ?.filter(p => p.kind === 'data')
+  .slice(-1)[0]?.data;  // Last data part is authoritative
+
+const message = response.artifacts?.[0]?.parts
+  ?.find(p => p.kind === 'text')?.text;
 ```
+
+**For complete response structure requirements, error handling, and implementation patterns, see [A2A Response Format](/docs/protocols/a2a-response-format).**
 
 ## SSE Streaming (A2A-Specific)
 
@@ -433,9 +439,38 @@ console.log('Examples:', getProductsSkill.examples);
         "Show me video products under $50 CPM"
       ]
     }
-  ]
+  ],
+  "extensions": {
+    "adcp": {
+      "adcp_version": "2.4.0",
+      "protocols_supported": ["media_buy"]
+    }
+  }
 }
 ```
+
+### AdCP Extension
+
+**Recommended**: Include the `extensions.adcp` field in your agent card to declare AdCP support programmatically.
+
+```javascript
+// Check if agent supports AdCP
+const agentCard = await fetch('https://sales.example.com/.well-known/agent.json')
+  .then(r => r.json());
+
+if (agentCard.extensions?.adcp) {
+  console.log('AdCP Version:', agentCard.extensions.adcp.adcp_version);
+  console.log('Supported domains:', agentCard.extensions.adcp.protocols_supported);
+  // ["media_buy", "creative", "signals"]
+}
+```
+
+**Extension Structure**: See the [AdCP extension schema](https://adcontextprotocol.org/schemas/v2/protocols/adcp-extension.json) for complete specification.
+
+**Benefits**:
+- Clients can discover AdCP capabilities without making test calls
+- Declare which protocol domains you implement (media_buy, creative, signals)
+- Enable compatibility checks based on version
 
 ## Integration Example
 

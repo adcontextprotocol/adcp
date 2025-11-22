@@ -1,0 +1,361 @@
+# Extension Fields and Context
+
+## Overview
+
+AdCP provides two mechanisms for adding custom data to requests and responses:
+
+- **`ext`** - Platform-specific extensions that MAY affect behavior (vendor-namespaced)
+- **`context`** - Opaque correlation data that is echoed unchanged
+
+### Key Differences
+
+| Aspect | `ext` | `context` |
+|--------|-------|-----------|
+| **Purpose** | Platform-specific parameters | Opaque correlation data |
+| **Affects behavior** | MAY | NEVER |
+| **Namespaced** | Yes (vendor keys required) | No |
+| **Parsed by agents** | MAY be | NEVER |
+| **Example** | `ext.gam.test_mode` | `context.ui_session_id` |
+
+## Extension Fields (`ext`)
+
+Extension fields enable platform-specific functionality, private publisher-buyer agreements, experimental features, and forward compatibility. Extensions follow industry conventions established by IAB standards like OpenRTB.
+
+### Schema Pattern
+
+Extensions appear in the same pattern everywhere they're used (requests, responses, and domain objects):
+
+```json
+{
+  "product_id": "ctv_premium",
+  "name": "Connected TV Premium Inventory",
+  "ext": {
+    "gam": {
+      "order_id": "1234567890",
+      "dashboard_url": "https://..."
+    },
+    "roku": {
+      "content_genres": ["comedy", "drama"]
+    }
+  }
+}
+```
+
+The `ext` object:
+- Is always **optional** (never required)
+- Accepts any valid JSON structure
+- Must be preserved by implementations (even unknown fields)
+- Is not validated by AdCP schemas (implementation-specific validation allowed)
+
+### Use Cases by Layer
+
+**Request extensions** - Platform-specific parameters, vendor configuration, custom capabilities:
+```json
+{
+  "promoted_offering": "Tesla Model 3",
+  "packages": [...],
+  "ext": {
+    "gam": {
+      "test_mode": true,
+      "ad_unit_path": "/12345/premium"
+    }
+  }
+}
+```
+
+**Response extensions** - Platform identifiers, debug information, processing hints:
+```json
+{
+  "media_buy_id": "mb_123",
+  "ext": {
+    "gam": {
+      "order_id": "1234567890",
+      "dashboard_url": "https://admanager.google.com/..."
+    }
+  }
+}
+```
+
+**Object extensions** - Persistent platform-specific data on domain objects (Products, MediaBuys, Packages, CreativeManifests):
+```json
+{
+  "product_id": "premium_video",
+  "ext": {
+    "roku": {
+      "app_ids": ["123456", "789012"],
+      "device_types": ["tv", "streaming_stick"]
+    }
+  }
+}
+```
+
+## Context Field (`context`)
+
+Context provides opaque correlation data that is echoed unchanged in responses and webhooks. Agents NEVER parse or use context to affect behavior - it exists solely for the initiator's internal tracking needs.
+
+### Schema Pattern
+
+```json
+{
+  "buyer_ref": "buyer_123",
+  "packages": [...],
+  "context": {
+    "ui_session_id": "sess_abc123",     // UI state tracking
+    "trace_id": "trace_xyz789",          // Request correlation
+    "internal_campaign_id": "camp_456",  // Internal tracking
+    "buyer_org_id": "org_123"            // Organization context
+  }
+}
+```
+
+The `context` object:
+- Is always **optional** (never required)
+- Accepts any valid JSON structure
+- Is **echoed unchanged** in responses and webhook payloads
+- NEVER affects agent behavior or processing
+- Is **not interpreted** by agents (completely opaque)
+
+### Common Context Patterns
+
+Context is typically used for:
+
+1. **UI/Session tracking** - Maintaining state across async operations
+2. **Request correlation** - Tracing requests through distributed systems
+3. **Internal identifiers** - Mapping to initiator's internal data structures
+4. **Organization context** - Multi-tenant tracking
+
+### Context in Responses
+
+Responses echo context from the request, enabling correlation between async operations:
+
+```json
+// Request
+{
+  "buyer_ref": "buyer_123",
+  "context": { "ui_session_id": "sess_abc" }
+}
+
+// Response
+{
+  "media_buy_id": "mb_456",
+  "context": { "ui_session_id": "sess_abc" }  // Echoed unchanged
+}
+```
+
+Context is echoed unchanged in responses and webhook payloads.
+
+## Namespacing Conventions
+
+### CRITICAL: All Extensions Must Be Namespaced
+
+Extensions MUST use vendor/platform namespacing to avoid naming collisions:
+
+✅ **Correct - Namespaced:**
+```json
+{
+  "ext": {
+    "gam": { "test_mode": true },
+    "roku": { "app_ids": ["123"] }
+  }
+}
+```
+
+❌ **Incorrect - Not namespaced:**
+```json
+{
+  "ext": {
+    "test_mode": true,  // Missing namespace!
+    "app_ids": ["123"]  // Which platform?
+  }
+}
+```
+
+### Namespace Guidelines
+
+- **Use reverse-domain format for custom namespaces**: `com.example.feature`
+- **Use common platform short names**: `gam`, `roku`, `ttd`, `magnite`, `nielsen`, `comscore`
+- **Consistent naming**: Same namespace across all usage (don't mix `gam` and `google_ad_manager`)
+- **Documented namespaces**: Maintain internal registry of your organization's namespaces
+
+### Why Namespacing Matters
+
+Without namespacing:
+- Name collisions between platforms are inevitable
+- Extensions become ambiguous (whose `test_mode`?)
+- Impossible to support multiple platforms simultaneously
+- Harder to deprecate platform-specific features
+
+## Proposing Spec Additions
+
+If your extension field represents **common ad tech functionality** that would benefit all AdCP implementations:
+
+1. **Use extensions first** - Validate the feature in production
+2. **Gather evidence** - Document actual usage patterns and adoption
+3. **Propose standardization** - Submit RFC to standardize as core field
+4. **Dual support period** - Support both ext and core field during transition
+5. **Eventual deprecation** - Once standardized, deprecate the extension version
+
+Example progression:
+```json
+// Phase 1: Extension (testing)
+{ "ext": { "acme": { "dynamic_pricing": true } } }
+
+// Phase 2: Standardized (if broadly useful)
+{ "dynamic_pricing_enabled": true }
+```
+
+## Validation Rules
+
+### Extension Field Requirements
+
+AdCP implementations MUST:
+- Accept `ext` fields on all schemas that define them
+- Preserve `ext` values even if not understood
+- Not reject requests solely due to unknown `ext` contents
+- Pass through `ext` values in responses when echoing objects
+
+AdCP implementations MAY:
+- Parse and validate known `ext` fields
+- Use `ext` values to modify behavior (document this clearly)
+- Add their own `ext` fields to responses
+- Reject requests if KNOWN `ext` values are invalid
+
+AdCP implementations MUST NOT:
+- Require `ext` fields (always optional)
+- Reject unknown/unexpected `ext` fields
+- Modify `ext` values from requests (except to add platform-specific response data)
+
+### Context Field Requirements
+
+AdCP implementations MUST:
+- Echo `context` unchanged in responses (exact JSON preservation)
+- Echo `context` unchanged in webhook payloads
+- Never parse or interpret `context` contents
+- Never use `context` to affect behavior
+
+AdCP implementations MUST NOT:
+- Require `context` fields (always optional)
+- Modify `context` values in any way
+- Use `context` for operational decisions
+
+## Extension Examples
+
+### Comprehensive Multi-Platform Example
+
+```json
+{
+  "buyer_ref": "buyer_123",
+  "packages": [...],
+  "ext": {
+    "gam": {
+      "order_id": "1234567890",
+      "dashboard_url": "https://admanager.google.com/...",
+      "test_mode": true
+    },
+    "roku": {
+      "content_genres": ["comedy", "drama"],
+      "device_types": ["tv", "streaming_stick"],
+      "app_ids": ["123456", "789012"]
+    },
+    "ttd": {
+      "uid2_enabled": true,
+      "tracking_tag": "ttd_pixel_123"
+    },
+    "nielsen": {
+      "dar_enabled": true,
+      "campaign_id": "nielsen_camp_123"
+    },
+    "comscore": {
+      "census_enabled": false,
+      "client_id": "cs_client_789"
+    },
+    "com.mycompany.analytics": {
+      "custom_dimension_1": "value",
+      "experiment_id": "exp_456"
+    }
+  }
+}
+```
+
+All extensions follow this pattern: namespace your fields under your vendor key.
+
+## Best Practices
+
+### When to Use Extensions vs Context
+
+**Use `ext` when:**
+- Platform needs to parse the data
+- Data MAY affect operational behavior
+- Data represents platform-specific configuration
+- Data should persist across operations (on objects)
+
+**Use `context` when:**
+- Data is only for caller's internal use
+- Data should never affect agent behavior
+- Data is for correlation/tracking only
+- Data needs to be echoed unchanged
+
+### Extension Design Guidelines
+
+1. **Always namespace** - Every extension must be under a vendor key
+2. **Document extensively** - Extensions are implementation-specific, not self-documenting
+3. **Version carefully** - Breaking changes in extensions affect integrations
+4. **Use JSON Schema** - Define schemas for your extensions
+5. **Monitor usage** - Track which extensions are actually used
+6. **Consider standardization** - Popular extensions should become core fields
+
+### Context Design Guidelines
+
+1. **Keep it opaque** - Don't structure context for agents to parse
+2. **Avoid large payloads** - Context is echoed in every response
+3. **Don't rely on preservation** - While agents MUST echo context, plan for edge cases
+4. **Use for correlation only** - Never use context for operational data
+
+## Common Pitfalls
+
+### Anti-Pattern: Unnamespaced Extensions
+
+❌ **Bad:**
+```json
+{ "ext": { "test_mode": true } }
+```
+
+✅ **Good:**
+```json
+{ "ext": { "gam": { "test_mode": true } } }
+```
+
+### Anti-Pattern: Using Context for Operations
+
+❌ **Bad:**
+```json
+{
+  "context": { "enable_feature_x": true }  // Agent should never parse this!
+}
+```
+
+✅ **Good:**
+```json
+{
+  "ext": { "acme": { "enable_feature_x": true } },
+  "context": { "ui_session_id": "sess_123" }
+}
+```
+
+### Anti-Pattern: Mixing Standard and Extension Fields
+
+❌ **Bad:**
+```json
+{
+  "promoted_offering": "Product Name",
+  "ext": { "acme": { "promoted_offering_id": "123" } }  // Redundant with core field
+}
+```
+
+✅ **Good:**
+```json
+{
+  "promoted_offering": "Product Name",
+  "ext": { "acme": { "internal_product_code": "SKU-123" } }  // Different purpose
+}
+```
