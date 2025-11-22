@@ -8,6 +8,8 @@ jobs:
   check:
     name: Check for changeset
     runs-on: ubuntu-latest
+    # Skip changeset check on Version Packages PR (created by changesets/action)
+    if: github.head_ref != 'changeset-release/main'
     steps:
       - uses: actions/checkout@v4
         with:
