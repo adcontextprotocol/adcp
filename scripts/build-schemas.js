@@ -31,6 +31,9 @@ function getMajorVersion(version) {
 
 function getMinorVersion(version) {
   const parts = version.split('.');
+  if (parts.length < 2) {
+    throw new Error(`Invalid semantic version: ${version}. Expected format: major.minor.patch`);
+  }
   return `${parts[0]}.${parts[1]}`;
 }
 
