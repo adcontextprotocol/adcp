@@ -15,35 +15,31 @@
       "pattern": "^[a-zA-Z0-9_-]+$",
       "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
     },
-    "width": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Width in pixels for visual formats (display, DOOH, native). When specified with height, creates a parameterized format ID. Omit to reference a template format without parameters."
-    },
-    "height": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Height in pixels for visual formats (display, DOOH, native). When specified with width, creates a parameterized format ID. Omit to reference a template format without parameters."
-    },
     "duration_ms": {
       "type": "number",
-      "minimum": 0,
+      "minimum": 1,
       "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
     }
   },
   "required": ["agent_url", "id"],
   "additionalProperties": false,
-  "anyOf": [
+  "allOf": [
     {
-      "not": {
-        "anyOf": [
-          {"required": ["width"]},
-          {"required": ["height"]}
-        ]
-      }
-    },
-    {
-      "required": ["width", "height"]
+      "oneOf": [
+        {
+          "not": {
+            "anyOf": [
+              {"required": ["width"]},
+              {"required": ["height"]}
+            ]
+          }
+        },
+        {
+          "allOf": [
+            {"$ref": "/schemas/core/dimensions.json"}
+          ]
+        }
+      ]
     }
   ]
 }
