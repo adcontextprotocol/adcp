@@ -61,32 +61,32 @@ Format definition that accepts parameters:
 ```json
 {
   "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
+    "agent_url": "https://creative.adcontextprotocol.org"
     "id": "display_static"
-  },
-  "name": "Static Display Banner",
-  "type": "display",
-  "accepts_parameters": ["dimensions"],
+  }
+  "name": "Static Display Banner"
+  "type": "display"
+  "accepts_parameters": ["dimensions"]
   "renders": [
     {
-      "role": "primary",
+      "role": "primary"
       "parameters_from_format_id": true
     }
-  ],
+  ]
   "assets_required": [
     {
-      "item_type": "individual",
-      "asset_id": "banner_image",
-      "asset_type": "image",
-      "required": true,
+      "item_type": "individual"
+      "asset_id": "banner_image"
+      "asset_type": "image"
+      "required": true
       "requirements": {
         "parameters_from_format_id": true
       }
-    },
+    }
     {
-      "item_type": "individual",
-      "asset_id": "clickthrough_url",
-      "asset_type": "url",
+      "item_type": "individual"
+      "asset_id": "clickthrough_url"
+      "asset_type": "url"
       "required": true
     }
   ]
@@ -105,20 +105,20 @@ Creative specifies exact dimensions in format_id to use the template format:
 ```json
 {
   "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_static",
-    "width": 300,
+    "agent_url": "https://creative.adcontextprotocol.org"
+    "id": "display_static"
+    "width": 300
     "height": 250
-  },
+  }
   "assets": {
     "banner_image": {
-      "asset_type": "image",
-      "url": "https://cdn.example.com/banner-300x250.png",
-      "width": 300,
+      "asset_type": "image"
+      "url": "https://cdn.example.com/banner-300x250.png"
+      "width": 300
       "height": 250
-    },
+    }
     "clickthrough_url": {
-      "asset_type": "url",
+      "asset_type": "url"
       "url": "https://example.com/landing"
     }
   }
@@ -135,22 +135,20 @@ Publishers can specify supported dimensions in two ways:
 
 ```json
 {
-  "placement_id": "homepage_banner",
-  "name": "Homepage Banner",
+  "placement_id": "homepage_banner"
+  "name": "Homepage Banner"
   "format_ids": [
     {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_static",
-      "width": 300,
-      "height": 250,
-      "unit": "px"
-    },
+      "agent_url": "https://creative.adcontextprotocol.org"
+      "id": "display_static"
+      "width": 300
+      "height": 250
+    }
     {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_static",
-      "width": 728,
-      "height": 90,
-      "unit": "px"
+      "agent_url": "https://creative.adcontextprotocol.org"
+      "id": "display_static"
+      "width": 728
+      "height": 90
     }
   ]
 }
@@ -162,11 +160,11 @@ Publishers can specify supported dimensions in two ways:
 
 ```json
 {
-  "placement_id": "flexible_banner",
-  "name": "Flexible Banner Slot",
+  "placement_id": "flexible_banner"
+  "name": "Flexible Banner Slot"
   "format_ids": [
     {
-      "agent_url": "https://creative.adcontextprotocol.org",
+      "agent_url": "https://creative.adcontextprotocol.org"
       "id": "display_static"
     }
   ]
@@ -196,9 +194,9 @@ Publishers can specify supported dimensions in two ways:
 **Example:**
 ```json
 {
-  "agent_url": "https://creative.adcontextprotocol.org",
-  "id": "display_static",
-  "width": 300,
+  "agent_url": "https://creative.adcontextprotocol.org"
+  "id": "display_static"
+  "width": 300
   "height": 250
 }
 ```
@@ -211,8 +209,8 @@ Publishers can specify supported dimensions in two ways:
 **Example:**
 ```json
 {
-  "agent_url": "https://creative.adcontextprotocol.org",
-  "id": "video_hosted",
+  "agent_url": "https://creative.adcontextprotocol.org"
+  "id": "video_hosted"
   "duration_ms": 30000
 }
 ```
@@ -226,10 +224,10 @@ Publishers can specify supported dimensions in two ways:
 **Example:**
 ```json
 {
-  "agent_url": "https://creative.adcontextprotocol.org",
-  "id": "video_hosted",
-  "width": 1920,
-  "height": 1080,
+  "agent_url": "https://creative.adcontextprotocol.org"
+  "id": "video_hosted"
+  "width": 1920
+  "height": 1080
   "duration_ms": 30000
 }
 ```
@@ -241,13 +239,13 @@ Publishers can specify supported dimensions in two ways:
 ```json
 {
   "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
+    "agent_url": "https://creative.adcontextprotocol.org"
     "id": "display_static"
-  },
-  "name": "Static Display Banner",
-  "type": "display",
-  "accepts_parameters": ["dimensions"],
-  "renders": null,
+  }
+  "name": "Static Display Banner"
+  "type": "display"
+  "accepts_parameters": ["dimensions"]
+  "renders": null
   "assets_required": [...]
 }
 ```
@@ -257,13 +255,13 @@ Publishers can specify supported dimensions in two ways:
 ```json
 {
   "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
+    "agent_url": "https://creative.adcontextprotocol.org"
     "id": "video_hosted"
-  },
-  "name": "Hosted Video",
-  "type": "video",
-  "accepts_parameters": ["duration"],
-  "renders": null,
+  }
+  "name": "Hosted Video"
+  "type": "video"
+  "accepts_parameters": ["duration"]
+  "renders": null
   "assets_required": [...]
 }
 ```
@@ -273,13 +271,13 @@ Publishers can specify supported dimensions in two ways:
 ```json
 {
   "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
+    "agent_url": "https://creative.adcontextprotocol.org"
     "id": "dooh_static"
-  },
-  "name": "DOOH Static Display",
-  "type": "dooh",
-  "accepts_parameters": ["dimensions"],
-  "renders": null,
+  }
+  "name": "DOOH Static Display"
+  "type": "dooh"
+  "accepts_parameters": ["dimensions"]
+  "renders": null
   "assets_required": [...]
 }
 ```
@@ -288,11 +286,11 @@ Publishers can specify supported dimensions in two ways:
 ```json
 {
   "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "dooh_static",
-    "width": 1920,
+    "agent_url": "https://creative.adcontextprotocol.org"
+    "id": "dooh_static"
+    "width": 1920
     "height": 560
-  },
+  }
   "assets": {...}
 }
 ```
@@ -304,9 +302,9 @@ Generative formats specify which output formats they can produce:
 **Option 1: Generate specific dimensions**
 ```json
 {
-  "format_id": {"agent_url": "...", "id": "display_generative"},
+  "format_id": {"agent_url": "...", "id": "display_generative"}
   "output_format_ids": [
-    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
+    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}
     {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
   ]
 }
@@ -315,7 +313,7 @@ Generative formats specify which output formats they can produce:
 **Option 2: Generate any dimension (template output)**
 ```json
 {
-  "format_id": {"agent_url": "...", "id": "display_generative"},
+  "format_id": {"agent_url": "...", "id": "display_generative"}
   "output_format_ids": [
     {"agent_url": "...", "id": "display_static"}
   ]
@@ -334,8 +332,8 @@ Both creative and sales agents can return template format definitions via `list_
 {
   "formats": [
     {
-      "format_id": {"agent_url": "...", "id": "display_static"},
-      "accepts_parameters": ["dimensions"],
+      "format_id": {"agent_url": "...", "id": "display_static"}
+      "accepts_parameters": ["dimensions"]
       "assets_required": [...]
     }
   ]
@@ -353,7 +351,7 @@ Sales agents return products with placement-specific format constraints:
   "products": [{
     "placements": [{
       "format_ids": [
-        {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
+        {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}
         {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
       ]
     }]
@@ -400,7 +398,7 @@ Sales agents return products with placement-specific format constraints:
 - OR list specific parameterized formats to constrain dimensions:
   ```json
   [
-    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
+    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}
     {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
   ]
   ```
@@ -496,11 +494,11 @@ When comparing format_ids for equality or caching:
 ```json
 // 50 separate format definitions
 {
-  "format_id": {"agent_url": "...", "id": "display_300x250"},
+  "format_id": {"agent_url": "...", "id": "display_300x250"}
   "renders": [{"dimensions": {"width": 300, "height": 250}}]
 }
 {
-  "format_id": {"agent_url": "...", "id": "display_728x90"},
+  "format_id": {"agent_url": "...", "id": "display_728x90"}
   "renders": [{"dimensions": {"width": 728, "height": 90}}]
 }
 // ... 48 more
@@ -509,8 +507,8 @@ When comparing format_ids for equality or caching:
 **After (single template format):**
 ```json
 {
-  "format_id": {"agent_url": "...", "id": "display_static"},
-  "accepts_parameters": ["dimensions"],
+  "format_id": {"agent_url": "...", "id": "display_static"}
+  "accepts_parameters": ["dimensions"]
   "assets_required": [...]
 }
 ```
@@ -519,19 +517,18 @@ When comparing format_ids for equality or caching:
 ```json
 // Before: Format ID encoded dimensions in string
 {
-  "format_id": {"agent_url": "...", "id": "display_300x250"},
+  "format_id": {"agent_url": "...", "id": "display_300x250"}
   "assets": {...}
 }
 
 // After: Dimensions as structured fields in format_id
 {
   "format_id": {
-    "agent_url": "...",
-    "id": "display_static",
-    "width": 300,
-    "height": 250,
-    "unit": "px"
-  },
+    "agent_url": "..."
+    "id": "display_static"
+    "width": 300
+    "height": 250
+  }
   "assets": {...}
 }
 ```
@@ -544,7 +541,7 @@ Instead of defining 15 separate formats for IAB sizes, use one template:
 
 ```json
 {
-  "format_id": {"agent_url": "...", "id": "display_static"},
+  "format_id": {"agent_url": "...", "id": "display_static"}
   "accepts_parameters": ["dimensions"]
 }
 ```
@@ -561,7 +558,7 @@ Instead of separate 15s, 30s, 60s format definitions:
 
 ```json
 {
-  "format_id": {"agent_url": "...", "id": "video_hosted"},
+  "format_id": {"agent_url": "...", "id": "video_hosted"}
   "accepts_parameters": ["duration"]
 }
 ```
@@ -574,7 +571,7 @@ Instead of defining formats for every billboard size:
 
 ```json
 {
-  "format_id": {"agent_url": "...", "id": "dooh_static"},
+  "format_id": {"agent_url": "...", "id": "dooh_static"}
   "accepts_parameters": ["dimensions"]
 }
 ```
