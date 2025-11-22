@@ -63,9 +63,7 @@
       "description": "Search for formats by name (case-insensitive partial match)"
     },
     "context": {
-      "type": "object",
-      "description": "Initiator-provided context included in the request payload. Agentsmust echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
-      "additionalProperties": true
+      "$ref": "/schemas/core/context.json"
     },
     "ext": {
       "$ref": "/schemas/core/request-ext.json"

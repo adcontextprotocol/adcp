@@ -87,9 +87,7 @@
       "description": "Optional webhook configuration for async update notifications. Publisher will send webhook when update completes if operation takes longer than immediate response time."
     },
     "context": {
-      "type": "object",
-      "description": "Initiator-provided context included in the request payload. Agents must echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
-      "additionalProperties": true
+      "$ref": "/schemas/core/context.json"
     },
     "ext": {
       "$ref": "/schemas/core/request-ext.json"
