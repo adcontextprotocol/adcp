@@ -167,7 +167,7 @@ asyncio.run(discover_with_filters())
 | `budget_range` | object | Budget range to filter appropriate products (see Budget Range Object below) |
 | `currency` | string | ISO 4217 currency code (e.g., `"USD"`, `"EUR"`, `"GBP"`) for budget filtering |
 | `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (e.g., `["US", "CA", "GB"]`) |
-| `channels` | string[] | Filter by advertising channels (e.g., `["web", "mobile", "ctv", "dooh", "audio", "print"]`) |
+| `channels` | string[] | Filter by advertising channels (e.g., `["display", "video", "dooh", "ctv", "audio", "native"]`) |
 
 ### Budget Range Object
 
@@ -311,7 +311,7 @@ const result = await testAgent.getProducts({
     },
     currency: 'USD',
     countries: ['US', 'CA'],
-    channels: ['web', 'mobile', 'ctv'],
+    channels: ['display', 'video', 'ctv'],
     delivery_type: 'guaranteed'
   }
 });
@@ -342,7 +342,7 @@ async def discover_with_budget_and_dates():
             },
             'currency': 'USD',
             'countries': ['US', 'CA'],
-            'channels': ['web', 'mobile', 'ctv'],
+            'channels': ['display', 'video', 'ctv'],
             'delivery_type': 'guaranteed'
         }
     )

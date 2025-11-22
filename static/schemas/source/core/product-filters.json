@@ -77,10 +77,9 @@
     },
     "channels": {
       "type": "array",
-      "description": "Filter by advertising channels (e.g., ['web', 'mobile', 'ctv', 'dooh'])",
+      "description": "Filter by advertising channels (e.g., ['display', 'video', 'dooh'])",
       "items": {
-        "type": "string",
-        "enum": ["web", "mobile", "ctv", "dooh", "audio", "print"]
+        "$ref": "/schemas/enums/channels.json"
       }
     }
   },
