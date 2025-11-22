@@ -12,8 +12,8 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 **PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
-**Request Schema**: [`/schemas/v1/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-request.json)
-**Response Schema**: [`/schemas/v1/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json)
+**Request Schema**: [`/schemas/v2/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-response.json)
 
 ## Quick Start
 
@@ -26,7 +26,7 @@ import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.updateMediaBuy({
   buyer_ref: 'summer_campaign_2025',
-  active: false
+  paused: true
 });
 
 // Check for errors (discriminated union response)
@@ -47,7 +47,7 @@ from adcp import test_agent
 async def pause_campaign():
     result = await test_agent.simple.update_media_buy(
         buyer_ref='summer_campaign_2025',
-        active=False
+        paused=True
     )
 
     # Check for errors (discriminated union response)
@@ -71,8 +71,10 @@ asyncio.run(pause_campaign())
 | `buyer_ref` | string | Yes* | Your reference for the media buy to update |
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
-| `active` | boolean | No | Pause/resume entire media buy |
+| `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
+| `creatives` | CreativeAsset[] | No | Upload and assign new creative assets inline |
+| `creative_assignments` | CreativeAssignment[] | No | Update creative rotation weights and placement targeting |
 
 *Either `media_buy_id` OR `buyer_ref` is required (not both)
 
@@ -82,7 +84,7 @@ asyncio.run(pause_campaign())
 |-----------|------|-------------|
 | `package_id` | string | Publisher's package identifier to update |
 | `buyer_ref` | string | Your reference for the package to update |
-| `active` | boolean | Pause/resume specific package |
+| `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
 | `budget` | number | Updated budget allocation |
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only) |
