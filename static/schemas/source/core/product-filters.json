@@ -66,6 +66,22 @@
       "type": "string",
       "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP') for budget filtering",
       "pattern": "^[A-Z]{3}$"
+    },
+    "countries": {
+      "type": "array",
+      "description": "Filter by target countries using ISO 3166-1 alpha-2 country codes (e.g., ['US', 'CA', 'GB'])",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "channels": {
+      "type": "array",
+      "description": "Filter by advertising channels (e.g., ['web', 'mobile', 'ctv', 'dooh'])",
+      "items": {
+        "type": "string",
+        "enum": ["web", "mobile", "ctv", "dooh", "audio", "print"]
+      }
     }
   },
   "additionalProperties": false
