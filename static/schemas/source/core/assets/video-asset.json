@@ -3,38 +3,35 @@
   "$id": "/schemas/core/assets/video-asset.json",
   "title": "Video Asset",
   "description": "Video asset with URL and specifications",
-  "type": "object",
-  "properties": {
-    "url": {
-      "type": "string",
-      "format": "uri",
-      "description": "URL to the video asset"
+  "allOf": [
+    {
+      "$ref": "/schemas/core/dimensions.json"
     },
-    "width": {
-      "type": "integer",
-      "description": "Video width in pixels",
-      "minimum": 1
-    },
-    "height": {
-      "type": "integer",
-      "description": "Video height in pixels",
-      "minimum": 1
-    },
-    "duration_ms": {
-      "type": "integer",
-      "description": "Video duration in milliseconds",
-      "minimum": 0
-    },
-    "format": {
-      "type": "string",
-      "description": "Video file format (mp4, webm, mov, etc.)"
-    },
-    "bitrate_kbps": {
-      "type": "integer",
-      "description": "Video bitrate in kilobits per second",
-      "minimum": 1
+    {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the video asset"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "description": "Video duration in milliseconds",
+          "minimum": 1
+        },
+        "format": {
+          "type": "string",
+          "description": "Video file format (mp4, webm, mov, etc.)"
+        },
+        "bitrate_kbps": {
+          "type": "integer",
+          "description": "Video bitrate in kilobits per second",
+          "minimum": 1
+        }
+      },
+      "required": ["url"],
+      "additionalProperties": false
     }
-  },
-  "required": ["url"],
-  "additionalProperties": false
+  ]
 }
