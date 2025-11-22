@@ -397,13 +397,31 @@ async function runTests() {
   });
 
   // Test 3C: Response extensions
-  // Note: Response schemas use oneOf for success/error, so ext is at top level (schema.properties.ext)
-  // not inside oneOf branches. This is correct - ext applies to ALL responses regardless of success/error.
-  await test('Response schema has ext field at top level', async () => {
+  // Note: Response schemas use oneOf for success/error discriminated unions.
+  // For better TypeScript/Zod codegen, ext is inside each oneOf variant (not at root level).
+  // This produces clean discriminated union types instead of intersection types.
+  await test('Response schema has ext field in oneOf variants', async () => {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    validateExtField(schema.properties.ext, '/schemas/core/ext.json');
+    // Check that ext is NOT at root level
+    if (schema.properties && schema.properties.ext) {
+      throw new Error('ext should not be at root level for discriminated union schemas');
+    }
+
+    // Check that ext exists in each oneOf variant
+    if (!schema.oneOf || schema.oneOf.length === 0) {
+      throw new Error('Schema should have oneOf variants');
+    }
+
+    for (let i = 0; i < schema.oneOf.length; i++) {
+      const variant = schema.oneOf[i];
+      if (!variant.properties || !variant.properties.ext) {
+        throw new Error(`oneOf variant ${i} missing ext field`);
+      }
+      validateExtField(variant.properties.ext, '/schemas/core/ext.json');
+    }
+
     return true;
   });
 
