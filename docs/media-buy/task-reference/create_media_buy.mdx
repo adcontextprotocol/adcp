@@ -109,7 +109,7 @@ The message is returned differently in each protocol:
       "budget": 50000,
       "pacing": "even",
       "pricing_option_id": "string",
-      "status": "active",
+      "paused": false,
       "creative_assignments": [],
       "format_ids_to_provide": []
     }
@@ -129,7 +129,7 @@ The message is returned differently in each protocol:
   - **budget**: Budget allocation for this package
   - **pacing**: Pacing strategy (even, asap, front_loaded)
   - **pricing_option_id**: Selected pricing option ID
-  - **status**: Current package status
+  - **paused**: Whether the package is paused (false = active, true = paused)
   - **creative_assignments**: Array of creative assignments for this package
   - **format_ids_to_provide**: Format IDs that will be provided for this package
 

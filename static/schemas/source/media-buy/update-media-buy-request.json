@@ -13,9 +13,9 @@
       "type": "string",
       "description": "Buyer's reference for the media buy to update"
     },
-    "active": {
+    "paused": {
       "type": "boolean",
-      "description": "Pause/resume the entire media buy"
+      "description": "Pause/resume the entire media buy (true = paused, false = active)"
     },
     "start_time": {
       "$ref": "/schemas/core/start-timing.json"
@@ -52,9 +52,9 @@
             "description": "Updated bid price for auction-based pricing options (only applies when pricing_option is auction-based)",
             "minimum": 0
           },
-          "active": {
+          "paused": {
             "type": "boolean",
-            "description": "Pause/resume specific package"
+            "description": "Pause/resume specific package (true = paused, false = active)"
           },
           "targeting_overlay": {
             "$ref": "/schemas/core/targeting.json"

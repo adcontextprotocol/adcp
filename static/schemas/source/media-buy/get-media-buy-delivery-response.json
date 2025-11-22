@@ -194,6 +194,21 @@
                       "type": "string",
                       "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for this package's pricing. Indicates the currency in which the rate and spend values are denominated. Different packages can use different currencies when supported by the publisher.",
                       "pattern": "^[A-Z]{3}$"
+                    },
+                    "delivery_status": {
+                      "type": "string",
+                      "description": "System-reported operational state of this package. Reflects actual delivery state independent of buyer pause control.",
+                      "enum": [
+                        "delivering",
+                        "completed",
+                        "budget_exhausted",
+                        "flight_ended",
+                        "goal_met"
+                      ]
+                    },
+                    "paused": {
+                      "type": "boolean",
+                      "description": "Whether this package is currently paused by the buyer"
                     }
                   },
                   "required": [

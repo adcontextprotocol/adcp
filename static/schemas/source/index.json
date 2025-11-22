@@ -186,10 +186,6 @@
           "$ref": "/schemas/enums/media-buy-status.json",
           "description": "Status of a media buy"
         },
-        "package-status": {
-          "$ref": "/schemas/enums/package-status.json",
-          "description": "Status of a package"
-        },
         "creative-status": {
           "$ref": "/schemas/enums/creative-status.json",
           "description": "Status of a creative asset"

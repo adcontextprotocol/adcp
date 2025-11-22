@@ -56,10 +56,12 @@
         "$ref": "/schemas/core/format-id.json"
       }
     },
-    "status": {
-      "$ref": "/schemas/enums/package-status.json"
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
     }
   },
-  "required": ["package_id", "status"],
+  "required": ["package_id"],
   "additionalProperties": false
 }
