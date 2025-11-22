@@ -262,13 +262,6 @@ A2A's `taskId` enables retry detection. Agents SHOULD:
 }
 ```
 
-### Connection Recovery
-
-If SSE connection drops during `working` status:
-1. Client MAY reconnect to `/a2a/tasks/{taskId}/events` to resume streaming
-2. Agent MUST deliver current status when reconnecting (not just incremental updates)
-3. If taskId is unknown (expired/purged), return `status: "failed"` with clear message
-
 ## Examples
 
 <details>
@@ -292,8 +285,7 @@ If SSE connection drops during `working` status:
           "products": [
             {
               "product_id": "ctv_sports_premium",
-              "name": "Premium Sports CTV",
-              "estimated_cpm": 45.00
+              "name": "Premium Sports CTV"
             }
             // ... 7 more products
           ]
