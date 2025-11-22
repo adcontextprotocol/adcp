@@ -59,9 +59,7 @@
           "description": "Output format for previews. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding). Default: 'url' for backward compatibility."
         },
         "context": {
-          "type": "object",
-          "description": "Initiator-provided context included in the request payload. Agents must echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/context.json"
         }
       },
       "required": [
@@ -147,9 +145,7 @@
           "description": "Default output format for all requests in this batch. Individual requests can override this. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding)."
         },
         "context": {
-          "type": "object",
-          "description": "Initiator-provided context included in the request payload. Agents must echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/context.json"
         }
       },
       "required": [

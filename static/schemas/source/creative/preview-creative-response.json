@@ -75,9 +75,7 @@
           "description": "ISO 8601 timestamp when preview links expire"
         },
         "context": {
-          "type": "object",
-          "description": "Initiator-provided context echoed inside the preview payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/context.json"
         }
       },
       "required": [
@@ -224,9 +222,7 @@
           "minItems": 1
         },
         "context": {
-          "type": "object",
-          "description": "Initiator-provided context echoed inside the preview payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/context.json"
         }
       },
       "required": [
