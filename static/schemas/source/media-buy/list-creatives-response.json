@@ -119,17 +119,39 @@
             "patternProperties": {
               "^[a-zA-Z0-9_-]+$": {
                 "oneOf": [
-                  {"$ref": "/schemas/core/assets/image-asset.json"},
-                  {"$ref": "/schemas/core/assets/video-asset.json"},
-                  {"$ref": "/schemas/core/assets/audio-asset.json"},
-                  {"$ref": "/schemas/core/assets/text-asset.json"},
-                  {"$ref": "/schemas/core/assets/html-asset.json"},
-                  {"$ref": "/schemas/core/assets/css-asset.json"},
-                  {"$ref": "/schemas/core/assets/javascript-asset.json"},
-                  {"$ref": "/schemas/core/assets/vast-asset.json"},
-                  {"$ref": "/schemas/core/assets/daast-asset.json"},
-                  {"$ref": "/schemas/core/promoted-offerings.json"},
-                  {"$ref": "/schemas/core/assets/url-asset.json"}
+                  {
+                    "$ref": "/schemas/core/assets/image-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/video-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/audio-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/text-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/html-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/css-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/javascript-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/vast-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/daast-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/promoted-offerings.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/url-asset.json"
+                  }
                 ]
               }
             }
@@ -295,9 +317,10 @@
       "additionalProperties": false
     },
     "context": {
-      "type": "object",
-      "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
-      "additionalProperties": true
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [

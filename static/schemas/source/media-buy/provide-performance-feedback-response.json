@@ -15,15 +15,17 @@
           "const": true
         },
         "context": {
-          "type": "object",
-          "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/context.json"
         }
       },
-      "required": ["success"],
+      "required": [
+        "success"
+      ],
       "additionalProperties": false,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -39,16 +41,23 @@
           "minItems": 1
         },
         "context": {
-          "type": "object",
-          "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/context.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": false,
       "not": {
-        "required": ["success"]
+        "required": [
+          "success"
+        ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  }
 }

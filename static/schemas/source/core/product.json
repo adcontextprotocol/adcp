@@ -72,7 +72,9 @@
           "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly')"
         }
       },
-      "required": ["provider"]
+      "required": [
+        "provider"
+      ]
     },
     "reporting_capabilities": {
       "$ref": "/schemas/core/reporting-capabilities.json"
@@ -107,7 +109,10 @@
           "additionalProperties": true
         }
       },
-      "required": ["format_id", "manifest"],
+      "required": [
+        "format_id",
+        "manifest"
+      ],
       "additionalProperties": false
     },
     "product_card_detailed": {
@@ -124,8 +129,14 @@
           "additionalProperties": true
         }
       },
-      "required": ["format_id", "manifest"],
+      "required": [
+        "format_id",
+        "manifest"
+      ],
       "additionalProperties": false
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [

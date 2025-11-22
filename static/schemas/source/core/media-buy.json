@@ -46,6 +46,9 @@
       "type": "string",
       "format": "date-time",
       "description": "Last update timestamp"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [

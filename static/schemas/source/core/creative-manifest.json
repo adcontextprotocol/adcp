@@ -59,8 +59,14 @@
         }
       },
       "additionalProperties": false
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["format_id", "assets"],
+  "required": [
+    "format_id",
+    "assets"
+  ],
   "additionalProperties": false
 }

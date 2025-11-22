@@ -14,15 +14,17 @@
           "description": "The generated or transformed creative manifest"
         },
         "context": {
-          "type": "object",
-          "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/context.json"
         }
       },
-      "required": ["creative_manifest"],
+      "required": [
+        "creative_manifest"
+      ],
       "additionalProperties": false,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -38,16 +40,23 @@
           "minItems": 1
         },
         "context": {
-          "type": "object",
-          "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/context.json"
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": false,
       "not": {
-        "required": ["creative_manifest"]
+        "required": [
+          "creative_manifest"
+        ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  }
 }
