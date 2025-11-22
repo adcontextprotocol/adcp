@@ -567,6 +567,15 @@
       "$ref": "/schemas/adagents.json",
       "file_location": "/.well-known/adagents.json",
       "purpose": "Declares which sales agents are authorized to sell a publisher's advertising inventory"
+    },
+    "protocols": {
+      "description": "Protocol-level schemas for agent card extensions",
+      "schemas": {
+        "adcp-extension": {
+          "$ref": "/schemas/protocols/adcp-extension.json",
+          "description": "AdCP extension for agent cards (MCP and A2A). Declares AdCP version and supported protocol domains."
+        }
+      }
     }
   },
   "usage": {
