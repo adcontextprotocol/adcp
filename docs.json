@@ -188,6 +188,7 @@
               "docs/reference/release-notes",
               "docs/reference/changelog",
               "docs/reference/schema-versioning",
+              "docs/reference/extensions",
               "docs/reference/error-codes",
               "docs/reference/data-models",
               "docs/reference/authentication",

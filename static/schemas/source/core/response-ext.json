@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/response-ext.json",
+  "title": "Response Extension Object",
+  "description": "Extension object for response-scoped diagnostic and processing metadata. These extensions are transient and apply only to the current response. Use for processing times, cache hits, internal routing info, or debug diagnostics that don't belong in the domain model.",
+  "type": "object",
+  "additionalProperties": true
+}

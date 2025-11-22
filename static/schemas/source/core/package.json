@@ -60,8 +60,13 @@
       "type": "boolean",
       "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",
       "default": false
+    },
+    "ext": {
+      "$ref": "/schemas/core/object-ext.json"
     }
   },
-  "required": ["package_id"],
+  "required": [
+    "package_id"
+  ],
   "additionalProperties": false
 }

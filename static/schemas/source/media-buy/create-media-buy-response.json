@@ -42,7 +42,9 @@
       ],
       "additionalProperties": false,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -63,15 +65,34 @@
           "additionalProperties": true
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": false,
       "not": {
         "anyOf": [
-          {"required": ["media_buy_id"]},
-          {"required": ["buyer_ref"]},
-          {"required": ["packages"]}
+          {
+            "required": [
+              "media_buy_id"
+            ]
+          },
+          {
+            "required": [
+              "buyer_ref"
+            ]
+          },
+          {
+            "required": [
+              "packages"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "ext": {
+      "$ref": "/schemas/core/response-ext.json"
+    }
+  }
 }

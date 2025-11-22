@@ -51,10 +51,16 @@
                     "description": "Context description applied to this variant"
                   }
                 },
-                "required": ["name"]
+                "required": [
+                  "name"
+                ]
               }
             },
-            "required": ["preview_id", "renders", "input"]
+            "required": [
+              "preview_id",
+              "renders",
+              "input"
+            ]
           },
           "minItems": 1
         },
@@ -136,10 +142,16 @@
                               "type": "string"
                             }
                           },
-                          "required": ["name"]
+                          "required": [
+                            "name"
+                          ]
                         }
                       },
-                      "required": ["preview_id", "renders", "input"]
+                      "required": [
+                        "preview_id",
+                        "renders",
+                        "input"
+                      ]
                     },
                     "minItems": 1
                   },
@@ -152,7 +164,10 @@
                     "format": "date-time"
                   }
                 },
-                "required": ["previews", "expires_at"]
+                "required": [
+                  "previews",
+                  "expires_at"
+                ]
               },
               "error": {
                 "type": "object",
@@ -172,22 +187,37 @@
                     "additionalProperties": true
                   }
                 },
-                "required": ["code", "message"]
+                "required": [
+                  "code",
+                  "message"
+                ]
               }
             },
-            "required": ["success"],
+            "required": [
+              "success"
+            ],
             "oneOf": [
               {
                 "properties": {
-                  "success": { "type": "boolean", "const": true }
+                  "success": {
+                    "type": "boolean",
+                    "const": true
+                  }
                 },
-                "required": ["response"]
+                "required": [
+                  "response"
+                ]
               },
               {
                 "properties": {
-                  "success": { "type": "boolean", "const": false }
+                  "success": {
+                    "type": "boolean",
+                    "const": false
+                  }
                 },
-                "required": ["error"]
+                "required": [
+                  "error"
+                ]
               }
             ]
           },
@@ -205,5 +235,10 @@
       ],
       "additionalProperties": false
     }
-  ]
+  ],
+  "properties": {
+    "ext": {
+      "$ref": "/schemas/core/response-ext.json"
+    }
+  }
 }

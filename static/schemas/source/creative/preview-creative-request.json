@@ -158,5 +158,10 @@
       ],
       "additionalProperties": false
     }
-  ]
+  ],
+  "properties": {
+    "ext": {
+      "$ref": "/schemas/core/request-ext.json"
+    }
+  }
 }

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/object-ext.json",
+  "title": "Object Extension Object",
+  "description": "Extension object for domain-level objects (products, media buys, packages, creative manifests). These extensions become part of the resource state and may persist across requests. Use for platform-specific identifiers, custom metadata, or forward compatibility with future spec versions.",
+  "type": "object",
+  "additionalProperties": true
+}

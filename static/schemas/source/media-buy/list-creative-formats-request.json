@@ -51,6 +51,9 @@
       "type": "object",
       "description": "Initiator-provided context included in the request payload. Agents must echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
       "additionalProperties": true
+    },
+    "ext": {
+      "$ref": "/schemas/core/request-ext.json"
     }
   },
   "additionalProperties": false

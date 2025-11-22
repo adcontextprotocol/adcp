@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/request-ext.json",
+  "title": "Request Extension Object",
+  "description": "Extension object for request-scoped implementation-specific parameters. These extensions are transient and apply only to the current request. Use for testing flags, debug modes, tracing identifiers, or operational metadata that doesn't belong in the domain model.",
+  "type": "object",
+  "additionalProperties": true
+}

@@ -22,10 +22,14 @@
           "additionalProperties": true
         }
       },
-      "required": ["deployments"],
+      "required": [
+        "deployments"
+      ],
       "additionalProperties": false,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -46,11 +50,20 @@
           "additionalProperties": true
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": false,
       "not": {
-        "required": ["deployments"]
+        "required": [
+          "deployments"
+        ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "ext": {
+      "$ref": "/schemas/core/response-ext.json"
+    }
+  }
 }

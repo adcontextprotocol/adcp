@@ -19,10 +19,14 @@
           "additionalProperties": true
         }
       },
-      "required": ["creative_manifest"],
+      "required": [
+        "creative_manifest"
+      ],
       "additionalProperties": false,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -43,11 +47,20 @@
           "additionalProperties": true
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": false,
       "not": {
-        "required": ["creative_manifest"]
+        "required": [
+          "creative_manifest"
+        ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "ext": {
+      "$ref": "/schemas/core/response-ext.json"
+    }
+  }
 }

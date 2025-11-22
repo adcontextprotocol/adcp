@@ -55,8 +55,16 @@
         "$ref": "/schemas/core/creative-asset.json"
       },
       "maxItems": 100
+    },
+    "ext": {
+      "$ref": "/schemas/core/request-ext.json"
     }
   },
-  "required": ["buyer_ref", "product_id", "budget", "pricing_option_id"],
+  "required": [
+    "buyer_ref",
+    "product_id",
+    "budget",
+    "pricing_option_id"
+  ],
   "additionalProperties": false
 }

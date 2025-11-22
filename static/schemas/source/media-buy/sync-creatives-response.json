@@ -99,7 +99,9 @@
       ],
       "additionalProperties": false,
       "not": {
-        "required": ["errors"]
+        "required": [
+          "errors"
+        ]
       }
     },
     {
@@ -120,14 +122,29 @@
           "additionalProperties": true
         }
       },
-      "required": ["errors"],
+      "required": [
+        "errors"
+      ],
       "additionalProperties": false,
       "not": {
         "anyOf": [
-          {"required": ["creatives"]},
-          {"required": ["dry_run"]}
+          {
+            "required": [
+              "creatives"
+            ]
+          },
+          {
+            "required": [
+              "dry_run"
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "properties": {
+    "ext": {
+      "$ref": "/schemas/core/response-ext.json"
+    }
+  }
 }
