@@ -162,6 +162,7 @@ AdCP responses over A2A **MUST** include at least one `DataPart` (kind: 'data') 
   "taskId": "task-123",         // A2A task identifier
   "contextId": "ctx-456",       // Automatic context management
   "artifacts": [{               // A2A-specific artifact structure
+    "artifactId": "artifact-product-catalog-abc",
     "name": "product_catalog",
     "parts": [
       {
@@ -193,13 +194,22 @@ AdCP responses over A2A **MUST** include at least one `DataPart` (kind: 'data') 
 AdCP responses use the **last `DataPart` as authoritative** when multiple data parts exist (e.g., from streaming operations):
 
 ```javascript
-// Extract AdCP data from A2A response
-const data = response.artifacts?.[0]?.parts
-  ?.filter(p => p.kind === 'data')
-  .slice(-1)[0]?.data;  // Last data part is authoritative
+// Extract the artifact (currently AdCP returns single artifact per response)
+const artifact = response.artifacts?.[0];
 
-const message = response.artifacts?.[0]?.parts
-  ?.find(p => p.kind === 'text')?.text;
+if (artifact) {
+  const message = artifact.parts?.find(p => p.kind === 'text')?.text;
+  const data = artifact.parts?.find(p => p.kind === 'data')?.data;
+
+  return {
+    artifactId: artifact.artifactId,
+    message,
+    data,
+    status: response.status
+  };
+}
+
+return { status: response.status };
 ```
 
 **For complete response structure requirements, error handling, and implementation patterns, see [A2A Response Format](/docs/protocols/a2a-response-format).**

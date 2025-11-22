@@ -366,6 +366,7 @@ data: {"message": "Validating packages..."}
 data: {"message": "Checking inventory availability..."}
 data: {"message": "Creating campaign in ad server..."}
 data: {"status": {"state": "completed"}, "artifacts": [{
+  "artifactId": "artifact-mb-conf-abc123",
   "name": "media_buy_confirmation",
   "parts": [
     {"kind": "text", "text": "Successfully created $100,000 media buy. Upload creatives by Jan 30."},
@@ -390,7 +391,7 @@ data: {"status": {"state": "completed"}, "artifacts": [{
 - **A2A**: Always returns task with updates via:
   - Server-Sent Events (SSE) for real-time streaming
   - Webhooks (push notifications) for long-running tasks
-- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
+- **Payload**: The `parameters` field in A2A contains the exact same structure as MCP's `arguments`
 
 ## Human-in-the-Loop Examples
 
@@ -466,17 +467,24 @@ A2A can use Server-Sent Events for real-time streaming or webhooks for push noti
 **Initial Request with SSE:**
 ```json
 {
-  "skill": "create_media_buy",
-  "input": {
-    "buyer_ref": "large_campaign_2024",
-    "packages": [...],
-    "brand_manifest": {
-      "name": "ACME Corporation",
-      "url": "https://acmecorp.com"
-    },
-    "po_number": "PO-2024-LARGE-001",
-    "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-06-30T23:59:59Z"
+  "message": {
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "create_media_buy",
+        "parameters": {
+          "buyer_ref": "large_campaign_2024",
+          "packages": [...],
+          "brand_manifest": {
+            "name": "ACME Corporation",
+            "url": "https://acmecorp.com"
+          },
+          "po_number": "PO-2024-LARGE-001",
+          "start_time": "2024-02-01T00:00:00Z",
+          "end_time": "2024-06-30T23:59:59Z"
+        }
+      }
+    }]
   }
 }
 ```
@@ -501,7 +509,7 @@ data: {"message": "Sales team notified. Expected review time: 2-4 hours"}
 data: {"message": "First approval received from regional manager"}
 data: {"message": "Second approval received from finance team"}
 data: {"status": {"state": "completed"}, "artifacts": [{
-  "artifactId": "artifact-mb-large-xyz",
+  "artifactId": "artifact-mb-approval-xyz789",
   "name": "media_buy_confirmation",
   "parts": [
     {"kind": "text", "text": "Media buy approved and created successfully. $500,000 campaign scheduled Feb 1 - Jun 30. Upload creatives by Jan 30."},
@@ -520,22 +528,31 @@ data: {"status": {"state": "completed"}, "artifacts": [{
 **Initial Request with Webhook Configuration:**
 ```json
 {
-  "skill": "create_media_buy",
-  "input": {
-    "buyer_ref": "large_campaign_2024",
-    "packages": [...],
-    "brand_manifest": {
-      "name": "ACME Corporation",
-      "url": "https://acmecorp.com"
-    },
-    "po_number": "PO-2024-LARGE-001",
-    "start_time": "2024-02-01T00:00:00Z",
-    "end_time": "2024-06-30T23:59:59Z"
+  "message": {
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "create_media_buy",
+        "parameters": {
+          "buyer_ref": "large_campaign_2024",
+          "packages": [...],
+          "brand_manifest": {
+            "name": "ACME Corporation",
+            "url": "https://acmecorp.com"
+          },
+          "po_number": "PO-2024-LARGE-001",
+          "start_time": "2024-02-01T00:00:00Z",
+          "end_time": "2024-06-30T23:59:59Z"
+        }
+      }
+    }]
   },
-  "pushNotificationConfig": {
-    "url": "https://buyer.example.com/webhooks/adcp",
-    "authType": "bearer",
-    "authToken": "secret-token-xyz"
+  "configuration": {
+    "pushNotificationConfig": {
+      "url": "https://buyer.example.com/webhooks/adcp",
+      "authType": "bearer",
+      "authToken": "secret-token-xyz"
+    }
   }
 }
 ```
@@ -568,7 +585,7 @@ data: {"status": {"state": "completed"}, "artifacts": [{
   "contextId": "ctx-conversation-xyz",
   "status": {"state": "completed"},
   "artifacts": [{
-    "artifactId": "artifact-mb-webhook-xyz",
+    "artifactId": "artifact-mb-webhook-def456",
     "name": "media_buy_confirmation",
     "parts": [
       {"kind": "data", "data": {
