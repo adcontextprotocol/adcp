@@ -105,6 +105,7 @@ MCP sends progress notifications separately:
     "state": "completed",
     "artifacts": [
       {
+        "artifactId": "artifact-get-products-abc123",
         "name": "get_products_result",
         "content_type": "application/json",
         "content": "{\"products\": [...]}"
@@ -155,6 +156,7 @@ Later, webhook notification:
   "state": "completed",
   "artifacts": [
     {
+      "artifactId": "artifact-media-buy-webhook-def456",
       "name": "create_media_buy_result",
       "content_type": "application/json",
       "content": "{\"media_buy_id\": \"mb_789\", ...}"
