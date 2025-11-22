@@ -1,6 +1,13 @@
-# Extension Fields
+# Extension Fields and Context
 
 ## Overview
+
+AdCP provides two mechanisms for adding custom data to requests and responses:
+
+- **`ext`** - Platform-specific extensions that MAY affect behavior (vendor-namespaced)
+- **`context`** - Opaque correlation data that is echoed unchanged
+
+### Extension Fields (`ext`)
 
 AdCP supports extension fields via the `ext` object at three distinct layers:
 
@@ -126,25 +133,147 @@ Core domain objects support `ext` for persistent data:
 - Object-scoped custom fields
 - Data that persists across API calls
 
+## Context Object
+
+### Purpose
+
+The `context` object is for **opaque correlation data** that flows through AdCP unchanged. Think of it as a "pass-through envelope" for caller-specific metadata that agents don't parse or act upon.
+
+**Key characteristics:**
+- ✅ **Echoed unchanged** - Returned in responses and webhooks exactly as provided
+- ✅ **Never parsed** - Agents treat it as opaque JSON
+- ✅ **Never affects behavior** - Doesn't change how agents process requests
+- ✅ **Always optional** - Not required for any AdCP operation
+
+### Schema
+
+```json
+{
+  "$ref": "/schemas/core/context.json"
+}
+```
+
+The context object accepts any valid JSON structure with `additionalProperties: true`.
+
+### Use Cases
+
+**Internal tracking and correlation:**
+```json
+{
+  "context": {
+    "internal_campaign_id": "camp_xyz_2024",
+    "buyer_organization_id": "org_123",
+    "ui_session_id": "sess_abc",
+    "trace_id": "trace_456",
+    "user_token": "opaque_token_string"
+  }
+}
+```
+
+**UI state preservation:**
+```json
+{
+  "context": {
+    "ui_workflow_step": "creative_upload",
+    "draft_id": "draft_789",
+    "selected_products": ["prod_1", "prod_2"]
+  }
+}
+```
+
+**Request correlation across systems:**
+```json
+{
+  "context": {
+    "originating_system": "acme_dsp",
+    "request_id": "req_abc123",
+    "parent_transaction_id": "txn_456"
+  }
+}
+```
+
 ### Extension vs Context
 
-**`context`** and **`ext`** serve different purposes:
+**When to use `context`:**
+- Internal tracking IDs that don't affect processing
+- UI session state or workflow metadata
+- Correlation tokens for linking related requests
+- Opaque data that needs to round-trip unchanged
 
-- **`context`** = Opaque correlation data, echoed unchanged (UI session IDs, tokens)
-- **`ext`** = Implementation-specific parameters that MAY affect behavior
+**When to use `ext`:**
+- Platform-specific configuration parameters
+- Vendor-specific targeting or delivery options
+- Custom capabilities that MAY affect agent behavior
+- Partner-specific operational requirements
 
 ```json
 {
   "context": {
-    "ui_session_id": "sess_123",  // Just echoed back
-    "user_token": "opaque_token"  // Not parsed
+    "ui_session_id": "sess_123",         // ✅ Opaque tracking
+    "internal_campaign_id": "camp_xyz"   // ✅ Just echoed back
   },
   "ext": {
-    "test_mode": true,            // MAY affect behavior
-    "buyer_campaign_id": "camp_123"  // Used for tracking
+    "gam": {
+      "test_mode": true,                 // ✅ MAY affect behavior
+      "custom_targeting": {"..."}        // ✅ Platform-specific config
+    }
   }
 }
 ```
+
+### Context in Responses
+
+Agents **MUST** echo the request `context` unchanged in responses:
+
+```json
+// Request
+{
+  "promoted_offering": "Tesla Model 3",
+  "context": {
+    "ui_session": "sess_123",
+    "campaign_id": "camp_xyz"
+  }
+}
+
+// Response - context echoed exactly
+{
+  "media_buy": {"media_buy_id": "mb_456"},
+  "context": {
+    "ui_session": "sess_123",
+    "campaign_id": "camp_xyz"
+  }
+}
+```
+
+### Context in Webhooks
+
+Webhook payloads **MUST** include the original request context:
+
+```json
+{
+  "webhook_type": "media_buy_approved",
+  "media_buy_id": "mb_456",
+  "context": {
+    "ui_session": "sess_123",    // From original request
+    "campaign_id": "camp_xyz"
+  }
+}
+```
+
+### Implementation Requirements
+
+**Agents MUST:**
+- Accept any valid JSON in `context` field
+- Echo `context` unchanged in all responses
+- Include `context` in webhook payloads
+- Never reject requests due to unknown `context` content
+- Never parse or act upon `context` data
+
+**Agents MUST NOT:**
+- Modify `context` data
+- Use `context` to affect processing behavior
+- Validate `context` structure
+- Require specific `context` fields
 
 ## Namespacing Conventions
 
