@@ -2,15 +2,42 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/adagents.json",
   "title": "Authorized Sales Agents",
-  "description": "Declaration of authorized sales agents for advertising inventory. Hosted at /.well-known/adagents.json on publisher domains.",
-  "type": "object",
-  "properties": {
-    "$schema": {
-      "type": "string",
-      "description": "JSON Schema identifier for this adagents.json file",
-      "default": "https://adcontextprotocol.org/schemas/adagents.json"
+  "description": "Declaration of authorized sales agents for advertising inventory. Hosted at /.well-known/adagents.json on publisher domains. Can either contain the full structure inline or reference an authoritative URL.",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "URL reference variant - points to the authoritative location of the adagents.json file",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "JSON Schema identifier for this adagents.json file",
+          "default": "https://adcontextprotocol.org/schemas/adagents.json"
+        },
+        "authoritative_location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL of the authoritative adagents.json file. When present, this file is a reference and the authoritative location contains the actual agent authorization data."
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp indicating when this reference was last updated"
+        }
+      },
+      "required": ["authoritative_location"],
+      "additionalProperties": false
     },
-    "contact": {
+    {
+      "type": "object",
+      "description": "Inline structure variant - contains full agent authorization data",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "JSON Schema identifier for this adagents.json file",
+          "default": "https://adcontextprotocol.org/schemas/adagents.json"
+        },
+        "contact": {
       "type": "object",
       "description": "Contact information for the entity managing this adagents.json file (may be publisher or third-party operator)",
       "properties": {
@@ -208,15 +235,22 @@
       },
       "minItems": 1
     },
-    "last_updated": {
-      "type": "string",
-      "format": "date-time",
-      "description": "ISO 8601 timestamp indicating when this file was last updated"
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp indicating when this file was last updated"
+        }
+      },
+      "required": ["authorized_agents"],
+      "additionalProperties": false
     }
-  },
-  "required": ["authorized_agents"],
-  "additionalProperties": false,
+  ],
   "examples": [
+    {
+      "$schema": "https://adcontextprotocol.org/schemas/adagents.json",
+      "authoritative_location": "https://cdn.example.com/adagents/v2/adagents.json",
+      "last_updated": "2025-01-15T10:00:00Z"
+    },
     {
       "$schema": "https://adcontextprotocol.org/schemas/adagents.json",
       "properties": [

@@ -895,20 +895,87 @@
             </div>
           </div>
 
-          <!-- Tabs -->
-          <div style="border-bottom: 2px solid #e2e8f0; margin-bottom: 24px">
-            <div style="display: flex; gap: 4px">
-              <button class="tab-btn active" onclick="switchTab('properties')" id="properties-tab">
-                🏢 Properties (<span id="properties-count">0</span>)
-              </button>
-              <button class="tab-btn" onclick="switchTab('tags')" id="tags-tab">
-                🏷️ Tags (<span id="tags-count">0</span>)
-              </button>
-              <button class="tab-btn" onclick="switchTab('agents')" id="agents-tab">
-                👥 Agents (<span id="agents-count">0</span>)
-              </button>
+          <!-- File Type Toggle -->
+          <div
+            style="
+              background: #f8fafc;
+              border: 2px solid #e2e8f0;
+              border-radius: 8px;
+              padding: 16px;
+              margin-bottom: 20px;
+            "
+          >
+            <label style="display: block; margin-bottom: 12px; font-weight: 600; color: #334155">
+              📄 File Type
+            </label>
+            <div style="display: flex; gap: 16px; flex-wrap: wrap">
+              <label style="display: flex; align-items: center; cursor: pointer">
+                <input
+                  type="radio"
+                  name="file-type"
+                  value="inline"
+                  checked
+                  onchange="toggleFileType()"
+                  style="margin-right: 8px"
+                />
+                <span>Inline Structure (Full configuration)</span>
+              </label>
+              <label style="display: flex; align-items: center; cursor: pointer">
+                <input
+                  type="radio"
+                  name="file-type"
+                  value="reference"
+                  onchange="toggleFileType()"
+                  style="margin-right: 8px"
+                />
+                <span>URL Reference (Points to authoritative location)</span>
+              </label>
             </div>
           </div>
+
+          <!-- URL Reference Input (hidden by default) -->
+          <div
+            id="url-reference-input"
+            style="
+              display: none;
+              background: #fff7ed;
+              border: 2px solid #fed7aa;
+              border-radius: 8px;
+              padding: 16px;
+              margin-bottom: 20px;
+            "
+          >
+            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #9a3412">
+              🔗 Authoritative Location
+            </label>
+            <input
+              type="url"
+              id="authoritative-location"
+              placeholder="https://cdn.example.com/adagents/v2/adagents.json"
+              style="width: 100%; padding: 12px; font-size: 15px; border: 2px solid #fed7aa; border-radius: 6px"
+              oninput="updateJsonPreview()"
+            />
+            <p style="margin: 8px 0 0 0; font-size: 13px; color: #9a3412">
+              Enter the HTTPS URL where the authoritative adagents.json file is hosted
+            </p>
+          </div>
+
+          <!-- Inline Configuration Section (visible by default) -->
+          <div id="inline-configuration">
+            <!-- Tabs -->
+            <div style="border-bottom: 2px solid #e2e8f0; margin-bottom: 24px">
+              <div style="display: flex; gap: 4px">
+                <button class="tab-btn active" onclick="switchTab('properties')" id="properties-tab">
+                  🏢 Properties (<span id="properties-count">0</span>)
+                </button>
+                <button class="tab-btn" onclick="switchTab('tags')" id="tags-tab">
+                  🏷️ Tags (<span id="tags-count">0</span>)
+                </button>
+                <button class="tab-btn" onclick="switchTab('agents')" id="agents-tab">
+                  👥 Agents (<span id="agents-count">0</span>)
+                </button>
+              </div>
+            </div>
 
           <!-- Properties Tab Content -->
           <div id="properties-tab-content" class="tab-content">
@@ -998,6 +1065,8 @@
               <button class="btn" onclick="addAgent()">➕ Add Agent</button>
             </div>
           </div>
+          </div>
+          <!-- End of Inline Configuration -->
 
           <!-- Bottom Actions -->
           <div
@@ -1683,23 +1752,37 @@
       // ============================================================================
 
       function updateJsonPreview() {
-        const adagents = {
-          $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
-          authorized_agents: state.agents.map(agent => {
-            const agentObj = {
-              url: agent.url,
-              authorized_for: agent.authorized_for,
-            };
-            if (agent.property_ids && agent.property_ids.length > 0) {
-              agentObj.property_ids = agent.property_ids;
-            }
-            return agentObj;
-          }),
-          last_updated: new Date().toISOString(),
-        };
+        const fileType = document.querySelector('input[name="file-type"]:checked').value;
+        let adagents;
 
-        if (state.properties.length > 0) {
-          adagents.properties = state.properties;
+        if (fileType === 'reference') {
+          // URL Reference structure
+          const authLocation = document.getElementById('authoritative-location').value.trim();
+          adagents = {
+            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+            authoritative_location: authLocation || 'https://cdn.example.com/adagents/v2/adagents.json',
+            last_updated: new Date().toISOString(),
+          };
+        } else {
+          // Inline structure
+          adagents = {
+            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+            authorized_agents: state.agents.map(agent => {
+              const agentObj = {
+                url: agent.url,
+                authorized_for: agent.authorized_for,
+              };
+              if (agent.property_ids && agent.property_ids.length > 0) {
+                agentObj.property_ids = agent.property_ids;
+              }
+              return agentObj;
+            }),
+            last_updated: new Date().toISOString(),
+          };
+
+          if (state.properties.length > 0) {
+            adagents.properties = state.properties;
+          }
         }
 
         document.getElementById('json-output').value = JSON.stringify(adagents, null, 2);
@@ -2626,15 +2709,37 @@
       }
 
       function exportFile() {
-        const data = {
-          $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
-          authorized_agents: state.agents,
-          last_updated: new Date().toISOString(),
-        };
+        const fileType = document.querySelector('input[name="file-type"]:checked').value;
+        let data;
 
-        // Only include properties if there are any
-        if (state.properties.length > 0) {
-          data.properties = state.properties;
+        if (fileType === 'reference') {
+          // URL Reference structure
+          const authLocation = document.getElementById('authoritative-location').value.trim();
+          if (!authLocation) {
+            alert('Please enter an authoritative location URL');
+            return;
+          }
+          if (!authLocation.startsWith('https://')) {
+            alert('Authoritative location must be an HTTPS URL');
+            return;
+          }
+          data = {
+            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+            authoritative_location: authLocation,
+            last_updated: new Date().toISOString(),
+          };
+        } else {
+          // Inline structure
+          data = {
+            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+            authorized_agents: state.agents,
+            last_updated: new Date().toISOString(),
+          };
+
+          // Only include properties if there are any
+          if (state.properties.length > 0) {
+            data.properties = state.properties;
+          }
         }
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -2665,6 +2770,22 @@
       // ============================================================================
       // Unified Entry Point
       // ============================================================================
+
+      function toggleFileType() {
+        const fileType = document.querySelector('input[name="file-type"]:checked').value;
+        const urlReferenceInput = document.getElementById('url-reference-input');
+        const inlineConfiguration = document.getElementById('inline-configuration');
+
+        if (fileType === 'reference') {
+          urlReferenceInput.style.display = 'block';
+          inlineConfiguration.style.display = 'none';
+        } else {
+          urlReferenceInput.style.display = 'none';
+          inlineConfiguration.style.display = 'block';
+        }
+
+        updateJsonPreview();
+      }
 
       async function startManaging() {
         const domainInput = document.getElementById('domain-input').value.trim();
