@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Extension fields validation test suite
- * Tests that ext fields work correctly on core schemas
+ * Extension and context fields validation test suite
+ * Tests that ext and context fields work correctly across request, response, and core object schemas
  */
 
 const fs = require('fs');
@@ -410,7 +410,117 @@ async function runTests() {
   // Skip actual validation test for responses with oneOf - too complex for this test suite
   // The schema structure test above confirms ext exists correctly
 
-  // Test 4: Verify unknown fields at top level still rejected
+  // Test 4: Context field validation
+  await test('Request schema has context field', async () => {
+    const schemaPath = path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json');
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+
+    validateExtField(schema.properties.context, '/schemas/core/context.json');
+    return true;
+  });
+
+  await test('Response schema has context field', async () => {
+    const schemaPath = path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json');
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+
+    // Context is in oneOf branches, not at top level
+    const successBranch = schema.oneOf[0];
+    const errorBranch = schema.oneOf[1];
+
+    validateExtField(successBranch.properties.context, '/schemas/core/context.json');
+    validateExtField(errorBranch.properties.context, '/schemas/core/context.json');
+    return true;
+  });
+
+  await test('Context field is optional on requests', async () => {
+    const schemaPath = path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json');
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+
+    if (schema.required && schema.required.includes('context')) {
+      throw new Error('context should be optional, not required');
+    }
+    return true;
+  });
+
+  await test('Request validates with context field', async () => {
+    const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json'));
+
+    const request = {
+      buyer_ref: 'buyer_ref_123',
+      packages: [],
+      brand_manifest: {
+        name: 'Test Brand'
+      },
+      start_time: 'asap',
+      end_time: '2024-12-31T23:59:59Z',
+      context: {
+        ui_session_id: 'sess_123',
+        trace_id: 'trace_456',
+        internal_campaign_id: 'camp_xyz',
+        nested_data: {
+          foo: 'bar',
+          numbers: [1, 2, 3]
+        }
+      }
+    };
+
+    const valid = validate(request);
+    if (!valid) {
+      throw new Error(`Validation failed: ${JSON.stringify(validate.errors)}`);
+    }
+    return true;
+  });
+
+  await test('Context accepts various JSON types', async () => {
+    const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json'));
+
+    const request = {
+      buyer_ref: 'buyer_ref_123',
+      packages: [],
+      brand_manifest: {
+        name: 'Test Brand'
+      },
+      start_time: 'asap',
+      end_time: '2024-12-31T23:59:59Z',
+      context: {
+        string_field: 'value',
+        number_field: 42,
+        boolean_field: true,
+        array_field: [1, 2, 3],
+        object_field: { nested: 'data' },
+        null_field: null
+      }
+    };
+
+    const valid = validate(request);
+    if (!valid) {
+      throw new Error(`Validation failed: ${JSON.stringify(validate.errors)}`);
+    }
+    return true;
+  });
+
+  await test('Request validates without context field', async () => {
+    const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json'));
+
+    const request = {
+      buyer_ref: 'buyer_ref_123',
+      packages: [],
+      brand_manifest: {
+        name: 'Test Brand'
+      },
+      start_time: 'asap',
+      end_time: '2024-12-31T23:59:59Z'
+      // No context field
+    };
+
+    const valid = validate(request);
+    if (!valid) {
+      throw new Error(`Validation failed: ${JSON.stringify(validate.errors)}`);
+    }
+    return true;
+  });
+
+  // Test 5: Verify unknown fields at top level still rejected
   await test('Product rejects unknown top-level fields', async () => {
     const validate = await loadAndCompileSchema(path.join(SCHEMA_BASE_DIR, 'core/product.json'));
 
