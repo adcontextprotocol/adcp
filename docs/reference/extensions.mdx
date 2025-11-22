@@ -48,58 +48,66 @@ AdCP supports extensions at three distinct layers, following the OpenRTB pattern
 
 #### 1. Request Extensions
 
-All task request schemas support `ext` for operational metadata:
+All task request schemas support `ext` for platform-specific parameters:
 
 ```json
 {
   "promoted_offering": "Tesla Model 3",
   "packages": [...],
   "context": {
-    "ui_session_id": "sess_123"  // Echoed unchanged
+    "buyer_campaign_id": "camp_abc",  // Internal tracking - echoed unchanged
+    "ui_session_id": "sess_123"
   },
   "ext": {
-    "buyer_internal_campaign_id": "camp_abc",
-    "test_mode": true,
-    "trace_id": "trace_123"
+    "gam": {
+      "test_mode": true,
+      "ad_unit_path": "/12345/premium"
+    },
+    "ttd": {
+      "uid2_token": "..."
+    }
   }
 }
 ```
 
 **Use request.ext for:**
-- Caller identification and tracing
-- Internal tracking IDs
-- Test/staging mode flags
-- Experimental feature flags
-- Platform-specific hints that MAY affect behavior
+- Platform-specific targeting parameters not in the core spec
+- Vendor-specific configuration (always namespaced)
+- Custom capabilities proposed for future spec inclusion
+- Partner-specific delivery requirements
 
 #### 2. Response Extensions
 
-All task response schemas support `ext` for processing metadata:
+All task response schemas support `ext` for platform-specific metadata:
 
 ```json
 {
   "media_buy": {
     "media_buy_id": "mb_123",
-    "ext": {...}  // MediaBuy-level data
+    "ext": {
+      "gam": {
+        "order_id": "1234567890",
+        "dashboard_url": "https://..."
+      }
+    }
   },
   "context": {
     "ui_session_id": "sess_123"  // Echoed from request
   },
   "ext": {
-    "processing_time_ms": 1523,
-    "estimated_approval_time": "2-4 hours",
-    "debug_trace_id": "trace_123",
-    "next_recommended_action": "upload_creatives"
+    "gam": {
+      "estimated_approval_time": "2-4 hours",
+      "pending_review_items": ["creative_123"]
+    }
   }
 }
 ```
 
 **Use response.ext for:**
-- Processing diagnostics (timing, queue position)
-- Debug information
-- Estimated timelines or next steps
-- Platform-specific dashboard URLs
-- Warnings or informational messages
+- Platform-specific identifiers and URLs
+- Vendor-specific metadata and diagnostics
+- Extended response data not in core spec
+- Partner-specific operational details
 
 #### 3. Object Extensions
 
@@ -140,64 +148,63 @@ Core domain objects support `ext` for persistent data:
 
 ## Namespacing Conventions
 
-To avoid collisions between different implementations, extensions **SHOULD** follow these naming patterns:
+**CRITICAL**: All extensions **MUST** be namespaced under a vendor/platform key. Never use top-level fields in `ext`.
 
-### Vendor/Platform Fields
+### Vendor/Platform Namespacing
 
-Use company or platform name as prefix:
-
-```json
-{
-  "ext": {
-    "roku_app_ids": ["123456", "789012"],
-    "roku_content_genres": ["comedy", "drama"],
-    "ttd_uid2_token": "...",
-    "meta_business_id": "1234567890",
-    "gam_custom_targeting": {
-      "category": "premium",
-      "genre": "sports"
-    }
-  }
-}
-```
-
-### Standard Extensions
-
-Well-known industry extensions (like OpenRTB extensions) use unprefixed names:
+Extensions are always nested under a vendor or platform namespace:
 
 ```json
 {
   "ext": {
-    "schain": {
-      "ver": "1.0",
-      "complete": 1,
-      "nodes": [
-        {
-          "asi": "publisher.com",
-          "sid": "12345",
-          "hp": 1
-        }
-      ]
-    }
-  }
-}
-```
-
-### Experimental Features
-
-Use `x_` prefix for features being tested before standardization:
-
-```json
-{
-  "ext": {
-    "x_ai_creative_generation": {
-      "model": "dall-e-3",
-      "prompt_engineering": "enabled"
+    "gam": {
+      "custom_targeting": {
+        "category": "premium",
+        "genre": "sports"
+      },
+      "ad_unit_path": "/12345/premium"
     },
-    "x_carbon_measurement": {
-      "kg_co2": 0.05,
-      "offset_provider": "example.com"
+    "roku": {
+      "app_ids": ["123456", "789012"],
+      "content_genres": ["comedy", "drama"]
+    },
+    "ttd": {
+      "uid2_token": "...",
+      "advertiser_id": "adv_123"
     }
+  }
+}
+```
+
+**Why namespace?** Multiple vendors may add extensions simultaneously. Namespacing prevents collisions and makes ownership clear.
+
+### Proposing Spec Additions
+
+Extensions provide a path for capabilities to become standard:
+
+1. **Start as vendor extension** - Implement as `ext.yourplatform.new_feature`
+2. **Prove value** - Multiple vendors adopt similar patterns
+3. **Propose to spec** - Submit as candidate for core AdCP
+4. **Standardize** - If accepted, moves from `ext` to standard field
+
+```json
+// Phase 1: Vendor extension (proven in production)
+{
+  "ext": {
+    "gam": {
+      "contextual_segments": ["sports", "news"]
+    },
+    "magnite": {
+      "contextual_categories": ["sports", "news"]
+    }
+  }
+}
+
+// Phase 2: If adopted widely, propose to core spec
+// Phase 3: Becomes standard field `contextual_targeting`
+{
+  "contextual_targeting": {
+    "categories": ["sports", "news"]
   }
 }
 ```
@@ -230,88 +237,59 @@ Implementations **SHOULD**:
 
 ## Common Extension Patterns
 
-### Request-Level: Testing and Tracing
+### Request-Level: Platform-Specific Parameters
 
-Request extensions for operational metadata:
+Request extensions for vendor-specific configuration:
 
 ```json
-// create_media_buy request with tracing
+// create_media_buy request with GAM-specific parameters
 {
   "promoted_offering": "Tesla Model 3",
   "packages": [...],
+  "context": {
+    "buyer_campaign_id": "camp_xyz",  // Internal tracking
+    "trace_id": "trace_abc123"
+  },
   "ext": {
-    // Testing
-    "test_mode": true,
-    "test_scenario": "creative_deadline_edge_case",
-    "skip_credit_check": true,
-
-    // Tracing and observability
-    "trace_id": "trace_abc123",
-    "caller_system": "acme_trading_desk_v2.1",
-    "buyer_internal_campaign_id": "camp_xyz",
-
-    // Experimental features
-    "beta_features": ["multi_currency", "auto_optimization"]
+    "gam": {
+      "test_mode": true,
+      "skip_credit_check": true,
+      "programmatic_guaranteed": true,
+      "custom_targeting": {
+        "content_vertical": "automotive"
+      }
+    }
   }
 }
 ```
 
-### Response-Level: Processing Diagnostics
+### Response-Level: Platform Identifiers
 
-Response extensions for operational feedback:
+Response extensions for vendor-specific metadata:
 
 ```json
-// create_media_buy response with diagnostics
+// create_media_buy response with platform IDs
 {
   "media_buy": {
     "media_buy_id": "mb_123",
     "status": "pending_approval"
   },
   "ext": {
-    // Processing metadata
-    "processing_time_ms": 1523,
-    "queue_position": 42,
-    "estimated_approval_time": "2-4 hours",
-
-    // Debug information
-    "debug_trace_id": "trace_abc123",
-    "validation_warnings": ["creative_deadline_tight"],
-
-    // Implementation hints
-    "next_recommended_action": "upload_creatives",
-    "help_url": "https://help.publisher.com/campaign/mb_123",
-    "platform_dashboard_url": "https://roku.com/dashboard/deal_12345"
-  }
-}
-```
-
-### Object-Level: Supply Chain Transparency
-
-Following [OpenRTB SupplyChain specification](https://github.com/InteractiveAdvertisingBureau/openrtb/blob/master/supplychainobject.md):
-
-```json
-{
-  "product_id": "ctv_premium",
-  "ext": {
-    "schain": {
-      "ver": "1.0",
-      "complete": 1,
-      "nodes": [
-        {
-          "asi": "directseller.com",
-          "sid": "00001",
-          "hp": 1,
-          "rid": "bid-request-1",
-          "name": "Publisher A",
-          "domain": "publishera.com"
-        }
-      ]
+    "gam": {
+      "order_id": "1234567890",
+      "proposal_id": "prop_abc",
+      "dashboard_url": "https://admanager.google.com/...",
+      "estimated_approval_time": "2-4 hours"
+    },
+    "roku": {
+      "deal_id": "deal_12345",
+      "dashboard_url": "https://roku.com/dashboard/deal_12345"
     }
   }
 }
 ```
 
-### Platform-Specific Targeting
+### Object-Level: Platform-Specific Targeting
 
 CTV platforms often have unique targeting capabilities:
 
@@ -319,36 +297,44 @@ CTV platforms often have unique targeting capabilities:
 {
   "product_id": "ctv_premium",
   "ext": {
-    "roku_content_genres": ["comedy", "drama", "documentary"],
-    "roku_content_rating": ["TV-PG", "TV-14"],
-    "roku_viewer_age_ranges": ["18-24", "25-34", "35-44"]
-  }
-}
-```
-
-### Measurement Extensions
-
-Custom measurement and reporting requirements:
-
-```json
-{
-  "media_buy_id": "mb_123",
-  "ext": {
-    "buyer_campaign_id": "campaign_xyz_2024",
-    "attribution_window_days": 30,
-    "attribution_model": "linear",
-    "nielsen_dar_enabled": true,
-    "comscore_tracking": {
-      "client_id": "1234567",
-      "campaign_id": "camp_abc"
+    "roku": {
+      "content_genres": ["comedy", "drama", "documentary"],
+      "content_rating": ["TV-PG", "TV-14"],
+      "viewer_age_ranges": ["18-24", "25-34", "35-44"],
+      "device_types": ["tv", "streaming_stick"]
     }
   }
 }
 ```
 
-### Creative Metadata
+### Measurement Platform Extensions
 
-AI-generated creative tracking and brand safety:
+Vendor-specific measurement and tracking:
+
+```json
+{
+  "media_buy_id": "mb_123",
+  "ext": {
+    "nielsen": {
+      "dar_enabled": true,
+      "campaign_id": "nielsen_camp_123"
+    },
+    "comscore": {
+      "client_id": "1234567",
+      "campaign_id": "camp_abc",
+      "reporting_level": "creative"
+    },
+    "ias": {
+      "viewability_tracking": true,
+      "brand_safety_enabled": true
+    }
+  }
+}
+```
+
+### Creative Platform Extensions
+
+Platform-specific creative metadata:
 
 ```json
 {
@@ -357,28 +343,36 @@ AI-generated creative tracking and brand safety:
     "id": "display_300x250"
   },
   "ext": {
-    "ai_generated": true,
-    "generation_model": "dall-e-3",
-    "brand_safety_score": 0.95,
-    "sentiment_analysis": "positive",
-    "localization_available": ["en-US", "es-ES", "fr-FR"]
+    "midjourney": {
+      "generation_id": "gen_abc123",
+      "model_version": "v6",
+      "prompt_hash": "sha256:..."
+    },
+    "gumgum": {
+      "brand_safety_score": 0.95,
+      "sentiment_analysis": "positive"
+    }
   }
 }
 ```
 
 ### Data Provider Extensions
 
-Signal metadata for transparency and performance:
+Signal provider metadata:
 
 ```json
 {
   "signal_agent_segment_id": "seg_auto_intenders",
   "ext": {
-    "data_recency_hours": 24,
-    "match_rate_estimate": 0.82,
-    "gdpr_legal_basis": "legitimate_interest",
-    "ccpa_compliance": true,
-    "refresh_frequency": "daily"
+    "liveramp": {
+      "segment_id": "lr_12345",
+      "match_rate_estimate": 0.82,
+      "refresh_frequency": "daily"
+    },
+    "neustar": {
+      "data_recency_hours": 24,
+      "confidence_score": 0.91
+    }
   }
 }
 ```
@@ -387,67 +381,75 @@ Signal metadata for transparency and performance:
 
 ### DO ✅
 
-- **Use vendor prefixes** for platform-specific fields
+- **Always namespace extensions** under vendor/platform key (e.g., `ext.gam`, `ext.roku`)
 - **Preserve unknown extensions** when forwarding data
 - **Document your extensions** in API docs
 - **Keep extensions optional** - don't make them required for functionality
 - **Use semantic names** that clearly describe the data
-- **Follow JSON conventions** - camelCase or snake_case consistently
-- **Include units** in field names when applicable (e.g., `carbon_kg` not just `carbon`)
+- **Follow JSON conventions** - camelCase or snake_case consistently within your namespace
+- **Propose widely-adopted patterns** to the core spec
 
 ### DON'T ❌
 
-- **Don't nest `ext` inside `ext`** - keep it single-level
-- **Don't duplicate standard fields** - use different semantic names
-- **Don't include large binaries** - use URLs for assets, `ext` for metadata
+- **Don't use top-level fields** - always nest under a vendor namespace
+- **Don't duplicate standard fields** - propose new spec fields instead
+- **Don't include large binaries** - use URLs for assets, `ext` for metadata only
 - **Don't put secrets** in `ext` - use proper authentication mechanisms
 - **Don't include PII** without proper consent and encryption
 - **Don't break compatibility** - treat your `ext` fields like standard API fields
-- **Don't duplicate object data in response ext** - keep layers separate
-- **Don't use ext for protocol concerns** - task_id, status, webhooks are protocol layer
-- **Don't use context for behavior changes** - context is opaque, ext is parseable
+- **Don't use `x_` prefix** - extensions are inherently experimental, namespace is enough
+- **Don't use ext for internal tracking** - use `context` for opaque correlation data
+- **Don't use context for behavior changes** - use namespaced `ext` for platform parameters
 
-### Layer Separation Anti-Patterns
+### Anti-Patterns
 
-**❌ Bad: Duplicating object data in response ext**
+**❌ Bad: Top-level fields without namespacing**
 ```json
 {
-  "media_buy": {
-    "ext": {"platform_id": "123"}
-  },
-  "ext": {"platform_id": "123"}  // ❌ Redundant
-}
-```
-
-**✅ Good: Each layer has distinct data**
-```json
-{
-  "media_buy": {
-    "ext": {"platform_campaign_id": "123"}  // Persistent state
-  },
   "ext": {
-    "processing_time_ms": 1523,             // Request-scoped
-    "dashboard_url": "https://..."          // Operational hint
+    "test_mode": true,              // ❌ Not namespaced
+    "campaign_id": "123",           // ❌ Not namespaced
+    "custom_targeting": {"..."}     // ❌ Not namespaced
   }
 }
 ```
 
-**❌ Bad: Protocol concerns in ext**
+**✅ Good: Always namespace extensions**
 ```json
 {
   "ext": {
-    "task_id": "...",      // ❌ Protocol layer
-    "status": "...",       // ❌ Protocol layer
-    "webhook_url": "..."   // ❌ Protocol layer
+    "gam": {
+      "test_mode": true,
+      "campaign_id": "123",
+      "custom_targeting": {"..."}
+    }
   }
 }
 ```
 
-**❌ Bad: Behavior flags in context**
+**❌ Bad: Internal tracking in ext**
 ```json
 {
   "context": {
-    "test_mode": true  // ❌ Should be in ext
+    "ui_session": "sess_123"
+  },
+  "ext": {
+    "internal_campaign_id": "camp_xyz"  // ❌ Should be in context
+  }
+}
+```
+
+**✅ Good: Internal tracking in context, platform config in ext**
+```json
+{
+  "context": {
+    "ui_session": "sess_123",
+    "internal_campaign_id": "camp_xyz"  // Opaque tracking
+  },
+  "ext": {
+    "gam": {
+      "order_name": "Tesla Q4"  // Platform-specific config
+    }
   }
 }
 ```
@@ -464,15 +466,17 @@ If an extension becomes widely adopted, it may be promoted to a standard AdCP fi
 Example migration:
 
 ```json
-// Old: Extension field (deprecated but still supported)
+// Old: Vendor extension (deprecated but still supported)
 {
   "product_id": "ctv_premium",
   "ext": {
-    "roku_content_genres": ["comedy", "drama"]
+    "roku": {
+      "content_genres": ["comedy", "drama"]
+    }
   }
 }
 
-// New: Promoted to standard field
+// New: Promoted to standard field (if adopted widely)
 {
   "product_id": "ctv_premium",
   "content_genres": ["comedy", "drama"]  // Now standard field
@@ -481,17 +485,7 @@ Example migration:
 
 ## Extension Registry
 
-This section documents commonly-used extensions that have emerged across implementations. These are not required but represent established patterns.
-
-### Industry Standard Extensions
-
-| Extension | Origin | Description | Objects |
-|-----------|--------|-------------|---------|
-| `schain` | OpenRTB | Supply chain transparency | Product, MediaBuy |
-
-### Platform Extensions
-
-Document commonly-used platform extensions here as they emerge.
+This section can document commonly-used vendor extensions as they emerge in practice. Extensions are vendor-specific and not part of the core spec until formally adopted.
 
 ## Questions?
 
