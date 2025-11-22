@@ -568,6 +568,168 @@ describe('AdAgentsManager', () => {
     });
   });
 
+  describe('URL Reference Support', () => {
+    it('follows URL reference to authoritative file', async () => {
+      const referenceData = {
+        $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+        authoritative_location: 'https://cdn.example.com/adagents.json',
+        last_updated: '2025-01-15T10:00:00Z'
+      };
+
+      const authoritativeData = {
+        $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+        authorized_agents: [
+          {
+            url: 'https://agent.example.com',
+            authorized_for: 'Test authorization',
+          },
+        ],
+        last_updated: '2025-01-15T09:00:00Z'
+      };
+
+      let callCount = 0;
+      mockedAxios.get.mockImplementation((url) => {
+        callCount++;
+        if (url.includes('/.well-known/adagents.json')) {
+          return Promise.resolve({
+            status: 200,
+            data: referenceData,
+            headers: { 'content-type': 'application/json' },
+          });
+        } else if (url === 'https://cdn.example.com/adagents.json') {
+          return Promise.resolve({
+            status: 200,
+            data: authoritativeData,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return Promise.reject(new Error('Unexpected URL'));
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(callCount).toBe(2); // Two requests: initial + authoritative
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects non-HTTPS authoritative locations', async () => {
+      mockedAxios.get.mockResolvedValue({
+        status: 200,
+        data: {
+          authoritative_location: 'http://insecure.example.com/adagents.json',
+        },
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'authoritative_location' && e.message.includes('HTTPS'))).toBe(true);
+    });
+
+    it('rejects invalid authoritative locations', async () => {
+      mockedAxios.get.mockResolvedValue({
+        status: 200,
+        data: {
+          authoritative_location: 'not-a-valid-url',
+        },
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'authoritative_location' && e.message.includes('valid URL'))).toBe(true);
+    });
+
+    it('handles 404 from authoritative location', async () => {
+      const referenceData = {
+        authoritative_location: 'https://cdn.example.com/adagents.json',
+      };
+
+      mockedAxios.get.mockImplementation((url) => {
+        if (url.includes('/.well-known/adagents.json')) {
+          return Promise.resolve({
+            status: 200,
+            data: referenceData,
+            headers: { 'content-type': 'application/json' },
+          });
+        } else {
+          return Promise.resolve({
+            status: 404,
+            data: 'Not Found',
+            headers: { 'content-type': 'text/html' },
+          });
+        }
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'authoritative_location' && e.message.includes('HTTP 404'))).toBe(true);
+    });
+
+    it('prevents nested URL references (infinite loop protection)', async () => {
+      const referenceData1 = {
+        authoritative_location: 'https://cdn.example.com/adagents.json',
+      };
+
+      const referenceData2 = {
+        authoritative_location: 'https://cdn2.example.com/adagents.json',
+      };
+
+      mockedAxios.get.mockImplementation((url) => {
+        if (url.includes('/.well-known/adagents.json')) {
+          return Promise.resolve({
+            status: 200,
+            data: referenceData1,
+            headers: { 'content-type': 'application/json' },
+          });
+        } else if (url === 'https://cdn.example.com/adagents.json') {
+          return Promise.resolve({
+            status: 200,
+            data: referenceData2,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return Promise.reject(new Error('Unexpected URL'));
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.message.includes('nested references not allowed'))).toBe(true);
+    });
+
+    it('handles network errors fetching authoritative file', async () => {
+      const referenceData = {
+        authoritative_location: 'https://cdn.example.com/adagents.json',
+      };
+
+      mockedAxios.get.mockImplementation((url) => {
+        if (url.includes('/.well-known/adagents.json')) {
+          return Promise.resolve({
+            status: 200,
+            data: referenceData,
+            headers: { 'content-type': 'application/json' },
+          });
+        } else {
+          return Promise.reject({
+            isAxiosError: true,
+            message: 'Network error',
+          });
+        }
+      });
+      mockedAxios.isAxiosError = vi.fn().mockReturnValue(true);
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'authoritative_location')).toBe(true);
+    });
+  });
+
   describe('validateProposed', () => {
     it('validates proposed agents without making HTTP requests', () => {
       const agents: AuthorizedAgent[] = [

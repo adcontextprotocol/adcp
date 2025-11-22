@@ -82,6 +82,101 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 
 **`last_updated`** *(optional)*: ISO 8601 timestamp of last modification
 
+## URL Reference Pattern
+
+For publishers with complex infrastructure or CDN distribution, `adagents.json` can reference an authoritative URL instead of containing the full structure inline.
+
+### When to Use URL References
+
+- **CDN Distribution**: Serve authorization data from a global CDN for better performance
+- **Centralized Management**: Single source of truth across multiple domains
+- **Large Files**: When authorization data is too large for inline embedding
+- **Dynamic Updates**: When authorization needs frequent updates without touching domain files
+
+### URL Reference Structure
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
+  "authoritative_location": "https://cdn.example.com/adagents/v2/adagents.json",
+  "last_updated": "2025-01-15T10:00:00Z"
+}
+```
+
+### Requirements
+
+- **HTTPS Required**: The `authoritative_location` must use HTTPS
+- **No Nested References**: The authoritative file cannot itself be a URL reference (prevents infinite loops)
+- **Same Schema**: The authoritative file must be a valid inline adagents.json structure
+- **Single Hop**: Only one level of URL indirection is allowed
+
+### Example Use Case: Multi-Domain Publisher
+
+A publisher with multiple domains can maintain one authoritative file:
+
+**On each domain** (`https://domain1.com/.well-known/adagents.json`, `https://domain2.com/.well-known/adagents.json`, etc.):
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
+  "authoritative_location": "https://cdn.publisher.com/adagents/v2/adagents.json",
+  "last_updated": "2025-01-15T10:00:00Z"
+}
+```
+
+**Authoritative file** (`https://cdn.publisher.com/adagents/v2/adagents.json`):
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
+  "contact": {
+    "name": "Publisher Ad Operations",
+    "email": "adops@publisher.com"
+  },
+  "properties": [
+    {
+      "property_id": "domain1_site",
+      "property_type": "website",
+      "name": "Domain 1",
+      "identifiers": [{"type": "domain", "value": "domain1.com"}],
+      "publisher_domain": "domain1.com"
+    },
+    {
+      "property_id": "domain2_site",
+      "property_type": "website",
+      "name": "Domain 2",
+      "identifiers": [{"type": "domain", "value": "domain2.com"}],
+      "publisher_domain": "domain2.com"
+    }
+  ],
+  "authorized_agents": [
+    {
+      "url": "https://sales-agent.publisher.com",
+      "authorized_for": "All publisher properties",
+      "authorization_type": "property_ids",
+      "property_ids": ["domain1_site", "domain2_site"]
+    }
+  ],
+  "last_updated": "2025-01-15T09:00:00Z"
+}
+```
+
+### Validation Behavior
+
+When AdCP validators encounter a URL reference:
+
+1. **Fetch Reference**: Retrieve the file at `/.well-known/adagents.json`
+2. **Detect Reference**: Check for `authoritative_location` field
+3. **Validate URL**: Ensure `authoritative_location` is HTTPS and valid
+4. **Fetch Authoritative**: Retrieve content from `authoritative_location`
+5. **Prevent Loops**: Reject if authoritative file is also a reference
+6. **Validate Structure**: Validate the authoritative file as normal inline structure
+
+### Caching Recommendations
+
+- Cache reference files for 24 hours minimum
+- Cache authoritative files separately with their own TTL
+- Use `last_updated` timestamp to detect when cache should be invalidated
+- Implement exponential backoff for failed fetches
+
 ## Authorization Patterns
 
 AdCP supports four authorization patterns, each optimized for different use cases:
