@@ -129,9 +129,9 @@ Creative specifies exact dimensions in format_id to use the template format:
 
 ### Placement Constraints
 
-Publishers can specify supported dimensions in two ways:
+**CRITICAL**: Sales agents MUST always return parameterized format_ids (with specific dimensions/duration) in placements. Template format_ids without parameters are ONLY used in format definitions from `list_creative_formats()`.
 
-#### Option 1: List Specific Dimensions
+Publishers specify supported dimensions by listing all supported variants:
 
 ```json
 {
@@ -154,24 +154,13 @@ Publishers can specify supported dimensions in two ways:
 }
 ```
 
-**Validation:** Creative's format_id must exactly match one of the placement's format_ids.
+**Validation:** Creative's format_id must exactly match one of the placement's parameterized format_ids.
 
-#### Option 2: Accept Any Dimensions (Template Format)
-
-```json
-{
-  "placement_id": "flexible_banner"
-  "name": "Flexible Banner Slot"
-  "format_ids": [
-    {
-      "agent_url": "https://creative.adcontextprotocol.org"
-      "id": "display_static"
-    }
-  ]
-}
-```
-
-**Validation:** Any creative with `display_static` format (regardless of dimensions) is accepted.
+**Why parameterized only in placements:**
+- Buyers need to know exactly which dimensions are supported
+- No ambiguity about what will be accepted
+- Enables clear validation at creative submission time
+- Template format_ids without parameters are only for format discovery via `list_creative_formats()`
 
 ## Benefits
 
@@ -204,7 +193,7 @@ Publishers can specify supported dimensions in two ways:
 ### Time-Based Formats (Video, Audio)
 
 **Fields:**
-- `duration_ms` (number, minimum: 0) - Duration in milliseconds
+- `duration_ms` (number, minimum: 1) - Duration in milliseconds
 
 **Example:**
 ```json
@@ -266,7 +255,7 @@ Publishers can specify supported dimensions in two ways:
 }
 ```
 
-### DOOH Format (Physical Dimensions)
+### DOOH Format (Pixel Dimensions)
 
 ```json
 {
@@ -294,6 +283,8 @@ Publishers can specify supported dimensions in two ways:
   "assets": {...}
 }
 ```
+
+**Note**: All dimensions are in pixels. Physical screen dimensions (e.g., 48 feet × 14 feet billboard) are placement metadata, not format specifications.
 
 ### Generative Formats with Output Formats
 
@@ -344,14 +335,14 @@ Both creative and sales agents can return template format definitions via `list_
 
 ### Placement Constraints: `get_products()`
 
-Sales agents return products with placement-specific format constraints:
+**REQUIREMENT**: Sales agents MUST return parameterized format_ids (with specific dimensions/duration) in placements. Template format_ids without parameters are NOT allowed in placement specifications.
 
 ```json
 {
   "products": [{
     "placements": [{
       "format_ids": [
-        {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}
+        {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
         {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
       ]
     }]
@@ -361,10 +352,16 @@ Sales agents return products with placement-specific format constraints:
 
 **Purpose**: Buyers discover which *specific dimensions* are supported for each placement.
 
+**Why parameterized format_ids are required in placements:**
+- Provides explicit list of accepted dimension variants
+- Eliminates ambiguity about what will be accepted
+- Enables clear validation at creative submission time
+- Buyers can match their creative dimensions against specific placement requirements
+
 **Discovery Flow**:
-1. Buyer calls `list_creative_formats()` on creative or sales agent → learns `display_static` accepts dimensions
-2. Buyer calls `get_products()` on sales agent → learns which dimensions are supported (300x250, 728x90)
-3. Buyer creates creative with parameterized format_id matching a supported placement dimension
+1. Buyer calls `list_creative_formats()` on creative or sales agent → learns `display_static` is a template format that accepts dimensions
+2. Buyer calls `get_products()` on sales agent → learns which *specific dimensions* are supported (300×250, 728×90)
+3. Buyer creates creative with parameterized format_id matching one of the placement's supported dimensions
 
 ## Implementation Guidelines
 
@@ -390,28 +387,32 @@ Sales agents return products with placement-specific format constraints:
 
 ### For Sales Agents
 
-**Product responses:**
-- Reference template formats in `format_ids` array for flexible support:
+**Product responses - CRITICAL REQUIREMENT:**
+- **MUST** always return parameterized format_ids with specific dimensions/duration in placements
+- **NEVER** return template format_ids without parameters in placement `format_ids` arrays
+- List all supported dimension/duration variants explicitly:
   ```json
-  {"agent_url": "...", "id": "display_static"}
-  ```
-- OR list specific parameterized formats to constrain dimensions:
-  ```json
-  [
-    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}
-    {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
-  ]
+  {
+    "placements": [{
+      "format_ids": [
+        {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
+        {"agent_url": "...", "id": "display_static", "width": 728, "height": 90},
+        {"agent_url": "...", "id": "display_static", "width": 160, "height": 600}
+      ]
+    }]
+  }
   ```
 
-**Placement definitions:**
-- Use template format_ids (no parameters) for flexible placements
-- Use parameterized format_ids (with dimensions) to constrain exact dimensions
-- Validate creative format_ids match placement constraints
+**Why this requirement exists:**
+- Buyers need explicit lists of supported dimensions
+- No ambiguity about what will be accepted
+- Enables validation at creative submission time
+- Template format_ids without parameters are ONLY for `list_creative_formats()` responses
 
 **Creative validation:**
-- Ensure creative format_id matches at least one placement format_id
-- For template matches, verify base format (id + agent_url) matches
-- For parameterized matches, verify exact equality including dimensions
+- Ensure creative format_id exactly matches at least one placement format_id
+- Match requires exact equality of all fields: agent_url, id, width, height, duration_ms
+- No partial matches or "close enough" dimensions
 
 ### For Buyers
 
@@ -464,28 +465,21 @@ When comparing format_ids for equality or caching:
 
 ### Placement Validation
 
-**Template format in placement:**
-```json
-// Placement accepts template
-{"format_ids": [{"agent_url": "...", "id": "display_static"}]}
+**IMPORTANT**: Placements MUST always specify parameterized format_ids with explicit dimensions/duration. Template format_ids without parameters are NOT allowed in placements.
 
-// Creative matches if base format matches (any dimensions)
-{"format_id": {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}}  // ✅ Match
-{"format_id": {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}}   // ✅ Match
-{"format_id": {"agent_url": "...", "id": "video_hosted", "duration_ms": 30000}}                 // ❌ Different format
-```
-
-**Parameterized format in placement:**
+**Parameterized formats in placement (REQUIRED pattern):**
 ```json
-// Placement specifies exact dimensions
+// Placement specifies exact supported dimensions
 {"format_ids": [
-  {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}
+  {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
+  {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
 ]}
 
-// Creative matches only if exact equality
+// Creative matches only if exact equality with one of the placement's format_ids
 {"format_id": {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}}  // ✅ Match
-{"format_id": {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}}   // ❌ Different dimensions
-{"format_id": {"agent_url": "...", "id": "display_static"}}                                              // ❌ Missing dimensions
+{"format_id": {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}}   // ✅ Match
+{"format_id": {"agent_url": "...", "id": "display_static", "width": 160, "height": 600}}  // ❌ Not in placement list
+{"format_id": {"agent_url": "...", "id": "display_static"}}                               // ❌ Missing dimensions
 ```
 
 ## Migration from Concrete Formats
@@ -547,9 +541,9 @@ Instead of defining 15 separate formats for IAB sizes, use one template:
 ```
 
 Creatives specify their size via parameters:
-- 300×250: `{id: "display_static", width: 300, height: 250, unit: "px"}`
-- 728×90: `{id: "display_static", width: 728, height: 90, unit: "px"}`
-- 160×600: `{id: "display_static", width: 160, height: 600, unit: "px"}`
+- 300×250: `{id: "display_static", width: 300, height: 250}`
+- 728×90: `{id: "display_static", width: 728, height: 90}`
+- 160×600: `{id: "display_static", width: 160, height: 600}`
 - etc.
 
 ### Video Duration Variants
@@ -576,7 +570,9 @@ Instead of defining formats for every billboard size:
 }
 ```
 
-Creatives specify physical dimensions: `{id: "dooh_static", width: 48, height: 14, unit: "in"}`
+Creatives specify pixel dimensions: `{id: "dooh_static", width: 1920, height: 560}`
+
+**Note**: All dimensions are in pixels. Physical screen size (e.g., 48 feet × 14 feet) is placement metadata.
 
 ## See Also
 

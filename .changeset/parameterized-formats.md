@@ -28,9 +28,10 @@ Add template formats with dimension parameters to eliminate format explosion for
    - Parameterized format_ids enable deduplication and caching (same dimensions = same ID)
    - Template formats accept any parameters, concrete formats have fixed dimensions
 
-4. **Placement Schema** - Simplified constraint model
-   - Placements list template format_ids without parameters (accept any dimensions)
-   - OR list parameterized format_ids (constrain exact dimensions)
+4. **Placement Schema** - CRITICAL: Sales agents MUST return parameterized format_ids
+   - Placements in `get_products()` responses MUST include parameterized format_ids with explicit dimensions/duration
+   - Template format_ids without parameters are ONLY used in `list_creative_formats()` responses
+   - Buyers need explicit lists of supported dimensions for validation
    - Removed complex format_constraints object (not needed)
 
 **Benefits:**
@@ -74,29 +75,19 @@ Add template formats with dimension parameters to eliminate format explosion for
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_static",
     "width": 300,
-    "height": 250,
-    "unit": "px"
+    "height": 250
   },
   "assets": {...}
 }
 ```
 
-**Placement constraints (Option 1 - Template):**
-```json
-{
-  "format_ids": [
-    {"agent_url": "...", "id": "display_static"}  // Accepts any dimensions
-  ]
-}
-```
-
-**Placement constraints (Option 2 - Parameterized):**
+**Placement format_ids (REQUIRED pattern - sales agents MUST use parameterized format_ids):**
 ```json
 {
   "format_ids": [
     {"agent_url": "...", "id": "display_static", "width": 300, "height": 250},
     {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}
-    // Accepts only these exact dimensions
+    // Lists all exact dimensions supported by this placement
   ]
 }
 ```
