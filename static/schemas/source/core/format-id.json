@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/format-id.json",
   "title": "Format ID",
-  "description": "Structured format identifier with agent URL and format name",
+  "description": "Structured format identifier with agent URL and format name. Can be either a template format (id only) or a deterministic format (id + dimensions/duration). Template formats represent format categories (e.g., 'display_static') while deterministic formats include specific parameters (e.g., 'display_static' + width: 300, height: 250) to create unique, concrete format identifiers.",
   "type": "object",
   "properties": {
     "agent_url": {
@@ -13,7 +13,26 @@
     "id": {
       "type": "string",
       "pattern": "^[a-zA-Z0-9_-]+$",
-      "description": "Format identifier within the agent's namespace (e.g., 'display_300x250', 'video_standard_30s')"
+      "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). For template formats, this is the complete identifier. For deterministic formats, this is combined with dimension/duration fields to create a unique format."
+    },
+    "width": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Width for visual formats (display, DOOH, native). When specified, makes this a deterministic format ID. Omit for non-visual formats or template formats."
+    },
+    "height": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Height for visual formats (display, DOOH, native). When specified, makes this a deterministic format ID. Omit for non-visual formats or template formats."
+    },
+    "unit": {
+      "$ref": "/schemas/enums/dimension-unit.json",
+      "description": "Unit of measurement for width/height (px, in, cm, etc.). Required when width/height are specified. Defaults to 'px' if not provided."
+    },
+    "duration_ms": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Duration in milliseconds for time-based formats (video, audio). When specified, makes this a deterministic format ID. Omit for non-time-based formats or template formats."
     }
   },
   "required": ["agent_url", "id"],
