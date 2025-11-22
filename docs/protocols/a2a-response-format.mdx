@@ -1,0 +1,470 @@
+---
+sidebar_position: 3.5
+title: A2A Response Format
+description: Canonical structure for AdCP responses transmitted over A2A protocol
+keywords: [A2A response format, artifacts, DataPart, response structure, canonical format]
+---
+
+# A2A Response Format
+
+This document defines the **canonical structure** for AdCP responses transmitted over the A2A protocol.
+
+## Required Structure
+
+**AdCP responses over A2A MUST:**
+- Include at least one `DataPart` (kind: 'data') containing the task response payload
+- Use single artifact with multiple parts (not multiple artifacts)
+- Use the last `DataPart` as authoritative when multiple data parts exist
+
+**Recommended pattern:**
+
+```json
+{
+  "status": "completed",
+  "taskId": "task_123",
+  "contextId": "ctx_456",
+  "artifacts": [{
+    "name": "task_result",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Found 12 video products perfect for pet food campaigns"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "products": [...],
+          "total": 12
+        }
+      }
+    ]
+  }]
+}
+```
+
+- **TextPart** (kind: 'text'): Human-readable summary - **recommended** but optional
+- **DataPart** (kind: 'data'): Structured AdCP response payload - **required**
+- **FilePart** (kind: 'file'): Optional file references (previews, reports)
+
+**Multiple artifacts:** Only for fundamentally distinct deliverables (e.g., creative asset + separate trafficking report). Rare in AdCP - prefer single artifact with multiple parts.
+
+## Response Extraction Pattern
+
+### Last Data Part is Authoritative
+
+When multiple `DataPart` elements exist, **the last one contains the authoritative task result**:
+
+```javascript
+function extractAdcpResponse(a2aResponse) {
+  const dataParts = a2aResponse.artifacts?.[0]?.parts
+    ?.filter(p => p.kind === 'data') || [];
+
+  if (dataParts.length === 0) {
+    throw new Error('No data part found in A2A response');
+  }
+
+  // Use LAST data part as authoritative
+  const data = dataParts[dataParts.length - 1].data;
+
+  // Extract optional human message
+  const message = a2aResponse.artifacts?.[0]?.parts
+    ?.find(p => p.kind === 'text')?.text;
+
+  return {
+    status: a2aResponse.status,
+    message,
+    data,
+    taskId: a2aResponse.taskId,
+    contextId: a2aResponse.contextId
+  };
+}
+```
+
+<details>
+<summary><strong>Why this pattern?</strong></summary>
+
+During streaming operations, intermediate responses may include old progress data:
+
+```json
+// Working status with progress
+{
+  "status": "working",
+  "artifacts": [{
+    "parts": [
+      {"kind": "text", "text": "Searching inventory..."},
+      {"kind": "data", "data": {"progress": 25}}
+    ]
+  }]
+}
+
+// Completed - last data part is authoritative
+{
+  "status": "completed",
+  "artifacts": [{
+    "parts": [
+      {"kind": "text", "text": "Found 12 products"},
+      {"kind": "data", "data": {"progress": 25}},           // Old
+      {"kind": "data", "data": {"products": [...], "total": 12}}  // ← Authoritative
+    ]
+  }]
+}
+```
+
+**Note:** This is an AdCP-specific convention, not required by A2A protocol. Document this in your Agent Card when serving non-AdCP clients.
+</details>
+
+## Error Handling
+
+### Task-Level Errors (Partial Failures)
+
+Task executed but couldn't complete fully. Use `errors` array in DataPart with `status: "completed"`:
+
+```json
+{
+  "status": "completed",
+  "taskId": "task_123",
+  "artifacts": [{
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Signal discovery completed with partial results"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "signals": [...],
+          "errors": [{
+            "code": "NO_DATA_IN_REGION",
+            "message": "No signal data available for Australia",
+            "field": "deliver_to.countries[1]",
+            "details": {
+              "requested_country": "AU",
+              "available_countries": ["US", "CA", "GB"]
+            }
+          }]
+        }
+      }
+    ]
+  }]
+}
+```
+
+**When to use errors array:**
+- Platform authorization issues (`PLATFORM_UNAUTHORIZED`)
+- Partial data availability
+- Validation issues in subset of data
+
+### Protocol-Level Errors (Fatal)
+
+Task couldn't execute. Use `status: "failed"` with message:
+
+```json
+{
+  "taskId": "task_456",
+  "status": "failed",
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "Authentication failed: Invalid or expired API token"
+    }]
+  }
+}
+```
+
+**When to use status: failed:**
+- Authentication failures (invalid credentials, expired tokens)
+- Invalid request parameters (malformed JSON, missing required fields)
+- Resource not found (unknown taskId, expired context)
+- System errors (database unavailable, internal service failure)
+
+## Status Mapping
+
+AdCP uses A2A's TaskState enum directly:
+
+| A2A Status | AdCP Usage | Response Structure |
+|------------|------------|-------------------|
+| `completed` | Task finished successfully | Data in `DataPart`, optional errors array |
+| `failed` | Fatal error preventing completion | Text message explaining failure |
+| `input-required` | Need user input/approval | Data + text explaining what's needed |
+| `working` | Processing (< 120s) | Optional progress data |
+| `submitted` | Long-running (hours/days) | Minimal data, use webhooks/polling |
+
+## Webhook Payloads
+
+Async operations (`status: "submitted"`) deliver the same artifact structure in webhooks:
+
+```json
+POST /webhook-endpoint
+{
+  "taskId": "task_123",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "artifacts": [{
+    "parts": [
+      {"kind": "text", "text": "Media buy approved and live"},
+      {"kind": "data", "data": {
+        "media_buy_id": "mb_456",
+        "packages": [...],
+        "creative_deadline": "2025-01-30T23:59:59Z"
+      }}
+    ]
+  }]
+}
+```
+
+Extract AdCP data using the same last-DataPart pattern. **For webhook authentication, retry patterns, and security**, see [Core Concepts - Webhook Reliability](/docs/protocols/core-concepts#webhook-reliability).
+
+## File Parts in Responses
+
+Creative operations MAY include file references:
+
+```json
+{
+  "status": "completed",
+  "artifacts": [{
+    "parts": [
+      {"kind": "text", "text": "Creative uploaded and preview generated"},
+      {"kind": "data", "data": {
+        "creative_id": "cr_789",
+        "format_id": {
+          "agent_url": "https://creatives.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        },
+        "status": "ready"
+      }},
+      {"kind": "file", "uri": "https://cdn.example.com/cr_789/preview.mp4", "name": "preview.mp4", "mimeType": "video/mp4"}
+    ]
+  }]
+}
+```
+
+**File part usage:** Preview URLs, generated assets, trafficking reports. **Not for** raw AdCP response data (always use DataPart).
+
+## Retry and Idempotency
+
+### TaskId-Based Deduplication
+
+A2A's `taskId` enables retry detection. Agents SHOULD:
+- Return cached response if `taskId` matches a completed operation (within TTL window)
+- Reject duplicate `taskId` submission if operation is still in progress
+
+```json
+// Duplicate taskId during active operation
+{
+  "taskId": "task_123",
+  "status": "failed",
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "Task 'task_123' is already in progress. Use tasks/get to check status."
+    }]
+  }
+}
+```
+
+### Connection Recovery
+
+If SSE connection drops during `working` status:
+1. Client MAY reconnect to `/a2a/tasks/{taskId}/events` to resume streaming
+2. Agent MUST deliver current status when reconnecting (not just incremental updates)
+3. If taskId is unknown (expired/purged), return `status: "failed"` with clear message
+
+## Examples
+
+<details>
+<summary><strong>Product Discovery Success</strong></summary>
+
+```json
+{
+  "status": "completed",
+  "taskId": "task_001",
+  "contextId": "ctx_abc",
+  "artifacts": [{
+    "name": "product_catalog",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Found 8 CTV products targeting sports fans under $50 CPM"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "products": [
+            {
+              "product_id": "ctv_sports_premium",
+              "name": "Premium Sports CTV",
+              "estimated_cpm": 45.00
+            }
+            // ... 7 more products
+          ]
+        }
+      }
+    ]
+  }]
+}
+```
+</details>
+
+<details>
+<summary><strong>Media Buy with Approval Required</strong></summary>
+
+```json
+{
+  "status": "input-required",
+  "taskId": "task_002",
+  "contextId": "ctx_def",
+  "artifacts": [{
+    "name": "approval_request",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Media buy exceeds auto-approval limit ($100K). Please approve to proceed."
+      },
+      {
+        "kind": "data",
+        "data": {
+          "media_buy_id": "mb_pending_456",
+          "buyer_ref": "nike_q1_campaign_2024",
+          "packages": [
+            {
+              "package_id": "pkg_pending_001",
+              "buyer_ref": "nike_ctv_package",
+              "status": "pending_approval"
+            },
+            {
+              "package_id": "pkg_pending_002",
+              "buyer_ref": "nike_audio_package",
+              "status": "pending_approval"
+            }
+          ],
+          "creative_deadline": "2025-02-01T23:59:59Z"
+        }
+      }
+    ]
+  }]
+}
+```
+</details>
+
+<details>
+<summary><strong>Signal Discovery with Partial Failure</strong></summary>
+
+```json
+{
+  "status": "completed",
+  "taskId": "task_003",
+  "contextId": "ctx_ghi",
+  "artifacts": [{
+    "name": "signal_results",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Found 3 signals for luxury automotive. Note: No data available for Australia region."
+      },
+      {
+        "kind": "data",
+        "data": {
+          "signals": [
+            {
+              "signal_id": "lux_auto_us",
+              "name": "Luxury Auto Intenders - US",
+              "reach": 2500000
+            }
+          ],
+          "total": 3,
+          "errors": [{
+            "code": "NO_DATA_IN_REGION",
+            "message": "No signal data available for requested region: Australia",
+            "field": "deliver_to.countries[1]",
+            "details": {
+              "requested_country": "AU",
+              "available_countries": ["US", "CA", "GB"]
+            }
+          }]
+        }
+      }
+    ]
+  }]
+}
+```
+</details>
+
+<details>
+<summary><strong>Platform Authorization Issue (Task-Level Error)</strong></summary>
+
+Platform/operation-specific authorization failures are task-level errors:
+
+```json
+{
+  "status": "completed",
+  "taskId": "task_004",
+  "contextId": "ctx_jkl",
+  "artifacts": [{
+    "name": "signal_activation_result",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Signal activation failed: Account not authorized for Peer39 data on PubMatic"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "errors": [{
+            "code": "PLATFORM_UNAUTHORIZED",
+            "message": "Account 'brand-456-pm' not authorized for Peer39 data on PubMatic. Contact your PubMatic account manager to enable access.",
+            "details": {
+              "platform": "pubmatic",
+              "account_id": "brand-456-pm",
+              "data_provider": "peer39"
+            }
+          }]
+        }
+      }
+    ]
+  }]
+}
+```
+</details>
+
+<details>
+<summary><strong>Protocol-Level Failure (Fatal)</strong></summary>
+
+Authentication failures are protocol-level errors:
+
+```json
+{
+  "taskId": "task_005",
+  "status": "failed",
+  "message": {
+    "parts": [{
+      "kind": "text",
+      "text": "Authentication failed: Invalid or expired API token. Please refresh your credentials and retry."
+    }]
+  }
+}
+```
+</details>
+
+## Implementation Checklist
+
+When implementing A2A responses for AdCP:
+
+- [ ] **Always include status field** from TaskState enum
+- [ ] **Include at least one DataPart** with AdCP response payload (even if empty: `{"products": []}`)
+- [ ] **Include TextPart** with human-readable message (recommended for UX)
+- [ ] **Use single artifact with multiple parts** (not multiple artifacts)
+- [ ] **Use last DataPart as authoritative** if multiple exist
+- [ ] **Never nest AdCP data in custom wrappers**
+- [ ] **Use `status: "failed"` for protocol errors only** (auth, invalid params, system errors)
+- [ ] **Use `errors` array for task failures** (platform auth, partial data) with `status: "completed"`
+- [ ] **Include taskId and contextId** for tracking
+- [ ] **Follow discriminated union patterns** for task responses (check schemas)
+- [ ] **Deliver same structure in webhooks** as synchronous responses
+- [ ] **Support taskId-based deduplication** for retry detection
+
+## See Also
+
+- [A2A Guide](/docs/protocols/a2a-guide) - Complete A2A integration guide
+- [Core Concepts](/docs/protocols/core-concepts) - Status handling patterns
+- [Error Handling](/docs/protocols/error-handling) - Fatal vs non-fatal errors
+- [Protocol Comparison](/docs/protocols/protocol-comparison) - MCP vs A2A differences
