@@ -12,8 +12,8 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 **PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
-**Request Schema**: [`/schemas/v1/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-request.json)
-**Response Schema**: [`/schemas/v1/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json)
+**Request Schema**: [`/schemas/v2/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-response.json)
 
 ## Request Parameters
 
@@ -23,7 +23,7 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 | `buyer_ref` | string | Yes* | Your reference for the media buy to update |
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
-| `active` | boolean | No | Pause/resume entire media buy |
+| `paused` | boolean | No | Pause/resume entire media buy (true = paused, false = active) |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
 
 *Either `media_buy_id` OR `buyer_ref` is required (not both)
@@ -34,7 +34,7 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 |-----------|------|-------------|
 | `package_id` | string | Publisher's package identifier to update |
 | `buyer_ref` | string | Your reference for the package to update |
-| `active` | boolean | Pause/resume specific package |
+| `paused` | boolean | Pause/resume specific package (true = paused, false = active) |
 | `budget` | number | Updated budget allocation |
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only) |
@@ -57,11 +57,13 @@ Returns updated media buy with status:
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
+| `buyer_ref` | Buyer's reference identifier |
 | `status` | Update status (`"completed"`, `"working"`, `"submitted"`) |
-| `packages` | Updated packages with new values |
+| `affected_packages` | Array of full Package objects showing complete state after update |
+| `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `message` | Human-readable update description |
 
-See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json) for complete field list.
+See [schema](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-response.json) for complete field list.
 
 ## Common Scenarios
 
@@ -75,7 +77,7 @@ import { testAgent } from '@adcp/client/testing';
 // Pause entire campaign using your reference
 const result = await testAgent.updateMediaBuy({
   buyer_ref: 'mb_summer_2025',
-  active: false
+  paused: true
 });
 
 console.log(`Campaign paused`);
@@ -95,7 +97,9 @@ const result = await testAgent.updateMediaBuy({
   }]
 });
 
-console.log(`Package budget updated to ${result.packages[0].budget}`);
+if (result.affected_packages?.length) {
+  console.log(`Package budget updated to ${result.affected_packages[0].budget}`);
+}
 ```
 
 ### Change Campaign Dates
@@ -146,7 +150,9 @@ const result = await testAgent.updateMediaBuy({
   }]
 });
 
-console.log(`Assigned ${result.packages[0].creative_ids.length} new creatives`);
+if (result.affected_packages?.length) {
+  console.log(`Assigned ${result.affected_packages[0].creative_assignments.length} new creatives`);
+}
 ```
 
 ### Upload and Assign Creatives Inline
@@ -367,7 +373,7 @@ asyncio.run(main())
 
 ✅ **Can update:**
 - Start/end times (subject to seller approval)
-- Campaign status (active/paused/cancelled)
+- Campaign pause state (paused/active)
 - Reporting webhook configuration
 
 ❌ **Cannot update:**
@@ -384,7 +390,7 @@ asyncio.run(main())
 - Bid prices (auction products)
 - Targeting overlays
 - Creative assignments
-- Package status
+- Package pause state
 
 ❌ **Cannot update:**
 - Package ID
@@ -401,38 +407,13 @@ Some updates require seller approval and return `status: "submitted"`:
 - **Targeting changes** that alter campaign scope
 - **Creative changes** requiring policy review
 
-When approval is needed:
-```javascript
-if (result.status === 'submitted') {
-  console.log('Update requires approval:', result.message);
-  // Set up status monitoring
-}
-```
+When approval is needed, check the response status and message fields.
 
 ## PATCH Semantics
 
-Only specified fields are updated:
+Only specified fields are updated. For example, updating only the budget leaves all other package fields (pacing, targeting, creatives) unchanged.
 
-```javascript
-// This update ONLY changes budget - all other fields unchanged
-await testAgent.updateMediaBuy({
-  buyer_ref: 'mb_summer_2025',
-  packages: [{
-    buyer_ref: 'pkg_premium',
-    budget: 25000
-  }]
-});
-```
-
-To replace arrays (like creative_ids), provide the complete new array:
-
-```javascript
-// Replaces ALL creatives with new list
-packages: [{
-  buyer_ref: 'pkg_premium',
-  creative_ids: ['creative_video_002', 'creative_display_002']
-}]
-```
+To replace arrays (like creative_ids), provide the complete new array (replaces ALL creatives with new list).
 
 ## Error Handling
 
@@ -448,22 +429,10 @@ packages: [{
 
 ## Async Workflows
 
-Updates may be asynchronous, especially with seller approval:
-
-```javascript
-const result = await agent.updateMediaBuy({...});
-
-if (result.status === 'working') {
-  // Poll for completion after a few seconds
-  await new Promise(resolve => setTimeout(resolve, 5000));
-  // Check status via protocol-specific mechanism
-}
-
-if (result.status === 'submitted') {
-  // Manual approval required (hours to days)
-  console.log('Awaiting seller approval:', result.message);
-}
-```
+Updates may be asynchronous, especially with seller approval. Check the response `status` field:
+- `"completed"` - Update applied immediately
+- `"working"` - Processing (poll or use webhooks)
+- `"submitted"` - Requires manual approval (hours to days)
 
 See [Task Management](/docs/protocols/task-management) for protocol-specific async patterns.
 

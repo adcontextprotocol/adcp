@@ -184,7 +184,11 @@
           {
             "group": "Reference",
             "pages": [
+              "docs/reference/roadmap",
+              "docs/reference/release-notes",
               "docs/reference/changelog",
+              "docs/reference/schema-versioning",
+              "docs/reference/extensions-and-context",
               "docs/reference/error-codes",
               "docs/reference/data-models",
               "docs/reference/authentication",

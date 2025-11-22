@@ -9,8 +9,8 @@ title: activate_signal
 
 **Response Time**: Minutes to days (asynchronous with potential human-in-the-loop)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/v1/signals/activate-signal-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/v1/signals/activate-signal-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v2/signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/v2/signals/activate-signal-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v2/signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/v2/signals/activate-signal-response.json)
 
 The `activate_signal` task handles the entire activation lifecycle, including:
 - Initiating the activation request
@@ -22,11 +22,11 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `signal_agent_segment_id` | string | Yes | The universal identifier for the signal to activate |
-| `destinations` | Destination[] | Yes | Target destination(s) for activation (see Destination Object below) |
+| `deployments` | Destination[] | Yes | Target deployment(s) for activation (see Destination Object below) |
 
 ### Destination Object
 
-Each destination uses a `type` field to discriminate between platform-based and agent-based destinations:
+Each deployment target uses a `type` field to discriminate between platform-based and agent-based deployments:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -37,11 +37,11 @@ Each destination uses a `type` field to discriminate between platform-based and 
 
 *`platform` is required when `type="platform"`, `agent_url` is required when `type="agent"`.
 
-**Activation Keys**: If the authenticated caller has access to any of the destinations in the request, the signal agent will include `activation_key` in the response for those destinations.
+**Activation Keys**: If the authenticated caller has access to any of the deployment targets in the request, the signal agent will include `activation_key` in the response for those deployments.
 
 **Permission Model**: The signal agent determines key inclusion based on the caller's authentication and authorization. For example:
-- A sales agent receives keys for destinations matching its `agent_url`
-- A buyer with credentials for multiple DSP platforms receives keys for all those platforms
+- A sales agent receives keys for deployments matching its `agent_url`
+- A buyer with credentials for multiple DSP platforms receives keys for all those deployments
 - Access is determined by the signal agent's permission system, not by flags in the request
 
 ## Response Structure
@@ -90,11 +90,11 @@ For asynchronous operations like activation, both protocols support:
 
 ### Field Descriptions
 
-- **deployments**: Array of deployment results for each destination
+- **deployments**: Array of deployment results for each deployment target
   - **platform**: Platform identifier for DSPs (either platform or agent_url will be present)
-  - **agent_url**: URL identifying the destination agent (either platform or agent_url will be present)
+  - **agent_url**: URL identifying the deployment agent (either platform or agent_url will be present)
   - **account**: Account identifier if applicable
-  - **activation_key**: The key to use for targeting (see Activation Key below). Only present if the authenticated caller has access to this destination.
+  - **activation_key**: The key to use for targeting (see Activation Key below). Only present if the authenticated caller has access to this deployment.
   - **estimated_activation_duration_minutes**: Estimated completion time for async operations
   - **deployed_at**: ISO 8601 timestamp when activation completed
 - **errors**: Optional array of errors and warnings encountered during activation
@@ -106,7 +106,7 @@ For asynchronous operations like activation, both protocols support:
 
 ### Activation Key Object
 
-The activation key represents how to use the signal on a destination platform. It can be either a segment ID or a key-value pair:
+The activation key represents how to use the signal on a deployment target. It can be either a segment ID or a key-value pair:
 
 **Segment ID format (typical for DSP platforms):**
 ```json
@@ -135,7 +135,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
   "tool": "activate_signal",
   "arguments": {
     "signal_agent_segment_id": "luxury_auto_intenders",
-    "destinations": [{
+    "deployments": [{
       "type": "agent",
       "agent_url": "https://wonderstruck.salesagents.com"
     }]
@@ -169,7 +169,7 @@ Immediate response with activation key:
   "tool": "activate_signal",
   "arguments": {
     "signal_agent_segment_id": "luxury_auto_intenders",
-    "destinations": [{
+    "deployments": [{
       "type": "platform",
       "platform": "the-trade-desk",
       "account": "agency-123-ttd"
@@ -237,7 +237,7 @@ await a2a.send({
         skill: "activate_signal",
         parameters: {
           signal_agent_segment_id: "luxury_auto_intenders",
-          destinations: [{
+          deployments: [{
             type: "platform",
             platform: "the-trade-desk",
             account: "agency-123-ttd"
@@ -297,7 +297,7 @@ For long-running activations (when initial response is `submitted`), configure a
 const response = await session.call('activate_signal',
   {
     signal_agent_segment_id: "luxury_auto_intenders",
-    destinations: [{
+    deployments: [{
       type: "platform",
       platform: "the-trade-desk",
       account: "agency-123-ttd"
@@ -435,11 +435,11 @@ See **[Task Management: Webhook Integration](/docs/protocols/task-management.mdx
     {
       "code": "DEPLOYMENT_UNAUTHORIZED",
       "message": "Account brand-456-pm not authorized for Peer39 data on PubMatic",
-      "field": "destination.account",
+      "field": "deployment.account",
       "suggestion": "Contact your PubMatic account manager to enable Peer39 data access for your account",
       "details": {
         "account_id": "brand-456-pm",
-        "destination_url": "https://pubmatic.com",
+        "deployment_url": "https://pubmatic.com",
         "data_provider": "peer39",
         "required_permission": "third_party_data_access"
       }

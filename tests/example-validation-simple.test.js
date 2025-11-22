@@ -9,12 +9,12 @@ const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
-const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/v1');
+const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
 // Schema loader for resolving $ref
 async function loadExternalSchema(uri) {
-  if (uri.startsWith('/schemas/v1/')) {
-    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/v1/', ''));
+  if (uri.startsWith('/schemas/')) {
+    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
     try {
       const content = fs.readFileSync(schemaPath, 'utf8');
       return JSON.parse(content);
@@ -52,7 +52,7 @@ async function validateExample(data, schemaId, description) {
     addFormats(ajv);
     
     // Load the specific schema
-    const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/v1/', ''));
+    const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
     
     // Compile and validate
@@ -83,17 +83,17 @@ async function runTests() {
   const simpleExamples = [
     {
       data: { "code": "INVALID_REQUEST", "message": "Missing required field" },
-      schema: '/schemas/v1/core/error.json',
+      schema: '/schemas/core/error.json',
       description: 'Error example'
     },
     {
       data: { "message": "Operation completed successfully" },
-      schema: '/schemas/v1/core/response.json',
+      schema: '/schemas/core/response.json',
       description: 'Response example'
     },
     {
       data: { "format_id": {"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_standard_30s"}, "name": "Standard Video - 30 seconds", "type": "video" },
-      schema: '/schemas/v1/core/format.json',
+      schema: '/schemas/core/format.json',
       description: 'Format example'
     },
     {
@@ -102,7 +102,7 @@ async function runTests() {
         "attribution": "deterministic_purchase", 
         "reporting": "weekly_dashboard"
       },
-      schema: '/schemas/v1/core/measurement.json',
+      schema: '/schemas/core/measurement.json',
       description: 'Measurement example'
     },
     {
@@ -111,7 +111,7 @@ async function runTests() {
         "landing_page": "any",
         "templates_available": true
       },
-      schema: '/schemas/v1/core/creative-policy.json',
+      schema: '/schemas/core/creative-policy.json',
       description: 'Creative Policy example'
     }
   ];
@@ -130,7 +130,7 @@ async function runTests() {
       },
       "brief": "Premium video inventory"
     },
-    '/schemas/v1/media-buy/get-products-request.json',
+    '/schemas/media-buy/get-products-request.json',
     'get_products request'
   );
 
@@ -138,7 +138,7 @@ async function runTests() {
     {
       "signal_spec": "High-income households",
       "deliver_to": {
-        "destinations": [
+        "deployments": [
           {
             "type": "platform",
             "platform": "the-trade-desk"
@@ -147,7 +147,7 @@ async function runTests() {
         "countries": ["US"]
       }
     },
-    '/schemas/v1/signals/get-signals-request.json',
+    '/schemas/signals/get-signals-request.json',
     'get_signals request'
   );
 

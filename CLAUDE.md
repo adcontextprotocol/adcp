@@ -500,6 +500,52 @@ AdCP uses semantic versioning for schemas. The changeset type determines the ver
 - Remove enum values
 - Change existing field meanings
 
+### Enum Versioning Strategy
+
+**CRITICAL**: Enum changes follow strict semantic versioning rules to ensure SDK compatibility.
+
+**Adding Enum Values (MINOR version):**
+- ✅ Adding new values to enums is **always a MINOR version bump**
+- ✅ Example: Adding `"svg"` to `asset-content-type.json` is MINOR
+- ✅ Rationale: Backward compatible - existing code continues to work
+- ✅ SDK impact: Old SDKs may not recognize new values, but won't break
+- ✅ Use case: Growing the protocol's capabilities over time
+
+**Removing Enum Values (MAJOR version):**
+- ⚠️ Removing enum values is **always a MAJOR version bump**
+- ⚠️ Example: Removing `"radio"` from `property-type.json` is MAJOR
+- ⚠️ Rationale: Breaking change - code using removed values will fail
+- ⚠️ SDK impact: Clients using removed values will break
+- ⚠️ Migration: Requires documenting replacement values or upgrade paths
+
+**Renaming Enum Values (MAJOR version):**
+- ⚠️ Renaming enum values is **always a MAJOR version bump**
+- ⚠️ Example: Changing `"mobile_app"` to `"app"` in `property-type.json` is MAJOR
+- ⚠️ Alternative: Add new value (MINOR), deprecate old value, remove in next MAJOR
+- ⚠️ Rationale: Maintains compatibility during transition period
+
+**Enum Evolution Example:**
+
+```markdown
+# v2.4.0 (MINOR) - Add new asset types
+Added svg, json, and xml to asset-content-type enum.
+
+# v2.5.0 (MINOR) - Deprecate old value
+Added mobile_application to property-type enum.
+Deprecated mobile_app (use mobile_application instead).
+
+# v3.0.0 (MAJOR) - Remove deprecated value
+Removed deprecated mobile_app from property-type enum.
+Use mobile_application instead.
+```
+
+**Best Practices:**
+- 📝 Document enum additions in changeset with use cases
+- 🔍 Search codebase for usage before removing values
+- ⏰ Allow deprecation period (1-2 minor versions) before removal
+- 📊 Track usage metrics to inform deprecation decisions
+- 🚨 Highlight enum removals prominently in release notes
+
 ### Schema Change Checklist
 
 When making **ANY** schema change:

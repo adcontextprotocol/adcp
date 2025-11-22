@@ -14,8 +14,8 @@ Create a media buy from selected packages. This task handles the complete workfl
 **Format Specification Required**: Each package must specify the creative formats that will be used. This enables placeholder creation in ad servers and ensures both parties have clear expectations for creative asset requirements.
 
 
-**Request Schema**: [/schemas/v1/media-buy/create-media-buy-request.json](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-request.json)
-**Response Schema**: [/schemas/v1/media-buy/create-media-buy-response.json](https://adcontextprotocol.org/schemas/v1/media-buy/create-media-buy-response.json)
+**Request Schema**: [/schemas/v2/media-buy/create-media-buy-request.json](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-request.json)
+**Response Schema**: [/schemas/v2/media-buy/create-media-buy-response.json](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-response.json)
 
 ## Request Parameters
 
@@ -104,7 +104,14 @@ The message is returned differently in each protocol:
   "packages": [
     {
       "package_id": "string",
-      "buyer_ref": "string"
+      "buyer_ref": "string",
+      "product_id": "string",
+      "budget": 50000,
+      "pacing": "even",
+      "pricing_option_id": "string",
+      "paused": false,
+      "creative_assignments": [],
+      "format_ids_to_provide": []
     }
   ]
 }
@@ -115,9 +122,16 @@ The message is returned differently in each protocol:
 - **media_buy_id**: Publisher's unique identifier for the created media buy
 - **buyer_ref**: Buyer's reference identifier for this media buy
 - **creative_deadline**: ISO 8601 timestamp for creative upload deadline
-- **packages**: Array of created packages
+- **packages**: Array of created packages with complete state information (full Package objects)
   - **package_id**: Publisher's unique identifier for the package
   - **buyer_ref**: Buyer's reference identifier for the package
+  - **product_id**: ID of the product this package is based on
+  - **budget**: Budget allocation for this package
+  - **pacing**: Pacing strategy (even, asap, front_loaded)
+  - **pricing_option_id**: Selected pricing option ID
+  - **paused**: Whether the package is paused (false = active, true = paused)
+  - **creative_assignments**: Array of creative assignments for this package
+  - **format_ids_to_provide**: Format IDs that will be provided for this package
 
 ## Protocol-Specific Examples
 
@@ -810,11 +824,47 @@ Create a media buy and upload creatives in a single API call. This eliminates th
   "packages": [
     {
       "package_id": "gam_pkg_001",
-      "buyer_ref": "purina_ctv_package"
+      "buyer_ref": "purina_ctv_package",
+      "product_id": "ctv_prime_time",
+      "budget": 30000,
+      "pacing": "even",
+      "pricing_option_id": "cpm-fixed-ctv",
+      "status": "active",
+      "creative_assignments": [],
+      "format_ids_to_provide": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        }
+      ],
+      "targeting_overlay": {
+        "geo_country_any_of": ["US"],
+        "geo_region_any_of": ["CA", "NY"],
+        "axe_include_segment": "x7h4n",
+        "frequency_cap": {
+          "suppress_minutes": 30
+        }
+      }
     },
     {
       "package_id": "gam_pkg_002",
-      "buyer_ref": "purina_audio_package"
+      "buyer_ref": "purina_audio_package",
+      "product_id": "audio_drive_time",
+      "budget": 20000,
+      "pacing": "even",
+      "pricing_option_id": "cpm-fixed-audio",
+      "status": "active",
+      "creative_assignments": [],
+      "format_ids_to_provide": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "audio_standard_30s"
+        }
+      ],
+      "targeting_overlay": {
+        "geo_country_any_of": ["US"],
+        "geo_region_any_of": ["CA", "NY"]
+      }
     }
   ]
 }
@@ -832,7 +882,32 @@ Create a media buy and upload creatives in a single API call. This eliminates th
   "packages": [
     {
       "package_id": "albertsons_pkg_001",
-      "buyer_ref": "purina_albertsons_conquest"
+      "buyer_ref": "purina_albertsons_conquest",
+      "product_id": "albertsons_competitive_conquest",
+      "budget": 75000,
+      "pacing": "even",
+      "pricing_option_id": "cpm-fixed-retail",
+      "status": "active",
+      "creative_assignments": [],
+      "format_ids_to_provide": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_728x90"
+        }
+      ],
+      "targeting_overlay": {
+        "geo_country_any_of": ["US"],
+        "geo_region_any_of": ["CA", "AZ", "NV"],
+        "axe_include_segment": "x3f9q",
+        "axe_exclude_segment": "x2v8r",
+        "frequency_cap": {
+          "suppress_minutes": 60
+        }
+      }
     }
   ]
 }

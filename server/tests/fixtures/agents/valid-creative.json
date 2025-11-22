@@ -1,5 +1,5 @@
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/agent.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v2/agent.json",
   "name": "Test Creative Agent",
   "url": "https://test-creative.example.com",
   "type": "creative",

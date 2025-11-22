@@ -15,8 +15,8 @@ Discover which publishers a sales agent is authorized to represent. Returns publ
 - Single source of truth - property definitions come from publisher's adagents.json
 - One-time discovery to cache publisher-agent relationships
 
-**Request Schema**: [`/schemas/v1/media-buy/list-authorized-properties-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-request.json)
-**Response Schema**: [`/schemas/v1/media-buy/list-authorized-properties-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-response.json)
+**Request Schema**: [`/schemas/v2/media-buy/list-authorized-properties-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-authorized-properties-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/list-authorized-properties-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-authorized-properties-response.json)
 
 ## Request Parameters
 
@@ -34,7 +34,7 @@ Discover which publishers a sales agent is authorized to represent. Returns publ
 | `portfolio_description` | Optional markdown description of portfolio and capabilities |
 | `last_updated` | Optional ISO 8601 timestamp of last publisher list update |
 
-See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-response.json) for complete field list.
+See [schema](https://adcontextprotocol.org/schemas/v2/media-buy/list-authorized-properties-response.json) for complete field list.
 
 ## Authorization Workflow
 
@@ -372,7 +372,7 @@ Optional fields provide high-level portfolio information for quick filtering:
 
 Main advertising channels in portfolio:
 - Values: `display`, `video`, `dooh`, `ctv`, `podcast`, `retail`, etc.
-- See [Channels enum](https://adcontextprotocol.org/schemas/v1/enums/channels.json)
+- See [Channels enum](https://adcontextprotocol.org/schemas/v2/enums/channels.json)
 - Use case: Filter "Do you have DOOH?" before examining properties
 
 ### primary_countries
@@ -466,5 +466,5 @@ After discovering authorized properties:
 ## Learn More
 
 - [adagents.json Specification](/docs/media-buy/capability-discovery/adagents) - Publisher authorization file format
-- [Property Schema](https://adcontextprotocol.org/schemas/v1/core/property.json) - Property definition structure
+- [Property Schema](https://adcontextprotocol.org/schemas/v2/core/property.json) - Property definition structure
 - [Authorization Guide](/docs/reference/authentication) - How authorization works in AdCP
