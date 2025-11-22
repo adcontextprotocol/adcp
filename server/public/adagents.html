@@ -58,7 +58,7 @@
         color: var(--text-primary);
         font-weight: 400;
         margin: 0;
-        padding: 0;
+        padding: 60px 0 0 0;
         min-height: 100vh;
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         position: relative;
@@ -85,8 +85,10 @@
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
-        position: sticky;
+        position: fixed;
         top: 0;
+        left: 0;
+        right: 0;
         z-index: 1000;
       }
 
@@ -3358,7 +3360,5 @@
         console.log('AdAgents.json Manager initialized');
       });
     </script>
-      <!-- Shared Navigation -->
-    <script src="/nav.js"></script>
   </body>
 </html>
