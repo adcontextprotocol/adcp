@@ -15,6 +15,16 @@
       "pattern": "^[a-zA-Z0-9_-]+$",
       "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
     },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+    },
     "duration_ms": {
       "type": "number",
       "minimum": 1,
@@ -23,23 +33,8 @@
   },
   "required": ["agent_url", "id"],
   "additionalProperties": false,
-  "allOf": [
-    {
-      "oneOf": [
-        {
-          "not": {
-            "anyOf": [
-              {"required": ["width"]},
-              {"required": ["height"]}
-            ]
-          }
-        },
-        {
-          "allOf": [
-            {"$ref": "/schemas/core/dimensions.json"}
-          ]
-        }
-      ]
-    }
-  ]
+  "dependencies": {
+    "width": ["height"],
+    "height": ["width"]
+  }
 }
