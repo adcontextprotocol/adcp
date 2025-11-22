@@ -16,6 +16,9 @@
         },
         "context": {
           "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
         }
       },
       "required": [
@@ -42,6 +45,9 @@
         },
         "context": {
           "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
         }
       },
       "required": [
@@ -54,10 +60,5 @@
         ]
       }
     }
-  ],
-  "properties": {
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
-    }
-  }
+  ]
 }
