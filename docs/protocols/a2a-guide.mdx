@@ -433,9 +433,38 @@ console.log('Examples:', getProductsSkill.examples);
         "Show me video products under $50 CPM"
       ]
     }
-  ]
+  ],
+  "extensions": {
+    "adcp": {
+      "adcp_version": "2.4.0",
+      "protocols_supported": ["media_buy"]
+    }
+  }
 }
 ```
+
+### AdCP Extension
+
+**Recommended**: Include the `extensions.adcp` field in your agent card to declare AdCP support programmatically.
+
+```javascript
+// Check if agent supports AdCP
+const agentCard = await fetch('https://sales.example.com/.well-known/agent.json')
+  .then(r => r.json());
+
+if (agentCard.extensions?.adcp) {
+  console.log('AdCP Version:', agentCard.extensions.adcp.adcp_version);
+  console.log('Supported domains:', agentCard.extensions.adcp.protocols_supported);
+  // ["media_buy", "creative", "signals"]
+}
+```
+
+**Extension Structure**: See the [AdCP extension schema](https://adcontextprotocol.org/schemas/v2/protocols/adcp-extension.json) for complete specification.
+
+**Benefits**:
+- Clients can discover AdCP capabilities without making test calls
+- Declare which protocol domains you implement (media_buy, creative, signals)
+- Enable compatibility checks based on version
 
 ## Integration Example
 
