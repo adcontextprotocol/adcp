@@ -11,10 +11,13 @@ This document defines the **canonical structure** for AdCP responses transmitted
 
 ## Required Structure
 
+### Final Responses (status: "completed")
+
 **AdCP responses over A2A MUST:**
 - Include at least one `DataPart` (kind: 'data') containing the task response payload
 - Use single artifact with multiple parts (not multiple artifacts)
 - Use the last `DataPart` as authoritative when multiple data parts exist
+- NOT wrap AdCP payloads in custom framework objects (no `{ response: {...} }` wrappers)
 
 **Recommended pattern:**
 
@@ -47,6 +50,66 @@ This document defines the **canonical structure** for AdCP responses transmitted
 - **FilePart** (kind: 'file'): Optional file references (previews, reports)
 
 **Multiple artifacts:** Only for fundamentally distinct deliverables (e.g., creative asset + separate trafficking report). Rare in AdCP - prefer single artifact with multiple parts.
+
+### Interim Responses (working, submitted, input-required)
+
+**CRITICAL**: Interim status responses (before task completion) do NOT require AdCP-structured payloads.
+
+```json
+{
+  "status": "working",
+  "taskId": "task_123",
+  "contextId": "ctx_456",
+  "artifacts": [{
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Processing your request. Analyzing 50,000 inventory records..."
+      }
+    ]
+  }]
+}
+```
+
+**Interim response rules:**
+- **TextPart** is sufficient - no DataPart required
+- Status update only - not a task result
+- Optional progress indicators (percentage, ETA)
+- No AdCP schema validation required
+
+**When final status is reached** (`status: "completed"` or `status: "failed"`), then DataPart with AdCP payload becomes required.
+
+### Framework Wrappers (NOT PERMITTED)
+
+**CRITICAL**: DataPart content MUST be the direct AdCP response payload, not wrapped in framework-specific objects.
+
+```json
+// ❌ WRONG - Wrapped in custom object
+{
+  "kind": "data",
+  "data": {
+    "response": {           // ← Framework wrapper
+      "products": [...]
+    }
+  }
+}
+
+// ✅ CORRECT - Direct AdCP payload
+{
+  "kind": "data",
+  "data": {
+    "products": [...]       // ← Direct schema-compliant response
+  }
+}
+```
+
+**Why this matters:**
+- Breaks schema validation (clients expect `products` at root, not `response.products`)
+- Adds unnecessary nesting layer
+- Violates protocol-agnostic design (wrapper is framework-specific)
+- Complicates client extraction code
+
+**If your implementation adds wrappers**, this is a bug that should be fixed in the framework layer, not worked around in client code.
 
 ## Response Extraction Pattern
 
@@ -441,14 +504,25 @@ Authentication failures are protocol-level errors:
 
 When implementing A2A responses for AdCP:
 
+**Final Responses (status: "completed" or "failed"):**
 - [ ] **Always include status field** from TaskState enum
 - [ ] **Include at least one DataPart** with AdCP response payload (even if empty: `{"products": []}`)
 - [ ] **Include TextPart** with human-readable message (recommended for UX)
 - [ ] **Use single artifact with multiple parts** (not multiple artifacts)
 - [ ] **Use last DataPart as authoritative** if multiple exist
-- [ ] **Never nest AdCP data in custom wrappers**
+- [ ] **Never nest AdCP data in custom wrappers** (no `{ response: {...} }` objects)
+- [ ] **DataPart content MUST match AdCP schemas** (validate against schema registry)
+
+**Interim Responses (status: "working", "submitted", "input-required"):**
+- [ ] **TextPart is sufficient** - no DataPart required for interim status
+- [ ] **No AdCP schema validation needed** for interim responses
+- [ ] **Optional progress indicators** (percentage, ETA, status message)
+
+**Error Handling:**
 - [ ] **Use `status: "failed"` for protocol errors only** (auth, invalid params, system errors)
 - [ ] **Use `errors` array for task failures** (platform auth, partial data) with `status: "completed"`
+
+**General:**
 - [ ] **Include taskId and contextId** for tracking
 - [ ] **Follow discriminated union patterns** for task responses (check schemas)
 - [ ] **Deliver same structure in webhooks** as synchronous responses
