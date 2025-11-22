@@ -15,7 +15,7 @@
     },
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Format identifier specifying which format this creative conforms to"
+      "description": "Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats."
     },
     "assets": {
       "type": "object",

@@ -31,6 +31,14 @@
       "$ref": "/schemas/enums/format-category.json",
       "description": "Media type of this format - determines rendering method and asset requirements"
     },
+    "accepts_parameters": {
+      "type": "array",
+      "description": "List of parameters this format accepts in format_id. Template formats define which parameters (dimensions, duration, etc.) can be specified when instantiating the format. Empty or omitted means this is a concrete format with fixed parameters.",
+      "items": {
+        "$ref": "/schemas/enums/format-id-parameter.json"
+      },
+      "uniqueItems": true
+    },
     "renders": {
       "type": "array",
       "description": "Specification of rendered pieces for this format. Most formats produce a single render. Companion ad formats (video + banner), adaptive formats, and multi-placement formats produce multiple renders. Each render specifies its role and dimensions.",
@@ -41,39 +49,43 @@
             "type": "string",
             "description": "Semantic role of this rendered piece (e.g., 'primary', 'companion', 'mobile_variant')"
           },
+          "parameters_from_format_id": {
+            "type": "boolean",
+            "description": "When true, parameters for this render (dimensions and/or duration) are specified in the format_id. Used for template formats that accept parameters. Mutually exclusive with specifying dimensions object explicitly."
+          },
           "dimensions": {
             "type": "object",
-            "description": "Dimensions for this rendered piece",
+            "description": "Dimensions for this rendered piece (in pixels)",
             "properties": {
               "width": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Fixed width in specified units"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Fixed width in pixels"
               },
               "height": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Fixed height in specified units"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Fixed height in pixels"
               },
               "min_width": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Minimum width for responsive renders"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Minimum width in pixels for responsive renders"
               },
               "min_height": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Minimum height for responsive renders"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Minimum height in pixels for responsive renders"
               },
               "max_width": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Maximum width for responsive renders"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum width in pixels for responsive renders"
               },
               "max_height": {
-                "type": "number",
-                "minimum": 0,
-                "description": "Maximum height for responsive renders"
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum height in pixels for responsive renders"
               },
               "responsive": {
                 "type": "object",
@@ -88,17 +100,22 @@
                 "type": "string",
                 "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1')",
                 "pattern": "^\\d+:\\d+$"
-              },
-              "unit": {
-                "$ref": "/schemas/enums/dimension-unit.json",
-                "default": "px",
-                "description": "Unit of measurement for dimensions"
               }
-            },
-            "required": ["unit"]
+            }
           }
         },
-        "required": ["role", "dimensions"]
+        "required": ["role"],
+        "oneOf": [
+          {
+            "required": ["dimensions"],
+            "not": {"required": ["parameters_from_format_id"]}
+          },
+          {
+            "required": ["parameters_from_format_id"],
+            "properties": {"parameters_from_format_id": {"const": true}},
+            "not": {"required": ["dimensions"]}
+          }
+        ]
       },
       "minItems": 1
     },
@@ -134,7 +151,7 @@
               },
               "requirements": {
                 "type": "object",
-                "description": "Technical requirements for this asset (dimensions, file size, duration, etc.)",
+                "description": "Technical requirements for this asset (dimensions, file size, duration, etc.). For template formats, use parameters_from_format_id: true to indicate asset parameters must match the format_id parameters (width/height/unit and/or duration_ms).",
                 "additionalProperties": true
               }
             },
@@ -187,7 +204,7 @@
                     },
                     "requirements": {
                       "type": "object",
-                      "description": "Technical requirements for this asset",
+                      "description": "Technical requirements for this asset. For template formats, use parameters_from_format_id: true to indicate asset parameters must match the format_id parameters (width/height/unit and/or duration_ms).",
                       "additionalProperties": true
                     }
                   },
