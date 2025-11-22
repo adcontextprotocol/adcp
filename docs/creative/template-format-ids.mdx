@@ -1,14 +1,14 @@
 ---
-title: Deterministic Format IDs
+title: Template Format IDs
 ---
 
-# Deterministic Format IDs
+# Template Format IDs
 
-Deterministic format IDs allow a single format definition to support multiple dimension or duration variants without creating separate format definitions for each variant. This eliminates format explosion when publishers support many similar variants.
+Template formats allow a single format definition to support multiple dimension or duration variants without creating separate format definitions for each variant. This eliminates format explosion when publishers support many similar variants.
 
 ## The Problem: Format Explosion
 
-Without deterministic IDs, each dimension variant requires a separate format definition and format_id:
+Without template formats, each dimension variant requires a separate format definition and format_id:
 
 ```json
 {"format_id": {"agent_url": "...", "id": "display_300x250"}}
@@ -20,13 +20,43 @@ Without deterministic IDs, each dimension variant requires a separate format def
 
 **Publisher with 50 placement sizes** → 50 separate format definitions to create, maintain, and document.
 
-## The Solution: Dimensions in Format ID
+## The Solution: Template Formats with Parameters
 
-A single format definition (`display_static`) combined with dimension fields in the format_id object creates deterministic, unique format identifiers:
+A single template format definition (`display_static`) accepts dimension fields in the format_id object, allowing creatives to specify their exact dimensions.
 
-### Template Format (Non-Deterministic)
+## Format Types and Format IDs
 
-Format definition with dimension references - indicates dimensions can be specified:
+There are **two types of format definitions**, which produce **three types of format IDs**:
+
+### Format Definitions
+
+1. **Concrete formats** - Fixed dimensions in format definition
+   - Have `renders` array with explicit dimensions
+   - Example: `display_300x250` always means 300×250px
+   - Cannot accept parameters
+
+2. **Template formats** - Accept parameters in format_id
+   - Have `accepts_parameters` array listing accepted parameters
+   - Example: `display_static` can be any dimensions
+   - Can be used with or without parameters
+
+### Format IDs
+
+1. **Concrete format_id** - References a concrete format
+   - Example: `{id: "display_300x250"}`
+   - No parameters (none accepted)
+
+2. **Template format_id** - References a template format without parameters
+   - Example: `{id: "display_static"}`
+   - Used in placements to accept any dimensions
+
+3. **Parameterized format_id** - Template format with parameters
+   - Example: `{id: "display_static", width: 300, height: 250, unit: "px"}`
+   - Used in creatives to specify exact dimensions
+
+### Template Format Definition
+
+Format definition that accepts parameters:
 
 ```json
 {
@@ -68,9 +98,9 @@ Format definition with dimension references - indicates dimensions can be specif
 - `renders[].parameters_from_format_id: true` - Render parameters come from format_id
 - `requirements.parameters_from_format_id: true` - Asset parameters must match format_id
 
-### Deterministic Format ID (Creative Manifest)
+### Parameterized Format ID (Creative Manifest)
 
-Creative specifies exact dimensions in format_id to create a concrete, unique format:
+Creative specifies exact dimensions in format_id to use the template format:
 
 ```json
 {
@@ -96,7 +126,7 @@ Creative specifies exact dimensions in format_id to create a concrete, unique fo
 }
 ```
 
-**This format_id is deterministic:** Same dimensions always produce the same format_id object, enabling deduplication and caching.
+**This format_id is parameterized:** Same dimensions always produce the same format_id object, enabling deduplication and caching.
 
 ### Placement Constraints
 
@@ -148,13 +178,13 @@ Publishers can specify supported dimensions in two ways:
 
 ## Benefits
 
-✅ **Scalability** - One format definition supports unlimited variants
-✅ **Deterministic** - Same dimensions = same format_id (enables caching/deduplication)
+✅ **Scalability** - One template format supports unlimited dimension variants
+✅ **Predictable** - Same dimensions = same format_id (enables caching/deduplication)
 ✅ **Self-contained** - Creatives fully specify their format via format_id
 ✅ **Portable** - A 300×250 creative works on any placement accepting 300×250
 ✅ **Publisher control** - Placements specify exact dimension constraints
 ✅ **Type-safe** - Width/height are numbers, not encoded strings
-✅ **Backward compatible** - Non-deterministic formats work unchanged
+✅ **Backward compatible** - Concrete (non-template) formats work unchanged
 
 ## Format ID Fields
 
@@ -272,33 +302,38 @@ Publishers can specify supported dimensions in two ways:
 }
 ```
 
-### Generative Formats with Template Outputs
+### Generative Formats with Output Formats
 
-Generative formats can produce multiple deterministic outputs using `output_format_ids`:
+Generative formats specify which output formats they can produce:
 
+**Option 1: Generate specific dimensions**
 ```json
 {
-  "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_generative"
-  },
-  "name": "AI-Generated Display Ads",
-  "type": "generative",
+  "format_id": {"agent_url": "...", "id": "display_generative"},
   "output_format_ids": [
     {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"},
-    {"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"},
-    {"agent_url": "...", "id": "display_static", "width": 160, "height": 600, "unit": "px"}
+    {"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"}
   ]
 }
 ```
 
-**Key principle**: Output format_ids are ALWAYS deterministic (include dimensions). The generative format itself may accept parameters, but outputs must specify exact dimensions for each variant produced.
+**Option 2: Generate any dimension (template output)**
+```json
+{
+  "format_id": {"agent_url": "...", "id": "display_generative"},
+  "output_format_ids": [
+    {"agent_url": "...", "id": "display_static"}
+  ]
+}
+```
+
+Use template outputs when your generation logic can handle arbitrary dimensions. Buyer specifies dimensions when calling the generative format.
 
 ## Discovery Pattern
 
-### Creative Agent: Returns Templates
+### Format Definitions: `list_creative_formats()`
 
-`list_creative_formats()` returns template format definitions:
+Both creative and sales agents can return template format definitions via `list_creative_formats()`:
 
 ```json
 {
@@ -314,9 +349,9 @@ Generative formats can produce multiple deterministic outputs using `output_form
 
 **Purpose**: Buyers discover what format *types* are available and what parameters they accept.
 
-### Sales Agent: Returns Concrete Instances
+### Placement Constraints: `get_products()`
 
-`get_products()` returns products with placement-specific format constraints:
+Sales agents return products with placement-specific format constraints:
 
 ```json
 {
@@ -333,10 +368,10 @@ Generative formats can produce multiple deterministic outputs using `output_form
 
 **Purpose**: Buyers discover which *specific dimensions* are supported for each placement.
 
-**Flow**:
-1. Buyer fetches formats from creative agent → learns `display_static` accepts dimensions
-2. Buyer fetches products from sales agent → learns which dimensions are supported (300x250, 728x90)
-3. Buyer creates creative with deterministic format_id matching a supported placement dimension
+**Discovery Flow**:
+1. Buyer calls `list_creative_formats()` on creative or sales agent → learns `display_static` accepts dimensions
+2. Buyer calls `get_products()` on sales agent → learns which dimensions are supported (300x250, 728x90)
+3. Buyer creates creative with parameterized format_id matching a supported placement dimension
 
 ## Implementation Guidelines
 
@@ -367,7 +402,7 @@ Generative formats can produce multiple deterministic outputs using `output_form
   ```json
   {"agent_url": "...", "id": "display_static"}
   ```
-- OR list specific deterministic formats to constrain dimensions:
+- OR list specific parameterized formats to constrain dimensions:
   ```json
   [
     {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"},
@@ -376,24 +411,24 @@ Generative formats can produce multiple deterministic outputs using `output_form
   ```
 
 **Placement definitions:**
-- Use template format_ids for flexible placements
-- Use deterministic format_ids to constrain exact dimensions
+- Use template format_ids (no parameters) for flexible placements
+- Use parameterized format_ids (with dimensions) to constrain exact dimensions
 - Validate creative format_ids match placement constraints
 
 **Creative validation:**
 - Ensure creative format_id matches at least one placement format_id
 - For template matches, verify base format (id + agent_url) matches
-- For deterministic matches, verify exact equality including dimensions
+- For parameterized matches, verify exact equality including dimensions
 
 ### For Buyers
 
 **Creative manifest construction:**
 - Fetch format definitions to check `accepts_parameters` array
-- Include dimension/duration fields in format_id for deterministic formats
+- Include dimension/duration fields in format_id when using template formats
 - Ensure asset dimensions match format_id dimensions
 - Validate against placement format_ids before syncing
 
-## Determinism Rules
+## Format ID Equality Rules
 
 Two format_ids are **identical** if and only if:
 - `agent_url` matches exactly
@@ -454,7 +489,7 @@ When comparing format_ids for equality or caching:
 {"format_id": {"agent_url": "...", "id": "video_hosted", "duration_ms": 30000}}                 // ❌ Different format
 ```
 
-**Deterministic format in placement:**
+**Parameterized format in placement:**
 ```json
 // Placement specifies exact dimensions
 {"format_ids": [
@@ -526,7 +561,7 @@ Instead of defining 15 separate formats for IAB sizes, use one template:
 }
 ```
 
-Creatives specify their size deterministically:
+Creatives specify their size via parameters:
 - 300×250: `{id: "display_static", width: 300, height: 250, unit: "px"}`
 - 728×90: `{id: "display_static", width: 728, height: 90, unit: "px"}`
 - 160×600: `{id: "display_static", width: 160, height: 600, unit: "px"}`

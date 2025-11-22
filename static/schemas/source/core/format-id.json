@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/format-id.json",
   "title": "Format ID",
-  "description": "Structured format identifier with agent URL and format name. Can be either a template format (id only) or a deterministic format (id + dimensions/duration). Template formats represent format categories (e.g., 'display_static') while deterministic formats include specific parameters (e.g., 'display_static' + width: 300, height: 250) to create unique, concrete format identifiers.",
+  "description": "Structured format identifier with agent URL and format name. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + dimensions/duration). Template formats accept parameters in format_id while concrete formats have fixed dimensions in their definition. Parameterized format IDs create unique, specific format variants.",
   "type": "object",
   "properties": {
     "agent_url": {
@@ -13,26 +13,26 @@
     "id": {
       "type": "string",
       "pattern": "^[a-zA-Z0-9_-]+$",
-      "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). For template formats, this is the complete identifier. For deterministic formats, this is combined with dimension/duration fields to create a unique format."
+      "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
     },
     "width": {
       "type": "number",
       "exclusiveMinimum": 0,
-      "description": "Width for visual formats (display, DOOH, native). When specified, makes this a deterministic format ID. Omit for non-visual formats or template formats."
+      "description": "Width for visual formats (display, DOOH, native). When specified with height and unit, creates a parameterized format ID. Omit to reference a template format without parameters."
     },
     "height": {
       "type": "number",
       "exclusiveMinimum": 0,
-      "description": "Height for visual formats (display, DOOH, native). When specified, makes this a deterministic format ID. Omit for non-visual formats or template formats."
+      "description": "Height for visual formats (display, DOOH, native). When specified with width and unit, creates a parameterized format ID. Omit to reference a template format without parameters."
     },
     "unit": {
       "$ref": "/schemas/enums/dimension-unit.json",
-      "description": "Unit of measurement for width/height (px, in, cm, etc.). Required when width/height are specified. Defaults to 'px' if not provided."
+      "description": "Unit of measurement for width/height (px, in, cm, etc.). Required when width/height are specified."
     },
     "duration_ms": {
       "type": "number",
       "minimum": 0,
-      "description": "Duration in milliseconds for time-based formats (video, audio). When specified, makes this a deterministic format ID. Omit for non-time-based formats or template formats."
+      "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
     }
   },
   "required": ["agent_url", "id"],

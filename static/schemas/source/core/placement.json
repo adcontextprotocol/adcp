@@ -19,7 +19,7 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Format IDs supported by this specific placement. Can include both template formats (id only) and deterministic formats (id + dimensions/duration). Template formats indicate the placement accepts any dimension/duration variant; deterministic formats specify exact constraints.",
+      "description": "Format IDs supported by this specific placement. Can include: (1) concrete format_ids (fixed dimensions), (2) template format_ids without parameters (accepts any dimensions/duration), or (3) parameterized format_ids (specific dimension/duration constraints).",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },

@@ -13,8 +13,8 @@ Add template formats with dimension parameters to eliminate format explosion for
 1. **Format ID Schema** - Added optional dimension and duration fields
    - `width`, `height`, `unit` - For visual formats (display, DOOH, native)
    - `duration_ms` - Duration in milliseconds for time-based formats (video, audio)
-   - Fields are optional - omitting them creates "template" formats
-   - Including them creates deterministic, concrete format IDs
+   - Fields are optional - omitting them references template formats without parameters
+   - Including them creates parameterized format IDs
 
 2. **Format Schema** - Added capability and reference indicators
    - `accepts_parameters` - Array listing which parameters format accepts (["dimensions"], ["duration"], or ["dimensions", "duration"])
@@ -24,20 +24,20 @@ Add template formats with dimension parameters to eliminate format explosion for
 
 3. **Creative Manifest Schema** - Updated format_id description
    - Creatives specify dimensions/duration in format_id object
-   - Makes format_id deterministic (same dimensions = same ID)
-   - Enables deduplication and caching
+   - Parameterized format_ids enable deduplication and caching (same dimensions = same ID)
+   - Template formats accept any parameters, concrete formats have fixed dimensions
 
 4. **Placement Schema** - Simplified constraint model
-   - Placements list template format_ids (accept any dimensions)
-   - OR list deterministic format_ids (constrain exact dimensions)
+   - Placements list template format_ids without parameters (accept any dimensions)
+   - OR list parameterized format_ids (constrain exact dimensions)
    - Removed complex format_constraints object (not needed)
 
 **Benefits:**
 - ✅ Scalable to unlimited format variants without explosion
-- ✅ Deterministic format IDs enable caching and deduplication
+- ✅ Parameterized format IDs enable caching and deduplication
 - ✅ Type-safe (dimensions are numbers, not encoded strings)
 - ✅ Creatives are self-contained with dimensions in format_id
-- ✅ Publisher control via template vs deterministic format_ids
+- ✅ Publisher control via template vs parameterized format_ids
 - ✅ Backward compatible - formats without optional fields unchanged
 - ✅ Matches industry reality (format type + dimensions = concrete format)
 
@@ -66,7 +66,7 @@ Add template formats with dimension parameters to eliminate format explosion for
 }
 ```
 
-**Creative with deterministic format_id:**
+**Creative with parameterized format_id:**
 ```json
 {
   "format_id": {
@@ -89,7 +89,7 @@ Add template formats with dimension parameters to eliminate format explosion for
 }
 ```
 
-**Placement constraints (Option 2 - Deterministic):**
+**Placement constraints (Option 2 - Parameterized):**
 ```json
 {
   "format_ids": [
