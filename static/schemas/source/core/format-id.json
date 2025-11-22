@@ -36,5 +36,18 @@
     }
   },
   "required": ["agent_url", "id"],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "not": {
+        "anyOf": [
+          {"required": ["width"]},
+          {"required": ["height"]}
+        ]
+      }
+    },
+    {
+      "required": ["width", "height", "unit"]
+    }
+  ]
 }

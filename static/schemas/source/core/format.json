@@ -110,7 +110,18 @@
             "required": ["unit"]
           }
         },
-        "required": ["role", "dimensions"]
+        "required": ["role"],
+        "oneOf": [
+          {
+            "required": ["dimensions"],
+            "not": {"required": ["parameters_from_format_id"]}
+          },
+          {
+            "required": ["parameters_from_format_id"],
+            "properties": {"parameters_from_format_id": {"const": true}},
+            "not": {"required": ["dimensions"]}
+          }
+        ]
       },
       "minItems": 1
     },

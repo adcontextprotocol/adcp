@@ -179,14 +179,14 @@ Publishers can specify supported dimensions in two ways:
 ### Time-Based Formats (Video, Audio)
 
 **Fields:**
-- `duration` (number, minimum: 0) - Duration in seconds
+- `duration_ms` (number, minimum: 0) - Duration in milliseconds
 
 **Example:**
 ```json
 {
   "agent_url": "https://creative.adcontextprotocol.org",
   "id": "video_hosted",
-  "duration_ms": 30
+  "duration_ms": 30000
 }
 ```
 
@@ -194,7 +194,7 @@ Publishers can specify supported dimensions in two ways:
 
 **Fields:**
 - `width`, `height`, `unit` - Video frame dimensions
-- `duration` - Video length
+- `duration_ms` - Video length in milliseconds
 
 **Example:**
 ```json
@@ -203,7 +203,7 @@ Publishers can specify supported dimensions in two ways:
   "id": "video_hosted",
   "width": 1920,
   "height": 1080,
-  "duration_ms": 30,
+  "duration_ms": 30000,
   "unit": "px"
 }
 ```
@@ -236,7 +236,7 @@ Publishers can specify supported dimensions in two ways:
   },
   "name": "Hosted Video",
   "type": "video",
-  "accepts_duration": true,
+  "accepts_parameters": ["duration"],
   "renders": null,
   "assets_required": [...]
 }
@@ -277,8 +277,9 @@ Publishers can specify supported dimensions in two ways:
 ### For Creative Agents
 
 **Format definitions:**
-- Set `accepts_dimensions: true` for formats with flexible dimensions
-- Set `accepts_duration: true` for formats with flexible duration
+- Set `accepts_parameters: ["dimensions"]` for formats with flexible dimensions
+- Set `accepts_parameters: ["duration"]` for formats with flexible duration
+- Set `accepts_parameters: ["dimensions", "duration"]` for formats with both (e.g., video with dimensions)
 - Omit `renders` array when format accepts dimensions (dimensions come from format_id)
 - Include `renders` array for concrete formats with fixed dimensions
 
@@ -315,7 +316,7 @@ Publishers can specify supported dimensions in two ways:
 ### For Buyers
 
 **Creative manifest construction:**
-- Fetch format definitions to check `accepts_dimensions`/`accepts_duration`
+- Fetch format definitions to check `accepts_parameters` array
 - Include dimension/duration fields in format_id for deterministic formats
 - Ensure asset dimensions match format_id dimensions
 - Validate against placement format_ids before syncing
@@ -328,7 +329,29 @@ Two format_ids are **identical** if and only if:
 - `width` matches exactly (if present)
 - `height` matches exactly (if present)
 - `unit` matches exactly (if present)
-- `duration` matches exactly (if present)
+- `duration_ms` matches exactly (if present)
+
+### Canonicalization
+
+When comparing format_ids for equality or caching:
+
+**Required fields:**
+- Both `width` and `height` must be present together (cannot specify only one)
+- When width/height are present, `unit` is REQUIRED (not optional)
+
+**Numeric precision:**
+- Numbers are compared as JSON numbers (300.0 equals 300)
+- For pixels, use integers (300px not 300.5px)
+- For physical units (inches, cm), decimals are allowed (0.5in, 7.62cm)
+
+**Field order:**
+- JSON field order does NOT matter for equality
+- `{"width": 300, "height": 250}` equals `{"height": 250, "width": 300}`
+
+**Unit conversion:**
+- Format IDs are compared WITHOUT unit conversion
+- `300px` is NOT equal to `7.62cm` even if physically equivalent
+- Unit field is part of identity, not just metadata
 
 **Example equivalence:**
 ```json
@@ -339,6 +362,9 @@ Two format_ids are **identical** if and only if:
 // These are DIFFERENT format IDs
 {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"}
 {"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"}
+
+// INVALID - partial dimensions not allowed (schema validation will reject)
+{"agent_url": "...", "id": "display_static", "width": 300}  // ❌ Missing height and unit
 ```
 
 ## Matching Logic
@@ -353,7 +379,7 @@ Two format_ids are **identical** if and only if:
 // Creative matches if base format matches (any dimensions)
 {"format_id": {"agent_url": "...", "id": "display_static", "width": 300, "height": 250}}  // ✅ Match
 {"format_id": {"agent_url": "...", "id": "display_static", "width": 728, "height": 90}}   // ✅ Match
-{"format_id": {"agent_url": "...", "id": "video_hosted", "duration_ms": 30}}                 // ❌ Different format
+{"format_id": {"agent_url": "...", "id": "video_hosted", "duration_ms": 30000}}                 // ❌ Different format
 ```
 
 **Deterministic format in placement:**
@@ -441,7 +467,7 @@ Instead of separate 15s, 30s, 60s format definitions:
 ```json
 {
   "format_id": {"agent_url": "...", "id": "video_hosted"},
-  "accepts_duration": true
+  "accepts_parameters": ["duration"]
 }
 ```
 
