@@ -95,6 +95,14 @@ function createSymlink(target, linkPath) {
   fs.symlinkSync(relativePath, linkPath, 'dir');
 }
 
+function updateSourceRegistry(version) {
+  const registryPath = path.join(SOURCE_DIR, 'index.json');
+  const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+  registry.adcp_version = version;
+  fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
+  console.log(`✏️  Updated source registry: ${registryPath}`);
+}
+
 function main() {
   const version = getVersion();
   const majorVersion = getMajorVersion(version);
@@ -104,6 +112,9 @@ function main() {
   console.log(`   Source: ${SOURCE_DIR}`);
   console.log(`   Target: ${DIST_DIR}`);
   console.log('');
+
+  // Update source registry version
+  updateSourceRegistry(version);
 
   // Clean and create dist directory
   if (fs.existsSync(DIST_DIR)) {
