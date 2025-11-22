@@ -64,7 +64,7 @@ interface Package {
   impressions?: number;
   targeting_overlay?: Targeting;
   creative_assignments?: CreativeAssignment[];
-  status: 'draft' | 'active' | 'paused' | 'completed';
+  paused?: boolean; // Whether package is paused by buyer (default: false)
 }
 ```
 
@@ -176,7 +176,6 @@ type Pacing = 'even' | 'asap' | 'front_loaded';
 **Additional Enum Schemas**:
 - [`delivery-type.json`](https://adcontextprotocol.org/schemas/v2/enums/delivery-type.json) - guaranteed vs non_guaranteed
 - [`media-buy-status.json`](https://adcontextprotocol.org/schemas/v2/enums/media-buy-status.json) - Media buy lifecycle status
-- [`package-status.json`](https://adcontextprotocol.org/schemas/v2/enums/package-status.json) - Package lifecycle status
 - [`creative-status.json`](https://adcontextprotocol.org/schemas/v2/enums/creative-status.json) - Creative review status
 - [`pacing.json`](https://adcontextprotocol.org/schemas/v2/enums/pacing.json) - Budget pacing strategies
 - [`frequency-cap-scope.json`](https://adcontextprotocol.org/schemas/v2/enums/frequency-cap-scope.json) - Frequency cap scope

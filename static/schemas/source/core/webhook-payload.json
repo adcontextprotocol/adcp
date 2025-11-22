@@ -201,7 +201,7 @@
               "budget": 60000,
               "pacing": "even",
               "pricing_option_id": "cpm-fixed-sports",
-              "status": "active",
+              "paused": false,
               "creative_assignments": [],
               "format_ids_to_provide": [
                 {
