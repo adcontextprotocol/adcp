@@ -131,7 +131,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/product.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    validateExtField(schema.properties.ext, '/schemas/core/object-ext.json');
+    validateExtField(schema.properties.ext, '/schemas/core/ext.json');
     return true;
   });
 
@@ -139,7 +139,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/media-buy.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    validateExtField(schema.properties.ext, '/schemas/core/object-ext.json');
+    validateExtField(schema.properties.ext, '/schemas/core/ext.json');
     return true;
   });
 
@@ -147,7 +147,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/creative-manifest.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    validateExtField(schema.properties.ext, '/schemas/core/object-ext.json');
+    validateExtField(schema.properties.ext, '/schemas/core/ext.json');
     return true;
   });
 
@@ -155,7 +155,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'core/package.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    validateExtField(schema.properties.ext, '/schemas/core/object-ext.json');
+    validateExtField(schema.properties.ext, '/schemas/core/ext.json');
     return true;
   });
 
@@ -367,7 +367,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-request.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    validateExtField(schema.properties.ext, '/schemas/core/request-ext.json');
+    validateExtField(schema.properties.ext, '/schemas/core/ext.json');
     return true;
   });
 
@@ -403,7 +403,7 @@ async function runTests() {
     const schemaPath = path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
-    validateExtField(schema.properties.ext, '/schemas/core/response-ext.json');
+    validateExtField(schema.properties.ext, '/schemas/core/ext.json');
     return true;
   });
 

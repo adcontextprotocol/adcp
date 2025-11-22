@@ -65,7 +65,7 @@
       "$ref": "/schemas/core/context.json"
     },
     "ext": {
-      "$ref": "/schemas/core/request-ext.json"
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "oneOf": [

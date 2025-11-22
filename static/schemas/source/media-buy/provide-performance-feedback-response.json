@@ -61,7 +61,7 @@
   ],
   "properties": {
     "ext": {
-      "$ref": "/schemas/core/response-ext.json"
+      "$ref": "/schemas/core/ext.json"
     }
   }
 }

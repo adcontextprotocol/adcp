@@ -136,7 +136,7 @@
       "additionalProperties": false
     },
     "ext": {
-      "$ref": "/schemas/core/object-ext.json"
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [

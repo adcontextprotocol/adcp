@@ -151,7 +151,7 @@
       "$ref": "/schemas/core/context.json"
     },
     "ext": {
-      "$ref": "/schemas/core/response-ext.json"
+      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [
