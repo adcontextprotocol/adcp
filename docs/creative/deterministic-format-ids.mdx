@@ -272,6 +272,72 @@ Publishers can specify supported dimensions in two ways:
 }
 ```
 
+### Generative Formats with Template Outputs
+
+Generative formats can produce multiple deterministic outputs using `output_format_ids`:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_generative"
+  },
+  "name": "AI-Generated Display Ads",
+  "type": "generative",
+  "output_format_ids": [
+    {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"},
+    {"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"},
+    {"agent_url": "...", "id": "display_static", "width": 160, "height": 600, "unit": "px"}
+  ]
+}
+```
+
+**Key principle**: Output format_ids are ALWAYS deterministic (include dimensions). The generative format itself may accept parameters, but outputs must specify exact dimensions for each variant produced.
+
+## Discovery Pattern
+
+### Creative Agent: Returns Templates
+
+`list_creative_formats()` returns template format definitions:
+
+```json
+{
+  "formats": [
+    {
+      "format_id": {"agent_url": "...", "id": "display_static"},
+      "accepts_parameters": ["dimensions"],
+      "assets_required": [...]
+    }
+  ]
+}
+```
+
+**Purpose**: Buyers discover what format *types* are available and what parameters they accept.
+
+### Sales Agent: Returns Concrete Instances
+
+`get_products()` returns products with placement-specific format constraints:
+
+```json
+{
+  "products": [{
+    "placements": [{
+      "format_ids": [
+        {"agent_url": "...", "id": "display_static", "width": 300, "height": 250, "unit": "px"},
+        {"agent_url": "...", "id": "display_static", "width": 728, "height": 90, "unit": "px"}
+      ]
+    }]
+  }]
+}
+```
+
+**Purpose**: Buyers discover which *specific dimensions* are supported for each placement.
+
+**Flow**:
+1. Buyer fetches formats from creative agent → learns `display_static` accepts dimensions
+2. Buyer fetches products from sales agent → learns which dimensions are supported (300x250, 728x90)
+3. Buyer creates creative with deterministic format_id matching a supported placement dimension
+
 ## Implementation Guidelines
 
 ### For Creative Agents
@@ -287,6 +353,12 @@ Publishers can specify supported dimensions in two ways:
 - Validate format_id dimensions against asset dimensions
 - Ensure width/height/unit are present together (not partial)
 - Return clear errors if format_id doesn't match assets
+
+**Format lookup/matching:**
+- `list_creative_formats()` returns template formats (without dimension parameters)
+- Format lookup by ID matches on base format (agent_url + id), ignoring dimension parameters
+- Example: Request for `{id: "display_static", width: 300, height: 250}` matches the template format `{id: "display_static"}`
+- Dimension parameters are used for creative validation, not format discovery
 
 ### For Sales Agents
 
