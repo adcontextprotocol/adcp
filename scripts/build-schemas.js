@@ -29,6 +29,14 @@ function getMajorVersion(version) {
   return version.split('.')[0];
 }
 
+function getMinorVersion(version) {
+  const parts = version.split('.');
+  if (parts.length < 2) {
+    throw new Error(`Invalid semantic version: ${version}. Expected format: major.minor.patch`);
+  }
+  return `${parts[0]}.${parts[1]}`;
+}
+
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -90,6 +98,7 @@ function createSymlink(target, linkPath) {
 function main() {
   const version = getVersion();
   const majorVersion = getMajorVersion(version);
+  const minorVersion = getMinorVersion(version);
 
   console.log(`📦 Building schemas for AdCP v${version}`);
   console.log(`   Source: ${SOURCE_DIR}`);
@@ -114,6 +123,11 @@ function main() {
   console.log(`🔗 Creating symlink: v${majorVersion} → ${version}`);
   createSymlink(versionDir, majorLink);
 
+  // Create minor version symlink (v2.5 -> 2.5.0)
+  const minorLink = path.join(DIST_DIR, `v${minorVersion}`);
+  console.log(`🔗 Creating symlink: v${minorVersion} → ${version}`);
+  createSymlink(versionDir, minorLink);
+
   // Create v1 symlink for backward compatibility (v1 -> 2.x.x)
   // Clients expecting /schemas/v1/ will still work
   const v1Link = path.join(DIST_DIR, 'v1');
@@ -131,6 +145,7 @@ function main() {
   console.log('Available paths:');
   console.log(`   /schemas/${version}/          - Exact version`);
   console.log(`   /schemas/v${majorVersion}/              - Latest v${majorVersion}.x release`);
+  console.log(`   /schemas/v${minorVersion}/            - Latest v${minorVersion}.x patch`);
   console.log(`   /schemas/v1/              - Backward compatibility (same as v${majorVersion})`);
   console.log(`   /schemas/latest/           - Latest release`);
 }

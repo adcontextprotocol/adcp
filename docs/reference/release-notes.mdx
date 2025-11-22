@@ -11,6 +11,176 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 2.5.0
+
+**Released:** November 2025 | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#250)
+
+### What's New
+
+**Schema Infrastructure & Type Safety** - Version 2.5.0 focuses on improving developer experience through better type generation, schema validation, and API consistency. This release adds discriminator fields throughout the protocol for superior TypeScript/Python type inference, standardizes response patterns, and introduces build-time schema versioning.
+
+**Batch Preview Creative** - Generate previews for up to 50 creatives in a single API call, reducing preview generation time by 5-10x. Supports direct HTML embedding for iframe-less rendering.
+
+**Application Context Passthrough** - Task requests now accept an optional `context` object that gets echoed back in responses and webhooks, enabling better request correlation and debugging.
+
+**Visual Cards for Products & Formats** - Publishers and creative agents can now include optional visual card definitions that reference card formats for rich UI displays.
+
+### Key Enhancements
+
+#### Type Safety & Code Generation
+- **Discriminator fields** added to all discriminated union types (destinations, pricing, property selectors, preview requests/responses)
+- **Atomic response semantics** - All task responses now use strict success XOR error patterns with `oneOf` discriminators
+- **Explicit type declarations** on all const fields for proper TypeScript literal type generation
+- **31 new enum schemas** extracted from inline definitions for better reusability
+
+#### Schema Infrastructure
+- **Build-time versioning** - Schemas now support semantic version paths (`/schemas/2.5.0/`), major version aliases (`/schemas/v2/`), and minor version aliases (`/schemas/v2.5/`)
+- **Consistent media buy responses** - Both `create_media_buy` and `update_media_buy` now return full Package objects
+- **Standardized webhook payload** - Protocol envelope at top-level with task data under `result` field
+
+#### Signal Protocol
+- **Activation keys** - `activate_signal` now returns deployment-specific activation keys (segment IDs, key-value pairs) based on authenticated permissions
+- **Consistent terminology** - Standardized on "deployments" throughout signal requests and responses
+
+#### Creative Protocol
+- **Batch preview support** - Preview multiple creatives in one request (`preview_creative` supports 1-50 items)
+- **Direct HTML embedding** - Responses can include raw HTML for iframe-free rendering
+- **Simplified brand manifest** - Single required field (`name`) eliminates duplicate type generation
+
+#### Documentation & Testing
+- **Testable documentation** - All code examples can be validated against live schemas
+- **Client library prominence** - NPM badges and installation instructions in intro
+- **Fixed 389 broken links** across 50 documentation files
+
+### Migration Guide
+
+#### Discriminator Fields (Breaking)
+
+Many schemas now require explicit discriminator fields. Update your code to include these fields:
+
+**Signal Destinations:**
+```json
+// Before
+{
+  "platform_id": "ttd"
+}
+
+// After
+{
+  "type": "platform",
+  "platform_id": "ttd"
+}
+```
+
+**Property Selectors:**
+```json
+// Before
+{
+  "publisher_domain": "cnn.com",
+  "property_ids": ["cnn_ctv_app"]
+}
+
+// After
+{
+  "publisher_domain": "cnn.com",
+  "selection_type": "by_id",
+  "property_ids": ["cnn_ctv_app"]
+}
+```
+
+**Pricing Options:**
+```json
+// Before
+{
+  "pricing_model": "cpm",
+  "rate": 12.50
+}
+
+// After
+{
+  "pricing_model": "cpm",
+  "is_fixed": true,
+  "rate": 12.50
+}
+```
+
+#### Webhook Payload Structure (Breaking)
+
+Webhook payloads now use protocol envelope at top-level:
+
+**Before:**
+```json
+{
+  "task_id": "task_123",
+  "status": "completed",
+  "media_buy_id": "mb_456",
+  "packages": [...]
+}
+```
+
+**After:**
+```json
+{
+  "task_id": "task_123",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "timestamp": "2025-11-21T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_456",
+    "packages": [...]
+  }
+}
+```
+
+#### Signal Activation Response (Breaking)
+
+`activate_signal` response changed from single key to deployments array:
+
+**Before:**
+```json
+{
+  "activation_key": "segment_123"
+}
+```
+
+**After:**
+```json
+{
+  "deployments": [
+    {
+      "destination": {"type": "platform", "platform_id": "ttd"},
+      "activation_key": "segment_123",
+      "status": "active"
+    }
+  ]
+}
+```
+
+#### Schema Versioning
+
+New version paths available:
+- `/schemas/2.5.0/` - Exact version (recommended for production)
+- `/schemas/v2.5/` - Latest 2.5.x patch (auto-updates for patch releases)
+- `/schemas/v2/` - Latest 2.x release (auto-updates for minor/patch)
+- `/schemas/v1/` - Backward compat alias (same as v2)
+
+### Breaking Changes
+
+- **Discriminator fields required** in destinations, property selectors, pricing options, and preview requests
+- **Webhook payload structure** - Task data moved under `result` field; `domain` no longer required
+- **Signal activation response** - Changed from `activation_key` string to `deployments` array
+- **Removed legacy creative fields** - `media_url`, `click_url`, `duration` removed from `list_creatives` response
+
+### Non-Breaking Additions
+
+- Application `context` object (optional) in all task requests
+- `product_card` and `format_card` fields (optional) for visual UI support
+- Batch preview mode in `preview_creative` (backward compatible)
+- Package pricing fields in delivery reporting (already documented, now schema-enforced)
+- Minor version symlinks (`/schemas/v2.5/`)
+
+---
+
 ## Version 2.3.0
 
 **Released:** October 2025 | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#230)
