@@ -58,14 +58,19 @@
           "type": "number",
           "description": "Maximum budget amount",
           "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
+          "pattern": "^[A-Z]{3}$"
         }
       },
+      "required": ["currency"],
+      "anyOf": [
+        {"required": ["min"]},
+        {"required": ["max"]}
+      ],
       "additionalProperties": false
-    },
-    "currency": {
-      "type": "string",
-      "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP') for budget filtering",
-      "pattern": "^[A-Z]{3}$"
     },
     "countries": {
       "type": "array",

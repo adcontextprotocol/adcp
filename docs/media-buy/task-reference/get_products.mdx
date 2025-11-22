@@ -165,16 +165,18 @@ asyncio.run(discover_with_filters())
 | `start_date` | string | Campaign start date in ISO 8601 format (YYYY-MM-DD) for availability checks |
 | `end_date` | string | Campaign end date in ISO 8601 format (YYYY-MM-DD) for availability checks |
 | `budget_range` | object | Budget range to filter appropriate products (see Budget Range Object below) |
-| `currency` | string | ISO 4217 currency code (e.g., `"USD"`, `"EUR"`, `"GBP"`) for budget filtering |
 | `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (e.g., `["US", "CA", "GB"]`) |
 | `channels` | string[] | Filter by advertising channels (e.g., `["display", "video", "dooh", "ctv", "audio", "native"]`) |
 
 ### Budget Range Object
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `min` | number | Minimum budget amount |
-| `max` | number | Maximum budget amount |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `currency` | string | Yes | ISO 4217 currency code (e.g., `"USD"`, `"EUR"`, `"GBP"`) |
+| `min` | number | No* | Minimum budget amount |
+| `max` | number | No* | Maximum budget amount |
+
+*At least one of `min` or `max` must be specified.
 
 ## Response
 
@@ -307,9 +309,9 @@ const result = await testAgent.getProducts({
     end_date: '2025-06-30',
     budget_range: {
       min: 50000,
-      max: 100000
+      max: 100000,
+      currency: 'USD'
     },
-    currency: 'USD',
     countries: ['US', 'CA'],
     channels: ['display', 'video', 'ctv'],
     delivery_type: 'guaranteed'
@@ -338,9 +340,9 @@ async def discover_with_budget_and_dates():
             'end_date': '2025-06-30',
             'budget_range': {
                 'min': 50000,
-                'max': 100000
+                'max': 100000,
+                'currency': 'USD'
             },
-            'currency': 'USD',
             'countries': ['US', 'CA'],
             'channels': ['display', 'video', 'ctv'],
             'delivery_type': 'guaranteed'
