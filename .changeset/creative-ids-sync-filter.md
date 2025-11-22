@@ -17,7 +17,7 @@ The `creative_ids` filter enables targeted creative updates without affecting th
 
 **Schema Changes:**
 - Added optional `creative_ids` array parameter to sync-creatives-request (max 100)
-- Filter works with both full upsert and patch mode
+- Works with upsert semantics to scope updates to specific creatives
 - Combines naturally with existing validation_mode and dry_run options
 
 **Example - Error Recovery Workflow:**
