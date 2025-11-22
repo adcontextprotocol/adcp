@@ -1,8 +1,0 @@
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/v1/enums/feed-format.json",
-  "title": "Feed Format",
-  "description": "Product catalog feed format types",
-  "type": "string",
-  "enum": ["google_merchant_center", "facebook_catalog", "custom"]
-}

@@ -29,7 +29,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
   "contact": {
     "name": "Example Publisher Ad Operations",
     "email": "adops@example.com",
@@ -377,7 +377,7 @@ curl https://example-publisher.com/.well-known/adagents.json | jq '.'
 
 # Validate against schema
 curl https://example-publisher.com/.well-known/adagents.json > adagents.json
-npx ajv-cli validate -s https://adcontextprotocol.org/schemas/v1/adagents.json -d adagents.json
+npx ajv-cli validate -s https://adcontextprotocol.org/schemas/v2/adagents.json -d adagents.json
 
 # Check specific agent authorization
 curl https://example-publisher.com/.well-known/adagents.json | \
@@ -427,6 +427,6 @@ After implementing adagents.json validation:
 ## Learn More
 
 - [list_authorized_properties](/docs/media-buy/task-reference/list_authorized_properties) - Discover publisher domains an agent represents
-- [Property Schema](https://adcontextprotocol.org/schemas/v1/core/property.json) - Property definition structure
+- [Property Schema](https://adcontextprotocol.org/schemas/v2/core/property.json) - Property definition structure
 - [AdAgents.json Manager](https://adcontextprotocol.org/adagents) - Web-based validator and creator
 - [Agent Registry](https://adcontextprotocol.org/registry) - Browse available AdCP agents

@@ -1,340 +1,138 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" dir="ltr" class="plugin-pages plugin-id-default" data-has-hydrated="false">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AdCP - Open Standard for Advertising Workflows</title>
-    <meta name="description" content="AdCP is an open protocol that unifies advertising platforms through a single interface, enabling natural language interactions and automated workflows.">
-    <meta name="keywords" content="advertising automation protocol, programmatic advertising API, MCP advertising integration, AI advertising workflows, unified advertising platform API, open standard advertising">
-
-    <!-- Open Graph -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://adcontextprotocol.org">
-    <meta property="og:title" content="AdCP - Open Standard for Advertising Workflows">
-    <meta property="og:description" content="AdCP unifies advertising workflows with a single, open standard. Built on Model Context Protocol (MCP) for AI-powered advertising automation across all platforms.">
-    <meta property="og:image" content="https://adcontextprotocol.org/img/adcp-social-card.jpg">
-
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="AdCP - Open Standard for Advertising Workflows">
-    <meta name="twitter:description" content="AdCP unifies advertising workflows with a single, open standard. Built on Model Context Protocol (MCP) for AI-powered advertising automation across all platforms.">
-    <meta name="twitter:image" content="https://adcontextprotocol.org/img/adcp-social-card.jpg">
-
-    <link rel="icon" href="/adcp_logo.svg" type="image/svg+xml">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #1a202c;
-            background: #f5f5f5;
+<meta charset="UTF-8">
+<title data-rh="true">AdCP - Open Standard for Advertising Workflows</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docusaurus_tag" content="default"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docsearch:docusaurus_tag" content="default"><meta data-rh="true" name="keywords" content="advertising automation protocol, programmatic advertising API, MCP advertising integration, AI advertising workflows, unified advertising platform API, open standard advertising"><meta data-rh="true" property="og:type" content="website"><meta data-rh="true" property="og:url" content="https://adcontextprotocol.org"><meta data-rh="true" property="og:image" content="https://adcontextprotocol.org/img/adcp-social-card.jpg"><meta data-rh="true" property="og:site_name" content="AdCP - Open Standard for Advertising Workflows"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" name="twitter:title" content="AdCP - Open Standard for Advertising Workflows | AdCP - Open Standard for Advertising Workflows"><meta data-rh="true" name="twitter:description" content="AdCP unifies advertising workflows with a single, open standard. Built on Model Context Protocol (MCP) for AI-powered advertising automation across all platforms."><meta data-rh="true" name="twitter:image" content="https://adcontextprotocol.org/img/adcp-social-card.jpg"><meta data-rh="true" property="og:title" content="AdCP - Open Standard for Advertising Workflows"><meta data-rh="true" name="description" content="AdCP is an open protocol that unifies advertising platforms through a single interface, enabling natural language interactions and automated workflows."><meta data-rh="true" property="og:description" content="AdCP is an open protocol that unifies advertising platforms through a single interface, enabling natural language interactions and automated workflows."><link data-rh="true" rel="icon" href="/adcp_logo.svg" type="image/svg+xml"><link data-rh="true" rel="alternate" href="https://adcontextprotocol.org/" hreflang="en"><link data-rh="true" rel="alternate" href="https://adcontextprotocol.org/" hreflang="x-default"><link data-rh="true" rel="canonical" href="https://adcontextprotocol.org"><script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://adcontextprotocol.org/#organization",
+      "name": "Ad Context Protocol",
+      "alternateName": "AdCP",
+      "url": "https://adcontextprotocol.org",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://adcontextprotocol.org/adcp_logo.svg",
+        "width": 204,
+        "height": 204
+      },
+      "sameAs": [
+        "https://github.com/adcontextprotocol/adcp",
+        "https://join.slack.com/t/agenticads"
+      ],
+      "description": "Open standard for advertising automation and AI-powered workflows",
+      "foundingDate": "2024",
+      "slogan": "The Open Standard for Agentic Advertising"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://adcontextprotocol.org/#software",
+      "name": "Ad Context Protocol",
+      "alternateName": "AdCP",
+      "description": "Unified advertising automation protocol built on Model Context Protocol (MCP). Enables AI-powered workflows across advertising platforms including media buying, creative generation, and first-party data signals.",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Any",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "creator": {
+        "@type": "Organization",
+        "@id": "https://adcontextprotocol.org/#organization"
+      },
+      "softwareVersion": "2.3.0",
+      "releaseNotes": "Publisher-owned properties, placement targeting, flexible product discovery",
+      "programmingLanguage": ["TypeScript", "JavaScript"],
+      "keywords": "advertising automation, programmatic advertising, MCP protocol, AI advertising workflows, unified advertising API, agent-to-agent, A2A protocol, media buying automation, creative generation",
+      "url": "https://adcontextprotocol.org",
+      "downloadUrl": "https://github.com/adcontextprotocol/adcp",
+      "codeRepository": "https://github.com/adcontextprotocol/adcp",
+      "license": "https://opensource.org/licenses/MIT"
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://adcontextprotocol.org/#website",
+      "url": "https://adcontextprotocol.org",
+      "name": "AdCP - Open Standard for Advertising Workflows",
+      "description": "AdCP unifies advertising workflows with a single, open standard. One protocol for every advertising platform.",
+      "publisher": {
+        "@type": "Organization",
+        "@id": "https://adcontextprotocol.org/#organization"
+      },
+      "inLanguage": "en-US",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://docs.adcontextprotocol.org?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is AdCP?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "AdCP (Ad Context Protocol) is an open standard that unifies advertising platforms through a single interface. It enables AI agents and automation tools to manage campaigns, generate creatives, and activate audiences across any advertising platform using natural language."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What protocols does AdCP support?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "AdCP is built on the Model Context Protocol (MCP) and supports Agent-to-Agent (A2A) protocol. This enables seamless integration with AI assistants like Claude, ChatGPT, and custom AI agents."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What can you do with AdCP?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "AdCP enables three core capabilities: Media Buy Protocol for campaign lifecycle management, Creative Protocol for AI-powered creative generation, and Signals Protocol for first-party data integration. All operations use natural language and work across any advertising platform."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is AdCP open source?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, AdCP is open source and MIT licensed. The full specification, reference implementation, and documentation are available on GitHub at https://github.com/adcontextprotocol/adcp"
+          }
         }
+      ]
+    }
+  ]
+}
+</script><meta name="description" content="AdCP (Ad Context Protocol) is an open standard that unifies advertising platforms through AI-powered workflows. Built on MCP for seamless programmatic advertising automation.">
+<meta name="keywords" content="advertising automation protocol, programmatic advertising API, MCP advertising integration, AI advertising workflows, unified advertising platform API, advertising technology, agent-to-agent, A2A protocol, AI agents, agentic advertising">
+<meta name="author" content="Ad Context Protocol Contributors">
+<meta name="publisher" content="Ad Context Protocol">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="abstract" content="Open standard protocol for unified advertising automation across all platforms. Enables AI agents to manage media buys, generate creatives, and activate audiences using natural language.">
+<meta name="topic" content="Advertising Technology, AI Automation, Developer Tools">
+<meta name="category" content="Technology">
+<meta name="coverage" content="Worldwide">
+<meta name="distribution" content="Global">
+<meta name="rating" content="General">
+<meta name="revisit-after" content="7 days">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@adcontextproto">
+<meta name="twitter:creator" content="@adcontextproto">
+<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/assets/css/styles.ae7db9ff.css">
 
-        /* Navbar */
-        .navbar {
-            background: #fff;
-            box-shadow: 0 1px 2px 0 rgba(0,0,0,.1);
-            height: 60px;
-            padding: 0 1rem;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-        }
 
-        .navbar__inner {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            max-width: 1440px;
-            margin: 0 auto;
-            height: 100%;
-        }
-
-        .navbar__items {
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-        }
-
-        .navbar__brand {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            text-decoration: none;
-            color: inherit;
-        }
-
-        .navbar__logo img {
-            height: 32px;
-            width: 32px;
-        }
-
-        .navbar__title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #000;
-        }
-
-        .navbar__link {
-            text-decoration: none;
-            color: #000;
-            font-weight: 500;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.25rem;
-            transition: background-color 0.2s;
-        }
-
-        .navbar__link:hover {
-            background: rgba(0, 0, 0, 0.05);
-        }
-
-        /* Hero Section */
-        .hero {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
-            padding: 120px 2rem 80px;
-            text-align: center;
-        }
-
-        .hero h1 {
-            font-size: 3rem;
-            font-weight: 800;
-            margin-bottom: 1rem;
-            line-height: 1.2;
-        }
-
-        .hero p {
-            font-size: 1.25rem;
-            opacity: 0.95;
-            max-width: 800px;
-            margin: 0 auto 2.5rem;
-        }
-
-        .hero-buttons {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        .button {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.875rem 2rem;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 1.1rem;
-            transition: all 0.2s;
-        }
-
-        .button--primary {
-            background: white;
-            color: #10b981;
-        }
-
-        .button--primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-        }
-
-        .button--secondary {
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 2px solid white;
-        }
-
-        .button--secondary:hover {
-            background: white;
-            color: #10b981;
-        }
-
-        /* Features Section */
-        .features {
-            max-width: 1200px;
-            margin: 4rem auto;
-            padding: 0 2rem;
-        }
-
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 2rem;
-            margin-top: 3rem;
-        }
-
-        .feature-card {
-            background: white;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .feature-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-        }
-
-        .feature-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-        }
-
-        .feature-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 0.75rem;
-            color: #10b981;
-        }
-
-        .feature-description {
-            color: #4a5568;
-            line-height: 1.7;
-        }
-
-        /* Section Title */
-        .section-title {
-            text-align: center;
-            font-size: 2.5rem;
-            font-weight: 800;
-            color: #1a202c;
-            margin-bottom: 1rem;
-        }
-
-        .section-subtitle {
-            text-align: center;
-            font-size: 1.25rem;
-            color: #4a5568;
-            max-width: 700px;
-            margin: 0 auto;
-        }
-
-        /* Footer */
-        footer {
-            background: white;
-            border-top: 2px solid #e2e8f0;
-            padding: 3rem 2rem;
-            margin-top: 5rem;
-        }
-
-        .footer-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            text-align: center;
-        }
-
-        .footer-links {
-            display: flex;
-            gap: 2rem;
-            justify-content: center;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-        }
-
-        .footer-link {
-            color: #10b981;
-            text-decoration: none;
-            font-weight: 600;
-            transition: color 0.2s;
-        }
-
-        .footer-link:hover {
-            color: #059669;
-        }
-
-        .footer-text {
-            color: #718096;
-            font-size: 0.95rem;
-        }
-
-        @media (max-width: 768px) {
-            .hero h1 {
-                font-size: 2rem;
-            }
-
-            .hero p {
-                font-size: 1.1rem;
-            }
-
-            .features-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
 </head>
-<body>
-    <!-- Navigation (loaded by nav.js) -->
-    <div id="adcp-nav"></div>
-    <script src="/nav.js"></script>
-
-    <!-- Hero Section -->
-    <section class="hero">
-        <h1>AdCP: The Open Standard for<br>Agentic Advertising</h1>
-        <p>
-            Every MCP AI Agent, helping brands & agencies turn intent into ads from the first Cup.
-            From API A to A2A agents, AdCP is how AI can bring the best ideas to the world Cup.
-        </p>
-        <div class="hero-buttons">
-            <a href="https://docs.adcontextprotocol.org" class="button button--primary">Start Building</a>
-            <a href="https://testing.adcontextprotocol.org" class="button button--secondary">Try it Live</a>
-        </div>
-    </section>
-
-    <!-- Features Section -->
-    <section class="features">
-        <h2 class="section-title">Built for Developers</h2>
-        <p class="section-subtitle">
-            Explore what AdCP makes possible—one protocol for any ad tech agent
-        </p>
-
-        <div class="features-grid">
-            <div class="feature-card">
-                <div class="feature-icon">📊</div>
-                <h3 class="feature-title">Media Buy Protocol</h3>
-                <p class="feature-description">
-                    Explore inventory with natural language, manage budgets and campaigns autonomously from intent to placement.
-                </p>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-icon">🎨</div>
-                <h3 class="feature-title">Creative Protocol</h3>
-                <p class="feature-description">
-                    AI-generated creatives that match platform requirements. Upload or generate assets at scale across all formats and ad types.
-                </p>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-icon">🎯</div>
-                <h3 class="feature-title">Signals Protocol</h3>
-                <p class="feature-description">
-                    Activate first-party data for audience targeting. Build custom segments and deploy them across any ad platform.
-                </p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Footer -->
-    <footer>
-        <div class="footer-content">
-            <div class="footer-links">
-                <a href="https://docs.adcontextprotocol.org" class="footer-link">Documentation</a>
-                <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="footer-link">GitHub</a>
-                <a href="/registry" class="footer-link">Agent Registry</a>
-            </div>
-            <p class="footer-text">
-                © 2024 Ad Context Protocol. Open source under MIT License.
-            </p>
-        </div>
-    </footer>
+<body class="navigation-with-keyboard">
+<svg style="display: none;"><defs>
+<symbol id="theme-svg-external-link" viewBox="0 0 24 24"><path fill="currentColor" d="M21 13v10h-21v-19h12v2h-10v15h17v-8h2zm3-12h-10.988l4.035 4-6.977 7.07 2.828 2.828 6.977-7.07 4.125 4.172v-11z"/></symbol>
+</defs></svg>
+<div id="__docusaurus"><div role="region" aria-label="Skip to main content"><a class="skipToContent_fXgn" href="#__docusaurus_skipToContent_fallback">Skip to main content</a></div><nav aria-label="Main" class="theme-layout-navbar navbar navbar--fixed-top"><div class="navbar__inner"><div class="theme-layout-navbar-left navbar__items"><button aria-label="Toggle navigation bar" aria-expanded="false" class="navbar__toggle clean-btn" type="button"><svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="2" d="M4 7h22M4 15h22M4 23h22"></path></svg></button><a class="navbar__brand" href="/"><div class="navbar__logo"><img src="/adcp_logo.svg" alt="AdCP - Advertising Context Protocol Logo" class="themedComponent_mlkZ themedComponent--light_NVdE"><img src="/adcp_logo.svg" alt="AdCP - Advertising Context Protocol Logo" class="themedComponent_mlkZ themedComponent--dark_xIcU"></div><b class="navbar__title text--truncate">AdCP</b></a><a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="navbar__item navbar__link">Docs<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a></div><div class="theme-layout-navbar-right navbar__items navbar__items--right"><a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__item navbar__link">GitHub<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a><div class="toggle_vylO colorModeToggle_DEke"><button class="clean-btn toggleButton_gllP toggleButtonDisabled_aARS" type="button" disabled="" title="system mode" aria-label="Switch between dark and light mode (currently system mode)"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP lightToggleIcon_pyhR"><path fill="currentColor" d="M12,9c1.65,0,3,1.35,3,3s-1.35,3-3,3s-3-1.35-3-3S10.35,9,12,9 M12,7c-2.76,0-5,2.24-5,5s2.24,5,5,5s5-2.24,5-5 S14.76,7,12,7L12,7z M2,13l2,0c0.55,0,1-0.45,1-1s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S1.45,13,2,13z M20,13l2,0c0.55,0,1-0.45,1-1 s-0.45-1-1-1l-2,0c-0.55,0-1,0.45-1,1S19.45,13,20,13z M11,2v2c0,0.55,0.45,1,1,1s1-0.45,1-1V2c0-0.55-0.45-1-1-1S11,1.45,11,2z M11,20v2c0,0.55,0.45,1,1,1s1-0.45,1-1v-2c0-0.55-0.45-1-1-1C11.45,19,11,19.45,11,20z M5.99,4.58c-0.39-0.39-1.03-0.39-1.41,0 c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0s0.39-1.03,0-1.41L5.99,4.58z M18.36,16.95 c-0.39-0.39-1.03-0.39-1.41,0c-0.39,0.39-0.39,1.03,0,1.41l1.06,1.06c0.39,0.39,1.03,0.39,1.41,0c0.39-0.39,0.39-1.03,0-1.41 L18.36,16.95z M19.42,5.99c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06c-0.39,0.39-0.39,1.03,0,1.41 s1.03,0.39,1.41,0L19.42,5.99z M7.05,18.36c0.39-0.39,0.39-1.03,0-1.41c-0.39-0.39-1.03-0.39-1.41,0l-1.06,1.06 c-0.39,0.39-0.39,1.03,0,1.41s1.03,0.39,1.41,0L7.05,18.36z"></path></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP darkToggleIcon_wfgR"><path fill="currentColor" d="M9.37,5.51C9.19,6.15,9.1,6.82,9.1,7.5c0,4.08,3.32,7.4,7.4,7.4c0.68,0,1.35-0.09,1.99-0.27C17.45,17.19,14.93,19,12,19 c-3.86,0-7-3.14-7-7C5,9.07,6.81,6.55,9.37,5.51z M12,3c-4.97,0-9,4.03-9,9s4.03,9,9,9s9-4.03,9-9c0-0.46-0.04-0.92-0.1-1.36 c-0.98,1.37-2.58,2.26-4.4,2.26c-2.98,0-5.4-2.42-5.4-5.4c0-1.81,0.89-3.42,2.26-4.4C12.92,3.04,12.46,3,12,3L12,3z"></path></svg><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" class="toggleIcon_g3eP systemToggleIcon_QzmC"><path fill="currentColor" d="m12 21c4.971 0 9-4.029 9-9s-4.029-9-9-9-9 4.029-9 9 4.029 9 9 9zm4.95-13.95c1.313 1.313 2.05 3.093 2.05 4.95s-0.738 3.637-2.05 4.95c-1.313 1.313-3.093 2.05-4.95 2.05v-14c1.857 0 3.637 0.737 4.95 2.05z"></path></svg></button></div><div class="navbarSearchContainer_Bca1"></div></div></div><div role="presentation" class="navbar-sidebar__backdrop"></div></nav><div id="__docusaurus_skipToContent_fallback" class="theme-layout-main main-wrapper mainWrapper_z2l0"><header class="hero heroBanner_qdFl"><div class="container"><div class="row"><div class="col col--8 col--offset-2"><h1 class="heroTitle_qg2I">AdCP: The Open Standard for Agentic Advertising</h1><p class="heroSubtitle_jFu1">From brief to buy, helping agents advertise anywhere: from CTV to chat, from tiny blog to the World Cup.</p><div class="heroPoints_gRrZ"><div class="point__uAb"><div class="pointIcon_AYD6">🎯</div><div class="pointText_BlCe"><strong>Built for outcomes</strong><br>Buy the way you want to grow</div></div><div class="point__uAb"><div class="pointIcon_AYD6">🤖</div><div class="pointText_BlCe"><strong>Built for agents</strong><br>Supports MCP and A2A protocols</div></div><div class="point__uAb"><div class="pointIcon_AYD6">🌍</div><div class="pointText_BlCe"><strong>Built for everyone</strong><br>A diverse ecosystem of tech and content</div></div></div><div class="buttons_AeoN"><a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="button button--primary button--lg margin-right--md">Start Building</a><a href="https://testing.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="button button--secondary button--lg margin-right--md">Try It Live</a><a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="button button--outline button--secondary button--lg">View on GitHub</a></div></div></div></div></header><main><div class="releaseBanner_qgG2"><div class="container"><div class="releaseBannerContent_dZLA"><span class="releaseTag_YUts">v2.3.0 Released</span><span class="releaseText_vBj7">Publisher-owned properties, placement targeting, flexible product discovery, and more!</span><a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="releaseLink_cLn6">Read the docs →</a></div></div></div><section class="problemSection_YnFw"><div class="container"><div class="row"><div class="col col--10 col--offset-1"><div class="problemContent_hJvu"><h2 class="sectionTitle_Ut5p">Why we built AdCP</h2><p class="problemIntro_r3cU">The advertising ecosystem is fragmented. Every platform has its own API, its own workflow, its own reporting format. Media buyers and agencies waste countless hours navigating this complexity.</p><div class="problemGrid_Hidr"><div class="problemCard_DbFu"><h3>The Integration Problem</h3><p>Each new platform requires custom integration work. APIs change, documentation varies, and maintenance never ends. Teams spend more time on plumbing than on strategy.</p></div><div class="problemCard_DbFu"><h3>The Discovery Problem</h3><p>Inventory is scattered across platforms with different taxonomies and targeting options. Finding the right audiences means learning multiple systems and manually comparing options.</p></div><div class="problemCard_DbFu"><h3>The Automation Problem</h3><p>AI agents and automation tools can&#x27;t easily interact with advertising platforms. Each integration is bespoke, limiting the potential of AI-powered workflows.</p></div></div><div class="visionStatement_hIxH"><p><strong>We believe there&#x27;s a better way.</strong> A single protocol that any platform can implement and any tool can use. An open standard that makes advertising technology work together, not against each other.</p></div></div></div></div></div></section><section class="membersSection_D9Vt"><div class="container"><h2 class="text--center">Founding Members</h2><div class="memberGrid_CKO2"><div class="memberItem_qC8a"><img src="/img/members/ebiquity.png" alt="Ebiquity" class="memberLogo_O4lw"></div><div class="memberItem_qC8a"><img src="/img/members/optable.png" alt="Optable" class="memberLogo_O4lw"></div><div class="memberItem_qC8a"><img src="/img/members/pubmatic.png" alt="PubMatic" class="memberLogo_O4lw"></div><div class="memberItem_qC8a"><img src="/img/members/scope3-bright.png" alt="Scope3" class="memberLogo_O4lw"></div><div class="memberItem_qC8a"><img src="/img/members/swivel.png" alt="Swivel" class="memberLogo_O4lw"></div><div class="memberItem_qC8a"><img src="/img/members/triton-digital.png" alt="Triton Digital" class="memberLogo_O4lw"></div><div class="memberItem_qC8a"><img src="/img/members/yahoo-purple.png" alt="Yahoo" class="memberLogo_O4lw"></div></div></div></section><section class="membersSection_D9Vt"><div class="container"><h2 class="text--center">Launch Members</h2><div class="launchMemberList_fIO2"><div class="memberItem_qC8a"><span class="memberText_bNBn">Accuweather</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Adgent</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Bidcliq</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Butler/Till</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Classify</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">HYPD</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Kargo</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Kiln</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">LG Ad Solutions</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Locala</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Magnite</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Media.net</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">MiQ</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Nativo</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Newton Research</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">OpenAds</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Raptive</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Samba TV</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">Scribd</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">The Product Counsel</span></div><div class="memberItem_qC8a"><span class="memberText_bNBn">The Weather Company</span></div></div></div></section><section class="solutionSection_rMlo"><div class="container"><div class="row"><div class="col col--10 col--offset-1"><h2 class="sectionTitle_Ut5p">One protocol. Every platform. Total control.</h2><p class="sectionSubtitle_AZuW">AdCP is the open standard that unifies advertising workflows across all platforms.<br>Think of it as the USB-C of advertising technology.</p><div class="comparisonTable_c0Gw"><div class="comparisonColumn_kYrh"><h3>Before AdCP</h3><ul class="comparisonList_QtAd"><li class="negative_k7Kh">15+ different platform APIs</li><li class="negative_k7Kh">Months of custom integration</li><li class="negative_k7Kh">Manual data reconciliation</li><li class="negative_k7Kh">Fragmented reporting</li><li class="negative_k7Kh">Vendor lock-in</li></ul></div><div class="comparisonColumn_kYrh"><h3>With AdCP</h3><ul class="comparisonList_QtAd"><li class="positive__3Zl">One unified interface</li><li class="positive__3Zl">Deploy in days</li><li class="positive__3Zl">Automated workflows</li><li class="positive__3Zl">Consolidated analytics</li><li class="positive__3Zl">Complete flexibility</li></ul></div></div><div class="demoSection_HM9j"><h3>See the difference</h3><div class="demoComparison_jjeQ"><div class="demoBox_J3UX"><h4>Traditional Workflow</h4><code class="codeBlock_NVHr">1. Log into Platform A<br>2. Search for audiences (30 min)<br>3. Export to spreadsheet<br>4. Log into Platform B<br>5. Manually recreate targeting<br>6. Wait for approval (2 days)<br>7. Repeat for 10 more platforms...</code></div><div class="demoBox_J3UX"><h4>AdCP Workflow</h4><code class="codeBlock_NVHr">&quot;Find sports enthusiasts with<br>high purchase intent, compare<br>prices across all platforms,<br>and activate the best option.&quot;<br><br><span class="success_fAwd">✓ Done in minutes</span></code></div></div></div></div></div></div></section><section class="featuresSection_Y0uK"><div class="container"><div class="row"><div class="col col--10 col--offset-1"><h2 class="sectionTitle_Ut5p">Everything you need, production-ready</h2><p class="sectionSubtitle_AZuW">AdCP v2.3.0 includes a complete suite of capabilities for modern advertising workflows.</p><div class="featureGrid_hfN5"><div class="featureCard_Jbd_"><h3>🛒 <a href="https://docs.adcontextprotocol.org/docs/media-buy/overview" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">Media Buy Protocol</a></h3><p>Complete campaign lifecycle management with 9 core tasks:</p><ul><li><code>get_products</code> - Discover inventory with natural language</li><li><code>create_media_buy</code> - Launch campaigns across platforms</li><li><code>get_media_buy_delivery</code> - Real-time performance metrics</li><li>Plus sync, update, feedback, and more</li></ul></div><div class="featureCard_Jbd_"><h3>🎨 <a href="https://docs.adcontextprotocol.org/docs/creatives/overview" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">Creative Protocol</a></h3><p>AI-powered creative generation and management:</p><ul><li><code>build_creative</code> - Generate creatives from briefs</li><li><code>preview_creative</code> - Visual preview generation</li><li><code>list_creative_formats</code> - Discover format specs</li><li>Standard formats library included</li></ul></div><div class="featureCard_Jbd_"><h3>📊 <a href="https://docs.adcontextprotocol.org/docs/signals/overview" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">Signals Protocol</a></h3><p>First-party data integration:</p><ul><li><code>get_signals</code> - Discover available signals</li><li><code>activate_signal</code> - Activate for campaigns</li><li>Privacy-first audience building</li><li>Platform-agnostic data sharing</li></ul></div><div class="featureCard_Jbd_"><h3>⚡ Protocol Features</h3><p>Enterprise-ready infrastructure:</p><ul><li>MCP &amp; A2A protocol support</li><li>Async workflows with webhooks</li><li>Human-in-the-loop approval</li><li>JSON Schema validation</li></ul></div></div></div></div></div></section><section class="howItWorksSection_hIY_"><div class="container"><div class="row"><div class="col col--10 col--offset-1"><h2 class="sectionTitle_Ut5p">How AdCP works</h2><p class="sectionSubtitle_AZuW">Built on the Model Context Protocol (MCP), AdCP provides a unified interface for advertising operations across any platform.</p><div class="workflowSteps_gwt9"><div class="step_BHwS"><div class="stepNumber_rxuX">1</div><div class="stepContent_VSab"><h3>Discovery</h3><p>Use natural language to describe your target audience. AdCP searches across all connected platforms to find matching inventory and audiences.</p><code class="exampleCode_VikQ">&quot;Find sports enthusiasts interested in running gear&quot;</code></div></div><div class="step_BHwS"><div class="stepNumber_rxuX">2</div><div class="stepContent_VSab"><h3>Comparison</h3><p>Get standardized results from all platforms in a consistent format. Compare pricing, reach, and targeting capabilities side by side.</p><code class="exampleCode_VikQ">Platform A: $12 CPM • 2.3M reach<br>Platform B: $18 CPM • 4.1M reach<br>Platform C: $9 CPM • 1.8M reach</code></div></div><div class="step_BHwS"><div class="stepNumber_rxuX">3</div><div class="stepContent_VSab"><h3>Activation</h3><p>Launch campaigns across multiple platforms with a single command. AdCP handles the technical details while maintaining platform-specific optimizations.</p><code class="exampleCode_VikQ">&quot;Activate on Platform B with $10,000 budget&quot;</code></div></div><div class="step_BHwS"><div class="stepNumber_rxuX">4</div><div class="stepContent_VSab"><h3>Management</h3><p>Monitor performance, adjust budgets, and generate reports across all platforms from one interface. Set up automated rules and alerts.</p><code class="exampleCode_VikQ">&quot;Show performance metrics for all active campaigns&quot;</code></div></div></div></div></div></div></section><section class="getStartedSection_vPGY"><div class="container"><div class="row"><div class="col col--10 col--offset-1"><h2 class="sectionTitle_Ut5p">Ready to join the revolution?</h2><p class="sectionSubtitle_AZuW">Whether you&#x27;re a platform provider or an advertiser, AdCP is your path to the future of advertising.</p><div class="audienceCards_Jy9D"><div class="audienceCard_fWZI"><h3>Platform Providers</h3><p class="audienceDescription_DkBw">Make your inventory accessible to every AI assistant and automation platform.</p><ul class="audienceList_msXI"><li>Enable AI-powered workflows for your inventory</li><li>Simplify integration with a standard protocol</li><li>Reach new customers through automation platforms</li></ul><div class="audienceAction_gTR6"><a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="button button--outline button--secondary button--lg">Explore the Spec</a><p class="actionSubtext_sz5i">Open source • MIT licensed</p></div></div><div class="audienceCard_fWZI"><h3>Advertisers &amp; Agencies</h3><p class="audienceDescription_DkBw">Start using natural language to manage campaigns across all platforms.</p><ul class="audienceList_msXI"><li>Manage campaigns with natural language</li><li>Access unified analytics across platforms</li><li>Build on open standards, avoid vendor lock-in</li></ul><div class="audienceAction_gTR6"><a href="https://docs.adcontextprotocol.org" target="_blank" rel="noopener noreferrer" class="button button--primary button--lg">Start Building Today</a><p class="actionSubtext_sz5i">Documentation &amp; guides</p></div></div></div></div></div></div></section><section class="communitySection_a2u4"><div class="container"><div class="row"><div class="col col--8 col--offset-2 text--center"><h2 class="sectionTitle_Ut5p">Join the conversation</h2><p class="communityDescription_YESH">AdCP is an open standard developed in collaboration with the advertising community. We&#x27;re building this together, and your input matters.</p><div class="communityFeatures_N643"><div class="communityFeature_n6x3"><h3>Open Development</h3><p>All development happens in the open on GitHub. Watch progress, submit issues, and contribute code.</p></div><div class="communityFeature_n6x3"><h3>Working Group</h3><p>Join monthly meetings to discuss protocol evolution, implementation challenges, and future directions.</p></div><div class="communityFeature_n6x3"><h3>Implementation Support</h3><p>Get help implementing AdCP for your platform or building tools that use the protocol.</p></div></div><div class="communityActions_BVMn"><a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="button button--primary button--lg margin-right--md">Star on GitHub</a><a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA" target="_blank" rel="noopener noreferrer" class="button button--outline button--secondary button--lg">Join Slack Community</a></div></div></div></div></section></main></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="row footer__links"><div class="theme-layout-footer-column col footer__col"><div class="footer__title">Docs</div><ul class="footer__items clean-list"><li class="footer__item"><a href="https://docs.adcontextprotocol.org/docs/intro" target="_blank" rel="noopener noreferrer" class="footer__link-item">Getting Started<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a></li><li class="footer__item"><a href="https://docs.adcontextprotocol.org/docs/signals/overview" target="_blank" rel="noopener noreferrer" class="footer__link-item">Signals Protocol<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a></li></ul></div><div class="theme-layout-footer-column col footer__col"><div class="footer__title">Community</div><ul class="footer__items clean-list"><li class="footer__item"><a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA" target="_blank" rel="noopener noreferrer" class="footer__link-item">Join Slack Community<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a></li><li class="footer__item"><a href="https://docs.adcontextprotocol.org/docs/community/working-group" target="_blank" rel="noopener noreferrer" class="footer__link-item">Working Group<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a></li></ul></div><div class="theme-layout-footer-column col footer__col"><div class="footer__title">More</div><ul class="footer__items clean-list"><li class="footer__item"><a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="footer__link-item">GitHub<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a></li><li class="footer__item"><a href="https://github.com/adcontextprotocol/adcp/projects/1" target="_blank" rel="noopener noreferrer" class="footer__link-item">Roadmap<svg width="13.5" height="13.5" aria-label="(opens in new tab)" class="iconExternalLink_nPIU"><use href="#theme-svg-external-link"></use></svg></a></li></ul></div></div><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2025 Ad Context Protocol</div></div></div></footer></div>
 </body>
 </html>

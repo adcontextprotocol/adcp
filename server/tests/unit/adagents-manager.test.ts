@@ -22,7 +22,7 @@ describe('AdAgentsManager', () => {
   describe('validateDomain', () => {
     it('validates a valid adagents.json file', async () => {
       const validAdAgents: AdAgentsJson = {
-        $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
+        $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
         authorized_agents: [
           {
             url: 'https://agent.example.com',
@@ -131,7 +131,7 @@ describe('AdAgentsManager', () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
         data: {
-          $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
+          $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
         },
         headers: { 'content-type': 'application/json' },
       });
@@ -519,7 +519,7 @@ describe('AdAgentsManager', () => {
       const json = manager.createAdAgentsJson(agents, true, true);
       const parsed = JSON.parse(json);
 
-      expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v1/adagents.json');
+      expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v2/adagents.json');
       expect(parsed.authorized_agents).toEqual(agents);
       expect(parsed.last_updated).toBeDefined();
       expect(new Date(parsed.last_updated).toISOString()).toBe(parsed.last_updated);

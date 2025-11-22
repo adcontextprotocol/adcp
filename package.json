@@ -7,7 +7,8 @@
     "start:mcp": "MODE=mcp tsx watch server/src/index.ts",
     "start:mintlify": "bash scripts/start-mintlify.sh",
     "dev": "CONDUCTOR_PORT=55020 concurrently --names \"HTTP,DOCS\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run start\" \"npm run start:mintlify\"",
-    "build": "tsc --project server/tsconfig.json",
+    "build": "tsc --project server/tsconfig.json && npm run build:schemas",
+    "build:schemas": "node scripts/build-schemas.js",
     "build:mintlify": "cd mintlify-docs && mintlify build",
     "deploy:mintlify": "mintlify deploy",
     "typecheck": "tsc --project server/tsconfig.json --noEmit",
@@ -21,9 +22,9 @@
     "precommit": "npm test",
     "prepare": "husky",
     "changeset": "changeset",
-    "version": "changeset version && npm run update-schema-versions",
-    "update-schema-versions": "node scripts/update-schema-versions.js",
-    "release": "npm run version && npm test && npm run verify-version-sync && git add -A && git commit -m 'Version packages' && git push",
+    "version": "changeset version && npm run build:schemas",
+    "update-schema-versions": "echo 'Schema versioning is now handled by build:schemas script'",
+    "release": "npm run version && npm test && npm run build && git add -A && git commit -m 'Version packages' && git push",
     "verify-version-sync": "node scripts/verify-version-sync.js"
   },
   "dependencies": {

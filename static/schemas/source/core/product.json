@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/product.json",
+  "title": "Product",
+  "description": "Represents available advertising inventory",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "Unique identifier for the product"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable product name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the product and its inventory"
+    },
+    "publisher_properties": {
+      "type": "array",
+      "description": "Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency.",
+      "items": {
+        "$ref": "/schemas/core/publisher-property-selector.json"
+      },
+      "minItems": 1
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Array of supported creative format IDs - structured format_id objects with agent_url and id",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
+    "placements": {
+      "type": "array",
+      "description": "Optional array of specific placements within this product. When provided, buyers can target specific placements when assigning creatives.",
+      "items": {
+        "$ref": "/schemas/core/placement.json"
+      },
+      "minItems": 1
+    },
+    "delivery_type": {
+      "$ref": "/schemas/enums/delivery-type.json"
+    },
+    "pricing_options": {
+      "type": "array",
+      "description": "Available pricing models for this product",
+      "items": {
+        "$ref": "/schemas/core/pricing-option.json"
+      },
+      "minItems": 1
+    },
+    "estimated_exposures": {
+      "type": "integer",
+      "description": "Estimated exposures/impressions for guaranteed products",
+      "minimum": 0
+    },
+    "measurement": {
+      "$ref": "/schemas/core/measurement.json"
+    },
+    "delivery_measurement": {
+      "type": "object",
+      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy. REQUIRED for all products.",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Measurement provider(s) used for this product (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions')"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly')"
+        }
+      },
+      "required": ["provider"]
+    },
+    "reporting_capabilities": {
+      "$ref": "/schemas/core/reporting-capabilities.json"
+    },
+    "creative_policy": {
+      "$ref": "/schemas/core/creative-policy.json"
+    },
+    "is_custom": {
+      "type": "boolean",
+      "description": "Whether this is a custom product"
+    },
+    "brief_relevance": {
+      "type": "string",
+      "description": "Explanation of why this product matches the brief (only included when brief is provided)"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Expiration timestamp for custom products"
+    },
+    "product_card": {
+      "type": "object",
+      "description": "Optional standard visual card (300x400px) for displaying this product in user interfaces. Can be rendered via preview_creative or pre-generated.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/core/format-id.json",
+          "description": "Creative format defining the card layout (typically product_card_standard)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": ["format_id", "manifest"],
+      "additionalProperties": false
+    },
+    "product_card_detailed": {
+      "type": "object",
+      "description": "Optional detailed card with carousel and full specifications. Provides rich product presentation similar to media kit pages.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/core/format-id.json",
+          "description": "Creative format defining the detailed card layout (typically product_card_detailed)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the detailed card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": ["format_id", "manifest"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "product_id",
+    "name",
+    "description",
+    "publisher_properties",
+    "format_ids",
+    "delivery_type",
+    "delivery_measurement",
+    "pricing_options"
+  ],
+  "additionalProperties": false
+}
