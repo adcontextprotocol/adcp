@@ -32,7 +32,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
   "contact": {
     "name": "Example Publisher Ad Operations",
     "email": "adops@example.com",
@@ -508,7 +508,7 @@ Publishers with mobile apps can use property scoping to specify which platforms 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
   "publisher": {
     "name": "Publisher Inc.",
     "domain": "publisher.com"
@@ -569,7 +569,7 @@ Publishers with mobile apps can use property scoping to specify which platforms 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
   "publisher": {
     "name": "Premium Video Network Inc.",
     "domain": "premiumvideo.com",
@@ -597,7 +597,7 @@ Publishers with mobile apps can use property scoping to specify which platforms 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
   "publisher": {
     "name": "Multi-Platform Media Co.",
     "domain": "mediaco.com"
@@ -669,7 +669,7 @@ Publishers with mobile apps can use property scoping to specify which platforms 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
   "publisher": {
     "name": "Clear Channel Outdoor",
     "domain": "clearchannel.com"
@@ -1340,10 +1340,10 @@ Validate your `adagents.json` file using the JSON schema:
 
 ```bash
 # Using ajv-cli
-ajv validate -s https://adcontextprotocol.org/schemas/v1/adagents.json -d your-adagents.json
+ajv validate -s https://adcontextprotocol.org/schemas/v2/adagents.json -d your-adagents.json
 
 # Using online validators
-# Copy schema URL: https://adcontextprotocol.org/schemas/v1/adagents.json
+# Copy schema URL: https://adcontextprotocol.org/schemas/v2/adagents.json
 ```
 
 ## Implementation Checklist

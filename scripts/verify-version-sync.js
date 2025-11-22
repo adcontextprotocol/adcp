@@ -17,7 +17,7 @@ const packageJson = JSON.parse(
 const packageVersion = packageJson.version;
 
 // Read schema registry version
-const registryPath = path.join(__dirname, '../static/schemas/v1/index.json');
+const registryPath = path.join(__dirname, '../static/schemas/source/index.json');
 const schemaRegistry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
 const schemaVersion = schemaRegistry.adcp_version;
 

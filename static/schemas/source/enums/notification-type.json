@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/notification-type.json",
+  "title": "Notification Type",
+  "description": "Type of delivery notification for media buy reporting",
+  "type": "string",
+  "enum": ["scheduled", "final", "delayed", "adjusted"]
+}

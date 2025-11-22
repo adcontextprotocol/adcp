@@ -44,15 +44,18 @@ export class HTTPServer {
   private setupMiddleware(): void {
     this.app.use(express.json());
 
-    // Serve JSON schemas at /schemas/*
-    // In dev: __dirname is server/src, static is at ../../static
-    // In prod: __dirname is dist, static is at ../static
+    // Serve JSON schemas at /schemas/* from dist/schemas (built schemas)
+    // In dev: __dirname is server/src, dist is at ../../dist
+    // In prod: __dirname is dist, schemas are at ./schemas
+    const distPath = process.env.NODE_ENV === 'production'
+      ? __dirname
+      : path.join(__dirname, "../../dist");
+    this.app.use('/schemas', express.static(path.join(distPath, 'schemas')));
+
+    // Serve other static files (robots.txt, images, etc.)
     const staticPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../static")
       : path.join(__dirname, "../../static");
-    this.app.use('/schemas', express.static(path.join(staticPath, 'schemas')));
-
-    // Serve other static files (robots.txt, images, etc.)
     this.app.use(express.static(staticPath));
 
     // Serve homepage and public assets at root
