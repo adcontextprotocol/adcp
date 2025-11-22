@@ -17,13 +17,19 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ### What's New
 
-**Schema Infrastructure & Type Safety** - Version 2.5.0 focuses on improving developer experience through better type generation, schema validation, and API consistency. This release adds discriminator fields throughout the protocol for superior TypeScript/Python type inference, standardizes response patterns, and introduces build-time schema versioning.
+Version 2.5.0 is a **developer experience and API refinement** release that significantly improves type safety, schema infrastructure, and creative workflow performance. This release prepares AdCP for production-scale integrations with better TypeScript/Python code generation, stricter validation semantics, and flexible schema versioning.
 
-**Batch Preview Creative** - Generate previews for up to 50 creatives in a single API call, reducing preview generation time by 5-10x. Supports direct HTML embedding for iframe-less rendering.
+**🎯 Key Themes:**
 
-**Application Context Passthrough** - Task requests now accept an optional `context` object that gets echoed back in responses and webhooks, enabling better request correlation and debugging.
+1. **Type Safety & Code Generation** - Comprehensive discriminator fields throughout the protocol enable excellent TypeScript/Python type inference and eliminate ambiguous union types.
 
-**Visual Cards for Products & Formats** - Publishers and creative agents can now include optional visual card definitions that reference card formats for rich UI displays.
+2. **Batch Creative Previews** - Generate previews for up to 50 creatives in a single API call with optional direct HTML embedding, reducing preview generation time by 5-10x.
+
+3. **Schema Infrastructure** - Build-time schema versioning with semantic paths (`/schemas/2.5.0/`, `/schemas/v2/`, `/schemas/v2.5/`) enables version pinning and automatic minor version tracking.
+
+4. **API Consistency** - Atomic response semantics (success XOR error) and standardized webhook payloads eliminate ambiguity and improve reliability.
+
+5. **Signal Protocol Refinement** - Activation keys returned per deployment with permission-based access, enabling proper multi-platform signal activation.
 
 ### Key Enhancements
 
