@@ -421,6 +421,23 @@ const adcpTools = tools.filter(t => t.name.startsWith('adcp_') ||
   ['get_products', 'create_media_buy'].includes(t.name));
 ```
 
+### AdCP Extension (Future)
+
+**Status**: MCP server cards are expected in a future MCP release. When available, AdCP servers will include the AdCP extension.
+
+```json
+{
+  "extensions": {
+    "adcp": {
+      "adcp_version": "2.4.0",
+      "protocols_supported": ["media_buy", "creative", "signals"]
+    }
+  }
+}
+```
+
+This will allow clients to programmatically discover which AdCP version and protocol domains an MCP server implements. See the [AdCP extension schema](https://adcontextprotocol.org/schemas/v2/protocols/adcp-extension.json) for specification details.
+
 ### Parameter Validation
 ```javascript
 // MCP provides tool schemas for validation

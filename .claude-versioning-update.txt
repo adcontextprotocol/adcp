@@ -1,0 +1,25 @@
+### Build-Time Versioning
+
+**IMPORTANT**: AdCP uses build-time versioning where schemas are copied from source to versioned output directories during the release process.
+
+**Source of Truth**:
+- **Source schemas**: `static/schemas/source/` (unversioned, single source of truth)
+- **Built schemas**: `dist/schemas/{version}/` (versioned output, generated at build time)
+- **Version determined by**: `package.json` version field
+
+**Published Paths**:
+- **Full semantic version**: `/schemas/2.5.0/` (exact version, pinnable)
+- **Major version alias**: `/schemas/v2/` (symlink to latest 2.x release)
+- **Latest alias**: `/schemas/latest/` (symlink to current release)
+
+**Build Process**:
+```bash
+npm run build:schemas  # Copies source → dist/{version}, updates $id/$ref fields
+```
+
+**Rationale**:
+- Single source of truth for schema development
+- No parallel schema trees to maintain
+- Clients can pin to exact versions or use aliases
+- Clear client expectations: `/schemas/2.5.0/` is AdCP 2.5.0
+- Historical versions available via git tags + rebuild

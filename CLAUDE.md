@@ -379,6 +379,110 @@ When making documentation changes:
 - ✅ Schema will be used for TypeScript generation
 - ✅ Variants represent conceptually distinct alternatives
 
+### Common Fields in Discriminated Unions
+
+**CRITICAL**: When using `oneOf` for discriminated unions, always include common fields (like `ext`, `context`) **inside each variant**, not at the root level.
+
+**Why This Matters:**
+- **TypeScript Generation**: Root-level `properties` with `oneOf` creates intersection types (`Type1 & Type2`) which break Zod generation tools
+- **Zod Compatibility**: Tools like `ts-to-zod` cannot convert intersections of discriminated unions to Zod schemas
+- **Clean Types**: Including common fields in each variant produces clean union types that TypeScript can narrow properly
+- **Maintainability**: Enables automatic Zod schema generation instead of manual schemas that can drift
+
+**Pattern to Use:**
+```json
+{
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "request_type": { "type": "string", "const": "single" },
+        "data": { "type": "string" },
+        "ext": { "$ref": "/schemas/core/ext.json" },
+        "context": { "$ref": "/schemas/core/context.json" }
+      },
+      "required": ["request_type", "data"]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "request_type": { "type": "string", "const": "batch" },
+        "items": { "type": "array" },
+        "ext": { "$ref": "/schemas/core/ext.json" },
+        "context": { "$ref": "/schemas/core/context.json" }
+      },
+      "required": ["request_type", "items"]
+    }
+  ]
+}
+```
+
+**Pattern to AVOID:**
+```json
+{
+  "oneOf": [
+    {
+      "properties": {
+        "request_type": { "const": "single" },
+        "data": { "type": "string" }
+      }
+    },
+    {
+      "properties": {
+        "request_type": { "const": "batch" },
+        "items": { "type": "array" }
+      }
+    }
+  ],
+  "properties": {
+    "ext": { "$ref": "..." },      // ❌ Don't put common fields at root
+    "context": { "$ref": "..." }   // ❌ This creates intersection types
+  }
+}
+```
+
+**Generated TypeScript - Good Pattern:**
+```typescript
+type Request =
+  | { request_type: 'single', data: string, ext?: Ext, context?: Context }
+  | { request_type: 'batch', items: any[], ext?: Ext, context?: Context };
+
+// ✅ Clean discriminated union
+// ✅ ts-to-zod can generate Zod schema automatically
+// ✅ Type narrowing works perfectly
+```
+
+**Generated TypeScript - Bad Pattern:**
+```typescript
+type Request = Request1 & Request2;
+
+interface Request1 {
+  ext?: Ext;
+  context?: Context;
+}
+
+type Request2 =
+  | { request_type: 'single', data: string }
+  | { request_type: 'batch', items: any[] };
+
+// ❌ Intersection type breaks Zod generation
+// ❌ Requires manual Zod schema maintenance
+// ❌ Confusing type structure
+```
+
+**Trade-offs:**
+- **Pro**: Works with all TypeScript codegen tools automatically
+- **Pro**: Enables automatic Zod generation
+- **Pro**: Better developer experience
+- **Con**: Minor duplication (repeating `$ref` in each variant)
+
+The duplication is minimal since we use `$ref` - we're only repeating the reference, not the actual schema definition. The benefits far outweigh this small cost.
+
+**Examples in AdCP:**
+- ✅ `preview-creative-request.json` - `ext` in each variant
+- ✅ `preview-creative-response.json` - `ext` in each variant
+- ✅ `sync-creatives-response.json` - `ext` in each variant
+
 ### Schema Location Map
 
 - **Task Requests**: `static/schemas/v1/media-buy/` or `static/schemas/v1/signals/`

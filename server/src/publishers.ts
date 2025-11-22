@@ -134,7 +134,7 @@ export class PublisherTracker {
       issues.push({
         severity: "warning",
         message: "Missing $schema field",
-        fix: 'Add "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json"',
+        fix: 'Add "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json"',
       });
     }
 

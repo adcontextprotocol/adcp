@@ -9,8 +9,8 @@ title: activate_signal
 
 **Response Time**: Minutes to days (asynchronous with potential human-in-the-loop)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/v1/signals/activate-signal-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/v1/signals/activate-signal-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v2/signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/v2/signals/activate-signal-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v2/signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/v2/signals/activate-signal-response.json)
 
 The `activate_signal` task handles the entire activation lifecycle, including:
 - Initiating the activation request
@@ -264,6 +264,7 @@ data: {"message": "Validating signal access permissions..."}
 data: {"message": "Configuring deployment on The Trade Desk..."}
 data: {"message": "Finalizing activation..."}
 data: {"status": {"state": "completed"}, "artifacts": [{
+  "artifactId": "artifact-signal-activation-abc123",
   "name": "signal_activation_result",
   "parts": [
     {"kind": "text", "text": "Signal successfully activated on The Trade Desk"},

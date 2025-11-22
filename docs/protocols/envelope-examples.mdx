@@ -105,6 +105,7 @@ MCP sends progress notifications separately:
     "state": "completed",
     "artifacts": [
       {
+        "artifactId": "artifact-get-products-abc123",
         "name": "get_products_result",
         "content_type": "application/json",
         "content": "{\"products\": [...]}"
@@ -155,6 +156,7 @@ Later, webhook notification:
   "state": "completed",
   "artifacts": [
     {
+      "artifactId": "artifact-media-buy-webhook-def456",
       "name": "create_media_buy_result",
       "content_type": "application/json",
       "content": "{\"media_buy_id\": \"mb_789\", ...}"
@@ -413,4 +415,4 @@ function wrapResponse(taskResponse, metadata) {
 | **A2A** | `messages[].content` | `task.artifacts[].content` | Task state + webhooks |
 | **REST** | `message` field | `data` field | Polling or webhooks |
 
-The envelope schema (`/schemas/v1/core/protocol-envelope.json`) provides the conceptual model. This document shows how each protocol actually serializes that model on the wire.
+The envelope schema (`/schemas/v2/core/protocol-envelope.json`) provides the conceptual model. This document shows how each protocol actually serializes that model on the wire.

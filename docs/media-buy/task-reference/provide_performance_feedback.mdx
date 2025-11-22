@@ -9,8 +9,8 @@ Share performance outcomes with publishers to enable data-driven optimization an
 
 **Response Time**: ~5 seconds (data ingestion)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/provide-performance-feedback-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/provide-performance-feedback-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-response.json)
 
 ## Request Parameters
 
@@ -120,6 +120,7 @@ A2A returns results as artifacts:
 ```json
 {
   "artifacts": [{
+    "artifactId": "artifact-perf-feedback-abc789",
     "name": "performance_feedback_confirmation",
     "parts": [
       {
@@ -127,7 +128,7 @@ A2A returns results as artifacts:
         "text": "Performance feedback received for campaign gam_1234567890. The 35% above-expected conversion rate will be used to optimize future delivery. Next optimization cycle runs tonight at midnight UTC."
       },
       {
-        "kind": "data", 
+        "kind": "data",
         "data": {
           "success": true
         }

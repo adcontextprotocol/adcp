@@ -12,8 +12,56 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 **PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
-**Request Schema**: [`/schemas/v1/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-request.json)
-**Response Schema**: [`/schemas/v1/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json)
+**Request Schema**: [`/schemas/v2/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-response.json)
+
+## Quick Start
+
+Pause an entire campaign:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+
+const result = await testAgent.updateMediaBuy({
+  buyer_ref: 'summer_campaign_2025',
+  paused: true
+});
+
+// Check for errors (discriminated union response)
+if (result.errors) {
+  console.error('Update failed:', result.errors);
+} else {
+  console.log(`Campaign ${result.media_buy_id} paused`);
+  if (result.implementation_date) {
+    console.log(`Changes take effect: ${result.implementation_date}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def pause_campaign():
+    result = await test_agent.simple.update_media_buy(
+        buyer_ref='summer_campaign_2025',
+        paused=True
+    )
+
+    # Check for errors (discriminated union response)
+    if hasattr(result, 'errors') and result.errors:
+        print('Update failed:', result.errors)
+    else:
+        print(f"Campaign {result.media_buy_id} paused")
+        if result.implementation_date:
+            print(f"Changes take effect: {result.implementation_date}")
+
+asyncio.run(pause_campaign())
+```
+
+</CodeGroup>
 
 ## Request Parameters
 
@@ -23,8 +71,10 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 | `buyer_ref` | string | Yes* | Your reference for the media buy to update |
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
-| `active` | boolean | No | Pause/resume entire media buy |
+| `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
+| `creatives` | CreativeAsset[] | No | Upload and assign new creative assets inline |
+| `creative_assignments` | CreativeAssignment[] | No | Update creative rotation weights and placement targeting |
 
 *Either `media_buy_id` OR `buyer_ref` is required (not both)
 
@@ -34,7 +84,7 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 |-----------|------|-------------|
 | `package_id` | string | Publisher's package identifier to update |
 | `buyer_ref` | string | Your reference for the package to update |
-| `active` | boolean | Pause/resume specific package |
+| `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
 | `budget` | number | Updated budget allocation |
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only) |
@@ -45,78 +95,132 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 ## Response
 
-Returns updated media buy with status:
+### Success Response
 
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
-| `buyer_ref` | Buyer's reference identifier |
-| `status` | Update status (`"completed"`, `"working"`, `"submitted"`) |
-| `affected_packages` | Array of full Package objects showing complete state after update |
+| `buyer_ref` | Your reference identifier |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
-| `message` | Human-readable update description |
+| `affected_packages` | Array of full Package objects showing complete state after update |
 
-See [schema](https://adcontextprotocol.org/schemas/v1/media-buy/update-media-buy-response.json) for complete field list.
+### Error Response
+
+| Field | Description |
+|-------|-------------|
+| `errors` | Array of error objects explaining failure |
+
+**Note**: Responses use discriminated unions - you get either success fields OR errors, never both. Always check for `errors` before accessing success fields.
 
 ## Common Scenarios
 
-**Note**: These examples use `buyer_ref` to reference media buys and packages by your own identifiers. You can also use the publisher's `media_buy_id` and `package_id` if you prefer.
-
-### Pause Campaign
-
-```javascript
-import { testAgent } from '@adcp/client/testing';
-
-// Pause entire campaign using your reference
-const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'mb_summer_2025',
-  active: false
-});
-
-console.log(`Campaign paused`);
-```
-
 ### Update Package Budget
 
-```javascript
+Increase budget for a specific package:
+
+<CodeGroup>
+
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
-// Increase budget for specific package using your reference
 const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'mb_summer_2025',
+  buyer_ref: 'summer_campaign_2025',
   packages: [{
-    buyer_ref: 'pkg_premium',
-    budget: 25000  // Increased from 15000
+    buyer_ref: 'ctv_package',
+    budget: 50000  // Increased from 30000
   }]
 });
 
-console.log(`Package budget updated to ${result.affected_packages[0].budget}`);
+console.log('Full response:', JSON.stringify(result, null, 2));
+
+if (result.errors) {
+  console.error('Update failed:', result.errors);
+} else {
+  const pkg = result.affected_packages[0];
+  console.log(`Package budget updated to ${pkg.budget}`);
+}
 ```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def increase_budget():
+    result = await test_agent.simple.update_media_buy(
+        buyer_ref='summer_campaign_2025',
+        packages=[{
+            'buyer_ref': 'ctv_package',
+            'budget': 50000
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        print('Update failed:', result.errors)
+    else:
+        pkg = result.affected_packages[0]
+        print(f"Package budget updated to {pkg.budget}")
+
+asyncio.run(increase_budget())
+```
+
+</CodeGroup>
 
 ### Change Campaign Dates
 
-```javascript
+Extend campaign end date:
+
+<CodeGroup>
+
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
-// Extend campaign end date
 const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'mb_summer_2025',
-  end_time: '2025-09-30T23:59:59Z'  // Extended from original end date
+  buyer_ref: 'summer_campaign_2025',
+  end_time: '2025-09-30T23:59:59Z'
 });
 
-console.log(`Campaign extended to: ${result.end_time}`);
+if (result.errors) {
+  console.error('Update failed:', result.errors);
+} else {
+  console.log('Campaign end date extended');
+  console.log(`Effective: ${result.implementation_date}`);
+}
 ```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def extend_campaign():
+    result = await test_agent.simple.update_media_buy(
+        buyer_ref='summer_campaign_2025',
+        end_time='2025-09-30T23:59:59Z'
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        print('Update failed:', result.errors)
+    else:
+        print('Campaign end date extended')
+        print(f"Effective: {result.implementation_date}")
+
+asyncio.run(extend_campaign())
+```
+
+</CodeGroup>
 
 ### Update Targeting
 
-```javascript
+Add or modify geographic restrictions:
+
+<CodeGroup>
+
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
-// Add geographic restrictions to package
 const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'mb_summer_2025',
+  buyer_ref: 'summer_campaign_2025',
   packages: [{
-    buyer_ref: 'pkg_premium',
+    buyer_ref: 'ctv_package',
     targeting_overlay: {
       geo_country_any_of: ['US', 'CA'],
       geo_region_any_of: ['CA', 'NY', 'TX', 'ON', 'QC']
@@ -124,25 +228,150 @@ const result = await testAgent.updateMediaBuy({
   }]
 });
 
-console.log('Targeting updated successfully');
+if (result.errors) {
+  console.error('Update failed:', result.errors);
+} else {
+  console.log('Targeting updated successfully');
+}
 ```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def update_targeting():
+    result = await test_agent.simple.update_media_buy(
+        buyer_ref='summer_campaign_2025',
+        packages=[{
+            'buyer_ref': 'ctv_package',
+            'targeting_overlay': {
+                'geo_country_any_of': ['US', 'CA'],
+                'geo_region_any_of': ['CA', 'NY', 'TX', 'ON', 'QC']
+            }
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        print('Update failed:', result.errors)
+    else:
+        print('Targeting updated successfully')
+
+asyncio.run(update_targeting())
+```
+
+</CodeGroup>
 
 ### Replace Creatives
 
-```javascript
+Swap out creative assets for a package:
+
+<CodeGroup>
+
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
-// Swap out creative assets
 const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'mb_summer_2025',
+  buyer_ref: 'summer_campaign_2025',
   packages: [{
-    buyer_ref: 'pkg_premium',
-    creative_ids: ['creative_video_002', 'creative_display_002']
+    buyer_ref: 'ctv_package',
+    creative_ids: ['creative_video_v2', 'creative_display_v2']
   }]
 });
 
-console.log(`Assigned ${result.affected_packages[0].creative_assignments.length} new creatives`);
+if (result.errors) {
+  console.error('Update failed:', result.errors);
+} else {
+  const assignments = result.affected_packages[0].creative_assignments;
+  console.log(`Assigned ${assignments.length} new creatives`);
+}
 ```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def replace_creatives():
+    result = await test_agent.simple.update_media_buy(
+        buyer_ref='summer_campaign_2025',
+        packages=[{
+            'buyer_ref': 'ctv_package',
+            'creative_ids': ['creative_video_v2', 'creative_display_v2']
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        print('Update failed:', result.errors)
+    else:
+        assignments = result.affected_packages[0].creative_assignments
+        print(f"Assigned {len(assignments)} new creatives")
+
+asyncio.run(replace_creatives())
+```
+
+</CodeGroup>
+
+### Multiple Package Updates
+
+Update multiple packages in one call:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+
+const result = await testAgent.updateMediaBuy({
+  buyer_ref: 'summer_campaign_2025',
+  packages: [
+    {
+      buyer_ref: 'ctv_package',
+      budget: 50000,
+      pacing: 'front_loaded'
+    },
+    {
+      buyer_ref: 'audio_package',
+      budget: 30000,
+      active: false
+    }
+  ]
+});
+
+if (result.errors) {
+  console.error('Update failed:', result.errors);
+} else {
+  console.log(`Updated ${result.affected_packages.length} packages`);
+}
+```
+
+```python Python
+import asyncio
+from adcp import test_agent
+
+async def update_multiple_packages():
+    result = await test_agent.simple.update_media_buy(
+        buyer_ref='summer_campaign_2025',
+        packages=[
+            {
+                'buyer_ref': 'ctv_package',
+                'budget': 50000,
+                'pacing': 'front_loaded'
+            },
+            {
+                'buyer_ref': 'audio_package',
+                'budget': 30000,
+                'active': False
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        print('Update failed:', result.errors)
+    else:
+        print(f"Updated {len(result.affected_packages)} packages")
+
+asyncio.run(update_multiple_packages())
+```
+
+</CodeGroup>
 
 ## What Can Be Updated
 
@@ -150,8 +379,7 @@ console.log(`Assigned ${result.affected_packages[0].creative_assignments.length}
 
 ✅ **Can update:**
 - Start/end times (subject to seller approval)
-- Campaign status (active/paused/cancelled)
-- Reporting webhook configuration
+- Campaign status (active/paused)
 
 ❌ **Cannot update:**
 - Media buy ID
@@ -167,7 +395,7 @@ console.log(`Assigned ${result.affected_packages[0].creative_assignments.length}
 - Bid prices (auction products)
 - Targeting overlays
 - Creative assignments
-- Package status
+- Package status (active/paused)
 
 ❌ **Cannot update:**
 - Package ID
@@ -175,80 +403,120 @@ console.log(`Assigned ${result.affected_packages[0].creative_assignments.length}
 - Pricing option ID
 - Format IDs (creatives must match existing formats)
 
+## Error Handling
+
+Common errors and resolutions:
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id or buyer_ref |
+| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify package_id or buyer_ref |
+| `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
+| `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
+| `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
+| `INVALID_STATE` | Operation not allowed in current state | Check campaign status |
+
+Example error response:
+
+```json
+{
+  "errors": [{
+    "code": "UPDATE_NOT_ALLOWED",
+    "message": "Cannot change product_id for existing package",
+    "field": "packages[0].product_id",
+    "suggestion": "Create a new package with the desired product instead"
+  }]
+}
+```
+
 ## Update Approval
 
-Some updates require seller approval and return `status: "submitted"`:
+Some updates require seller approval and return pending status:
 
 - **Significant budget increases** (threshold varies by seller)
 - **Date range changes** affecting inventory availability
 - **Targeting changes** that alter campaign scope
 - **Creative changes** requiring policy review
 
-When approval is needed:
-```javascript
-if (result.status === 'submitted') {
-  console.log('Update requires approval:', result.message);
-  // Set up status monitoring
+When approval is needed, `implementation_date` will be `null`:
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "summer_campaign_2025",
+  "implementation_date": null,
+  "affected_packages": []
 }
 ```
 
 ## PATCH Semantics
 
-Only specified fields are updated:
+Only specified fields are updated - omitted fields remain unchanged:
 
-```javascript
-// This update ONLY changes budget - all other fields unchanged
-await testAgent.updateMediaBuy({
-  buyer_ref: 'mb_summer_2025',
-  packages: [{
-    buyer_ref: 'pkg_premium',
-    budget: 25000
+```json
+{
+  "buyer_ref": "summer_campaign_2025",
+  "packages": [{
+    "buyer_ref": "ctv_package",
+    "budget": 50000
   }]
-});
-```
-
-To replace arrays (like creative_ids), provide the complete new array:
-
-```javascript
-// Replaces ALL creatives with new list
-packages: [{
-  buyer_ref: 'pkg_premium',
-  creative_ids: ['creative_video_002', 'creative_display_002']
-}]
-```
-
-## Error Handling
-
-| Error Code | Description | Resolution |
-|------------|-------------|------------|
-| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
-| `INVALID_REQUEST` | Invalid field values | Check request against schema |
-| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
-| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify package_id |
-| `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
-| `POLICY_VIOLATION` | Update violates content policy | Review policy message |
-| `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
-
-## Async Workflows
-
-Updates may be asynchronous, especially with seller approval:
-
-```javascript
-const result = await agent.updateMediaBuy({...});
-
-if (result.status === 'working') {
-  // Poll for completion after a few seconds
-  await new Promise(resolve => setTimeout(resolve, 5000));
-  // Check status via protocol-specific mechanism
-}
-
-if (result.status === 'submitted') {
-  // Manual approval required (hours to days)
-  console.log('Awaiting seller approval:', result.message);
 }
 ```
 
-See [Task Management](/docs/protocols/task-management) for protocol-specific async patterns.
+**Array replacement**: When updating arrays (like `creative_ids`), provide the complete new array:
+
+```json
+{
+  "packages": [{
+    "buyer_ref": "ctv_package",
+    "creative_ids": ["creative_video_v2", "creative_display_v2"]
+  }]
+}
+```
+
+## Asynchronous Operations
+
+Updates may be asynchronous, especially with seller approval.
+
+### Response Patterns
+
+**Synchronous (completed immediately)**:
+```json
+{
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "summer_campaign_2025",
+  "implementation_date": "2025-06-15T10:00:00Z",
+  "affected_packages": []
+}
+```
+
+**Asynchronous (processing)**:
+```json
+{
+  "status": "working",
+  "message": "Processing update..."
+}
+```
+Poll for completion or use webhooks/streaming.
+
+**Manual Approval Required**:
+```json
+{
+  "status": "submitted",
+  "message": "Update requires seller approval (2-4 hours)"
+}
+```
+Will take hours to days.
+
+### Protocol-Specific Handling
+
+AdCP tasks work across multiple protocols (MCP, A2A, REST). Each protocol handles async operations differently:
+
+- **Status checking**: Polling, webhooks, or streaming
+- **Updates**: Protocol-specific mechanisms
+- **Long-running tasks**: Different timeout and notification patterns
+
+See [Task Management](/docs/protocols/task-management) for protocol-specific async patterns and examples.
 
 ## Best Practices
 
@@ -259,13 +527,24 @@ Update only what needs to change - don't resend unchanged values.
 Small incremental increases are more likely to be auto-approved than large jumps.
 
 **3. Pause Before Major Changes**
-Pause campaigns before making significant targeting or creative changes.
+Pause campaigns before making significant targeting or creative changes to avoid delivery issues.
 
 **4. Test with Small Changes**
 Test update workflows with minor changes before critical campaign modifications.
 
 **5. Monitor Status**
-Always check response status and message for approval requirements or errors.
+Always check response status and `implementation_date` for approval requirements.
+
+**6. Validate Package State**
+Check `affected_packages` in response to confirm changes were applied correctly.
+
+## Usage Notes
+
+- Updates are atomic - either all changes apply or none do
+- Both media buys and packages can be referenced by `buyer_ref` or publisher IDs
+- Pending states (`working`, `submitted`) are normal, not errors
+- Orchestrators MUST handle pending states as part of normal workflow
+- `implementation_date` indicates when changes take effect (null if pending approval)
 
 ## Next Steps
 

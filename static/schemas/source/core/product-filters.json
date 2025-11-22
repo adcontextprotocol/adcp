@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/product-filters.json",
+  "title": "Product Filters",
+  "description": "Structured filters for product discovery",
+  "type": "object",
+  "properties": {
+    "delivery_type": {
+      "$ref": "/schemas/enums/delivery-type.json"
+    },
+    "is_fixed_price": {
+      "type": "boolean",
+      "description": "Filter for fixed price vs auction products"
+    },
+    "format_types": {
+      "type": "array",
+      "description": "Filter by format types",
+      "items": {
+        "$ref": "/schemas/enums/format-category.json"
+      }
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Filter by specific format IDs",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
+    "standard_formats_only": {
+      "type": "boolean",
+      "description": "Only return products accepting IAB standard formats"
+    },
+    "min_exposures": {
+      "type": "integer",
+      "description": "Minimum exposures/impressions needed for measurement validity",
+      "minimum": 1
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Campaign start date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Campaign end date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
+    },
+    "budget_range": {
+      "type": "object",
+      "description": "Budget range to filter appropriate products",
+      "properties": {
+        "min": {
+          "type": "number",
+          "description": "Minimum budget amount",
+          "minimum": 0
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum budget amount",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": ["currency"],
+      "anyOf": [
+        {"required": ["min"]},
+        {"required": ["max"]}
+      ],
+      "additionalProperties": false
+    },
+    "countries": {
+      "type": "array",
+      "description": "Filter by target countries using ISO 3166-1 alpha-2 country codes (e.g., ['US', 'CA', 'GB'])",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "channels": {
+      "type": "array",
+      "description": "Filter by advertising channels (e.g., ['display', 'video', 'dooh'])",
+      "items": {
+        "$ref": "/schemas/enums/channels.json"
+      }
+    }
+  },
+  "additionalProperties": false
+}

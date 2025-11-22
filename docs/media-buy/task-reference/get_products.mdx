@@ -11,8 +11,8 @@ Discover available advertising products based on campaign requirements using nat
 
 **Response Time**: ~60 seconds (AI inference with back-end systems)
 
-**Request Schema**: [`/schemas/v1/media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v1/media-buy/get-products-request.json)
-**Response Schema**: [`/schemas/v1/media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/get-products-response.json)
+**Request Schema**: [`/schemas/v2/media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
 
 ## Quick Start
 
@@ -162,6 +162,21 @@ asyncio.run(discover_with_filters())
 | `format_ids` | FormatID[] | Filter by specific format IDs |
 | `standard_formats_only` | boolean | Only return products accepting IAB standard formats |
 | `min_exposures` | integer | Minimum exposures needed for measurement validity |
+| `start_date` | string | Campaign start date in ISO 8601 format (YYYY-MM-DD) for availability checks |
+| `end_date` | string | Campaign end date in ISO 8601 format (YYYY-MM-DD) for availability checks |
+| `budget_range` | object | Budget range to filter appropriate products (see Budget Range Object below) |
+| `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (e.g., `["US", "CA", "GB"]`) |
+| `channels` | string[] | Filter by advertising channels (e.g., `["display", "video", "dooh", "ctv", "audio", "native"]`) |
+
+### Budget Range Object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `currency` | string | Yes | ISO 4217 currency code (e.g., `"USD"`, `"EUR"`, `"GBP"`) |
+| `min` | number | No* | Minimum budget amount |
+| `max` | number | No* | Maximum budget amount |
+
+*At least one of `min` or `max` must be specified.
 
 ## Response
 
@@ -179,7 +194,7 @@ Returns an array of `products`, each containing:
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.) |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
 
-**See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v1/media-buy/get-products-response.json)
+**See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
 
 ## Common Scenarios
 
@@ -275,32 +290,36 @@ asyncio.run(discover_multi_format())
 
 </CodeGroup>
 
-### Budget-Based Filtering
+### Budget and Date Filtering
 
 <CodeGroup>
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
-// Find cost-effective products
+// Find products within budget and date range for specific countries and channels
 const result = await testAgent.getProducts({
-  brief: 'Cost-effective video inventory for $10k budget',
+  brief: 'Q2 campaign for athletic footwear in North America',
   brand_manifest: {
     name: 'Nike',
     url: 'https://nike.com'
+  },
+  filters: {
+    start_date: '2025-04-01',
+    end_date: '2025-06-30',
+    budget_range: {
+      min: 50000,
+      max: 100000,
+      currency: 'USD'
+    },
+    countries: ['US', 'CA'],
+    channels: ['display', 'video', 'ctv'],
+    delivery_type: 'guaranteed'
   }
 });
 
 if (result.success && result.data) {
-  // Filter products by budget
-  const budget = 10000;
-  const affordable = result.data.products.filter(p => {
-    const lowestCPM = Math.min(...p.pricing_options.map(opt => opt.cpm || Infinity));
-    const estimatedCost = (lowestCPM / 1000) * (p.min_exposures || 10000);
-    return estimatedCost <= budget;
-  });
-
-  console.log(`Found ${affordable.length} products within $${budget} budget`);
+  console.log(`Found ${result.data.products.length} products for Q2 within budget`);
 }
 ```
 
@@ -308,25 +327,30 @@ if (result.success && result.data) {
 import asyncio
 from adcp import test_agent
 
-async def discover_budget_friendly():
-    # Find cost-effective products
+async def discover_with_budget_and_dates():
+    # Find products within budget and date range for specific countries and channels
     result = await test_agent.simple.get_products(
-        brief='Cost-effective video inventory for $10k budget',
+        brief='Q2 campaign for athletic footwear in North America',
         brand_manifest={
             'name': 'Nike',
             'url': 'https://nike.com'
+        },
+        filters={
+            'start_date': '2025-04-01',
+            'end_date': '2025-06-30',
+            'budget_range': {
+                'min': 50000,
+                'max': 100000,
+                'currency': 'USD'
+            },
+            'countries': ['US', 'CA'],
+            'channels': ['display', 'video', 'ctv'],
+            'delivery_type': 'guaranteed'
         }
     )
+    print(f"Found {len(result.products)} products for Q2 within budget")
 
-    # Filter products by budget
-    budget = 10000
-    affordable = [p for p in result.products
-        if min((opt.get('cpm', float('inf')) for opt in p['pricing_options'])) / 1000
-            * p.get('min_exposures', 10000) <= budget]
-
-    print(f"Found {len(affordable)} products within ${budget} budget")
-
-asyncio.run(discover_budget_friendly())
+asyncio.run(discover_with_budget_and_dates())
 ```
 
 </CodeGroup>

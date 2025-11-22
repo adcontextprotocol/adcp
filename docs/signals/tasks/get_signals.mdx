@@ -9,8 +9,8 @@ title: get_signals
 
 **Response Time**: ~60 seconds (inference/RAG with back-end systems)
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v1/signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/v1/signals/get-signals-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v1/signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v1/signals/get-signals-response.json)
+**Request Schema**: [`https://adcontextprotocol.org/schemas/v2/signals/get-signals-request.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-request.json)
+**Response Schema**: [`https://adcontextprotocol.org/schemas/v2/signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-response.json)
 
 The `get_signals` task returns both signal metadata and real-time deployment status across platforms, allowing agents to understand availability and guide the activation process.
 
@@ -342,6 +342,7 @@ A2A returns results as artifacts with the same data structure:
 ```json
 {
   "artifacts": [{
+      "artifactId": "artifact-signal-discovery-def456",
       "name": "signal_discovery_result",
       "parts": [
         {
