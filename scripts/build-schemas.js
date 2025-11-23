@@ -154,11 +154,13 @@ function main() {
   console.log('✅ Schema build complete!');
   console.log('');
   console.log('Available paths:');
-  console.log(`   /schemas/${version}/          - Exact version`);
-  console.log(`   /schemas/v${majorVersion}/              - Latest v${majorVersion}.x release`);
-  console.log(`   /schemas/v${minorVersion}/            - Latest v${minorVersion}.x patch`);
+  console.log(`   /schemas/${version}/          - Exact version (pin for production)`);
+  console.log(`   /schemas/v${minorVersion}/            - Minor alias (patch updates only)`);
+  console.log(`   /schemas/v${majorVersion}/              - Major alias (minor + patch updates)`);
   console.log(`   /schemas/v1/              - Backward compatibility (same as v${majorVersion})`);
-  console.log(`   /schemas/latest/           - Latest release`);
+  console.log(`   /schemas/latest/           - Latest release (all updates)`);
+  console.log('');
+  console.log('📖 See docs/reference/schema-versioning.mdx for guidance on which to use.');
 }
 
 main();

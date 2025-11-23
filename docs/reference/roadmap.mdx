@@ -11,17 +11,24 @@ This roadmap outlines the planned evolution of the AdCP protocol. All dates are 
 
 ---
 
-## Version 2.5.0 - Final 2025 Release
+## Version 2.5.0 - Shipped ✅
 
-**Target Release:** November 21, 2025
+**Released:** November 2025 | [View Release Notes](./release-notes#version-250)
 
-### What's Included
+Version 2.5.0 delivered developer experience and API refinement improvements including:
+- **Type Safety & Code Generation** - Discriminator fields throughout for excellent TypeScript/Python type inference
+- **Batch Creative Previews** - Preview up to 50 creatives in a single call (5-10x faster)
+- **Schema Infrastructure** - Build-time versioning with semantic paths (`/schemas/v2.5/`)
+- **Agent Cards** - ADCP extension schema for capability discovery
+- **Brand Manifest** - Standardized brand information for creative generation
+- **Template Formats** - Dynamic creative sizing via `accepts_parameters` (dimensions, duration, etc.)
+- **Inline Creative Updates** - `sync_creatives` task for updating creatives in existing campaigns
+- **Enhanced Product Filtering** - Structured filters with date ranges, budget ranges, countries, and channels
+- **Explicit Extension Support** - Formal extension mechanism via agent cards
 
-Version 2.5.0 is the final significant release for 2025. This release focuses on stability and refinement of existing features.
+### Through End of 2025
 
-### After 2.5.0
-
-From December 2025 through the end of the year:
+From December 2025 through year end:
 - **Patch releases only** for bug fixes and critical issues
 - No new features or breaking changes
 - Focus on stability and production readiness
@@ -38,22 +45,14 @@ Version 3.0 represents a significant evolution of the protocol with several majo
 
 #### Creative Agent Protocol Enhancements
 - **Hosted Creative Sets** - New protocol for managing collections of related creatives
-- **Inline Creative Updates** - Ability to update creatives within existing campaigns
-- **Dynamic Creative Sizing** - Enhanced support for responsive and adaptive creative dimensions
 
 #### Registry & Discovery
 - **Property Registry** - Centralized registry for publisher property definitions
-- **Agent Cards** - Explicit AdCP agent card extension for better discoverability
-- **Brand Manifest Specification** - `brand.json` at `.well-known` location for brand identity and assets
-
-#### Protocol Extensibility
-- **Explicit Extension Support** - Formal mechanism for protocol extensions
-- Better namespace management for custom capabilities
 
 ### Under Consideration
 
 These features are in active development but may not make the 3.0 release:
-- Enhanced product filtering capabilities
+- Better namespace management for custom capabilities
 
 ---
 

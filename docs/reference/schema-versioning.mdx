@@ -13,6 +13,13 @@ AdCP uses semantic versioning for schemas with multiple access patterns to balan
 
 All AdCP schemas are available at multiple paths:
 
+| Path Pattern | Example | Updates With | Best For |
+|--------------|---------|--------------|----------|
+| `/schemas/{version}/` | `/schemas/2.5.0/` | Never | Production, SDK generation |
+| `/schemas/v{major}.{minor}/` | `/schemas/v2.5/` | Patch releases only | Stable development |
+| `/schemas/v{major}/` | `/schemas/v2/` | Minor + patch releases | Active development, docs |
+| `/schemas/latest/` | `/schemas/latest/` | All releases | Prototyping only |
+
 ### Exact Version (Recommended for Production)
 ```
 /schemas/2.5.0/core/product.json
@@ -28,6 +35,15 @@ All AdCP schemas are available at multiple paths:
 - **Tracks latest 2.x release** - Automatically updates with minor/patch releases
 - **Backward compatible** - No breaking changes within major version
 - **Best for**: Documentation examples, development, staying current
+
+### Minor Version Alias (Recommended for Stable Development)
+```
+/schemas/v2.5/core/product.json
+```
+- **Tracks latest 2.5.x patch** - Automatically updates with patch releases only
+- **More stable than major alias** - Only receives bug fixes, no new features
+- **Backward compatible** - No breaking changes within minor version
+- **Best for**: Applications wanting automatic security/bug fixes without new features
 
 ### Latest Alias (Use with Caution)
 ```
@@ -54,7 +70,10 @@ All AdCP schemas are available at multiple paths:
 const SCHEMA_VERSION = '2.5.0';
 const schema = await fetch(`https://adcp.org/schemas/${SCHEMA_VERSION}/core/product.json`);
 
-// Development - track major version
+// Stable development - track minor version (patch updates only)
+const schema = await fetch('https://adcp.org/schemas/v2.5/core/product.json');
+
+// Active development - track major version (minor + patch updates)
 const schema = await fetch('https://adcp.org/schemas/v2/core/product.json');
 ```
 
