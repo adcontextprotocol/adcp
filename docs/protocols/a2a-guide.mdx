@@ -212,8 +212,6 @@ function processA2aResponse(response) {
 
   return { status: response.status };
 }
-
-return { status: response.status };
 ```
 
 **For complete response structure requirements, error handling, and implementation patterns, see [A2A Response Format](/docs/protocols/a2a-response-format).**
@@ -506,10 +504,16 @@ async function handleA2aResponse(response) {
     case 'working':
       // Monitor via SSE streaming
       return streamUpdates(response.taskId);
-      
+
     case 'completed':
-      return response.artifacts[0].parts[1].data;
-      
+      // Safely extract data from artifact
+      const artifact = response.artifacts?.[0];
+      if (artifact) {
+        const dataPart = artifact.parts?.find(p => p.kind === 'data');
+        return dataPart?.data;
+      }
+      return null;
+
     case 'failed':
       throw new Error(response.message);
   }
