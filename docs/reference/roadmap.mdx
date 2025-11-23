@@ -11,17 +11,20 @@ This roadmap outlines the planned evolution of the AdCP protocol. All dates are 
 
 ---
 
-## Version 2.5.0 - Final 2025 Release
+## Version 2.5.0 - Shipped ✅
 
-**Target Release:** November 21, 2025
+**Released:** November 2025 | [View Release Notes](./release-notes#version-250)
 
-### What's Included
+Version 2.5.0 delivered developer experience and API refinement improvements including:
+- **Type Safety & Code Generation** - Discriminator fields throughout for excellent TypeScript/Python type inference
+- **Batch Creative Previews** - Preview up to 50 creatives in a single call (5-10x faster)
+- **Schema Infrastructure** - Build-time versioning with semantic paths (`/schemas/v2.5/`)
+- **Agent Cards** - ADCP extension schema for capability discovery
+- **Brand Manifest** - Standardized brand information for creative generation
 
-Version 2.5.0 is the final significant release for 2025. This release focuses on stability and refinement of existing features.
+### Through End of 2025
 
-### After 2.5.0
-
-From December 2025 through the end of the year:
+From December 2025 through year end:
 - **Patch releases only** for bug fixes and critical issues
 - No new features or breaking changes
 - Focus on stability and production readiness
@@ -43,8 +46,6 @@ Version 3.0 represents a significant evolution of the protocol with several majo
 
 #### Registry & Discovery
 - **Property Registry** - Centralized registry for publisher property definitions
-- **Agent Cards** - Explicit AdCP agent card extension for better discoverability
-- **Brand Manifest Specification** - `brand.json` at `.well-known` location for brand identity and assets
 
 #### Protocol Extensibility
 - **Explicit Extension Support** - Formal mechanism for protocol extensions
