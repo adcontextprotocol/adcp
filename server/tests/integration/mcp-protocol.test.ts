@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { HTTPServer } from '../../src/http.js';
 import { Registry } from '../../src/registry.js';
@@ -8,6 +8,15 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Mock config to prevent database connections
+vi.mock('../../src/config.js', async () => {
+  const actual = await vi.importActual('../../src/config.js');
+  return {
+    ...actual,
+    getDatabaseConfig: vi.fn().mockReturnValue(null),
+  };
+});
+
 describe('MCP Protocol Compliance', () => {
   let server: HTTPServer;
   let app: any;
@@ -15,8 +24,8 @@ describe('MCP Protocol Compliance', () => {
   beforeAll(async () => {
     // Use real registry for integration tests
     server = new HTTPServer();
-    // Load registry manually for testing (normally done in start())
-    await server['registry'].load();
+    // Initialize registry manually for testing (normally done in start())
+    await server['registry'].initialize();
     app = server['app']; // Access private app property for testing
   });
 

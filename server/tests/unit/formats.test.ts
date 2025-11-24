@@ -4,13 +4,15 @@ import type { Agent } from '../../src/types.js';
 
 // Mock @adcp/client
 vi.mock('@adcp/client', () => ({
-  AgentClient: vi.fn().mockImplementation(() => ({
-    executeTask: vi.fn().mockResolvedValue({
-      success: true,
-      data: [
-        { name: 'iab_standard_display', dimensions: '300x250', type: 'display' },
-        { name: 'iab_standard_display', dimensions: '728x90', type: 'display' }
-      ]
+  AdCPClient: vi.fn().mockImplementation(() => ({
+    agent: vi.fn().mockReturnValue({
+      executeTask: vi.fn().mockResolvedValue({
+        success: true,
+        data: [
+          { name: 'iab_standard_display', dimensions: '300x250', type: 'display' },
+          { name: 'iab_standard_display', dimensions: '728x90', type: 'display' }
+        ]
+      })
     })
   }))
 }));
@@ -59,14 +61,16 @@ describe('FormatsService', () => {
     });
 
     it('caches results for 15 minutes', async () => {
-      const { AgentClient } = await import('@adcp/client');
+      const { AdCPClient } = await import('@adcp/client');
       const mockExecuteTask = vi.fn().mockResolvedValue({
         success: true,
         data: [{ name: 'format1' }]
       });
 
-      (AgentClient as any).mockImplementation(() => ({
-        executeTask: mockExecuteTask
+      (AdCPClient as any).mockImplementation(() => ({
+        agent: vi.fn().mockReturnValue({
+          executeTask: mockExecuteTask
+        })
       }));
 
       // First call
@@ -79,11 +83,13 @@ describe('FormatsService', () => {
     });
 
     it('handles agent errors gracefully', async () => {
-      const { AgentClient } = await import('@adcp/client');
-      (AgentClient as any).mockImplementation(() => ({
-        executeTask: vi.fn().mockResolvedValue({
-          success: false,
-          error: 'Agent offline'
+      const { AdCPClient } = await import('@adcp/client');
+      (AdCPClient as any).mockImplementation(() => ({
+        agent: vi.fn().mockReturnValue({
+          executeTask: vi.fn().mockResolvedValue({
+            success: false,
+            error: 'Agent offline'
+          })
         })
       }));
 
@@ -94,9 +100,11 @@ describe('FormatsService', () => {
     });
 
     it('handles missing tool gracefully', async () => {
-      const { AgentClient } = await import('@adcp/client');
-      (AgentClient as any).mockImplementation(() => ({
-        executeTask: vi.fn().mockRejectedValue(new Error('Tool not found'))
+      const { AdCPClient } = await import('@adcp/client');
+      (AdCPClient as any).mockImplementation(() => ({
+        agent: vi.fn().mockReturnValue({
+          executeTask: vi.fn().mockRejectedValue(new Error('Tool not found'))
+        })
       }));
 
       const profile = await service.getFormatsForAgent(mockAgent);
@@ -108,11 +116,13 @@ describe('FormatsService', () => {
 
   describe('normalizeFormat', () => {
     it('handles string format names', async () => {
-      const { AgentClient } = await import('@adcp/client');
-      (AgentClient as any).mockImplementation(() => ({
-        executeTask: vi.fn().mockResolvedValue({
-          success: true,
-          data: ['format1', 'format2']
+      const { AdCPClient } = await import('@adcp/client');
+      (AdCPClient as any).mockImplementation(() => ({
+        agent: vi.fn().mockReturnValue({
+          executeTask: vi.fn().mockResolvedValue({
+            success: true,
+            data: ['format1', 'format2']
+          })
         })
       }));
 
@@ -124,15 +134,17 @@ describe('FormatsService', () => {
     });
 
     it('handles object with formats array', async () => {
-      const { AgentClient } = await import('@adcp/client');
-      (AgentClient as any).mockImplementation(() => ({
-        executeTask: vi.fn().mockResolvedValue({
-          success: true,
-          data: {
-            formats: [
-              { name: 'display', dimensions: '300x250' }
-            ]
-          }
+      const { AdCPClient } = await import('@adcp/client');
+      (AdCPClient as any).mockImplementation(() => ({
+        agent: vi.fn().mockReturnValue({
+          executeTask: vi.fn().mockResolvedValue({
+            success: true,
+            data: {
+              formats: [
+                { name: 'display', dimensions: '300x250' }
+              ]
+            }
+          })
         })
       }));
 
@@ -144,16 +156,18 @@ describe('FormatsService', () => {
     });
 
     it('handles different property naming conventions', async () => {
-      const { AgentClient } = await import('@adcp/client');
-      (AgentClient as any).mockImplementation(() => ({
-        executeTask: vi.fn().mockResolvedValue({
-          success: true,
-          data: [{
-            format: 'video',
-            size: '1920x1080',
-            aspectRatio: '16:9',
-            format_type: 'video'
-          }]
+      const { AdCPClient } = await import('@adcp/client');
+      (AdCPClient as any).mockImplementation(() => ({
+        agent: vi.fn().mockReturnValue({
+          executeTask: vi.fn().mockResolvedValue({
+            success: true,
+            data: [{
+              format: 'video',
+              size: '1920x1080',
+              aspectRatio: '16:9',
+              format_type: 'video'
+            }]
+          })
         })
       }));
 

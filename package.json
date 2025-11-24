@@ -7,6 +7,8 @@
     "start:mcp": "MODE=mcp tsx watch server/src/index.ts",
     "start:mintlify": "bash scripts/start-mintlify.sh",
     "dev": "CONDUCTOR_PORT=55020 concurrently --names \"HTTP,DOCS\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run start\" \"npm run start:mintlify\"",
+    "db:migrate": "tsx server/src/db/migrate.ts",
+    "db:seed": "tsx server/src/db/seed-registry.ts",
     "build": "tsc --project server/tsconfig.json && npm run build:schemas",
     "build:schemas": "node scripts/build-schemas.js",
     "build:mintlify": "cd mintlify-docs && mintlify build",
@@ -33,12 +35,14 @@
     "@modelcontextprotocol/sdk": "^1.0.4",
     "axios": "^1.7.0",
     "express": "^4.18.2",
+    "pg": "^8.13.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.7",
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.5",
+    "@types/pg": "^8.11.10",
     "@types/supertest": "^6.0.3",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
