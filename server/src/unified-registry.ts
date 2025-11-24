@@ -7,21 +7,14 @@ import type { Agent, AgentType } from "./types.js";
 
 export type RegistryMode = "database" | "file";
 
-export interface RegistryInitializationError {
-  type: "connection" | "migration" | "unknown";
-  message: string;
-  originalError: Error;
-}
-
 /**
  * Unified registry that supports both file-based and database-backed storage
- * Automatically falls back to file-based if database is not available
+ * Mode is determined at startup based on DATABASE_URL presence (no fallback)
  */
 export class UnifiedRegistry {
   private fileRegistry: Registry;
   private dbRegistry: RegistryDatabase | null = null;
   private mode: RegistryMode = "file";
-  private initializationError: RegistryInitializationError | null = null;
 
   constructor() {
     this.fileRegistry = new Registry();
@@ -29,67 +22,33 @@ export class UnifiedRegistry {
   }
 
   /**
-   * Initialize the registry - tries database first, falls back to file-based
+   * Initialize the registry - database mode or file mode (no fallback)
    */
   async initialize(): Promise<void> {
     const dbConfig = getDatabaseConfig();
 
     if (dbConfig) {
-      try {
-        console.log("Initializing database-backed registry...");
+      // Database mode - fail if database doesn't work
+      console.log("Initializing database-backed registry...");
 
-        // Initialize database connection
-        initializeDatabase(dbConfig);
+      // Initialize database connection
+      initializeDatabase(dbConfig);
 
-        // Run migrations
-        await runMigrations();
+      // Run migrations
+      await runMigrations();
 
-        // Create database registry
-        this.dbRegistry = new RegistryDatabase();
-        this.mode = "database";
+      // Create database registry
+      this.dbRegistry = new RegistryDatabase();
+      this.mode = "database";
 
-        console.log("✓ Using database-backed registry");
-        return;
-      } catch (error) {
-        // Categorize error type for better diagnostics
-        const errorType = this.categorizeError(error);
-        this.initializationError = {
-          type: errorType,
-          message: error instanceof Error ? error.message : String(error),
-          originalError: error instanceof Error ? error : new Error(String(error)),
-        };
-
-        console.error(`Failed to initialize database registry (${errorType}):`, error);
-        console.log("Falling back to file-based registry");
-        this.mode = "file";
-      }
+      console.log("✓ Using database-backed registry");
     } else {
+      // File mode - only when no DATABASE_URL configured
       console.log("No DATABASE_URL found, using file-based registry");
+      await this.fileRegistry.load();
+      this.mode = "file";
+      console.log("✓ Using file-based registry");
     }
-
-    // Fall back to file-based registry
-    await this.fileRegistry.load();
-    console.log("✓ Using file-based registry");
-  }
-
-  /**
-   * Categorize database initialization errors
-   */
-  private categorizeError(error: unknown): "connection" | "migration" | "unknown" {
-    if (error instanceof Error) {
-      const message = error.message.toLowerCase();
-      if (
-        message.includes("connect") ||
-        message.includes("econnrefused") ||
-        message.includes("timeout")
-      ) {
-        return "connection";
-      }
-      if (message.includes("migration") || message.includes("schema")) {
-        return "migration";
-      }
-    }
-    return "unknown";
   }
 
   /**
@@ -150,13 +109,6 @@ export class UnifiedRegistry {
    */
   isUsingDatabase(): boolean {
     return this.mode === "database";
-  }
-
-  /**
-   * Get initialization error if any
-   */
-  getInitializationError(): RegistryInitializationError | null {
-    return this.initializationError;
   }
 
   /**

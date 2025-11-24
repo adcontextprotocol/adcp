@@ -86,10 +86,10 @@ npm start
 
 The server will:
 - Connect to database if `DATABASE_URL` is set
-- Use file mode if no `DATABASE_URL` is provided
+- Use file mode if no `DATABASE_URL` is provided (development/testing only)
 - Log the active registry mode
 
-**Note**: The system gracefully handles database unavailability by falling back to file mode. This is for operational resilience during outages, not as a design goal. The expectation is that database issues will be resolved, not accepted.
+**Note**: If `DATABASE_URL` is set but database connection fails, the server will crash. This is intentional - database issues must be fixed, not ignored.
 
 ## Database Schema
 
@@ -116,6 +116,7 @@ cat server/src/db/migrations/001_initial.sql
 
 The `/health` endpoint reports registry status:
 
+**Database mode:**
 ```json
 {
   "status": "ok",
@@ -126,29 +127,16 @@ The `/health` endpoint reports registry status:
 }
 ```
 
-When database connection fails (temporary fallback):
-
+**File mode (development only):**
 ```json
 {
   "status": "ok",
   "registry": {
     "mode": "file",
-    "using_database": false,
-    "degraded": true,
-    "error": {
-      "type": "connection",
-      "message": "Connection refused"
-    }
+    "using_database": false
   }
 }
 ```
-
-**Important**: The `degraded: true` flag indicates a temporary operational state, not a supported configuration. When you see this:
-1. **Investigate immediately** - Check database connectivity, credentials, and migrations
-2. **Fix the root cause** - Don't rely on file mode as a permanent solution
-3. **Monitor alerts** - Set up alerts on this flag
-
-The fallback exists for operational resilience (e.g., brief network issues), not as an acceptable long-term state.
 
 ## Migration System
 
@@ -216,16 +204,13 @@ find registry/ -name "*.json" -exec jsonlint {} \;
 npm run db:seed -- --clean
 ```
 
-### Health Check Shows Degraded Mode
+### Server Won't Start
 
-**This requires immediate action - the system is not operating as designed.**
+If the server crashes on startup with database errors:
 
-1. Check error type in `/health` response
-2. **Connection errors**: Verify database server is running and accessible
-3. **Migration errors**: Check schema version, run migrations if needed
-4. **Unknown errors**: Review application logs for root cause
-
-**Do not ignore degraded mode.** It indicates the system is running in a fallback state that should be temporary only.
+1. **Connection errors**: Verify database server is running and accessible
+2. **Migration errors**: Check schema version, run migrations if needed
+3. **Authentication errors**: Verify DATABASE_URL credentials are correct
 
 ## Performance Considerations
 
@@ -244,7 +229,7 @@ npm run db:seed -- --clean
 - ✅ Audit trail support
 - ⚠️ Requires database server (this is expected, not a limitation)
 
-**For production deployments**: Always use database mode. File mode is for development, testing, and temporary operational fallback only.
+**For production deployments**: Always use database mode. File mode is for development and testing only.
 
 ## Deployment
 

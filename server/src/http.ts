@@ -822,7 +822,6 @@ export class HTTPServer {
     // Health check with registry status
     this.app.get("/health", (req, res) => {
       const registryMode = this.registry.getMode();
-      const initError = this.registry.getInitializationError();
 
       const health: any = {
         status: "ok",
@@ -831,15 +830,6 @@ export class HTTPServer {
           using_database: registryMode === "database",
         },
       };
-
-      // Include initialization error if in degraded mode
-      if (registryMode === "file" && initError) {
-        health.registry.degraded = true;
-        health.registry.error = {
-          type: initError.type,
-          message: initError.message,
-        };
-      }
 
       res.json(health);
     });
