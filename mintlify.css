@@ -1,0 +1,20 @@
+/* Custom Mintlify styles */
+
+/* Logo sizing in sidebar - match the navbar style */
+.navbar__logo img,
+img[alt*="Logo"],
+img[src*="/logo/"] {
+  height: 32px !important;
+  width: auto !important;
+}
+
+/* Dark mode navbar support for Mintlify */
+[data-theme="dark"] nav[aria-label="Main"] {
+  background-color: #1b1b1d !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .navbar__link,
+[data-theme="dark"] .navbar__title {
+  color: #fff !important;
+}

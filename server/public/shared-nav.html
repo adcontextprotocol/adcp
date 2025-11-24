@@ -4,7 +4,8 @@
     <div class="navbar__items" style="display: flex; align-items: center; gap: 1.5rem;">
       <a class="navbar__brand" href="/" style="display: flex; align-items: center; gap: 0.75rem; text-decoration: none; color: inherit;">
         <div class="navbar__logo">
-          <img src="/adcp_logo.svg" alt="AdCP Logo" style="height: 32px; width: 32px;">
+          <img src="/logo/light.svg" alt="AdCP Logo" class="logo-light" style="height: 20px; width: auto;">
+          <img src="/logo/dark.svg" alt="AdCP Logo" class="logo-dark" style="height: 20px; width: auto; display: none;">
         </div>
         <b class="navbar__title" style="font-size: 1.25rem; font-weight: 700; color: var(--ifm-navbar-link-color, #000);">AdCP</b>
       </a>
@@ -25,6 +26,45 @@
     --ifm-navbar-link-color: #000;
     --ifm-navbar-link-hover-color: #667eea;
     --ifm-navbar-shadow: 0 1px 2px 0 rgba(0,0,0,.1);
+  }
+
+  /* Dark mode support */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ifm-navbar-background-color: #1b1b1d;
+      --ifm-navbar-link-color: #fff;
+      --ifm-navbar-link-hover-color: #667eea;
+      --ifm-navbar-shadow: 0 1px 2px 0 rgba(255,255,255,.1);
+    }
+  }
+
+  [data-theme="dark"] {
+    --ifm-navbar-background-color: #1b1b1d;
+    --ifm-navbar-link-color: #fff;
+    --ifm-navbar-link-hover-color: #667eea;
+    --ifm-navbar-shadow: 0 1px 2px 0 rgba(255,255,255,.1);
+  }
+
+  /* Logo switching for dark mode */
+  .logo-dark {
+    display: none;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .logo-light {
+      display: none;
+    }
+    .logo-dark {
+      display: block;
+    }
+  }
+
+  [data-theme="dark"] .logo-light {
+    display: none;
+  }
+
+  [data-theme="dark"] .logo-dark {
+    display: block;
   }
 
   .navbar__link:hover {

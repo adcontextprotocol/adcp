@@ -49,7 +49,8 @@
         <div class="navbar__items">
           <a class="navbar__brand" href="${homeUrl}">
             <div class="navbar__logo">
-              <img src="/adcp_logo.svg" alt="AdCP Logo">
+              <img src="/logo/light.svg" alt="AdCP Logo" class="logo-light" style="display: block;">
+              <img src="/logo/dark.svg" alt="AdCP Logo" class="logo-dark" style="display: none;">
             </div>
             <b class="navbar__title">AdCP</b>
           </a>
@@ -110,11 +111,13 @@
       .navbar__logo {
         display: flex;
         align-items: center;
+        min-width: 50px;
+        min-height: 20px;
       }
 
       .navbar__logo img {
-        height: 32px;
-        width: 32px;
+        height: 20px;
+        width: auto;
         display: block;
       }
 
@@ -140,6 +143,58 @@
       .navbar__link.active {
         color: #10b981;
         font-weight: 600;
+      }
+
+      /* Logo switching for dark mode */
+      .logo-dark {
+        display: none;
+      }
+
+      /* Dark mode support */
+      @media (prefers-color-scheme: dark) {
+        .navbar {
+          background: #1b1b1d;
+          box-shadow: 0 1px 2px 0 rgba(255,255,255,.1);
+        }
+
+        .navbar__title,
+        .navbar__link {
+          color: #fff;
+        }
+
+        .navbar__link:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        .logo-light {
+          display: none;
+        }
+
+        .logo-dark {
+          display: block;
+        }
+      }
+
+      [data-theme="dark"] .navbar {
+        background: #1b1b1d;
+        box-shadow: 0 1px 2px 0 rgba(255,255,255,.1);
+      }
+
+      [data-theme="dark"] .navbar__title,
+      [data-theme="dark"] .navbar__link {
+        color: #fff;
+      }
+
+      [data-theme="dark"] .navbar__link:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      [data-theme="dark"] .logo-light {
+        display: none;
+      }
+
+      [data-theme="dark"] .logo-dark {
+        display: block;
       }
     </style>
   `;
