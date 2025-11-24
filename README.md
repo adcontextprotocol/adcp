@@ -266,7 +266,7 @@ npm start:mcp
 - `DATABASE_IDLE_TIMEOUT_MS` - Idle timeout (default: 30000)
 - `DATABASE_CONNECTION_TIMEOUT_MS` - Connection timeout (default: 5000)
 
-**Note:** If `DATABASE_URL` is set but the database is unavailable, the server will crash (no fallback). This is intentional - database issues must be fixed, not ignored.
+**Note:** If `DATABASE_URL` is set but the database is unavailable at startup, the server will fail to start. This is intentional - you can't run database migrations or initialize database mode without a working database connection. Once running, the connection pool handles transient connection failures automatically with retries and timeouts.
 
 ### Docker Deployment
 
