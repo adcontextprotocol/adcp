@@ -84,44 +84,33 @@ npm run db:seed -- --clean
 npm start
 ```
 
-The server will automatically:
-- Attempt to connect to database if `DATABASE_URL` is set
-- Fall back to file mode if database connection fails
+The server will:
+- Connect to database if `DATABASE_URL` is set
+- Use file mode if no `DATABASE_URL` is provided
 - Log the active registry mode
+
+**Note**: The system gracefully handles database unavailability by falling back to file mode. This is for operational resilience during outages, not as a design goal. The expectation is that database issues will be resolved, not accepted.
 
 ## Database Schema
 
-### registry_entries
+The database schema is defined in `server/src/db/migrations/001_initial.sql`.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | UUID | Primary key |
-| `entry_type` | VARCHAR | Type: agent, partner, product, format |
-| `name` | VARCHAR | Display name |
-| `slug` | VARCHAR | Unique identifier (e.g., "creative/agent-name") |
-| `url` | TEXT | Agent endpoint URL |
-| `card_manifest_url` | TEXT | Card presentation URL (optional) |
-| `card_format_id` | JSONB | Card format identifier (optional) |
-| `metadata` | JSONB | Structured metadata |
-| `tags` | TEXT[] | Searchable tags |
-| `contact_name` | VARCHAR | Contact person name |
-| `contact_email` | VARCHAR | Contact email |
-| `contact_website` | TEXT | Contact website |
-| `approval_status` | VARCHAR | Status: pending, approved, rejected |
-| `approved_by` | VARCHAR | Approver identifier |
-| `approved_at` | TIMESTAMP | Approval timestamp |
-| `created_at` | TIMESTAMP | Creation timestamp |
-| `updated_at` | TIMESTAMP | Last update timestamp |
-| `active` | BOOLEAN | Active flag |
+**Key tables:**
+- `registry_entries` - Stores all registry entries (agents, partners, products, formats)
+- `registry_audit_log` - Tracks changes to registry entries (for future use)
+- `schema_migrations` - Tracks applied database migrations
 
-### Indexes
+**To view the complete schema**, see:
+```bash
+cat server/src/db/migrations/001_initial.sql
+```
 
-- `idx_registry_entry_type` - Fast filtering by type
-- `idx_registry_active` - Active/inactive filtering
-- `idx_registry_approval_status` - Approval status filtering
-- `idx_registry_tags` - GIN index for tag searches
-- `idx_registry_metadata` - GIN index for metadata searches
-- `idx_registry_created_at` - Chronological ordering
+**Key features:**
+- UUID primary keys
+- JSONB fields for flexible metadata storage
+- GIN indexes for fast JSON and array searches
+- Automatic `updated_at` timestamp management
+- CHECK constraints for data integrity
 
 ## Health Check
 
@@ -137,7 +126,7 @@ The `/health` endpoint reports registry status:
 }
 ```
 
-In degraded mode (fallback to file):
+When database connection fails (temporary fallback):
 
 ```json
 {
@@ -153,6 +142,13 @@ In degraded mode (fallback to file):
   }
 }
 ```
+
+**Important**: The `degraded: true` flag indicates a temporary operational state, not a supported configuration. When you see this:
+1. **Investigate immediately** - Check database connectivity, credentials, and migrations
+2. **Fix the root cause** - Don't rely on file mode as a permanent solution
+3. **Monitor alerts** - Set up alerts on this flag
+
+The fallback exists for operational resilience (e.g., brief network issues), not as an acceptable long-term state.
 
 ## Migration System
 
@@ -222,25 +218,33 @@ npm run db:seed -- --clean
 
 ### Health Check Shows Degraded Mode
 
+**This requires immediate action - the system is not operating as designed.**
+
 1. Check error type in `/health` response
-2. **Connection errors**: Database server unreachable
-3. **Migration errors**: Schema version mismatch
-4. **Unknown errors**: Check application logs
+2. **Connection errors**: Verify database server is running and accessible
+3. **Migration errors**: Check schema version, run migrations if needed
+4. **Unknown errors**: Review application logs for root cause
+
+**Do not ignore degraded mode.** It indicates the system is running in a fallback state that should be temporary only.
 
 ## Performance Considerations
 
-### File Mode
+### File Mode (Development/Testing Only)
 - ✅ Fast startup
 - ✅ No external dependencies
 - ❌ No search capabilities
 - ❌ Static data only
+- ❌ Not suitable for production with dynamic data
 
-### Database Mode
-- ✅ Dynamic data
-- ✅ Full-text search
-- ✅ Advanced filtering
-- ❌ Requires database server
-- ❌ Slightly slower startup
+### Database Mode (Production)
+- ✅ Dynamic data management
+- ✅ Full-text search capabilities
+- ✅ Advanced filtering and querying
+- ✅ Proper concurrency handling
+- ✅ Audit trail support
+- ⚠️ Requires database server (this is expected, not a limitation)
+
+**For production deployments**: Always use database mode. File mode is for development, testing, and temporary operational fallback only.
 
 ## Deployment
 
