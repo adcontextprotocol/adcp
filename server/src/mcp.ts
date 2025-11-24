@@ -149,7 +149,7 @@ export class MCPServer {
       switch (name) {
         case "list_agents": {
           const type = args?.type as AgentType | undefined;
-          const agents = this.registry.listAgents(type);
+          const agents = await this.registry.listAgents(type);
           return {
             content: [
               {
@@ -162,7 +162,7 @@ export class MCPServer {
 
         case "get_agent": {
           const agentName = args?.name as string;
-          const agent = this.registry.getAgent(agentName);
+          const agent = await this.registry.getAgent(agentName);
           if (!agent) {
             return {
               content: [
@@ -430,9 +430,9 @@ export class MCPServer {
       let agents;
 
       if (type === "all") {
-        agents = this.registry.listAgents();
+        agents = await this.registry.listAgents();
       } else if (["creative", "signals", "sales"].includes(type)) {
-        agents = this.registry.listAgents(type as AgentType);
+        agents = await this.registry.listAgents(type as AgentType);
       } else {
         throw new Error("Unknown resource type");
       }
@@ -450,7 +450,7 @@ export class MCPServer {
   }
 
   async start(): Promise<void> {
-    await this.registry.load();
+    await this.registry.initialize();
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.error("AdCP Registry MCP server running on stdio");
