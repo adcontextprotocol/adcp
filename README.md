@@ -142,51 +142,131 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 - **More Coming**: Additional platforms implementing Q1 2025
 
 
-## Development Server
+## Local Development
 
 This repository runs a unified Express server that serves everything from a single process:
 
 - 🏠 **Homepage** at `/`
 - 🤖 **Agent Registry** at `/registry` - Browse and test all AdCP agents
 - 📋 **AdAgents Manager** at `/adagents` - Validate and create adagents.json files
+- 📚 **Mintlify Docs** - Full protocol documentation
 - 📄 **JSON Schemas** at `/schemas/*`
 - 🔧 **REST API** at `/api/*`
 - 📡 **MCP Protocol** at `/mcp`
 
+### Prerequisites
+
+- Node.js 18+
+- Docker (for local database)
+- npm or yarn
+
 ### Quick Start
 
+#### 1. Install Dependencies
 ```bash
-# Install dependencies
 npm install
+```
 
-# Start unified server (HTTP mode)
+#### 2. Database Setup (Optional)
+
+The registry can run in two modes:
+- **File mode** (default) - Uses JSON files in `registry/` directory
+- **Database mode** (production) - Uses PostgreSQL database
+
+**For database mode (recommended for development):**
+
+```bash
+# Start PostgreSQL in Docker
+docker-compose up -d
+
+# Copy environment template
+cp .env.local.example .env.local
+
+# Run migrations
+npm run db:migrate
+
+# Seed with example agents
+npm run db:seed
+```
+
+**For file mode:**
+
+Just skip the database setup - the server will automatically use JSON files.
+
+#### 3. Start Development Server
+
+**With database:**
+```bash
+DATABASE_URL=postgresql://adcp:localdev@localhost:5433/adcp_registry npm start
+```
+
+**Without database (file mode):**
+```bash
 npm start
+```
 
-# Start in MCP mode (stdio)
-npm start:mcp
+#### 4. Start Mintlify Documentation
+```bash
+npm run start:mintlify
+```
 
+### Access Points
+
+- http://localhost:3000 - Homepage
+- http://localhost:3000/registry - Agent Registry
+- http://localhost:3000/adagents - AdAgents.json Manager
+- http://localhost:3000/schemas/v1/index.json - Schema Registry
+- http://localhost:3000/api/agents - REST API
+- http://localhost:3333 - Mintlify Documentation (if running separately)
+
+### Database Operations
+
+```bash
+# Run migrations
+npm run db:migrate
+
+# Seed database (skip existing)
+npm run db:seed
+
+# Seed database (update existing)
+npm run db:seed -- --force
+
+# Seed database (clean and reseed)
+npm run db:seed -- --clean
+```
+
+### Other Commands
+
+```bash
 # Run tests
 npm test
+
+# Type checking
+npm run typecheck
 
 # Build TypeScript
 npm run build
 
-# Start Mintlify docs (separate)
-npm run start:mintlify
+# Start in MCP mode (stdio)
+npm start:mcp
 ```
-
-The server runs on port 3000 by default. Visit:
-- http://localhost:3000 - Homepage
-- http://localhost:3000/registry - 🤖 **Agent Registry** (browse and test AdCP agents)
-- http://localhost:3000/adagents - 📋 **AdAgents.json Manager** (validate and create adagents.json files)
-- http://localhost:3000/schemas/v1/index.json - Schema Registry
-- http://localhost:3000/api/agents - REST API
 
 ### Environment Variables
 
+**Server Configuration:**
 - `PORT` - Server port (default: 3000)
 - `NODE_ENV` - Environment (development|production)
 - `MODE` - Server mode (http|mcp)
+
+**Database Configuration:**
+- `DATABASE_URL` - PostgreSQL connection string (required for database mode)
+- `DATABASE_SSL` - Enable SSL (default: false)
+- `DATABASE_SSL_REJECT_UNAUTHORIZED` - Verify SSL certificates (default: true when SSL enabled)
+- `DATABASE_MAX_POOL_SIZE` - Connection pool size (default: 20)
+- `DATABASE_IDLE_TIMEOUT_MS` - Idle timeout (default: 30000)
+- `DATABASE_CONNECTION_TIMEOUT_MS` - Connection timeout (default: 5000)
+
+**Note:** If `DATABASE_URL` is set but the database is unavailable, the server will crash (no fallback). This is intentional - database issues must be fixed, not ignored.
 
 ### Docker Deployment
 
