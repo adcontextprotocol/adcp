@@ -2,10 +2,10 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "logo": {
-    "light": "logo/light.svg",
-    "dark": "logo/dark.svg"
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
   },
-  "favicon": "static/img/favicon.ico",
+  "favicon": "/img/favicon.ico",
   "theme": "mint",
   "colors": {
     "primary": "#0D9373",
@@ -218,5 +218,6 @@
   "modeToggle": {
     "default": "light",
     "isHidden": false
-  }
+  },
+  "css": ["/mintlify.css"]
 }
