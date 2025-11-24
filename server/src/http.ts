@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { UnifiedRegistry } from "./unified-registry.js";
+import { Registry } from "./registry.js";
 import { AgentValidator } from "./validator.js";
 import { HealthChecker } from "./health.js";
 import { CrawlerService } from "./crawler.js";
@@ -20,7 +20,7 @@ const __dirname = path.dirname(__filename);
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
-  private registry: UnifiedRegistry;
+  private registry: Registry;
   private validator: AgentValidator;
   private healthChecker: HealthChecker;
   private crawler: CrawlerService;
@@ -31,7 +31,7 @@ export class HTTPServer {
 
   constructor() {
     this.app = express();
-    this.registry = new UnifiedRegistry();
+    this.registry = new Registry();
     this.validator = new AgentValidator();
     this.adagentsManager = new AdAgentsManager();
     this.healthChecker = new HealthChecker();
@@ -819,19 +819,15 @@ export class HTTPServer {
       }
     });
 
-    // Health check with registry status
+    // Health check
     this.app.get("/health", (req, res) => {
-      const registryMode = this.registry.getMode();
-
-      const health: any = {
+      res.json({
         status: "ok",
         registry: {
-          mode: registryMode,
-          using_database: registryMode === "database",
+          mode: "database",
+          using_database: true,
         },
-      };
-
-      res.json(health);
+      });
     });
 
     // Homepage route - serve index.html at root
@@ -1076,12 +1072,10 @@ export class HTTPServer {
       });
     }
 
-    // Close database connection if using database
-    if (this.registry.isUsingDatabase()) {
-      console.log("Closing database connection...");
-      await closeDatabase();
-      console.log("✓ Database connection closed");
-    }
+    // Close database connection
+    console.log("Closing database connection...");
+    await closeDatabase();
+    console.log("✓ Database connection closed");
 
     console.log("Graceful shutdown complete");
   }

@@ -1,51 +1,85 @@
-import fs from "fs/promises";
-import path from "path";
-import { getRegistryPath } from "./config.js";
+import { RegistryDatabase } from "./db/registry-db.js";
+import { initializeDatabase } from "./db/client.js";
+import { runMigrations } from "./db/migrate.js";
+import { getDatabaseConfig } from "./config.js";
 import type { Agent, AgentType } from "./types.js";
 
-const REGISTRY_ROOT = getRegistryPath();
-
+/**
+ * Database-backed registry for AdCP agents
+ * Requires DATABASE_URL environment variable to be set
+ */
 export class Registry {
-  private agents: Map<string, Agent> = new Map();
+  private dbRegistry: RegistryDatabase;
 
-  async load(): Promise<void> {
-    const types: AgentType[] = ["creative", "signals", "sales"];
+  constructor() {
+    this.dbRegistry = new RegistryDatabase();
+  }
 
-    for (const type of types) {
-      const dir = path.join(REGISTRY_ROOT, type);
-      try {
-        const files = await fs.readdir(dir);
-        for (const file of files) {
-          if (file.endsWith(".json")) {
-            const filePath = path.join(dir, file);
-            const content = await fs.readFile(filePath, "utf-8");
-            const agent: Agent = JSON.parse(content);
-            const key = `${type}/${file.replace(".json", "")}`;
-            this.agents.set(key, agent);
-          }
-        }
-      } catch (error) {
-        console.error(`Error loading ${type} agents:`, error);
-      }
+  /**
+   * Initialize the registry - requires database configuration
+   */
+  async initialize(): Promise<void> {
+    const dbConfig = getDatabaseConfig();
+
+    if (!dbConfig) {
+      throw new Error(
+        "DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required. " +
+        "The registry is now database-only. To migrate from files, run: npm run db:seed"
+      );
     }
 
-    console.log(`Loaded ${this.agents.size} agents from registry`);
+    console.log("Initializing database-backed registry...");
+
+    // Initialize database connection
+    initializeDatabase(dbConfig);
+
+    // Run migrations
+    await runMigrations();
+
+    console.log("✓ Database-backed registry initialized");
   }
 
-  listAgents(type?: AgentType): Agent[] {
-    if (type) {
-      return Array.from(this.agents.entries())
-        .filter(([key]) => key.startsWith(`${type}/`))
-        .map(([, agent]) => agent);
-    }
-    return Array.from(this.agents.values());
+  /**
+   * List agents
+   */
+  async listAgents(type?: AgentType): Promise<Agent[]> {
+    return this.dbRegistry.listAgents(type);
   }
 
-  getAgent(name: string): Agent | undefined {
-    return this.agents.get(name);
+  /**
+   * Get agent by name/slug
+   */
+  async getAgent(name: string): Promise<Agent | undefined> {
+    return this.dbRegistry.getAgent(name);
   }
 
-  getAllAgents(): Map<string, Agent> {
-    return this.agents;
+  /**
+   * Get all agents as a map (for compatibility)
+   */
+  async getAllAgents(): Promise<Map<string, Agent>> {
+    const agents = await this.dbRegistry.listAgents();
+    const map = new Map<string, Agent>();
+    agents.forEach((agent) => {
+      // Get slug from metadata (stored during seed) or generate it
+      const slug = (agent as any).slug || this.generateSlug(agent);
+      map.set(slug, agent);
+    });
+    return map;
+  }
+
+  /**
+   * Generate consistent slug from agent data
+   */
+  private generateSlug(agent: Agent): string {
+    // Use type and a slugified version of the name
+    const slugName = agent.name.toLowerCase().replace(/\s+/g, "-");
+    return `${agent.type}/${slugName}`;
+  }
+
+  /**
+   * Get database registry instance for direct access
+   */
+  getDatabaseRegistry(): RegistryDatabase {
+    return this.dbRegistry;
   }
 }
