@@ -416,6 +416,15 @@ export class AdAgentsManager {
         });
       }
     }
+
+    // Optional property_ids must be an array
+    if (agent.property_ids !== undefined && !Array.isArray(agent.property_ids)) {
+      result.errors.push({
+        field: `${prefix}.property_ids`,
+        message: 'property_ids must be an array',
+        severity: 'error'
+      });
+    }
   }
 
   /**

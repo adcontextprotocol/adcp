@@ -1,8 +1,8 @@
 -- Registry Entries Table
--- Stores all registry entries (agents, partners, products, formats)
+-- Stores all registry entries (agents, partners)
 CREATE TABLE IF NOT EXISTS registry_entries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  entry_type VARCHAR(50) NOT NULL CHECK (entry_type IN ('agent', 'partner', 'product', 'format')),
+  entry_type VARCHAR(50) NOT NULL CHECK (entry_type IN ('agent', 'partner')),
 
   -- Identity
   name VARCHAR(255) NOT NULL,

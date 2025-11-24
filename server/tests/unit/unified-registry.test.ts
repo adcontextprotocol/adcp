@@ -28,6 +28,7 @@ describe("UnifiedRegistry", () => {
     it("should use file-based registry when no database config", async () => {
       vi.mocked(configModule.getDatabaseConfig).mockReturnValue(null);
 
+      // Need to create a new registry instance after mocking to capture the mocked Registry constructor
       const mockLoad = vi.fn().mockResolvedValue(undefined);
       vi.mocked(Registry).mockImplementation(() => ({
         load: mockLoad,
@@ -36,10 +37,12 @@ describe("UnifiedRegistry", () => {
         getAllAgents: vi.fn(),
       }) as any);
 
-      await registry.initialize();
+      // Create new instance after mock is set up
+      const testRegistry = new UnifiedRegistry();
+      await testRegistry.initialize();
 
-      expect(registry.getMode()).toBe("file");
-      expect(registry.isUsingDatabase()).toBe(false);
+      expect(testRegistry.getMode()).toBe("file");
+      expect(testRegistry.isUsingDatabase()).toBe(false);
       expect(mockLoad).toHaveBeenCalled();
     });
 
@@ -58,7 +61,7 @@ describe("UnifiedRegistry", () => {
       expect(migrateModule.runMigrations).toHaveBeenCalled();
     });
 
-    it("should fallback to file mode when database initialization fails", async () => {
+    it("should fail fast when database initialization fails", async () => {
       vi.mocked(configModule.getDatabaseConfig).mockReturnValue({
         connectionString: "postgresql://localhost/test",
       });
@@ -66,23 +69,11 @@ describe("UnifiedRegistry", () => {
         throw new Error("Connection refused");
       });
 
-      const mockLoad = vi.fn().mockResolvedValue(undefined);
-      vi.mocked(Registry).mockImplementation(() => ({
-        load: mockLoad,
-        listAgents: vi.fn(),
-        getAgent: vi.fn(),
-        getAllAgents: vi.fn(),
-      }) as any);
-
-      await registry.initialize();
-
-      expect(registry.getMode()).toBe("file");
-      expect(registry.getInitializationError()).not.toBeNull();
-      expect(registry.getInitializationError()?.type).toBe("connection");
-      expect(mockLoad).toHaveBeenCalled();
+      // Fail-fast behavior: initialization should throw
+      await expect(registry.initialize()).rejects.toThrow("Connection refused");
     });
 
-    it("should categorize migration errors correctly", async () => {
+    it("should fail fast when migrations fail", async () => {
       vi.mocked(configModule.getDatabaseConfig).mockReturnValue({
         connectionString: "postgresql://localhost/test",
       });
@@ -91,19 +82,8 @@ describe("UnifiedRegistry", () => {
         new Error("Migration failed: schema error")
       );
 
-      const mockLoad = vi.fn().mockResolvedValue(undefined);
-      vi.mocked(Registry).mockImplementation(() => ({
-        load: mockLoad,
-        listAgents: vi.fn(),
-        getAgent: vi.fn(),
-        getAllAgents: vi.fn(),
-      }) as any);
-
-      await registry.initialize();
-
-      expect(registry.getMode()).toBe("file");
-      const error = registry.getInitializationError();
-      expect(error?.type).toBe("migration");
+      // Fail-fast behavior: migration errors should throw
+      await expect(registry.initialize()).rejects.toThrow("Migration failed: schema error");
     });
   });
 
@@ -124,26 +104,23 @@ describe("UnifiedRegistry", () => {
         getAllAgents: vi.fn().mockReturnValue(new Map()),
       }) as any);
 
-      await registry.initialize();
+      // Create new instance after mock is set up
+      const testRegistry = new UnifiedRegistry();
+      await testRegistry.initialize();
 
-      const agents = await registry.listAgents();
+      const agents = await testRegistry.listAgents();
       expect(agents).toEqual(mockAgents);
       expect(mockListAgents).toHaveBeenCalled();
 
-      const agent = await registry.getAgent("test");
+      const agent = await testRegistry.getAgent("test");
       expect(agent).toEqual(mockAgents[0]);
       expect(mockGetAgent).toHaveBeenCalledWith("test");
     });
   });
 
   describe("diagnostics", () => {
-    it("should expose mode and error information", async () => {
-      vi.mocked(configModule.getDatabaseConfig).mockReturnValue({
-        connectionString: "postgresql://localhost/test",
-      });
-      vi.mocked(clientModule.initializeDatabase).mockImplementation(() => {
-        throw new Error("ECONNREFUSED: connection refused");
-      });
+    it("should expose mode information in file mode", async () => {
+      vi.mocked(configModule.getDatabaseConfig).mockReturnValue(null);
 
       const mockLoad = vi.fn().mockResolvedValue(undefined);
       vi.mocked(Registry).mockImplementation(() => ({
@@ -153,15 +130,25 @@ describe("UnifiedRegistry", () => {
         getAllAgents: vi.fn(),
       }) as any);
 
-      await registry.initialize();
+      const testRegistry = new UnifiedRegistry();
+      await testRegistry.initialize();
 
-      expect(registry.getMode()).toBe("file");
-      expect(registry.isUsingDatabase()).toBe(false);
+      expect(testRegistry.getMode()).toBe("file");
+      expect(testRegistry.isUsingDatabase()).toBe(false);
+    });
 
-      const error = registry.getInitializationError();
-      expect(error).not.toBeNull();
-      expect(error?.type).toBe("connection");
-      expect(error?.message).toContain("ECONNREFUSED");
+    it("should expose mode information in database mode", async () => {
+      vi.mocked(configModule.getDatabaseConfig).mockReturnValue({
+        connectionString: "postgresql://localhost/test",
+      });
+      vi.mocked(clientModule.initializeDatabase).mockReturnValue({} as any);
+      vi.mocked(migrateModule.runMigrations).mockResolvedValue();
+
+      const testRegistry = new UnifiedRegistry();
+      await testRegistry.initialize();
+
+      expect(testRegistry.getMode()).toBe("database");
+      expect(testRegistry.isUsingDatabase()).toBe(true);
     });
   });
 });

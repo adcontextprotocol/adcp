@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { HTTPServer } from "../../src/http.js";
 import request from "supertest";
 import * as configModule from "../../src/config.js";
+import fs from "fs/promises";
+import path from "path";
 
 // Mock config to prevent actual database connections
 vi.mock("../../src/config.js", async () => {
@@ -18,6 +20,13 @@ describe("Health Endpoint Integration", () => {
   let app: any;
 
   beforeAll(async () => {
+    // Create test registry directories
+    const testRegistryPath = "/tmp/test-registry";
+    await fs.mkdir(testRegistryPath, { recursive: true });
+    await fs.mkdir(path.join(testRegistryPath, "creative"), { recursive: true });
+    await fs.mkdir(path.join(testRegistryPath, "signals"), { recursive: true });
+    await fs.mkdir(path.join(testRegistryPath, "sales"), { recursive: true });
+
     server = new HTTPServer();
     // Access the express app without starting the server
     app = (server as any).app;
@@ -56,47 +65,20 @@ describe("Health Endpoint Integration", () => {
     });
   });
 
-  describe("Health check with database failure", () => {
-    let degradedServer: HTTPServer;
-    let degradedApp: any;
-
-    beforeAll(async () => {
+  describe("Database failure behavior (fail-fast)", () => {
+    it("should fail initialization when database is unavailable", async () => {
       // Mock database config to simulate failed connection
       vi.mocked(configModule.getDatabaseConfig).mockReturnValue({
         connectionString: "postgresql://fake:5432/test",
       });
 
-      degradedServer = new HTTPServer();
-      degradedApp = (degradedServer as any).app;
+      const failingServer = new HTTPServer();
 
-      // Initialize - should fail and fallback to file mode
-      await (degradedServer as any).registry.initialize();
-    });
+      // Fail-fast behavior: initialization should throw
+      await expect((failingServer as any).registry.initialize()).rejects.toThrow();
 
-    afterAll(async () => {
-      await degradedServer.stop();
       // Reset mock
       vi.mocked(configModule.getDatabaseConfig).mockReturnValue(null);
-    });
-
-    it("should show degraded mode when database fails", async () => {
-      const response = await request(degradedApp).get("/health");
-
-      expect(response.status).toBe(200);
-      expect(response.body.registry.mode).toBe("file");
-      expect(response.body.registry.degraded).toBe(true);
-      expect(response.body.registry.error).toBeDefined();
-      expect(response.body.registry.error.type).toBeDefined();
-    });
-
-    it("should include error details in degraded mode", async () => {
-      const response = await request(degradedApp).get("/health");
-
-      expect(response.body.registry.error).toHaveProperty("type");
-      expect(response.body.registry.error).toHaveProperty("message");
-      expect(["connection", "migration", "unknown"]).toContain(
-        response.body.registry.error.type
-      );
     });
   });
 });

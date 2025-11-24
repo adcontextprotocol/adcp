@@ -74,8 +74,8 @@ describe("Database Migrations", () => {
 
       await runMigrations();
 
-      // Should not apply migration
-      expect(mockClient.connect).not.toHaveBeenCalled();
+      // Should not apply migration (no client connection needed)
+      expect(mockPool.connect).not.toHaveBeenCalled();
     });
 
     it("should apply pending migrations in transaction", async () => {
@@ -145,6 +145,11 @@ describe("Database Migrations", () => {
   describe("migration tracking", () => {
     it("should create migrations table if not exists", async () => {
       vi.mocked(fs.readdir).mockResolvedValue([] as any);
+
+      // Mock the two queries that runMigrations makes
+      mockPool.query
+        .mockResolvedValueOnce({}) // CREATE migrations table
+        .mockResolvedValueOnce({ rows: [] }); // Query applied migrations
 
       await runMigrations();
 

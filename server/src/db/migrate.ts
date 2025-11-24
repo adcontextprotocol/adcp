@@ -182,10 +182,19 @@ export async function runMigrations(config?: DatabaseConfig): Promise<void> {
  * CLI runner for migrations
  */
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // SSL configuration - matches config.ts pattern
+  let ssl: boolean | { rejectUnauthorized: boolean } = false;
+  if (process.env.DATABASE_SSL === "true") {
+    // Allow explicit control via DATABASE_SSL_REJECT_UNAUTHORIZED
+    const rejectUnauthorized =
+      process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+    ssl = { rejectUnauthorized };
+  }
+
   const config: DatabaseConfig = {
     connectionString:
       process.env.DATABASE_URL || process.env.DATABASE_PRIVATE_URL,
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+    ssl,
   };
 
   runMigrations(config)
