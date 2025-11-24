@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Registry } from "./registry.js";
+import { UnifiedRegistry } from "./unified-registry.js";
 import { AgentValidator } from "./validator.js";
 import { HealthChecker } from "./health.js";
 import { CrawlerService } from "./crawler.js";
@@ -9,15 +9,18 @@ import { CapabilityDiscovery } from "./capabilities.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
+import { closeDatabase } from "./db/client.js";
 import { getPropertyIndex, createMCPClient, createA2AClient } from "@adcp/client";
 import type { AgentType, AgentWithStats } from "./types.js";
+import type { Server } from "http";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export class HTTPServer {
   private app: express.Application;
-  private registry: Registry;
+  private server: Server | null = null;
+  private registry: UnifiedRegistry;
   private validator: AgentValidator;
   private healthChecker: HealthChecker;
   private crawler: CrawlerService;
@@ -28,7 +31,7 @@ export class HTTPServer {
 
   constructor() {
     this.app = express();
-    this.registry = new Registry();
+    this.registry = new UnifiedRegistry();
     this.validator = new AgentValidator();
     this.adagentsManager = new AdAgentsManager();
     this.healthChecker = new HealthChecker();
@@ -75,7 +78,7 @@ export class HTTPServer {
       const withHealth = req.query.health === "true";
       const withCapabilities = req.query.capabilities === "true";
       const withProperties = req.query.properties === "true";
-      const agents = this.registry.listAgents(type);
+      const agents = await this.registry.listAgents(type);
 
       if (!withHealth && !withCapabilities && !withProperties) {
         return res.json(agents);
@@ -141,7 +144,7 @@ export class HTTPServer {
 
     this.app.get("/api/agents/:type/:name", async (req, res) => {
       const agentId = `${req.params.type}/${req.params.name}`;
-      const agent = this.registry.getAgent(agentId);
+      const agent = await this.registry.getAgent(agentId);
       if (!agent) {
         return res.status(404).json({ error: "Agent not found" });
       }
@@ -202,9 +205,9 @@ export class HTTPServer {
       });
     });
 
-    this.app.get("/api/agents/:id/properties", (req, res) => {
+    this.app.get("/api/agents/:id/properties", async (req, res) => {
       const agentId = req.params.id;
-      const agent = this.registry.getAgent(agentId);
+      const agent = await this.registry.getAgent(agentId);
 
       if (!agent) {
         return res.status(404).json({ error: "Agent not found" });
@@ -234,7 +237,7 @@ export class HTTPServer {
 
     // Crawler endpoints
     this.app.post("/api/crawler/run", async (req, res) => {
-      const agents = this.registry.listAgents("sales");
+      const agents = await this.registry.listAgents("sales");
       const result = await this.crawler.crawlAllAgents(agents);
       res.json(result);
     });
@@ -243,8 +246,8 @@ export class HTTPServer {
       res.json(this.crawler.getStatus());
     });
 
-    this.app.get("/api/stats", (req, res) => {
-      const agents = this.registry.listAgents();
+    this.app.get("/api/stats", async (req, res) => {
+      const agents = await this.registry.listAgents();
       const byType = {
         creative: agents.filter((a) => a.type === "creative").length,
         signals: agents.filter((a) => a.type === "signals").length,
@@ -261,7 +264,7 @@ export class HTTPServer {
     // Capability endpoints
     this.app.get("/api/agents/:id/capabilities", async (req, res) => {
       const agentId = req.params.id;
-      const agent = this.registry.getAgent(agentId);
+      const agent = await this.registry.getAgent(agentId);
 
       if (!agent) {
         return res.status(404).json({ error: "Agent not found" });
@@ -278,7 +281,7 @@ export class HTTPServer {
     });
 
     this.app.post("/api/capabilities/discover-all", async (req, res) => {
-      const agents = this.registry.listAgents();
+      const agents = await this.registry.listAgents();
       try {
         const profiles = await this.capabilityDiscovery.discoverAll(agents);
         res.json({
@@ -294,7 +297,7 @@ export class HTTPServer {
 
     // Publisher endpoints
     this.app.get("/api/publishers", async (req, res) => {
-      const agents = this.registry.listAgents("sales");
+      const agents = await this.registry.listAgents("sales");
       try {
         const statuses = await this.publisherTracker.trackPublishers(agents);
         res.json({
@@ -311,7 +314,7 @@ export class HTTPServer {
 
     this.app.get("/api/publishers/:domain", async (req, res) => {
       const domain = req.params.domain;
-      const agents = this.registry.listAgents("sales");
+      const agents = await this.registry.listAgents("sales");
 
       // Find agents claiming this domain
       const expectedAgents = agents
@@ -337,7 +340,7 @@ export class HTTPServer {
 
     this.app.get("/api/publishers/:domain/validation", async (req, res) => {
       const domain = req.params.domain;
-      const agents = this.registry.listAgents("sales");
+      const agents = await this.registry.listAgents("sales");
 
       const expectedAgents = agents
         .filter((a) => {
@@ -377,7 +380,7 @@ export class HTTPServer {
     // Simple REST API endpoint - for web apps and quick integrations
     this.app.get("/agents", async (req, res) => {
       const type = req.query.type as AgentType | undefined;
-      const agents = this.registry.listAgents(type);
+      const agents = await this.registry.listAgents(type);
 
       res.json({
         agents,
@@ -523,7 +526,7 @@ export class HTTPServer {
 
           if (name === "list_agents") {
             const type = args?.type as AgentType | undefined;
-            const agents = this.registry.listAgents(type);
+            const agents = await this.registry.listAgents(type);
             res.json({
               jsonrpc: "2.0",
               id,
@@ -553,7 +556,7 @@ export class HTTPServer {
 
           if (name === "get_agent") {
             const agentId = args?.id as string;
-            const agent = this.registry.getAgent(agentId);
+            const agent = await this.registry.getAgent(agentId);
             if (!agent) {
               res.json({
                 jsonrpc: "2.0",
@@ -628,7 +631,7 @@ export class HTTPServer {
 
             try {
               // Find the agent in our registry
-              const agents = Array.from(this.registry.getAllAgents().values());
+              const agents = Array.from((await this.registry.getAllAgents()).values());
               const agent = agents.find((a) => a.url === agentUrl);
 
               if (!agent) {
@@ -816,9 +819,29 @@ export class HTTPServer {
       }
     });
 
-    // Health check
+    // Health check with registry status
     this.app.get("/health", (req, res) => {
-      res.json({ status: "ok" });
+      const registryMode = this.registry.getMode();
+      const initError = this.registry.getInitializationError();
+
+      const health: any = {
+        status: "ok",
+        registry: {
+          mode: registryMode,
+          using_database: registryMode === "database",
+        },
+      };
+
+      // Include initialization error if in degraded mode
+      if (registryMode === "file" && initError) {
+        health.registry.degraded = true;
+        health.registry.error = {
+          type: initError.type,
+          message: initError.message,
+        };
+      }
+
+      res.json(health);
     });
 
     // Homepage route - serve index.html at root
@@ -998,10 +1021,10 @@ export class HTTPServer {
   }
 
   async start(port: number = 3000): Promise<void> {
-    await this.registry.load();
+    await this.registry.initialize();
 
     // Pre-warm caches for all agents in background
-    const allAgents = this.registry.listAgents();
+    const allAgents = await this.registry.listAgents();
     console.log(`Pre-warming caches for ${allAgents.length} agents...`);
 
     // Don't await - let this run in background
@@ -1012,17 +1035,65 @@ export class HTTPServer {
     });
 
     // Start periodic property crawler for sales agents
-    const salesAgents = this.registry.listAgents("sales");
+    const salesAgents = await this.registry.listAgents("sales");
     if (salesAgents.length > 0) {
       console.log(`Starting property crawler for ${salesAgents.length} sales agents...`);
       this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes
     }
 
-    this.app.listen(port, () => {
+    this.server = this.app.listen(port, () => {
       console.log(`AdCP Registry HTTP server running on port ${port}`);
       console.log(`Web UI: http://localhost:${port}`);
       console.log(`API: http://localhost:${port}/api/agents`);
     });
+
+    // Setup graceful shutdown handlers
+    this.setupShutdownHandlers();
+  }
+
+  /**
+   * Setup graceful shutdown handlers for SIGTERM and SIGINT
+   */
+  private setupShutdownHandlers(): void {
+    const gracefulShutdown = async (signal: string) => {
+      console.log(`\n${signal} received, starting graceful shutdown...`);
+      await this.stop();
+      process.exit(0);
+    };
+
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+  }
+
+  /**
+   * Stop the server gracefully
+   */
+  async stop(): Promise<void> {
+    console.log("Stopping HTTP server...");
+
+    // Close HTTP server
+    if (this.server) {
+      await new Promise<void>((resolve, reject) => {
+        this.server!.close((err) => {
+          if (err) {
+            console.error("Error closing HTTP server:", err);
+            reject(err);
+          } else {
+            console.log("✓ HTTP server closed");
+            resolve();
+          }
+        });
+      });
+    }
+
+    // Close database connection if using database
+    if (this.registry.isUsingDatabase()) {
+      console.log("Closing database connection...");
+      await closeDatabase();
+      console.log("✓ Database connection closed");
+    }
+
+    console.log("Graceful shutdown complete");
   }
 
   private async prewarmCaches(agents: any[]): Promise<void> {
