@@ -77,6 +77,10 @@ export class HTTPServer {
     // Authentication routes
     this.setupAuthRoutes();
 
+    // UI page redirects (serve without .html extension)
+    this.app.get('/onboarding', (req, res) => res.redirect('/onboarding.html'));
+    this.app.get('/dashboard', (req, res) => res.redirect('/dashboard.html'));
+
     // API endpoints
     this.app.get("/api/agents", async (req, res) => {
       const type = req.query.type as AgentType | undefined;
