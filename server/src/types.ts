@@ -95,3 +95,61 @@ export interface ValidationResult {
   source?: string;
   error?: string;
 }
+
+// Billing & Company Types
+
+export type SubscriptionStatus =
+  | 'active'
+  | 'past_due'
+  | 'canceled'
+  | 'trialing'
+  | 'incomplete'
+  | 'incomplete_expired'
+  | 'unpaid';
+
+export type SubscriptionTier = 'basic' | 'professional' | 'enterprise';
+
+export type CompanyUserRole = 'owner' | 'admin' | 'member';
+
+export interface Company {
+  id: string;
+  slug: string;
+  name: string;
+  domain?: string;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
+  subscription_status?: SubscriptionStatus;
+  subscription_tier?: SubscriptionTier;
+  agreement_signed_at?: Date;
+  agreement_version?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CompanyUser {
+  id: string;
+  company_id: string;
+  user_id: string;
+  email: string;
+  role: CompanyUserRole;
+  invited_by?: string;
+  joined_at: Date;
+}
+
+export interface Agreement {
+  id: string;
+  version: string;
+  text: string;
+  effective_date: Date;
+  created_at: Date;
+}
+
+export interface WorkOSUser {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  emailVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

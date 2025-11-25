@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { MCPServer } from "./mcp.js";
 import { HTTPServer } from "./http.js";
 

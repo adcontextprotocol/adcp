@@ -1,4 +1,5 @@
 import express from "express";
+import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import { UnifiedRegistry } from "./unified-registry.js";
@@ -11,7 +12,7 @@ import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { closeDatabase } from "./db/client.js";
 import { getPropertyIndex, createMCPClient, createA2AClient } from "@adcp/client";
-import type { AgentType, AgentWithStats } from "./types.js";
+import type { AgentType, AgentWithStats, Company } from "./types.js";
 import type { Server } from "http";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,6 +47,7 @@ export class HTTPServer {
 
   private setupMiddleware(): void {
     this.app.use(express.json());
+    this.app.use(cookieParser());
 
     // Serve JSON schemas at /schemas/* from dist/schemas (built schemas)
     // In dev: __dirname is server/src, dist is at ../../dist
@@ -72,6 +74,9 @@ export class HTTPServer {
 
 
   private setupRoutes(): void {
+    // Authentication routes
+    this.setupAuthRoutes();
+
     // API endpoints
     this.app.get("/api/agents", async (req, res) => {
       const type = req.query.type as AgentType | undefined;
@@ -1008,6 +1013,169 @@ export class HTTPServer {
       }
     });
 
+  }
+
+  private setupAuthRoutes(): void {
+    const { getAuthorizationUrl, authenticateWithCode, loadSealedSession } = require('./auth/workos-client.js');
+    const { CompanyDatabase } = require('./db/company-db.js');
+    const { requireAuth } = require('./middleware/auth.js');
+
+    const companyDb = new CompanyDatabase();
+
+    // GET /auth/login - Redirect to WorkOS for authentication
+    this.app.get('/auth/login', (req, res) => {
+      try {
+        const returnTo = req.query.return_to as string;
+        const state = returnTo ? JSON.stringify({ return_to: returnTo }) : undefined;
+        const authUrl = getAuthorizationUrl(state);
+        res.redirect(authUrl);
+      } catch (error) {
+        console.error('Login redirect error:', error);
+        res.status(500).json({
+          error: 'Failed to initiate login',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /auth/callback - Handle OAuth callback from WorkOS
+    this.app.get('/auth/callback', async (req, res) => {
+      const code = req.query.code as string;
+      const state = req.query.state as string;
+
+      if (!code) {
+        return res.status(400).json({
+          error: 'Missing authorization code',
+          message: 'No authorization code provided',
+        });
+      }
+
+      try {
+        // Exchange code for access token and user info
+        const { user, accessToken, refreshToken } = await authenticateWithCode(code);
+
+        // Set session cookie (sealed by WorkOS)
+        res.cookie('wos-session', accessToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+
+        // Check if user belongs to any companies (via email domain or existing membership)
+        const companies = await companyDb.getUserCompanies(user.id);
+
+        // If user has no companies, check for domain-based auto-join
+        if (companies.length === 0 && user.email) {
+          const domainCompany = await companyDb.findCompanyByEmailDomain(user.email);
+
+          if (domainCompany) {
+            // Auto-join user to company based on email domain
+            await companyDb.createCompanyUser({
+              company_id: domainCompany.id,
+              user_id: user.id,
+              email: user.email,
+              role: 'member',
+            });
+            companies.push(domainCompany);
+          }
+        }
+
+        // Parse return_to from state
+        let returnTo = '/dashboard';
+        if (state) {
+          try {
+            const parsedState = JSON.parse(state);
+            returnTo = parsedState.return_to || returnTo;
+          } catch (e) {
+            // Invalid state, use default
+          }
+        }
+
+        // Redirect to dashboard or onboarding
+        if (companies.length === 0) {
+          res.redirect('/onboarding');
+        } else {
+          res.redirect(returnTo);
+        }
+      } catch (error) {
+        console.error('Auth callback error:', error);
+        res.status(500).json({
+          error: 'Authentication failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /auth/logout - Clear session and redirect
+    this.app.get('/auth/logout', (req, res) => {
+      res.clearCookie('wos-session');
+      res.redirect('/');
+    });
+
+    // GET /api/me - Get current user info
+    this.app.get('/api/me', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+
+        // Get user's companies
+        const companies = await companyDb.getUserCompanies(user.id);
+
+        // Get company users info for each company
+        const companiesWithRole = await Promise.all(
+          companies.map(async (company: Company) => {
+            const companyUser = await companyDb.getCompanyUser(company.id, user.id);
+            return {
+              ...company,
+              role: companyUser?.role,
+            };
+          })
+        );
+
+        res.json({
+          user: {
+            id: user.id,
+            email: user.email,
+            first_name: user.firstName,
+            last_name: user.lastName,
+            email_verified: user.emailVerified,
+          },
+          companies: companiesWithRole,
+        });
+      } catch (error) {
+        console.error('Get current user error:', error);
+        res.status(500).json({
+          error: 'Failed to get user info',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/agreement/current - Get current agreement
+    this.app.get('/api/agreement/current', async (req, res) => {
+      try {
+        const agreement = await companyDb.getCurrentAgreement();
+
+        if (!agreement) {
+          return res.status(404).json({
+            error: 'No agreement found',
+            message: 'No agreement is currently available',
+          });
+        }
+
+        res.json({
+          version: agreement.version,
+          text: agreement.text,
+          effective_date: agreement.effective_date,
+        });
+      } catch (error) {
+        console.error('Get agreement error:', error);
+        res.status(500).json({
+          error: 'Failed to get agreement',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
   }
 
   async start(port: number = 3000): Promise<void> {
