@@ -167,13 +167,9 @@ This repository runs a unified Express server that serves everything from a sing
 npm install
 ```
 
-#### 2. Database Setup (Optional)
+#### 2. Database Setup (Required)
 
-The registry can run in two modes:
-- **File mode** (default) - Uses JSON files in `registry/` directory
-- **Database mode** (production) - Uses PostgreSQL database
-
-**For database mode (recommended for development):**
+The registry requires a PostgreSQL database. JSON files in the `registry/` directory are used only for initial seeding.
 
 ```bash
 # Start PostgreSQL in Docker
@@ -185,22 +181,22 @@ cp .env.local.example .env.local
 # Run migrations
 npm run db:migrate
 
-# Seed with example agents
+# Seed database from JSON files (one-time migration)
 npm run db:seed
 ```
 
-**For file mode:**
+**Migration from file-based registry:**
 
-Just skip the database setup - the server will automatically use JSON files.
+If you previously used the file-based registry, the `db:seed` command will import all agents from the `registry/` JSON files into the database.
 
 #### 3. Start Development Server
 
-**With database:**
 ```bash
+# Database URL is required
 DATABASE_URL=postgresql://adcp:localdev@localhost:5433/adcp_registry npm start
 ```
 
-**Without database (file mode):**
+Or use the `.env.local` file:
 ```bash
 npm start
 ```
@@ -258,15 +254,15 @@ npm start:mcp
 - `NODE_ENV` - Environment (development|production)
 - `MODE` - Server mode (http|mcp)
 
-**Database Configuration:**
-- `DATABASE_URL` - PostgreSQL connection string (required for database mode)
+**Database Configuration (Required):**
+- `DATABASE_URL` - PostgreSQL connection string (**required**)
 - `DATABASE_SSL` - Enable SSL (default: false)
 - `DATABASE_SSL_REJECT_UNAUTHORIZED` - Verify SSL certificates (default: true when SSL enabled)
 - `DATABASE_MAX_POOL_SIZE` - Connection pool size (default: 20)
 - `DATABASE_IDLE_TIMEOUT_MS` - Idle timeout (default: 30000)
 - `DATABASE_CONNECTION_TIMEOUT_MS` - Connection timeout (default: 5000)
 
-**Note:** If `DATABASE_URL` is set but the database is unavailable at startup, the server will fail to start. This is intentional - you can't run database migrations or initialize database mode without a working database connection. Once running, the connection pool handles transient connection failures automatically with retries and timeouts.
+**Note:** The registry is now database-only. `DATABASE_URL` is required to run the server. If the database is unavailable at startup, the server will fail immediately (fail-fast behavior). This ensures you can't accidentally run without proper data persistence.
 
 ### Docker Deployment
 

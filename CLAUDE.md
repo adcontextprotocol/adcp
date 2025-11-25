@@ -569,9 +569,22 @@ Brief description of what changed and why.
 ```
 
 **Changeset types:**
-- `patch` - Bug fixes, documentation updates, no API changes
+- `patch` - Bug fixes, documentation updates, no API changes, refactoring/cleanup
 - `minor` - New features, backward-compatible API additions
 - `major` - Breaking changes to APIs or schemas
+- **empty** - Changes that don't affect the package (use `--empty` flag)
+
+**When to use empty changesets:**
+- Changes to CI/CD configuration
+- Changes to test infrastructure
+- Changes to development tools
+- Internal refactoring that doesn't change the public API or schemas
+- Documentation-only changes that don't affect functionality
+
+```bash
+# For changes that don't need a version bump
+npx changeset add --empty
+```
 
 **Example changeset file (`.changeset/placement-targeting.md`):**
 ```markdown
