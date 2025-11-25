@@ -1090,9 +1090,9 @@ export class HTTPServer {
 
         // Redirect to dashboard or onboarding
         if (companies.length === 0) {
-          res.redirect('/onboarding');
+          res.redirect('/onboarding.html');
         } else {
-          res.redirect(returnTo);
+          res.redirect('/dashboard.html');
         }
       } catch (error) {
         console.error('Auth callback error:', error);
