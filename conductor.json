@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "setup": "git config core.hooksPath .husky\nnpm install"
+    "setup": "git config core.hooksPath .husky\nnpm install\nuv sync"
   }
 }
