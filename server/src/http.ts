@@ -10,7 +10,7 @@ import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { closeDatabase } from "./db/client.js";
-import { getPropertyIndex, createMCPClient, createA2AClient } from "@adcp/client";
+import { getPropertyIndex } from "@adcp/client";
 import type { AgentType, AgentWithStats } from "./types.js";
 import type { Server } from "http";
 

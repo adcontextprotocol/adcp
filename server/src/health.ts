@@ -1,6 +1,6 @@
 import type { Agent, AgentHealth, AgentStats } from "./types.js";
 import { Cache } from "./cache.js";
-import { createMCPClient, createA2AClient, getPropertyIndex } from "@adcp/client";
+import { getPropertyIndex } from "@adcp/client";
 import { FormatsService } from "./formats.js";
 
 export class HealthChecker {
