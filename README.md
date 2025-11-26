@@ -174,8 +174,6 @@ Copy environment template and configure secrets:
 cp .env.local.example .env.local
 ```
 
-**Conductor Workspaces:** If using Conductor, WorkOS credentials are automatically copied from the project root `.env` file during workspace setup. See `conductor.json.example` for automation template.
-
 #### 3. Database Setup (Required)
 
 ```bash
