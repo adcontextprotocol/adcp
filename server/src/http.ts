@@ -7,6 +7,7 @@ import { Registry } from "./registry.js";
 import { AgentValidator } from "./validator.js";
 import { HealthChecker } from "./health.js";
 import { CrawlerService } from "./crawler.js";
+import { createLogger } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
@@ -20,6 +21,8 @@ import Stripe from "stripe";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const logger = createLogger('http-server');
 
 // Initialize WorkOS client
 const workos = new WorkOS(process.env.WORKOS_API_KEY!, {
@@ -95,9 +98,26 @@ export class HTTPServer {
     // Authentication routes
     this.setupAuthRoutes();
 
-    // UI page redirects (serve without .html extension)
+    // UI page routes (serve with environment variables injected)
     this.app.get('/onboarding', (req, res) => res.redirect('/onboarding.html'));
-    this.app.get('/dashboard', (req, res) => res.redirect('/dashboard.html'));
+    this.app.get('/dashboard', async (req, res) => {
+      try {
+        const fs = await import('fs/promises');
+        const dashboardPath = path.join(__dirname, '../../public/dashboard.html');
+        let html = await fs.readFile(dashboardPath, 'utf-8');
+
+        // Replace template variables with environment values
+        html = html
+          .replace('{{STRIPE_PUBLISHABLE_KEY}}', process.env.STRIPE_PUBLISHABLE_KEY || '')
+          .replace('{{STRIPE_PRICING_TABLE_ID}}', process.env.STRIPE_PRICING_TABLE_ID || '');
+
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+      } catch (error) {
+        console.error('Error serving dashboard:', error);
+        res.status(500).send('Error loading dashboard');
+      }
+    });
 
     // API endpoints
     this.app.get("/api/agents", async (req, res) => {
@@ -1085,8 +1105,7 @@ export class HTTPServer {
           },
         });
 
-        console.log('[AUTH_CALLBACK] User authenticated:', user.email);
-        console.log('[AUTH_CALLBACK] Sealed session length:', sealedSession?.length);
+        logger.info({ userId: user.id }, 'User authenticated via OAuth callback');
 
         // Set sealed session cookie
         res.cookie('wos-session', sealedSession!, {
@@ -1097,14 +1116,14 @@ export class HTTPServer {
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         });
 
-        console.log('[AUTH_CALLBACK] Sealed session cookie set, redirecting...');
+        logger.debug('Session cookie set, checking organization memberships');
 
         // Check if user belongs to any WorkOS organizations
         const memberships = await workos.userManagement.listOrganizationMemberships({
           userId: user.id,
         });
 
-        console.log(`[AUTH_CALLBACK] User has ${memberships.data.length} organization memberships`);
+        logger.debug({ count: memberships.data.length }, 'Organization memberships retrieved');
 
         // Parse return_to from state
         let returnTo = '/dashboard';
@@ -1119,10 +1138,10 @@ export class HTTPServer {
 
         // Redirect to dashboard or onboarding
         if (memberships.data.length === 0) {
-          console.log('[AUTH_CALLBACK] No organizations, redirecting to onboarding');
+          logger.debug('No organizations found, redirecting to onboarding');
           res.redirect('/onboarding.html');
         } else {
-          console.log('[AUTH_CALLBACK] Has organizations, redirecting to dashboard');
+          logger.debug({ returnTo }, 'Redirecting authenticated user');
           res.redirect('/dashboard.html');
         }
       } catch (error) {
@@ -1510,11 +1529,11 @@ export class HTTPServer {
 
         // Create API key via WorkOS
         // Note: WorkOS API Keys product requires organization setup
-        // This is a placeholder for the actual WorkOS API key creation
+        // This is demo/placeholder code - real implementation would use crypto.randomBytes()
         const apiKey = {
           id: `key_${Date.now()}`,
           name: name || 'API Key',
-          key: `sk_live_${Math.random().toString(36).substring(2, 15)}`,
+          key: `sk_demo_${Math.random().toString(36).substring(2, 15)}`,
           permissions: permissions || ['registry:read', 'registry:write'],
           created_at: new Date().toISOString(),
           company_id: companyId,

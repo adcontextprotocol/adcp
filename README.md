@@ -249,10 +249,13 @@ npm start:mcp
 
 ### Environment Variables
 
+All environment variables are validated on server startup. See `.env.local.example` for a complete template.
+
 **Server Configuration:**
 - `PORT` - Server port (default: 3000)
 - `NODE_ENV` - Environment (development|production)
 - `MODE` - Server mode (http|mcp)
+- `LOG_LEVEL` - Logging level (trace|debug|info|warn|error|fatal, default: debug in dev, info in prod)
 
 **Database Configuration (Required):**
 - `DATABASE_URL` - PostgreSQL connection string (**required**)
@@ -262,7 +265,41 @@ npm start:mcp
 - `DATABASE_IDLE_TIMEOUT_MS` - Idle timeout (default: 30000)
 - `DATABASE_CONNECTION_TIMEOUT_MS` - Connection timeout (default: 5000)
 
+**Authentication (Required for Registry Features):**
+- `WORKOS_API_KEY` - WorkOS API key (**required**)
+- `WORKOS_CLIENT_ID` - WorkOS OAuth client ID (**required**)
+- `WORKOS_COOKIE_PASSWORD` - Session encryption key, min 32 characters (**required**)
+- `WORKOS_REDIRECT_URI` - OAuth callback URL (default: http://localhost:3000/auth/callback)
+
+**Billing (Optional - Stripe):**
+- `STRIPE_SECRET_KEY` - Stripe secret key (sk_test_... or sk_live_...)
+- `STRIPE_PUBLISHABLE_KEY` - Stripe publishable key (pk_test_... or pk_live_...)
+- `STRIPE_PRICING_TABLE_ID` - Stripe pricing table ID for subscription UI
+- `STRIPE_WEBHOOK_SECRET` - Stripe webhook signing secret (whsec_...)
+
 **Note:** The registry is now database-only. `DATABASE_URL` is required to run the server. If the database is unavailable at startup, the server will fail immediately (fail-fast behavior). This ensures you can't accidentally run without proper data persistence.
+
+### Security Requirements
+
+**HTTPS in Production:**
+
+⚠️ **CRITICAL**: Session cookies and authentication tokens must be transmitted over HTTPS in production and staging environments.
+
+- Set `NODE_ENV=production` to enable secure cookies
+- Use a reverse proxy (nginx, Caddy, or cloud load balancer) to terminate TLS
+- Obtain SSL certificates from Let's Encrypt or your certificate provider
+- Update `WORKOS_REDIRECT_URI` to use https:// scheme
+
+**Development Setup:**
+
+In local development, cookies are sent over HTTP for convenience. This is acceptable only on localhost. For staging environments, always use HTTPS even if using self-signed certificates.
+
+**Generating Secure Secrets:**
+
+```bash
+# Generate WORKOS_COOKIE_PASSWORD (min 32 characters)
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
 
 ### Docker Deployment
 

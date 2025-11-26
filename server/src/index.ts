@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import { MCPServer } from "./mcp.js";
 import { HTTPServer } from "./http.js";
+import { validateEnvironment } from "./env-validation.js";
+
+// Validate environment variables before starting server
+validateEnvironment();
 
 // Check if running as MCP server (stdio) or HTTP server
 const mode = process.env.MODE || "http";

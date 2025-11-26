@@ -1,5 +1,8 @@
 import { WorkOS } from '@workos-inc/node';
 import type { WorkOSUser } from '../types.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('workos-client');
 
 if (!process.env.WORKOS_API_KEY) {
   throw new Error('WORKOS_API_KEY environment variable is required');
@@ -37,7 +40,7 @@ export async function authenticateWithCode(code: string): Promise<{
 }> {
   const redirectUri = process.env.WORKOS_REDIRECT_URI || 'http://localhost:3000/auth/callback';
 
-  console.log('[WORKOS] Authenticating with code...');
+  logger.debug('Authenticating with authorization code');
 
   const { user, sealedSession } =
     await workos.userManagement.authenticateWithCode({
@@ -49,9 +52,7 @@ export async function authenticateWithCode(code: string): Promise<{
       },
     });
 
-  console.log('[WORKOS] Authentication successful');
-  console.log('[WORKOS] Sealed session length:', sealedSession?.length);
-  console.log('[WORKOS] User:', user.email);
+  logger.info({ userId: user.id }, 'User authenticated successfully');
 
   return {
     user: {
@@ -93,8 +94,7 @@ export async function loadSealedSession(sessionData: string): Promise<{
   accessToken?: string;
 }> {
   try {
-    console.log('[WORKOS] Validating sealed session, length:', sessionData.length);
-    console.log('[WORKOS] Using clientId:', clientId);
+    logger.debug('Validating sealed session');
 
     // Use WorkOS's authenticateWithSessionCookie to validate and unseal
     // Note: clientId is configured in the WorkOS instance, not passed here
@@ -103,16 +103,12 @@ export async function loadSealedSession(sessionData: string): Promise<{
       cookiePassword: process.env.WORKOS_COOKIE_PASSWORD!,
     });
 
-    console.log('[WORKOS] *** authenticateWithSessionCookie called successfully ***');
-
-    console.log('[WORKOS] Auth result authenticated:', result.authenticated);
-
     if (!result.authenticated || !result.user) {
-      console.log('[WORKOS] Session validation failed, reason:', (result as any).reason);
+      logger.debug({ reason: (result as any).reason }, 'Session validation failed');
       return { authenticated: false };
     }
 
-    console.log('[WORKOS] Session valid for user:', result.user.email);
+    logger.debug({ userId: result.user.id }, 'Session validated successfully');
 
     return {
       authenticated: true,
@@ -128,8 +124,7 @@ export async function loadSealedSession(sessionData: string): Promise<{
       accessToken: result.accessToken,
     };
   } catch (error) {
-    console.error('[WORKOS] Failed to validate session:', error);
-    console.error('[WORKOS] Error details:', error instanceof Error ? error.message : String(error));
+    logger.error({ err: error }, 'Failed to validate session');
     return { authenticated: false };
   }
 }

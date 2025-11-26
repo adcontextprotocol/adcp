@@ -2,6 +2,9 @@ import type { Request, Response, NextFunction } from 'express';
 import { WorkOS } from '@workos-inc/node';
 import { CompanyDatabase } from '../db/company-db.js';
 import type { WorkOSUser, Company, CompanyUser } from '../types.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('auth-middleware');
 
 // Initialize WorkOS client
 const workos = new WorkOS(process.env.WORKOS_API_KEY!, {
@@ -31,12 +34,10 @@ const companyDb = new CompanyDatabase();
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const sessionCookie = req.cookies['wos-session'];
 
-  console.log('[AUTH] Request to:', req.path);
-  console.log('[AUTH] Session cookie present:', !!sessionCookie);
-  console.log('[AUTH] All cookies:', Object.keys(req.cookies));
+  logger.debug({ path: req.path, hasCookie: !!sessionCookie }, 'Authentication check');
 
   if (!sessionCookie) {
-    console.log('[AUTH] No session cookie found');
+    logger.debug('No session cookie found');
     return res.status(401).json({
       error: 'Authentication required',
       message: 'Please log in to access this resource',
@@ -51,11 +52,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       cookiePassword: WORKOS_COOKIE_PASSWORD,
     });
 
-    console.log('[AUTH] Session authenticated:', result.authenticated);
-    console.log('[AUTH] User ID:', 'user' in result ? result.user?.id : 'N/A');
-
     if (!result.authenticated || !('user' in result) || !result.user) {
-      console.log('[AUTH] Session validation failed');
+      logger.debug('Session validation failed');
       return res.status(401).json({
         error: 'Invalid session',
         message: 'Your session has expired. Please log in again.',
@@ -76,7 +74,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     req.accessToken = result.accessToken;
     next();
   } catch (error) {
-    console.error('[AUTH] Auth middleware error:', error);
+    logger.error({ err: error }, 'Authentication middleware error');
     return res.status(401).json({
       error: 'Authentication failed',
       message: 'Unable to verify your session. Please log in again.',
@@ -131,7 +129,7 @@ export async function requireCompanyAccess(req: Request, res: Response, next: Ne
     req.companyUser = companyUser;
     next();
   } catch (error) {
-    console.error('Company access middleware error:', error);
+    logger.error({ err: error }, 'Company access middleware error');
     return res.status(500).json({
       error: 'Internal server error',
       message: 'Unable to verify company access',
@@ -256,7 +254,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     }
   } catch (error) {
     // Silently fail for optional auth
-    console.error('Optional auth error:', error);
+    logger.debug({ err: error }, 'Optional auth failed');
   }
 
   next();
