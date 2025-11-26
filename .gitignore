@@ -26,3 +26,4 @@ pre-push
 # Test cache
 tests/.tested-files.json
 tests/temp-snippet-*
+coverage/
