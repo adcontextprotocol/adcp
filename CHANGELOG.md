@@ -1,5 +1,575 @@
 # Changelog
 
+## 2.6.0
+
+### Minor Changes
+
+- 0c6a48f: Add URL reference support to adagents.json for CDN distribution and multi-domain publishers.
+
+  Publishers can now choose between two file structures:
+
+  1. Inline structure (existing) - full configuration in place
+  2. URL reference (new) - points to authoritative location
+
+  **Features:**
+
+  - Schema supports both inline and URL reference variants via discriminated union
+  - AdAgentsManager validates references and fetches authoritative files
+  - Prevents infinite loops via nested reference detection
+  - Requires HTTPS for security
+  - UI toggle in AdAgents Manager to create either file type
+
+  **Use cases:**
+
+  - CDN distribution for better performance
+  - Centralized management across multiple domains
+  - Dynamic updates without touching domain files
+
+- 9c362e0: Add AdCP extension schema for agent card capability discovery
+
+  Introduces a standardized extension schema that AdCP agents can include in their agent cards to declare protocol version and supported domains programmatically.
+
+  **New schema:** `adcp-extension.json`
+
+  **Usage:**
+
+  - A2A agents: Include `extensions.adcp` in `/.well-known/agent.json`
+  - MCP servers: Will include `extensions.adcp` in server info once MCP adds server card support
+
+  **Extension structure:**
+
+  ```json
+  {
+    "extensions": {
+      "adcp": {
+        "adcp_version": "2.4.0",
+        "protocols_supported": ["media_buy", "creative", "signals"]
+      }
+    }
+  }
+  ```
+
+  **Benefits:**
+
+  - Clients can discover AdCP capabilities without test calls
+  - Agents declare which domains they implement
+  - Version information enables compatibility checks
+  - Same extension works for both A2A and MCP protocols
+
+- 24aa0b9: Implement build-time schema versioning with semantic version paths
+
+  Adds build-time schema versioning system that transforms unversioned source schemas into versioned distribution output with multiple access patterns:
+
+  - `/schemas/{version}/` - Exact semantic version (e.g., 2.5.0) for production use
+  - `/schemas/v{major}/` - Major version alias (e.g., v2) that tracks latest 2.x release
+  - `/schemas/v1/` - Backward compatibility alias for existing clients
+  - `/schemas/latest/` - Always points to current version (exploration only)
+
+  **Breaking changes:**
+
+  - Schema source files moved from `static/schemas/v1/` to `static/schemas/source/`
+  - Schemas now served from `dist/schemas/` instead of `static/schemas/`
+  - All schema `$id` and `$ref` fields use unversioned paths in source, versioned paths in dist
+
+  **Migration:**
+
+  - Existing clients using `/schemas/v1/` paths continue to work via backward compatibility alias
+  - New integrations should use `/schemas/v2/` for major version tracking
+  - Production applications should pin to exact versions (e.g., `/schemas/2.5.0/`)
+
+  **Implementation:**
+
+  - New `scripts/build-schemas.js` handles transformation and symlink creation
+  - Build script integrated into `npm run build` and version workflows
+  - All 142 schema files preserve git history via `git mv`
+  - Comprehensive documentation in `docs/reference/schema-versioning.mdx`
+
+- ba4fd04: Add creative_ids filter to sync_creatives for scoped updates and error recovery.
+
+  **New Capability:**
+
+  The `creative_ids` filter enables targeted creative updates without affecting the entire library. When provided, only the specified creatives are processed, leaving all other creatives untouched.
+
+  **Key Use Cases:**
+
+  1. **Scoped Updates** - Update 2-3 creatives out of 100+ without including all creatives in the request
+  2. **Error Recovery** - After bulk sync with validation failures, retry only the failed creatives
+  3. **Performance** - Publishers can optimize processing when scope is known upfront
+  4. **Safety** - Explicit targeting reduces risk of unintended changes in large libraries
+
+  **Schema Changes:**
+
+  - Added optional `creative_ids` array parameter to sync-creatives-request (max 100)
+  - Works with upsert semantics to scope updates to specific creatives
+  - Combines naturally with existing validation_mode and dry_run options
+
+  **Example - Error Recovery Workflow:**
+
+  ```json
+  // After bulk sync where 3 out of 100 failed, retry only those 3:
+  {
+    "creative_ids": ["failed_1", "failed_2", "failed_3"],
+    "creatives": [
+      { "creative_id": "failed_1" /* corrected data */ },
+      { "creative_id": "failed_2" /* corrected data */ },
+      { "creative_id": "failed_3" /* corrected data */ }
+    ]
+  }
+  ```
+
+  **Documentation Updates:**
+
+  - Added creative_ids parameter to Core Parameters table
+  - Added Example 6: Scoped Update with creative_ids Filter
+  - Added Example 7: Error Recovery Workflow (complete end-to-end scenario)
+  - Added Best Practice #6: Scoped Updates guidance
+  - Updated Error Recovery best practices to recommend creative_ids filter
+
+  This complements the replacement semantics pattern established in update_media_buy by enabling subset-based operations without requiring full library enumeration.
+
+- ba4fd04: Add comprehensive creative management to update_media_buy with support for uploading new creatives, updating weights, and managing placement targeting.
+
+  Previously, buyers could only reference existing library creatives using simple `creative_ids` when updating a media buy. This limited the ability to adjust creative rotation weights or placement targeting without recreating the entire campaign.
+
+  **New Capabilities:**
+
+  1. **Upload creatives with weight and placement** - Use `creatives` field to upload and assign new creative assets with optional weight and placement_ids configuration in one step
+  2. **Update weights and placement targeting** - Use `creative_assignments` field to modify rotation weights (0-100) and placement targeting for existing creatives
+  3. **Three assignment methods** - Choose the right approach for your use case:
+     - `creative_ids`: Simple creative list (add/remove creatives)
+     - `creatives`: Upload brand new creative assets with optional weight/placement configuration
+     - `creative_assignments`: Granular control over weights and placement targeting for existing creatives
+
+  **Schema Changes:**
+
+  - Added `creatives` field to package update objects (max 100 creatives)
+  - Added `creative_assignments` field with weight and placement_ids support
+  - Extended `creative-asset.json` with optional `weight` and `placement_ids` fields for assignment configuration during upload
+  - All three fields use replacement semantics for predictable behavior
+
+  **Documentation Updates:**
+
+  - Documented replacement semantics for array fields in PATCH updates
+  - Added examples showing how to add, remove, or replace creative assignments
+  - Added example showing weight and placement targeting updates
+  - Clarified field selection guidance in usage notes
+
+  **Replacement Semantics:**
+
+  - Array fields use complete replacement (not merge or append)
+  - To add a creative: include all existing assignments plus the new one
+  - To remove a creative: include all assignments except the one to remove
+  - To update weights/placements: use `creative_assignments` with modified values
+  - Omitting the field leaves existing assignments unchanged
+
+  This brings update_media_buy to feature parity with create_media_buy while adding the ability to fine-tune creative rotation and targeting post-launch.
+
+- 9c3a472: Improve TypeScript and Zod code generation for discriminated union schemas.
+
+  **Changes:**
+
+  - Moved common fields (`ext`, `context`) inside each `oneOf` variant instead of at root level
+  - Affected schemas (10 total):
+    - Creative schemas: `preview-creative-request.json`, `preview-creative-response.json`, `build-creative-response.json`
+    - Media buy schemas: `create-media-buy-response.json`, `update-media-buy-response.json`, `sync-creatives-response.json`, `provide-performance-feedback-response.json`
+    - Signal schemas: `activate-signal-response.json`
+
+  **Benefits:**
+
+  - Enables automatic Zod schema generation with `ts-to-zod` (previously failed on intersection types)
+  - Produces clean discriminated union types instead of intersection types
+  - Better TypeScript developer experience with proper type narrowing and IDE autocomplete
+  - Reduces manual Zod schema maintenance burden
+  - Consistent pattern across all discriminated union response/request schemas
+
+  **Backward Compatibility:**
+
+  - Runtime validation behavior is identical
+  - No API breaking changes
+  - Generated TypeScript types have same semantic meaning, just cleaner structure
+
+  **Migration:**
+  For SDK maintainers:
+
+  1. Regenerate TypeScript types from updated schemas
+  2. Regenerate Zod schemas (now works automatically with `ts-to-zod`)
+  3. Remove manual Zod schemas for affected types
+  4. No changes needed for API consumers - types are compatible
+
+- 1d705a2: Add extension fields (`ext`) at three layers following IAB/OpenRTB conventions.
+
+  **Three-Layer Extension Architecture:**
+
+  - **Request extensions** - Operational metadata (tracing, test flags, caller context)
+  - **Response extensions** - Processing diagnostics (timing, debug info, operational hints)
+  - **Object extensions** - Domain-specific persistent data (platform IDs, custom fields)
+
+  **New capabilities:**
+
+  - All 17 task request schemas support optional `ext` for operational parameters
+  - All 16 task response schemas support optional `ext` for processing metadata
+  - Core objects (Product, MediaBuy, CreativeManifest, Package) support `ext` for persistent data
+  - Extension objects accept any valid JSON with `additionalProperties: true`
+  - Enables platform-specific metadata, testing, tracing, debugging, and experimental features
+  - Follows industry standard `ext` naming per OpenRTB specification
+
+  **Schema changes:**
+
+  - Added `ext` to all request schemas (17 files): create-media-buy-request, get-products-request, etc.
+  - Added `ext` to all response schemas (16 files): create-media-buy-response, get-products-response, etc.
+  - Added `ext` to core object schemas (4 files): product, media-buy, creative-manifest, package
+  - Distinct descriptions for request vs response vs object extension purposes
+
+  **Documentation:**
+
+  - New `docs/reference/extensions.md` with comprehensive three-layer extension guide
+  - Request/response/object extension use cases and examples
+  - Extension vs context clarification (opaque correlation vs parseable parameters)
+  - Layer separation anti-patterns to avoid redundancy
+  - Namespacing conventions and common patterns
+  - Testing, tracing, debugging, and measurement examples
+
+  **Testing:**
+
+  - New `tests/extension-fields.test.js` validating extension behavior
+  - Tests verify ext is optional, accepts various types, preserves unknown fields
+  - Integration with npm test suite via test:extensions script
+
+  Extension fields enable forward compatibility and platform-specific innovation at appropriate architectural layers while maintaining protocol stability. Each layer serves distinct purposes following proven OpenRTB patterns.
+
+- ba4fd04: Add media_buy_ids and buyer_refs filters to list_creatives for campaign-level creative discovery.
+
+  **New Filter Capabilities:**
+
+  1. **Media Buy Filtering** - Use `media_buy_ids` to find all creatives assigned to specific media buys
+  2. **Buyer Reference Search** - Use `buyer_refs` to find creatives across campaigns with matching buyer references
+
+  **Schema Changes:**
+
+  - Added `media_buy_ids` array filter to list-creatives-request
+  - Added `buyer_refs` array filter to list-creatives-request
+  - Both filters use array format for consistency with existing patterns like `assigned_to_packages`
+
+  **Use Cases:**
+
+  - Find all creatives used in a specific campaign (by media_buy_id)
+  - Search creatives across related campaigns (by buyer_ref)
+  - Audit creative usage at the campaign level
+  - Performance analysis across buyer-defined campaign groupings
+
+  This complements existing package-level filtering (`assigned_to_packages`) by enabling campaign-level creative discovery.
+
+- 73cb9f4: Add template formats with dimension parameters to eliminate format explosion for dimension variants.
+
+  **Problem:** Publishers supporting hundreds of placement sizes would need separate format definitions for each dimension (300x250, 728x90, 970x250, etc.), creating unmanageable format catalogs.
+
+  **Solution:** Template formats accept dimension/duration parameters in the format_id object. Format definitions use `parameters_from_format_id` flags to indicate where parameters are used, making it clear how dimensions flow from format_id to renders and assets.
+
+  **Key Changes:**
+
+  1. **Format ID Schema** - Added optional dimension and duration fields
+
+     - `width`, `height` (integers) - Pixel dimensions for visual formats (display, DOOH, native)
+     - `duration_ms` (number) - Duration in milliseconds for time-based formats (video, audio)
+     - Fields are optional - omitting them references template formats without parameters
+     - Including them creates parameterized format IDs
+     - All dimensions are pixels (no unit field needed)
+
+  2. **Format Schema** - Added capability and reference indicators
+
+     - `accepts_parameters` - Array listing which parameters format accepts (["dimensions"], ["duration"], or ["dimensions", "duration"])
+     - `renders[].parameters_from_format_id` - Render parameters come from format_id
+     - `requirements.parameters_from_format_id` - Asset parameters must match format_id
+     - Consistent naming: accepts_parameters → parameters_from_format_id
+
+  3. **Creative Manifest Schema** - Updated format_id description
+
+     - Creatives specify dimensions/duration in format_id object
+     - Parameterized format_ids enable deduplication and caching (same dimensions = same ID)
+     - Template formats accept any parameters, concrete formats have fixed dimensions
+
+  4. **Placement Schema** - CRITICAL: Sales agents MUST return parameterized format_ids
+     - Placements in `get_products()` responses MUST include parameterized format_ids with explicit dimensions/duration
+     - Template format_ids without parameters are ONLY used in `list_creative_formats()` responses
+     - Buyers need explicit lists of supported dimensions for validation
+     - Removed complex format_constraints object (not needed)
+
+  **Benefits:**
+
+  - ✅ Scalable to unlimited format variants without explosion
+  - ✅ Parameterized format IDs enable caching and deduplication
+  - ✅ Type-safe (dimensions are integers in pixels, not encoded strings)
+  - ✅ Creatives are self-contained with dimensions in format_id
+  - ✅ Publisher control via template vs parameterized format_ids
+  - ✅ Backward compatible - formats without optional fields unchanged
+  - ✅ Matches industry reality (format type + dimensions = concrete format)
+
+  **Examples:**
+
+  **Template format definition (accepts any dimensions):**
+
+  ```json
+  {
+    "format_id": { "agent_url": "...", "id": "display_static" },
+    "accepts_parameters": ["dimensions"],
+    "renders": [
+      {
+        "role": "primary",
+        "parameters_from_format_id": true
+      }
+    ],
+    "assets_required": [
+      {
+        "asset_id": "banner_image",
+        "asset_type": "image",
+        "requirements": {
+          "parameters_from_format_id": true
+        }
+      }
+    ]
+  }
+  ```
+
+  **Creative with parameterized format_id:**
+
+  ```json
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_static",
+      "width": 300,
+      "height": 250
+    },
+    "assets": {...}
+  }
+  ```
+
+  **Placement format_ids (REQUIRED pattern - sales agents MUST use parameterized format_ids):**
+
+  ```json
+  {
+    "format_ids": [
+      {
+        "agent_url": "...",
+        "id": "display_static",
+        "width": 300,
+        "height": 250
+      },
+      { "agent_url": "...", "id": "display_static", "width": 728, "height": 90 }
+      // Lists all exact dimensions supported by this placement
+    ]
+  }
+  ```
+
+  **Documentation:**
+
+  - New comprehensive guide at `/docs/creative/template-format-ids.mdx`
+  - Examples for display, video, audio, and DOOH use cases
+  - All dimensions in pixels (integers) - no unit field needed
+  - Migration guidance from concrete to template formats
+  - Validation and matching logic documentation
+
+- a3e7786: Add comprehensive filters to get_products request for efficient product discovery.
+
+  Enables buyers to filter products by campaign requirements and constraints:
+
+  - **start_date/end_date**: Campaign date range for availability checks (ISO 8601 date format)
+  - **budget_range**: Min/max budget range with required currency (ISO 4217 code). At least one of min or max must be specified.
+  - **countries**: Target countries using ISO 3166-1 alpha-2 codes for geographic filtering
+  - **channels**: Advertising channels using existing channels enum (display, video, audio, native, dooh, ctv, podcast, retail, social)
+
+  These optional filters allow sales agents to short-circuit expensive NLP processing and immediately return only relevant products, significantly improving product discovery efficiency and response times. The channels and countries filters match the same format used in list_authorized_properties for consistency.
+
+- b830a3d: Replace package `status` enum with `paused` boolean for clearer semantics.
+
+  **Breaking Changes:**
+
+  - Removed `status` field from Package schema (was `"draft" | "active" | "paused" | "completed"`)
+  - Added `paused: boolean` field to Package schema (buyer-controlled pause state)
+  - Changed `update_media_buy` request: `active: boolean` → `paused: boolean`
+  - Added `delivery_status` field to `get_media_buy_delivery` per-package metrics (system-reported operational state)
+
+  **Rationale:**
+  The previous `status` enum conflated buyer control (pause/resume) with system state (lifecycle phase). This created confusion about:
+
+  - Who sets the field (buyer vs. system)
+  - What transitions are valid
+  - Whether "paused" can be a final state
+
+  **New Design:**
+
+  - **`paused: boolean`** (in Package object) - Buyer-controlled pause state
+
+    - `false` = package should deliver (default)
+    - `true` = package should not deliver, regardless of budget/dates
+    - Can be a final state (buyer pauses and never resumes)
+
+  - **`delivery_status: string`** (in delivery reporting) - System-reported operational state
+    - Shows actual delivery state: `"delivering"`, `"completed"`, `"budget_exhausted"`, etc.
+    - Reflects system reality, not buyer intent
+
+  **Migration Guide:**
+
+  Before:
+
+  ```json
+  {
+    "packages": [
+      {
+        "package_id": "pkg_123",
+        "status": "active"
+      }
+    ]
+  }
+  ```
+
+  After:
+
+  ```json
+  {
+    "packages": [
+      {
+        "package_id": "pkg_123",
+        "paused": false
+      }
+    ]
+  }
+  ```
+
+  Before (update request):
+
+  ```json
+  {
+    "packages": [
+      {
+        "package_id": "pkg_123",
+        "active": false // Pause package
+      }
+    ]
+  }
+  ```
+
+  After (update request):
+
+  ```json
+  {
+    "packages": [
+      {
+        "package_id": "pkg_123",
+        "paused": true // Pause package
+      }
+    ]
+  }
+  ```
+
+  **Benefits:**
+
+  - Clear separation of buyer control vs. system state
+  - Simpler boolean semantics (paused or not)
+  - Eliminates unused "draft" state
+  - Removes ambiguity about who controls the field
+  - Delivery reporting shows actual operational state separately
+
+### Patch Changes
+
+- e7dadc0: Add artifactId to A2A documentation examples. Fixes A2A protocol compliance issues by adding missing artifactId fields to all artifact examples and correcting request structure (field names, message wrapper, webhook config location).
+- 3fdf9ea: Document canonical A2A response structure with comprehensive, consolidated protocol guidance. Clarifies that AdCP responses transmitted over A2A protocol MUST include at least one DataPart containing the task response payload, MAY include TextPart for human messages, and MUST use the last DataPart as authoritative when multiple data parts exist.
+
+  **New documentation:**
+
+  - `/docs/protocols/a2a-response-format.mdx` - Canonical format specification (consolidated from 657 to 470 lines)
+  - Updated `/docs/protocols/a2a-guide.mdx` - Streamlined response section, removed redundant extraction code
+
+  **Core requirements:**
+
+  - MUST include at least one DataPart (even for empty results)
+  - SHOULD use single artifact with multiple parts (not multiple artifacts)
+  - Last DataPart is authoritative when multiple exist (AdCP-specific convention)
+  - Framework wrappers nesting AdCP responses are NOT permitted
+  - Protocol-level failures (auth, invalid params) use `status: "failed"`
+  - Task-level failures (platform authorization, partial data) use `errors` array with `status: "completed"`
+
+  **Documentation improvements:**
+
+  - Consolidated "last data part" explanation (previously explained 3 times, now in one location)
+  - Removed redundant response extraction code from a2a-guide.mdx (28 lines saved)
+  - Collapsed detailed examples into expandable `<details>` blocks
+  - Simplified webhook section (references Core Concepts for authentication/retry)
+  - Removed trivial "empty results" section (moved to checklist)
+  - Simplified multiple artifacts guidance
+  - Clear protocol vs task error distinction with examples
+  - Progressive disclosure pattern for advanced topics
+  - Tight cross-referencing between guide (integration) and format spec (canonical structure)
+
+- 75a4e53: Add product roadmap documentation
+
+  Added comprehensive product roadmap page documenting release timeline and planned features:
+
+  - Version 2.5.0 as final significant 2025 release (November 21)
+  - Version 3.0.0 major update planned for January 15, 2026
+  - Future work on governance protocol and PMP support
+  - Community participation guidance and working group information
+
+- 8b7b767: Update CSV export example headers to use underscores instead of dots for better data warehouse compatibility (e.g., `totals_impressions` instead of `totals.impressions`).
+- 5ed352a: Fix outdated documentation references in adagents.json
+
+  Updated schema descriptions and documentation to remove outdated references to `list_authorized_properties` response structure. The `properties` and `tags` fields in adagents.json are canonical property definitions, not reflections of the task response (which was simplified in v2.3.0 to only return `publisher_domains`).
+
+  **Schema changes:**
+
+  - Updated `properties` field description to emphasize it defines the canonical property list
+  - Updated `tags` field description to clarify it provides metadata for property grouping
+
+  **Documentation changes:**
+
+  - Simplified adagents.json documentation to focus purely on JSON specification
+  - Removed implementation examples (validation, caching, error handling)
+  - Clarified that tags are for efficiency/grouping at scale, not just human-readable metadata
+  - Kept clear examples of all four authorization patterns
+
+- 63f90d7: Fix documentation logo display and dark mode support. Updated favicon to use AdCP logo instead of old Docusaurus dinosaur icon. Improved dark mode navbar styling across documentation site.
+- 09df396: Add release infrastructure for 2.5.0: minor version symlinks and pre-written release notes.
+
+  This is preparation work for the 2.5.0 release. The actual version bump and schema changes will happen when the Version Packages PR is merged. This changeset is marked as patch since it only updates documentation and build tooling without changing the protocol itself.
+
+  **Changes:**
+
+  - Add minor version symlink support (v2.5 → 2.5.0) in build-schemas.js
+  - Add semver validation to prevent malformed version errors
+  - Pre-write comprehensive 2.5.0 release notes with migration guide
+  - Update homepage version references from 2.3.0 to 2.5.0
+
+- 3d75b8f: Simplify format-id schema structure for better code generation compatibility.
+
+  **Problem**: The previous schema used a complex `oneOf`/`not`/`anyOf` pattern in `allOf` to express that width/height fields are optional but must appear together. This caused code generators to interpret the schema as two separate types (FormatId1, FormatId2) rather than a single type with optional fields, forcing union types everywhere format_id was used.
+
+  **Solution**: Replaced the complex validation pattern with a simpler approach:
+
+  - Moved width/height fields directly into the format-id schema properties
+  - Used JSON Schema `dependencies` keyword to enforce that width and height must appear together
+  - Maintained identical validation semantics while producing cleaner generated types
+
+  **Impact**:
+
+  - Code generators now produce a single FormatId type with optional width/height fields
+  - No breaking changes to the wire format or validation behavior
+  - Improved developer experience with better TypeScript/Python type hints
+  - Eliminates need for union types when referencing format_id
+
+  **Example generated type (TypeScript)**:
+
+  ```typescript
+  // Before: FormatId1 | FormatId2
+  // After:
+  interface FormatId {
+    agent_url: string;
+    id: string;
+    width?: number; // optional, but must have height if present
+    height?: number; // optional, but must have width if present
+    duration_ms?: number;
+  }
+  ```
+
 ## 2.5.0
 
 ### Minor Changes
