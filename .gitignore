@@ -27,3 +27,4 @@ pre-push
 tests/.tested-files.json
 tests/temp-snippet-*
 coverage/
+.env
