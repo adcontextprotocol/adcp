@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": patch
 ---
 
 Fix server startup when authentication is not configured
@@ -11,5 +10,6 @@ Make WorkOS authentication features optional to allow the server to start withou
 - Auth routes are only registered when authentication is properly configured
 - Server logs clear warnings when auth features are disabled
 - Authentication routes gracefully handle missing WorkOS client
+- Fix ES module import error (require() → import statements)
 
-**Note:** DATABASE_URL is still required as the registry is now database-only (changed in v2.5.0).
+**Note:** This is an internal deployment fix with no API changes, hence no version bump.
