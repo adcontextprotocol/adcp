@@ -18,6 +18,8 @@ import type { AgentType, AgentWithStats, Company } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession } from "./billing/stripe-client.js";
 import Stripe from "stripe";
+import { OrganizationDatabase } from "./db/organization-db.js";
+import { requireAuth } from "./middleware/auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1071,9 +1073,6 @@ export class HTTPServer {
       logger.error('Cannot setup auth routes - WorkOS not initialized');
       return;
     }
-
-    const { OrganizationDatabase } = require('./db/organization-db.js');
-    const { requireAuth } = require('./middleware/auth.js');
 
     const orgDb = new OrganizationDatabase();
 
