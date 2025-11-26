@@ -24,8 +24,10 @@ const envConfig: EnvConfig = {
   required: [
     {
       name: 'DATABASE_URL',
-      description: 'PostgreSQL connection string (e.g., postgresql://user:pass@host:5432/db)',
+      description: 'PostgreSQL connection string (e.g., postgresql://user:pass@host:5432/db) - REQUIRED for registry, authentication, and billing',
     },
+  ],
+  optional: [
     {
       name: 'WORKOS_API_KEY',
       description: 'WorkOS API key for authentication',
@@ -38,8 +40,6 @@ const envConfig: EnvConfig = {
       name: 'WORKOS_COOKIE_PASSWORD',
       description: 'Secret key for encrypting session cookies (min 32 characters)',
     },
-  ],
-  optional: [
     {
       name: 'WORKOS_REDIRECT_URI',
       description: 'OAuth callback URL',
@@ -100,9 +100,9 @@ export function validateEnvironment(): void {
     }
   }
 
-  // Validate WORKOS_COOKIE_PASSWORD length
+  // Validate WORKOS_COOKIE_PASSWORD length if provided
   if (process.env.WORKOS_COOKIE_PASSWORD && process.env.WORKOS_COOKIE_PASSWORD.length < 32) {
-    missing.push('  WORKOS_COOKIE_PASSWORD: Must be at least 32 characters long');
+    warnings.push('  WORKOS_COOKIE_PASSWORD: Must be at least 32 characters long (authentication features will be disabled)');
   }
 
   // Report results
@@ -117,10 +117,10 @@ export function validateEnvironment(): void {
   if (warnings.length > 0) {
     console.warn('\n⚠️  Optional environment variables not set:\n');
     console.warn(warnings.join('\n'));
-    console.warn('\nBilling features will be disabled without Stripe configuration.\n');
+    console.warn('\nNote: Authentication and billing features will be disabled without required configuration.\n');
+  } else {
+    console.log('✅ Environment variables validated successfully\n');
   }
-
-  console.log('✅ Environment variables validated successfully\n');
 }
 
 /**

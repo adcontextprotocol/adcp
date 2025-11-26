@@ -18,19 +18,29 @@ import type { AgentType, AgentWithStats, Company } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession } from "./billing/stripe-client.js";
 import Stripe from "stripe";
+import { OrganizationDatabase } from "./db/organization-db.js";
+import { requireAuth } from "./middleware/auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const logger = createLogger('http-server');
 
-// Initialize WorkOS client
-const workos = new WorkOS(process.env.WORKOS_API_KEY!, {
+// Check if authentication is configured
+const AUTH_ENABLED = !!(
+  process.env.WORKOS_API_KEY &&
+  process.env.WORKOS_CLIENT_ID &&
+  process.env.WORKOS_COOKIE_PASSWORD &&
+  process.env.WORKOS_COOKIE_PASSWORD.length >= 32
+);
+
+// Initialize WorkOS client only if authentication is enabled
+const workos = AUTH_ENABLED ? new WorkOS(process.env.WORKOS_API_KEY!, {
   clientId: process.env.WORKOS_CLIENT_ID!,
-});
-const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID!;
+}) : null;
+const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID || '';
 const WORKOS_REDIRECT_URI = process.env.WORKOS_REDIRECT_URI || 'http://localhost:3000/auth/callback';
-const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD!;
+const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD || '';
 
 export class HTTPServer {
   private app: express.Application;
@@ -95,8 +105,13 @@ export class HTTPServer {
 
 
   private setupRoutes(): void {
-    // Authentication routes
-    this.setupAuthRoutes();
+    // Authentication routes (only if configured)
+    if (AUTH_ENABLED) {
+      this.setupAuthRoutes();
+      logger.info('Authentication enabled');
+    } else {
+      logger.warn('Authentication disabled - WORKOS environment variables not configured');
+    }
 
     // UI page routes (serve with environment variables injected)
     this.app.get('/onboarding', (req, res) => res.redirect('/onboarding.html'));
@@ -1054,8 +1069,10 @@ export class HTTPServer {
   }
 
   private setupAuthRoutes(): void {
-    const { OrganizationDatabase } = require('./db/organization-db.js');
-    const { requireAuth } = require('./middleware/auth.js');
+    if (!workos) {
+      logger.error('Cannot setup auth routes - WorkOS not initialized');
+      return;
+    }
 
     const orgDb = new OrganizationDatabase();
 
@@ -1065,7 +1082,7 @@ export class HTTPServer {
         const returnTo = req.query.return_to as string;
         const state = returnTo ? JSON.stringify({ return_to: returnTo }) : undefined;
 
-        const authUrl = workos.userManagement.getAuthorizationUrl({
+        const authUrl = workos!.userManagement.getAuthorizationUrl({
           provider: 'authkit',
           clientId: WORKOS_CLIENT_ID,
           redirectUri: WORKOS_REDIRECT_URI,
@@ -1096,7 +1113,7 @@ export class HTTPServer {
 
       try {
         // Exchange code for sealed session and user info
-        const { user, sealedSession } = await workos.userManagement.authenticateWithCode({
+        const { user, sealedSession } = await workos!.userManagement.authenticateWithCode({
           clientId: WORKOS_CLIENT_ID,
           code,
           session: {
@@ -1119,7 +1136,7 @@ export class HTTPServer {
         logger.debug('Session cookie set, checking organization memberships');
 
         // Check if user belongs to any WorkOS organizations
-        const memberships = await workos.userManagement.listOrganizationMemberships({
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
         });
 
@@ -1165,7 +1182,7 @@ export class HTTPServer {
         const user = req.user!;
 
         // Get user's WorkOS organization memberships
-        const memberships = await workos.userManagement.listOrganizationMemberships({
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
         });
 
@@ -1173,7 +1190,7 @@ export class HTTPServer {
         // Fetch organization details separately since membership.organization may be undefined
         const organizations = await Promise.all(
           memberships.data.map(async (membership) => {
-            const org = await workos.organizations.getOrganization(membership.organizationId);
+            const org = await workos!.organizations.getOrganization(membership.organizationId);
             return {
               id: membership.organizationId,
               name: org.name,
@@ -1245,7 +1262,7 @@ export class HTTPServer {
         console.log('[CREATE_ORG] Creating WorkOS organization:', organization_name);
 
         // Create WorkOS Organization
-        const workosOrg = await workos.organizations.createOrganization({
+        const workosOrg = await workos!.organizations.createOrganization({
           name: organization_name,
           domainData: domains ? domains.map((d: string) => ({ domain: d })) : undefined,
         });
@@ -1255,7 +1272,7 @@ export class HTTPServer {
         // Add user as organization member
         // Note: roleSlug is optional - if not provided, WorkOS assigns a default role
         // Roles must be configured in WorkOS Dashboard under Organization settings
-        await workos.userManagement.createOrganizationMembership({
+        await workos!.userManagement.createOrganizationMembership({
           userId: user.id,
           organizationId: workosOrg.id,
         });
@@ -1316,7 +1333,7 @@ export class HTTPServer {
         const { orgId } = req.params;
 
         // Verify user is member of this organization
-        const memberships = await workos.userManagement.listOrganizationMemberships({
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
           organizationId: orgId,
         });
@@ -1391,7 +1408,7 @@ export class HTTPServer {
         const { orgId } = req.params;
 
         // Verify user is member of this organization
-        const memberships = await workos.userManagement.listOrganizationMemberships({
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
           organizationId: orgId,
         });
@@ -1609,7 +1626,7 @@ export class HTTPServer {
         }
 
         // Revoke via WorkOS (placeholder)
-        // In production: await workos.apiKeys.revoke(keyId);
+        // In production: await workos!.apiKeys.revoke(keyId);
 
         // Log API key revocation
         await companyDb.recordAuditLog({
