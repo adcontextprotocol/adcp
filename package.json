@@ -33,7 +33,7 @@
     "verify-version-sync": "node scripts/verify-version-sync.js"
   },
   "dependencies": {
-    "@adcp/client": "^3.0.3",
+    "@adcp/client": "^3.2.1",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "@workos-inc/node": "^7.74.2",
     "@workos-inc/widgets": "^1.5.1",
