@@ -7,6 +7,6 @@
     }
   ],
   "scripts": {
-    "setup": "git config core.hooksPath .husky && npm install && uv sync && docker compose up -d postgres && sleep 2 && PORT=$(docker compose port postgres 5432 | cut -d: -f2) && echo \"DATABASE_URL=postgresql://adcp:localdev@localhost:$PORT/adcp_registry\" >> .env.local && echo \"DATABASE_SSL=false\" >> .env.local && npm run db:migrate"
+    "setup": "git config core.hooksPath .husky && npm install && uv sync && docker compose up -d postgres && sleep 2 && DB_PORT=$(docker compose port postgres 5432 | cut -d: -f2) && APP_PORT=$((50000 + RANDOM % 10000)) && echo \"DATABASE_URL=postgresql://adcp:localdev@localhost:$DB_PORT/adcp_registry\" >> .env.local && echo \"DATABASE_SSL=false\" >> .env.local && echo \"CONDUCTOR_PORT=$APP_PORT\" >> .env.local && npm run db:migrate"
   }
 }
