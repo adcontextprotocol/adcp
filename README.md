@@ -167,16 +167,18 @@ This repository runs a unified Express server that serves everything from a sing
 npm install
 ```
 
-#### 2. Database Setup (Required)
+#### 2. Environment Setup
 
-The registry requires a PostgreSQL database. JSON files in the `registry/` directory are used only for initial seeding.
+Copy environment template and configure secrets:
+```bash
+cp .env.local.example .env.local
+```
+
+#### 3. Database Setup (Required)
 
 ```bash
 # Start PostgreSQL in Docker
 docker-compose up -d
-
-# Copy environment template
-cp .env.local.example .env.local
 
 # Run migrations
 npm run db:migrate
@@ -185,25 +187,28 @@ npm run db:migrate
 npm run db:seed
 ```
 
-**Migration from file-based registry:**
+#### 4. Start Development
 
-If you previously used the file-based registry, the `db:seed` command will import all agents from the `registry/` JSON files into the database.
-
-#### 3. Start Development Server
-
+**Option 1: Run everything together (recommended)**
 ```bash
-# Database URL is required
-DATABASE_URL=postgresql://adcp:localdev@localhost:5433/adcp_registry npm start
+npm run dev
 ```
 
-Or use the `.env.local` file:
+This starts:
+- **HTTP Server** (blue) - Application on port 3000
+- **Mintlify Docs** (green) - Documentation on port 3333
+- **Stripe CLI** (magenta) - Webhook forwarding (if Stripe configured)
+
+**Option 2: Run services individually**
 ```bash
+# Terminal 1: Start server
 npm start
-```
 
-#### 4. Start Mintlify Documentation
-```bash
+# Terminal 2: Start docs (optional)
 npm run start:mintlify
+
+# Terminal 3: Start Stripe webhooks (optional, if Stripe configured)
+npm run start:stripe
 ```
 
 ### Access Points
@@ -249,10 +254,13 @@ npm start:mcp
 
 ### Environment Variables
 
+All environment variables are validated on server startup. See `.env.local.example` for a complete template.
+
 **Server Configuration:**
 - `PORT` - Server port (default: 3000)
 - `NODE_ENV` - Environment (development|production)
 - `MODE` - Server mode (http|mcp)
+- `LOG_LEVEL` - Logging level (trace|debug|info|warn|error|fatal, default: debug in dev, info in prod)
 
 **Database Configuration (Required):**
 - `DATABASE_URL` - PostgreSQL connection string (**required**)
@@ -262,7 +270,51 @@ npm start:mcp
 - `DATABASE_IDLE_TIMEOUT_MS` - Idle timeout (default: 30000)
 - `DATABASE_CONNECTION_TIMEOUT_MS` - Connection timeout (default: 5000)
 
+**Authentication (Required for Registry Features):**
+- `WORKOS_API_KEY` - WorkOS API key (**required**)
+- `WORKOS_CLIENT_ID` - WorkOS OAuth client ID (**required**)
+- `WORKOS_COOKIE_PASSWORD` - Session encryption key, min 32 characters (**required**)
+- `WORKOS_REDIRECT_URI` - OAuth callback URL (default: http://localhost:3000/auth/callback)
+
+**Billing (Optional - Stripe):**
+- `STRIPE_SECRET_KEY` - Stripe secret key (sk_test_... or sk_live_...)
+- `STRIPE_PUBLISHABLE_KEY` - Stripe publishable key (pk_test_... or pk_live_...)
+- `STRIPE_PRICING_TABLE_ID` - Stripe pricing table ID for subscription UI
+- `STRIPE_WEBHOOK_SECRET` - Webhook signing secret (whsec_..., auto-provided by Stripe CLI in dev)
+
 **Note:** The registry is now database-only. `DATABASE_URL` is required to run the server. If the database is unavailable at startup, the server will fail immediately (fail-fast behavior). This ensures you can't accidentally run without proper data persistence.
+
+### Local Stripe Testing
+
+When using `npm run dev` or `npm run start:stripe`, the Stripe CLI forwards webhooks to `localhost:3000/api/webhooks/stripe` and prints the webhook signing secret to the console. Use test card `4242 4242 4242 4242` to create subscriptions.
+
+**Trigger test events:**
+```bash
+stripe trigger customer.subscription.created
+stripe trigger customer.subscription.updated
+```
+
+### Security Requirements
+
+**HTTPS in Production:**
+
+⚠️ **CRITICAL**: Session cookies and authentication tokens must be transmitted over HTTPS in production and staging environments.
+
+- Set `NODE_ENV=production` to enable secure cookies
+- Use a reverse proxy (nginx, Caddy, or cloud load balancer) to terminate TLS
+- Obtain SSL certificates from Let's Encrypt or your certificate provider
+- Update `WORKOS_REDIRECT_URI` to use https:// scheme
+
+**Development Setup:**
+
+In local development, cookies are sent over HTTP for convenience. This is acceptable only on localhost. For staging environments, always use HTTPS even if using self-signed certificates.
+
+**Generating Secure Secrets:**
+
+```bash
+# Generate WORKOS_COOKIE_PASSWORD (min 32 characters)
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
 
 ### Docker Deployment
 

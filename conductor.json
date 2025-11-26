@@ -1,5 +1,12 @@
 {
+  "copyFiles": [
+    {
+      "from": "../../.env",
+      "to": ".env.local",
+      "append": true
+    }
+  ],
   "scripts": {
-    "setup": "git config core.hooksPath .husky\nnpm install\nuv sync"
+    "setup": "git config core.hooksPath .husky\nnpm install\nuv sync\ndocker compose up -d postgres\nnpm run db:migrate"
   }
 }

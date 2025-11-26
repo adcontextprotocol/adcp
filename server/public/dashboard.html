@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - AdCP Registry</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+    .header {
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 24px;
+      font-weight: 700;
+      color: #667eea;
+    }
+    .user-menu {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .user-info {
+      color: #666;
+    }
+    .btn-logout {
+      padding: 8px 16px;
+      background: #f5f5f5;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      color: #333;
+    }
+    .btn-logout:hover {
+      background: #e0e0e0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .welcome {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      margin-bottom: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+    p {
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .card h2 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 20px;
+    }
+    .info-box {
+      background: #e3f2fd;
+      border-left: 4px solid #2196f3;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-content">
+      <div class="logo">AdCP Registry</div>
+      <div class="user-menu">
+        <span class="user-info" id="userEmail">Loading...</span>
+        <a href="/auth/logout" class="btn-logout">Logout</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="welcome">
+      <h1>Welcome to Your Dashboard</h1>
+      <p>Manage your AdCP registry entries and team members from here.</p>
+    </div>
+
+    <div id="loading" class="loading">
+      Loading your information...
+    </div>
+
+    <div id="content" style="display:none;">
+      <div class="card">
+        <h2>Your Companies</h2>
+        <div id="companies"></div>
+      </div>
+
+      <div id="subscriptionCard" class="card" style="display:none;">
+        <h2>Choose Your Plan</h2>
+        <p style="margin-bottom: 20px;">Select a subscription plan to get started with the AdCP Registry.</p>
+        <script async src="https://js.stripe.com/v3/pricing-table.js"></script>
+        <stripe-pricing-table
+          pricing-table-id="{{STRIPE_PRICING_TABLE_ID}}"
+          publishable-key="{{STRIPE_PUBLISHABLE_KEY}}">
+        </stripe-pricing-table>
+      </div>
+
+      <div class="card">
+        <h2>Registry Entries</h2>
+        <div class="info-box">
+          Registry management UI coming soon. For now, entries are managed via API.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Quick Links</h2>
+        <ul style="list-style: none; padding: 0;">
+          <li style="margin-bottom: 10px;">
+            <a href="/api/agents" style="color: #667eea;">→ View All Agents</a>
+          </li>
+          <li style="margin-bottom: 10px;">
+            <a href="https://docs.adcontextprotocol.org" style="color: #667eea;">→ Documentation</a>
+          </li>
+          <li style="margin-bottom: 10px;">
+            <a href="https://github.com/adcontextprotocol/adcp" style="color: #667eea;">→ GitHub Repository</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function openBillingPortal(orgId) {
+      try {
+        const response = await fetch(`/api/organizations/${orgId}/billing/portal`, {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to open billing portal');
+        }
+
+        const data = await response.json();
+        if (data.portal_url) {
+          window.location.href = data.portal_url;
+        }
+      } catch (error) {
+        console.error('Error opening billing portal:', error);
+        alert('Failed to open billing portal. Please try again.');
+      }
+    }
+
+    async function loadUserData() {
+      try {
+        const response = await fetch('/api/me');
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.location.href = '/auth/login';
+            return;
+          }
+          throw new Error('Failed to load user data');
+        }
+
+        const data = await response.json();
+
+        document.getElementById('userEmail').textContent = data.user.email;
+
+        const companiesDiv = document.getElementById('companies');
+        let hasActiveSubscription = false;
+        let firstOrgWithoutSubscription = null;
+
+        if (data.organizations && data.organizations.length > 0) {
+          // Load billing info for each organization
+          const orgsWithBilling = await Promise.all(
+            data.organizations.map(async (org) => {
+              try {
+                const billingResponse = await fetch(`/api/organizations/${org.id}/billing`);
+                if (billingResponse.ok) {
+                  const billingData = await billingResponse.json();
+                  return {
+                    ...org,
+                    billing: billingData.subscription,
+                    stripeCustomerId: billingData.stripe_customer_id,
+                    customerSessionSecret: billingData.customer_session_secret,
+                    billingError: null
+                  };
+                } else {
+                  // Explicitly handle API errors
+                  const errorData = await billingResponse.json().catch(() => ({ message: 'Unknown error' }));
+                  return {
+                    ...org,
+                    billing: null,
+                    billingError: errorData.message || 'Failed to load billing information'
+                  };
+                }
+              } catch (error) {
+                console.error('Error loading billing for org:', org.id, error);
+                return {
+                  ...org,
+                  billing: null,
+                  billingError: 'Network error - unable to load billing information'
+                };
+              }
+            })
+          );
+
+          // Check if any org has active subscription
+          hasActiveSubscription = orgsWithBilling.some(org => org.billing?.status === 'active');
+
+          // Find first org without subscription (for pricing table)
+          if (!hasActiveSubscription) {
+            firstOrgWithoutSubscription = orgsWithBilling.find(org =>
+              org.billing?.status !== 'active' && org.stripeCustomerId
+            );
+          }
+
+          companiesDiv.innerHTML = orgsWithBilling.map(org => {
+            // Build billing info display
+            let billingInfo = '';
+
+            if (org.billingError) {
+              // Show explicit error - don't hide it
+              billingInfo = `
+                <div style="margin-top: 8px; padding: 10px; background: #fee; border-left: 3px solid #c33; border-radius: 4px;">
+                  <div style="color: #c33; font-weight: bold; margin-bottom: 4px;">⚠ Error Loading Billing Info</div>
+                  <small style="color: #666;">${org.billingError}</small>
+                  <br>
+                  <small style="color: #666;">Please refresh the page or contact support if this persists.</small>
+                </div>
+              `;
+            } else if (org.billing?.status === 'active') {
+              const renewalDate = org.billing.current_period_end
+                ? new Date(org.billing.current_period_end * 1000).toLocaleDateString()
+                : '';
+              const productName = org.billing.product_name || 'Subscription';
+              const cancelNote = org.billing.cancel_at_period_end
+                ? ' (cancels at period end)'
+                : '';
+
+              billingInfo = `
+                <div style="margin-top: 8px; padding: 10px; background: #f0f9ff; border-left: 3px solid #0a0; border-radius: 4px;">
+                  <div style="color: #0a0; font-weight: bold; margin-bottom: 4px;">✓ ${productName}</div>
+                  <small style="color: #666;">Renews: ${renewalDate}${cancelNote}</small>
+                </div>
+              `;
+            } else if (org.billing?.status === 'past_due') {
+              billingInfo = `
+                <div style="margin-top: 8px; padding: 10px; background: #fff7ed; border-left: 3px solid #f90; border-radius: 4px;">
+                  <div style="color: #f90; font-weight: bold;">⚠ Payment Past Due</div>
+                  <small style="color: #666;">Please update your payment method</small>
+                </div>
+              `;
+            } else if (org.billing?.status === 'none') {
+              billingInfo = `
+                <div style="margin-top: 8px; padding: 10px; background: #f9f9f9; border-left: 3px solid #999; border-radius: 4px;">
+                  <div style="color: #666;">No Active Subscription</div>
+                </div>
+              `;
+            } else {
+              // Unexpected state - show it
+              billingInfo = `
+                <div style="margin-top: 8px; padding: 10px; background: #fee; border-left: 3px solid #c33; border-radius: 4px;">
+                  <div style="color: #c33; font-weight: bold;">Unexpected billing status: ${org.billing?.status || 'unknown'}</div>
+                </div>
+              `;
+            }
+
+            return `
+              <div style="padding: 15px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                  <div style="flex: 1;">
+                    <strong style="font-size: 18px;">${org.name}</strong>
+                    <br>
+                    <small style="color: #666;">Your role: ${org.role || 'member'}</small>
+                    ${billingInfo}
+                  </div>
+                  <button
+                    onclick="openBillingPortal('${org.id}')"
+                    style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                  >
+                    Manage Billing
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          companiesDiv.innerHTML = '<p style="color: #666;">No organizations yet. <a href="/onboarding">Create one now</a></p>';
+        }
+
+        // Show pricing table if no active subscription
+        if (!hasActiveSubscription && firstOrgWithoutSubscription) {
+          const subscriptionCard = document.getElementById('subscriptionCard');
+          subscriptionCard.style.display = 'block';
+
+          // Set customer session secret on pricing table
+          const pricingTable = subscriptionCard.querySelector('stripe-pricing-table');
+          if (pricingTable && firstOrgWithoutSubscription.customerSessionSecret) {
+            pricingTable.setAttribute('customer-session-client-secret', firstOrgWithoutSubscription.customerSessionSecret);
+          }
+        }
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        document.getElementById('loading').innerHTML = `
+          <p style="color: #c33;">Failed to load dashboard. <a href="/auth/login">Try logging in again</a></p>
+        `;
+      }
+    }
+
+    loadUserData();
+  </script>
+</body>
+</html>
