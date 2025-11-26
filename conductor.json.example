@@ -1,0 +1,61 @@
+{
+  "$schema": "https://conductor.build/schema.json",
+  "version": "1.0",
+  "description": "Conductor configuration for AdCP workspaces",
+
+  "workspace": {
+    "template": {
+      "description": "Template for new AdCP workspaces - copies secrets and sets up database",
+
+      "copyFiles": [
+        {
+          "from": "../../.env",
+          "to": ".env.local",
+          "description": "Copy shared WorkOS credentials from project root to workspace",
+          "required": true
+        }
+      ],
+
+      "setupCommands": [
+        {
+          "command": "docker compose up -d postgres",
+          "description": "Start PostgreSQL database container",
+          "waitForHealthy": true,
+          "timeout": 60000
+        },
+        {
+          "command": "npm install",
+          "description": "Install Node.js dependencies",
+          "cwd": "."
+        },
+        {
+          "command": "npm run db:migrate",
+          "description": "Run database migrations",
+          "cwd": "."
+        },
+        {
+          "command": "npm run db:seed",
+          "description": "Seed database with example agents (optional)",
+          "cwd": ".",
+          "continueOnError": true
+        }
+      ]
+    }
+  },
+
+  "environment": {
+    "description": "Default environment variables for workspaces",
+    "DATABASE_URL": "postgresql://adcp:localdev@localhost:5433/adcp_registry",
+    "NODE_ENV": "development",
+    "MODE": "http",
+    "LOG_LEVEL": "debug",
+    "PORT": "3000"
+  },
+
+  "docker": {
+    "compose": {
+      "file": "docker-compose.yml",
+      "services": ["postgres"]
+    }
+  }
+}
