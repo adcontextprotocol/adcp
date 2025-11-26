@@ -101,14 +101,8 @@
 
     <form id="onboardingForm">
       <div class="form-group">
-        <label for="companyName">Company Name *</label>
+        <label for="companyName">Organization Name *</label>
         <input type="text" id="companyName" required placeholder="Acme Corporation">
-      </div>
-
-      <div class="form-group">
-        <label for="companySlug">Company Slug *</label>
-        <input type="text" id="companySlug" required placeholder="acme-corp" pattern="[a-z0-9-]+">
-        <small style="color: #666; font-size: 14px;">Lowercase letters, numbers, and hyphens only</small>
       </div>
 
       <div class="form-group">
@@ -117,7 +111,7 @@
         <small style="color: #666; font-size: 14px;">Team members with this email domain can auto-join</small>
       </div>
 
-      <button type="submit" class="btn" id="submitBtn">Create Company</button>
+      <button type="submit" class="btn" id="submitBtn">Create Organization</button>
     </form>
   </div>
 
@@ -127,16 +121,6 @@
     const infoDiv = document.getElementById('info');
     const submitBtn = document.getElementById('submitBtn');
     const companyNameInput = document.getElementById('companyName');
-    const companySlugInput = document.getElementById('companySlug');
-
-    // Auto-generate slug from company name
-    companyNameInput.addEventListener('input', (e) => {
-      const slug = e.target.value
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-      companySlugInput.value = slug;
-    });
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -147,21 +131,40 @@
       submitBtn.textContent = 'Creating...';
 
       try {
-        // TODO: Implement actual company creation API
-        // For now, this is a placeholder
-        infoDiv.textContent = 'Company creation coming soon! For now, contact support to get set up.';
-        infoDiv.style.display = 'block';
+        console.log('Submitting organization creation...');
 
-        // Simulate success
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 2000);
+        const domain = document.getElementById('domain').value;
+
+        const response = await fetch('/api/organizations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            organization_name: companyNameInput.value,
+            domains: domain ? [domain] : undefined,
+          }),
+        });
+
+        console.log('Response received:', response.status);
+        const data = await response.json();
+        console.log('Response data:', data);
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to create organization');
+        }
+
+        // Success! Redirect to dashboard
+        console.log('Success! Redirecting to dashboard...');
+        window.location.href = '/dashboard';
 
       } catch (error) {
-        errorDiv.textContent = error.message || 'Failed to create company. Please try again.';
+        console.error('Error creating organization:', error);
+        errorDiv.textContent = error.message || 'Failed to create organization. Please try again.';
         errorDiv.style.display = 'block';
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Create Company';
+        submitBtn.textContent = 'Create Organization';
       }
     });
   </script>

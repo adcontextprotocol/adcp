@@ -9,7 +9,9 @@ if (!process.env.WORKOS_CLIENT_ID) {
   throw new Error('WORKOS_CLIENT_ID environment variable is required');
 }
 
-export const workos = new WorkOS(process.env.WORKOS_API_KEY);
+export const workos = new WorkOS(process.env.WORKOS_API_KEY, {
+  clientId: process.env.WORKOS_CLIENT_ID!,
+});
 export const clientId = process.env.WORKOS_CLIENT_ID!;
 
 /**
@@ -31,12 +33,13 @@ export function getAuthorizationUrl(state?: string): string {
  */
 export async function authenticateWithCode(code: string): Promise<{
   user: WorkOSUser;
-  accessToken: string;
-  refreshToken: string;
+  sealedSession: string;
 }> {
   const redirectUri = process.env.WORKOS_REDIRECT_URI || 'http://localhost:3000/auth/callback';
 
-  const { user, accessToken, refreshToken } =
+  console.log('[WORKOS] Authenticating with code...');
+
+  const { user, sealedSession } =
     await workos.userManagement.authenticateWithCode({
       clientId,
       code,
@@ -45,6 +48,10 @@ export async function authenticateWithCode(code: string): Promise<{
         cookiePassword: process.env.WORKOS_COOKIE_PASSWORD!,
       },
     });
+
+  console.log('[WORKOS] Authentication successful');
+  console.log('[WORKOS] Sealed session length:', sealedSession?.length);
+  console.log('[WORKOS] User:', user.email);
 
   return {
     user: {
@@ -56,8 +63,7 @@ export async function authenticateWithCode(code: string): Promise<{
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },
-    accessToken,
-    refreshToken,
+    sealedSession: sealedSession!,
   };
 }
 
@@ -79,7 +85,7 @@ export async function getUser(accessToken: string): Promise<WorkOSUser> {
 }
 
 /**
- * Load and verify a sealed session from cookie
+ * Load and verify sealed session from cookie using WorkOS
  */
 export async function loadSealedSession(sessionData: string): Promise<{
   authenticated: boolean;
@@ -87,34 +93,43 @@ export async function loadSealedSession(sessionData: string): Promise<{
   accessToken?: string;
 }> {
   try {
-    const session = workos.userManagement.loadSealedSession({
+    console.log('[WORKOS] Validating sealed session, length:', sessionData.length);
+    console.log('[WORKOS] Using clientId:', clientId);
+
+    // Use WorkOS's authenticateWithSessionCookie to validate and unseal
+    // Note: clientId is configured in the WorkOS instance, not passed here
+    const result = await workos.userManagement.authenticateWithSessionCookie({
       sessionData,
       cookiePassword: process.env.WORKOS_COOKIE_PASSWORD!,
     });
 
-    // Authenticate the session to get user data
-    const authResult = await session.authenticate();
+    console.log('[WORKOS] *** authenticateWithSessionCookie called successfully ***');
 
-    // Check if authentication was successful
-    if (!('user' in authResult) || !authResult.user) {
+    console.log('[WORKOS] Auth result authenticated:', result.authenticated);
+
+    if (!result.authenticated || !result.user) {
+      console.log('[WORKOS] Session validation failed, reason:', (result as any).reason);
       return { authenticated: false };
     }
+
+    console.log('[WORKOS] Session valid for user:', result.user.email);
 
     return {
       authenticated: true,
       user: {
-        id: authResult.user.id,
-        email: authResult.user.email,
-        firstName: authResult.user.firstName || undefined,
-        lastName: authResult.user.lastName || undefined,
-        emailVerified: authResult.user.emailVerified,
-        createdAt: authResult.user.createdAt,
-        updatedAt: authResult.user.updatedAt,
+        id: result.user.id,
+        email: result.user.email,
+        firstName: result.user.firstName || undefined,
+        lastName: result.user.lastName || undefined,
+        emailVerified: result.user.emailVerified,
+        createdAt: result.user.createdAt,
+        updatedAt: result.user.updatedAt,
       },
-      accessToken: authResult.accessToken,
+      accessToken: result.accessToken,
     };
   } catch (error) {
-    console.error('Failed to load sealed session:', error);
+    console.error('[WORKOS] Failed to validate session:', error);
+    console.error('[WORKOS] Error details:', error instanceof Error ? error.message : String(error));
     return { authenticated: false };
   }
 }

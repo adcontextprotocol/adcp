@@ -2,6 +2,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
+import { WorkOS } from "@workos-inc/node";
 import { Registry } from "./registry.js";
 import { AgentValidator } from "./validator.js";
 import { HealthChecker } from "./health.js";
@@ -14,9 +15,19 @@ import { closeDatabase } from "./db/client.js";
 import { getPropertyIndex, createMCPClient, createA2AClient } from "@adcp/client";
 import type { AgentType, AgentWithStats, Company } from "./types.js";
 import type { Server } from "http";
+import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession } from "./billing/stripe-client.js";
+import Stripe from "stripe";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialize WorkOS client
+const workos = new WorkOS(process.env.WORKOS_API_KEY!, {
+  clientId: process.env.WORKOS_CLIENT_ID!,
+});
+const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID!;
+const WORKOS_REDIRECT_URI = process.env.WORKOS_REDIRECT_URI || 'http://localhost:3000/auth/callback';
+const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD!;
 
 export class HTTPServer {
   private app: express.Application;
@@ -46,7 +57,14 @@ export class HTTPServer {
   }
 
   private setupMiddleware(): void {
-    this.app.use(express.json());
+    // Use JSON parser for all routes EXCEPT Stripe webhooks (which need raw body)
+    this.app.use((req, res, next) => {
+      if (req.path === '/api/webhooks/stripe') {
+        next();
+      } else {
+        express.json()(req, res, next);
+      }
+    });
     this.app.use(cookieParser());
 
     // Serve JSON schemas at /schemas/* from dist/schemas (built schemas)
@@ -1016,18 +1034,24 @@ export class HTTPServer {
   }
 
   private setupAuthRoutes(): void {
-    const { getAuthorizationUrl, authenticateWithCode, loadSealedSession } = require('./auth/workos-client.js');
-    const { CompanyDatabase } = require('./db/company-db.js');
+    const { OrganizationDatabase } = require('./db/organization-db.js');
     const { requireAuth } = require('./middleware/auth.js');
 
-    const companyDb = new CompanyDatabase();
+    const orgDb = new OrganizationDatabase();
 
     // GET /auth/login - Redirect to WorkOS for authentication
     this.app.get('/auth/login', (req, res) => {
       try {
         const returnTo = req.query.return_to as string;
         const state = returnTo ? JSON.stringify({ return_to: returnTo }) : undefined;
-        const authUrl = getAuthorizationUrl(state);
+
+        const authUrl = workos.userManagement.getAuthorizationUrl({
+          provider: 'authkit',
+          clientId: WORKOS_CLIENT_ID,
+          redirectUri: WORKOS_REDIRECT_URI,
+          state,
+        });
+
         res.redirect(authUrl);
       } catch (error) {
         console.error('Login redirect error:', error);
@@ -1051,35 +1075,36 @@ export class HTTPServer {
       }
 
       try {
-        // Exchange code for access token and user info
-        const { user, accessToken, refreshToken } = await authenticateWithCode(code);
+        // Exchange code for sealed session and user info
+        const { user, sealedSession } = await workos.userManagement.authenticateWithCode({
+          clientId: WORKOS_CLIENT_ID,
+          code,
+          session: {
+            sealSession: true,
+            cookiePassword: WORKOS_COOKIE_PASSWORD,
+          },
+        });
 
-        // Set session cookie (sealed by WorkOS)
-        res.cookie('wos-session', accessToken, {
+        console.log('[AUTH_CALLBACK] User authenticated:', user.email);
+        console.log('[AUTH_CALLBACK] Sealed session length:', sealedSession?.length);
+
+        // Set sealed session cookie
+        res.cookie('wos-session', sealedSession!, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
+          path: '/',
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         });
 
-        // Check if user belongs to any companies (via email domain or existing membership)
-        const companies = await companyDb.getUserCompanies(user.id);
+        console.log('[AUTH_CALLBACK] Sealed session cookie set, redirecting...');
 
-        // If user has no companies, check for domain-based auto-join
-        if (companies.length === 0 && user.email) {
-          const domainCompany = await companyDb.findCompanyByEmailDomain(user.email);
+        // Check if user belongs to any WorkOS organizations
+        const memberships = await workos.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
 
-          if (domainCompany) {
-            // Auto-join user to company based on email domain
-            await companyDb.createCompanyUser({
-              company_id: domainCompany.id,
-              user_id: user.id,
-              email: user.email,
-              role: 'member',
-            });
-            companies.push(domainCompany);
-          }
-        }
+        console.log(`[AUTH_CALLBACK] User has ${memberships.data.length} organization memberships`);
 
         // Parse return_to from state
         let returnTo = '/dashboard';
@@ -1093,9 +1118,11 @@ export class HTTPServer {
         }
 
         // Redirect to dashboard or onboarding
-        if (companies.length === 0) {
+        if (memberships.data.length === 0) {
+          console.log('[AUTH_CALLBACK] No organizations, redirecting to onboarding');
           res.redirect('/onboarding.html');
         } else {
+          console.log('[AUTH_CALLBACK] Has organizations, redirecting to dashboard');
           res.redirect('/dashboard.html');
         }
       } catch (error) {
@@ -1118,16 +1145,22 @@ export class HTTPServer {
       try {
         const user = req.user!;
 
-        // Get user's companies
-        const companies = await companyDb.getUserCompanies(user.id);
+        // Get user's WorkOS organization memberships
+        const memberships = await workos.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
 
-        // Get company users info for each company
-        const companiesWithRole = await Promise.all(
-          companies.map(async (company: Company) => {
-            const companyUser = await companyDb.getCompanyUser(company.id, user.id);
+        // Map memberships to organization details with roles
+        // Fetch organization details separately since membership.organization may be undefined
+        const organizations = await Promise.all(
+          memberships.data.map(async (membership) => {
+            const org = await workos.organizations.getOrganization(membership.organizationId);
             return {
-              ...company,
-              role: companyUser?.role,
+              id: membership.organizationId,
+              name: org.name,
+              // WorkOS may not expose roleSlug directly - using 'member' as default
+              role: (membership as any).roleSlug || 'member',
+              status: membership.status,
             };
           })
         );
@@ -1138,9 +1171,8 @@ export class HTTPServer {
             email: user.email,
             first_name: user.firstName,
             last_name: user.lastName,
-            email_verified: user.emailVerified,
           },
-          companies: companiesWithRole,
+          organizations,
         });
       } catch (error) {
         console.error('Get current user error:', error);
@@ -1154,7 +1186,7 @@ export class HTTPServer {
     // GET /api/agreement/current - Get current agreement
     this.app.get('/api/agreement/current', async (req, res) => {
       try {
-        const agreement = await companyDb.getCurrentAgreement();
+        const agreement = await orgDb.getCurrentAgreement();
 
         if (!agreement) {
           return res.status(404).json({
@@ -1176,6 +1208,413 @@ export class HTTPServer {
         });
       }
     });
+
+    // POST /api/organizations - Create a new organization
+    this.app.post('/api/organizations', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { organization_name, domains } = req.body;
+
+        // Validate required fields
+        if (!organization_name) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'organization_name is required',
+          });
+        }
+
+        console.log('[CREATE_ORG] Creating WorkOS organization:', organization_name);
+
+        // Create WorkOS Organization
+        const workosOrg = await workos.organizations.createOrganization({
+          name: organization_name,
+          domainData: domains ? domains.map((d: string) => ({ domain: d })) : undefined,
+        });
+
+        console.log('[CREATE_ORG] WorkOS organization created:', workosOrg.id);
+
+        // Add user as organization member
+        // Note: roleSlug is optional - if not provided, WorkOS assigns a default role
+        // Roles must be configured in WorkOS Dashboard under Organization settings
+        await workos.userManagement.createOrganizationMembership({
+          userId: user.id,
+          organizationId: workosOrg.id,
+        });
+
+        console.log('[CREATE_ORG] User added as organization member');
+
+        // Get current agreement
+        const agreement = await orgDb.getCurrentAgreement();
+        if (!agreement) {
+          // If no agreement, still proceed but log warning
+          console.warn('[CREATE_ORG] No agreement found, proceeding anyway');
+        }
+
+        // Create organization record in our database (for billing/agreements)
+        // Note: No billing info stored here - will query Stripe when needed
+        const org = await orgDb.createOrganization({
+          workos_organization_id: workosOrg.id,
+          name: organization_name,
+        });
+
+        console.log('[CREATE_ORG] Organization record created in database');
+
+        // Record agreement acceptance
+        if (agreement) {
+          await orgDb.recordAuditLog({
+            workos_organization_id: workosOrg.id,
+            workos_user_id: user.id,
+            action: 'agreement_accepted',
+            resource_type: 'agreement',
+            resource_id: agreement.id,
+            details: { version: agreement.version },
+          });
+        }
+
+        res.json({
+          success: true,
+          organization: {
+            id: workosOrg.id,
+            name: workosOrg.name,
+          },
+        });
+      } catch (error) {
+        console.error('Create organization error:', error);
+
+        res.status(500).json({
+          error: 'Failed to create organization',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Billing Routes
+
+    // POST /api/organizations/:orgId/billing/portal - Create Customer Portal session
+    this.app.post('/api/organizations/:orgId/billing/portal', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+
+        // Verify user is member of this organization
+        const memberships = await workos.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Get organization from database
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'Organization not found in database',
+          });
+        }
+
+        // Create Stripe customer if needed
+        let stripeCustomerId = org.stripe_customer_id;
+        if (!stripeCustomerId) {
+          console.log('[BILLING] Creating Stripe customer for organization:', orgId);
+          stripeCustomerId = await createStripeCustomer({
+            email: user.email,
+            name: org.name,
+            metadata: {
+              workos_organization_id: orgId,
+            },
+          });
+
+          if (!stripeCustomerId) {
+            return res.status(500).json({
+              error: 'Failed to create billing account',
+              message: 'Could not create Stripe customer',
+            });
+          }
+
+          // Save Stripe customer ID
+          await orgDb.setStripeCustomerId(orgId, stripeCustomerId);
+        }
+
+        // Create Customer Portal session
+        const returnUrl = `${req.protocol}://${req.get('host')}/dashboard`;
+        const portalUrl = await createCustomerPortalSession(stripeCustomerId, returnUrl);
+
+        if (!portalUrl) {
+          return res.status(500).json({
+            error: 'Failed to create portal session',
+            message: 'Could not create Stripe Customer Portal session',
+          });
+        }
+
+        res.json({
+          success: true,
+          portal_url: portalUrl,
+        });
+      } catch (error) {
+        console.error('Create portal session error:', error);
+        res.status(500).json({
+          error: 'Failed to create portal session',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/organizations/:orgId/billing - Get billing info
+    this.app.get('/api/organizations/:orgId/billing', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+
+        // Verify user is member of this organization
+        const memberships = await workos.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Get organization and subscription info
+        const org = await orgDb.getOrganization(orgId);
+
+        if (!org) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'The requested organization does not exist',
+          });
+        }
+
+        // Get subscription info - if this fails, we want to know about it
+        const subscriptionInfo = await orgDb.getSubscriptionInfo(orgId);
+
+        if (subscriptionInfo === null) {
+          // Stripe API call failed - this is an error, not "no subscription"
+          return res.status(500).json({
+            error: 'Failed to fetch subscription info from Stripe',
+            message: 'Unable to retrieve billing information. Please try again.',
+          });
+        }
+
+        // Create customer session for pricing table (if customer exists)
+        let customerSessionSecret = null;
+        if (org.stripe_customer_id) {
+          customerSessionSecret = await createCustomerSession(org.stripe_customer_id);
+        }
+
+        res.json({
+          subscription: subscriptionInfo,
+          stripe_customer_id: org.stripe_customer_id || null,
+          customer_session_secret: customerSessionSecret,
+        });
+      } catch (error) {
+        console.error('Get billing info error:', error);
+        res.status(500).json({
+          error: 'Failed to get billing info',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/webhooks/stripe - Handle Stripe webhooks
+    this.app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+      if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+        console.warn('[STRIPE_WEBHOOK] Stripe not configured');
+        return res.status(400).json({ error: 'Stripe not configured' });
+      }
+
+      const sig = req.headers['stripe-signature'];
+      if (!sig) {
+        return res.status(400).json({ error: 'Missing stripe-signature header' });
+      }
+
+      let event: Stripe.Event;
+
+      try {
+        event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+      } catch (err) {
+        console.error('[STRIPE_WEBHOOK] Webhook signature verification failed:', err);
+        return res.status(400).json({ error: 'Webhook signature verification failed' });
+      }
+
+      console.log('[STRIPE_WEBHOOK] Received event:', event.type);
+
+      try {
+        switch (event.type) {
+          case 'customer.subscription.created':
+          case 'customer.subscription.updated':
+          case 'customer.subscription.deleted': {
+            const subscription = event.data.object as Stripe.Subscription;
+            console.log('[STRIPE_WEBHOOK] Subscription event:', {
+              customer: subscription.customer,
+              status: subscription.status,
+              event: event.type,
+            });
+            // Subscription data is already in Stripe - we query it on demand
+            // No need to update our database
+            break;
+          }
+
+          case 'invoice.payment_succeeded':
+          case 'invoice.payment_failed': {
+            const invoice = event.data.object as Stripe.Invoice;
+            console.log('[STRIPE_WEBHOOK] Invoice event:', {
+              customer: invoice.customer,
+              status: invoice.status,
+              event: event.type,
+            });
+            // Could send email notifications here
+            break;
+          }
+
+          default:
+            console.log('[STRIPE_WEBHOOK] Unhandled event type:', event.type);
+        }
+
+        res.json({ received: true });
+      } catch (error) {
+        console.error('[STRIPE_WEBHOOK] Error processing webhook:', error);
+        res.status(500).json({ error: 'Webhook processing failed' });
+      }
+    });
+
+    // API Key Management Routes using WorkOS
+
+    // Legacy API key endpoints - disabled after migration to WorkOS organizations
+    // TODO: Re-implement using WorkOS organization-based access control
+    /*
+    // POST /api/companies/:companyId/api-keys - Create a new API key
+    this.app.post('/api/companies/:companyId/api-keys', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { companyId } = req.params;
+        const { name, permissions } = req.body;
+
+        // Verify user has access to this company
+        const companyUser = await companyDb.getCompanyUser(companyId, user.id);
+        if (!companyUser || (companyUser.role !== 'owner' && companyUser.role !== 'admin')) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'Only company owners and admins can create API keys',
+          });
+        }
+
+        // Create API key via WorkOS
+        // Note: WorkOS API Keys product requires organization setup
+        // This is a placeholder for the actual WorkOS API key creation
+        const apiKey = {
+          id: `key_${Date.now()}`,
+          name: name || 'API Key',
+          key: `sk_live_${Math.random().toString(36).substring(2, 15)}`,
+          permissions: permissions || ['registry:read', 'registry:write'],
+          created_at: new Date().toISOString(),
+          company_id: companyId,
+        };
+
+        // Log API key creation
+        await companyDb.recordAuditLog({
+          company_id: companyId,
+          user_id: user.id,
+          action: 'api_key_created',
+          resource_type: 'api_key',
+          resource_id: apiKey.id,
+          details: { name: apiKey.name, permissions: apiKey.permissions },
+        });
+
+        res.json({
+          success: true,
+          api_key: apiKey,
+          warning: 'Store this key securely - it will not be shown again',
+        });
+      } catch (error) {
+        console.error('Create API key error:', error);
+        res.status(500).json({
+          error: 'Failed to create API key',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/companies/:companyId/api-keys - List API keys for a company
+    this.app.get('/api/companies/:companyId/api-keys', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { companyId } = req.params;
+
+        // Verify user has access to this company
+        const companyUser = await companyDb.getCompanyUser(companyId, user.id);
+        if (!companyUser) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You do not have access to this company',
+          });
+        }
+
+        // In a real implementation, this would query WorkOS for the company's API keys
+        // For now, return empty array as placeholder
+        res.json({
+          api_keys: [],
+          message: 'WorkOS API Keys integration coming soon',
+        });
+      } catch (error) {
+        console.error('List API keys error:', error);
+        res.status(500).json({
+          error: 'Failed to list API keys',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/companies/:companyId/api-keys/:keyId - Revoke an API key
+    this.app.delete('/api/companies/:companyId/api-keys/:keyId', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { companyId, keyId } = req.params;
+
+        // Verify user has access to this company
+        const companyUser = await companyDb.getCompanyUser(companyId, user.id);
+        if (!companyUser || (companyUser.role !== 'owner' && companyUser.role !== 'admin')) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'Only company owners and admins can revoke API keys',
+          });
+        }
+
+        // Revoke via WorkOS (placeholder)
+        // In production: await workos.apiKeys.revoke(keyId);
+
+        // Log API key revocation
+        await companyDb.recordAuditLog({
+          company_id: companyId,
+          user_id: user.id,
+          action: 'api_key_revoked',
+          resource_type: 'api_key',
+          resource_id: keyId,
+          details: {},
+        });
+
+        res.json({
+          success: true,
+          message: 'API key revoked successfully',
+        });
+      } catch (error) {
+        console.error('Revoke API key error:', error);
+        res.status(500).json({
+          error: 'Failed to revoke API key',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+    */
   }
 
   async start(port: number = 3000): Promise<void> {
