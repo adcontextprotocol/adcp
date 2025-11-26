@@ -7,6 +7,6 @@
     }
   ],
   "scripts": {
-    "setup": "git config core.hooksPath .husky\nnpm install\nuv sync\ndocker compose up -d postgres\nnpm run db:migrate"
+    "setup": "git config core.hooksPath .husky && npm install && uv sync && docker compose up -d postgres && sleep 2 && PORT=$(docker compose port postgres 5432 | cut -d: -f2) && echo \"DATABASE_URL=postgresql://adcp:localdev@localhost:$PORT/adcp_registry\" >> .env.local && echo \"DATABASE_SSL=false\" >> .env.local && npm run db:migrate"
   }
 }
