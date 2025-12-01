@@ -373,38 +373,51 @@ For detailed information about:
 
 See [ANALYTICS.md](./ANALYTICS.md)
 
-#### Production Metabase Deployment
+#### Production Analytics
 
-For production analytics, you need to deploy Metabase separately from your main application:
+**Recommended Approach: Direct SQL Access**
 
-**Option 1: Self-Hosted Metabase** (Recommended - FREE with Fly.io free tier)
-- See [METABASE_SETUP.md](./METABASE_SETUP.md) for complete setup guide
-- 256MB RAM + 1GB storage = $0/month (fits in Fly.io free tier)
-- Quick setup:
-  ```bash
-  fly apps create adcp-metabase
-  fly volumes create metabase_data --size 1 --region iad --app adcp-metabase
-  fly postgres attach <your-postgres-app> --app adcp-metabase
-  fly deploy --config fly.metabase.toml --app adcp-metabase
-  ```
+For low-traffic scenarios, query the production database directly using the pre-built analytics views:
 
-**Option 2: Metabase Cloud** ($100/month)
-- Sign up at [metabase.com/pricing](https://www.metabase.com/pricing)
-- Connect to your production PostgreSQL database (use read-only credentials)
-- Enable embedding in Admin → Settings → Embedding
-- Set environment variables in your deployment:
-  ```bash
-  METABASE_SITE_URL=https://your-org.metabaseapp.com
-  METABASE_SECRET_KEY=<secret-key-from-metabase>
-  METABASE_DASHBOARD_ID=<your-dashboard-id>
-  ```
+**Available Analytics Views:**
+- `monthly_revenue_summary` - Revenue trends by month
+- `customer_health` - Active subscriptions and customer status
+- `product_revenue` - Revenue breakdown by product
+- `revenue_events` - Individual revenue transactions
 
-**Security Considerations:**
-- ✅ Use read-only database credentials for Metabase
-- ✅ Enable HTTPS for Metabase URL (required for production)
-- ✅ Restrict Metabase admin interface access
-- ✅ Rotate METABASE_SECRET_KEY periodically
-- ✅ Set ADMIN_EMAILS to control who can access /admin/analytics
+**Query Examples:**
+```sql
+-- Monthly revenue trend (last 12 months)
+SELECT month, total_revenue / 100.0 as revenue_usd
+FROM monthly_revenue_summary
+ORDER BY month DESC LIMIT 12;
+
+-- Active subscription count
+SELECT COUNT(*) FROM customer_health
+WHERE subscription_status = 'active';
+
+-- Revenue by product
+SELECT product_name, total_revenue / 100.0 as total_usd
+FROM product_revenue
+ORDER BY total_revenue DESC;
+```
+
+**Access Production Database:**
+```bash
+# Get connection string from Fly.io secrets
+fly ssh console --app adcp-docs -C "echo \$DATABASE_URL"
+
+# Connect with psql
+psql <DATABASE_URL>
+```
+
+**Alternative: Metabase (Optional)**
+
+If you need embedded dashboards later, see [METABASE_SETUP.md](./METABASE_SETUP.md) for:
+- **Self-Hosted**: ~$5-7/month (requires 512MB RAM)
+- **Metabase Cloud**: $100/month
+
+For now, direct SQL access is simpler and sufficient for low traffic.
 
 ### Security Requirements
 
