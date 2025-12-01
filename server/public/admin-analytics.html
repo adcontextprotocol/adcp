@@ -214,9 +214,8 @@
             <tr>
               <th>Organization</th>
               <th>Status</th>
-              <th>Product</th>
               <th>MRR</th>
-              <th>Created</th>
+              <th>Customer Since</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -231,7 +230,7 @@
             <tr>
               <th>Product</th>
               <th>Total Revenue</th>
-              <th>Active Subscriptions</th>
+              <th>Customers</th>
               <th>Avg Revenue per Customer</th>
             </tr>
           </thead>
@@ -242,12 +241,12 @@
   </div>
 
   <script>
-    const formatCurrency = (cents) => {
-      if (cents === null || cents === undefined) return '$0';
+    const formatCurrency = (dollars) => {
+      if (dollars === null || dollars === undefined) return '$0';
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
-      }).format(cents / 100);
+      }).format(dollars);
     };
 
     const formatDate = (dateString) => {
@@ -304,15 +303,14 @@
         if (data.customer_health && data.customer_health.length > 0) {
           customerTable.innerHTML = data.customer_health.slice(0, 20).map(row => `
             <tr>
-              <td>${row.organization_name || 'N/A'}</td>
+              <td>${row.company_name || 'N/A'}</td>
               <td><span style="color: ${row.subscription_status === 'active' ? '#10b981' : '#666'}">${row.subscription_status || 'N/A'}</span></td>
-              <td>${row.product_name || 'N/A'}</td>
               <td>${formatCurrency(row.mrr)}</td>
-              <td>${formatDate(row.created_at)}</td>
+              <td>${formatDate(row.customer_since)}</td>
             </tr>
           `).join('');
         } else {
-          customerTable.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #666;">No customer data yet</td></tr>';
+          customerTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #666;">No customer data yet</td></tr>';
         }
 
         // Populate product revenue table
@@ -322,7 +320,7 @@
             <tr>
               <td>${row.product_name || 'N/A'}</td>
               <td>${formatCurrency(row.total_revenue)}</td>
-              <td>${row.active_subscriptions || 0}</td>
+              <td>${row.customer_count || 0}</td>
               <td>${formatCurrency(row.avg_revenue_per_customer)}</td>
             </tr>
           `).join('');

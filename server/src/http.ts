@@ -2101,17 +2101,25 @@ export class HTTPServer {
       try {
         const pool = getPool();
         // Query all analytics views
-        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue] = await Promise.all([
+        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue, totalRevenue, totalCustomers] = await Promise.all([
           pool.query('SELECT * FROM revenue_by_month ORDER BY month DESC LIMIT 12'),
-          pool.query('SELECT * FROM customer_health ORDER BY created_at DESC'),
+          pool.query('SELECT * FROM customer_health ORDER BY customer_since DESC'),
           pool.query('SELECT * FROM subscription_metrics LIMIT 1'),
           pool.query('SELECT * FROM product_revenue ORDER BY total_revenue DESC'),
+          pool.query('SELECT SUM(net_revenue) as total FROM revenue_by_month'),
+          pool.query('SELECT COUNT(*) as total FROM customer_health'),
         ]);
 
+        const metrics = subscriptionMetrics.rows[0] || {};
         res.json({
           revenue_by_month: revenueByMonth.rows,
           customer_health: customerHealth.rows,
-          subscription_metrics: subscriptionMetrics.rows[0] || {},
+          subscription_metrics: {
+            ...metrics,
+            mrr: metrics.total_mrr || 0,
+            total_revenue: totalRevenue.rows[0]?.total || 0,
+            total_customers: totalCustomers.rows[0]?.total || 0,
+          },
           product_revenue: productRevenue.rows,
         });
       } catch (error) {
