@@ -11,9 +11,6 @@ primary_region = 'iad'
   MB_DB_TYPE = "postgres"
   # Metabase will use the attached Postgres database for its application data
 
-[experimental]
-  cmd = ["/app/run_metabase.sh"]
-
 [http_service]
   internal_port = 3000
   force_https = true
@@ -31,7 +28,7 @@ primary_region = 'iad'
     protocol = "http"
 
 [machine]
-  memory = "256mb"  # Fits in Fly.io free tier (3 shared VMs with 256MB)
+  memory = "512mb"  # Minimum required for Metabase with Java (~$5-7/month)
   cpu_kind = "shared"
   cpus = 1
 

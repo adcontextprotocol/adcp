@@ -2096,6 +2096,33 @@ export class HTTPServer {
       }
     });
 
+    // GET /api/admin/analytics-data - Get simple analytics data from views
+    this.app.get('/api/admin/analytics-data', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+        // Query all analytics views
+        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue] = await Promise.all([
+          pool.query('SELECT * FROM revenue_by_month ORDER BY month DESC LIMIT 12'),
+          pool.query('SELECT * FROM customer_health ORDER BY created_at DESC'),
+          pool.query('SELECT * FROM subscription_metrics LIMIT 1'),
+          pool.query('SELECT * FROM product_revenue ORDER BY total_revenue DESC'),
+        ]);
+
+        res.json({
+          revenue_by_month: revenueByMonth.rows,
+          customer_health: customerHealth.rows,
+          subscription_metrics: subscriptionMetrics.rows[0] || {},
+          product_revenue: productRevenue.rows,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Error fetching analytics data');
+        res.status(500).json({
+          error: 'Internal server error',
+          message: 'Unable to fetch analytics data',
+        });
+      }
+    });
+
     // GET /api/admin/metabase-token - Generate signed embedding URL for Metabase dashboard
     this.app.get('/api/admin/metabase-token', requireAuth, requireAdmin, (req, res) => {
       try {
