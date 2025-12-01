@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' http://localhost:3001; script-src 'self' 'unsafe-inline'; frame-src http://localhost:3001; img-src 'self' data: http://localhost:3001; font-src 'self' data:;">
   <title>Analytics - AdCP Admin</title>
   <script src="/admin-nav.js"></script>
   <style>
@@ -23,11 +22,93 @@
 
     .container {
       flex: 1;
-      padding: 0;
-      margin: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 20px;
       width: 100%;
-      height: calc(100vh - 130px);
-      position: relative;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+      font-size: 28px;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .metric-card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .metric-label {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      color: #333;
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .metric-change {
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    .metric-change.positive {
+      color: #10b981;
+    }
+
+    .metric-change.negative {
+      color: #ef4444;
+    }
+
+    .section {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+    }
+
+    .section h2 {
+      color: #333;
+      font-size: 20px;
+      margin-bottom: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 2px solid #e5e7eb;
+      color: #666;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #e5e7eb;
+      color: #333;
+    }
+
+    tr:hover {
+      background-color: #f9fafb;
     }
 
     .loading {
@@ -35,7 +116,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100%;
+      padding: 60px 20px;
       color: #666;
     }
 
@@ -55,133 +136,211 @@
     }
 
     .error {
-      padding: 40px;
+      background-color: #fee2e2;
+      color: #991b1b;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .empty-state {
       text-align: center;
-    }
-
-    .error h2 {
-      color: #c33;
-      margin-bottom: 10px;
-    }
-
-    .error p {
+      padding: 60px 20px;
       color: #666;
     }
 
-    #metabaseFrame {
-      width: 100%;
-      height: 100%;
-      border: none;
-      display: none;
-    }
-
-    #metabaseFrame.loaded {
-      display: block;
-    }
-
-    .info-banner {
-      background-color: #fff3cd;
-      border-left: 4px solid #ffc107;
-      padding: 15px 20px;
-      margin: 0;
-    }
-
-    .info-banner h3 {
-      color: #856404;
-      font-size: 16px;
-      margin-bottom: 5px;
-    }
-
-    .info-banner p {
-      color: #856404;
-      font-size: 14px;
-      margin: 0;
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.3;
     }
   </style>
 </head>
 <body>
-  <!-- Header injected by admin-nav.js -->
-
-  <div class="info-banner" id="setupBanner" style="display: none;">
-    <h3>Getting Started</h3>
-    <p>Database connected! Create your first dashboard to start analyzing your data. See <a href="https://github.com/adcontextprotocol/adcp/blob/main/.conductor/zagreb-v5/ANALYTICS.md" target="_blank" style="color: #856404; text-decoration: underline;">ANALYTICS.md</a> for dashboard examples.</p>
-  </div>
+  <div id="admin-nav-placeholder"></div>
 
   <div class="container">
-    <div class="loading" id="loadingState">
+    <h1>Analytics Dashboard</h1>
+
+    <div id="loading" class="loading">
       <div class="loading-spinner"></div>
-      <p>Loading Metabase Dashboard...</p>
+      <p>Loading analytics data...</p>
     </div>
 
-    <div class="error" id="errorState" style="display: none;">
-      <h2>Unable to Load Analytics</h2>
-      <p id="errorMessage"></p>
-      <button class="btn-primary" onclick="location.reload()" style="margin-top: 20px;">Try Again</button>
-    </div>
+    <div id="error" class="error" style="display: none;"></div>
 
-    <iframe id="metabaseFrame"></iframe>
+    <div id="content" style="display: none;">
+      <!-- Metrics Grid -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Total Revenue</div>
+          <div class="metric-value" id="total-revenue">$0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Active Customers</div>
+          <div class="metric-value" id="active-customers">0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Monthly Recurring Revenue</div>
+          <div class="metric-value" id="mrr">$0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Total Customers</div>
+          <div class="metric-value" id="total-customers">0</div>
+        </div>
+      </div>
+
+      <!-- Revenue by Month -->
+      <div class="section">
+        <h2>Revenue by Month (Last 12 Months)</h2>
+        <table id="revenue-table">
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th>Revenue</th>
+              <th>New Customers</th>
+              <th>Churned Customers</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Customer Health -->
+      <div class="section">
+        <h2>Customer Health</h2>
+        <table id="customer-table">
+          <thead>
+            <tr>
+              <th>Organization</th>
+              <th>Status</th>
+              <th>MRR</th>
+              <th>Customer Since</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Product Revenue -->
+      <div class="section">
+        <h2>Revenue by Product</h2>
+        <table id="product-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Total Revenue</th>
+              <th>Customers</th>
+              <th>Avg Revenue per Customer</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script>
-    async function loadMetabase() {
-      const loadingState = document.getElementById('loadingState');
-      const errorState = document.getElementById('errorState');
-      const errorMessage = document.getElementById('errorMessage');
-      const setupBanner = document.getElementById('setupBanner');
-      const metabaseFrame = document.getElementById('metabaseFrame');
+    const formatCurrency = (dollars) => {
+      if (dollars === null || dollars === undefined) return '$0';
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+      }).format(dollars);
+    };
 
+    const formatDate = (dateString) => {
+      if (!dateString) return 'N/A';
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    };
+
+    const formatMonth = (monthString) => {
+      if (!monthString) return 'N/A';
+      const [year, month] = monthString.split('-');
+      return new Date(year, month - 1).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+      });
+    };
+
+    async function loadAnalytics() {
       try {
-        // Get signed embedding URL for Metabase dashboard
-        const response = await fetch('/api/admin/metabase-token');
-
+        const response = await fetch('/api/admin/analytics-data');
         if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
-            return;
-          }
-
-          const error = await response.json();
-          throw new Error(error.message || 'Failed to load Metabase');
+          throw new Error('Failed to load analytics data');
         }
 
         const data = await response.json();
 
-        // If setup is needed, show setup banner and link to Metabase
-        if (data.needs_setup) {
-          loadingState.style.display = 'none';
-          setupBanner.style.display = 'block';
-          errorState.style.display = 'block';
-          errorMessage.innerHTML = `
-            <p>${data.message}</p>
-            <a href="${data.metabase_url}" target="_blank" class="btn-primary" style="display: inline-block; margin-top: 15px; text-decoration: none;">
-              Open Metabase to Create Dashboard
-            </a>
-          `;
-          return;
+        // Update metrics
+        const metrics = data.subscription_metrics || {};
+        document.getElementById('total-revenue').textContent = formatCurrency(metrics.total_revenue || 0);
+        document.getElementById('active-customers').textContent = metrics.active_subscriptions || 0;
+        document.getElementById('mrr').textContent = formatCurrency(metrics.mrr || 0);
+        document.getElementById('total-customers').textContent = metrics.total_customers || 0;
+
+        // Populate revenue by month table
+        const revenueTable = document.getElementById('revenue-table').querySelector('tbody');
+        if (data.revenue_by_month && data.revenue_by_month.length > 0) {
+          revenueTable.innerHTML = data.revenue_by_month.map(row => `
+            <tr>
+              <td>${formatMonth(row.month)}</td>
+              <td>${formatCurrency(row.total_revenue)}</td>
+              <td>${row.new_customers || 0}</td>
+              <td>${row.churned_customers || 0}</td>
+            </tr>
+          `).join('');
+        } else {
+          revenueTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #666;">No revenue data yet</td></tr>';
         }
 
-        // Load embedded dashboard
-        metabaseFrame.src = data.embed_url;
+        // Populate customer health table
+        const customerTable = document.getElementById('customer-table').querySelector('tbody');
+        if (data.customer_health && data.customer_health.length > 0) {
+          customerTable.innerHTML = data.customer_health.slice(0, 20).map(row => `
+            <tr>
+              <td>${row.company_name || 'N/A'}</td>
+              <td><span style="color: ${row.subscription_status === 'active' ? '#10b981' : '#666'}">${row.subscription_status || 'N/A'}</span></td>
+              <td>${formatCurrency(row.mrr)}</td>
+              <td>${formatDate(row.customer_since)}</td>
+            </tr>
+          `).join('');
+        } else {
+          customerTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #666;">No customer data yet</td></tr>';
+        }
 
-        metabaseFrame.onload = () => {
-          loadingState.style.display = 'none';
-          metabaseFrame.classList.add('loaded');
-        };
+        // Populate product revenue table
+        const productTable = document.getElementById('product-table').querySelector('tbody');
+        if (data.product_revenue && data.product_revenue.length > 0) {
+          productTable.innerHTML = data.product_revenue.map(row => `
+            <tr>
+              <td>${row.product_name || 'N/A'}</td>
+              <td>${formatCurrency(row.total_revenue)}</td>
+              <td>${row.customer_count || 0}</td>
+              <td>${formatCurrency(row.avg_revenue_per_customer)}</td>
+            </tr>
+          `).join('');
+        } else {
+          productTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #666;">No product data yet</td></tr>';
+        }
 
-        metabaseFrame.onerror = () => {
-          throw new Error('Failed to load Metabase dashboard');
-        };
-
+        // Show content, hide loading
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
       } catch (error) {
-        console.error('Error loading Metabase:', error);
-        loadingState.style.display = 'none';
-        errorState.style.display = 'block';
-        errorMessage.textContent = error.message || 'An unexpected error occurred';
+        console.error('Error loading analytics:', error);
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').textContent = 'Error loading analytics data. Please try again later.';
+        document.getElementById('error').style.display = 'block';
       }
     }
 
-    // Load Metabase when page loads
-    loadMetabase();
+    // Load analytics on page load
+    loadAnalytics();
   </script>
 </body>
 </html>

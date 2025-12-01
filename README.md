@@ -373,6 +373,46 @@ For detailed information about:
 
 See [ANALYTICS.md](./ANALYTICS.md)
 
+#### Production Analytics
+
+**Recommended Approach: Direct SQL Access**
+
+For low-traffic scenarios, query the production database directly using the pre-built analytics views:
+
+**Available Analytics Views:**
+- `monthly_revenue_summary` - Revenue trends by month
+- `customer_health` - Active subscriptions and customer status
+- `product_revenue` - Revenue breakdown by product
+- `revenue_events` - Individual revenue transactions
+
+**Query Examples:**
+```sql
+-- Monthly revenue trend (last 12 months)
+SELECT month, total_revenue / 100.0 as revenue_usd
+FROM monthly_revenue_summary
+ORDER BY month DESC LIMIT 12;
+
+-- Active subscription count
+SELECT COUNT(*) FROM customer_health
+WHERE subscription_status = 'active';
+
+-- Revenue by product
+SELECT product_name, total_revenue / 100.0 as total_usd
+FROM product_revenue
+ORDER BY total_revenue DESC;
+```
+
+**Access Production Database:**
+```bash
+# Get connection string from Fly.io secrets
+fly ssh console --app adcp-docs -C "echo \$DATABASE_URL"
+
+# Connect with psql
+psql <DATABASE_URL>
+```
+
+The `/admin/analytics` dashboard provides built-in analytics using SQL views. No external BI tools required.
+
 ### Security Requirements
 
 **HTTPS in Production:**

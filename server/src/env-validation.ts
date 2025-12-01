@@ -71,6 +71,10 @@ const envConfig: EnvConfig = {
       description: 'Environment (development|production)',
       defaultValue: 'development',
     },
+    {
+      name: 'ADMIN_EMAILS',
+      description: 'Comma-separated list of admin email addresses for /admin/* access',
+    },
   ],
 };
 

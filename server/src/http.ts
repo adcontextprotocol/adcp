@@ -119,7 +119,9 @@ export class HTTPServer {
     this.app.get('/dashboard', async (req, res) => {
       try {
         const fs = await import('fs/promises');
-        const dashboardPath = path.join(__dirname, '../public/dashboard.html');
+        const dashboardPath = process.env.NODE_ENV === 'production'
+          ? path.join(__dirname, '../server/public/dashboard.html')
+          : path.join(__dirname, '../public/dashboard.html');
         let html = await fs.readFile(dashboardPath, 'utf-8');
 
         // Replace template variables with environment values
@@ -1704,7 +1706,10 @@ export class HTTPServer {
     // Admin routes
     // GET /admin - Admin landing page
     this.app.get('/admin', requireAuth, requireAdmin, (req, res) => {
-      res.sendFile(path.join(__dirname, '../public/admin.html'));
+      const adminPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin.html')
+        : path.join(__dirname, '../public/admin.html');
+      res.sendFile(adminPath);
     });
 
 
@@ -2091,64 +2096,61 @@ export class HTTPServer {
       }
     });
 
-    // GET /api/admin/metabase-token - Generate signed embedding URL for Metabase dashboard
-    this.app.get('/api/admin/metabase-token', requireAuth, requireAdmin, (req, res) => {
+    // GET /api/admin/analytics-data - Get simple analytics data from views
+    this.app.get('/api/admin/analytics-data', requireAuth, requireAdmin, async (req, res) => {
       try {
-        const metabaseSecretKey = process.env.METABASE_SECRET_KEY;
-        if (!metabaseSecretKey) {
-          return res.status(500).json({
-            error: 'Metabase not configured',
-            message: 'METABASE_SECRET_KEY environment variable not set',
-          });
-        }
+        const pool = getPool();
+        // Query all analytics views
+        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue, totalRevenue, totalCustomers] = await Promise.all([
+          pool.query('SELECT * FROM revenue_by_month ORDER BY month DESC LIMIT 12'),
+          pool.query('SELECT * FROM customer_health ORDER BY customer_since DESC'),
+          pool.query('SELECT * FROM subscription_metrics LIMIT 1'),
+          pool.query('SELECT * FROM product_revenue ORDER BY total_revenue DESC'),
+          pool.query('SELECT SUM(net_revenue) as total FROM revenue_by_month'),
+          pool.query('SELECT COUNT(*) as total FROM customer_health'),
+        ]);
 
-        const metabaseUrl = process.env.METABASE_SITE_URL || 'http://localhost:3001';
-        const dashboardId = process.env.METABASE_DASHBOARD_ID;
-
-        // If no dashboard is configured yet, return setup message
-        if (!dashboardId) {
-          return res.json({
-            needs_setup: true,
-            metabase_url: metabaseUrl,
-            message: 'Please create a dashboard in Metabase and set METABASE_DASHBOARD_ID',
-          });
-        }
-
-        // Generate signed embedding token for dashboard
-        const payload = {
-          resource: { dashboard: parseInt(dashboardId) },
-          params: {},
-          exp: Math.round(Date.now() / 1000) + (60 * 10), // 10 minute expiration
-        };
-
-        const token = jwt.sign(payload, metabaseSecretKey);
-        const embedUrl = `${metabaseUrl}/embed/dashboard/${token}#bordered=false&titled=false`;
-
+        const metrics = subscriptionMetrics.rows[0] || {};
         res.json({
-          embed_url: embedUrl,
-          metabase_url: metabaseUrl,
-          needs_setup: false,
+          revenue_by_month: revenueByMonth.rows,
+          customer_health: customerHealth.rows,
+          subscription_metrics: {
+            ...metrics,
+            mrr: metrics.total_mrr || 0,
+            total_revenue: totalRevenue.rows[0]?.total || 0,
+            total_customers: totalCustomers.rows[0]?.total || 0,
+          },
+          product_revenue: productRevenue.rows,
         });
       } catch (error) {
-        logger.error({ err: error }, 'Error generating Metabase embedding URL');
+        logger.error({ err: error }, 'Error fetching analytics data');
         res.status(500).json({
           error: 'Internal server error',
-          message: 'Unable to generate Metabase embedding URL',
+          message: 'Unable to fetch analytics data',
         });
       }
     });
 
     // Serve admin pages
     this.app.get('/admin/members', requireAuth, requireAdmin, (req, res) => {
-      res.sendFile(path.join(__dirname, '../public/admin-members.html'));
+      const membersPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-members.html')
+        : path.join(__dirname, '../public/admin-members.html');
+      res.sendFile(membersPath);
     });
 
     this.app.get('/admin/agreements', requireAuth, requireAdmin, (req, res) => {
-      res.sendFile('admin-agreements.html', { root: './server/public' });
+      const agreementsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-agreements.html')
+        : path.join(__dirname, '../public/admin-agreements.html');
+      res.sendFile(agreementsPath);
     });
 
     this.app.get('/admin/analytics', requireAuth, requireAdmin, (req, res) => {
-      res.sendFile(path.join(__dirname, '../public/admin-analytics.html'));
+      const analyticsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-analytics.html')
+        : path.join(__dirname, '../public/admin-analytics.html');
+      res.sendFile(analyticsPath);
     });
 
   }
