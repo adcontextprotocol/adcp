@@ -119,7 +119,9 @@ export class HTTPServer {
     this.app.get('/dashboard', async (req, res) => {
       try {
         const fs = await import('fs/promises');
-        const dashboardPath = path.join(__dirname, '../public/dashboard.html');
+        const dashboardPath = process.env.NODE_ENV === 'production'
+          ? path.join(__dirname, '../server/public/dashboard.html')
+          : path.join(__dirname, '../public/dashboard.html');
         let html = await fs.readFile(dashboardPath, 'utf-8');
 
         // Replace template variables with environment values
@@ -1704,7 +1706,10 @@ export class HTTPServer {
     // Admin routes
     // GET /admin - Admin landing page
     this.app.get('/admin', requireAuth, requireAdmin, (req, res) => {
-      res.sendFile(path.join(__dirname, '../public/admin.html'));
+      const adminPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin.html')
+        : path.join(__dirname, '../public/admin.html');
+      res.sendFile(adminPath);
     });
 
 
@@ -2140,15 +2145,24 @@ export class HTTPServer {
 
     // Serve admin pages
     this.app.get('/admin/members', requireAuth, requireAdmin, (req, res) => {
-      res.sendFile(path.join(__dirname, '../public/admin-members.html'));
+      const membersPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-members.html')
+        : path.join(__dirname, '../public/admin-members.html');
+      res.sendFile(membersPath);
     });
 
     this.app.get('/admin/agreements', requireAuth, requireAdmin, (req, res) => {
-      res.sendFile('admin-agreements.html', { root: './server/public' });
+      const agreementsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-agreements.html')
+        : path.join(__dirname, '../public/admin-agreements.html');
+      res.sendFile(agreementsPath);
     });
 
     this.app.get('/admin/analytics', requireAuth, requireAdmin, (req, res) => {
-      res.sendFile(path.join(__dirname, '../public/admin-analytics.html'));
+      const analyticsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-analytics.html')
+        : path.join(__dirname, '../public/admin-analytics.html');
+      res.sendFile(analyticsPath);
     });
 
   }
