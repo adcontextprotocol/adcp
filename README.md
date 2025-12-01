@@ -373,6 +373,44 @@ For detailed information about:
 
 See [ANALYTICS.md](./ANALYTICS.md)
 
+#### Production Metabase Deployment
+
+For production analytics, you need to deploy Metabase separately from your main application:
+
+**Option 1: Metabase Cloud** (Recommended)
+- Sign up at [metabase.com/pricing](https://www.metabase.com/pricing)
+- Connect to your production PostgreSQL database (use read-only credentials)
+- Enable embedding in Admin → Settings → Embedding
+- Set environment variables in your deployment:
+  ```bash
+  METABASE_SITE_URL=https://your-org.metabaseapp.com
+  METABASE_SECRET_KEY=<secret-key-from-metabase>
+  METABASE_DASHBOARD_ID=<your-dashboard-id>
+  ```
+
+**Option 2: Self-Hosted Metabase**
+- Deploy Metabase container alongside your app (separate service)
+- Example with Fly.io:
+  ```bash
+  # Create a separate Fly app for Metabase
+  fly apps create adcp-metabase
+
+  # Deploy Metabase (use official Docker image)
+  fly deploy --image metabase/metabase:latest --app adcp-metabase
+
+  # Attach to same Postgres database
+  fly postgres attach <your-postgres-app> --app adcp-metabase
+  ```
+- Configure environment variables in your main app
+- Secure Metabase admin interface (private network or authentication)
+
+**Security Considerations:**
+- ✅ Use read-only database credentials for Metabase
+- ✅ Enable HTTPS for Metabase URL (required for production)
+- ✅ Restrict Metabase admin interface access
+- ✅ Rotate METABASE_SECRET_KEY periodically
+- ✅ Set ADMIN_EMAILS to control who can access /admin/analytics
+
 ### Security Requirements
 
 **HTTPS in Production:**

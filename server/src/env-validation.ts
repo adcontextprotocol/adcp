@@ -71,6 +71,23 @@ const envConfig: EnvConfig = {
       description: 'Environment (development|production)',
       defaultValue: 'development',
     },
+    {
+      name: 'METABASE_SECRET_KEY',
+      description: 'Metabase embedding secret key for JWT signing (analytics feature)',
+    },
+    {
+      name: 'METABASE_SITE_URL',
+      description: 'Metabase site URL',
+      defaultValue: 'http://localhost:3001',
+    },
+    {
+      name: 'METABASE_DASHBOARD_ID',
+      description: 'Metabase dashboard ID to embed in /admin/analytics',
+    },
+    {
+      name: 'ADMIN_EMAILS',
+      description: 'Comma-separated list of admin email addresses for /admin/* access',
+    },
   ],
 };
 
