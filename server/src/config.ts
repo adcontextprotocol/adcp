@@ -1,20 +1,3 @@
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-/**
- * Get the registry root path based on environment
- * In dev: __dirname is /server/src, registry is at ../../registry
- * In prod: __dirname is /dist, registry is at ../registry
- */
-export function getRegistryPath(): string {
-  return process.env.NODE_ENV === "production"
-    ? path.join(__dirname, "../registry")
-    : path.join(__dirname, "../../registry");
-}
-
 /**
  * Database configuration from environment
  */

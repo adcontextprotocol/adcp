@@ -1,10 +1,25 @@
 import fs from "fs/promises";
 import path from "path";
+import { fileURLToPath } from "url";
 import { initializeDatabase, getClient } from "./client.js";
 import { runMigrations } from "./migrate.js";
 import { RegistryDatabase } from "./registry-db.js";
-import { getRegistryPath, getDatabaseConfig, DatabaseConfig } from "../config.js";
+import { getDatabaseConfig, DatabaseConfig } from "../config.js";
 import type { Agent, AgentType } from "../types.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/**
+ * Get the registry root path for migration purposes
+ * In dev: __dirname is /server/src/db, registry is at ../../../registry
+ * In prod: __dirname is /dist/db, registry is at ../../registry
+ */
+function getRegistryPath(): string {
+  return process.env.NODE_ENV === "production"
+    ? path.join(__dirname, "../../registry")
+    : path.join(__dirname, "../../../registry");
+}
 
 const REGISTRY_ROOT = getRegistryPath();
 

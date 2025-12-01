@@ -26,3 +26,8 @@ pre-push
 # Test cache
 tests/.tested-files.json
 tests/temp-snippet-*
+coverage/
+.env
+
+# Stripe webhook secret (dynamically generated)
+.stripe-webhook-secret

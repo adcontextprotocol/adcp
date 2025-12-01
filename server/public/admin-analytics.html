@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' http://localhost:3001; script-src 'self' 'unsafe-inline'; frame-src http://localhost:3001; img-src 'self' data: http://localhost:3001; font-src 'self' data:;">
+  <title>Analytics - AdCP Admin</title>
+  <script src="/admin-nav.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      flex: 1;
+      padding: 0;
+      margin: 0;
+      width: 100%;
+      height: calc(100vh - 130px);
+      position: relative;
+    }
+
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #666;
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .error {
+      padding: 40px;
+      text-align: center;
+    }
+
+    .error h2 {
+      color: #c33;
+      margin-bottom: 10px;
+    }
+
+    .error p {
+      color: #666;
+    }
+
+    #metabaseFrame {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: none;
+    }
+
+    #metabaseFrame.loaded {
+      display: block;
+    }
+
+    .info-banner {
+      background-color: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px 20px;
+      margin: 0;
+    }
+
+    .info-banner h3 {
+      color: #856404;
+      font-size: 16px;
+      margin-bottom: 5px;
+    }
+
+    .info-banner p {
+      color: #856404;
+      font-size: 14px;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header injected by admin-nav.js -->
+
+  <div class="info-banner" id="setupBanner" style="display: none;">
+    <h3>Getting Started</h3>
+    <p>Database connected! Create your first dashboard to start analyzing your data. See <a href="https://github.com/adcontextprotocol/adcp/blob/main/.conductor/zagreb-v5/ANALYTICS.md" target="_blank" style="color: #856404; text-decoration: underline;">ANALYTICS.md</a> for dashboard examples.</p>
+  </div>
+
+  <div class="container">
+    <div class="loading" id="loadingState">
+      <div class="loading-spinner"></div>
+      <p>Loading Metabase Dashboard...</p>
+    </div>
+
+    <div class="error" id="errorState" style="display: none;">
+      <h2>Unable to Load Analytics</h2>
+      <p id="errorMessage"></p>
+      <button class="btn-primary" onclick="location.reload()" style="margin-top: 20px;">Try Again</button>
+    </div>
+
+    <iframe id="metabaseFrame"></iframe>
+  </div>
+
+  <script>
+    async function loadMetabase() {
+      const loadingState = document.getElementById('loadingState');
+      const errorState = document.getElementById('errorState');
+      const errorMessage = document.getElementById('errorMessage');
+      const setupBanner = document.getElementById('setupBanner');
+      const metabaseFrame = document.getElementById('metabaseFrame');
+
+      try {
+        // Get signed embedding URL for Metabase dashboard
+        const response = await fetch('/api/admin/metabase-token');
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to load Metabase');
+        }
+
+        const data = await response.json();
+
+        // If setup is needed, show setup banner and link to Metabase
+        if (data.needs_setup) {
+          loadingState.style.display = 'none';
+          setupBanner.style.display = 'block';
+          errorState.style.display = 'block';
+          errorMessage.innerHTML = `
+            <p>${data.message}</p>
+            <a href="${data.metabase_url}" target="_blank" class="btn-primary" style="display: inline-block; margin-top: 15px; text-decoration: none;">
+              Open Metabase to Create Dashboard
+            </a>
+          `;
+          return;
+        }
+
+        // Load embedded dashboard
+        metabaseFrame.src = data.embed_url;
+
+        metabaseFrame.onload = () => {
+          loadingState.style.display = 'none';
+          metabaseFrame.classList.add('loaded');
+        };
+
+        metabaseFrame.onerror = () => {
+          throw new Error('Failed to load Metabase dashboard');
+        };
+
+      } catch (error) {
+        console.error('Error loading Metabase:', error);
+        loadingState.style.display = 'none';
+        errorState.style.display = 'block';
+        errorMessage.textContent = error.message || 'An unexpected error occurred';
+      }
+    }
+
+    // Load Metabase when page loads
+    loadMetabase();
+  </script>
+</body>
+</html>

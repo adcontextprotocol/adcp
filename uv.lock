@@ -24,7 +24,7 @@ wheels = [
 
 [[package]]
 name = "adcp"
-version = "2.10.0"
+version = "2.12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk" },
@@ -34,9 +34,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fc/15/f63cd779f2b7544962c5eed872c1d7d600637c56b998fee2d043b42c6cfa/adcp-2.10.0.tar.gz", hash = "sha256:a518eb7f1cdfe47106edf32a7f139516b2599e4657881e7f8dd031c93a4f63a2", size = 146693, upload-time = "2025-11-20T21:35:14.285Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/16/cb/58df8fb99dc448751b156712745b713384dcf822f68e54e9aed6dbb8bbe2/adcp-2.12.1.tar.gz", hash = "sha256:a385c4987b713bdbadf7527797962ea685981770f11931aac376785d60ef3502", size = 153710, upload-time = "2025-11-24T11:23:36.059Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/6e/33de53899f05f6d3ad1cdde7fa07d72002735d00ce83bbcec03855b9d765/adcp-2.10.0-py3-none-any.whl", hash = "sha256:f2a5e205d44d4533ef4d4a3a3a10f3e8707300bd77f97ce2f5dfcbff017949a9", size = 170870, upload-time = "2025-11-20T21:35:12.393Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/53/93b7d0e2b80ccf06777a0f812d2c652712809b21582fea0579adb529d9bf/adcp-2.12.1-py3-none-any.whl", hash = "sha256:51165f9c6b0d86d08e21dce73f28c976294c043c3021d1c1aa386797fe9e082c", size = 190435, upload-time = "2025-11-24T11:23:34.397Z" },
 ]
 
 [[package]]
@@ -48,7 +48,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "adcp", specifier = ">=2.10" }]
+requires-dist = [{ name = "adcp", specifier = ">=2.12.1" }]
 
 [[package]]
 name = "annotated-types"

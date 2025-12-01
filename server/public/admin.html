@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - AdCP Registry</title>
+  <script src="/admin-nav.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo { font-size: 20px; font-weight: bold; }
+    .container {
+      max-width: 1400px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 25px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 { margin-bottom: 10px; color: #2d3748; }
+    .subtitle { color: #666; margin-bottom: 30px; }
+    .admin-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .admin-card {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 25px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+    .admin-card:hover {
+      border-color: #667eea;
+      box-shadow: 0 4px 12px rgba(102,126,234,0.15);
+      transform: translateY(-2px);
+    }
+    .admin-card-icon {
+      font-size: 32px;
+      margin-bottom: 15px;
+    }
+    .admin-card h2 {
+      font-size: 20px;
+      margin-bottom: 10px;
+      color: #2d3748;
+    }
+    .admin-card p {
+      color: #666;
+      line-height: 1.5;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+    .stat-card {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .stat-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 5px;
+    }
+    .stat-label {
+      color: #666;
+      font-size: 14px;
+    }
+    .loading {
+      text-align: center;
+      padding: 50px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header injected by admin-nav.js -->
+
+  <div id="loading" class="loading">
+    Loading...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <h1>Admin Dashboard</h1>
+        <p class="subtitle">Manage members, agreements, and system settings</p>
+
+        <h2 style="margin-bottom: 15px; color: #2d3748;">Quick Stats</h2>
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card">
+            <div class="stat-value" id="totalMembers">-</div>
+            <div class="stat-label">Total Members</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="activeSubscriptions">-</div>
+            <div class="stat-label">Active Subscriptions</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="expiringCount">-</div>
+            <div class="stat-label">Expiring This Month</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="totalRevenue">-</div>
+            <div class="stat-label">Monthly Revenue</div>
+          </div>
+        </div>
+      </div>
+
+      <h2 style="margin-bottom: 15px; color: #2d3748;">Management</h2>
+      <div class="admin-grid">
+        <a href="/admin/members" class="admin-card">
+          <div class="admin-card-icon">👥</div>
+          <h2>Member Management</h2>
+          <p>View and manage all members, subscriptions, and company details. Export data and track subscription renewals.</p>
+        </a>
+
+        <a href="/admin/agreements" class="admin-card">
+          <div class="admin-card-icon">📄</div>
+          <h2>Agreement Management</h2>
+          <p>Create and edit membership agreements, terms of service, and privacy policies. Manage versions and effective dates.</p>
+        </a>
+
+        <a href="/admin/analytics" class="admin-card">
+          <div class="admin-card-icon">📊</div>
+          <h2>Analytics & Insights</h2>
+          <p>View revenue metrics, customer health, subscription analytics, and business intelligence dashboards powered by Metabase.</p>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/admin/stats');
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load stats');
+        }
+
+        const stats = await response.json();
+
+        document.getElementById('totalMembers').textContent = stats.total_members || 0;
+        document.getElementById('activeSubscriptions').textContent = stats.active_subscriptions || 0;
+        document.getElementById('expiringCount').textContent = stats.expiring_this_month || 0;
+        document.getElementById('totalRevenue').textContent = stats.monthly_revenue || '$0';
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading stats:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: #c33;">Failed to load admin data. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    // Initialize
+    loadStats();
+  </script>
+</body>
+</html>

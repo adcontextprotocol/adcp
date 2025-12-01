@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Agreements - AdCP Registry</title>
+  <script src="/admin-nav.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo { font-size: 20px; font-weight: bold; }
+    .container {
+      max-width: 1400px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 25px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 { margin-bottom: 10px; color: #2d3748; }
+    h2 { margin-bottom: 15px; color: #2d3748; font-size: 20px; }
+    .agreements-list {
+      display: grid;
+      gap: 15px;
+    }
+    .agreement-item {
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 15px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .agreement-item:hover {
+      border-color: #667eea;
+      box-shadow: 0 2px 8px rgba(102,126,234,0.15);
+    }
+    .agreement-item h3 {
+      font-size: 16px;
+      margin-bottom: 5px;
+      color: #2d3748;
+    }
+    .agreement-meta {
+      font-size: 14px;
+      color: #666;
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+    .btn-secondary:hover {
+      background: #d0d0d0;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .modal {
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      max-width: 1200px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+      color: #2d3748;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .form-group textarea {
+      min-height: 400px;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 13px;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+    .editor-preview {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .preview-pane {
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 15px;
+      background: #f9f9f9;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .preview-pane h3 {
+      margin-top: 15px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header injected by admin-nav.js -->
+
+  <div id="loading" style="text-align: center; padding: 50px; color: #666;">
+    Loading...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h1>Agreement Management</h1>
+          <button class="btn btn-primary" onclick="showCreateModal()">+ Create New Version</button>
+        </div>
+
+        <div id="agreementsList" class="agreements-list">
+          Loading agreements...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit/Create Agreement Modal -->
+  <div id="agreementModal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="modalTitle">Edit Agreement</h2>
+
+      <div class="form-group">
+        <label>Agreement Type</label>
+        <select id="agreementType">
+          <option value="membership">Membership Agreement</option>
+          <option value="terms_of_service">Terms of Service</option>
+          <option value="privacy_policy">Privacy Policy</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Version</label>
+        <input type="text" id="agreementVersion" placeholder="e.g., 1.0, 1.1, 2.0">
+      </div>
+
+      <div class="form-group">
+        <label>Effective Date</label>
+        <input type="date" id="agreementEffectiveDate">
+      </div>
+
+      <div class="editor-preview">
+        <div>
+          <div class="form-group">
+            <label>Agreement Text (Markdown)</label>
+            <textarea id="agreementText" oninput="updatePreview()"></textarea>
+          </div>
+        </div>
+        <div>
+          <label style="display: block; margin-bottom: 5px; font-weight: 600;">Preview</label>
+          <div id="agreementPreview" class="preview-pane">
+            Enter markdown text to see preview...
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-buttons">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveAgreement()">Save Agreement</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let agreements = [];
+    let editingAgreement = null;
+
+    // Load all agreements
+    async function loadAgreements() {
+      try {
+        const response = await fetch('/api/admin/agreements');
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load agreements');
+        }
+
+        agreements = await response.json();
+        renderAgreementsList();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading agreements:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: #c33;">Failed to load agreements. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    // Render agreements list
+    function renderAgreementsList() {
+      const listDiv = document.getElementById('agreementsList');
+
+      if (agreements.length === 0) {
+        listDiv.innerHTML = '<p style="color: #666;">No agreements found.</p>';
+        return;
+      }
+
+      // Group by type
+      const grouped = {};
+      agreements.forEach(agreement => {
+        if (!grouped[agreement.agreement_type]) {
+          grouped[agreement.agreement_type] = [];
+        }
+        grouped[agreement.agreement_type].push(agreement);
+      });
+
+      const formatType = (type) => {
+        const types = {
+          'terms_of_service': 'Terms of Service',
+          'privacy_policy': 'Privacy Policy',
+          'membership': 'Membership Agreement'
+        };
+        return types[type] || type;
+      };
+
+      let html = '';
+      Object.keys(grouped).forEach(type => {
+        html += `<div style="margin-bottom: 30px;">`;
+        html += `<h2>${formatType(type)}</h2>`;
+        grouped[type].forEach(agreement => {
+          html += `
+            <div class="agreement-item" onclick="editAgreement(${agreement.id})">
+              <h3>Version ${agreement.version}</h3>
+              <div class="agreement-meta">
+                Effective: ${new Date(agreement.effective_date).toLocaleDateString()} •
+                Created: ${new Date(agreement.created_at).toLocaleDateString()}
+              </div>
+            </div>
+          `;
+        });
+        html += `</div>`;
+      });
+
+      listDiv.innerHTML = html;
+    }
+
+    // Show create modal
+    function showCreateModal() {
+      editingAgreement = null;
+      document.getElementById('modalTitle').textContent = 'Create New Agreement Version';
+      document.getElementById('agreementType').value = 'membership';
+      document.getElementById('agreementVersion').value = '';
+      document.getElementById('agreementEffectiveDate').value = new Date().toISOString().split('T')[0];
+      document.getElementById('agreementText').value = '';
+      document.getElementById('agreementPreview').innerHTML = 'Enter markdown text to see preview...';
+      document.getElementById('agreementModal').style.display = 'flex';
+    }
+
+    // Edit agreement
+    function editAgreement(id) {
+      editingAgreement = agreements.find(a => a.id === id);
+      if (!editingAgreement) return;
+
+      document.getElementById('modalTitle').textContent = 'Edit Agreement';
+      document.getElementById('agreementType').value = editingAgreement.agreement_type;
+      document.getElementById('agreementVersion').value = editingAgreement.version;
+      document.getElementById('agreementEffectiveDate').value = editingAgreement.effective_date.split('T')[0];
+      document.getElementById('agreementText').value = editingAgreement.text;
+      updatePreview();
+      document.getElementById('agreementModal').style.display = 'flex';
+    }
+
+    // Close modal
+    function closeModal() {
+      document.getElementById('agreementModal').style.display = 'none';
+      editingAgreement = null;
+    }
+
+    // Update preview
+    function updatePreview() {
+      const text = document.getElementById('agreementText').value;
+      const preview = document.getElementById('agreementPreview');
+
+      if (!text.trim()) {
+        preview.innerHTML = 'Enter markdown text to see preview...';
+        return;
+      }
+
+      const renderedHtml = marked.parse(text);
+      preview.innerHTML = renderedHtml;
+    }
+
+    // Save agreement
+    async function saveAgreement() {
+      const type = document.getElementById('agreementType').value;
+      const version = document.getElementById('agreementVersion').value.trim();
+      const effectiveDate = document.getElementById('agreementEffectiveDate').value;
+      const text = document.getElementById('agreementText').value.trim();
+
+      if (!version || !effectiveDate || !text) {
+        alert('Please fill in all fields');
+        return;
+      }
+
+      try {
+        const url = editingAgreement
+          ? `/api/admin/agreements/${editingAgreement.id}`
+          : '/api/admin/agreements';
+
+        const method = editingAgreement ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            agreement_type: type,
+            version,
+            effective_date: effectiveDate,
+            text
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to save agreement');
+        }
+
+        alert('Agreement saved successfully!');
+        closeModal();
+        loadAgreements();
+      } catch (error) {
+        console.error('Error saving agreement:', error);
+        alert('Failed to save agreement: ' + error.message);
+      }
+    }
+
+    // Initialize
+    loadAgreements();
+  </script>
+</body>
+</html>

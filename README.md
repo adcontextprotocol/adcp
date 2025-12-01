@@ -167,47 +167,48 @@ This repository runs a unified Express server that serves everything from a sing
 npm install
 ```
 
-#### 2. Database Setup (Optional)
+#### 2. Environment Setup
 
-The registry can run in two modes:
-- **File mode** (default) - Uses JSON files in `registry/` directory
-- **Database mode** (production) - Uses PostgreSQL database
+Copy environment template and configure secrets:
+```bash
+cp .env.local.example .env.local
+```
 
-**For database mode (recommended for development):**
+#### 3. Database Setup (Required)
 
 ```bash
 # Start PostgreSQL in Docker
 docker-compose up -d
 
-# Copy environment template
-cp .env.local.example .env.local
-
 # Run migrations
 npm run db:migrate
 
-# Seed with example agents
+# Seed database from JSON files (one-time migration)
 npm run db:seed
 ```
 
-**For file mode:**
+#### 4. Start Development
 
-Just skip the database setup - the server will automatically use JSON files.
-
-#### 3. Start Development Server
-
-**With database:**
+**Option 1: Run everything together (recommended)**
 ```bash
-DATABASE_URL=postgresql://adcp:localdev@localhost:5433/adcp_registry npm start
+npm run dev
 ```
 
-**Without database (file mode):**
+This starts:
+- **HTTP Server** (blue) - Application on port 3000
+- **Mintlify Docs** (green) - Documentation on port 3333
+- **Stripe CLI** (magenta) - Webhook forwarding (if Stripe configured)
+
+**Option 2: Run services individually**
 ```bash
+# Terminal 1: Start server
 npm start
-```
 
-#### 4. Start Mintlify Documentation
-```bash
+# Terminal 2: Start docs (optional)
 npm run start:mintlify
+
+# Terminal 3: Start Stripe webhooks (optional, if Stripe configured)
+npm run start:stripe
 ```
 
 ### Access Points
@@ -253,20 +254,146 @@ npm start:mcp
 
 ### Environment Variables
 
+All environment variables are validated on server startup. See `.env.local.example` for a complete template.
+
 **Server Configuration:**
 - `PORT` - Server port (default: 3000)
 - `NODE_ENV` - Environment (development|production)
 - `MODE` - Server mode (http|mcp)
+- `LOG_LEVEL` - Logging level (trace|debug|info|warn|error|fatal, default: debug in dev, info in prod)
 
-**Database Configuration:**
-- `DATABASE_URL` - PostgreSQL connection string (required for database mode)
+**Database Configuration (Required):**
+- `DATABASE_URL` - PostgreSQL connection string (**required**)
 - `DATABASE_SSL` - Enable SSL (default: false)
 - `DATABASE_SSL_REJECT_UNAUTHORIZED` - Verify SSL certificates (default: true when SSL enabled)
 - `DATABASE_MAX_POOL_SIZE` - Connection pool size (default: 20)
 - `DATABASE_IDLE_TIMEOUT_MS` - Idle timeout (default: 30000)
 - `DATABASE_CONNECTION_TIMEOUT_MS` - Connection timeout (default: 5000)
 
-**Note:** If `DATABASE_URL` is set but the database is unavailable at startup, the server will fail to start. This is intentional - you can't run database migrations or initialize database mode without a working database connection. Once running, the connection pool handles transient connection failures automatically with retries and timeouts.
+**Authentication (Required for Registry Features):**
+- `WORKOS_API_KEY` - WorkOS API key (**required**)
+- `WORKOS_CLIENT_ID` - WorkOS OAuth client ID (**required**)
+- `WORKOS_COOKIE_PASSWORD` - Session encryption key, min 32 characters (**required**)
+- `WORKOS_REDIRECT_URI` - OAuth callback URL (default: http://localhost:3000/auth/callback)
+
+**Billing (Optional - Stripe):**
+- `STRIPE_SECRET_KEY` - Stripe secret key (sk_test_... or sk_live_...)
+- `STRIPE_PUBLISHABLE_KEY` - Stripe publishable key (pk_test_... or pk_live_...)
+- `STRIPE_PRICING_TABLE_ID` - Stripe pricing table ID for subscription UI
+- `STRIPE_WEBHOOK_SECRET` - Webhook signing secret (whsec_..., auto-provided by Stripe CLI in dev)
+
+**Note:** The registry is now database-only. `DATABASE_URL` is required to run the server. If the database is unavailable at startup, the server will fail immediately (fail-fast behavior). This ensures you can't accidentally run without proper data persistence.
+
+### Local Stripe Testing
+
+When using `npm run dev` or `npm run start:stripe`, the Stripe CLI forwards webhooks to `localhost:3000/api/webhooks/stripe` and prints the webhook signing secret to the console. Use test card `4242 4242 4242 4242` to create subscriptions.
+
+**Trigger test events:**
+```bash
+stripe trigger customer.subscription.created
+stripe trigger customer.subscription.updated
+```
+
+### Analytics & Business Intelligence
+
+AdCP includes integrated analytics powered by Metabase for revenue tracking, customer health metrics, and subscription analytics.
+
+#### Setup Metabase
+
+1. **Start Metabase container:**
+```bash
+docker-compose -f docker-compose.metabase.yml up -d
+```
+
+Metabase will be available at http://localhost:3001
+
+2. **Initial setup** (first time only):
+   - Open http://localhost:3001
+   - Create an admin account
+   - Go to Admin → Settings → Embedding
+   - Enable "Embedding in other applications"
+   - Copy the embedding secret key
+
+3. **Add Metabase configuration to `.env.local`:**
+```bash
+METABASE_SITE_URL=http://localhost:3001
+METABASE_SECRET_KEY=<your-secret-key-from-metabase>
+```
+
+4. **Connect to PostgreSQL database:**
+   - In Metabase: Admin → Databases → Add database
+   - Type: PostgreSQL
+   - Host: `host.docker.internal` (Mac/Windows) or `172.17.0.1` (Linux)
+   - Port: `5432` (or your PostgreSQL port from docker-compose)
+   - Database: `adcp_registry`
+   - Username: `adcp`
+   - Password: `localdev`
+
+5. **Create your first dashboard:**
+   - Create a new dashboard in Metabase (e.g., "Revenue Analytics")
+   - Add queries using the pre-built analytics views (see [ANALYTICS.md](./ANALYTICS.md))
+   - Enable embedding for the dashboard (Share → Embedding → Enable)
+   - Note the dashboard ID from the URL (e.g., `/dashboard/2` → ID is `2`)
+
+6. **Configure embedded dashboard:**
+```bash
+# Add to .env.local
+METABASE_DASHBOARD_ID=2
+```
+
+7. **Restart dev server and access analytics:**
+```bash
+npm run dev
+```
+
+Visit http://localhost:3000/admin/analytics to see your embedded dashboard!
+
+#### Seed Test Revenue Data
+
+To populate the analytics with test data:
+
+```bash
+# Seed test revenue events for analytics
+psql $DATABASE_URL -f scripts/seed-test-revenue.sql
+```
+
+This creates sample revenue events including:
+- Initial subscription payments
+- Recurring payments over several months
+- Sample refunds
+- Data for all analytics views
+
+#### Analytics Documentation
+
+For detailed information about:
+- Available analytics views (revenue, customer health, subscriptions)
+- Example SQL queries
+- Dashboard templates
+- Troubleshooting
+
+See [ANALYTICS.md](./ANALYTICS.md)
+
+### Security Requirements
+
+**HTTPS in Production:**
+
+⚠️ **CRITICAL**: Session cookies and authentication tokens must be transmitted over HTTPS in production and staging environments.
+
+- Set `NODE_ENV=production` to enable secure cookies
+- Use a reverse proxy (nginx, Caddy, or cloud load balancer) to terminate TLS
+- Obtain SSL certificates from Let's Encrypt or your certificate provider
+- Update `WORKOS_REDIRECT_URI` to use https:// scheme
+
+**Development Setup:**
+
+In local development, cookies are sent over HTTP for convenience. This is acceptable only on localhost. For staging environments, always use HTTPS even if using self-signed certificates.
+
+**Generating Secure Secrets:**
+
+```bash
+# Generate WORKOS_COOKIE_PASSWORD (min 32 characters)
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
 
 ### Docker Deployment
 

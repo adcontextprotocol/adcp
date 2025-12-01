@@ -8,14 +8,59 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Mock config to prevent database connections
+// Mock config and database to prevent actual database connections
 vi.mock('../../src/config.js', async () => {
   const actual = await vi.importActual('../../src/config.js');
   return {
     ...actual,
-    getDatabaseConfig: vi.fn().mockReturnValue(null),
+    getDatabaseConfig: vi.fn().mockReturnValue({
+      connectionString: "postgresql://localhost/test",
+    }),
   };
 });
+
+vi.mock('../../src/db/client.js', () => ({
+  initializeDatabase: vi.fn(),
+  isDatabaseInitialized: vi.fn().mockReturnValue(true),
+  closeDatabase: vi.fn(),
+}));
+
+vi.mock('../../src/db/migrate.js', () => ({
+  runMigrations: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../src/db/registry-db.js', () => ({
+  RegistryDatabase: vi.fn().mockImplementation(() => ({
+    listAgents: vi.fn().mockResolvedValue([
+      {
+        name: "Test Creative Agent",
+        type: "creative",
+        url: "https://creative.test",
+        protocol: "mcp",
+        description: "Test agent",
+        mcp_endpoint: "https://creative.test/mcp",
+        contact: { name: "", email: "", website: "" },
+        added_date: "2024-01-01",
+      }
+    ]),
+    getAgent: vi.fn().mockImplementation(async (name: string) => {
+      // Return agent only for specific names, undefined for others
+      if (name === "nonexistent/agent" || name.includes("nonexistent")) {
+        return undefined;
+      }
+      return {
+        name: "Test Creative Agent",
+        type: "creative",
+        url: "https://creative.test",
+        protocol: "mcp",
+        description: "Test agent",
+        mcp_endpoint: "https://creative.test/mcp",
+        contact: { name: "", email: "", website: "" },
+        added_date: "2024-01-01",
+      };
+    }),
+  })),
+}));
 
 describe('MCP Protocol Compliance', () => {
   let server: HTTPServer;

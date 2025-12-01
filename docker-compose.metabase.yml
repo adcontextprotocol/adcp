@@ -1,0 +1,35 @@
+version: '3.9'
+
+services:
+  metabase:
+    image: metabase/metabase:latest
+    container_name: adcp-metabase
+    ports:
+      - "3001:3000"  # Metabase on port 3001 to avoid conflicts
+    environment:
+      # Metabase will use H2 by default for its own data (settings, dashboards, etc.)
+      # You can configure PostgreSQL for Metabase's own data if needed
+      MB_DB_TYPE: h2
+      MB_DB_FILE: /metabase-data/metabase.db
+      # Site URL for proper embedding
+      MB_SITE_URL: http://localhost:3001
+      # Enable embedding in iframes from localhost (for public embeds AND interactive SSO)
+      MB_EMBEDDING_APP_ORIGIN: http://localhost:55020
+    volumes:
+      - metabase-data:/metabase-data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - adcp-network
+
+volumes:
+  metabase-data:
+    driver: local
+
+networks:
+  adcp-network:
+    driver: bridge

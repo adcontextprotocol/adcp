@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - AdCP Registry</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+    .header {
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 24px;
+      font-weight: 700;
+      color: #667eea;
+    }
+    .user-menu {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .user-info {
+      color: #666;
+    }
+    .btn-admin {
+      padding: 8px 16px;
+      background: #667eea;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      color: white;
+      font-weight: 600;
+    }
+    .btn-admin:hover {
+      background: #5568d3;
+    }
+    .btn-logout {
+      padding: 8px 16px;
+      background: #f5f5f5;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      color: #333;
+    }
+    .btn-logout:hover {
+      background: #e0e0e0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .welcome {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      margin-bottom: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+    p {
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .card h2 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 20px;
+    }
+    .info-box {
+      background: #e3f2fd;
+      border-left: 4px solid #2196f3;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.show {
+      display: flex;
+    }
+    .modal {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+    .modal h2 {
+      color: #f59e0b;
+      margin-bottom: 15px;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      justify-content: flex-end;
+    }
+    .btn-primary, .btn-secondary {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+    .btn-secondary:hover {
+      background: #d0d0d0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Outdated Agreement Modal -->
+  <div id="outdatedAgreementModal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="outdatedAgreementModalTitle">⚠️ Agreement Update</h2>
+      <div id="modalContent">
+        <p id="outdatedAgreementModalMessage">One or more agreements have been updated.</p>
+        <div id="outdatedAgreementsList" style="margin: 20px 0;"></div>
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-secondary" onclick="dismissAgreementModal()">Remind Me Later</button>
+        <button class="btn-primary" onclick="viewOutdatedAgreements()">Review</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Agreement Viewer Modal -->
+  <div id="agreementViewerModal" class="modal-overlay">
+    <div class="modal" style="max-width: 800px; max-height: 90vh;">
+      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+        <div>
+          <h2 id="agreementViewerTitle">Agreement</h2>
+          <p id="agreementViewerMeta" style="color: #666; font-size: 14px; margin: 5px 0 0 0;"></p>
+        </div>
+        <button onclick="closeAgreementViewer()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666; padding: 0; line-height: 1;">×</button>
+      </div>
+      <div id="agreementViewerContent" style="overflow-y: auto; max-height: calc(90vh - 150px); padding: 15px; background: #f9f9f9; border-radius: 6px; font-size: 14px; line-height: 1.6;">
+        Loading...
+      </div>
+      <div id="agreementViewerButtons" class="modal-buttons" style="margin-top: 15px;">
+        <button class="btn-primary" onclick="closeAgreementViewer()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="header">
+    <div class="header-content">
+      <div class="logo">AdCP Registry</div>
+      <div class="user-menu">
+        <span class="user-info" id="userEmail">Loading...</span>
+        <a href="/admin" class="btn-admin" id="adminLink" style="display: none;">Admin</a>
+        <a href="/auth/logout" class="btn-logout">Logout</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="welcome">
+      <h1>Welcome to Your Dashboard</h1>
+      <p>Manage your AdCP registry entries and team members from here.</p>
+    </div>
+
+    <div id="loading" class="loading">
+      Loading your information...
+    </div>
+
+    <div id="content" style="display:none;">
+      <div class="card">
+        <h2>Your Companies</h2>
+        <div id="companies"></div>
+      </div>
+
+      <div id="membershipCard" class="card" style="display:none;">
+        <h2>🎉 Join AgenticAdvertising.org</h2>
+        <p style="margin-bottom: 20px;">Become a paid member to support the AdCP ecosystem and access premium features.</p>
+
+        <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; background: #fafafa; margin-bottom: 20px;">
+          <h3 style="margin-bottom: 10px; font-size: 18px;">Membership Agreement</h3>
+          <div id="membershipAgreementContent" style="max-height: 200px; overflow-y: auto; padding: 15px; background: white; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 15px; font-size: 14px; line-height: 1.6;">
+            Loading agreement...
+          </div>
+
+          <label style="display: flex; align-items: start; gap: 10px; cursor: pointer;">
+            <input type="checkbox" id="membershipAgreementCheckbox" style="margin-top: 4px; cursor: pointer;" />
+            <span style="font-size: 14px;">I have read and agree to the <strong>AgenticAdvertising.org Membership Agreement</strong></span>
+          </label>
+        </div>
+
+        <div id="pricingTableWrapper" style="opacity: 0.5; pointer-events: none; transition: opacity 0.3s;">
+          <script async src="https://js.stripe.com/v3/pricing-table.js"></script>
+          <stripe-pricing-table
+            pricing-table-id="{{STRIPE_PRICING_TABLE_ID}}"
+            publishable-key="{{STRIPE_PUBLISHABLE_KEY}}">
+          </stripe-pricing-table>
+        </div>
+
+        <div id="agreementWarning" style="display: block; text-align: center; color: #666; font-size: 14px; margin-top: 10px; padding: 10px; background: #fff7ed; border: 1px solid #ffd699; border-radius: 4px;">
+          ⚠️ Please accept the membership agreement above to continue
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Agreement History</h2>
+        <div id="agreementHistory">
+          <p style="color: #666;">Loading agreement history...</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Registry Entries</h2>
+        <div class="info-box">
+          Registry management UI coming soon. For now, entries are managed via API.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Quick Links</h2>
+        <ul style="list-style: none; padding: 0;">
+          <li style="margin-bottom: 10px;">
+            <a href="/api/agents" style="color: #667eea;">→ View All Agents</a>
+          </li>
+          <li style="margin-bottom: 10px;">
+            <a href="https://docs.adcontextprotocol.org" style="color: #667eea;">→ Documentation</a>
+          </li>
+          <li style="margin-bottom: 10px;">
+            <a href="https://github.com/adcontextprotocol/adcp" style="color: #667eea;">→ GitHub Repository</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentOrg = null;
+    let membershipAgreement = null;
+
+    // Load membership agreement
+    async function loadMembershipAgreement() {
+      try {
+        const response = await fetch('/api/agreement/current?type=membership');
+        if (!response.ok) throw new Error('Failed to load agreement');
+
+        membershipAgreement = await response.json();
+
+        // Render markdown to HTML using marked library
+        const renderedHtml = marked.parse(membershipAgreement.text);
+        document.getElementById('membershipAgreementContent').innerHTML = renderedHtml;
+      } catch (error) {
+        console.error('Error loading membership agreement:', error);
+        document.getElementById('membershipAgreementContent').innerHTML =
+          '<p style="color: #c33;">Failed to load agreement. Please refresh.</p>';
+      }
+    }
+
+    // Handle agreement checkbox change
+    // Note: Agreement acceptance is recorded in Stripe webhook when subscription succeeds
+    // This just enables/disables the pricing table UI
+    function setupAgreementCheckbox() {
+      const checkbox = document.getElementById('membershipAgreementCheckbox');
+      const pricingWrapper = document.getElementById('pricingTableWrapper');
+      const warning = document.getElementById('agreementWarning');
+
+      if (!checkbox) return;
+
+      checkbox.addEventListener('change', async (e) => {
+        if (e.target.checked) {
+          // Enable pricing table (agreement acceptance will be recorded on payment success)
+          pricingWrapper.style.opacity = '1';
+          pricingWrapper.style.pointerEvents = 'auto';
+          warning.style.display = 'none';
+
+          // Store agreement version in organization record for webhook to use
+          // This is temporary storage - actual acceptance recorded on payment success
+          if (membershipAgreement && currentOrg) {
+            try {
+              await fetch(`/api/organizations/${currentOrg.id}/pending-agreement`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                  agreement_version: membershipAgreement.version,
+                  agreement_accepted_at: new Date().toISOString(),
+                })
+              });
+            } catch (error) {
+              console.error('Failed to store pending agreement:', error);
+              // Continue anyway - webhook will use current version
+            }
+          }
+
+          console.log('Agreement checkbox checked - pricing table enabled');
+        } else {
+          // Disable pricing table
+          pricingWrapper.style.opacity = '0.5';
+          pricingWrapper.style.pointerEvents = 'none';
+          warning.style.display = 'block';
+        }
+      });
+    }
+
+    async function openBillingPortal(orgId) {
+      try {
+        const response = await fetch(`/api/organizations/${orgId}/billing/portal`, {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to open billing portal');
+        }
+
+        const data = await response.json();
+        if (data.portal_url) {
+          window.location.href = data.portal_url;
+        }
+      } catch (error) {
+        console.error('Error opening billing portal:', error);
+        alert('Failed to open billing portal. Please try again.');
+      }
+    }
+
+    async function loadUserData() {
+      try {
+        const response = await fetch('/api/me');
+        if (!response.ok) {
+          if (response.status === 401) {
+            const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+            window.location.href = `/auth/login?return_to=${returnUrl}`;
+            return;
+          }
+          throw new Error('Failed to load user data');
+        }
+
+        const data = await response.json();
+
+        document.getElementById('userEmail').textContent = data.user.email;
+
+        // Show admin link if user is an admin (email ends with @agenticadvertising.org)
+        if (data.user.email.endsWith('@agenticadvertising.org')) {
+          document.getElementById('adminLink').style.display = 'inline-block';
+        }
+
+        const companiesDiv = document.getElementById('companies');
+        let hasActiveSubscription = false;
+        let firstOrgWithoutSubscription = null;
+
+        if (data.organizations && data.organizations.length > 0) {
+          // Load billing info for each organization
+          const orgsWithBilling = await Promise.all(
+            data.organizations.map(async (org) => {
+              try {
+                const billingResponse = await fetch(`/api/organizations/${org.id}/billing`);
+                if (billingResponse.ok) {
+                  const billingData = await billingResponse.json();
+                  return {
+                    ...org,
+                    billing: billingData.subscription,
+                    stripeCustomerId: billingData.stripe_customer_id,
+                    customerSessionSecret: billingData.customer_session_secret,
+                    billingError: null
+                  };
+                } else {
+                  // Explicitly handle API errors
+                  const errorData = await billingResponse.json().catch(() => ({ message: 'Unknown error' }));
+                  return {
+                    ...org,
+                    billing: null,
+                    billingError: errorData.message || 'Failed to load billing information'
+                  };
+                }
+              } catch (error) {
+                console.error('Error loading billing for org:', org.id, error);
+                return {
+                  ...org,
+                  billing: null,
+                  billingError: 'Network error - unable to load billing information'
+                };
+              }
+            })
+          );
+
+          // Check if any org has active subscription
+          hasActiveSubscription = orgsWithBilling.some(org => org.billing?.status === 'active');
+
+          // Store globally for use in agreement checking
+          window.hasActiveSubscription = hasActiveSubscription;
+
+          // Find first org without subscription (for pricing table)
+          if (!hasActiveSubscription) {
+            firstOrgWithoutSubscription = orgsWithBilling.find(org =>
+              org.billing?.status !== 'active' && org.stripeCustomerId
+            );
+          }
+
+          companiesDiv.innerHTML = orgsWithBilling.map(org => {
+            // Build billing info display
+            let billingInfo = '';
+
+            if (org.billingError) {
+              // Show explicit error - don't hide it
+              billingInfo = `
+                <div style="margin-top: 8px; padding: 10px; background: #fee; border-left: 3px solid #c33; border-radius: 4px;">
+                  <div style="color: #c33; font-weight: bold; margin-bottom: 4px;">⚠ Error Loading Billing Info</div>
+                  <small style="color: #666;">${org.billingError}</small>
+                  <br>
+                  <small style="color: #666;">Please refresh the page or contact support if this persists.</small>
+                </div>
+              `;
+            } else if (org.billing?.status === 'active') {
+              const renewalDate = org.billing.current_period_end
+                ? new Date(org.billing.current_period_end * 1000).toLocaleDateString()
+                : '';
+              const productName = org.billing.product_name || 'Subscription';
+              const cancelNote = org.billing.cancel_at_period_end
+                ? ' (cancels at period end)'
+                : '';
+              const memberSince = org.agreement_signed_at
+                ? new Date(org.agreement_signed_at).toLocaleDateString()
+                : '';
+
+              billingInfo = `
+                <div style="margin-top: 8px; padding: 10px; background: #f0f9ff; border-left: 3px solid #0a0; border-radius: 4px;">
+                  <div style="color: #0a0; font-weight: bold; margin-bottom: 4px;">✓ ${productName}</div>
+                  ${memberSince ? `<small style="color: #666; display: block;">Member since: ${memberSince}</small>` : ''}
+                  <small style="color: #666;">Renews: ${renewalDate}${cancelNote}</small>
+                </div>
+              `;
+            } else if (org.billing?.status === 'past_due') {
+              billingInfo = `
+                <div style="margin-top: 8px; padding: 10px; background: #fff7ed; border-left: 3px solid #f90; border-radius: 4px;">
+                  <div style="color: #f90; font-weight: bold;">⚠ Payment Past Due</div>
+                  <small style="color: #666;">Please update your payment method</small>
+                </div>
+              `;
+            } else if (org.billing?.status === 'none') {
+              billingInfo = `
+                <div style="margin-top: 8px; padding: 10px; background: #f9f9f9; border-left: 3px solid #999; border-radius: 4px;">
+                  <div style="color: #666;">No Active Subscription</div>
+                </div>
+              `;
+            } else {
+              // Unexpected state - show it
+              billingInfo = `
+                <div style="margin-top: 8px; padding: 10px; background: #fee; border-left: 3px solid #c33; border-radius: 4px;">
+                  <div style="color: #c33; font-weight: bold;">Unexpected billing status: ${org.billing?.status || 'unknown'}</div>
+                </div>
+              `;
+            }
+
+            return `
+              <div style="padding: 15px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                  <div style="flex: 1;">
+                    <strong style="font-size: 18px;">${org.name}</strong>
+                    <br>
+                    <small style="color: #666;">Your role: ${org.role || 'member'}</small>
+                    ${billingInfo}
+                  </div>
+                  <button
+                    onclick="openBillingPortal('${org.id}')"
+                    style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                  >
+                    Manage Billing
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          companiesDiv.innerHTML = '<p style="color: #666;">No organizations yet. <a href="/onboarding">Create one now</a></p>';
+        }
+
+        // Show membership card if no active subscription
+        // Agreement acceptance will be recorded atomically when subscription payment succeeds
+        if (!hasActiveSubscription && firstOrgWithoutSubscription) {
+          currentOrg = firstOrgWithoutSubscription;
+          const membershipCard = document.getElementById('membershipCard');
+          membershipCard.style.display = 'block';
+
+          // Load membership agreement
+          await loadMembershipAgreement();
+
+          // Set up checkbox handler
+          setupAgreementCheckbox();
+
+          // Set customer session secret on pricing table
+          const pricingTable = membershipCard.querySelector('stripe-pricing-table');
+          if (pricingTable && firstOrgWithoutSubscription.customerSessionSecret) {
+            pricingTable.setAttribute('customer-session-client-secret', firstOrgWithoutSubscription.customerSessionSecret);
+          }
+        }
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        document.getElementById('loading').innerHTML = `
+          <p style="color: #c33;">Failed to load dashboard. <a href="/auth/login">Try logging in again</a></p>
+        `;
+      }
+    }
+
+    // Check if user has accepted membership agreement
+    async function hasAcceptedMembershipAgreement() {
+      try {
+        const response = await fetch('/api/me/agreements');
+        if (!response.ok) return false;
+
+        const data = await response.json();
+        return data.agreements.some(a => a.type === 'membership');
+      } catch (error) {
+        console.error('Error checking membership agreement:', error);
+        return false;
+      }
+    }
+
+    // Format agreement type for display
+    function formatAgreementType(type) {
+      const types = {
+        'terms_of_service': 'Terms of Service',
+        'privacy_policy': 'Privacy Policy',
+        'membership': 'Membership Agreement'
+      };
+      return types[type] || type;
+    }
+
+    // Dismiss outdated agreement modal
+    function dismissAgreementModal() {
+      document.getElementById('outdatedAgreementModal').style.display = 'none';
+    }
+
+    // View outdated agreements
+    async function viewOutdatedAgreements() {
+      dismissAgreementModal();
+
+      // Get the first outdated agreement and show it with accept button
+      try {
+        const response = await fetch('/api/me/agreements');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const outdated = data.agreements
+          .filter(a => {
+            // Skip membership agreement if user doesn't have a subscription
+            if (a.type === 'membership' && !window.hasActiveSubscription) {
+              return false;
+            }
+            return !a.accepted || a.needs_reacceptance;
+          })
+          .sort((a, b) => {
+            // Prioritize membership agreements (require formal acceptance)
+            if (a.type === 'membership' && b.type !== 'membership') return -1;
+            if (a.type !== 'membership' && b.type === 'membership') return 1;
+            return 0;
+          });
+
+        if (outdated.length > 0) {
+          const first = outdated[0];
+          await viewAgreementForAcceptance(first.type, first.current_version);
+        }
+      } catch (error) {
+        console.error('Error loading outdated agreements:', error);
+      }
+    }
+
+    // View specific agreement version
+    async function viewAgreement(type, version) {
+      try {
+        document.getElementById('agreementViewerModal').style.display = 'flex';
+        document.getElementById('agreementViewerContent').innerHTML = 'Loading...';
+
+        const response = await fetch(`/api/agreement?type=${type}&version=${version}&format=json`, {
+          credentials: 'same-origin'
+        });
+        if (!response.ok) {
+          throw new Error('Failed to load agreement');
+        }
+
+        const agreement = await response.json();
+
+        // Update modal content
+        document.getElementById('agreementViewerTitle').textContent = formatAgreementType(type);
+        document.getElementById('agreementViewerMeta').textContent =
+          `Version ${agreement.version} • Effective: ${new Date(agreement.effective_date).toLocaleDateString()}`;
+
+        // Render markdown to HTML using marked library
+        const renderedHtml = marked.parse(agreement.text);
+        document.getElementById('agreementViewerContent').innerHTML = renderedHtml;
+      } catch (error) {
+        console.error('Error loading agreement:', error);
+        document.getElementById('agreementViewerContent').innerHTML =
+          '<p style="color: #c33;">Failed to load agreement. Please try again.</p>';
+      }
+    }
+
+    // Close agreement viewer modal
+    function closeAgreementViewer() {
+      document.getElementById('agreementViewerModal').style.display = 'none';
+    }
+
+    // View agreement for acceptance (with Accept button)
+    async function viewAgreementForAcceptance(type, version) {
+      try {
+        document.getElementById('agreementViewerModal').style.display = 'flex';
+        document.getElementById('agreementViewerContent').innerHTML = 'Loading...';
+
+        const response = await fetch(`/api/agreement?type=${type}&version=${version}&format=json`, {
+          credentials: 'same-origin'
+        });
+        if (!response.ok) {
+          throw new Error('Failed to load agreement');
+        }
+
+        const agreement = await response.json();
+
+        // Update modal content
+        document.getElementById('agreementViewerTitle').textContent = formatAgreementType(type);
+        document.getElementById('agreementViewerMeta').textContent =
+          `Version ${agreement.version} • Effective ${new Date(agreement.effective_date).toLocaleDateString()}`;
+
+        // Render markdown to HTML using marked library
+        const renderedHtml = marked.parse(agreement.text);
+        document.getElementById('agreementViewerContent').innerHTML = renderedHtml;
+
+        // Update buttons based on agreement type
+        const buttonsDiv = document.getElementById('agreementViewerButtons');
+
+        if (type === 'membership') {
+          // Membership requires formal acceptance with checkbox
+          buttonsDiv.innerHTML = `
+            <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+              <input type="checkbox" id="agreeCheckbox" style="width: 18px; height: 18px; cursor: pointer;">
+              <span style="font-size: 14px;">I have read and agree to this ${formatAgreementType(type).toLowerCase()}</span>
+            </label>
+            <div style="display: flex; gap: 10px; width: 100%;">
+              <button class="btn-secondary" onclick="closeAgreementViewer()">Cancel</button>
+              <button class="btn-primary" id="acceptButton" onclick="acceptAgreement('${type}', '${version}')" disabled style="opacity: 0.5;">Accept Agreement</button>
+            </div>
+          `;
+
+          // Enable accept button when checkbox is checked
+          document.getElementById('agreeCheckbox').addEventListener('change', (e) => {
+            const acceptBtn = document.getElementById('acceptButton');
+            if (e.target.checked) {
+              acceptBtn.disabled = false;
+              acceptBtn.style.opacity = '1';
+            } else {
+              acceptBtn.disabled = true;
+              acceptBtn.style.opacity = '0.5';
+            }
+          });
+        } else {
+          // Terms of Service & Privacy Policy - just acknowledgment
+          buttonsDiv.innerHTML = `
+            <div style="display: flex; gap: 10px; width: 100%; justify-content: flex-end;">
+              <button class="btn-primary" onclick="acceptAgreement('${type}', '${version}')">I Understand</button>
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error loading agreement:', error);
+        document.getElementById('agreementViewerContent').innerHTML =
+          '<p style="color: #c33;">Failed to load agreement. Please try again.</p>';
+      }
+    }
+
+    // Accept an agreement
+    async function acceptAgreement(type, version) {
+      try {
+        const response = await fetch('/api/me/agreements/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ agreement_type: type, version })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to accept agreement');
+        }
+
+        // Close modal
+        closeAgreementViewer();
+
+        // Check if there are more agreements to accept
+        const agreementsResponse = await fetch('/api/me/agreements');
+        if (agreementsResponse.ok) {
+          const data = await agreementsResponse.json();
+          const outdated = data.agreements.filter(a => !a.accepted || a.needs_reacceptance);
+
+          if (outdated.length > 0) {
+            // Show next agreement
+            const next = outdated[0];
+            await viewAgreementForAcceptance(next.type, next.current_version);
+          } else {
+            // All done! Reload page to update UI
+            alert('All agreements have been accepted. Thank you!');
+            window.location.reload();
+          }
+        } else {
+          // Just reload to update UI
+          window.location.reload();
+        }
+      } catch (error) {
+        console.error('Error accepting agreement:', error);
+        alert('Failed to accept agreement: ' + error.message);
+      }
+    }
+
+    // Check for outdated agreements and show modal if needed
+    async function checkOutdatedAgreements() {
+      try {
+        const response = await fetch('/api/me/agreements');
+        if (!response.ok) return;
+
+        const data = await response.json();
+
+        if (data.needs_reacceptance) {
+          // Build list of outdated agreements
+          // Only show ToS/Privacy if they're outdated
+          // For membership, only show if user has subscription and never accepted
+          const outdatedList = data.agreements
+            .filter(a => {
+              if (a.type === 'membership') {
+                // Only show membership if user has active subscription and never accepted
+                return window.hasActiveSubscription && a.is_outdated && !a.version;
+              } else {
+                // Show ToS/Privacy if outdated (just FYI)
+                return a.is_outdated;
+              }
+            })
+            .map(a => `
+              <div style="padding: 10px; background: #fff7ed; border-left: 3px solid #f90; border-radius: 4px; margin: 8px 0;">
+                <strong>${formatAgreementType(a.type)}</strong>
+                <br>
+                <small style="color: #666;">
+                  ${a.version ? `Accepted version: ${a.version}` : 'Not yet accepted'} →
+                  Current version: ${a.current_version}
+                </small>
+              </div>
+            `)
+            .join('');
+
+          // Only show modal if there are agreements to show
+          if (!outdatedList) return;
+
+          document.getElementById('outdatedAgreementsList').innerHTML = outdatedList;
+          document.getElementById('outdatedAgreementModal').style.display = 'flex';
+        }
+      } catch (error) {
+        console.error('Error checking outdated agreements:', error);
+      }
+    }
+
+    // Load agreement history
+    async function loadAgreementHistory() {
+      try {
+        const response = await fetch('/api/me/agreements');
+        if (!response.ok) throw new Error('Failed to load agreement history');
+
+        const data = await response.json();
+        const historyDiv = document.getElementById('agreementHistory');
+
+        if (data.agreements && data.agreements.length > 0) {
+          // Build table with outdated status and clickable links
+          historyDiv.innerHTML = `
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr style="border-bottom: 2px solid #e0e0e0;">
+                  <th style="text-align: left; padding: 10px; color: #666; font-weight: 600;">Agreement</th>
+                  <th style="text-align: left; padding: 10px; color: #666; font-weight: 600;">Version</th>
+                  <th style="text-align: left; padding: 10px; color: #666; font-weight: 600;">Accepted</th>
+                  <th style="text-align: left; padding: 10px; color: #666; font-weight: 600;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.agreements.map(acceptance => `
+                  <tr style="border-bottom: 1px solid #f0f0f0;">
+                    <td style="padding: 10px;">${formatAgreementType(acceptance.type)}</td>
+                    <td style="padding: 10px;">
+                      ${acceptance.version
+                        ? `<a href="javascript:void(0)" onclick="viewAgreement('${acceptance.type}', '${acceptance.version}')" style="color: #667eea; text-decoration: underline; cursor: pointer;">${acceptance.version}</a>`
+                        : 'Not accepted'}
+                      ${acceptance.is_outdated && acceptance.current_version
+                        ? `<br><small style="color: #f90;">→ <a href="javascript:void(0)" onclick="viewAgreement('${acceptance.type}', '${acceptance.current_version}')" style="color: #f90; text-decoration: underline; cursor: pointer;">${acceptance.current_version} available</a></small>`
+                        : ''}
+                    </td>
+                    <td style="padding: 10px;">${acceptance.accepted_at ? new Date(acceptance.accepted_at).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    }) : 'Not accepted'}</td>
+                    <td style="padding: 10px;">
+                      ${acceptance.is_outdated
+                        ? '<span style="color: #f90; font-weight: bold;">⚠ Update Required</span>'
+                        : '<span style="color: #0a0;">✓ Current</span>'}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+        } else {
+          historyDiv.innerHTML = '<p style="color: #666;">No agreement acceptances recorded.</p>';
+        }
+      } catch (error) {
+        console.error('Error loading agreement history:', error);
+        document.getElementById('agreementHistory').innerHTML =
+          '<p style="color: #c33;">Failed to load agreement history.</p>';
+      }
+    }
+
+    loadUserData();
+    loadAgreementHistory();
+    checkOutdatedAgreements();
+
+    // Handle browser back/forward cache (bfcache) restoration
+    // When user hits back from Stripe, reinitialize the pricing table
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) {
+        // Page was restored from bfcache
+        console.log('Page restored from cache, reloading pricing table');
+
+        // Check if pricing table exists and needs reinitialization
+        const pricingTable = document.querySelector('stripe-pricing-table');
+        if (pricingTable) {
+          // Force re-render by cloning the element
+          const clone = pricingTable.cloneNode(true);
+          pricingTable.parentNode.replaceChild(clone, pricingTable);
+        }
+      }
+    });
+  </script>
+</body>
+</html>
