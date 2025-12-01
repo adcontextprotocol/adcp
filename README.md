@@ -377,7 +377,18 @@ See [ANALYTICS.md](./ANALYTICS.md)
 
 For production analytics, you need to deploy Metabase separately from your main application:
 
-**Option 1: Metabase Cloud** (Recommended)
+**Option 1: Self-Hosted Metabase** (Recommended - FREE with Fly.io free tier)
+- See [METABASE_SETUP.md](./METABASE_SETUP.md) for complete setup guide
+- 256MB RAM + 1GB storage = $0/month (fits in Fly.io free tier)
+- Quick setup:
+  ```bash
+  fly apps create adcp-metabase
+  fly volumes create metabase_data --size 1 --region iad --app adcp-metabase
+  fly postgres attach <your-postgres-app> --app adcp-metabase
+  fly deploy --config fly.metabase.toml --app adcp-metabase
+  ```
+
+**Option 2: Metabase Cloud** ($100/month)
 - Sign up at [metabase.com/pricing](https://www.metabase.com/pricing)
 - Connect to your production PostgreSQL database (use read-only credentials)
 - Enable embedding in Admin → Settings → Embedding
@@ -387,22 +398,6 @@ For production analytics, you need to deploy Metabase separately from your main 
   METABASE_SECRET_KEY=<secret-key-from-metabase>
   METABASE_DASHBOARD_ID=<your-dashboard-id>
   ```
-
-**Option 2: Self-Hosted Metabase**
-- Deploy Metabase container alongside your app (separate service)
-- Example with Fly.io:
-  ```bash
-  # Create a separate Fly app for Metabase
-  fly apps create adcp-metabase
-
-  # Deploy Metabase (use official Docker image)
-  fly deploy --image metabase/metabase:latest --app adcp-metabase
-
-  # Attach to same Postgres database
-  fly postgres attach <your-postgres-app> --app adcp-metabase
-  ```
-- Configure environment variables in your main app
-- Secure Metabase admin interface (private network or authentication)
 
 **Security Considerations:**
 - ✅ Use read-only database credentials for Metabase

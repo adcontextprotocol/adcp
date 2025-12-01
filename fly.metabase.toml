@@ -28,11 +28,11 @@ primary_region = 'iad'
     protocol = "http"
 
 [machine]
-  memory = "1gb"
+  memory = "256mb"  # Fits in Fly.io free tier (3 shared VMs with 256MB)
   cpu_kind = "shared"
   cpus = 1
 
 [[mounts]]
   source = "metabase_data"
   destination = "/metabase-data"
-  initial_size = "3gb"
+  initial_size = "1gb"  # Minimal size for Metabase data - keeps costs down

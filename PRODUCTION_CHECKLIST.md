@@ -38,13 +38,13 @@ This checklist ensures all required services and secrets are properly configured
 
 ## Analytics (Metabase) - Optional
 
-### Option 1: Self-Hosted Metabase (Recommended - $10-15/month)
+### Option 1: Self-Hosted Metabase (Recommended - FREE with Fly.io free tier)
 
 **See [METABASE_SETUP.md](./METABASE_SETUP.md) for detailed step-by-step guide.**
 
 Quick checklist:
 - [ ] Fly.io app created: `fly apps create adcp-metabase`
-- [ ] Volume created: `fly volumes create metabase_data --size 3 --region iad --app adcp-metabase`
+- [ ] Volume created: `fly volumes create metabase_data --size 1 --region iad --app adcp-metabase`
 - [ ] Attached to Postgres: `fly postgres attach <postgres-app> --app adcp-metabase`
 - [ ] Deployed: `fly deploy --config fly.metabase.toml --app adcp-metabase`
 - [ ] Initial setup completed (admin account created)

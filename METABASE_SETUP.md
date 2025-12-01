@@ -5,7 +5,7 @@ This guide walks through deploying Metabase on Fly.io to save costs vs Metabase 
 ## Cost Comparison
 
 - **Metabase Cloud**: $100/month minimum (Starter plan)
-- **Self-Hosted on Fly.io**: ~$10-15/month (1GB RAM machine + 3GB storage)
+- **Self-Hosted on Fly.io**: **FREE** (256MB RAM + 1GB storage fits in Fly.io free tier)
 
 ## Prerequisites
 
@@ -24,8 +24,8 @@ fly apps create adcp-metabase
 ## Step 2: Create Volume for Metabase Data
 
 ```bash
-# Create a 3GB volume in the same region as your main app
-fly volumes create metabase_data --size 3 --region iad --app adcp-metabase
+# Create a 1GB volume in the same region as your main app (stays in free tier)
+fly volumes create metabase_data --size 1 --region iad --app adcp-metabase
 ```
 
 ## Step 3: Attach to Production Database
@@ -51,10 +51,11 @@ fly deploy --config fly.metabase.toml --app adcp-metabase
 
 This will:
 - Pull the official Metabase Docker image
-- Create a machine with 1GB RAM
-- Mount the persistent volume
+- Create a machine with 256MB RAM (free tier)
+- Mount the persistent volume (1GB, free tier)
 - Start Metabase on port 3000 (internal)
-- Auto-scale to zero when not in use (saves money!)
+- Auto-scale to zero when not in use
+- **Total cost: $0/month** (within Fly.io free allowance)
 
 ## Step 5: Initial Metabase Setup
 
@@ -193,14 +194,14 @@ Common issues:
 
 ## Cost Optimization
 
-The current config uses auto-suspend (`min_machines_running = 0`), which means:
-- Metabase suspends when idle (>5 minutes no requests)
-- First request wakes it up (~5-10 seconds)
-- Saves money when analytics aren't actively used
+The current config uses:
+- **256MB RAM** - Fits in Fly.io free tier (you get 3 VMs with 256MB free)
+- **1GB storage** - Well within free storage allowance (160GB free)
+- **Auto-suspend** (`min_machines_running = 0`) - Suspends when idle
 
-If you need instant access:
-```bash
-fly scale count 1 --app adcp-metabase
-```
+With this configuration, Metabase should cost **$0/month** for low traffic.
 
-This keeps one machine always running (~$10-12/month).
+**If you exceed free tier limits:**
+- First request wakes it up (~5-10 seconds delay)
+- Consider keeping 1 machine running: `fly scale count 1` (~$2-3/month for 256MB)
+- Or scale up memory if needed: `fly scale memory 512` (~$5-7/month)
