@@ -7,6 +7,17 @@ export interface Organization {
   stripe_customer_id: string | null;
   agreement_signed_at: Date | null;
   agreement_version: string | null;
+  pending_agreement_version: string | null;
+  pending_agreement_accepted_at: Date | null;
+  subscription_current_period_end: Date | null;
+  subscription_product_id: string | null;
+  subscription_product_name: string | null;
+  subscription_price_id: string | null;
+  subscription_amount: number | null;
+  subscription_currency: string | null;
+  subscription_interval: string | null;
+  subscription_canceled_at: Date | null;
+  subscription_metadata: any | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -75,11 +86,33 @@ export class OrganizationDatabase {
     workos_organization_id: string,
     updates: Partial<Omit<Organization, 'workos_organization_id' | 'created_at' | 'updated_at'>>
   ): Promise<Organization> {
+    // Whitelist of allowed column names to prevent SQL injection
+    const ALLOWED_COLUMNS = new Set([
+      'name',
+      'stripe_customer_id',
+      'agreement_signed_at',
+      'agreement_version',
+      'pending_agreement_version',
+      'pending_agreement_accepted_at',
+      'subscription_current_period_end',
+      'subscription_product_id',
+      'subscription_product_name',
+      'subscription_price_id',
+      'subscription_amount',
+      'subscription_currency',
+      'subscription_interval',
+      'subscription_canceled_at',
+      'subscription_metadata',
+    ]);
+
     const setClauses: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
 
     Object.entries(updates).forEach(([key, value]) => {
+      if (!ALLOWED_COLUMNS.has(key)) {
+        throw new Error(`Invalid column name: ${key}`);
+      }
       setClauses.push(`${key} = $${paramIndex}`);
       values.push(value);
       paramIndex++;
@@ -228,5 +261,129 @@ export class OrganizationDatabase {
     }
 
     return getSubscriptionInfo(org.stripe_customer_id);
+  }
+
+  // Agreement Methods
+
+  /**
+   * Get current agreement by type
+   */
+  async getCurrentAgreementByType(type: string): Promise<Agreement | null> {
+    const pool = getPool();
+    const result = await pool.query(
+      'SELECT * FROM agreements WHERE agreement_type = $1 ORDER BY effective_date DESC LIMIT 1',
+      [type]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Get specific agreement by type and version
+   */
+  async getAgreementByTypeAndVersion(type: string, version: string): Promise<Agreement | null> {
+    const pool = getPool();
+    const result = await pool.query(
+      'SELECT * FROM agreements WHERE agreement_type = $1 AND version = $2',
+      [type, version]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Record user agreement acceptance
+   */
+  async recordUserAgreementAcceptance(data: {
+    workos_user_id: string;
+    email: string;
+    agreement_type: string;
+    agreement_version: string;
+    ip_address?: string;
+    user_agent?: string;
+    workos_organization_id?: string;
+  }): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO user_agreement_acceptances
+       (workos_user_id, email, agreement_type, agreement_version, ip_address, user_agent, workos_organization_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (workos_user_id, agreement_type, agreement_version) DO NOTHING`,
+      [
+        data.workos_user_id,
+        data.email,
+        data.agreement_type,
+        data.agreement_version,
+        data.ip_address,
+        data.user_agent,
+        data.workos_organization_id,
+      ]
+    );
+  }
+
+  /**
+   * Get organization by stripe_customer_id
+   */
+  async getOrganizationByStripeCustomerId(stripeCustomerId: string): Promise<Organization | null> {
+    const pool = getPool();
+    const result = await pool.query(
+      'SELECT * FROM organizations WHERE stripe_customer_id = $1',
+      [stripeCustomerId]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Check if user has accepted specific agreement
+   */
+  async hasUserAcceptedAgreement(
+    workos_user_id: string,
+    agreement_type: string
+  ): Promise<boolean> {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT 1 FROM user_agreement_acceptances
+       WHERE workos_user_id = $1 AND agreement_type = $2
+       LIMIT 1`,
+      [workos_user_id, agreement_type]
+    );
+    return result.rows.length > 0;
+  }
+
+  /**
+   * Check if user has accepted specific version of an agreement
+   */
+  async hasUserAcceptedAgreementVersion(
+    workos_user_id: string,
+    agreement_type: string,
+    agreement_version: string
+  ): Promise<boolean> {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT 1 FROM user_agreement_acceptances
+       WHERE workos_user_id = $1 AND agreement_type = $2 AND agreement_version = $3
+       LIMIT 1`,
+      [workos_user_id, agreement_type, agreement_version]
+    );
+    return result.rows.length > 0;
+  }
+
+  /**
+   * Get all agreement acceptances for a user
+   */
+  async getUserAgreementAcceptances(workos_user_id: string): Promise<Array<{
+    agreement_type: string;
+    agreement_version: string;
+    accepted_at: Date;
+    ip_address: string | null;
+    user_agent: string | null;
+  }>> {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT agreement_type, agreement_version, accepted_at, ip_address, user_agent
+       FROM user_agreement_acceptances
+       WHERE workos_user_id = $1
+       ORDER BY accepted_at DESC`,
+      [workos_user_id]
+    );
+    return result.rows;
   }
 }

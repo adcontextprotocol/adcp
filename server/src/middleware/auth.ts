@@ -33,11 +33,15 @@ const companyDb = new CompanyDatabase();
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const sessionCookie = req.cookies['wos-session'];
+  const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
 
-  logger.debug({ path: req.path, hasCookie: !!sessionCookie }, 'Authentication check');
+  logger.debug({ path: req.path, hasCookie: !!sessionCookie, isHtmlRequest }, 'Authentication check');
 
   if (!sessionCookie) {
     logger.debug('No session cookie found');
+    if (isHtmlRequest) {
+      return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+    }
     return res.status(401).json({
       error: 'Authentication required',
       message: 'Please log in to access this resource',
@@ -54,6 +58,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     if (!result.authenticated || !('user' in result) || !result.user) {
       logger.debug('Session validation failed');
+      if (isHtmlRequest) {
+        return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+      }
       return res.status(401).json({
         error: 'Invalid session',
         message: 'Your session has expired. Please log in again.',
@@ -75,6 +82,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     next();
   } catch (error) {
     logger.error({ err: error }, 'Authentication middleware error');
+    if (isHtmlRequest) {
+      return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+    }
     return res.status(401).json({
       error: 'Authentication failed',
       message: 'Unable to verify your session. Please log in again.',
@@ -221,6 +231,65 @@ export function requireRole(...allowedRoles: Array<'owner' | 'admin' | 'member'>
 
     next();
   };
+}
+
+/**
+ * Middleware to require admin access
+ * Must be used after requireAuth
+ * Checks if user's email is from @agenticadvertising.org domain
+ */
+export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+
+  if (!req.user) {
+    if (isHtmlRequest) {
+      return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+    }
+    return res.status(401).json({
+      error: 'Authentication required',
+      message: 'Please log in to access this resource',
+    });
+  }
+
+  // Check admin access via environment variable (comma-separated list of emails)
+  const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+  const isAdmin = adminEmails.includes(req.user.email.toLowerCase());
+
+  if (!isAdmin) {
+    logger.warn({ userId: req.user.id, email: req.user.email }, 'Non-admin user attempted to access admin endpoint');
+    if (isHtmlRequest) {
+      return res.status(403).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Access Denied</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
+            .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+            h1 { color: #c33; margin-bottom: 10px; }
+            p { color: #666; margin-bottom: 20px; }
+            a { color: #667eea; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>Access Denied</h1>
+            <p>This resource is only accessible to administrators.</p>
+            <a href="/dashboard">← Back to Dashboard</a>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+    return res.status(403).json({
+      error: 'Admin access required',
+      message: 'This resource is only accessible to administrators',
+    });
+  }
+
+  logger.debug({ userId: req.user.id, email: req.user.email }, 'Admin access granted');
+  next();
 }
 
 /**

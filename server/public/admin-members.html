@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Members - AdCP Registry</title>
+  <script src="/admin-nav.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo { font-size: 20px; font-weight: bold; }
+    .container {
+      max-width: 1400px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 25px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 { margin-bottom: 10px; color: #2d3748; }
+    .subtitle { color: #666; margin-bottom: 20px; }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 6px;
+    }
+    .filter-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+      font-size: 14px;
+      color: #2d3748;
+    }
+    .filter-group select,
+    .filter-group input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+    .btn-secondary:hover {
+      background: #d0d0d0;
+    }
+    .members-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    .members-table th {
+      background: #f9f9f9;
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      color: #2d3748;
+      border-bottom: 2px solid #e0e0e0;
+    }
+    .members-table td {
+      padding: 12px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .members-table tr:hover {
+      background: #f9f9f9;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status-active {
+      background: #d4edda;
+      color: #155724;
+    }
+    .status-trialing {
+      background: #cce5ff;
+      color: #004085;
+    }
+    .status-past_due {
+      background: #fff3cd;
+      color: #856404;
+    }
+    .status-canceled {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .status-none {
+      background: #e0e0e0;
+      color: #333;
+    }
+    .expiring-soon {
+      color: #856404;
+      font-weight: 600;
+    }
+    .loading {
+      text-align: center;
+      padding: 50px;
+      color: #666;
+    }
+    .btn-icon {
+      padding: 6px 12px;
+      border: 1px solid #e0e0e0;
+      background: white;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-icon:hover {
+      background: #f9f9f9;
+      border-color: #667eea;
+    }
+    .btn-icon:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .sync-status {
+      font-size: 11px;
+      margin-top: 4px;
+      color: #666;
+    }
+    .sync-error {
+      color: #c33;
+    }
+    .sync-success {
+      color: #2d7a2d;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+    }
+    .modal-content {
+      background-color: white;
+      margin: 50px auto;
+      padding: 30px;
+      border-radius: 8px;
+      max-width: 900px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+    .modal-close {
+      font-size: 28px;
+      font-weight: bold;
+      color: #666;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      line-height: 1;
+    }
+    .modal-close:hover {
+      color: #333;
+    }
+    .payment-item {
+      padding: 15px;
+      margin-bottom: 10px;
+      border-left: 4px solid #667eea;
+      background: #f9f9f9;
+      border-radius: 4px;
+    }
+    .payment-item.refund {
+      border-left-color: #f8d7da;
+      background: #fff3f3;
+    }
+    .payment-amount {
+      font-size: 18px;
+      font-weight: 600;
+      color: #2d3748;
+    }
+    .payment-amount.negative {
+      color: #c33;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header injected by admin-nav.js -->
+
+  <div id="loading" class="loading">
+    Loading members...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <div>
+            <h1>Member Management</h1>
+            <p class="subtitle">View and manage all members and subscriptions</p>
+          </div>
+          <div class="actions">
+            <button class="btn btn-secondary" onclick="exportToCSV()">Export to CSV</button>
+            <button class="btn btn-primary" onclick="refreshMembers()">Refresh</button>
+          </div>
+        </div>
+
+        <div class="filters">
+          <div class="filter-group">
+            <label>Subscription Status</label>
+            <select id="filterStatus" onchange="applyFilters()">
+              <option value="">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="trialing">Trialing</option>
+              <option value="past_due">Past Due</option>
+              <option value="canceled">Canceled</option>
+              <option value="none">No Subscription</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Expiring Soon</label>
+            <select id="filterExpiring" onchange="applyFilters()">
+              <option value="">All</option>
+              <option value="30">Next 30 Days</option>
+              <option value="60">Next 60 Days</option>
+              <option value="90">Next 90 Days</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Search</label>
+            <input type="text" id="filterSearch" placeholder="Company name or email..." oninput="applyFilters()">
+          </div>
+
+          <div class="filter-group">
+            <label>Agreement Status</label>
+            <select id="filterAgreement" onchange="applyFilters()">
+              <option value="">All</option>
+              <option value="signed">Signed</option>
+              <option value="unsigned">Not Signed</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="membersCount" style="color: #666; margin-bottom: 10px;">
+          Showing 0 members
+        </div>
+
+        <table class="members-table">
+          <thead>
+            <tr>
+              <th>Company</th>
+              <th>Owner Email</th>
+              <th>Subscription</th>
+              <th>Amount</th>
+              <th>Renewal Date</th>
+              <th>Agreement</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="membersTableBody">
+            <tr><td colspan="7" style="text-align: center; padding: 40px; color: #666;">No members found</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Payment History Modal -->
+  <div id="paymentModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitle">Payment History</h2>
+        <button class="modal-close" onclick="closePaymentModal()">&times;</button>
+      </div>
+      <div id="paymentHistoryContent">
+        <div class="loading">Loading payment history...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allMembers = [];
+    let filteredMembers = [];
+
+    async function loadMembers() {
+      try {
+        const response = await fetch('/api/admin/members');
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load members');
+        }
+
+        allMembers = await response.json();
+        filteredMembers = allMembers;
+        renderMembers();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading members:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: #c33;">Failed to load members. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    function applyFilters() {
+      const statusFilter = document.getElementById('filterStatus').value;
+      const expiringFilter = document.getElementById('filterExpiring').value;
+      const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
+      const agreementFilter = document.getElementById('filterAgreement').value;
+
+      filteredMembers = allMembers.filter(member => {
+        // Status filter
+        if (statusFilter && member.subscription_status !== statusFilter) {
+          return false;
+        }
+
+        // Expiring filter
+        if (expiringFilter && member.subscription_current_period_end) {
+          const daysUntilExpiry = Math.floor(
+            (member.subscription_current_period_end * 1000 - Date.now()) / (1000 * 60 * 60 * 24)
+          );
+          if (daysUntilExpiry > parseInt(expiringFilter)) {
+            return false;
+          }
+        }
+
+        // Search filter
+        if (searchFilter) {
+          const companyMatch = member.company_name.toLowerCase().includes(searchFilter);
+          const emailMatch = member.owner_email.toLowerCase().includes(searchFilter);
+          if (!companyMatch && !emailMatch) {
+            return false;
+          }
+        }
+
+        // Agreement filter
+        if (agreementFilter === 'signed' && !member.agreement_signed_at) {
+          return false;
+        }
+        if (agreementFilter === 'unsigned' && member.agreement_signed_at) {
+          return false;
+        }
+
+        return true;
+      });
+
+      renderMembers();
+    }
+
+    function renderMembers() {
+      const tbody = document.getElementById('membersTableBody');
+      const countDiv = document.getElementById('membersCount');
+
+      countDiv.textContent = `Showing ${filteredMembers.length} of ${allMembers.length} members`;
+
+      if (filteredMembers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #666;">No members found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filteredMembers.map(member => {
+        const statusClass = `status-${member.subscription_status || 'none'}`.replace('_', '');
+        const statusText = member.subscription_status || 'none';
+
+        // Format subscription amount
+        let amountText = '-';
+        if (member.subscription_amount) {
+          const amount = (member.subscription_amount / 100).toFixed(2);
+          const currency = (member.subscription_currency || 'usd').toUpperCase();
+          const interval = member.subscription_interval || '';
+          amountText = `$${amount}/${interval}`;
+        }
+
+        let periodEndText = '-';
+        let isExpiringSoon = false;
+        if (member.subscription_current_period_end) {
+          const date = new Date(member.subscription_current_period_end * 1000);
+          periodEndText = date.toLocaleDateString();
+
+          const daysUntilExpiry = Math.floor(
+            (member.subscription_current_period_end * 1000 - Date.now()) / (1000 * 60 * 60 * 24)
+          );
+          if (daysUntilExpiry <= 30 && daysUntilExpiry >= 0) {
+            isExpiringSoon = true;
+            periodEndText += ` (${daysUntilExpiry} days)`;
+          }
+        }
+
+        const agreementText = member.agreement_signed_at
+          ? new Date(member.agreement_signed_at).toLocaleDateString()
+          : 'Not signed';
+
+        // Stripe customer link
+        const stripeLink = member.stripe_customer_id
+          ? `https://dashboard.stripe.com/test/customers/${member.stripe_customer_id}`
+          : '';
+
+        return `
+          <tr id="row-${member.company_id}">
+            <td><strong>${member.company_name}</strong></td>
+            <td>${member.owner_email}</td>
+            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+            <td><strong>${amountText}</strong></td>
+            <td class="${isExpiringSoon ? 'expiring-soon' : ''}">${periodEndText}</td>
+            <td>${agreementText}</td>
+            <td style="display: flex; gap: 4px; align-items: flex-start;">
+              ${stripeLink ? `<a href="${stripeLink}" target="_blank" class="btn-icon" title="View in Stripe">💳</a>` : ''}
+              <button class="btn-icon" onclick="viewPayments('${member.company_id}')" title="Payment History">📊</button>
+              <button class="btn-icon" onclick="syncMember('${member.company_id}')" id="sync-btn-${member.company_id}" title="Sync from Stripe">
+                🔄
+              </button>
+              <div id="sync-status-${member.company_id}" class="sync-status"></div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function exportToCSV() {
+      const headers = ['Company Name', 'Owner Email', 'Subscription Status', 'Current Period End', 'Agreement Signed', 'Created'];
+      const rows = filteredMembers.map(member => {
+        const periodEnd = member.subscription_current_period_end
+          ? new Date(member.subscription_current_period_end * 1000).toLocaleDateString()
+          : '';
+        const agreementSigned = member.agreement_signed_at
+          ? new Date(member.agreement_signed_at).toLocaleDateString()
+          : '';
+        const created = new Date(member.created_at).toLocaleDateString();
+
+        return [
+          member.company_name,
+          member.owner_email,
+          member.subscription_status || 'none',
+          periodEnd,
+          agreementSigned,
+          created
+        ];
+      });
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `members-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function refreshMembers() {
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('content').style.display = 'none';
+      loadMembers();
+    }
+
+    async function syncMember(orgId) {
+      const button = document.getElementById(`sync-btn-${orgId}`);
+      const statusDiv = document.getElementById(`sync-status-${orgId}`);
+
+      // Disable button and show loading state
+      button.disabled = true;
+      button.textContent = '⏳ Syncing...';
+      statusDiv.textContent = '';
+      statusDiv.className = 'sync-status';
+
+      try {
+        const response = await fetch(`/api/admin/members/${orgId}/sync`, {
+          method: 'POST',
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to sync member data');
+        }
+
+        const result = await response.json();
+
+        // Show sync results
+        let statusMessage = '';
+        let hasErrors = false;
+
+        if (result.workos && !result.workos.success) {
+          statusMessage += `WorkOS: ${result.workos.error || 'Failed'} `;
+          hasErrors = true;
+        } else if (result.workos && result.workos.email) {
+          statusMessage += `WorkOS: ✓ `;
+        }
+
+        if (result.stripe && !result.stripe.success) {
+          statusMessage += `Stripe: ${result.stripe.error || 'Failed'}`;
+          hasErrors = true;
+        } else if (result.stripe && result.stripe.subscription) {
+          statusMessage += `Stripe: ✓`;
+        }
+
+        if (hasErrors) {
+          statusDiv.className = 'sync-status sync-error';
+          statusDiv.textContent = statusMessage;
+        } else {
+          statusDiv.className = 'sync-status sync-success';
+          statusDiv.textContent = '✓ Synced successfully';
+        }
+
+        // Reload the members list if data was updated (even with partial errors)
+        if (result.updated || !hasErrors) {
+          setTimeout(() => {
+            loadMembers();
+          }, 1500);
+        }
+      } catch (error) {
+        console.error('Error syncing member:', error);
+        statusDiv.className = 'sync-status sync-error';
+        statusDiv.textContent = 'Error: ' + error.message;
+      } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.textContent = '🔄 Sync';
+      }
+    }
+
+    async function viewPayments(orgId) {
+      const modal = document.getElementById('paymentModal');
+      const content = document.getElementById('paymentHistoryContent');
+      const title = document.getElementById('modalTitle');
+
+      // Find the organization name
+      const member = allMembers.find(m => m.company_id === orgId);
+      title.textContent = `Payment History - ${member ? member.company_name : 'Organization'}`;
+
+      // Show modal with loading state
+      modal.style.display = 'block';
+      content.innerHTML = '<div class="loading">Loading payment history...</div>';
+
+      try {
+        const response = await fetch(`/api/admin/members/${orgId}/payments`);
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load payment history');
+        }
+
+        const payments = await response.json();
+
+        if (payments.length === 0) {
+          content.innerHTML = '<p style="text-align: center; color: #666; padding: 40px;">No payment history found</p>';
+          return;
+        }
+
+        // Render payment history
+        content.innerHTML = payments.map(payment => {
+          const date = new Date(payment.event_timestamp).toLocaleString();
+          const amount = (Math.abs(payment.amount_cents) / 100).toFixed(2);
+          const currency = (payment.currency || 'USD').toUpperCase();
+          const isRefund = payment.event_type === 'refund';
+          const isFailed = payment.event_type === 'payment_failed';
+
+          let eventLabel = '';
+          let amountClass = '';
+          let itemClass = 'payment-item';
+
+          if (isRefund) {
+            eventLabel = '🔄 Refund';
+            amountClass = 'negative';
+            itemClass += ' refund';
+          } else if (isFailed) {
+            eventLabel = '❌ Payment Failed';
+            amountClass = 'negative';
+          } else if (payment.event_type === 'subscription_initial') {
+            eventLabel = '🎉 Initial Subscription';
+          } else if (payment.event_type === 'subscription_recurring') {
+            eventLabel = '💳 Recurring Payment';
+          } else {
+            eventLabel = payment.event_type;
+          }
+
+          const amountDisplay = isRefund ? `-$${amount}` : `$${amount}`;
+
+          return `
+            <div class="${itemClass}">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                <div>
+                  <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${eventLabel}</div>
+                  <div style="font-size: 12px; color: #666;">${date}</div>
+                </div>
+                <div class="payment-amount ${amountClass}">${amountDisplay} ${currency}</div>
+              </div>
+              ${payment.product_name ? `<div style="font-size: 13px; color: #666; margin-top: 8px;">Product: ${payment.product_name}</div>` : ''}
+              ${payment.stripe_invoice_id ? `<div style="font-size: 12px; color: #999; margin-top: 4px;">Invoice: ${payment.stripe_invoice_id}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+
+      } catch (error) {
+        console.error('Error loading payment history:', error);
+        content.innerHTML = '<p style="text-align: center; color: #c33; padding: 40px;">Failed to load payment history</p>';
+      }
+    }
+
+    function closePaymentModal() {
+      document.getElementById('paymentModal').style.display = 'none';
+    }
+
+    // Close modal when clicking outside of it
+    window.onclick = function(event) {
+      const modal = document.getElementById('paymentModal');
+      if (event.target === modal) {
+        closePaymentModal();
+      }
+    }
+
+    // Initialize
+    loadMembers();
+  </script>
+</body>
+</html>

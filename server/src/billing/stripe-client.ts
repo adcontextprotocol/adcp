@@ -1,10 +1,13 @@
 import Stripe from 'stripe';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('stripe-client');
 
 // Initialize Stripe client
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 
 if (!STRIPE_SECRET_KEY) {
-  console.warn('STRIPE_SECRET_KEY not set - billing features will be disabled');
+  logger.warn('STRIPE_SECRET_KEY not set - billing features will be disabled');
 }
 
 export const stripe = STRIPE_SECRET_KEY
@@ -28,7 +31,7 @@ export async function getSubscriptionInfo(
   cancel_at_period_end?: boolean;
 } | null> {
   if (!stripe) {
-    console.warn('Stripe not initialized - cannot fetch subscription info');
+    logger.warn('Stripe not initialized - cannot fetch subscription info');
     return null;
   }
 
@@ -47,13 +50,53 @@ export async function getSubscriptionInfo(
       return { status: 'none' };
     }
 
-    // Get the first subscription and expand it fully to get product details
+    // The subscription from customer.subscriptions is a limited object
+    // We need to fetch the full subscription with latest_invoice expanded to get current_period_end
     const subscriptionId = subscriptions.data[0].id;
-    const subscriptionResponse = await stripe.subscriptions.retrieve(subscriptionId, {
-      expand: ['items.data.price.product'],
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ['items.data.price.product', 'latest_invoice'],
     });
-    // Type assertion: Stripe SDK returns Subscription object, not Response<Subscription>
-    const subscription = subscriptionResponse as unknown as Stripe.Subscription;
+
+    logger.debug({
+      billing_cycle_anchor: subscription.billing_cycle_anchor,
+      created: subscription.created,
+      start_date: subscription.start_date,
+      trial_end: subscription.trial_end,
+      trial_start: subscription.trial_start,
+    }, 'Subscription details');
+
+    // In newer Stripe API versions, current_period_end may be on the latest invoice
+    const latestInvoice = subscription.latest_invoice as Stripe.Invoice | string | null;
+    let periodEnd = typeof latestInvoice === 'object' && latestInvoice ? latestInvoice.period_end : undefined;
+    const periodStart = typeof latestInvoice === 'object' && latestInvoice ? latestInvoice.period_start : undefined;
+
+    logger.debug({ period_start: periodStart, period_end: periodEnd }, 'Latest invoice period');
+
+    // If period_end equals period_start (zero-duration period), calculate from price interval
+    if (periodEnd && periodStart && periodEnd === periodStart) {
+      const price = subscription.items.data[0]?.price;
+      if (price && typeof price === 'object') {
+        const interval = price.recurring?.interval;
+        const intervalCount = price.recurring?.interval_count || 1;
+
+        logger.debug({ interval, interval_count: intervalCount }, 'Price interval details');
+
+        // Calculate the actual renewal date based on billing interval
+        const startDate = new Date(periodStart * 1000);
+        if (interval === 'month') {
+          startDate.setMonth(startDate.getMonth() + intervalCount);
+        } else if (interval === 'year') {
+          startDate.setFullYear(startDate.getFullYear() + intervalCount);
+        } else if (interval === 'week') {
+          startDate.setDate(startDate.getDate() + (7 * intervalCount));
+        } else if (interval === 'day') {
+          startDate.setDate(startDate.getDate() + intervalCount);
+        }
+
+        periodEnd = Math.floor(startDate.getTime() / 1000);
+        logger.debug({ calculated_period_end: periodEnd }, 'Calculated period_end from interval');
+      }
+    }
 
     const product = subscription.items.data[0]?.price?.product;
 
@@ -63,15 +106,18 @@ export async function getSubscriptionInfo(
         ? product.name
         : undefined;
 
-    return {
+    const result = {
       status: subscription.status as 'active' | 'past_due' | 'canceled' | 'unpaid',
       product_id: typeof product === 'string' ? product : product?.id,
       product_name: productName,
-      current_period_end: (subscription as any).current_period_end ?? undefined,
-      cancel_at_period_end: (subscription as any).cancel_at_period_end ?? undefined,
+      current_period_end: periodEnd,
+      cancel_at_period_end: subscription.cancel_at_period_end,
     };
+
+    logger.debug({ result }, 'Returning subscription info');
+    return result;
   } catch (error) {
-    console.error('Error fetching subscription from Stripe:', error);
+    logger.error({ err: error }, 'Error fetching subscription from Stripe');
     return null;
   }
 }
@@ -85,7 +131,7 @@ export async function createStripeCustomer(data: {
   metadata?: Record<string, string>;
 }): Promise<string | null> {
   if (!stripe) {
-    console.warn('Stripe not initialized - cannot create customer');
+    logger.warn('Stripe not initialized - cannot create customer');
     return null;
   }
 
@@ -98,7 +144,7 @@ export async function createStripeCustomer(data: {
 
     return customer.id;
   } catch (error) {
-    console.error('Error creating Stripe customer:', error);
+    logger.error({ err: error }, 'Error creating Stripe customer');
     return null;
   }
 }
@@ -111,7 +157,7 @@ export async function createCustomerPortalSession(
   returnUrl: string
 ): Promise<string | null> {
   if (!stripe) {
-    console.warn('Stripe not initialized - cannot create portal session');
+    logger.warn('Stripe not initialized - cannot create portal session');
     return null;
   }
 
@@ -123,7 +169,7 @@ export async function createCustomerPortalSession(
 
     return session.url;
   } catch (error) {
-    console.error('Error creating Customer Portal session:', error);
+    logger.error({ err: error }, 'Error creating Customer Portal session');
     return null;
   }
 }
@@ -135,7 +181,7 @@ export async function createCustomerSession(
   stripeCustomerId: string
 ): Promise<string | null> {
   if (!stripe) {
-    console.warn('Stripe not initialized - cannot create customer session');
+    logger.warn('Stripe not initialized - cannot create customer session');
     return null;
   }
 
@@ -151,7 +197,7 @@ export async function createCustomerSession(
 
     return session.client_secret;
   } catch (error) {
-    console.error('Error creating customer session:', error);
+    logger.error({ err: error }, 'Error creating customer session');
     return null;
   }
 }

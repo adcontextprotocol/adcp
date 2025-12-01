@@ -294,6 +294,85 @@ stripe trigger customer.subscription.created
 stripe trigger customer.subscription.updated
 ```
 
+### Analytics & Business Intelligence
+
+AdCP includes integrated analytics powered by Metabase for revenue tracking, customer health metrics, and subscription analytics.
+
+#### Setup Metabase
+
+1. **Start Metabase container:**
+```bash
+docker-compose -f docker-compose.metabase.yml up -d
+```
+
+Metabase will be available at http://localhost:3001
+
+2. **Initial setup** (first time only):
+   - Open http://localhost:3001
+   - Create an admin account
+   - Go to Admin → Settings → Embedding
+   - Enable "Embedding in other applications"
+   - Copy the embedding secret key
+
+3. **Add Metabase configuration to `.env.local`:**
+```bash
+METABASE_SITE_URL=http://localhost:3001
+METABASE_SECRET_KEY=<your-secret-key-from-metabase>
+```
+
+4. **Connect to PostgreSQL database:**
+   - In Metabase: Admin → Databases → Add database
+   - Type: PostgreSQL
+   - Host: `host.docker.internal` (Mac/Windows) or `172.17.0.1` (Linux)
+   - Port: `5432` (or your PostgreSQL port from docker-compose)
+   - Database: `adcp_registry`
+   - Username: `adcp`
+   - Password: `localdev`
+
+5. **Create your first dashboard:**
+   - Create a new dashboard in Metabase (e.g., "Revenue Analytics")
+   - Add queries using the pre-built analytics views (see [ANALYTICS.md](./ANALYTICS.md))
+   - Enable embedding for the dashboard (Share → Embedding → Enable)
+   - Note the dashboard ID from the URL (e.g., `/dashboard/2` → ID is `2`)
+
+6. **Configure embedded dashboard:**
+```bash
+# Add to .env.local
+METABASE_DASHBOARD_ID=2
+```
+
+7. **Restart dev server and access analytics:**
+```bash
+npm run dev
+```
+
+Visit http://localhost:3000/admin/analytics to see your embedded dashboard!
+
+#### Seed Test Revenue Data
+
+To populate the analytics with test data:
+
+```bash
+# Seed test revenue events for analytics
+psql $DATABASE_URL -f scripts/seed-test-revenue.sql
+```
+
+This creates sample revenue events including:
+- Initial subscription payments
+- Recurring payments over several months
+- Sample refunds
+- Data for all analytics views
+
+#### Analytics Documentation
+
+For detailed information about:
+- Available analytics views (revenue, customer health, subscriptions)
+- Example SQL queries
+- Dashboard templates
+- Troubleshooting
+
+See [ANALYTICS.md](./ANALYTICS.md)
+
 ### Security Requirements
 
 **HTTPS in Production:**

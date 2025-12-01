@@ -101,6 +101,10 @@ describe('stripe-client', () => {
             status: 'active',
             current_period_end: 1234567890,
             cancel_at_period_end: false,
+            latest_invoice: {
+              period_end: 1234567890,
+              period_start: 1234567000,
+            },
             items: {
               data: [{
                 price: {
