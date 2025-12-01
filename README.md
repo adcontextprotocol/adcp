@@ -411,13 +411,7 @@ fly ssh console --app adcp-docs -C "echo \$DATABASE_URL"
 psql <DATABASE_URL>
 ```
 
-**Alternative: Metabase (Optional)**
-
-If you need embedded dashboards later, see [METABASE_SETUP.md](./METABASE_SETUP.md) for:
-- **Self-Hosted**: ~$5-7/month (requires 512MB RAM)
-- **Metabase Cloud**: $100/month
-
-For now, direct SQL access is simpler and sufficient for low traffic.
+The `/admin/analytics` dashboard provides built-in analytics using SQL views. No external BI tools required.
 
 ### Security Requirements
 

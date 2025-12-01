@@ -36,34 +36,6 @@ This checklist ensures all required services and secrets are properly configured
 - [ ] `STRIPE_WEBHOOK_SECRET` set from Stripe webhook settings
 - [ ] Test webhook delivery working
 
-## Analytics (Metabase) - Optional
-
-### Option 1: Self-Hosted Metabase (Recommended - FREE with Fly.io free tier)
-
-**See [METABASE_SETUP.md](./METABASE_SETUP.md) for detailed step-by-step guide.**
-
-Quick checklist:
-- [ ] Fly.io app created: `fly apps create adcp-metabase`
-- [ ] Volume created: `fly volumes create metabase_data --size 1 --region iad --app adcp-metabase`
-- [ ] Attached to Postgres: `fly postgres attach <postgres-app> --app adcp-metabase`
-- [ ] Deployed: `fly deploy --config fly.metabase.toml --app adcp-metabase`
-- [ ] Initial setup completed (admin account created)
-- [ ] Connected to production database (read-only user recommended)
-- [ ] Dashboard created with analytics views
-- [ ] Embedding enabled in Metabase Admin → Settings
-- [ ] `METABASE_SITE_URL` set to `https://adcp-metabase.fly.dev`
-- [ ] `METABASE_SECRET_KEY` set from Metabase embedding settings
-- [ ] `METABASE_DASHBOARD_ID` set to dashboard ID
-
-### Option 2: Metabase Cloud ($100+/month)
-- [ ] Metabase Cloud account created
-- [ ] Connected to production database with read-only credentials
-- [ ] Embedding enabled in Metabase Admin → Settings
-- [ ] Dashboard created and embedding enabled
-- [ ] `METABASE_SITE_URL` set to Metabase Cloud URL
-- [ ] `METABASE_SECRET_KEY` set from Metabase embedding settings
-- [ ] `METABASE_DASHBOARD_ID` set to dashboard ID
-
 ## Environment Variables
 
 Run this command to set all secrets in Fly.io:
@@ -85,13 +57,6 @@ fly secrets set \
   STRIPE_PUBLISHABLE_KEY="pk_live_..." \
   STRIPE_PRICING_TABLE_ID="prctbl_..." \
   STRIPE_WEBHOOK_SECRET="whsec_..." \
-  --app adcp-docs
-
-# Analytics secrets (if using Metabase)
-fly secrets set \
-  METABASE_SITE_URL="https://your-metabase-url.com" \
-  METABASE_SECRET_KEY="<metabase-secret-key>" \
-  METABASE_DASHBOARD_ID="2" \
   --app adcp-docs
 ```
 
@@ -121,7 +86,7 @@ fly secrets set \
    - [ ] Authentication flow works (login/logout)
    - [ ] Dashboard loads for authenticated users
    - [ ] Stripe webhooks receive events
-   - [ ] Analytics dashboard loads (if configured)
+   - [ ] Analytics dashboard loads at /admin/analytics
    - [ ] Admin endpoints require proper authentication
 
 ## Monitoring
@@ -139,7 +104,6 @@ fly secrets set \
 - [ ] Secure cookies enabled (NODE_ENV=production)
 - [ ] Admin endpoints require authentication
 - [ ] Database uses SSL connections
-- [ ] Metabase admin interface not publicly accessible
 - [ ] No secrets committed to git
 
 ## Post-Deployment

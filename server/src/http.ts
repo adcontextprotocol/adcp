@@ -2131,53 +2131,6 @@ export class HTTPServer {
       }
     });
 
-    // GET /api/admin/metabase-token - Generate signed embedding URL for Metabase dashboard
-    this.app.get('/api/admin/metabase-token', requireAuth, requireAdmin, (req, res) => {
-      try {
-        const metabaseSecretKey = process.env.METABASE_SECRET_KEY;
-        if (!metabaseSecretKey) {
-          return res.status(500).json({
-            error: 'Metabase not configured',
-            message: 'METABASE_SECRET_KEY environment variable not set',
-          });
-        }
-
-        const metabaseUrl = process.env.METABASE_SITE_URL || 'http://localhost:3001';
-        const dashboardId = process.env.METABASE_DASHBOARD_ID;
-
-        // If no dashboard is configured yet, return setup message
-        if (!dashboardId) {
-          return res.json({
-            needs_setup: true,
-            metabase_url: metabaseUrl,
-            message: 'Please create a dashboard in Metabase and set METABASE_DASHBOARD_ID',
-          });
-        }
-
-        // Generate signed embedding token for dashboard
-        const payload = {
-          resource: { dashboard: parseInt(dashboardId) },
-          params: {},
-          exp: Math.round(Date.now() / 1000) + (60 * 10), // 10 minute expiration
-        };
-
-        const token = jwt.sign(payload, metabaseSecretKey);
-        const embedUrl = `${metabaseUrl}/embed/dashboard/${token}#bordered=false&titled=false`;
-
-        res.json({
-          embed_url: embedUrl,
-          metabase_url: metabaseUrl,
-          needs_setup: false,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Error generating Metabase embedding URL');
-        res.status(500).json({
-          error: 'Internal server error',
-          message: 'Unable to generate Metabase embedding URL',
-        });
-      }
-    });
-
     // Serve admin pages
     this.app.get('/admin/members', requireAuth, requireAdmin, (req, res) => {
       const membersPath = process.env.NODE_ENV === 'production'
