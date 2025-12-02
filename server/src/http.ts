@@ -20,6 +20,8 @@ import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPort
 import Stripe from "stripe";
 import { OrganizationDatabase } from "./db/organization-db.js";
 import { requireAuth, requireAdmin } from "./middleware/auth.js";
+import { invitationRateLimiter, authRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
+import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -116,6 +118,7 @@ export class HTTPServer {
 
     // UI page routes (serve with environment variables injected)
     this.app.get('/onboarding', (req, res) => res.redirect('/onboarding.html'));
+    this.app.get('/team', (req, res) => res.redirect('/team.html' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '')));
     this.app.get('/dashboard', async (req, res) => {
       try {
         const fs = await import('fs/promises');
@@ -2164,7 +2167,7 @@ export class HTTPServer {
     const orgDb = new OrganizationDatabase();
 
     // GET /auth/login - Redirect to WorkOS for authentication
-    this.app.get('/auth/login', (req, res) => {
+    this.app.get('/auth/login', authRateLimiter, (req, res) => {
       try {
         const returnTo = req.query.return_to as string;
         const state = returnTo ? JSON.stringify({ return_to: returnTo }) : undefined;
@@ -2187,7 +2190,7 @@ export class HTTPServer {
     });
 
     // GET /auth/callback - Handle OAuth callback from WorkOS
-    this.app.get('/auth/callback', async (req, res) => {
+    this.app.get('/auth/callback', authRateLimiter, async (req, res) => {
       const code = req.query.code as string;
       const state = req.query.state as string;
 
@@ -2355,13 +2358,17 @@ export class HTTPServer {
         // Fetch organization details separately since membership.organization may be undefined
         const organizations = await Promise.all(
           memberships.data.map(async (membership) => {
-            const org = await workos!.organizations.getOrganization(membership.organizationId);
+            const [workosOrg, localOrg] = await Promise.all([
+              workos!.organizations.getOrganization(membership.organizationId),
+              orgDb.getOrganization(membership.organizationId),
+            ]);
             return {
               id: membership.organizationId,
-              name: org.name,
-              // WorkOS may not expose roleSlug directly - using 'member' as default
-              role: (membership as any).roleSlug || 'member',
+              name: workosOrg.name,
+              // Access role from the membership's role object
+              role: membership.role?.slug || 'member',
               status: membership.status,
+              is_personal: localOrg?.is_personal || false,
             };
           })
         );
@@ -2482,6 +2489,95 @@ export class HTTPServer {
         logger.error({ err: error }, 'Accept agreement error');
         res.status(500).json({
           error: 'Failed to accept agreement',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/me/invitations - Get pending invitations for the current user
+    this.app.get('/api/me/invitations', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+
+        // Get invitations for this user's email
+        const invitations = await workos!.userManagement.listInvitations({
+          email: user.email,
+        });
+
+        // Filter to only pending invitations and get org details
+        const pendingInvitations = await Promise.all(
+          invitations.data
+            .filter(inv => inv.state === 'pending')
+            .map(async (inv) => {
+              let orgName = 'Organization';
+              if (inv.organizationId) {
+                try {
+                  const org = await workos!.organizations.getOrganization(inv.organizationId);
+                  orgName = org.name;
+                } catch {
+                  // Org may not exist
+                }
+              }
+              return {
+                id: inv.id,
+                organization_id: inv.organizationId,
+                organization_name: orgName,
+                email: inv.email,
+                role: (inv as any).roleSlug || 'member',
+                state: inv.state,
+                created_at: inv.createdAt,
+                expires_at: inv.expiresAt,
+              };
+            })
+        );
+
+        res.json({ invitations: pendingInvitations });
+      } catch (error) {
+        logger.error({ err: error }, 'Get user invitations error:');
+        res.status(500).json({
+          error: 'Failed to get invitations',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/invitations/:invitationId/accept - Accept an invitation
+    this.app.post('/api/invitations/:invitationId/accept', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { invitationId } = req.params;
+
+        // Get the invitation to verify it belongs to this user
+        const invitation = await workos!.userManagement.getInvitation(invitationId);
+
+        if (invitation.email.toLowerCase() !== user.email.toLowerCase()) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'This invitation is not for your email address',
+          });
+        }
+
+        if (invitation.state !== 'pending') {
+          return res.status(400).json({
+            error: 'Invalid invitation',
+            message: 'This invitation has already been accepted or has expired',
+          });
+        }
+
+        // Accept the invitation - this creates the membership
+        await workos!.userManagement.acceptInvitation(invitationId);
+
+        logger.info({ userId: user.id, invitationId, orgId: invitation.organizationId }, 'User accepted invitation');
+
+        res.json({
+          success: true,
+          message: 'Invitation accepted successfully',
+          organization_id: invitation.organizationId,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Accept invitation error:');
+        res.status(500).json({
+          error: 'Failed to accept invitation',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -2659,10 +2755,10 @@ export class HTTPServer {
     });
 
     // POST /api/organizations - Create a new organization
-    this.app.post('/api/organizations', requireAuth, async (req, res) => {
+    this.app.post('/api/organizations', requireAuth, orgCreationRateLimiter, async (req, res) => {
       try {
         const user = req.user!;
-        const { organization_name, domains } = req.body;
+        const { organization_name, is_personal } = req.body;
 
         // Validate required fields
         if (!organization_name) {
@@ -2672,24 +2768,32 @@ export class HTTPServer {
           });
         }
 
-        logger.info({ organization_name }, 'Creating WorkOS organization');
+        // Validate organization name format
+        const nameValidation = validateOrganizationName(organization_name);
+        if (!nameValidation.valid) {
+          return res.status(400).json({
+            error: 'Invalid organization name',
+            message: nameValidation.error,
+          });
+        }
+
+        // Use trimmed name for consistency
+        const trimmedName = organization_name.trim();
+
+        logger.info({ organization_name: trimmedName, is_personal }, 'Creating WorkOS organization');
 
         // Create WorkOS Organization
-        // Note: domainData requires a 'state' field ('pending' or 'verified')
         const workosOrg = await workos!.organizations.createOrganization({
-          name: organization_name,
-          domainData: domains ? domains.map((d: string) => ({
-            domain: d,
-            state: 'pending' as const, // Domains start as pending and can be verified later
-          })) : undefined,
+          name: trimmedName,
         });
 
-        logger.info({ orgId: workosOrg.id, name: organization_name }, 'WorkOS organization created');
+        logger.info({ orgId: workosOrg.id, name: trimmedName }, 'WorkOS organization created');
 
-        // Add user as organization member
+        // Add user as organization owner (since they created it)
         await workos!.userManagement.createOrganizationMembership({
           userId: user.id,
           organizationId: workosOrg.id,
+          roleSlug: 'owner',
         });
 
         logger.info({ userId: user.id, orgId: workosOrg.id }, 'User added as organization member');
@@ -2697,7 +2801,8 @@ export class HTTPServer {
         // Create organization record in our database
         await orgDb.createOrganization({
           workos_organization_id: workosOrg.id,
-          name: organization_name,
+          name: trimmedName,
+          is_personal: is_personal || false,
         });
 
         logger.info({ orgId: workosOrg.id }, 'Organization record created in database');
@@ -2837,9 +2942,8 @@ export class HTTPServer {
         const user = req.user!;
         const { orgId } = req.params;
 
-        // Get organization from database first
+        // Get organization from database
         const org = await orgDb.getOrganization(orgId);
-
         if (!org) {
           return res.status(404).json({
             error: 'Organization not found',
@@ -2847,28 +2951,17 @@ export class HTTPServer {
           });
         }
 
-        // Try to verify membership with WorkOS, but don't fail if WorkOS doesn't know about it
-        // (This can happen with test credentials or local development)
-        try {
-          const memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-            organizationId: orgId,
-          });
+        // Verify user is a member of this organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
 
-          if (memberships.data.length === 0) {
-            return res.status(403).json({
-              error: 'Access denied',
-              message: 'You are not a member of this organization',
-            });
-          }
-        } catch (workosError) {
-          // If WorkOS doesn't recognize the org, log it but continue
-          // This allows local development with mismatched test credentials
-          logger.warn({
-            orgId,
-            userId: user.id,
-            error: workosError instanceof Error ? workosError.message : 'Unknown error'
-          }, 'WorkOS organization membership check failed - continuing anyway');
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
         }
 
         // Get subscription info - if this fails, we want to know about it
@@ -2991,6 +3084,617 @@ export class HTTPServer {
         logger.error({ err: error }, 'Failed to generate domain verification link');
         res.status(500).json({
           error: 'Failed to generate domain verification link',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/organizations/:orgId/convert-to-team - Convert personal workspace to team
+    this.app.post('/api/organizations/:orgId/convert-to-team', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+
+        // Verify user is owner of this organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        const userRole = memberships.data[0].role?.slug || 'member';
+        if (userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only owners can convert a workspace to a team',
+          });
+        }
+
+        // Check if already a team
+        const localOrg = await orgDb.getOrganization(orgId);
+        if (!localOrg?.is_personal) {
+          return res.status(400).json({
+            error: 'Already a team',
+            message: 'This workspace is already a team workspace',
+          });
+        }
+
+        // Convert to team by setting is_personal to false
+        await orgDb.updateOrganization(orgId, { is_personal: false });
+
+        // Record audit log
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'convert_to_team',
+          resource_type: 'organization',
+          resource_id: orgId,
+          details: {
+            previous_state: 'personal',
+            new_state: 'team',
+          },
+        });
+
+        logger.info({ orgId, userId: user.id }, 'Personal workspace converted to team');
+
+        res.json({
+          success: true,
+          message: 'Workspace converted to team successfully',
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Convert to team error');
+        res.status(500).json({
+          error: 'Failed to convert workspace',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Team Management Routes
+
+    // GET /api/organizations/:orgId/members - List organization members
+    this.app.get('/api/organizations/:orgId/members', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+
+        // Verify user is member of this organization
+        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (userMemberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Get all members of the organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          organizationId: orgId,
+          statuses: ['active', 'pending'],
+        });
+
+        // Fetch user details for each membership
+        const members = await Promise.all(
+          memberships.data.map(async (membership) => {
+            try {
+              const memberUser = await workos!.userManagement.getUser(membership.userId);
+              return {
+                id: membership.id,
+                user_id: membership.userId,
+                email: memberUser.email,
+                first_name: memberUser.firstName || null,
+                last_name: memberUser.lastName || null,
+                role: membership.role?.slug || 'member',
+                status: membership.status,
+                created_at: membership.createdAt,
+              };
+            } catch (error) {
+              // User might have been deleted
+              logger.warn({ membershipId: membership.id, userId: membership.userId }, 'Failed to fetch user for membership');
+              return {
+                id: membership.id,
+                user_id: membership.userId,
+                email: 'Unknown',
+                first_name: null,
+                last_name: null,
+                role: membership.role?.slug || 'member',
+                status: membership.status,
+                created_at: membership.createdAt,
+              };
+            }
+          })
+        );
+
+        // Get pending invitations for this organization
+        const invitations = await workos!.userManagement.listInvitations({
+          organizationId: orgId,
+        });
+
+        const pendingInvitations = invitations.data
+          .filter(inv => inv.state === 'pending')
+          .map(inv => ({
+            id: inv.id,
+            email: inv.email,
+            state: inv.state,
+            expires_at: inv.expiresAt,
+            created_at: inv.createdAt,
+            inviter_user_id: inv.inviterUserId,
+          }));
+
+        res.json({
+          members,
+          pending_invitations: pendingInvitations,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'List organization members error');
+        res.status(500).json({
+          error: 'Failed to list organization members',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/organizations/:orgId/invitations - Invite a new member
+    this.app.post('/api/organizations/:orgId/invitations', requireAuth, invitationRateLimiter, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+        const { email, role } = req.body;
+
+        if (!email) {
+          return res.status(400).json({
+            error: 'Missing required field',
+            message: 'email is required',
+          });
+        }
+
+        // Validate email format
+        const emailValidation = validateEmail(email);
+        if (!emailValidation.valid) {
+          return res.status(400).json({
+            error: 'Invalid email',
+            message: emailValidation.error,
+          });
+        }
+
+        // Validate role if provided
+        const validRoles = ['member', 'admin', 'owner'];
+        if (role && !validRoles.includes(role)) {
+          return res.status(400).json({
+            error: 'Invalid role',
+            message: `Role must be one of: ${validRoles.join(', ')}`,
+          });
+        }
+
+        // Verify user is member of this organization
+        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (userMemberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Check user's role - only admins or owners can invite
+        const userRole = userMemberships.data[0].role?.slug || 'member';
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only admins and owners can invite new members',
+          });
+        }
+
+        // Send invitation via WorkOS
+        const invitation = await workos!.userManagement.sendInvitation({
+          email,
+          organizationId: orgId,
+          inviterUserId: user.id,
+          roleSlug: role || 'member',
+        });
+
+        logger.info({ orgId, email, inviterId: user.id }, 'Invitation sent');
+
+        // Record audit log
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'member_invited',
+          resource_type: 'invitation',
+          resource_id: invitation.id,
+          details: { email, role: role || 'member' },
+        });
+
+        res.json({
+          success: true,
+          invitation: {
+            id: invitation.id,
+            email: invitation.email,
+            state: invitation.state,
+            expires_at: invitation.expiresAt,
+            accept_invitation_url: invitation.acceptInvitationUrl,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Send invitation error');
+
+        // Check for specific WorkOS errors
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage.includes('already a member')) {
+          return res.status(400).json({
+            error: 'User already a member',
+            message: 'This user is already a member of the organization',
+          });
+        }
+        if (errorMessage.includes('pending invitation')) {
+          return res.status(400).json({
+            error: 'Invitation already exists',
+            message: 'An invitation has already been sent to this email address',
+          });
+        }
+
+        res.status(500).json({
+          error: 'Failed to send invitation',
+          message: errorMessage,
+        });
+      }
+    });
+
+    // DELETE /api/organizations/:orgId/invitations/:invitationId - Revoke an invitation
+    this.app.delete('/api/organizations/:orgId/invitations/:invitationId', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId, invitationId } = req.params;
+
+        // Verify user is member of this organization
+        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (userMemberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Check user's role - only admins or owners can revoke invitations
+        const userRole = userMemberships.data[0].role?.slug || 'member';
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only admins and owners can revoke invitations',
+          });
+        }
+
+        // Verify invitation belongs to this organization
+        const invitation = await workos!.userManagement.getInvitation(invitationId);
+        if (invitation.organizationId !== orgId) {
+          return res.status(404).json({
+            error: 'Invitation not found',
+            message: 'This invitation does not belong to this organization',
+          });
+        }
+
+        // Revoke the invitation
+        await workos!.userManagement.revokeInvitation(invitationId);
+
+        logger.info({ orgId, invitationId, revokerId: user.id }, 'Invitation revoked');
+
+        // Record audit log
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'invitation_revoked',
+          resource_type: 'invitation',
+          resource_id: invitationId,
+          details: { email: invitation.email },
+        });
+
+        res.json({
+          success: true,
+          message: 'Invitation revoked successfully',
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Revoke invitation error');
+        res.status(500).json({
+          error: 'Failed to revoke invitation',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/organizations/:orgId/invitations/:invitationId/resend - Resend an invitation
+    this.app.post('/api/organizations/:orgId/invitations/:invitationId/resend', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId, invitationId } = req.params;
+
+        // Verify user is member of this organization
+        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (userMemberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Check user's role - only admins or owners can resend invitations
+        const userRole = userMemberships.data[0].role?.slug || 'member';
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only admins and owners can resend invitations',
+          });
+        }
+
+        // Verify invitation belongs to this organization
+        const invitation = await workos!.userManagement.getInvitation(invitationId);
+        if (invitation.organizationId !== orgId) {
+          return res.status(404).json({
+            error: 'Invitation not found',
+            message: 'This invitation does not belong to this organization',
+          });
+        }
+
+        // Resend the invitation
+        const updatedInvitation = await workos!.userManagement.resendInvitation(invitationId);
+
+        logger.info({ orgId, invitationId, resenderId: user.id }, 'Invitation resent');
+
+        res.json({
+          success: true,
+          invitation: {
+            id: updatedInvitation.id,
+            email: updatedInvitation.email,
+            state: updatedInvitation.state,
+            expires_at: updatedInvitation.expiresAt,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Resend invitation error');
+        res.status(500).json({
+          error: 'Failed to resend invitation',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PATCH /api/organizations/:orgId/members/:membershipId - Update member role
+    this.app.patch('/api/organizations/:orgId/members/:membershipId', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId, membershipId } = req.params;
+        const { role } = req.body;
+
+        if (!role) {
+          return res.status(400).json({
+            error: 'Missing required field',
+            message: 'role is required',
+          });
+        }
+
+        // Verify user is member of this organization
+        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (userMemberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Check user's role - only admins or owners can update roles
+        const userRole = userMemberships.data[0].role?.slug || 'member';
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only admins and owners can update member roles',
+          });
+        }
+
+        // Verify membership belongs to this organization
+        const membership = await workos!.userManagement.getOrganizationMembership(membershipId);
+        if (membership.organizationId !== orgId) {
+          return res.status(404).json({
+            error: 'Member not found',
+            message: 'This member does not belong to this organization',
+          });
+        }
+
+        // Prevent self-demotion from owner role
+        if (membership.userId === user.id && userRole === 'owner' && role !== 'owner') {
+          return res.status(400).json({
+            error: 'Cannot demote yourself',
+            message: 'You cannot change your own owner role. Transfer ownership to another member first.',
+          });
+        }
+
+        // Update the membership role
+        const updatedMembership = await workos!.userManagement.updateOrganizationMembership(membershipId, {
+          roleSlug: role,
+        });
+
+        logger.info({ orgId, membershipId, newRole: role, updaterId: user.id }, 'Member role updated');
+
+        // Record audit log
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'member_role_updated',
+          resource_type: 'membership',
+          resource_id: membershipId,
+          details: { target_user_id: membership.userId, new_role: role, old_role: membership.role?.slug },
+        });
+
+        res.json({
+          success: true,
+          membership: {
+            id: updatedMembership.id,
+            user_id: updatedMembership.userId,
+            role: updatedMembership.role?.slug || 'member',
+            status: updatedMembership.status,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Update member role error');
+        res.status(500).json({
+          error: 'Failed to update member role',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/organizations/:orgId/members/:membershipId - Remove a member
+    this.app.delete('/api/organizations/:orgId/members/:membershipId', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId, membershipId } = req.params;
+
+        // Verify user is member of this organization
+        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (userMemberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Check user's role - only admins or owners can remove members
+        const userRole = userMemberships.data[0].role?.slug || 'member';
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only admins and owners can remove members',
+          });
+        }
+
+        // Verify membership belongs to this organization
+        const membership = await workos!.userManagement.getOrganizationMembership(membershipId);
+        if (membership.organizationId !== orgId) {
+          return res.status(404).json({
+            error: 'Member not found',
+            message: 'This member does not belong to this organization',
+          });
+        }
+
+        // Prevent self-removal
+        if (membership.userId === user.id) {
+          return res.status(400).json({
+            error: 'Cannot remove yourself',
+            message: 'You cannot remove yourself from the organization. Leave the organization instead or transfer ownership first.',
+          });
+        }
+
+        // Get member email for audit log before deletion
+        let memberEmail = 'Unknown';
+        try {
+          const memberUser = await workos!.userManagement.getUser(membership.userId);
+          memberEmail = memberUser.email;
+        } catch {
+          // User might not exist anymore
+        }
+
+        // Remove the member
+        await workos!.userManagement.deleteOrganizationMembership(membershipId);
+
+        logger.info({ orgId, membershipId, removerId: user.id }, 'Member removed');
+
+        // Record audit log
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'member_removed',
+          resource_type: 'membership',
+          resource_id: membershipId,
+          details: { removed_user_id: membership.userId, removed_email: memberEmail },
+        });
+
+        res.json({
+          success: true,
+          message: 'Member removed successfully',
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Remove member error');
+        res.status(500).json({
+          error: 'Failed to remove member',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/organizations/:orgId/roles - List available roles for the organization
+    this.app.get('/api/organizations/:orgId/roles', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+
+        // Verify user is member of this organization
+        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (userMemberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Get available roles from WorkOS
+        const roles = await workos!.organizations.listOrganizationRoles({ organizationId: orgId });
+
+        res.json({
+          roles: roles.data.map(role => ({
+            id: role.id,
+            slug: role.slug,
+            name: role.name,
+            description: role.description,
+            permissions: role.permissions,
+          })),
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'List organization roles error');
+
+        // If roles aren't configured, return default roles
+        if (error instanceof Error && error.message.includes('not found')) {
+          return res.json({
+            roles: [
+              { slug: 'owner', name: 'Owner', description: 'Full access to all organization settings' },
+              { slug: 'admin', name: 'Admin', description: 'Can manage members and settings' },
+              { slug: 'member', name: 'Member', description: 'Standard member access' },
+            ],
+          });
+        }
+
+        res.status(500).json({
+          error: 'Failed to list roles',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -3129,6 +3833,31 @@ export class HTTPServer {
 
   async start(port: number = 3000): Promise<void> {
     await this.registry.initialize();
+
+    // Sync organizations from WorkOS and Stripe to local database (dev environment support)
+    if (AUTH_ENABLED && workos) {
+      const orgDb = new OrganizationDatabase();
+
+      // Sync WorkOS organizations first
+      try {
+        const result = await orgDb.syncFromWorkOS(workos);
+        if (result.synced > 0) {
+          logger.info({ synced: result.synced, existing: result.existing }, 'Synced organizations from WorkOS');
+        }
+      } catch (error) {
+        logger.warn({ error }, 'Failed to sync organizations from WorkOS (non-fatal)');
+      }
+
+      // Then sync Stripe customer IDs
+      try {
+        const result = await orgDb.syncStripeCustomers();
+        if (result.synced > 0) {
+          logger.info({ synced: result.synced, skipped: result.skipped }, 'Synced Stripe customer IDs');
+        }
+      } catch (error) {
+        logger.warn({ error }, 'Failed to sync Stripe customers (non-fatal)');
+      }
+    }
 
     // Pre-warm caches for all agents in background
     const allAgents = await this.registry.listAgents();

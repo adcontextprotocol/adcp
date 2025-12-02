@@ -201,3 +201,35 @@ export async function createCustomerSession(
     return null;
   }
 }
+
+/**
+ * List all Stripe customers with their WorkOS organization IDs
+ * Used for syncing Stripe data to local database on startup
+ */
+export async function listCustomersWithOrgIds(): Promise<
+  Array<{ stripeCustomerId: string; workosOrgId: string }>
+> {
+  if (!stripe) {
+    return [];
+  }
+
+  const results: Array<{ stripeCustomerId: string; workosOrgId: string }> = [];
+
+  try {
+    // Iterate through all customers (auto-pagination)
+    for await (const customer of stripe.customers.list({ limit: 100 })) {
+      const workosOrgId = customer.metadata?.workos_organization_id;
+      if (workosOrgId) {
+        results.push({
+          stripeCustomerId: customer.id,
+          workosOrgId,
+        });
+      }
+    }
+
+    return results;
+  } catch (error) {
+    logger.error({ err: error }, 'Error listing Stripe customers');
+    return [];
+  }
+}

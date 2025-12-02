@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Management - AdCP Registry</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+    .header {
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 24px;
+      font-weight: 700;
+      color: #667eea;
+      text-decoration: none;
+    }
+    .user-menu {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .user-info {
+      color: #666;
+    }
+    .btn-logout {
+      padding: 8px 16px;
+      background: #f5f5f5;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      color: #333;
+    }
+    .btn-logout:hover {
+      background: #e0e0e0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .breadcrumb {
+      margin-bottom: 20px;
+    }
+    .breadcrumb a {
+      color: #667eea;
+      text-decoration: none;
+    }
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+    .breadcrumb span {
+      color: #666;
+    }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+    h1 {
+      color: #333;
+      font-size: 32px;
+    }
+    .org-selector {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .org-selector label {
+      color: #666;
+      font-size: 14px;
+    }
+    .org-selector select {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+      cursor: pointer;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .card h2 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .btn-primary {
+      padding: 10px 20px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      padding: 8px 16px;
+      background: #f5f5f5;
+      color: #333;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+    .btn-danger {
+      padding: 8px 16px;
+      background: #fee;
+      color: #c33;
+      border: 1px solid #fcc;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn-danger:hover {
+      background: #fdd;
+    }
+    .members-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .members-table th,
+    .members-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+    }
+    .members-table th {
+      color: #666;
+      font-weight: 600;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+    .members-table tbody tr:hover {
+      background: #f9f9f9;
+    }
+    .member-email {
+      font-weight: 500;
+    }
+    .member-name {
+      color: #666;
+      font-size: 14px;
+    }
+    .role-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .role-owner {
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+    .role-admin {
+      background: #f3e5f5;
+      color: #7b1fa2;
+    }
+    .role-member {
+      background: #f5f5f5;
+      color: #666;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-active {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .status-pending {
+      background: #fff3e0;
+      color: #ef6c00;
+    }
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .empty-state p {
+      margin-bottom: 20px;
+    }
+    /* Modal styles */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.show {
+      display: flex;
+    }
+    .modal {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+    .modal h2 {
+      margin-bottom: 20px;
+      display: block;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      justify-content: flex-end;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 500;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .form-help {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+    .error-message {
+      background: #fee;
+      color: #c33;
+      padding: 10px 15px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+    .success-message {
+      background: #e8f5e9;
+      color: #2e7d32;
+      padding: 10px 15px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+    .info-box {
+      background: #e3f2fd;
+      border-left: 4px solid #2196f3;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    .info-box p {
+      color: #1565c0;
+      margin: 0;
+    }
+    .permission-warning {
+      background: #fff3e0;
+      border-left: 4px solid #ff9800;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    .permission-warning p {
+      color: #e65100;
+      margin: 0;
+    }
+    /* Domain verification section */
+    .domain-section {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #eee;
+    }
+    .domain-section h3 {
+      font-size: 16px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    .domain-section p {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Invite Modal -->
+  <div id="inviteModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Invite Team Member</h2>
+      <div id="inviteError" class="error-message" style="display: none;"></div>
+      <form id="inviteForm">
+        <div class="form-group">
+          <label for="inviteEmail">Email Address</label>
+          <input type="email" id="inviteEmail" placeholder="colleague@company.com" required>
+          <p class="form-help">An invitation email will be sent to this address</p>
+        </div>
+        <div class="form-group">
+          <label for="inviteRole">Role</label>
+          <select id="inviteRole">
+            <option value="member">Member - Standard access</option>
+            <option value="admin">Admin - Can manage members</option>
+          </select>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="btn-secondary" onclick="closeInviteModal()">Cancel</button>
+          <button type="submit" class="btn-primary">Send Invitation</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Role Modal -->
+  <div id="editRoleModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Change Member Role</h2>
+      <div id="editRoleError" class="error-message" style="display: none;"></div>
+      <form id="editRoleForm">
+        <input type="hidden" id="editMembershipId">
+        <div class="form-group">
+          <label>Member</label>
+          <p id="editMemberEmail" style="font-weight: 500; padding: 10px 0;"></p>
+        </div>
+        <div class="form-group">
+          <label for="editRole">New Role</label>
+          <select id="editRole">
+            <option value="member">Member - Standard access</option>
+            <option value="admin">Admin - Can manage members</option>
+            <option value="owner">Owner - Full access</option>
+          </select>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="btn-secondary" onclick="closeEditRoleModal()">Cancel</button>
+          <button type="submit" class="btn-primary">Update Role</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Remove Member Modal -->
+  <div id="removeModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Remove Member</h2>
+      <input type="hidden" id="removeMembershipId">
+      <p style="margin-bottom: 15px;">Are you sure you want to remove <strong id="removeMemberEmail"></strong> from this organization?</p>
+      <p style="color: #666; font-size: 14px; margin-bottom: 20px;">This action cannot be undone. The member will lose access to the organization immediately.</p>
+      <div class="modal-buttons">
+        <button type="button" class="btn-secondary" onclick="closeRemoveModal()">Cancel</button>
+        <button type="button" class="btn-danger" onclick="confirmRemoveMember()">Remove Member</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="header">
+    <div class="header-content">
+      <a href="/dashboard" class="logo">AdCP Registry</a>
+      <div class="user-menu">
+        <span class="user-info" id="userEmail">Loading...</span>
+        <a href="/auth/logout" class="btn-logout">Logout</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="breadcrumb">
+      <a href="/dashboard">Dashboard</a> <span>&nbsp;/&nbsp; Team Management</span>
+    </div>
+
+    <div class="page-header">
+      <h1>Team Management</h1>
+      <div class="org-selector">
+        <label for="orgSelect">Organization:</label>
+        <select id="orgSelect" onchange="loadTeamMembers()">
+          <option value="">Select organization...</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="loading" class="loading">
+      Loading your organizations...
+    </div>
+
+    <div id="noOrgSelected" style="display: none;">
+      <div class="card">
+        <div class="empty-state">
+          <p>Select an organization above to manage team members.</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="permissionWarning" class="permission-warning" style="display: none;">
+      <p>You have view-only access to this organization. Contact an admin or owner to manage team members.</p>
+    </div>
+
+    <div id="content" style="display: none;">
+      <div class="card">
+        <h2>
+          <span>Team Members</span>
+          <button id="inviteBtn" class="btn-primary" onclick="openInviteModal()">+ Invite Member</button>
+        </h2>
+
+        <div id="membersLoading" class="loading">
+          Loading team members...
+        </div>
+
+        <div id="membersContent" style="display: none;">
+          <table class="members-table">
+            <thead>
+              <tr>
+                <th>Member</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="membersTableBody">
+            </tbody>
+          </table>
+        </div>
+
+        <div id="noMembers" class="empty-state" style="display: none;">
+          <p>No team members yet. Invite your first team member!</p>
+        </div>
+      </div>
+
+      <div id="invitationsCard" class="card" style="display: none;">
+        <h2>Pending Invitations</h2>
+        <table class="members-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Status</th>
+              <th>Expires</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="invitationsTableBody">
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Domain Verification</h2>
+        <div class="info-box">
+          <p>Verify your organization's domain to enable automatic team member discovery. Members with verified email domains can join your organization automatically.</p>
+        </div>
+        <button class="btn-secondary" onclick="openDomainVerification()">Manage Domain Verification</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentUser = null;
+    let currentOrg = null;
+    let currentUserRole = null;
+    let availableRoles = [];
+
+    async function loadUserData() {
+      try {
+        const response = await fetch('/api/me');
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.location.href = '/auth/login?return_to=/team';
+            return;
+          }
+          throw new Error('Failed to load user data');
+        }
+
+        const data = await response.json();
+        currentUser = data.user;
+
+        document.getElementById('userEmail').textContent = currentUser.email;
+
+        // Populate organization dropdown
+        const orgSelect = document.getElementById('orgSelect');
+        if (data.organizations && data.organizations.length > 0) {
+          data.organizations.forEach(org => {
+            const option = document.createElement('option');
+            option.value = org.id;
+            option.textContent = org.name;
+            option.dataset.role = org.role || 'member';
+            orgSelect.appendChild(option);
+          });
+
+          // Auto-select first organization or use URL param
+          const urlParams = new URLSearchParams(window.location.search);
+          const orgId = urlParams.get('org');
+
+          if (orgId && data.organizations.some(o => o.id === orgId)) {
+            orgSelect.value = orgId;
+          } else if (data.organizations.length === 1) {
+            orgSelect.value = data.organizations[0].id;
+          }
+
+          document.getElementById('loading').style.display = 'none';
+
+          if (orgSelect.value) {
+            loadTeamMembers();
+          } else {
+            document.getElementById('noOrgSelected').style.display = 'block';
+          }
+        } else {
+          document.getElementById('loading').innerHTML = `
+            <p>You don't belong to any organizations yet.</p>
+            <p><a href="/onboarding" style="color: #667eea;">Create your first organization</a></p>
+          `;
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        document.getElementById('loading').innerHTML = `
+          <p style="color: #c33;">Failed to load user data. <a href="/auth/login">Try logging in again</a></p>
+        `;
+      }
+    }
+
+    async function loadTeamMembers() {
+      const orgId = document.getElementById('orgSelect').value;
+
+      if (!orgId) {
+        document.getElementById('noOrgSelected').style.display = 'block';
+        document.getElementById('content').style.display = 'none';
+        return;
+      }
+
+      // Update URL with org param
+      const url = new URL(window.location);
+      url.searchParams.set('org', orgId);
+      window.history.replaceState({}, '', url);
+
+      document.getElementById('noOrgSelected').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+      document.getElementById('membersLoading').style.display = 'block';
+      document.getElementById('membersContent').style.display = 'none';
+      document.getElementById('noMembers').style.display = 'none';
+
+      // Get user's role in this organization
+      const selectedOption = document.getElementById('orgSelect').selectedOptions[0];
+      currentUserRole = selectedOption?.dataset.role || 'member';
+      currentOrg = orgId;
+
+      // Show/hide permission warning and invite button based on role
+      const canManage = currentUserRole === 'owner' || currentUserRole === 'admin';
+      document.getElementById('permissionWarning').style.display = canManage ? 'none' : 'block';
+      document.getElementById('inviteBtn').style.display = canManage ? 'inline-block' : 'none';
+
+      try {
+        // Load roles
+        const rolesResponse = await fetch(`/api/organizations/${orgId}/roles`);
+        if (rolesResponse.ok) {
+          const rolesData = await rolesResponse.json();
+          availableRoles = rolesData.roles || [];
+        }
+
+        // Load members
+        const response = await fetch(`/api/organizations/${orgId}/members`);
+        if (!response.ok) {
+          throw new Error('Failed to load team members');
+        }
+
+        const data = await response.json();
+
+        document.getElementById('membersLoading').style.display = 'none';
+
+        if (data.members && data.members.length > 0) {
+          document.getElementById('membersContent').style.display = 'block';
+          renderMembers(data.members, canManage);
+        } else {
+          document.getElementById('noMembers').style.display = 'block';
+        }
+
+        // Render pending invitations
+        if (data.pending_invitations && data.pending_invitations.length > 0) {
+          document.getElementById('invitationsCard').style.display = 'block';
+          renderInvitations(data.pending_invitations, canManage);
+        } else {
+          document.getElementById('invitationsCard').style.display = 'none';
+        }
+      } catch (error) {
+        console.error('Error loading team members:', error);
+        document.getElementById('membersLoading').innerHTML = `
+          <p style="color: #c33;">Failed to load team members. Please try again.</p>
+        `;
+      }
+    }
+
+    function renderMembers(members, canManage) {
+      const tbody = document.getElementById('membersTableBody');
+      tbody.innerHTML = members.map(member => {
+        const isCurrentUser = member.user_id === currentUser.id;
+        const displayName = member.first_name || member.last_name
+          ? `${member.first_name || ''} ${member.last_name || ''}`.trim()
+          : '';
+
+        const roleClass = `role-${member.role}`;
+        const roleName = member.role.charAt(0).toUpperCase() + member.role.slice(1);
+
+        const statusClass = `status-${member.status}`;
+        const statusName = member.status.charAt(0).toUpperCase() + member.status.slice(1);
+
+        const joinedDate = new Date(member.created_at).toLocaleDateString();
+
+        let actions = '';
+        if (canManage && !isCurrentUser) {
+          actions = `
+            <button class="btn-secondary" onclick="openEditRoleModal('${member.id}', '${member.email}', '${member.role}')">
+              Change Role
+            </button>
+            <button class="btn-danger" onclick="openRemoveModal('${member.id}', '${member.email}')">
+              Remove
+            </button>
+          `;
+        } else if (isCurrentUser) {
+          actions = '<span style="color: #666; font-size: 13px;">You</span>';
+        }
+
+        return `
+          <tr>
+            <td>
+              <div class="member-email">${member.email}</div>
+              ${displayName ? `<div class="member-name">${displayName}</div>` : ''}
+            </td>
+            <td><span class="role-badge ${roleClass}">${roleName}</span></td>
+            <td><span class="status-badge ${statusClass}">${statusName}</span></td>
+            <td>${joinedDate}</td>
+            <td>
+              <div class="action-buttons">
+                ${actions}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderInvitations(invitations, canManage) {
+      const tbody = document.getElementById('invitationsTableBody');
+      tbody.innerHTML = invitations.map(inv => {
+        const expiresDate = new Date(inv.expires_at).toLocaleDateString();
+
+        let actions = '';
+        if (canManage) {
+          actions = `
+            <button class="btn-secondary" onclick="resendInvitation('${inv.id}')">
+              Resend
+            </button>
+            <button class="btn-danger" onclick="revokeInvitation('${inv.id}')">
+              Revoke
+            </button>
+          `;
+        }
+
+        return `
+          <tr>
+            <td><div class="member-email">${inv.email}</div></td>
+            <td><span class="status-badge status-pending">Pending</span></td>
+            <td>${expiresDate}</td>
+            <td>
+              <div class="action-buttons">
+                ${actions}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Invite Modal
+    function openInviteModal() {
+      document.getElementById('inviteModal').classList.add('show');
+      document.getElementById('inviteEmail').value = '';
+      document.getElementById('inviteRole').value = 'member';
+      document.getElementById('inviteError').style.display = 'none';
+      document.getElementById('inviteEmail').focus();
+    }
+
+    function closeInviteModal() {
+      document.getElementById('inviteModal').classList.remove('show');
+    }
+
+    document.getElementById('inviteForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const email = document.getElementById('inviteEmail').value;
+      const role = document.getElementById('inviteRole').value;
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/invitations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, role }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          document.getElementById('inviteError').textContent = data.message || 'Failed to send invitation';
+          document.getElementById('inviteError').style.display = 'block';
+          return;
+        }
+
+        closeInviteModal();
+        loadTeamMembers();
+      } catch (error) {
+        console.error('Error sending invitation:', error);
+        document.getElementById('inviteError').textContent = 'Failed to send invitation. Please try again.';
+        document.getElementById('inviteError').style.display = 'block';
+      }
+    });
+
+    // Edit Role Modal
+    function openEditRoleModal(membershipId, email, currentRole) {
+      document.getElementById('editRoleModal').classList.add('show');
+      document.getElementById('editMembershipId').value = membershipId;
+      document.getElementById('editMemberEmail').textContent = email;
+      document.getElementById('editRole').value = currentRole;
+      document.getElementById('editRoleError').style.display = 'none';
+    }
+
+    function closeEditRoleModal() {
+      document.getElementById('editRoleModal').classList.remove('show');
+    }
+
+    document.getElementById('editRoleForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const membershipId = document.getElementById('editMembershipId').value;
+      const role = document.getElementById('editRole').value;
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/members/${membershipId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          document.getElementById('editRoleError').textContent = data.message || 'Failed to update role';
+          document.getElementById('editRoleError').style.display = 'block';
+          return;
+        }
+
+        closeEditRoleModal();
+        loadTeamMembers();
+      } catch (error) {
+        console.error('Error updating role:', error);
+        document.getElementById('editRoleError').textContent = 'Failed to update role. Please try again.';
+        document.getElementById('editRoleError').style.display = 'block';
+      }
+    });
+
+    // Remove Member Modal
+    function openRemoveModal(membershipId, email) {
+      document.getElementById('removeModal').classList.add('show');
+      document.getElementById('removeMembershipId').value = membershipId;
+      document.getElementById('removeMemberEmail').textContent = email;
+    }
+
+    function closeRemoveModal() {
+      document.getElementById('removeModal').classList.remove('show');
+    }
+
+    async function confirmRemoveMember() {
+      const membershipId = document.getElementById('removeMembershipId').value;
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/members/${membershipId}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          alert(data.message || 'Failed to remove member');
+          return;
+        }
+
+        closeRemoveModal();
+        loadTeamMembers();
+      } catch (error) {
+        console.error('Error removing member:', error);
+        alert('Failed to remove member. Please try again.');
+      }
+    }
+
+    // Invitation actions
+    async function resendInvitation(invitationId) {
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/invitations/${invitationId}/resend`, {
+          method: 'POST',
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          alert(data.message || 'Failed to resend invitation');
+          return;
+        }
+
+        alert('Invitation resent successfully!');
+        loadTeamMembers();
+      } catch (error) {
+        console.error('Error resending invitation:', error);
+        alert('Failed to resend invitation. Please try again.');
+      }
+    }
+
+    async function revokeInvitation(invitationId) {
+      if (!confirm('Are you sure you want to revoke this invitation?')) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/invitations/${invitationId}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          alert(data.message || 'Failed to revoke invitation');
+          return;
+        }
+
+        loadTeamMembers();
+      } catch (error) {
+        console.error('Error revoking invitation:', error);
+        alert('Failed to revoke invitation. Please try again.');
+      }
+    }
+
+    // Domain Verification
+    async function openDomainVerification() {
+      if (!currentOrg) {
+        alert('Please select an organization first');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/domain-verification-link`, {
+          method: 'POST',
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          alert(data.message || 'Failed to open domain verification');
+          return;
+        }
+
+        const data = await response.json();
+        if (data.link) {
+          window.open(data.link, '_blank');
+        }
+      } catch (error) {
+        console.error('Error opening domain verification:', error);
+        alert('Failed to open domain verification. Please try again.');
+      }
+    }
+
+    // Close modals when clicking outside
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          overlay.classList.remove('show');
+        }
+      });
+    });
+
+    // Close modals with Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.show').forEach(modal => {
+          modal.classList.remove('show');
+        });
+      }
+    });
+
+    // Initialize
+    loadUserData();
+  </script>
+</body>
+</html>

@@ -166,6 +166,105 @@
     .btn-secondary:hover {
       background: #d0d0d0;
     }
+    .org-switcher {
+      position: relative;
+      margin-right: 15px;
+    }
+    .org-switcher-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #333;
+    }
+    .org-switcher-btn:hover {
+      background: #e0e0e0;
+    }
+    .org-switcher-icon {
+      font-size: 18px;
+    }
+    .org-switcher-name {
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .org-switcher-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 8px;
+      font-size: 10px;
+      margin-left: 5px;
+    }
+    .org-switcher-badge.personal { background: #e3f2fd; color: #1565c0; }
+    .org-switcher-badge.team { background: #e8f5e9; color: #2e7d32; }
+    .org-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      min-width: 280px;
+      z-index: 100;
+    }
+    .org-dropdown.show {
+      display: block;
+    }
+    .org-dropdown-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      cursor: pointer;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .org-dropdown-item:last-child {
+      border-bottom: none;
+    }
+    .org-dropdown-item:hover {
+      background: #f9f9f9;
+    }
+    .org-dropdown-item.active {
+      background: #f0f3ff;
+    }
+    .org-dropdown-name {
+      font-weight: 500;
+      color: #333;
+    }
+    .org-dropdown-role {
+      font-size: 12px;
+      color: #666;
+    }
+    .org-dropdown-header {
+      padding: 10px 16px;
+      font-size: 12px;
+      color: #666;
+      font-weight: 600;
+      text-transform: uppercase;
+      border-bottom: 1px solid #e0e0e0;
+      background: #fafafa;
+    }
+    .org-dropdown-footer {
+      padding: 12px 16px;
+      border-top: 1px solid #e0e0e0;
+    }
+    .org-dropdown-footer a {
+      color: #667eea;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .org-dropdown-footer a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -207,6 +306,21 @@
     <div class="header-content">
       <div class="logo">AdCP Registry</div>
       <div class="user-menu">
+        <div id="orgSwitcher" class="org-switcher" style="display: none;">
+          <button class="org-switcher-btn" onclick="toggleOrgDropdown()">
+            <span class="org-switcher-icon">&#127970;</span>
+            <span class="org-switcher-name" id="currentOrgName">Loading...</span>
+            <span id="currentOrgBadge" class="org-switcher-badge"></span>
+            <span>&#9662;</span>
+          </button>
+          <div id="orgDropdown" class="org-dropdown">
+            <div class="org-dropdown-header">Switch Organization</div>
+            <div id="orgDropdownList"></div>
+            <div class="org-dropdown-footer">
+              <a href="/onboarding">+ Create New Organization</a>
+            </div>
+          </div>
+        </div>
         <span class="user-info" id="userEmail">Loading...</span>
         <a href="/admin" class="btn-admin" id="adminLink" style="display: none;">Admin</a>
         <a href="/auth/logout" class="btn-logout">Logout</a>
@@ -277,6 +391,9 @@
         <h2>Quick Links</h2>
         <ul style="list-style: none; padding: 0;">
           <li style="margin-bottom: 10px;">
+            <a href="/team" style="color: #667eea;">→ Manage Team Members</a>
+          </li>
+          <li style="margin-bottom: 10px;">
             <a href="/api/agents" style="color: #667eea;">→ View All Agents</a>
           </li>
           <li style="margin-bottom: 10px;">
@@ -292,7 +409,86 @@
 
   <script>
     let currentOrg = null;
+    let allOrganizations = [];
+    let selectedOrgId = null;
     let membershipAgreement = null;
+
+    // Org switcher functions
+    function toggleOrgDropdown() {
+      const dropdown = document.getElementById('orgDropdown');
+      dropdown.classList.toggle('show');
+    }
+
+    function closeOrgDropdown() {
+      const dropdown = document.getElementById('orgDropdown');
+      dropdown.classList.remove('show');
+    }
+
+    function selectOrg(orgId) {
+      selectedOrgId = orgId;
+      localStorage.setItem('selectedOrgId', orgId);
+      updateOrgSwitcher();
+      closeOrgDropdown();
+      // Scroll to and highlight the selected org in the companies list
+      highlightSelectedOrg(orgId);
+    }
+
+    function updateOrgSwitcher() {
+      if (allOrganizations.length === 0) return;
+
+      // Get selected org or default to first
+      if (!selectedOrgId) {
+        selectedOrgId = localStorage.getItem('selectedOrgId');
+      }
+      const selectedOrg = allOrganizations.find(o => o.id === selectedOrgId) || allOrganizations[0];
+      selectedOrgId = selectedOrg.id;
+
+      // Update current org display
+      document.getElementById('currentOrgName').textContent = selectedOrg.name;
+      const badge = document.getElementById('currentOrgBadge');
+      if (selectedOrg.is_personal) {
+        badge.textContent = 'Personal';
+        badge.className = 'org-switcher-badge personal';
+      } else {
+        badge.textContent = 'Team';
+        badge.className = 'org-switcher-badge team';
+      }
+
+      // Build dropdown list
+      const dropdownList = document.getElementById('orgDropdownList');
+      dropdownList.innerHTML = allOrganizations.map(org => {
+        const isActive = org.id === selectedOrgId;
+        const badgeClass = org.is_personal ? 'personal' : 'team';
+        const badgeText = org.is_personal ? 'Personal' : 'Team';
+        return `
+          <div class="org-dropdown-item ${isActive ? 'active' : ''}" onclick="selectOrg('${org.id}')">
+            <div>
+              <div class="org-dropdown-name">${org.name}</div>
+              <div class="org-dropdown-role">${org.role || 'member'}</div>
+            </div>
+            <span class="org-switcher-badge ${badgeClass}">${badgeText}</span>
+          </div>
+        `;
+      }).join('');
+
+      // Show switcher
+      document.getElementById('orgSwitcher').style.display = 'block';
+    }
+
+    function highlightSelectedOrg(orgId) {
+      // Add visual highlight to selected org card
+      document.querySelectorAll('.org-card').forEach(card => {
+        card.style.borderColor = card.dataset.orgId === orgId ? '#667eea' : '#e0e0e0';
+      });
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      const switcher = document.getElementById('orgSwitcher');
+      if (switcher && !switcher.contains(e.target)) {
+        closeOrgDropdown();
+      }
+    });
 
     // Load membership agreement
     async function loadMembershipAgreement() {
@@ -379,6 +575,30 @@
       }
     }
 
+    async function convertToTeam(orgId) {
+      if (!confirm('Convert this personal workspace to a team workspace?\n\nThis will allow you to invite team members. This action cannot be undone.')) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/organizations/${orgId}/convert-to-team`, {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to convert workspace');
+        }
+
+        alert('Workspace converted to team! You can now invite team members.');
+        window.location.reload();
+      } catch (error) {
+        console.error('Error converting to team:', error);
+        alert('Failed to convert workspace: ' + error.message);
+      }
+    }
+
     async function loadUserData() {
       try {
         const response = await fetch('/api/me');
@@ -445,6 +665,10 @@
           // Store globally for use in agreement checking
           window.hasActiveSubscription = hasActiveSubscription;
 
+          // Store organizations for the org switcher
+          allOrganizations = orgsWithBilling;
+          updateOrgSwitcher();
+
           // Find first org without subscription (for pricing table)
           if (!hasActiveSubscription) {
             firstOrgWithoutSubscription = orgsWithBilling.find(org =>
@@ -507,21 +731,45 @@
               `;
             }
 
+            // Show different UI for personal vs team workspaces
+            const isPersonal = org.is_personal || false;
+            const personalBadge = isPersonal
+              ? `<span style="display: inline-block; padding: 2px 8px; background: #e3f2fd; color: #1565c0; border-radius: 10px; font-size: 11px; margin-left: 8px; vertical-align: middle;">Personal</span>`
+              : `<span style="display: inline-block; padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 10px; font-size: 11px; margin-left: 8px; vertical-align: middle;">Team</span>`;
+
+            const teamButton = isPersonal
+              ? `<button
+                  onclick="convertToTeam('${org.id}')"
+                  style="padding: 8px 16px; background: #f5f5f5; color: #333; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                  title="Convert to a team workspace to invite members"
+                >
+                  Upgrade to Team
+                </button>`
+              : `<a
+                  href="/team?org=${org.id}"
+                  style="padding: 8px 16px; background: #f5f5f5; color: #333; border: 1px solid #ddd; border-radius: 6px; text-decoration: none; font-size: 14px;"
+                >
+                  Manage Team
+                </a>`;
+
             return `
               <div style="padding: 15px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: start;">
                   <div style="flex: 1;">
-                    <strong style="font-size: 18px;">${org.name}</strong>
+                    <strong style="font-size: 18px;">${org.name}</strong>${personalBadge}
                     <br>
                     <small style="color: #666;">Your role: ${org.role || 'member'}</small>
                     ${billingInfo}
                   </div>
-                  <button
-                    onclick="openBillingPortal('${org.id}')"
-                    style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
-                  >
-                    Manage Billing
-                  </button>
+                  <div style="display: flex; gap: 10px;">
+                    ${teamButton}
+                    <button
+                      onclick="openBillingPortal('${org.id}')"
+                      style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
+                    >
+                      Manage Billing
+                    </button>
+                  </div>
                 </div>
               </div>
             `;

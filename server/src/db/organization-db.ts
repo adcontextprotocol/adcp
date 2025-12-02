@@ -1,9 +1,14 @@
 import { getPool } from './client.js';
-import { getSubscriptionInfo } from '../billing/stripe-client.js';
+import { getSubscriptionInfo, listCustomersWithOrgIds } from '../billing/stripe-client.js';
+import { WorkOS } from '@workos-inc/node';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('organization-db');
 
 export interface Organization {
   workos_organization_id: string;
   name: string;
+  is_personal: boolean;
   stripe_customer_id: string | null;
   agreement_signed_at: Date | null;
   agreement_version: string | null;
@@ -56,13 +61,14 @@ export class OrganizationDatabase {
   async createOrganization(data: {
     workos_organization_id: string;
     name: string;
+    is_personal?: boolean;
   }): Promise<Organization> {
     const pool = getPool();
     const result = await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name)
-       VALUES ($1, $2)
+      `INSERT INTO organizations (workos_organization_id, name, is_personal)
+       VALUES ($1, $2, $3)
        RETURNING *`,
-      [data.workos_organization_id, data.name]
+      [data.workos_organization_id, data.name, data.is_personal || false]
     );
     return result.rows[0];
   }
@@ -81,42 +87,50 @@ export class OrganizationDatabase {
 
   /**
    * Update organization billing/agreement info
+   * Uses explicit column mapping to prevent SQL injection
    */
   async updateOrganization(
     workos_organization_id: string,
     updates: Partial<Omit<Organization, 'workos_organization_id' | 'created_at' | 'updated_at'>>
   ): Promise<Organization> {
-    // Whitelist of allowed column names to prevent SQL injection
-    const ALLOWED_COLUMNS = new Set([
-      'name',
-      'stripe_customer_id',
-      'agreement_signed_at',
-      'agreement_version',
-      'pending_agreement_version',
-      'pending_agreement_accepted_at',
-      'subscription_current_period_end',
-      'subscription_product_id',
-      'subscription_product_name',
-      'subscription_price_id',
-      'subscription_amount',
-      'subscription_currency',
-      'subscription_interval',
-      'subscription_canceled_at',
-      'subscription_metadata',
-    ]);
+    // Explicit column mapping - keys are validated property names, values are SQL column names
+    const COLUMN_MAP: Record<string, string> = {
+      name: 'name',
+      is_personal: 'is_personal',
+      stripe_customer_id: 'stripe_customer_id',
+      agreement_signed_at: 'agreement_signed_at',
+      agreement_version: 'agreement_version',
+      pending_agreement_version: 'pending_agreement_version',
+      pending_agreement_accepted_at: 'pending_agreement_accepted_at',
+      subscription_current_period_end: 'subscription_current_period_end',
+      subscription_product_id: 'subscription_product_id',
+      subscription_product_name: 'subscription_product_name',
+      subscription_price_id: 'subscription_price_id',
+      subscription_amount: 'subscription_amount',
+      subscription_currency: 'subscription_currency',
+      subscription_interval: 'subscription_interval',
+      subscription_canceled_at: 'subscription_canceled_at',
+      subscription_metadata: 'subscription_metadata',
+    };
 
     const setClauses: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramIndex = 1;
 
-    Object.entries(updates).forEach(([key, value]) => {
-      if (!ALLOWED_COLUMNS.has(key)) {
-        throw new Error(`Invalid column name: ${key}`);
+    for (const [key, value] of Object.entries(updates)) {
+      const columnName = COLUMN_MAP[key];
+      if (!columnName) {
+        throw new Error(`Invalid update field: ${key}`);
       }
-      setClauses.push(`${key} = $${paramIndex}`);
+      // Use the mapped column name (never user input)
+      setClauses.push(`${columnName} = $${paramIndex}`);
       values.push(value);
       paramIndex++;
-    });
+    }
+
+    if (setClauses.length === 0) {
+      throw new Error('No valid fields to update');
+    }
 
     values.push(workos_organization_id);
 
@@ -385,5 +399,101 @@ export class OrganizationDatabase {
       [workos_user_id]
     );
     return result.rows;
+  }
+
+  /**
+   * Sync organizations from WorkOS to local database.
+   * This should be called during server startup to ensure all WorkOS orgs exist locally.
+   * Only creates missing orgs - does not update existing ones.
+   */
+  async syncFromWorkOS(workos: WorkOS): Promise<{ synced: number; existing: number }> {
+    let synced = 0;
+    let existing = 0;
+
+    try {
+      // List all organizations from WorkOS
+      const orgs = await workos.organizations.listOrganizations({
+        limit: 100, // Paginate if needed in the future
+      });
+
+      for (const workosOrg of orgs.data) {
+        const localOrg = await this.getOrganization(workosOrg.id);
+
+        if (!localOrg) {
+          // Create the org locally
+          await this.createOrganization({
+            workos_organization_id: workosOrg.id,
+            name: workosOrg.name,
+          });
+          synced++;
+          logger.info({ orgId: workosOrg.id, name: workosOrg.name }, 'Synced organization from WorkOS');
+        } else {
+          existing++;
+        }
+      }
+
+      if (synced > 0) {
+        logger.info({ synced, existing }, 'WorkOS organization sync complete');
+      }
+
+      return { synced, existing };
+    } catch (error) {
+      logger.error({ error }, 'Failed to sync organizations from WorkOS');
+      throw error;
+    }
+  }
+
+  /**
+   * Sync Stripe customer IDs to local organization records.
+   * This should be called during server startup after WorkOS sync.
+   * Only updates orgs that exist locally but are missing stripe_customer_id.
+   */
+  async syncStripeCustomers(): Promise<{ synced: number; skipped: number }> {
+    let synced = 0;
+    let skipped = 0;
+
+    try {
+      // Get all Stripe customers with WorkOS org IDs in metadata
+      const customers = await listCustomersWithOrgIds();
+
+      for (const { stripeCustomerId, workosOrgId } of customers) {
+        const localOrg = await this.getOrganization(workosOrgId);
+
+        if (!localOrg) {
+          // Org doesn't exist locally - skip (WorkOS sync should have created it)
+          skipped++;
+          continue;
+        }
+
+        if (localOrg.stripe_customer_id === stripeCustomerId) {
+          // Already synced
+          continue;
+        }
+
+        if (localOrg.stripe_customer_id && localOrg.stripe_customer_id !== stripeCustomerId) {
+          // Different customer ID - log warning but don't overwrite
+          logger.warn(
+            { orgId: workosOrgId, existingCustomerId: localOrg.stripe_customer_id, newCustomerId: stripeCustomerId },
+            'Organization has different Stripe customer ID - not overwriting'
+          );
+          skipped++;
+          continue;
+        }
+
+        // Update the org with the Stripe customer ID
+        await this.setStripeCustomerId(workosOrgId, stripeCustomerId);
+        synced++;
+        logger.info({ orgId: workosOrgId, stripeCustomerId }, 'Synced Stripe customer ID to organization');
+      }
+
+      if (synced > 0) {
+        logger.info({ synced, skipped }, 'Stripe customer sync complete');
+      }
+
+      return { synced, skipped };
+    } catch (error) {
+      logger.error({ error }, 'Failed to sync Stripe customers');
+      throw error;
+    }
   }
 }
