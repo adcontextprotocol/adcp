@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adcp-task-status-update-event.json",
+  "title": "ADCP TaskStatusUpdateEvent",
+  "description": "ADCP extension of A2A TaskStatusUpdateEvent. Extends a2a-task-status-update-event.json to use adcp-task-status.json for status validation, enabling task-specific validation of parts[].data.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/a2a-task-status-update-event.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "/schemas/core/adcp-task-status.json",
+          "description": "The new status of the task (ADCP TaskStatus with task-specific validation)."
+        }
+      }
+    }
+  ]
+}
+

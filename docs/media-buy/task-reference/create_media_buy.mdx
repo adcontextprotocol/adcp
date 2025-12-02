@@ -629,6 +629,13 @@ When `create_media_buy` returns `status: "submitted"`, webhooks are triggered fo
 
 ADCP declares only the structure of `parts[].data` (DataPart data field) within Message objects. The following specifies what `parts.data` should contain for each status in `create_media_buy` webhook payloads:
 
+**Schema References:**
+- **Webhook Payload Schema**: [`/schemas/v3/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-payload.json)
+- **Input Required**: [`/schemas/v3/media-buy/create-media-buy-async-response-input-required.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-async-response-input-required.json)
+- **Failed**: [`/schemas/v3/media-buy/create-media-buy-async-response-failed.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-async-response-failed.json)
+- **Working**: [`/schemas/v3/media-buy/create-media-buy-async-response-working.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-async-response-working.json)
+- **Completed**: [`/schemas/v3/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json) (success variant)
+
 ### Status: `input-required`
 
 When human approval or input is needed, the webhook uses `statusUpdate` with `parts.data` containing:

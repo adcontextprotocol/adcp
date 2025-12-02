@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adcp-task.json",
+  "title": "ADCP Task",
+  "description": "ADCP extension of A2A Task. Extends a2a-task.json to use adcp-task-status.json and adcp-message.json for validation, enabling task-specific validation of parts[].data.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/a2a-task.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "/schemas/core/adcp-task-status.json",
+          "description": "The current status of a Task, including state and a message (ADCP TaskStatus with task-specific validation)."
+        },
+        "history": {
+          "type": "array",
+          "description": "The history of interactions from a task (using ADCP Message with task-specific validation).",
+          "items": {
+            "$ref": "/schemas/core/adcp-message.json"
+          }
+        }
+      }
+    }
+  ]
+}
+

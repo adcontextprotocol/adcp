@@ -9,8 +9,8 @@
       "type": "object",
       "properties": {
         "task": {
-          "$ref": "/schemas/core/a2a-task.json",
-          "description": "A Task object containing the current state of the task (A2A Specification Section 4.1.1)."
+          "$ref": "/schemas/core/adcp-task.json",
+          "description": "A Task object containing the current state of the task (A2A Specification Section 4.1.1). Uses ADCP extension with task-specific validation for parts[].data."
         }
       },
       "required": ["task"],
@@ -20,8 +20,8 @@
       "type": "object",
       "properties": {
         "message": {
-          "$ref": "/schemas/core/a2a-message.json",
-          "description": "A Message object containing a message response (A2A Specification Section 4.1.4). ADCP declares only the structure of parts[].data (DataPart data field) for task-specific payloads."
+          "$ref": "/schemas/core/adcp-message.json",
+          "description": "A Message object containing a message response (A2A Specification Section 4.1.4). Uses ADCP extension with task-specific validation for parts[].data (DataPart data field)."
         }
       },
       "required": ["message"],
@@ -31,8 +31,8 @@
       "type": "object",
       "properties": {
         "statusUpdate": {
-          "$ref": "/schemas/core/a2a-task-status-update-event.json",
-          "description": "A TaskStatusUpdateEvent indicating a status change (A2A Specification Section 4.2.1)."
+          "$ref": "/schemas/core/adcp-task-status-update-event.json",
+          "description": "A TaskStatusUpdateEvent indicating a status change (A2A Specification Section 4.2.1). Uses ADCP extension with task-specific validation for parts[].data."
         }
       },
       "required": ["statusUpdate"],
@@ -42,8 +42,8 @@
       "type": "object",
       "properties": {
         "artifactUpdate": {
-          "$ref": "/schemas/core/a2a-task-artifact-update-event.json",
-          "description": "A TaskArtifactUpdateEvent indicating artifact update (A2A Specification Section 4.2.2)."
+          "$ref": "/schemas/core/adcp-task-artifact-update-event.json",
+          "description": "A TaskArtifactUpdateEvent indicating artifact update (A2A Specification Section 4.2.2). Uses ADCP extension with task-specific validation for parts[].data."
         }
       },
       "required": ["artifactUpdate"],
@@ -60,7 +60,9 @@
     "Task status state is in statusUpdate.status.state or task.status.state",
     "ADCP declares only the structure of parts[].data (DataPart data field) within Message objects - the task-specific payload",
     "Extract task data from statusUpdate.status.message.parts or task.status.message.parts array: find the DataPart (part with 'data' property) and use its data field",
-    "For example, a create_media_buy webhook will have statusUpdate.status.message.parts or task.status.message.parts with a DataPart containing {data: {media_buy_id, buyer_ref, packages, ...}}",
+    "This schema uses ADCP extensions (adcp-task.json, adcp-message.json, adcp-task-status-update-event.json, etc.) which extend A2A schemas with task-specific validation",
+    "The parts[].data field is validated as a union of all task-specific async response schemas (see adcp-part.json)",
+    "For create_media_buy, parts.data validates against: create-media-buy-async-response-input-required.json, create-media-buy-async-response-failed.json, create-media-buy-async-response-working.json, or create-media-buy-response.json",
     "TextPart (part with 'text' property) provides human-readable context but is optional",
     "The statusUpdate.final flag indicates if this is the final event in the stream",
     "Your webhook handler receives the complete A2A-compatible StreamResponse structure needed to process the result"
@@ -84,6 +86,7 @@
                 },
                 {
                   "data": {
+                    "buyer_ref": "nike_q1_campaign_2024",
                     "errors": [
                       {
                         "code": "APPROVAL_REQUIRED",

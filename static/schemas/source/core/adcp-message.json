@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adcp-message.json",
+  "title": "ADCP Message",
+  "description": "ADCP extension of A2A Message. Extends a2a-message.json to use adcp-part.json for parts validation, enabling task-specific validation of parts[].data.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/a2a-message.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "parts": {
+          "type": "array",
+          "description": "Parts is the container of the message content. Array of ADCP Part union type with task-specific validation for parts[].data.",
+          "items": {
+            "$ref": "/schemas/core/adcp-part.json"
+          },
+          "minItems": 1
+        }
+      }
+    }
+  ]
+}
+

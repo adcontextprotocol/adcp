@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adcp-artifact.json",
+  "title": "ADCP Artifact",
+  "description": "ADCP extension of A2A Artifact. Extends a2a-artifact.json to use adcp-part.json for parts validation, enabling task-specific validation of parts[].data.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/a2a-artifact.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "parts": {
+          "type": "array",
+          "description": "Array of parts making up the artifact content (ADCP Part union type with task-specific validation).",
+          "items": {
+            "$ref": "/schemas/core/adcp-part.json"
+          },
+          "minItems": 1
+        }
+      }
+    }
+  ]
+}
+

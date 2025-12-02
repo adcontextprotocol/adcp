@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/create-media-buy-async-response-input-required.json",
+  "title": "Create Media Buy Async Response - Input Required",
+  "description": "Structure of parts.data in webhook payloads for create_media_buy when status is 'input-required'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that human approval or input is needed before the operation can proceed.",
+  "type": "object",
+  "properties": {
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for the media buy requiring approval. Required for identifying which operation needs attention."
+    },
+    "errors": {
+      "type": "array",
+      "description": "Array of error objects explaining what approval or input is needed",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "buyer_ref",
+    "errors"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Input required for budget approval",
+      "data": {
+        "buyer_ref": "nike_q1_campaign_2024",
+        "errors": [
+          {
+            "code": "APPROVAL_REQUIRED",
+            "message": "Budget exceeds auto-approval threshold of $100K. Awaiting VP approval before media buy creation.",
+            "field": "packages[0].budget"
+          }
+        ]
+      }
+    }
+  ]
+}
+

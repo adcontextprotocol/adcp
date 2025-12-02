@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adcp-part.json",
+  "title": "ADCP Part",
+  "description": "ADCP extension of A2A Part union type. Extends a2a-part.json with task-specific validation for parts[].data (DataPart data field). The data field is a union of all possible task-specific async response schemas.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "TextPart: Human-readable text content."
+        }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "oneOf": [
+            {
+              "$ref": "/schemas/media-buy/create-media-buy-async-response-input-required.json"
+            },
+            {
+              "$ref": "/schemas/media-buy/create-media-buy-async-response-failed.json"
+            },
+            {
+              "$ref": "/schemas/media-buy/create-media-buy-async-response-working.json"
+            },
+            {
+              "$ref": "/schemas/media-buy/create-media-buy-response.json"
+            },
+            {
+              "type": "object",
+              "description": "Other task types may have different structures. See task-specific async response schemas for validation."
+            }
+          ],
+          "description": "DataPart: Structured data content. Union of all task-specific async response schemas. For create_media_buy, validates against create-media-buy-async-response-*.json schemas based on status."
+        }
+      },
+      "required": ["data"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "object",
+          "description": "FilePart: File reference with mediaType, name, and fileWithBytes or uri."
+        }
+      },
+      "required": ["file"],
+      "additionalProperties": false
+    }
+  ]
+}
+

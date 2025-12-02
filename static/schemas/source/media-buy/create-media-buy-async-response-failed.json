@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/create-media-buy-async-response-failed.json",
+  "title": "Create Media Buy Async Response - Failed",
+  "description": "Structure of parts.data in webhook payloads for create_media_buy when status is 'failed'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that the operation failed and no media buy was created.",
+  "type": "object",
+  "properties": {
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for the media buy that failed. Required for identifying which operation failed, especially when no media_buy_id exists yet."
+    },
+    "errors": {
+      "type": "array",
+      "description": "Array of error objects explaining why the operation failed",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "buyer_ref",
+    "errors"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Failed due to validation errors",
+      "data": {
+        "buyer_ref": "nike_q1_campaign_2024",
+        "errors": [
+          {
+            "code": "PRODUCT_NOT_FOUND",
+            "message": "Product 'prod_invalid' not found",
+            "field": "packages[0].product_id"
+          },
+          {
+            "code": "FORMAT_INCOMPATIBLE",
+            "message": "Product 'prod_d979b543' does not support format 'display_728x90'",
+            "field": "packages[0].format_ids",
+            "suggestion": "Use display_300x250_image, display_300x250_html, or display_300x250_generative formats"
+          }
+        ]
+      }
+    }
+  ]
+}
+
