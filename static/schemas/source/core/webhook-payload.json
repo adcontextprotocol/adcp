@@ -148,7 +148,7 @@
       }
     },
     {
-      "description": "Webhook for failed sync_creatives - A2A StreamResponse with statusUpdate",
+      "description": "Webhook for failed create_media_buy - A2A StreamResponse with statusUpdate",
       "data": {
         "statusUpdate": {
           "taskId": "task_789",
@@ -161,7 +161,19 @@
               "role": "agent",
               "parts": [
                 {
-                  "text": "Creative sync failed due to invalid asset URLs"
+                  "text": "Media buy creation failed due to validation errors"
+                },
+                {
+                  "data": {
+                    "buyer_ref": "nike_q1_campaign_2024",
+                    "errors": [
+                      {
+                        "code": "PRODUCT_NOT_FOUND",
+                        "message": "Product 'prod_invalid' not found",
+                        "field": "packages[0].product_id"
+                      }
+                    ]
+                  }
                 }
               ]
             }

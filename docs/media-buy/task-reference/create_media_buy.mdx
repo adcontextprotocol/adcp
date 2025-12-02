@@ -623,6 +623,279 @@ AdCP tasks work across multiple protocols (MCP, A2A, REST). Each protocol handle
 
 See [Task Management](/docs/protocols/task-management) for protocol-specific async patterns and examples.
 
+## Webhook Payloads (Async Updates)
+
+When `create_media_buy` returns `status: "submitted"`, webhooks are triggered for status changes. The webhook payload follows **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload is a **StreamResponse object** containing exactly one of: `statusUpdate` (for status changes), `task` (for final completion), `message`, or `artifactUpdate`.
+
+ADCP declares only the structure of `parts[].data` (DataPart data field) within Message objects. The following specifies what `parts.data` should contain for each status in `create_media_buy` webhook payloads:
+
+### Status: `input-required`
+
+When human approval or input is needed, the webhook uses `statusUpdate` with `parts.data` containing:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `buyer_ref` | string | Yes | Buyer's reference identifier for the media buy requiring approval |
+| `errors` | Error[] | Yes | Array of error objects explaining what approval is needed |
+
+**Example `parts.data` for `input-required`:**
+```json
+{
+  "buyer_ref": "nike_q1_campaign_2024",
+  "errors": [
+    {
+      "code": "APPROVAL_REQUIRED",
+      "message": "Budget exceeds auto-approval threshold of $100K. Awaiting VP approval before media buy creation.",
+      "field": "packages[0].budget"
+    }
+  ]
+}
+```
+
+**Full webhook payload example:**
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_456",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "input-required",
+      "timestamp": "2025-01-22T10:15:00Z",
+      "message": {
+        "messageId": "msg_456_001",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Campaign budget $150K requires VP approval to proceed"
+          },
+          {
+            "data": {
+              "buyer_ref": "nike_q1_campaign_2024",
+              "errors": [
+                {
+                  "code": "APPROVAL_REQUIRED",
+                  "message": "Budget exceeds auto-approval threshold of $100K. Awaiting VP approval before media buy creation.",
+                  "field": "packages[0].budget"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "final": false
+  }
+}
+```
+
+### Status: `completed`
+
+When the media buy is successfully created, the webhook may use either `statusUpdate` or `task` variant. The `parts.data` contains the full success response matching the synchronous response schema:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `media_buy_id` | string | Yes | Publisher's unique identifier for the created media buy |
+| `buyer_ref` | string | Yes | Buyer's reference identifier for this media buy |
+| `creative_deadline` | string | Yes | ISO 8601 timestamp for creative upload deadline |
+| `packages` | Package[] | Yes | Array of created packages with complete state information |
+| `context` | Context | No | Application-level context (if provided in request) |
+| `ext` | object | No | Extension fields (if provided in request) |
+
+**Example `parts.data` for `completed`:**
+```json
+{
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "nike_q1_campaign_2024",
+  "creative_deadline": "2024-01-30T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_12345_001",
+      "buyer_ref": "nike_ctv_package",
+      "product_id": "ctv_sports_premium",
+      "budget": 60000,
+      "pacing": "even",
+      "pricing_option_id": "cpm-fixed-sports",
+      "paused": false,
+      "creative_assignments": [],
+      "format_ids_to_provide": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Full webhook payload example (using `task` variant):**
+```json
+{
+  "task": {
+    "id": "task_456",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "completed",
+      "timestamp": "2025-01-22T10:30:00Z",
+      "message": {
+        "messageId": "msg_456_002",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Media buy created successfully with 2 packages ready for creative assignment"
+          },
+          {
+            "data": {
+              "media_buy_id": "mb_12345",
+              "buyer_ref": "nike_q1_campaign_2024",
+              "creative_deadline": "2024-01-30T23:59:59Z",
+              "packages": [
+                {
+                  "package_id": "pkg_12345_001",
+                  "buyer_ref": "nike_ctv_package",
+                  "product_id": "ctv_sports_premium",
+                  "budget": 60000,
+                  "pacing": "even",
+                  "pricing_option_id": "cpm-fixed-sports",
+                  "paused": false,
+                  "creative_assignments": [],
+                  "format_ids_to_provide": [
+                    {
+                      "agent_url": "https://creative.adcontextprotocol.org",
+                      "id": "video_standard_30s"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+### Status: `failed`
+
+When the operation fails, the webhook uses `statusUpdate` with `parts.data` containing:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `buyer_ref` | string | Yes | Buyer's reference identifier for the media buy that failed (required for identification) |
+| `errors` | Error[] | Yes | Array of error objects explaining why the operation failed |
+
+**Example `parts.data` for `failed`:**
+```json
+{
+  "buyer_ref": "nike_q1_campaign_2024",
+  "errors": [
+    {
+      "code": "PRODUCT_NOT_FOUND",
+      "message": "Product 'prod_invalid' not found",
+      "field": "packages[0].product_id"
+    },
+    {
+      "code": "FORMAT_INCOMPATIBLE",
+      "message": "Product 'prod_d979b543' does not support format 'display_728x90'",
+      "field": "packages[0].format_ids",
+      "suggestion": "Use display_300x250_image, display_300x250_html, or display_300x250_generative formats"
+    }
+  ]
+}
+```
+
+**Full webhook payload example:**
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_789",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "failed",
+      "timestamp": "2025-01-22T10:46:00Z",
+      "message": {
+        "messageId": "msg_789_001",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Media buy creation failed due to validation errors"
+          },
+          {
+            "data": {
+              "buyer_ref": "nike_q1_campaign_2024",
+              "errors": [
+                {
+                  "code": "PRODUCT_NOT_FOUND",
+                  "message": "Product 'prod_invalid' not found",
+                  "field": "packages[0].product_id"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "final": true
+  }
+}
+```
+
+### Status: `working`
+
+When the operation is actively processing (typically < 120 seconds), the webhook may use `statusUpdate` with optional `parts.data`. The TextPart provides progress information:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `buyer_ref` | string | No | Buyer's reference identifier (optional, but recommended for tracking) |
+
+**Example webhook payload:**
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_456",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "working",
+      "timestamp": "2025-01-22T10:20:00Z",
+      "message": {
+        "messageId": "msg_456_003",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Validating packages and creating media buy..."
+          },
+          {
+            "data": {
+              "buyer_ref": "nike_q1_campaign_2024"
+            }
+          }
+        ]
+      }
+    },
+    "final": false
+  }
+}
+```
+
+**Note**: `parts.data` is optional for `working` status. If provided, it should include `buyer_ref` for operation identification. The TextPart provides human-readable progress information.
+
+### Status: `submitted`
+
+When the operation is submitted for long-running processing (hours to days), the initial response returns `status: "submitted"`. Webhooks will be triggered for subsequent status changes (`input-required`, `completed`, `failed`). The `submitted` status itself does not trigger a webhook.
+
+### Summary
+
+| Status | StreamResponse Variant | `parts.data` Contents | Required Fields |
+|--------|----------------------|----------------------|----------------|
+| `input-required` | `statusUpdate` | `buyer_ref`, `errors[]` | Both required |
+| `completed` | `task` or `statusUpdate` | Full success response matching `create-media-buy-response.json` | `media_buy_id`, `buyer_ref`, `packages` |
+| `failed` | `statusUpdate` | `buyer_ref`, `errors[]` | Both required |
+| `working` | `statusUpdate` | Optional: `buyer_ref` | None (but `buyer_ref` recommended) |
+| `submitted` | N/A (initial response only) | N/A | N/A |
+
+**Reference**: See [Webhook Payload Schema](/schemas/v3/core/webhook-payload.json) and [Task Management](/docs/protocols/task-management) for complete webhook handling examples.
+
 ## Usage Notes
 
 - Total budget is distributed across packages based on individual `budget` values

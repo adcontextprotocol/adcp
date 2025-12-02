@@ -591,7 +591,19 @@ Your webhook handler can parse the URL path to route to the correct handler base
         "role": "agent",
         "parts": [
           {
-            "text": "Requested targeting yielded 0 available impressions"
+            "text": "Media buy creation failed due to validation errors"
+          },
+          {
+            "data": {
+              "buyer_ref": "nike_q1_campaign_2024",
+              "errors": [
+                {
+                  "code": "PRODUCT_NOT_FOUND",
+                  "message": "Product 'prod_invalid' not found",
+                  "field": "packages[0].product_id"
+                }
+              ]
+            }
           }
         ]
       }

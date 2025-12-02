@@ -1,10 +1,6 @@
 ---
-"adcontextprotocol": major
+"adcontextprotocol": patch
 ---
-
----
-
-## "adcontextprotocol": major
 
 Migrate webhook payload structure to fully adopt A2A Protocol's push notification payload format (A2A Specification Section 4.3.3). This is a breaking change that requires updating all webhook handlers.
 
