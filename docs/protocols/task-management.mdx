@@ -24,7 +24,8 @@ AdCP operations may complete immediately (~1 second), take processing time (~60 
 
 ## Task Status Lifecycle
 
-All AdCP operations follow a consistent status progression:
+All AdCP operations follow a consistent status progression using the **A2A Protocol's TaskState enum** (A2A Specification Section 4.1.3)
+**Reference**: [A2A Protocol TaskState Enum](https://a2a-protocol.org/latest/specification/#413-taskstate)
 
 ### Status Definitions
 
@@ -514,18 +515,6 @@ function extractWebhookData(webhookPayload) {
   return null;
 }
 ```
-
-**Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted` (long-running operations).
-
-**When webhooks are NOT triggered:**
-- Initial response is `completed`, `failed`, or `rejected` → Synchronous response, client already has result
-- Initial response is `working` → Will complete synchronously within ~120 seconds, client should wait for response
-
-**When webhooks ARE triggered (for `submitted` operations only):**
-- Status changes to `input-required` → Webhook called (alerts that human input needed)
-- Status changes to `completed` → Webhook called (final result available)
-- Status changes to `failed` → Webhook called (error details provided)
-- Status changes to `canceled` → Webhook called (cancellation confirmed)
 
 **Example: `input-required` webhook (human approval needed) - A2A StreamResponse format:**
 ```http
