@@ -1,1 +1,16 @@
-
+{
+  "id": "upwave-signals",
+  "type": "signals",
+  "name": "Upwave Signals",
+  "description": "Upwave brand and audience signals, including campaign-level awareness lift and persuadability scores.",
+  "manifestUrl": "https://signals.upwave.ai/manifest.json",
+  "publisher": {
+    "name": "Upwave",
+    "website": "https://www.upwave.com"
+  },
+  "contact": {
+    "email": "support@upwave.com"
+  },
+  "status": "active",
+  "categories": ["measurement", "brand-lift", "audience-signals"]
+}
