@@ -115,11 +115,17 @@
     injectNavigation();
   }
 
-  // Auto-initialize
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
+  // Auto-initialize only on admin pages
+  function shouldInitialize() {
+    return window.location.pathname.startsWith('/admin');
+  }
+
+  if (shouldInitialize()) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
   }
 
   // Utility function to redirect to login with return_to parameter
