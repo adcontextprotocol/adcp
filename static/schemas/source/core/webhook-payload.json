@@ -36,7 +36,7 @@
                                   "type": "array",
                                   "description": "Parts is the container of the message content. Array of ADCP Part union type with task-specific validation for parts[].data.",
                                   "items": {
-                                    "$ref": "/schemas/core/adcp-webhook-part.json"
+                                    "$ref": "/schemas/core/adcp-webhook-data-part.json"
                                   },
                                   "minItems": 1
                                 }
@@ -140,7 +140,7 @@
                                   "type": "array",
                                   "description": "Parts is the container of the message content. Array of ADCP Part union type with task-specific validation for parts[].data.",
                                   "items": {
-                                    "$ref": "/schemas/core/adcp-webhook-part.json"
+                                    "$ref": "/schemas/core/adcp-webhook-data-part.json"
                                   },
                                   "minItems": 1
                                 }
@@ -202,23 +202,6 @@
       "additionalProperties": false
     }
   ],
-  "notes": [
-    "Webhooks are ONLY triggered when the initial response status is 'submitted' (long-running operations)",
-    "This payload structure fully adopts A2A Protocol's push notification payload format (A2A Specification Section 4.3.3)",
-    "The payload is a StreamResponse object (A2A Specification Section 3.2.3) containing exactly one of: task, message, statusUpdate, or artifactUpdate",
-    "For status change events (like input-required, failed, working), use statusUpdate: {statusUpdate: {taskId, contextId, status: {state, message: {parts: [...]}, timestamp}, final}}",
-    "For final completion with full task state, use task: {task: {id, contextId, status: {state, message: {parts: [...]}, timestamp}, ...}}",
-    "Task ID is in statusUpdate.taskId (for statusUpdate) or task.id (for task variant)",
-    "Task status state is in statusUpdate.status.state or task.status.state",
-    "ADCP declares only the structure of parts[].data (DataPart data field) within Message objects - the task-specific payload",
-    "Extract task data from statusUpdate.status.message.parts or task.status.message.parts array: find the DataPart (part with 'data' property) and use its data field",
-    "This schema uses ADCP extensions which extend A2A schemas with task-specific validation (inline in this schema)",
-    "The parts[].data field is validated as a union of all task-specific async response schemas (see adcp-webhook-part.json)",
-    "For create_media_buy, parts.data validates against: create-media-buy-async-response-input-required.json, create-media-buy-async-response-failed.json, create-media-buy-async-response-working.json, or create-media-buy-response.json",
-    "TextPart (part with 'text' property) provides human-readable context but is optional",
-    "The statusUpdate.final flag indicates if this is the final event in the stream",
-    "Your webhook handler receives the complete A2A-compatible StreamResponse structure needed to process the result"
-  ],
   "examples": [
     {
       "description": "Webhook for input-required status (human approval needed) - A2A StreamResponse with statusUpdate",
@@ -234,16 +217,17 @@
               "role": "agent",
               "parts": [
                 {
-                  "text": "Campaign budget $150K requires VP approval to proceed"
+                  "text": "Bid price $2.50 is below the minimum floor. Please increase to at least $5.00."
                 },
                 {
                   "data": {
                     "buyer_ref": "nike_q1_campaign_2024",
                     "errors": [
                       {
-                        "code": "APPROVAL_REQUIRED",
-                        "message": "Budget exceeds auto-approval threshold of $100K. Awaiting VP approval before media buy creation.",
-                        "field": "packages[0].budget"
+                        "code": "BID_PRICE_TOO_LOW",
+                        "message": "Bid price $2.50 is below the minimum floor of $5.00 for this auction-based product. Please increase bid_price to at least $5.00.",
+                        "field": "packages[0].bid_price",
+                        "suggestion": "Set bid_price to at least $5.00 to participate in the auction"
                       }
                     ]
                   }

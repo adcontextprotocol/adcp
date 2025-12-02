@@ -25,14 +25,15 @@
   "additionalProperties": false,
   "examples": [
     {
-      "description": "Input required for budget approval",
+      "description": "Input required for bid price adjustment",
       "data": {
         "buyer_ref": "nike_q1_campaign_2024",
         "errors": [
           {
-            "code": "APPROVAL_REQUIRED",
-            "message": "Budget exceeds auto-approval threshold of $100K. Awaiting VP approval before media buy creation.",
-            "field": "packages[0].budget"
+            "code": "BID_PRICE_TOO_LOW",
+            "message": "Bid price $2.50 is below the minimum floor of $5.00 for this auction-based product. Please increase bid_price to at least $5.00.",
+            "field": "packages[0].bid_price",
+            "suggestion": "Set bid_price to at least $5.00 to participate in the auction"
           }
         ]
       }
