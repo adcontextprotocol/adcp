@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/a2a-message.json",
+  "title": "A2A Message",
+  "description": "One unit of communication between client and server (A2A Specification Section 4.1.4). ADCP declares only the structure of parts[].data (DataPart data field) for task-specific payloads.",
+  "a2a_spec_version": "1.0",
+  "a2a_spec_section": "4.1.4",
+  "a2a_spec_url": "https://a2a-protocol.org/latest/specification/#414-message",
+  "adcp_synced_date": "2025-12-02",
+  "notes": "This schema is a 1:1 copy of A2A Protocol's Message object structure. ADCP declares only the structure of parts[].data (DataPart data field) for task-specific payloads.",
+  "type": "object",
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "description": "The unique identifier (e.g. UUID) of the message. This is required and created by the message creator."
+    },
+    "contextId": {
+      "type": "string",
+      "description": "The context id of the message. This is optional and if set, the message will be associated with the given context."
+    },
+    "taskId": {
+      "type": "string",
+      "description": "The task id of the message. This is optional and if set, the message will be associated with the given task."
+    },
+    "role": {
+      "$ref": "/schemas/enums/a2a-role.json",
+      "description": "Identifies the sender of the message."
+    },
+    "parts": {
+      "type": "array",
+      "description": "Parts is the container of the message content. Array of A2A Part union type. ADCP declares only the structure of parts[].data (DataPart data field) for task-specific payloads.",
+      "items": {
+        "$ref": "/schemas/core/a2a-part.json"
+      },
+      "minItems": 1
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Any optional metadata to provide along with the message."
+    },
+    "extension": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "description": "The URIs of extensions that are present or contributed to this Message."
+    },
+    "referenceTaskId": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "A list of task IDs that this message references for additional context."
+    }
+  },
+  "required": ["messageId", "role", "parts"],
+  "additionalProperties": false
+}
+

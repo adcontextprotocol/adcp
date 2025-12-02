@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/a2a-task-status.json",
+  "title": "A2A TaskStatus",
+  "description": "A container for the status of a task (A2A Specification Section 4.1.2).",
+  "a2a_spec_version": "1.0",
+  "a2a_spec_section": "4.1.2",
+  "a2a_spec_url": "https://a2a-protocol.org/latest/specification/#412-taskstatus",
+  "adcp_synced_date": "2025-12-02",
+  "notes": "This schema is a 1:1 copy of A2A Protocol's TaskStatus structure.",
+  "type": "object",
+  "properties": {
+    "state": {
+      "$ref": "/schemas/enums/task-status.json",
+      "description": "The current state of this task (A2A TaskState enum)."
+    },
+    "message": {
+      "$ref": "/schemas/core/a2a-message.json",
+      "description": "A message associated with the status (A2A Message object)."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the status was recorded. Example: \"2023-10-27T10:00:00Z\""
+    }
+  },
+  "required": ["state"],
+  "additionalProperties": false
+}
+

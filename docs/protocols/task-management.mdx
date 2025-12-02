@@ -464,18 +464,26 @@ const response = await session.call('create_media_buy',
 
 ### Webhook POST Format
 
-When a task's status changes, the publisher POSTs a payload following **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload uses A2A's Task structure with a Message containing parts array. ADCP declares only the structure of `parts[].data` (DataPart data field) for task-specific payloads.
+When a task's status changes, the publisher POSTs a payload following **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload is a **StreamResponse object** (A2A Specification Section 3.2.3) containing exactly one of: `task` (Task object), `message` (Message object), `statusUpdate` (TaskStatusUpdateEvent), or `artifactUpdate` (TaskArtifactUpdateEvent). ADCP declares only the structure of `parts[].data` (DataPart data field) within Message objects for task-specific payloads.
 
 **Webhook Payload Schema**: [`https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json)
 
-**Top-level fields (A2A Task structure):**
-- `taskId` (required) — A2A task identifier. Unique identifier for this task
-- `status` (required) — Current task status (A2A TaskState enum)
-- `timestamp` (optional) — ISO 8601 time when webhook was generated
-- `contextId` (optional) — A2A context identifier. Conversation/session id
-- `message` (required) — A2A Message structure containing parts array
+**StreamResponse structure (A2A Section 3.2.3):**
+The payload contains exactly one of:
+- `task`: A Task object with the current task state (most common for ADCP webhooks)
+- `message`: A Message object containing a message response
+- `statusUpdate`: A TaskStatusUpdateEvent indicating a status change
+- `artifactUpdate`: A TaskArtifactUpdateEvent indicating artifact update
 
-**Message.parts structure:**
+**Task object structure (when using `task` variant):**
+- `id` (required) — Unique identifier for the task (not top-level `taskId`)
+- `contextId` (required) — Unique identifier for the contextual collection
+- `status` (required) — TaskStatus object containing:
+  - `state` (required) — Current task state (A2A TaskState enum)
+  - `message` (optional) — Message object with parts array
+  - `timestamp` (optional) — ISO 8601 timestamp when status was recorded
+
+**Message.parts structure (within task.status.message):**
 - `parts[]` — Array of message parts (A2A Part union type)
   - TextPart: `{text: string}` — Human-readable context (optional)
   - DataPart: `{data: object}` — Task-specific payload (ADCP declares only this structure)
@@ -484,9 +492,26 @@ When a task's status changes, the publisher POSTs a payload following **A2A Prot
 **Extracting task data:**
 ```javascript
 function extractWebhookData(webhookPayload) {
-  // Find the DataPart in message.parts array
-  const dataPart = webhookPayload.message.parts.find(part => part.data !== undefined);
-  return dataPart?.data; // This is the AdCP task-specific payload
+  // A2A StreamResponse contains exactly one of: task, message, statusUpdate, artifactUpdate
+  if (webhookPayload.task) {
+    const task = webhookPayload.task;
+    const taskId = task.id; // Task ID is in task.id, not top-level
+    const status = task.status.state; // Status state is in task.status.state
+    
+    // Find the DataPart in task.status.message.parts array
+    const message = task.status.message;
+    if (message?.parts) {
+      const dataPart = message.parts.find(part => part.data !== undefined);
+      return {
+        taskId,
+        status,
+        data: dataPart?.data // This is the AdCP task-specific payload
+      };
+    }
+  }
+  
+  // Handle other StreamResponse variants...
+  return null;
 }
 ```
 
@@ -502,7 +527,7 @@ function extractWebhookData(webhookPayload) {
 - Status changes to `failed` → Webhook called (error details provided)
 - Status changes to `canceled` → Webhook called (cancellation confirmed)
 
-**Example: `input-required` webhook (human approval needed) - A2A format:**
+**Example: `input-required` webhook (human approval needed) - A2A StreamResponse format:**
 ```http
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 Host: buyer.example.com
@@ -510,26 +535,30 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
-  "taskId": "task_456",
-  "status": "input-required",
-  "timestamp": "2025-01-22T10:15:00Z",
-  "contextId": "ctx_abc123",
-  "message": {
-    "parts": [
-      {
-        "text": "Campaign budget $150K requires VP approval to proceed"
-      },
-      {
-        "data": {
-          "buyer_ref": "nike_q1_campaign_2024"
-        }
+  "task": {
+    "id": "task_456",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "input-required",
+      "timestamp": "2025-01-22T10:15:00Z",
+      "message": {
+        "parts": [
+          {
+            "text": "Campaign budget $150K requires VP approval to proceed"
+          },
+          {
+            "data": {
+              "buyer_ref": "nike_q1_campaign_2024"
+            }
+          }
+        ]
       }
-    ]
+    }
   }
 }
 ```
 
-**Example: `completed` webhook (after approval granted - full create_media_buy response) - A2A format:**
+**Example: `completed` webhook (after approval granted - full create_media_buy response) - A2A StreamResponse format:**
 ```http
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 Host: buyer.example.com
@@ -537,30 +566,35 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
-  "taskId": "task_456",
-  "status": "completed",
-  "timestamp": "2025-01-22T10:30:00Z",
-  "message": {
-    "parts": [
-      {
-        "text": "Media buy created successfully with 2 packages ready for creative assignment"
-      },
-      {
-        "data": {
-          "media_buy_id": "mb_12345",
-          "buyer_ref": "nike_q1_campaign_2024",
-          "creative_deadline": "2024-01-30T23:59:59Z",
-          "packages": [
-            { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_package" }
-          ]
-        }
+  "task": {
+    "id": "task_456",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "completed",
+      "timestamp": "2025-01-22T10:30:00Z",
+      "message": {
+        "parts": [
+          {
+            "text": "Media buy created successfully with 2 packages ready for creative assignment"
+          },
+          {
+            "data": {
+              "media_buy_id": "mb_12345",
+              "buyer_ref": "nike_q1_campaign_2024",
+              "creative_deadline": "2024-01-30T23:59:59Z",
+              "packages": [
+                { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_package" }
+              ]
+            }
+          }
+        ]
       }
-    ]
+    }
   }
 }
 ```
 
-The webhook receives the **full A2A-compatible response structure** for each status. Extract task data from `message.parts[]` array by finding the DataPart (part with `data` property). This means your webhook handler gets all the context and data needed to take appropriate action.
+The webhook receives the **full A2A-compatible StreamResponse structure** for each status. Extract task data from `task.status.message.parts[]` array by finding the DataPart (part with `data` property). Task ID is in `task.id` and status state is in `task.status.state`. This means your webhook handler gets all the context and data needed to take appropriate action.
 
 ### Webhook Handling Example
 

@@ -2,169 +2,167 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/webhook-payload.json",
   "title": "Webhook Payload",
-  "description": "Payload structure sent to webhook endpoints when async task status changes. Fully adopts A2A Protocol's push notification payload structure (A2A Specification Section 4.3.3). The payload follows A2A's Task structure with a Message containing parts. ADCP declares only the structure of parts.data (DataPart data field) for task-specific payloads.",
+  "description": "Payload structure sent to webhook endpoints when async task status changes. Fully adopts A2A Protocol's push notification payload structure (A2A Specification Section 4.3.3). The payload is a StreamResponse object containing exactly one of: task (Task object), message (Message object), statusUpdate (TaskStatusUpdateEvent), or artifactUpdate (TaskArtifactUpdateEvent). ADCP declares only the structure of parts.data (DataPart data field) within Message objects for task-specific payloads.",
   "type": "object",
-  "properties": {
-    "taskId": {
-      "type": "string",
-      "description": "A2A task identifier. Unique identifier for this task. Use this to correlate webhook notifications with the original task submission."
-    },
-    "status": {
-      "$ref": "/schemas/enums/task-status.json",
-      "description": "Current task status (A2A TaskState enum). Webhooks are only triggered for status changes after initial submission (e.g., submitted → input-required, submitted → completed, submitted → failed)."
-    },
-    "timestamp": {
-      "type": "string",
-      "format": "date-time",
-      "description": "ISO 8601 timestamp when this webhook was generated (A2A-compatible)."
-    },
-    "message": {
+  "oneOf": [
+    {
       "type": "object",
-      "description": "A2A Message structure containing parts array. The message may include TextPart (human-readable text) and DataPart (structured AdCP task data).",
       "properties": {
-        "parts": {
-          "type": "array",
-          "description": "Array of message parts following A2A Part union type. May contain TextPart ({text: string}), DataPart ({data: object}), or FilePart ({file: object}). ADCP declares only the structure of parts[].data (DataPart data field) for task-specific payloads.",
-          "items": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "description": "TextPart: Human-readable summary of the current task state."
-                  }
-                },
-                "required": ["text"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "data": {
-                    "type": "object",
-                    "description": "DataPart: Task-specific payload for this status update. Validated against the appropriate AdCP response schema based on task context. This is the only part declared by ADCP - the structure of this data field."
-                  }
-                },
-                "required": ["data"],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "file": {
-                    "type": "object",
-                    "description": "FilePart: Optional file reference (previews, reports). Not commonly used in webhook payloads."
-                  }
-                },
-                "required": ["file"],
-                "additionalProperties": false
-              }
-            ]
-          },
-          "minItems": 1
+        "task": {
+          "$ref": "/schemas/core/a2a-task.json",
+          "description": "A Task object containing the current state of the task (A2A Specification Section 4.1.1)."
         }
       },
-      "required": ["parts"],
+      "required": ["task"],
       "additionalProperties": false
     },
-    "contextId": {
-      "type": "string",
-      "description": "A2A context identifier. Session/conversation identifier. Use this to continue the conversation if input-required status needs clarification or additional parameters."
+    {
+      "type": "object",
+      "properties": {
+        "message": {
+          "$ref": "/schemas/core/a2a-message.json",
+          "description": "A Message object containing a message response (A2A Specification Section 4.1.4). ADCP declares only the structure of parts[].data (DataPart data field) for task-specific payloads."
+        }
+      },
+      "required": ["message"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "statusUpdate": {
+          "$ref": "/schemas/core/a2a-task-status-update-event.json",
+          "description": "A TaskStatusUpdateEvent indicating a status change (A2A Specification Section 4.2.1)."
+        }
+      },
+      "required": ["statusUpdate"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "artifactUpdate": {
+          "$ref": "/schemas/core/a2a-task-artifact-update-event.json",
+          "description": "A TaskArtifactUpdateEvent indicating artifact update (A2A Specification Section 4.2.2)."
+        }
+      },
+      "required": ["artifactUpdate"],
+      "additionalProperties": false
     }
-  },
-  "required": ["taskId", "status", "message"],
-  "additionalProperties": true,
+  ],
   "notes": [
     "Webhooks are ONLY triggered when the initial response status is 'submitted' (long-running operations)",
     "This payload structure fully adopts A2A Protocol's push notification payload format (A2A Specification Section 4.3.3)",
-    "The payload follows A2A's Task structure with taskId, status, timestamp, and message (Message with parts array)",
-    "ADCP declares only the structure of parts[].data (DataPart data field) - the task-specific payload",
-    "Extract task data from message.parts array: find the DataPart (part with 'data' property) and use its data field",
-    "For example, a create_media_buy webhook will have message.parts with a DataPart containing {data: {media_buy_id, buyer_ref, packages, ...}}",
+    "The payload is a StreamResponse object (A2A Specification Section 3.2.3) containing exactly one of: task, message, statusUpdate, or artifactUpdate",
+    "For task updates, the most common structure is {task: {id, contextId, status: {state, message: {parts: [...]}, timestamp}, ...}}",
+    "Task ID is in task.id (not top-level taskId). Extract using payload.task.id",
+    "Task status state is in task.status.state. Extract using payload.task.status.state",
+    "ADCP declares only the structure of parts[].data (DataPart data field) within Message objects - the task-specific payload",
+    "Extract task data from task.status.message.parts array: find the DataPart (part with 'data' property) and use its data field",
+    "For example, a create_media_buy webhook will have task.status.message.parts with a DataPart containing {data: {media_buy_id, buyer_ref, packages, ...}}",
     "TextPart (part with 'text' property) provides human-readable context but is optional",
-    "Your webhook handler receives the complete A2A-compatible structure needed to process the result"
+    "Your webhook handler receives the complete A2A-compatible StreamResponse structure needed to process the result"
   ],
   "examples": [
     {
-      "description": "Webhook for input-required status (human approval needed) - A2A format",
+      "description": "Webhook for input-required status (human approval needed) - A2A with task object",
       "data": {
-        "taskId": "task_456",
-        "status": "input-required",
-        "timestamp": "2025-01-22T10:15:00Z",
-        "contextId": "ctx_abc123",
-        "message": {
-          "parts": [
-            {
-              "text": "Campaign budget $150K requires VP approval to proceed"
-            },
-            {
-              "data": {
-                "errors": [
-                  {
-                    "code": "APPROVAL_REQUIRED",
-                    "message": "Budget exceeds auto-approval threshold of $100K. Awaiting VP approval before media buy creation.",
-                    "field": "packages[0].budget"
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      }
-    },
-    {
-      "description": "Webhook for completed create_media_buy - A2A format",
-      "data": {
-        "taskId": "task_456",
-        "status": "completed",
-        "timestamp": "2025-01-22T10:30:00Z",
-        "message": {
-          "parts": [
-            {
-              "text": "Media buy created successfully with 2 packages ready for creative assignment"
-            },
-            {
-              "data": {
-                "media_buy_id": "mb_12345",
-                "buyer_ref": "nike_q1_campaign_2024",
-                "creative_deadline": "2024-01-30T23:59:59Z",
-                "packages": [
-                  {
-                    "package_id": "pkg_12345_001",
-                    "buyer_ref": "nike_ctv_package",
-                    "product_id": "ctv_sports_premium",
-                    "budget": 60000,
-                    "pacing": "even",
-                    "pricing_option_id": "cpm-fixed-sports",
-                    "paused": false,
-                    "creative_assignments": [],
-                    "format_ids_to_provide": [
+        "task": {
+          "id": "task_456",
+          "contextId": "ctx_abc123",
+          "status": {
+            "state": "input-required",
+            "timestamp": "2025-01-22T10:15:00Z",
+            "message": {
+              "messageId": "msg_456_001",
+              "role": "agent",
+              "parts": [
+                {
+                  "text": "Campaign budget $150K requires VP approval to proceed"
+                },
+                {
+                  "data": {
+                    "errors": [
                       {
-                        "agent_url": "https://creative.adcontextprotocol.org",
-                        "id": "video_standard_30s"
+                        "code": "APPROVAL_REQUIRED",
+                        "message": "Budget exceeds auto-approval threshold of $100K. Awaiting VP approval before media buy creation.",
+                        "field": "packages[0].budget"
                       }
                     ]
                   }
-                ]
-              }
+                }
+              ]
             }
-          ]
+          }
         }
       }
     },
     {
-      "description": "Webhook for failed sync_creatives - A2A format",
+      "description": "Webhook for completed create_media_buy - A2A StreamResponse with task object",
       "data": {
-        "taskId": "task_789",
-        "status": "failed",
-        "timestamp": "2025-01-22T10:46:00Z",
-        "message": {
-          "parts": [
-            {
-              "text": "Creative sync failed due to invalid asset URLs"
+        "task": {
+          "id": "task_456",
+          "contextId": "ctx_abc123",
+          "status": {
+            "state": "completed",
+            "timestamp": "2025-01-22T10:30:00Z",
+            "message": {
+              "messageId": "msg_456_002",
+              "role": "agent",
+              "parts": [
+                {
+                  "text": "Media buy created successfully with 2 packages ready for creative assignment"
+                },
+                {
+                  "data": {
+                    "media_buy_id": "mb_12345",
+                    "buyer_ref": "nike_q1_campaign_2024",
+                    "creative_deadline": "2024-01-30T23:59:59Z",
+                    "packages": [
+                      {
+                        "package_id": "pkg_12345_001",
+                        "buyer_ref": "nike_ctv_package",
+                        "product_id": "ctv_sports_premium",
+                        "budget": 60000,
+                        "pacing": "even",
+                        "pricing_option_id": "cpm-fixed-sports",
+                        "paused": false,
+                        "creative_assignments": [],
+                        "format_ids_to_provide": [
+                          {
+                            "agent_url": "https://creative.adcontextprotocol.org",
+                            "id": "video_standard_30s"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
             }
-          ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Webhook for failed sync_creatives - A2A StreamResponse with task object",
+      "data": {
+        "task": {
+          "id": "task_789",
+          "contextId": "ctx_abc123",
+          "status": {
+            "state": "failed",
+            "timestamp": "2025-01-22T10:46:00Z",
+            "message": {
+              "messageId": "msg_789_001",
+              "role": "agent",
+              "parts": [
+                {
+                  "text": "Creative sync failed due to invalid asset URLs"
+                }
+              ]
+            }
+          }
         }
       }
     }

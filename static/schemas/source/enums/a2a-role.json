@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/a2a-role.json",
+  "title": "A2A Role",
+  "description": "Identifies the sender of the message (A2A Specification Section 4.1.5).",
+  "a2a_spec_version": "1.0",
+  "a2a_spec_section": "4.1.5",
+  "a2a_spec_url": "https://a2a-protocol.org/latest/specification/#415-role",
+  "adcp_synced_date": "2025-12-02",
+  "notes": "This schema is a 1:1 copy of A2A Protocol's Role enum.",
+  "type": "string",
+  "enum": ["user", "agent", "system"]
+}
+

@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/a2a-part.json",
+  "title": "A2A Part",
+  "description": "Part union type for message content (A2A Specification Section 4.1.6). ADCP declares only the structure of parts[].data (DataPart data field) for task-specific payloads.",
+  "a2a_spec_version": "1.0",
+  "a2a_spec_section": "4.1.6",
+  "a2a_spec_url": "https://a2a-protocol.org/latest/specification/#416-part",
+  "adcp_synced_date": "2025-12-02",
+  "notes": "This schema is a 1:1 copy of A2A Protocol's Part union type. ADCP declares only the structure of parts[].data (DataPart data field) for task-specific payloads.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "TextPart: Human-readable text content."
+        }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "description": "DataPart: Structured data content. ADCP declares only the structure of this data field for task-specific payloads."
+        }
+      },
+      "required": ["data"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "object",
+          "description": "FilePart: File reference with mediaType, name, and fileWithBytes or uri."
+        }
+      },
+      "required": ["file"],
+      "additionalProperties": false
+    }
+  ]
+}
+

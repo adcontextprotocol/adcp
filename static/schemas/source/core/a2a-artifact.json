@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/a2a-artifact.json",
+  "title": "A2A Artifact",
+  "description": "An artifact containing output from a task (A2A Specification Section 4.1.9).",
+  "a2a_spec_version": "1.0",
+  "a2a_spec_section": "4.1.9",
+  "a2a_spec_url": "https://a2a-protocol.org/latest/specification/#419-artifact",
+  "adcp_synced_date": "2025-12-02",
+  "notes": "This schema is a 1:1 copy of A2A Protocol's Artifact structure.",
+  "type": "object",
+  "properties": {
+    "artifactId": {
+      "type": "string",
+      "description": "Unique identifier (e.g. UUID) for the artifact."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for the artifact."
+    },
+    "parts": {
+      "type": "array",
+      "description": "Array of parts making up the artifact content (A2A Part union type).",
+      "items": {
+        "$ref": "/schemas/core/a2a-part.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": ["artifactId", "parts"],
+  "additionalProperties": false
+}
+

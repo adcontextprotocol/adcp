@@ -468,30 +468,38 @@ AdCP uses A2A's TaskState enum directly:
 
 ## Webhook Payloads
 
-Async operations (`status: "submitted"`) deliver push notifications following **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload uses A2A's Task structure with a Message containing parts array, not the artifacts structure used in synchronous responses.
+Async operations (`status: "submitted"`) deliver push notifications following **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload is a **StreamResponse object** (A2A Specification Section 3.2.3) containing exactly one of: `task` (Task object), `message` (Message object), `statusUpdate` (TaskStatusUpdateEvent), or `artifactUpdate` (TaskArtifactUpdateEvent).
 
 ```json
 POST /webhook-endpoint
 {
-  "taskId": "task_123",
-  "status": "completed",
-  "timestamp": "2025-01-22T10:30:00Z",
-  "message": {
-    "parts": [
-      {"text": "Media buy approved and live"},
-      {"data": {
-        "media_buy_id": "mb_456",
-        "packages": [...],
-        "creative_deadline": "2025-01-30T23:59:59Z"
-      }}
-    ]
+  "task": {
+    "id": "task_123",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "completed",
+      "timestamp": "2025-01-22T10:30:00Z",
+      "message": {
+        "parts": [
+          {"text": "Media buy approved and live"},
+          {"data": {
+            "media_buy_id": "mb_456",
+            "packages": [...],
+            "creative_deadline": "2025-01-30T23:59:59Z"
+          }}
+        ]
+      }
+    }
   }
 }
 ```
 
 **Key differences from synchronous A2A responses:**
-- Webhooks use `message.parts[]` (A2A Message structure), not `artifacts[]`
-- Extract AdCP data by finding the DataPart in `message.parts` array (part with `data` property)
+- Webhooks use StreamResponse wrapper containing `task`, `message`, `statusUpdate`, or `artifactUpdate` (not direct Task/Message)
+- For task updates, use the `task` variant: `{task: {id, contextId, status: {state, message: {parts: [...]}, timestamp}, ...}}`
+- Task ID is in `task.id` (not top-level `taskId`)
+- Task status state is in `task.status.state`
+- Extract AdCP data by finding the DataPart in `task.status.message.parts` array (part with `data` property)
 - Use the last DataPart as authoritative when multiple data parts exist
 - ADCP declares only the structure of `parts[].data` (DataPart data field)
 

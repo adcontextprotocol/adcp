@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/a2a-task-artifact-update-event.json",
+  "title": "A2A TaskArtifactUpdateEvent",
+  "description": "TaskArtifactUpdateEvent represents a task delta where an artifact has been generated (A2A Specification Section 4.2.2).",
+  "a2a_spec_version": "1.0",
+  "a2a_spec_section": "4.2.2",
+  "a2a_spec_url": "https://a2a-protocol.org/latest/specification/#422-taskartifactupdateevent",
+  "adcp_synced_date": "2025-12-02",
+  "notes": "This schema is a 1:1 copy of A2A Protocol's TaskArtifactUpdateEvent structure. Used in StreamResponse for push notifications.",
+  "type": "object",
+  "properties": {
+    "taskId": {
+      "type": "string",
+      "description": "The id of the task for this artifact."
+    },
+    "contextId": {
+      "type": "string",
+      "description": "The id of the context that this task belongs to."
+    },
+    "artifact": {
+      "$ref": "/schemas/core/a2a-artifact.json",
+      "description": "The artifact that was generated or updated."
+    },
+    "append": {
+      "type": "boolean",
+      "description": "If true, the content of this artifact should be appended to a previously sent artifact with the same ID."
+    },
+    "lastChunk": {
+      "type": "boolean",
+      "description": "If true, this is the final chunk of the artifact."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional metadata associated with the artifact update."
+    }
+  },
+  "required": ["taskId", "contextId", "artifact"],
+  "additionalProperties": false
+}
+
