@@ -16,6 +16,10 @@
         "$ref": "/schemas/core/error.json"
       },
       "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json",
+      "description": "Application-level context echoed from the request. Opaque correlation data for internal tracking."
     }
   },
   "required": [

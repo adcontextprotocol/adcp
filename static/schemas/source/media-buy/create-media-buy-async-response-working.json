@@ -8,6 +8,10 @@
     "buyer_ref": {
       "type": "string",
       "description": "Buyer's reference identifier for the media buy being processed. Required for identifying which media buy is being processed."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json",
+      "description": "Application-level context echoed from the request. Opaque correlation data for internal tracking."
     }
   },
   "required": [
