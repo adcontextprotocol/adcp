@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-creatives-async-response-working.json",
+  "title": "Sync Creatives Async Response - Working",
+  "description": "Structure of parts.data in webhook payloads for sync_creatives when status is 'working'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that the creative sync operation is actively processing (uploading assets, validating formats, processing generative creatives). creative_ids is required for identifying which creatives are being processed.",
+  "type": "object",
+  "properties": {
+    "creative_ids": {
+      "type": "array",
+      "description": "Array of creative IDs being processed. Required for identifying which creatives are being synced.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json",
+      "description": "Application-level context echoed from the request. Opaque correlation data for internal tracking."
+    }
+  },
+  "required": [
+    "creative_ids"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Working status with creative_ids for tracking",
+      "data": {
+        "creative_ids": ["creative_video_001", "creative_display_002"]
+      }
+    }
+  ]
+}
+

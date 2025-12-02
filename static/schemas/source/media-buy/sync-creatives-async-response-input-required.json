@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-creatives-async-response-input-required.json",
+  "title": "Sync Creatives Async Response - Input Required",
+  "description": "Structure of parts.data in webhook payloads for sync_creatives when status is 'input-required'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that human approval or input is needed before the creative sync can proceed (e.g., brand safety review, content approval).",
+  "type": "object",
+  "properties": {
+    "creative_ids": {
+      "type": "array",
+      "description": "Array of creative IDs requiring approval or input. Required for identifying which creatives need attention.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "errors": {
+      "type": "array",
+      "description": "Array of error objects explaining what approval or input is needed",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json",
+      "description": "Application-level context echoed from the request. Opaque correlation data for internal tracking."
+    }
+  },
+  "required": [
+    "creative_ids",
+    "errors"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Input required for brand safety review",
+      "data": {
+        "creative_ids": ["creative_video_001", "creative_display_002"],
+        "errors": [
+          {
+            "code": "BRAND_SAFETY_REVIEW_REQUIRED",
+            "message": "Creatives contain content that requires manual brand safety review before approval. Please review and approve or provide alternative assets.",
+            "field": "creatives[0].assets",
+            "suggestion": "Review creative content against publisher's brand safety guidelines or provide alternative assets"
+          }
+        ]
+      }
+    }
+  ]
+}
+

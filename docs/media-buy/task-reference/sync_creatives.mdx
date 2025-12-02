@@ -588,6 +588,273 @@ asyncio.run(main())
 
 6. **Check format support** - Use `list_creative_formats` to verify product supports your creative formats before uploading.
 
+## Webhook Payloads (Async Updates)
+
+When `sync_creatives` returns `status: "submitted"` or `status: "working"`, webhooks are triggered for status changes. The webhook payload follows **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload is a **StreamResponse object** containing exactly one of: `statusUpdate` (for status changes), `task` (for final completion), `message`, or `artifactUpdate`.
+
+ADCP declares only the structure of `parts[].data` (DataPart data field) within Message objects. The following specifies what `parts.data` should contain for each status in `sync_creatives` webhook payloads:
+
+**Important**: `creative_ids` is required in all webhook payloads for `sync_creatives` tool (all statuses) to enable creative identification. This allows buyers to correlate webhook notifications with their internal systems without needing to store `taskId` mappings.
+
+**Schema References:**
+- **Webhook Payload Schema**: [`/schemas/v3/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-payload.json)
+- **Input Required**: [`/schemas/v3/media-buy/sync-creatives-async-response-input-required.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-creatives-async-response-input-required.json)
+- **Failed**: [`/schemas/v3/media-buy/sync-creatives-async-response-failed.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-creatives-async-response-failed.json)
+- **Working**: [`/schemas/v3/media-buy/sync-creatives-async-response-working.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-creatives-async-response-working.json)
+- **Completed**: [`/schemas/v3/media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-creatives-response.json) (success variant)
+
+### Status: `input-required`
+
+When human approval or input is needed (e.g., brand safety review, content approval), the webhook uses `statusUpdate` with `parts.data` containing:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `creative_ids` | string[] | Yes | Array of creative IDs requiring approval or input |
+| `errors` | Error[] | Yes | Array of error objects explaining what approval is needed |
+
+**Example `parts.data` for `input-required`:**
+```json
+{
+  "creative_ids": ["creative_video_001", "creative_display_002"],
+  "errors": [
+    {
+      "code": "BRAND_SAFETY_REVIEW_REQUIRED",
+      "message": "Creatives contain content that requires manual brand safety review before approval. Please review and approve or provide alternative assets.",
+      "field": "creatives[0].assets",
+      "suggestion": "Review creative content against publisher's brand safety guidelines or provide alternative assets"
+    }
+  ]
+}
+```
+
+**Full webhook payload example:**
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_789",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "input-required",
+      "timestamp": "2025-01-22T12:00:00Z",
+      "message": {
+        "messageId": "msg_789_006",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Creatives require brand safety review before approval"
+          },
+          {
+            "data": {
+              "creative_ids": ["creative_video_001", "creative_display_002"],
+              "errors": [
+                {
+                  "code": "BRAND_SAFETY_REVIEW_REQUIRED",
+                  "message": "Creatives contain content that requires manual brand safety review before approval. Please review and approve or provide alternative assets.",
+                  "field": "creatives[0].assets",
+                  "suggestion": "Review creative content against publisher's brand safety guidelines or provide alternative assets"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "final": false
+  }
+}
+```
+
+### Status: `completed`
+
+When the creative sync is successfully completed, the webhook may use either `statusUpdate` or `task` variant. The `parts.data` contains the full success response matching the synchronous response schema:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `dry_run` | boolean | No | Whether this was a dry run (no actual changes made) |
+| `creatives` | CreativeResult[] | Yes | Array of results for each creative processed |
+| `context` | Context | No | Application-level context (if provided in request) |
+| `ext` | object | No | Extension fields (if provided in request) |
+
+**Example `parts.data` for `completed`:**
+```json
+{
+  "creatives": [
+    {
+      "creative_id": "creative_video_001",
+      "action": "created",
+      "platform_id": "platform_12345"
+    },
+    {
+      "creative_id": "creative_display_002",
+      "action": "updated",
+      "platform_id": "platform_67890",
+      "changes": ["name", "assets"]
+    }
+  ]
+}
+```
+
+**Full webhook payload example (using `task` variant):**
+```json
+{
+  "task": {
+    "id": "task_789",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "completed",
+      "timestamp": "2025-01-22T12:30:00Z",
+      "message": {
+        "messageId": "msg_789_007",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Successfully synced 2 creatives"
+          },
+          {
+            "data": {
+              "creatives": [
+                {
+                  "creative_id": "creative_video_001",
+                  "action": "created",
+                  "platform_id": "platform_12345"
+                },
+                {
+                  "creative_id": "creative_display_002",
+                  "action": "updated",
+                  "platform_id": "platform_67890",
+                  "changes": ["name", "assets"]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+### Status: `failed`
+
+When the sync operation fails completely (no creatives were processed), the webhook uses `statusUpdate` with `parts.data` containing:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `creative_ids` | string[] | Yes | Array of creative IDs that failed to sync (required for identification) |
+| `errors` | Error[] | Yes | Array of error objects explaining why the sync operation failed |
+
+**Example `parts.data` for `failed`:**
+```json
+{
+  "creative_ids": ["creative_video_001", "creative_display_002"],
+  "errors": [
+    {
+      "code": "AUTHENTICATION_FAILED",
+      "message": "Invalid or expired API token",
+      "field": "authentication"
+    },
+    {
+      "code": "SERVICE_UNAVAILABLE",
+      "message": "Creative processing service temporarily unavailable",
+      "field": "service"
+    }
+  ]
+}
+```
+
+**Full webhook payload example:**
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_789",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "failed",
+      "timestamp": "2025-01-22T12:45:00Z",
+      "message": {
+        "messageId": "msg_789_008",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Creative sync operation failed"
+          },
+          {
+            "data": {
+              "creative_ids": ["creative_video_001", "creative_display_002"],
+              "errors": [
+                {
+                  "code": "AUTHENTICATION_FAILED",
+                  "message": "Invalid or expired API token",
+                  "field": "authentication"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "final": true
+  }
+}
+```
+
+### Status: `working`
+
+When the creative sync operation is actively processing (uploading assets, validating formats, processing generative creatives), the webhook uses `statusUpdate` with `parts.data` containing:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `creative_ids` | string[] | Yes | Array of creative IDs being processed. Required for identifying which creatives are being synced. |
+
+**Example webhook payload:**
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_789",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "working",
+      "timestamp": "2025-01-22T12:10:00Z",
+      "message": {
+        "messageId": "msg_789_009",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Processing creatives and validating assets..."
+          },
+          {
+            "data": {
+              "creative_ids": ["creative_video_001", "creative_display_002"]
+            }
+          }
+        ]
+      }
+    },
+    "final": false
+  }
+}
+```
+
+**Note**: `creative_ids` is required in `parts.data` for `working` status to enable operation identification. The TextPart provides human-readable progress information.
+
+### Status: `submitted`
+
+When the creative sync is submitted for long-running processing (hours to days), the initial response returns `status: "submitted"`. Webhooks will be triggered for subsequent status changes (`input-required`, `completed`, `failed`). The `submitted` status itself does not trigger a webhook.
+
+### Summary
+
+| Status | StreamResponse Variant | `parts.data` Contents | Required Fields |
+|--------|----------------------|----------------------|----------------|
+| `input-required` | `statusUpdate` | `creative_ids[]`, `errors[]` | Both required |
+| `completed` | `task` or `statusUpdate` | Full success response matching `sync-creatives-response.json` | `creatives` |
+| `failed` | `statusUpdate` | `creative_ids[]`, `errors[]` | Both required |
+| `working` | `statusUpdate` | `creative_ids[]` | `creative_ids` required |
+| `submitted` | N/A (initial response only) | N/A | N/A |
+
+**Important**: `creative_ids` is required in all webhook payloads for `sync_creatives` tool to enable creative identification and correlation with the buyer's internal systems. This applies to all statuses: `input-required`, `failed`, `working`, and `completed`.
+
+**Reference**: See [Webhook Payload Schema](/schemas/v3/core/webhook-payload.json) and [Task Management](/docs/protocols/task-management) for complete webhook handling examples.
+
 ## Next Steps
 
 - [list_creative_formats](/docs/media-buy/task-reference/list_creative_formats) - Check supported formats before upload
