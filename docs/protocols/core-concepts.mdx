@@ -372,14 +372,16 @@ The server decides whether to use webhooks based on the initial response status:
 
 ### Webhook POST Format
 
-When an async operation changes status, the publisher POSTs a payload with protocol fields at the top-level and the task-specific payload nested under `result`.
+When an async operation changes status, the publisher POSTs a payload following **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload uses A2A's Task structure with a Message containing parts array. ADCP declares only the structure of `parts[].data` (DataPart data field) for task-specific payloads.
 
 #### Webhook Scenarios
 
 **Scenario 1: Synchronous completion (no webhook)**
 ```javascript
 // Initial request
-const response = await session.call('create_media_buy', params, { webhook_url: "..." });
+const response = await session.call('create_media_buy', params, { 
+  push_notification_config: { url: "...", authentication: {...} }
+});
 
 // Response is immediate and complete - webhook is NOT called
 {
@@ -392,7 +394,9 @@ const response = await session.call('create_media_buy', params, { webhook_url: "
 **Scenario 2: Quick async processing (no webhook - use working status)**
 ```javascript
 // Initial response indicates processing will complete soon
-const response = await session.call('create_media_buy', params, { webhook_url: "..." });
+const response = await session.call('create_media_buy', params, { 
+  push_notification_config: { url: "...", authentication: {...} }
+});
 {
   "status": "working",
   "task_id": "task_789",
@@ -408,7 +412,13 @@ const response = await session.call('create_media_buy', params, { webhook_url: "
 ```javascript
 // Initial request
 const response = await session.call('create_media_buy', params, {
-  webhook_url: "https://buyer.com/webhooks/adcp/create_media_buy/agent_123/op_456"
+  push_notification_config: {
+    url: "https://buyer.com/webhooks/adcp/create_media_buy/agent_123/op_456",
+    authentication: {
+      schemes: ["HMAC-SHA256"],
+      credentials: "shared_secret_32_chars"
+    }
+  }
 });
 
 // Response indicates long-running async operation
@@ -419,40 +429,62 @@ const response = await session.call('create_media_buy', params, {
   "message": "Campaign requires sales approval. Expected time: 2-4 hours."
 }
 
-// Later: Webhook POST when approval is needed
+// Later: Webhook POST when approval is needed (A2A format)
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
+Content-Type: application/json
+X-ADCP-Signature: sha256=...
+X-ADCP-Timestamp: 2025-01-22T10:15:00Z
+
 {
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
+  "taskId": "task_456",
   "status": "input-required",
   "timestamp": "2025-01-22T10:15:00Z",
-  "message": "Please approve $150K campaign to proceed",
-  "result": {
-    "buyer_ref": "nike_q1_campaign_2024"
+  "contextId": "ctx_abc123",
+  "message": {
+    "parts": [
+      {
+        "text": "Please approve $150K campaign to proceed"
+      },
+      {
+        "data": {
+          "buyer_ref": "nike_q1_campaign_2024"
+        }
+      }
+    ]
   }
 }
 
-// Later: Webhook POST when approved and completed (result nested)
+// Later: Webhook POST when approved and completed (A2A format)
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
+Content-Type: application/json
+X-ADCP-Signature: sha256=...
+X-ADCP-Timestamp: 2025-01-22T10:30:00Z
+
 {
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
+  "taskId": "task_456",
   "status": "completed",
   "timestamp": "2025-01-22T10:30:00Z",
-  "result": {
-    "media_buy_id": "mb_12345",
-    "buyer_ref": "nike_q1_campaign_2024",
-    "creative_deadline": "2024-01-30T23:59:59Z",
-    "packages": [
+  "message": {
+    "parts": [
       {
-        "package_id": "pkg_12345_001",
-        "buyer_ref": "nike_ctv_sports_package"
+        "text": "Media buy created successfully with 2 packages ready for creative assignment"
       },
       {
-        "package_id": "pkg_12345_002",
-        "buyer_ref": "nike_audio_drive_package"
+        "data": {
+          "media_buy_id": "mb_12345",
+          "buyer_ref": "nike_q1_campaign_2024",
+          "creative_deadline": "2024-01-30T23:59:59Z",
+          "packages": [
+            {
+              "package_id": "pkg_12345_001",
+              "buyer_ref": "nike_ctv_sports_package"
+            },
+            {
+              "package_id": "pkg_12345_002",
+              "buyer_ref": "nike_audio_drive_package"
+            }
+          ]
+        }
       }
     ]
   }
@@ -484,56 +516,111 @@ Your webhook handler can parse the URL path to route to the correct handler base
 
 #### Webhook Payload Structure
 
-Every webhook POST contains protocol fields plus a `result` object for the task-specific payload of that status.
+**AdCP fully adopts A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload follows A2A's Task structure with a Message containing parts array. ADCP declares only the structure of `parts[].data` (DataPart data field) for task-specific payloads.
 
-**`input-required` webhook (human needs to respond):**
+**Webhook Payload Schema**: [`https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json)
+
+**`input-required` webhook (human needs to respond) - A2A format:**
 ```json
 {
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
+  "taskId": "task_456",
   "status": "input-required",
-  "message": "Campaign budget requires VP approval to proceed",
-  "result": {
-    "buyer_ref": "nike_q1_campaign_2024"
-  }
-}
-```
-
-**`completed` webhook (operation finished - full create_media_buy response):**
-```json
-{
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "status": "completed",
-  "result": {
-    "media_buy_id": "mb_12345",
-    "buyer_ref": "nike_q1_campaign_2024",
-    "creative_deadline": "2024-01-30T23:59:59Z",
-    "packages": [
+  "timestamp": "2025-01-22T10:15:00Z",
+  "contextId": "ctx_abc123",
+  "message": {
+    "parts": [
       {
-        "package_id": "pkg_001",
-        "buyer_ref": "nike_ctv_package"
+        "text": "Campaign budget requires VP approval to proceed"
+      },
+      {
+        "data": {
+          "buyer_ref": "nike_q1_campaign_2024",
+          "errors": [
+            {
+              "code": "APPROVAL_REQUIRED",
+              "message": "Budget exceeds auto-approval threshold",
+              "field": "packages[0].budget"
+            }
+          ]
+        }
       }
     ]
   }
 }
 ```
 
-**`failed` webhook (operation failed):**
+**`completed` webhook (operation finished - full create_media_buy response) - A2A format:**
 ```json
 {
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "status": "failed",
-  "message": "Requested targeting yielded 0 available impressions",
-  "error": "insufficient_inventory"
+  "taskId": "task_456",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "message": {
+    "parts": [
+      {
+        "text": "Media buy created successfully with 2 packages ready for creative assignment"
+      },
+      {
+        "data": {
+          "media_buy_id": "mb_12345",
+          "buyer_ref": "nike_q1_campaign_2024",
+          "creative_deadline": "2024-01-30T23:59:59Z",
+          "packages": [
+            {
+              "package_id": "pkg_001",
+              "buyer_ref": "nike_ctv_package"
+            }
+          ]
+        }
+      }
+    ]
+  }
 }
 ```
 
-**Key principle:** Webhooks are ONLY called for `submitted` operations, and each webhook contains an envelope plus `result` matching the task's response schema.
+**`failed` webhook (operation failed) - A2A format:**
+```json
+{
+  "taskId": "task_456",
+  "status": "failed",
+  "timestamp": "2025-01-22T10:46:00Z",
+  "message": {
+    "parts": [
+      {
+        "text": "Requested targeting yielded 0 available impressions"
+      }
+    ]
+  }
+}
+```
+
+**Extracting task data from webhook payload:**
+
+```javascript
+function extractWebhookData(webhookPayload) {
+  // Find the DataPart in message.parts array
+  const dataPart = webhookPayload.message.parts.find(part => part.data !== undefined);
+  
+  if (dataPart) {
+    return dataPart.data; // This is the AdCP task-specific payload
+  }
+  
+  // For interim statuses (input-required, working), DataPart may be absent
+  // Extract text message instead
+  const textPart = webhookPayload.message.parts.find(part => part.text !== undefined);
+  return {
+    message: textPart?.text,
+    status: webhookPayload.status
+  };
+}
+```
+
+**Key principles:**
+- Webhooks are ONLY called for `submitted` operations
+- Payload structure fully adopts A2A Protocol's push notification format (Section 4.3.3)
+- Task-specific data is in `message.parts[]` array - find the DataPart (part with `data` property)
+- ADCP declares only the structure of `parts[].data` - the DataPart's data field contains the task response schema
+- TextPart (part with `text` property) provides human-readable context but is optional
 
 ### Task State Reconciliation
 

@@ -464,21 +464,31 @@ const response = await session.call('create_media_buy',
 
 ### Webhook POST Format
 
-When a task's status changes, the publisher POSTs a payload with protocol fields at the top-level and the task-specific payload nested under `result` to your webhook URL.
+When a task's status changes, the publisher POSTs a payload following **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload uses A2A's Task structure with a Message containing parts array. ADCP declares only the structure of `parts[].data` (DataPart data field) for task-specific payloads.
 
 **Webhook Payload Schema**: [`https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json)
 
-**Top-level fields:**
-- `operation_id` (required) — Correlates a sequence of updates for this operation
-- `domain` - AdCP domain ("media-buy" or "signals")
-- `task_type` (required) — e.g., "create_media_buy", "sync_creatives", "activate_signal"
-- `status` (required) — Current task status
-- `task_id` (optional) — Present when server exposes task tracking id
-- `context_id` (optional) — Conversation/session id
-- `message` (optional) — Human-readable context
+**Top-level fields (A2A Task structure):**
+- `taskId` (required) — A2A task identifier. Unique identifier for this task
+- `status` (required) — Current task status (A2A TaskState enum)
 - `timestamp` (optional) — ISO 8601 time when webhook was generated
-- `result` (optional) — Task-specific payload for this status
-- `error` (optional) — Error message string when status is `failed`
+- `contextId` (optional) — A2A context identifier. Conversation/session id
+- `message` (required) — A2A Message structure containing parts array
+
+**Message.parts structure:**
+- `parts[]` — Array of message parts (A2A Part union type)
+  - TextPart: `{text: string}` — Human-readable context (optional)
+  - DataPart: `{data: object}` — Task-specific payload (ADCP declares only this structure)
+  - FilePart: `{file: object}` — Optional file references (rarely used in webhooks)
+
+**Extracting task data:**
+```javascript
+function extractWebhookData(webhookPayload) {
+  // Find the DataPart in message.parts array
+  const dataPart = webhookPayload.message.parts.find(part => part.data !== undefined);
+  return dataPart?.data; // This is the AdCP task-specific payload
+}
+```
 
 **Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted` (long-running operations).
 
@@ -492,7 +502,7 @@ When a task's status changes, the publisher POSTs a payload with protocol fields
 - Status changes to `failed` → Webhook called (error details provided)
 - Status changes to `canceled` → Webhook called (cancellation confirmed)
 
-**Example: `input-required` webhook (human approval needed):**
+**Example: `input-required` webhook (human approval needed) - A2A format:**
 ```http
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 Host: buyer.example.com
@@ -500,47 +510,57 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "domain": "media-buy",
+  "taskId": "task_456",
   "status": "input-required",
   "timestamp": "2025-01-22T10:15:00Z",
-  "context_id": "ctx_abc123",
-  "message": "Campaign budget $150K requires VP approval to proceed",
-  "result": {
-    "buyer_ref": "nike_q1_campaign_2024"
-  }
-}
-```
-
-**Example: `completed` webhook (after approval granted - full create_media_buy response):**
-```http
-POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
-Host: buyer.example.com
-Authorization: Bearer your-secret-token
-Content-Type: application/json
-
-{
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "domain": "media-buy",
-  "status": "completed",
-  "timestamp": "2025-01-22T10:30:00Z",
-  "message": "Media buy created successfully with 2 packages ready for creative assignment",
-  "result": {
-    "media_buy_id": "mb_12345",
-    "buyer_ref": "nike_q1_campaign_2024",
-    "creative_deadline": "2024-01-30T23:59:59Z",
-    "packages": [
-      { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_package" }
+  "contextId": "ctx_abc123",
+  "message": {
+    "parts": [
+      {
+        "text": "Campaign budget $150K requires VP approval to proceed"
+      },
+      {
+        "data": {
+          "buyer_ref": "nike_q1_campaign_2024"
+        }
+      }
     ]
   }
 }
 ```
 
-The webhook receives the **full response object** for each status, not just a notification. This means your webhook handler gets all the context and data needed to take appropriate action.
+**Example: `completed` webhook (after approval granted - full create_media_buy response) - A2A format:**
+```http
+POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
+Host: buyer.example.com
+Authorization: Bearer your-secret-token
+Content-Type: application/json
+
+{
+  "taskId": "task_456",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "message": {
+    "parts": [
+      {
+        "text": "Media buy created successfully with 2 packages ready for creative assignment"
+      },
+      {
+        "data": {
+          "media_buy_id": "mb_12345",
+          "buyer_ref": "nike_q1_campaign_2024",
+          "creative_deadline": "2024-01-30T23:59:59Z",
+          "packages": [
+            { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_package" }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+The webhook receives the **full A2A-compatible response structure** for each status. Extract task data from `message.parts[]` array by finding the DataPart (part with `data` property). This means your webhook handler gets all the context and data needed to take appropriate action.
 
 ### Webhook Handling Example
 

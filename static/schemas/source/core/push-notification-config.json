@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/push-notification-config.json",
   "title": "Push Notification Config",
-  "description": "Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. Supports Bearer tokens (simple) or HMAC signatures (production-recommended).",
+  "description": "Webhook configuration for asynchronous task notifications. Fully adopts A2A Protocol's PushNotificationConfig structure (A2A Specification Section 4.3.1). ADCP requires authentication for security (A2A makes it optional). Supports Bearer tokens (simple) or HMAC signatures (production-recommended).",
   "type": "object",
   "properties": {
     "url": {
@@ -39,5 +39,10 @@
     }
   },
   "required": ["url", "authentication"],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "notes": [
+    "This structure fully adopts A2A Protocol's PushNotificationConfig (A2A Specification Section 4.3.1)",
+    "The push notification payload sent to this URL follows A2A's push notification payload structure (Section 4.3.3)",
+    "See webhook-payload.json schema for the payload structure that will be sent to this URL"
+  ]
 }

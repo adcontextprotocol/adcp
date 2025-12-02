@@ -468,7 +468,7 @@ AdCP uses A2A's TaskState enum directly:
 
 ## Webhook Payloads
 
-Async operations (`status: "submitted"`) deliver the same artifact structure in webhooks:
+Async operations (`status: "submitted"`) deliver push notifications following **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload uses A2A's Task structure with a Message containing parts array, not the artifacts structure used in synchronous responses.
 
 ```json
 POST /webhook-endpoint
@@ -476,20 +476,26 @@ POST /webhook-endpoint
   "taskId": "task_123",
   "status": "completed",
   "timestamp": "2025-01-22T10:30:00Z",
-  "artifacts": [{
+  "message": {
     "parts": [
-      {"kind": "text", "text": "Media buy approved and live"},
-      {"kind": "data", "data": {
+      {"text": "Media buy approved and live"},
+      {"data": {
         "media_buy_id": "mb_456",
         "packages": [...],
         "creative_deadline": "2025-01-30T23:59:59Z"
       }}
     ]
-  }]
+  }
 }
 ```
 
-Extract AdCP data using the same last-DataPart pattern. **For webhook authentication, retry patterns, and security**, see [Core Concepts - Webhook Reliability](/docs/protocols/core-concepts#webhook-reliability).
+**Key differences from synchronous A2A responses:**
+- Webhooks use `message.parts[]` (A2A Message structure), not `artifacts[]`
+- Extract AdCP data by finding the DataPart in `message.parts` array (part with `data` property)
+- Use the last DataPart as authoritative when multiple data parts exist
+- ADCP declares only the structure of `parts[].data` (DataPart data field)
+
+**For webhook authentication, retry patterns, and security**, see [Core Concepts - Webhook Reliability](/docs/protocols/core-concepts#webhook-reliability).
 
 ## File Parts in Responses
 

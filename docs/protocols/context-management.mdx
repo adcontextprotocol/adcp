@@ -129,7 +129,7 @@ Note: Long-term task state (like media buy status, creative assets, performance 
 
 ## Application-Level Context
 
-Task request payloads may include an optional `context` object that carries application-level metadata (session hints, correlation tokens, tracking identifiers, etc.). The agent must echo this object back unchanged inside the task payload, including webhook `result` payloads.
+Task request payloads may include an optional `context` object that carries application-level metadata (session hints, correlation tokens, tracking identifiers, etc.). The agent must echo this object back unchanged inside the task payload, including webhook payloads (in `message.parts[].data` for A2A-compatible webhooks).
 
 ### Example: Create media buy with application-level context
 
@@ -174,7 +174,7 @@ Response (application-level context is repeated inside the payload):
 
 ![Application Context Lifecycle 02](./initator-context-lifecycle-02.png)
 
-Webhook updates include the same application-level `context` inside the webhook `result` payload.
+Webhook updates include the same application-level `context` inside the webhook payload's DataPart (`message.parts[].data` for A2A-compatible webhooks).
 
 ## Best Practices
 
