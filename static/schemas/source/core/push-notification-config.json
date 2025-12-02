@@ -8,7 +8,7 @@
     "url": {
       "type": "string",
       "format": "uri",
-      "description": "Webhook endpoint URL for task status notifications"
+      "description": "Webhook endpoint URL for task status notifications. **Task Type Identification**: The webhook payload does not include task type information. The recommended approach is to include the task type in the URL path (e.g., `https://buyer.com/webhooks/adcp/{task_name}/{agent_id}/{operation_id}`) to enable task type identification. Buyers may use alternative approaches (e.g., taskId mapping tables) if preferred."
     },
     "token": {
       "type": "string",

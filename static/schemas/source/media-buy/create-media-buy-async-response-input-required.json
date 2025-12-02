@@ -2,16 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/create-media-buy-async-response-input-required.json",
   "title": "Create Media Buy Async Response - Input Required",
-  "description": "Structure of parts.data in webhook payloads for create_media_buy when status is 'input-required'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that human approval or input is needed before the operation can proceed.",
+  "description": "Structure of parts.data in webhook payloads for create_media_buy when status is 'input-required'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that additional input or fixes are required before the operation can proceed (e.g., bid price too low, budget below minimum).",
   "type": "object",
   "properties": {
     "buyer_ref": {
       "type": "string",
-      "description": "Buyer's reference identifier for the media buy requiring approval. Required for identifying which operation needs attention."
+      "description": "Buyer's reference identifier for the media buy requiring input or fixes. Required for identifying which operation needs attention."
     },
     "errors": {
       "type": "array",
-      "description": "Array of error objects explaining what approval or input is needed",
+      "description": "Array of error objects explaining what input or fixes are needed",
       "items": {
         "$ref": "/schemas/core/error.json"
       },

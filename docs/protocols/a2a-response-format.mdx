@@ -462,7 +462,7 @@ AdCP uses A2A's TaskState enum directly:
 |------------|------------|-------------------|
 | `completed` | Task finished successfully | Data in `DataPart`, optional errors array |
 | `failed` | Fatal error preventing completion | Text message explaining failure |
-| `input-required` | Need user input/approval | Data + text explaining what's needed |
+| `input-required` | Need additional input or fixes | Data + text explaining what's needed |
 | `working` | Processing (< 120s) | Optional progress data |
 | `submitted` | Long-running (hours/days) | Minimal data, use webhooks/polling |
 

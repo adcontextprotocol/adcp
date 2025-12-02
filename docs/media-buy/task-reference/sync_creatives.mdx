@@ -597,20 +597,20 @@ ADCP declares only the structure of `parts[].data` (DataPart data field) within 
 **Important**: `creative_ids` is required in all webhook payloads for `sync_creatives` tool (all statuses) to enable creative identification. This allows buyers to correlate webhook notifications with their internal systems without needing to store `taskId` mappings.
 
 **Schema References:**
-- **Webhook Payload Schema**: [`/schemas/v3/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-payload.json)
-- **Input Required**: [`/schemas/v3/media-buy/sync-creatives-async-response-input-required.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-creatives-async-response-input-required.json)
-- **Failed**: [`/schemas/v3/media-buy/sync-creatives-async-response-failed.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-creatives-async-response-failed.json)
-- **Working**: [`/schemas/v3/media-buy/sync-creatives-async-response-working.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-creatives-async-response-working.json)
-- **Completed**: [`/schemas/v3/media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-creatives-response.json) (success variant)
+
+**Top-Level Webhook Payload Schema:**
+- [`/schemas/v2/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json) - Complete A2A StreamResponse structure containing `statusUpdate`, `task`, `message`, or `artifactUpdate`
 
 ### Status: `input-required`
 
-When human approval or input is needed (e.g., brand safety review, content approval), the webhook uses `statusUpdate` with `parts.data` containing:
+**Schema**: [`/schemas/v2/media-buy/sync-creatives-async-response-input-required.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-async-response-input-required.json) - Defines the structure of `parts[].data` for this status.
+
+When additional input or fixes are required (e.g., invalid format, missing assets, validation errors), the webhook uses `statusUpdate` with `parts.data` containing:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `creative_ids` | string[] | Yes | Array of creative IDs requiring approval or input |
-| `errors` | Error[] | Yes | Array of error objects explaining what approval is needed |
+| `creative_ids` | string[] | Yes | Array of creative IDs requiring input or fixes |
+| `errors` | Error[] | Yes | Array of error objects explaining what input or fixes are needed |
 
 **Example `parts.data` for `input-required`:**
 ```json
@@ -641,17 +641,17 @@ When human approval or input is needed (e.g., brand safety review, content appro
         "role": "agent",
         "parts": [
           {
-            "text": "Creatives require brand safety review before approval"
+            "text": "Creative format validation failed. Please fix the issues and retry."
           },
           {
             "data": {
               "creative_ids": ["creative_video_001", "creative_display_002"],
               "errors": [
                 {
-                  "code": "BRAND_SAFETY_REVIEW_REQUIRED",
-                  "message": "Creatives contain content that requires manual brand safety review before approval. Please review and approve or provide alternative assets.",
-                  "field": "creatives[0].assets",
-                  "suggestion": "Review creative content against publisher's brand safety guidelines or provide alternative assets"
+                  "code": "FORMAT_MISMATCH",
+                  "message": "Creative assets do not match the required format specifications. Video duration must be exactly 30 seconds, but provided video is 28 seconds.",
+                  "field": "creatives[0].assets.video.duration_ms",
+                  "suggestion": "Provide a video asset with duration_ms of 30000 (30 seconds) to match the format requirements"
                 }
               ]
             }
@@ -665,6 +665,8 @@ When human approval or input is needed (e.g., brand safety review, content appro
 ```
 
 ### Status: `completed`
+
+**Schema**: [`/schemas/v2/media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-response.json) - Defines the structure of `parts[].data` for this status.
 
 When the creative sync is successfully completed, the webhook may use either `statusUpdate` or `task` variant. The `parts.data` contains the full success response matching the synchronous response schema:
 
@@ -736,6 +738,8 @@ When the creative sync is successfully completed, the webhook may use either `st
 
 ### Status: `failed`
 
+**Schema**: [`/schemas/v2/media-buy/sync-creatives-async-response-failed.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-async-response-failed.json) - Defines the structure of `parts[].data` for this status.
+
 When the sync operation fails completely (no creatives were processed), the webhook uses `statusUpdate` with `parts.data` containing:
 
 | Field | Type | Required | Description |
@@ -800,6 +804,8 @@ When the sync operation fails completely (no creatives were processed), the webh
 
 ### Status: `working`
 
+**Schema**: [`/schemas/v2/media-buy/sync-creatives-async-response-working.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-async-response-working.json) - Defines the structure of `parts[].data` for this status.
+
 When the creative sync operation is actively processing (uploading assets, validating formats, processing generative creatives), the webhook uses `statusUpdate` with `parts.data` containing:
 
 | Field | Type | Required | Description |
@@ -853,7 +859,7 @@ When the creative sync is submitted for long-running processing (hours to days),
 
 **Important**: `creative_ids` is required in all webhook payloads for `sync_creatives` tool to enable creative identification and correlation with the buyer's internal systems. This applies to all statuses: `input-required`, `failed`, `working`, and `completed`.
 
-**Reference**: See [Webhook Payload Schema](/schemas/v3/core/webhook-payload.json) and [Task Management](/docs/protocols/task-management) for complete webhook handling examples.
+**Reference**: See [Webhook Payload Schema](/schemas/v2/core/webhook-payload.json) and [Task Management](/docs/protocols/task-management) for complete webhook handling examples.
 
 ## Next Steps
 

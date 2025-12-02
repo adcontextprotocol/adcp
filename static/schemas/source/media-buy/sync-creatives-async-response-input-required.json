@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/sync-creatives-async-response-input-required.json",
   "title": "Sync Creatives Async Response - Input Required",
-  "description": "Structure of parts.data in webhook payloads for sync_creatives when status is 'input-required'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that human approval or input is needed before the creative sync can proceed (e.g., brand safety review, content approval).",
+  "description": "Structure of parts.data in webhook payloads for sync_creatives when status is 'input-required'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that additional input or fixes are required before the creative sync can proceed (e.g., invalid format, missing assets, validation errors).",
   "type": "object",
   "properties": {
     "creative_ids": {
       "type": "array",
-      "description": "Array of creative IDs requiring approval or input. Required for identifying which creatives need attention.",
+      "description": "Array of creative IDs requiring input or fixes. Required for identifying which creatives need attention.",
       "items": {
         "type": "string"
       },
@@ -15,7 +15,7 @@
     },
     "errors": {
       "type": "array",
-      "description": "Array of error objects explaining what approval or input is needed",
+      "description": "Array of error objects explaining what input or fixes are needed",
       "items": {
         "$ref": "/schemas/core/error.json"
       },
@@ -33,15 +33,15 @@
   "additionalProperties": false,
   "examples": [
     {
-      "description": "Input required for brand safety review",
+      "description": "Input required for invalid format",
       "data": {
         "creative_ids": ["creative_video_001", "creative_display_002"],
         "errors": [
           {
-            "code": "BRAND_SAFETY_REVIEW_REQUIRED",
-            "message": "Creatives contain content that requires manual brand safety review before approval. Please review and approve or provide alternative assets.",
-            "field": "creatives[0].assets",
-            "suggestion": "Review creative content against publisher's brand safety guidelines or provide alternative assets"
+            "code": "FORMAT_MISMATCH",
+            "message": "Creative assets do not match the required format specifications. Video duration must be exactly 30 seconds, but provided video is 28 seconds.",
+            "field": "creatives[0].assets.video.duration_ms",
+            "suggestion": "Provide a video asset with duration_ms of 30000 (30 seconds) to match the format requirements"
           }
         ]
       }

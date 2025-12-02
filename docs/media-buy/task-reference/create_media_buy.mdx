@@ -632,20 +632,20 @@ ADCP declares only the structure of `parts[].data` (DataPart data field) within 
 **Important**: `buyer_ref` is required in all webhook payloads for `create_media_buy` tool (all statuses) to enable media buy identification. This allows buyers to correlate webhook notifications with their internal systems without needing to store `taskId` mappings.
 
 **Schema References:**
-- **Webhook Payload Schema**: [`/schemas/v3/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-payload.json)
-- **Input Required**: [`/schemas/v3/media-buy/create-media-buy-async-response-input-required.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-async-response-input-required.json)
-- **Failed**: [`/schemas/v3/media-buy/create-media-buy-async-response-failed.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-async-response-failed.json)
-- **Working**: [`/schemas/v3/media-buy/create-media-buy-async-response-working.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-async-response-working.json)
-- **Completed**: [`/schemas/v3/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json) (success variant)
+
+**Top-Level Webhook Payload Schema:**
+- [`/schemas/v2/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json) - Complete A2A StreamResponse structure containing `statusUpdate`, `task`, `message`, or `artifactUpdate`
 
 ### Status: `input-required`
 
-When human approval or input is needed, the webhook uses `statusUpdate` with `parts.data` containing:
+**Schema**: [`/schemas/v2/media-buy/create-media-buy-async-response-input-required.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-async-response-input-required.json) - Defines the structure of `parts[].data` for this status.
+
+When additional input or fixes are required (e.g., bid price too low, budget below minimum), the webhook uses `statusUpdate` with `parts.data` containing:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `buyer_ref` | string | Yes | Buyer's reference identifier for the media buy requiring approval |
-| `errors` | Error[] | Yes | Array of error objects explaining what approval is needed |
+| `buyer_ref` | string | Yes | Buyer's reference identifier for the media buy requiring input or fixes |
+| `errors` | Error[] | Yes | Array of error objects explaining what input or fixes are needed |
 
 **Example `parts.data` for `input-required`:**
 ```json
@@ -676,7 +676,7 @@ When human approval or input is needed, the webhook uses `statusUpdate` with `pa
         "role": "agent",
         "parts": [
           {
-            "text": "Campaign budget $150K requires VP approval to proceed"
+            "text": "Bid price $2.50 is below the minimum floor. Please increase to at least $5.00."
           },
           {
             "data": {
@@ -700,6 +700,8 @@ When human approval or input is needed, the webhook uses `statusUpdate` with `pa
 ```
 
 ### Status: `completed`
+
+**Schema**: [`/schemas/v2/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-response.json) - Defines the structure of `parts[].data` for this status.
 
 When the media buy is successfully created, the webhook may use either `statusUpdate` or `task` variant. The `parts.data` contains the full success response matching the synchronous response schema:
 
@@ -789,6 +791,8 @@ When the media buy is successfully created, the webhook may use either `statusUp
 
 ### Status: `failed`
 
+**Schema**: [`/schemas/v2/media-buy/create-media-buy-async-response-failed.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-async-response-failed.json) - Defines the structure of `parts[].data` for this status.
+
 When the operation fails, the webhook uses `statusUpdate` with `parts.data` containing:
 
 | Field | Type | Required | Description |
@@ -854,6 +858,8 @@ When the operation fails, the webhook uses `statusUpdate` with `parts.data` cont
 
 ### Status: `working`
 
+**Schema**: [`/schemas/v2/media-buy/create-media-buy-async-response-working.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-async-response-working.json) - Defines the structure of `parts[].data` for this status.
+
 When the operation is actively processing (typically < 120 seconds), the webhook uses `statusUpdate` with `parts.data` containing:
 
 | Field | Type | Required | Description |
@@ -907,7 +913,7 @@ When the operation is submitted for long-running processing (hours to days), the
 
 **Important**: `buyer_ref` is required in all webhook payloads for `create_media_buy` tool to enable media buy identification and correlation with the buyer's internal systems. This applies to all statuses: `input-required`, `failed`, `working`, and etc.
 
-**Reference**: See [Webhook Payload Schema](/schemas/v3/core/webhook-payload.json) and [Task Management](/docs/protocols/task-management) for complete webhook handling examples.
+**Reference**: See [Webhook Payload Schema](/schemas/v2/core/webhook-payload.json) and [Task Management](/docs/protocols/task-management) for complete webhook handling examples.
 
 ## Usage Notes
 

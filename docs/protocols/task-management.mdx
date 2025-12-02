@@ -447,12 +447,15 @@ Task management integrates with protocol-level webhook configuration for push no
 
 Configure webhooks at the protocol level when making async task calls. See **[Core Concepts: Protocol-Level Webhook Configuration](/docs/protocols/core-concepts#protocol-level-webhook-configuration)** for complete setup examples.
 
+**Task Type Identification**: The webhook payload does not include task type information. Task type identification depends on how you register your webhook. The recommended approach is to include the task type in the webhook URL path (e.g., `/webhooks/adcp/{task_name}/...`). See [Task Type Identification](/docs/protocols/core-concepts#task-type-identification) for details.
+
 **Quick example:**
 ```javascript
 const response = await session.call('create_media_buy',
   { /* task params */ },
   {
     push_notification_config: {
+      // Recommended: Include task type in URL path for easy identification
       url: "https://buyer.com/webhooks/adcp/create_media_buy/agent_id/operation_id",
       authentication: {
         schemes: ["HMAC-SHA256"],  // or ["Bearer"] for simple auth
@@ -546,7 +549,7 @@ function extractWebhookData(webhookPayload) {
 }
 ```
 
-**Example: `input-required` webhook (human approval needed) - A2A StreamResponse format:**
+**Example: `input-required` webhook (additional input or fixes required) - A2A StreamResponse format:**
 ```http
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 Host: buyer.example.com
@@ -624,6 +627,8 @@ The webhook receives the **full A2A-compatible StreamResponse structure** for ea
 
 ```javascript
 app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) => {
+  // Task type is extracted from URL path (recommended approach)
+  // Alternative: Use taskId from payload and maintain a local mapping table
   const { task_type, agent_id, operation_id } = req.params;
   const payload = req.body;
 

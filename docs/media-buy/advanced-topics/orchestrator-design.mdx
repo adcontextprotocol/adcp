@@ -33,7 +33,7 @@ Operations progress through standardized status values:
 TASK_STATUSES = {
     "submitted",      # Long-running (hours to days) - provide webhook or poll
     "working",        # Processing (< 120 seconds) - poll frequently  
-    "input-required", # Need user input/approval - continue conversation
+    "input-required", # Need user input/fixes - continue conversation
     "completed",      # Success - process results
     "failed",         # Error - handle appropriately
     "canceled",       # User canceled

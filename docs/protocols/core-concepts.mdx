@@ -118,31 +118,37 @@ if (response.status === 'input-required') {
 }
 ```
 
-#### 2. Approval Flow
-Human approval is a special case of `input-required`:
+#### 2. Input Required Flow
+When `input-required` status is returned, the operation needs additional input or fixes before it can proceed:
 
 ```json
 {
   "status": "input-required", 
-  "message": "Media buy exceeds auto-approval limit ($100K). Please approve to proceed with campaign creation.",
+  "message": "Bid price $2.50 is below the minimum floor of $5.00. Please increase bid_price to at least $5.00.",
   "context_id": "ctx-123",
   "data": {
-    "approval_required": true,
-    "amount": 150000,
-    "reason": "exceeds_limit"
+    "buyer_ref": "nike_q1_campaign_2024",
+    "errors": [{
+      "code": "BID_PRICE_TOO_LOW",
+      "message": "Bid price $2.50 is below the minimum floor of $5.00 for this auction-based product.",
+      "field": "packages[0].bid_price",
+      "suggestion": "Set bid_price to at least $5.00 to participate in the auction"
+    }]
   }
 }
 ```
 
 **Client handling:**
 ```javascript
-if (response.status === 'input-required' && response.data?.approval_required) {
-  // Show approval UI
-  const approved = await showApprovalDialog(response.message, response.data);
+if (response.status === 'input-required') {
+  // Extract what's needed from the errors
+  const fixes = response.data?.errors || [];
   
-  // Send approval decision
-  const decision = approved ? "Approved" : "Rejected";
-  return sendMessage(response.context_id, decision);
+  // Show UI to fix the issues
+  const fixedData = await promptForFixes(fixes);
+  
+  // Retry with corrected data
+  return sendMessage(response.context_id, fixedData);
 }
 ```
 
@@ -177,12 +183,12 @@ AdCP operations fall into three categories:
    - Fast operations that don't require external systems
 
 2. **Interactive** - May return `input-required` before proceeding
-   - `get_products` (when brief is vague)
-   - Operations that need clarification or approval
+   - `create_media_buy` (when bid price too low, budget below minimum)
+   - Operations that need additional input or fixes
 
 3. **Asynchronous** - Return `working` or `submitted` and require polling/streaming
    - `create_media_buy`, `activate_signal`, `sync_creatives`
-   - Operations that integrate with external systems or require human approval
+   - Operations that integrate with external systems or require additional input/fixes
 
 ### Timeout Handling
 
@@ -191,7 +197,7 @@ Set reasonable timeouts based on operation type:
 ```javascript
 const TIMEOUTS = {
   sync: 30_000,        // 30 seconds for immediate operations
-  interactive: 300_000, // 5 minutes for human input
+  interactive: 300_000, // 5 minutes for user to provide input/fixes
   working: 120_000,    // 2 minutes for working tasks
   submitted: 86_400_000 // 24 hours for submitted tasks
 };
@@ -412,7 +418,7 @@ const response = await session.call('create_media_buy', params, {
   "message": "Campaign requires sales approval. Expected time: 2-4 hours."
 }
 
-// Later: Webhook POST when approval is needed (A2A StreamResponse format - statusUpdate for status change)
+// Later: Webhook POST when input/fixes are required (A2A StreamResponse format - statusUpdate for status change)
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 Content-Type: application/json
 X-ADCP-Signature: sha256=...
@@ -486,9 +492,30 @@ X-ADCP-Timestamp: 2025-01-22T10:30:00Z
 }
 ```
 
+#### Task Type Identification
+
+**Important**: The webhook payload (JSON body) does not include task type information. Task type identification is the responsibility of the webhook handler and depends on how the webhook is registered.
+
+**Recommended Approach: URL Path Pattern**
+
+The recommended approach is to include the task type in the webhook URL path. This allows the buyer agent to identify which task operation the webhook notification is for by parsing the URL.
+
+**Alternative Approaches:**
+
+Buyers may use other approaches for task type identification if they prefer:
+- Store task type mappings using `taskId` (from the webhook payload) and maintain a local mapping table
+- Use different webhook URLs per task type (as recommended above)
+- Include task type in custom metadata (if supported by your implementation)
+
+However, the URL path approach is recommended because it:
+- Provides immediate task type identification without additional lookups
+- Enables simple routing logic in webhook handlers
+- Works well with RESTful webhook endpoint patterns
+- Requires no additional state management
+
 #### Webhook URL Patterns
 
-Structure your webhook URLs to identify the operation and agent:
+**Recommended pattern** - Include task type in the URL path:
 
 ```
 https://buyer.com/webhooks/adcp/{task_name}/{agent_id}/{operation_id}
@@ -499,7 +526,7 @@ https://buyer.com/webhooks/adcp/{task_name}/{agent_id}/{operation_id}
 - `https://buyer.com/webhooks/adcp/activate_signal/agent_abc/op_123`
 - `https://buyer.com/webhooks/adcp/sync_creatives/agent_abc/op_456`
 
-Your webhook handler can parse the URL path to route to the correct handler based on the task name.
+Your webhook handler can parse the URL path to route to the correct handler based on the task name. **The task type in the URL is the authoritative source for identifying which task operation the webhook notification is for when using the URL path approach.**
 
 #### Webhook Payload Structure
 
@@ -509,7 +536,7 @@ Your webhook handler can parse the URL path to route to the correct handler base
 
 **Webhook Payload Schema**: [`https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json)
 
-**`input-required` webhook (human needs to respond) - A2A StreamResponse format:**
+**`input-required` webhook (additional input or fixes required) - A2A StreamResponse format:**
 ```json
 {
   "statusUpdate": {
@@ -523,16 +550,17 @@ Your webhook handler can parse the URL path to route to the correct handler base
         "role": "agent",
         "parts": [
           {
-            "text": "Campaign budget requires VP approval to proceed"
+            "text": "Bid price $2.50 is below the minimum floor. Please increase to at least $5.00."
           },
           {
             "data": {
               "buyer_ref": "nike_q1_campaign_2024",
               "errors": [
                 {
-                  "code": "APPROVAL_REQUIRED",
-                  "message": "Budget exceeds auto-approval threshold",
-                  "field": "packages[0].budget"
+                  "code": "BID_PRICE_TOO_LOW",
+                  "message": "Bid price $2.50 is below the minimum floor of $5.00 for this auction-based product. Please increase bid_price to at least $5.00.",
+                  "field": "packages[0].bid_price",
+                  "suggestion": "Set bid_price to at least $5.00 to participate in the auction"
                 }
               ]
             }
@@ -1463,20 +1491,20 @@ Failed operations return status `failed` with details:
 
 1. **Optional by default** - Approvals are configured per implementation
 2. **Clear messaging** - Users understand what they're approving
-3. **Timeout gracefully** - Don't block forever on human input
-4. **Audit trail** - Track who approved what when
+3. **Timeout gracefully** - Don't block forever waiting for user input/fixes
+4. **Audit trail** - Track what input/fixes were requested and provided
 
 ### Approval Patterns
 
 ```javascript
-async function handleApprovalWorkflow(response) {
-  if (response.status === 'input-required' && needsApproval(response)) {
-    // Show approval UI with context
-    const approval = await showApprovalUI({
-      title: "Campaign Approval Required",
+async function handleInputRequired(response) {
+  if (response.status === 'input-required') {
+    // Show UI to fix issues or provide input
+    const fixes = await showInputRequiredUI({
+      title: "Input or Fixes Required",
       message: response.message,
-      details: response.data,
-      approver: getCurrentUser()
+      errors: response.data?.errors || [],
+      details: response.data
     });
     
     // Send approval decision
@@ -1531,11 +1559,11 @@ async function createCampaign(packages, budget) {
     total_budget: budget
   });
   
-  // Handle approval if needed
+  // Handle input/fixes if needed
   if (response.status === 'input-required') {
-    const approved = await getApproval(response.message);
-    if (!approved) {
-      throw new Error('Campaign creation not approved');
+    const fixes = await getInputOrFixes(response.data?.errors || []);
+    if (!fixes) {
+      throw new Error('Required input or fixes not provided');
     }
     
     response = await adcp.send({
