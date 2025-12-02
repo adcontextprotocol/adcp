@@ -505,6 +505,8 @@ Your webhook handler can parse the URL path to route to the correct handler base
 
 **AdCP fully adopts A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload is a **StreamResponse object** (A2A Specification Section 3.2.3) containing exactly one of: `task` (Task object), `message` (Message object), `statusUpdate` (TaskStatusUpdateEvent), or `artifactUpdate` (TaskArtifactUpdateEvent). ADCP declares only the structure of `parts[].data` (DataPart data field) within Message objects for task-specific payloads.
 
+**Operation Identification**: For `create_media_buy` operations, `buyer_ref` is required in all webhook payloads (`parts.data.buyer_ref`) to enable operation identification. This allows buyers to correlate webhook notifications with their internal systems using their own reference identifier.
+
 **Webhook Payload Schema**: [`https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json)
 
 **`input-required` webhook (human needs to respond) - A2A StreamResponse format:**

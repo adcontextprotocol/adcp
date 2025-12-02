@@ -2,15 +2,17 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/create-media-buy-async-response-working.json",
   "title": "Create Media Buy Async Response - Working",
-  "description": "Structure of parts.data in webhook payloads for create_media_buy when status is 'working'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that the operation is actively processing (typically completes within 120 seconds). The parts.data is optional for this status - if provided, it should include buyer_ref for operation identification.",
+  "description": "Structure of parts.data in webhook payloads for create_media_buy when status is 'working'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that the operation is actively processing (typically completes within 120 seconds). buyer_ref is required for identifying which media buy is being processed.",
   "type": "object",
   "properties": {
     "buyer_ref": {
       "type": "string",
-      "description": "Buyer's reference identifier for the media buy being processed. Optional but recommended for tracking and operation identification."
+      "description": "Buyer's reference identifier for the media buy being processed. Required for identifying which media buy is being processed."
     }
   },
-  "required": [],
+  "required": [
+    "buyer_ref"
+  ],
   "additionalProperties": false,
   "examples": [
     {
@@ -18,16 +20,7 @@
       "data": {
         "buyer_ref": "nike_q1_campaign_2024"
       }
-    },
-    {
-      "description": "Working status without parts.data (TextPart only)",
-      "data": {}
     }
-  ],
-  "notes": [
-    "parts.data is optional for 'working' status - the TextPart provides human-readable progress information",
-    "If parts.data is provided, buyer_ref is recommended for operation identification",
-    "Most 'working' status updates may only include a TextPart without a DataPart"
   ]
 }
 

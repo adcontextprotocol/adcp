@@ -33,11 +33,23 @@
               "$ref": "/schemas/media-buy/create-media-buy-response.json"
             },
             {
+              "$ref": "/schemas/media-buy/update-media-buy-async-response-input-required.json"
+            },
+            {
+              "$ref": "/schemas/media-buy/update-media-buy-async-response-failed.json"
+            },
+            {
+              "$ref": "/schemas/media-buy/update-media-buy-async-response-working.json"
+            },
+            {
+              "$ref": "/schemas/media-buy/update-media-buy-response.json"
+            },
+            {
               "type": "object",
               "description": "Other task types may have different structures. See task-specific async response schemas for validation."
             }
           ],
-          "description": "DataPart: Structured data content. Union of all task-specific async response schemas. For create_media_buy, validates against create-media-buy-async-response-*.json schemas based on status."
+          "description": "DataPart: Structured data content. Union of all task-specific async response schemas. For create_media_buy and update_media_buy, validates against task-specific async-response-*.json schemas based on status."
         }
       },
       "required": ["data"],

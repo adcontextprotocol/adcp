@@ -474,49 +474,276 @@ Only specified fields are updated - omitted fields remain unchanged:
 }
 ```
 
-## Asynchronous Operations
+## Webhook Payloads (Async Updates)
 
-Updates may be asynchronous, especially with seller approval.
+When `update_media_buy` returns `status: "submitted"` or `status: "working"`, webhooks are triggered for status changes. The webhook payload follows **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload is a **StreamResponse object** containing exactly one of: `statusUpdate` (for status changes), `task` (for final completion), `message`, or `artifactUpdate`.
 
-### Response Patterns
+ADCP declares only the structure of `parts[].data` (DataPart data field) within Message objects. The following specifies what `parts.data` should contain for each status in `update_media_buy` webhook payloads:
 
-**Synchronous (completed immediately)**:
+**Important**: `buyer_ref` is required in all webhook payloads for `update_media_buy` tool (all statuses) to enable media buy identification. This allows buyers to correlate webhook notifications with their internal systems without needing to store `taskId` mappings.
+
+**Schema References:**
+- **Webhook Payload Schema**: [`/schemas/v3/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-payload.json)
+- **Input Required**: [`/schemas/v3/media-buy/update-media-buy-async-response-input-required.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-async-response-input-required.json)
+- **Failed**: [`/schemas/v3/media-buy/update-media-buy-async-response-failed.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-async-response-failed.json)
+- **Working**: [`/schemas/v3/media-buy/update-media-buy-async-response-working.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-async-response-working.json)
+- **Completed**: [`/schemas/v3/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-response.json) (success variant)
+
+### Status: `input-required`
+
+When human approval or input is needed, the webhook uses `statusUpdate` with `parts.data` containing:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `buyer_ref` | string | Yes | Buyer's reference identifier for the media buy requiring approval |
+| `errors` | Error[] | Yes | Array of error objects explaining what approval is needed |
+
+**Example `parts.data` for `input-required`:**
+```json
+{
+  "buyer_ref": "summer_campaign_2025",
+  "errors": [
+    {
+      "code": "BUDGET_INCREASE_REQUIRES_APPROVAL",
+      "message": "Budget increase from $30,000 to $80,000 exceeds auto-approval threshold of $50,000. Seller approval required.",
+      "field": "packages[0].budget",
+      "suggestion": "Reduce budget increase to $50,000 or less for auto-approval, or wait for seller approval (2-4 hours)"
+    }
+  ]
+}
+```
+
+**Full webhook payload example:**
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_789",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "input-required",
+      "timestamp": "2025-01-22T11:00:00Z",
+      "message": {
+        "messageId": "msg_789_002",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Budget increase requires seller approval"
+          },
+          {
+            "data": {
+              "buyer_ref": "summer_campaign_2025",
+              "errors": [
+                {
+                  "code": "BUDGET_INCREASE_REQUIRES_APPROVAL",
+                  "message": "Budget increase from $30,000 to $80,000 exceeds auto-approval threshold of $50,000. Seller approval required.",
+                  "field": "packages[0].budget",
+                  "suggestion": "Reduce budget increase to $50,000 or less for auto-approval, or wait for seller approval (2-4 hours)"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "final": false
+  }
+}
+```
+
+### Status: `completed`
+
+When the update is successfully applied, the webhook may use either `statusUpdate` or `task` variant. The `parts.data` contains the full success response matching the synchronous response schema:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `media_buy_id` | string | Yes | Publisher's identifier for the media buy |
+| `buyer_ref` | string | Yes | Buyer's reference identifier for the media buy |
+| `implementation_date` | string \| null | No | ISO 8601 timestamp when changes take effect (null if pending approval) |
+| `affected_packages` | Package[] | No | Array of packages that were modified with complete state information |
+| `context` | Context | No | Application-level context (if provided in request) |
+| `ext` | object | No | Extension fields (if provided in request) |
+
+**Example `parts.data` for `completed`:**
 ```json
 {
   "media_buy_id": "mb_12345",
   "buyer_ref": "summer_campaign_2025",
   "implementation_date": "2025-06-15T10:00:00Z",
-  "affected_packages": []
+  "affected_packages": [
+    {
+      "package_id": "pkg_12345_001",
+      "buyer_ref": "ctv_package",
+      "product_id": "ctv_sports_premium",
+      "budget": 50000,
+      "pacing": "front_loaded",
+      "paused": false
+    }
+  ]
 }
 ```
 
-**Asynchronous (processing)**:
+**Full webhook payload example (using `task` variant):**
 ```json
 {
-  "status": "working",
-  "message": "Processing update..."
+  "task": {
+    "id": "task_789",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "completed",
+      "timestamp": "2025-01-22T11:30:00Z",
+      "message": {
+        "messageId": "msg_789_003",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Media buy updated successfully. Changes take effect on 2025-06-15T10:00:00Z"
+          },
+          {
+            "data": {
+              "media_buy_id": "mb_12345",
+              "buyer_ref": "summer_campaign_2025",
+              "implementation_date": "2025-06-15T10:00:00Z",
+              "affected_packages": [
+                {
+                  "package_id": "pkg_12345_001",
+                  "buyer_ref": "ctv_package",
+                  "product_id": "ctv_sports_premium",
+                  "budget": 50000,
+                  "pacing": "front_loaded",
+                  "paused": false
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
 }
 ```
-Poll for completion or use webhooks/streaming.
 
-**Manual Approval Required**:
+### Status: `failed`
+
+When the update operation fails, the webhook uses `statusUpdate` with `parts.data` containing:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `buyer_ref` | string | Yes | Buyer's reference identifier for the media buy that failed to update (required for identification) |
+| `errors` | Error[] | Yes | Array of error objects explaining why the update failed |
+
+**Example `parts.data` for `failed`:**
 ```json
 {
-  "status": "submitted",
-  "message": "Update requires seller approval (2-4 hours)"
+  "buyer_ref": "summer_campaign_2025",
+  "errors": [
+    {
+      "code": "UPDATE_NOT_ALLOWED",
+      "message": "Cannot change product_id for existing package",
+      "field": "packages[0].product_id",
+      "suggestion": "Create a new package with the desired product instead"
+    },
+    {
+      "code": "PACKAGE_NOT_FOUND",
+      "message": "Package with buyer_ref 'invalid_package_ref' not found in this media buy",
+      "field": "packages[0].buyer_ref"
+    }
+  ]
 }
 ```
-Will take hours to days.
 
-### Protocol-Specific Handling
+**Full webhook payload example:**
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_789",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "failed",
+      "timestamp": "2025-01-22T11:45:00Z",
+      "message": {
+        "messageId": "msg_789_004",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Media buy update failed due to validation errors"
+          },
+          {
+            "data": {
+              "buyer_ref": "summer_campaign_2025",
+              "errors": [
+                {
+                  "code": "UPDATE_NOT_ALLOWED",
+                  "message": "Cannot change product_id for existing package",
+                  "field": "packages[0].product_id",
+                  "suggestion": "Create a new package with the desired product instead"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "final": true
+  }
+}
+```
 
-AdCP tasks work across multiple protocols (MCP, A2A, REST). Each protocol handles async operations differently:
+### Status: `working`
 
-- **Status checking**: Polling, webhooks, or streaming
-- **Updates**: Protocol-specific mechanisms
-- **Long-running tasks**: Different timeout and notification patterns
+When the update operation is actively processing (typically < 120 seconds), the webhook uses `statusUpdate` with `parts.data` containing:
 
-See [Task Management](/docs/protocols/task-management) for protocol-specific async patterns and examples.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `buyer_ref` | string | Yes | Buyer's reference identifier for the media buy being updated. Required for identifying which media buy is being updated. |
+
+**Example webhook payload:**
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_789",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "working",
+      "timestamp": "2025-01-22T11:10:00Z",
+      "message": {
+        "messageId": "msg_789_005",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Processing update and validating changes..."
+          },
+          {
+            "data": {
+              "buyer_ref": "summer_campaign_2025"
+            }
+          }
+        ]
+      }
+    },
+    "final": false
+  }
+}
+```
+
+**Note**: `buyer_ref` is required in `parts.data` for `working` status to enable operation identification. The TextPart provides human-readable progress information.
+
+### Status: `submitted`
+
+When the update is submitted for long-running processing (hours to days), the initial response returns `status: "submitted"`. Webhooks will be triggered for subsequent status changes (`input-required`, `completed`, `failed`). The `submitted` status itself does not trigger a webhook.
+
+### Summary
+
+| Status | StreamResponse Variant | `parts.data` Contents | Required Fields |
+|--------|----------------------|----------------------|----------------|
+| `input-required` | `statusUpdate` | `buyer_ref`, `errors[]` | Both required |
+| `completed` | `task` or `statusUpdate` | Full success response matching `update-media-buy-response.json` | `media_buy_id`, `buyer_ref` |
+| `failed` | `statusUpdate` | `buyer_ref`, `errors[]` | Both required |
+| `working` | `statusUpdate` | `buyer_ref` | `buyer_ref` required |
+| `submitted` | N/A (initial response only) | N/A | N/A |
+
+**Important**: `buyer_ref` is required in all webhook payloads for `update_media_buy` tool to enable media buy identification and correlation with the buyer's internal systems. This applies to all statuses: `input-required`, `failed`, `working`, and `completed`.
+
+**Reference**: See [Webhook Payload Schema](/schemas/v3/core/webhook-payload.json) and [Task Management](/docs/protocols/task-management) for complete webhook handling examples.
 
 ## Best Practices
 

@@ -618,6 +618,8 @@ Content-Type: application/json
 
 The webhook receives the **full A2A-compatible StreamResponse structure** for each status change. For `statusUpdate` events, extract task data from `statusUpdate.status.message.parts[]` array by finding the DataPart (part with `data` property). Task ID is in `statusUpdate.taskId` and status state is in `statusUpdate.status.state`. For `task` events, use `task.id` and `task.status.state`. The `statusUpdate.final` flag indicates if this is the final event in the stream. This means your webhook handler gets all the context and data needed to take appropriate action.
 
+**Operation Identification**: For `create_media_buy` operations, `buyer_ref` is required in all webhook payloads (`parts.data.buyer_ref`) to enable operation identification. This allows buyers to correlate webhook notifications with their internal systems using their own reference identifier, in addition to the `taskId` provided by the A2A structure.
+
 ### Webhook Handling Example
 
 ```javascript

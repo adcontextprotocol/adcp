@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/update-media-buy-async-response-input-required.json",
+  "title": "Update Media Buy Async Response - Input Required",
+  "description": "Structure of parts.data in webhook payloads for update_media_buy when status is 'input-required'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that human approval or input is needed before the update can proceed.",
+  "type": "object",
+  "properties": {
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for the media buy requiring approval. Required for identifying which update operation needs attention."
+    },
+    "errors": {
+      "type": "array",
+      "description": "Array of error objects explaining what approval or input is needed",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "buyer_ref",
+    "errors"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Input required for budget increase approval",
+      "data": {
+        "buyer_ref": "summer_campaign_2025",
+        "errors": [
+          {
+            "code": "BUDGET_INCREASE_REQUIRES_APPROVAL",
+            "message": "Budget increase from $30,000 to $80,000 exceeds auto-approval threshold of $50,000. Seller approval required.",
+            "field": "packages[0].budget",
+            "suggestion": "Reduce budget increase to $50,000 or less for auto-approval, or wait for seller approval (2-4 hours)"
+          }
+        ]
+      }
+    }
+  ]
+}
+

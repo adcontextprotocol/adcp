@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/update-media-buy-async-response-failed.json",
+  "title": "Update Media Buy Async Response - Failed",
+  "description": "Structure of parts.data in webhook payloads for update_media_buy when status is 'failed'. Used within A2A StreamResponse statusUpdate.message.parts[].data (DataPart data field). This status indicates that the update operation failed and no changes were applied.",
+  "type": "object",
+  "properties": {
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for the media buy that failed to update. Required for identifying which update operation failed."
+    },
+    "errors": {
+      "type": "array",
+      "description": "Array of error objects explaining why the update failed",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "buyer_ref",
+    "errors"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Failed due to validation errors",
+      "data": {
+        "buyer_ref": "summer_campaign_2025",
+        "errors": [
+          {
+            "code": "UPDATE_NOT_ALLOWED",
+            "message": "Cannot change product_id for existing package",
+            "field": "packages[0].product_id",
+            "suggestion": "Create a new package with the desired product instead"
+          },
+          {
+            "code": "PACKAGE_NOT_FOUND",
+            "message": "Package with buyer_ref 'invalid_package_ref' not found in this media buy",
+            "field": "packages[0].buyer_ref"
+          }
+        ]
+      }
+    }
+  ]
+}
+

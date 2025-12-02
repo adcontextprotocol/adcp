@@ -629,6 +629,8 @@ When `create_media_buy` returns `status: "submitted"`, webhooks are triggered fo
 
 ADCP declares only the structure of `parts[].data` (DataPart data field) within Message objects. The following specifies what `parts.data` should contain for each status in `create_media_buy` webhook payloads:
 
+**Important**: `buyer_ref` is required in all webhook payloads for `create_media_buy` tool (all statuses) to enable media buy identification. This allows buyers to correlate webhook notifications with their internal systems without needing to store `taskId` mappings.
+
 **Schema References:**
 - **Webhook Payload Schema**: [`/schemas/v3/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-payload.json)
 - **Input Required**: [`/schemas/v3/media-buy/create-media-buy-async-response-input-required.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-async-response-input-required.json)
@@ -852,11 +854,11 @@ When the operation fails, the webhook uses `statusUpdate` with `parts.data` cont
 
 ### Status: `working`
 
-When the operation is actively processing (typically < 120 seconds), the webhook may use `statusUpdate` with optional `parts.data`. The TextPart provides progress information:
+When the operation is actively processing (typically < 120 seconds), the webhook uses `statusUpdate` with `parts.data` containing:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `buyer_ref` | string | No | Buyer's reference identifier (optional, but recommended for tracking) |
+| `buyer_ref` | string | Yes | Buyer's reference identifier for the media buy being processed. Required for identifying which media buy is being processed. |
 
 **Example webhook payload:**
 ```json
@@ -887,7 +889,7 @@ When the operation is actively processing (typically < 120 seconds), the webhook
 }
 ```
 
-**Note**: `parts.data` is optional for `working` status. If provided, it should include `buyer_ref` for operation identification. The TextPart provides human-readable progress information.
+**Note**: `buyer_ref` is required in `parts.data` for `working` status to enable operation identification. The TextPart provides human-readable progress information.
 
 ### Status: `submitted`
 
@@ -900,8 +902,10 @@ When the operation is submitted for long-running processing (hours to days), the
 | `input-required` | `statusUpdate` | `buyer_ref`, `errors[]` | Both required |
 | `completed` | `task` or `statusUpdate` | Full success response matching `create-media-buy-response.json` | `media_buy_id`, `buyer_ref`, `packages` |
 | `failed` | `statusUpdate` | `buyer_ref`, `errors[]` | Both required |
-| `working` | `statusUpdate` | Optional: `buyer_ref` | None (but `buyer_ref` recommended) |
+| `working` | `statusUpdate` | `buyer_ref` | `buyer_ref` required |
 | `submitted` | N/A (initial response only) | N/A | N/A |
+
+**Important**: `buyer_ref` is required in all webhook payloads for `create_media_buy` tool to enable media buy identification and correlation with the buyer's internal systems. This applies to all statuses: `input-required`, `failed`, `working`, and etc.
 
 **Reference**: See [Webhook Payload Schema](/schemas/v3/core/webhook-payload.json) and [Task Management](/docs/protocols/task-management) for complete webhook handling examples.
 
