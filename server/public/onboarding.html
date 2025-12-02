@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Complete Registration - AdCP Registry</title>
+  <title>Get Started - AdCP Registry</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -19,7 +19,7 @@
       background: white;
       border-radius: 12px;
       box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      max-width: 500px;
+      max-width: 600px;
       width: 100%;
       padding: 40px;
     }
@@ -28,10 +28,139 @@
       margin-bottom: 10px;
       font-size: 28px;
     }
-    p {
+    .subtitle {
       color: #666;
       margin-bottom: 30px;
       line-height: 1.6;
+    }
+    .welcome-name {
+      color: #667eea;
+      font-weight: 600;
+    }
+    .options {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+    .option-card {
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .option-card:hover {
+      border-color: #667eea;
+      background: #f8f9ff;
+    }
+    .option-card.selected {
+      border-color: #667eea;
+      background: #f0f3ff;
+    }
+    .option-card.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .option-card.disabled:hover {
+      border-color: #e0e0e0;
+      background: white;
+    }
+    .option-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .option-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .option-icon.join { background: #e3f2fd; }
+    .option-icon.create { background: #e8f5e9; }
+    .option-icon.individual { background: #fff3e0; }
+    .option-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+    }
+    .option-description {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.5;
+      margin-left: 52px;
+    }
+
+    /* Invitations section */
+    .invitations-section {
+      background: #e3f2fd;
+      border: 1px solid #90caf9;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 25px;
+    }
+    .invitations-section h3 {
+      color: #1976d2;
+      font-size: 16px;
+      margin-bottom: 15px;
+    }
+    .invitation-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: white;
+      padding: 12px 15px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+    }
+    .invitation-item:last-child {
+      margin-bottom: 0;
+    }
+    .invitation-org {
+      font-weight: 600;
+      color: #333;
+    }
+    .invitation-email {
+      font-size: 13px;
+      color: #666;
+    }
+    .invitation-role {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      margin-left: 8px;
+      text-transform: capitalize;
+    }
+    .role-owner { background: #e3f2fd; color: #1565c0; }
+    .role-admin { background: #f3e5f5; color: #7b1fa2; }
+    .role-member { background: #f5f5f5; color: #666; }
+    .btn-accept {
+      padding: 8px 16px;
+      background: #1976d2;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-accept:hover {
+      background: #1565c0;
+    }
+
+    /* Form sections */
+    .form-section {
+      display: none;
+      margin-top: 20px;
+    }
+    .form-section.active {
+      display: block;
     }
     .form-group {
       margin-bottom: 20px;
@@ -72,6 +201,15 @@
     .btn:disabled {
       opacity: 0.6;
       cursor: not-allowed;
+      transform: none;
+    }
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+    .btn-secondary:hover {
+      background: #e0e0e0;
     }
     .error {
       background: #fee;
@@ -93,152 +231,374 @@
       background: #f9f9f9;
       border: 1px solid #e0e0e0;
       border-radius: 6px;
-      padding: 20px;
+      padding: 15px;
       margin-bottom: 20px;
+      font-size: 14px;
     }
-    .agreements h3 {
-      font-size: 16px;
-      margin-bottom: 15px;
-      color: #333;
-    }
-    .agreement-item {
-      margin-bottom: 12px;
-    }
-    .agreement-item label {
-      display: flex;
-      align-items: flex-start;
-      cursor: pointer;
-      font-weight: normal;
-      line-height: 1.5;
-    }
-    .agreement-item input[type="checkbox"] {
-      width: auto;
-      margin-right: 10px;
-      margin-top: 4px;
-      cursor: pointer;
-    }
-    .agreement-item a {
+    .agreements a {
       color: #667eea;
       text-decoration: none;
     }
-    .agreement-item a:hover {
+    .agreements a:hover {
       text-decoration: underline;
+    }
+    .back-link {
+      display: inline-block;
+      margin-bottom: 20px;
+      color: #667eea;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .back-link:hover {
+      text-decoration: underline;
+    }
+    .no-invitations {
+      color: #666;
+      font-size: 14px;
+      padding: 15px;
+      background: #f5f5f5;
+      border-radius: 6px;
+      text-align: center;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Complete Your Registration</h1>
-    <p>You're almost done! Create your company account to start managing registry entries.</p>
+    <div id="loading" class="loading">Loading...</div>
 
-    <div id="error" class="error" style="display:none;"></div>
-    <div id="info" class="info" style="display:none;"></div>
+    <div id="mainContent" style="display: none;">
+      <h1>Welcome to AdCP Registry<span id="welcomeName"></span></h1>
+      <p class="subtitle">How would you like to get started?</p>
 
-    <form id="onboardingForm">
-      <div class="form-group">
-        <label for="companyName">Organization Name *</label>
-        <input type="text" id="companyName" required placeholder="Acme Corporation">
+      <div id="error" class="error" style="display:none;"></div>
+
+      <!-- Pending Invitations -->
+      <div id="invitationsSection" class="invitations-section" style="display: none;">
+        <h3>You have pending invitations</h3>
+        <div id="invitationsList"></div>
       </div>
 
-      <div class="form-group">
-        <label for="domain">Email Domain (Optional)</label>
-        <input type="text" id="domain" placeholder="acme.com">
-        <small style="color: #666; font-size: 14px;">Team members with this email domain can auto-join once you verify ownership of this domain</small>
+      <!-- Options Selection -->
+      <div id="optionsSection" class="options">
+        <div class="option-card" data-option="join" id="optionJoin">
+          <div class="option-header">
+            <div class="option-icon join">&#128101;</div>
+            <div class="option-title">Join an existing organization</div>
+          </div>
+          <div class="option-description">
+            Request to join a team that's already using AdCP. You'll need an admin to invite you.
+          </div>
+        </div>
+
+        <div class="option-card" data-option="create" id="optionCreate">
+          <div class="option-header">
+            <div class="option-icon create">&#127970;</div>
+            <div class="option-title">Create a new organization</div>
+          </div>
+          <div class="option-description">
+            Start fresh with a new organization. You can invite team members later.
+          </div>
+        </div>
+
+        <div class="option-card" data-option="individual" id="optionIndividual">
+          <div class="option-header">
+            <div class="option-icon individual">&#128100;</div>
+            <div class="option-title">Continue as an individual</div>
+          </div>
+          <div class="option-description">
+            Get started quickly with a personal workspace. You can always create an organization later.
+          </div>
+        </div>
       </div>
 
-      <div class="agreements">
-        <p style="font-size: 14px; color: #666; line-height: 1.6; margin: 0;">
-          By creating an organization, you agree to our
+      <!-- Join Form -->
+      <div id="joinForm" class="form-section">
+        <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
+        <h2 style="margin-bottom: 20px;">Join an Organization</h2>
+        <div class="no-invitations" id="noInvitationsMessage">
+          <p style="margin-bottom: 15px;">You don't have any pending invitations.</p>
+          <p>Ask an admin from your organization to send you an invite using your email address.</p>
+        </div>
+        <div id="joinInvitationsList"></div>
+        <button class="btn btn-secondary" style="margin-top: 20px;" onclick="showOptions()">Back to Options</button>
+      </div>
+
+      <!-- Create Org Form -->
+      <div id="createForm" class="form-section">
+        <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
+        <h2 style="margin-bottom: 20px;">Create Your Organization</h2>
+        <form id="createOrgForm">
+          <div class="form-group">
+            <label for="orgName">Organization Name *</label>
+            <input type="text" id="orgName" required placeholder="Acme Corporation">
+          </div>
+          <div class="agreements">
+            By creating an organization, you agree to our
+            <a href="/api/agreement?type=terms_of_service" target="_blank">Terms of Service</a> and
+            <a href="/api/agreement?type=privacy_policy" target="_blank">Privacy Policy</a>.
+          </div>
+          <button type="submit" class="btn" id="createBtn">Create Organization</button>
+        </form>
+      </div>
+
+      <!-- Individual Form -->
+      <div id="individualForm" class="form-section">
+        <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
+        <h2 style="margin-bottom: 20px;">Personal Workspace</h2>
+        <p style="color: #666; margin-bottom: 20px; line-height: 1.6;">
+          We'll create a personal workspace for you. You can always create or join an organization later from your dashboard.
+        </p>
+        <div class="agreements">
+          By continuing, you agree to our
           <a href="/api/agreement?type=terms_of_service" target="_blank">Terms of Service</a> and
           <a href="/api/agreement?type=privacy_policy" target="_blank">Privacy Policy</a>.
-        </p>
+        </div>
+        <button class="btn" id="individualBtn" onclick="createIndividualWorkspace()">Create Personal Workspace</button>
       </div>
-
-      <button type="submit" class="btn" id="submitBtn">Create Organization</button>
-    </form>
+    </div>
   </div>
 
   <script>
-    const form = document.getElementById('onboardingForm');
-    const errorDiv = document.getElementById('error');
-    const infoDiv = document.getElementById('info');
-    const submitBtn = document.getElementById('submitBtn');
-    const companyNameInput = document.getElementById('companyName');
-    const domainInput = document.getElementById('domain');
+    let currentUser = null;
+    let pendingInvitations = [];
 
-    // Restore form data if user was redirected back after login
-    const pendingData = sessionStorage.getItem('pendingOrgData');
-    if (pendingData) {
+    // Initialize page
+    async function init() {
       try {
-        const data = JSON.parse(pendingData);
-        companyNameInput.value = data.organization_name || '';
-        domainInput.value = data.domain || '';
-        sessionStorage.removeItem('pendingOrgData');
+        // Get current user info
+        const response = await fetch('/api/me');
+        if (!response.ok) {
+          // Not logged in, redirect to login
+          window.location.href = '/auth/login?return_to=/onboarding';
+          return;
+        }
 
-        // Show info message
-        infoDiv.textContent = 'Welcome back! You can now complete your organization setup.';
-        infoDiv.style.display = 'block';
-      } catch (e) {
-        console.error('Failed to restore form data:', e);
+        const data = await response.json();
+        currentUser = data.user;
+
+        // If user already has organizations, redirect to dashboard
+        if (data.organizations && data.organizations.length > 0) {
+          window.location.href = '/dashboard';
+          return;
+        }
+
+        // Show welcome message with name if available
+        if (currentUser.first_name) {
+          document.getElementById('welcomeName').textContent = ', ' + currentUser.first_name;
+        }
+
+        // Load pending invitations for this user
+        await loadInvitations();
+
+        // Show main content
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('mainContent').style.display = 'block';
+
+      } catch (error) {
+        console.error('Init error:', error);
+        document.getElementById('loading').innerHTML = 'Failed to load. <a href="/auth/login">Try logging in again</a>';
       }
     }
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      errorDiv.style.display = 'none';
-      infoDiv.style.display = 'none';
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Creating...';
-
+    async function loadInvitations() {
       try {
-        console.log('Submitting organization creation...');
+        const response = await fetch('/api/me/invitations');
+        if (response.ok) {
+          const data = await response.json();
+          pendingInvitations = data.invitations || [];
 
-        const domain = document.getElementById('domain').value;
+          if (pendingInvitations.length > 0) {
+            renderInvitations();
+            document.getElementById('invitationsSection').style.display = 'block';
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load invitations:', error);
+      }
+    }
 
-        const response = await fetch('/api/organizations', {
+    function renderInvitations() {
+      const container = document.getElementById('invitationsList');
+      container.innerHTML = pendingInvitations.map(inv => {
+        const role = inv.role || 'member';
+        const roleClass = 'role-' + role;
+        return '<div class="invitation-item">' +
+          '<div>' +
+            '<div class="invitation-org">' + escapeHtml(inv.organization_name || 'Organization') +
+              '<span class="invitation-role ' + roleClass + '">' + role + '</span>' +
+            '</div>' +
+            '<div class="invitation-email">Invited to join as ' + role + '</div>' +
+          '</div>' +
+          '<button class="btn-accept" onclick="acceptInvitation(\'' + inv.id + '\')">Accept</button>' +
+        '</div>';
+      }).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function acceptInvitation(invitationId) {
+      try {
+        const response = await fetch('/api/invitations/' + invitationId + '/accept', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'same-origin',
-          body: JSON.stringify({
-            organization_name: companyNameInput.value,
-            domains: domain ? [domain] : undefined,
-          }),
         });
 
-        console.log('Response received:', response.status);
-        const data = await response.json();
-        console.log('Response data:', data);
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to accept invitation');
+        }
+
+        // Success - redirect to dashboard
+        window.location.href = '/dashboard';
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    // Option selection
+    document.querySelectorAll('.option-card').forEach(function(card) {
+      card.addEventListener('click', function() {
+        var option = card.dataset.option;
+        selectOption(option);
+      });
+    });
+
+    function selectOption(option) {
+      // Hide options section
+      document.getElementById('optionsSection').style.display = 'none';
+      document.getElementById('invitationsSection').style.display = 'none';
+
+      // Show appropriate form
+      if (option === 'join') {
+        document.getElementById('joinForm').classList.add('active');
+        // If there are invitations, show them in the join form
+        if (pendingInvitations.length > 0) {
+          document.getElementById('noInvitationsMessage').style.display = 'none';
+          document.getElementById('joinInvitationsList').innerHTML = pendingInvitations.map(inv => {
+            const role = inv.role || 'member';
+            const roleClass = 'role-' + role;
+            return '<div class="invitation-item">' +
+              '<div>' +
+                '<div class="invitation-org">' + escapeHtml(inv.organization_name || 'Organization') +
+                  '<span class="invitation-role ' + roleClass + '">' + role + '</span>' +
+                '</div>' +
+                '<div class="invitation-email">Invited to join as ' + role + '</div>' +
+              '</div>' +
+              '<button class="btn-accept" onclick="acceptInvitation(\'' + inv.id + '\')">Accept Invitation</button>' +
+            '</div>';
+          }).join('');
+        } else {
+          document.getElementById('noInvitationsMessage').style.display = 'block';
+          document.getElementById('joinInvitationsList').innerHTML = '';
+        }
+      } else if (option === 'create') {
+        document.getElementById('createForm').classList.add('active');
+      } else if (option === 'individual') {
+        document.getElementById('individualForm').classList.add('active');
+      }
+    }
+
+    function showOptions() {
+      // Hide all forms
+      document.querySelectorAll('.form-section').forEach(function(form) {
+        form.classList.remove('active');
+      });
+      // Show options
+      document.getElementById('optionsSection').style.display = 'flex';
+      if (pendingInvitations.length > 0) {
+        document.getElementById('invitationsSection').style.display = 'block';
+      }
+      // Clear any errors
+      document.getElementById('error').style.display = 'none';
+    }
+
+    function showError(message) {
+      var errorDiv = document.getElementById('error');
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+    }
+
+    // Create organization form
+    document.getElementById('createOrgForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      var orgName = document.getElementById('orgName').value.trim();
+      var createBtn = document.getElementById('createBtn');
+
+      if (!orgName) {
+        showError('Please enter an organization name');
+        return;
+      }
+
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating...';
+
+      try {
+        var response = await fetch('/api/organizations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organization_name: orgName }),
+        });
+
+        var data = await response.json();
 
         if (!response.ok) {
-          // Handle session expiration by redirecting to login with return URL
-          if (response.status === 401 && data.login_url) {
-            // Store form data in sessionStorage so we can restore it after login
-            sessionStorage.setItem('pendingOrgData', JSON.stringify({
-              organization_name: companyNameInput.value,
-              domain: document.getElementById('domain').value
-            }));
-            // Redirect to login with return_to parameter
-            window.location.href = data.login_url + '?return_to=' + encodeURIComponent(window.location.pathname);
-            return;
-          }
           throw new Error(data.message || 'Failed to create organization');
         }
 
-        // Success! Redirect to dashboard
-        console.log('Success! Redirecting to dashboard...');
         window.location.href = '/dashboard';
-
       } catch (error) {
-        console.error('Error creating organization:', error);
-        errorDiv.textContent = error.message || 'Failed to create organization. Please try again.';
-        errorDiv.style.display = 'block';
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Create Organization';
+        showError(error.message);
+        createBtn.disabled = false;
+        createBtn.textContent = 'Create Organization';
       }
     });
+
+    // Create individual workspace
+    async function createIndividualWorkspace() {
+      var btn = document.getElementById('individualBtn');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+
+      try {
+        // Create a personal workspace using the user's name
+        var workspaceName = currentUser.first_name
+          ? currentUser.first_name + "'s Workspace"
+          : 'Personal Workspace';
+
+        var response = await fetch('/api/organizations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            organization_name: workspaceName,
+            is_personal: true
+          }),
+        });
+
+        var data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to create workspace');
+        }
+
+        window.location.href = '/dashboard';
+      } catch (error) {
+        showError(error.message);
+        btn.disabled = false;
+        btn.textContent = 'Create Personal Workspace';
+      }
+    }
+
+    // Initialize on page load
+    init();
   </script>
 </body>
 </html>
