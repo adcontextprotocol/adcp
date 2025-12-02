@@ -393,6 +393,36 @@ function wrapResponse(taskResponse, metadata) {
 
 AdCP fully adopts A2A Protocol's push notification payload structure (A2A Specification Section 4.3.3). The payload is a StreamResponse object (A2A Specification Section 3.2.3) containing exactly one of: `task`, `message`, `statusUpdate`, or `artifactUpdate`.
 
+**Status change event (`input-required`) - using `statusUpdate`:**
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_456",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "input-required",
+      "timestamp": "2025-01-22T10:15:00Z",
+      "message": {
+        "messageId": "msg_456_001",
+        "role": "agent",
+        "parts": [
+          {
+            "text": "Campaign requires approval"
+          },
+          {
+            "data": {
+              "buyer_ref": "campaign_2024_q1"
+            }
+          }
+        ]
+      }
+    },
+    "final": false
+  }
+}
+```
+
+**Final completion (`completed`) - using `task` for full state:**
 ```json
 {
   "task": {
@@ -402,6 +432,8 @@ AdCP fully adopts A2A Protocol's push notification payload structure (A2A Specif
       "state": "completed",
       "timestamp": "2025-01-22T10:30:00Z",
       "message": {
+        "messageId": "msg_456_002",
+        "role": "agent",
         "parts": [
           {
             "text": "Media buy created successfully"
@@ -422,7 +454,7 @@ AdCP fully adopts A2A Protocol's push notification payload structure (A2A Specif
 }
 ```
 
-**Note:** ADCP declares only the structure of `parts[].data` (DataPart data field). Extract task data by finding the DataPart in `task.status.message.parts` array. Task ID is in `task.id` and status state is in `task.status.state`.
+**Note:** ADCP declares only the structure of `parts[].data` (DataPart data field). Extract task data by finding the DataPart in `statusUpdate.status.message.parts` or `task.status.message.parts` array. Task ID is in `statusUpdate.taskId` (for statusUpdate) or `task.id` (for task variant). Status state is in `statusUpdate.status.state` or `task.status.state`.
 
 | Protocol | Message Location | Payload Location | Async Mechanism |
 |----------|-----------------|------------------|-----------------|

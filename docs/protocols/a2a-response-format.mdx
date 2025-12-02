@@ -470,6 +470,33 @@ AdCP uses A2A's TaskState enum directly:
 
 Async operations (`status: "submitted"`) deliver push notifications following **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload is a **StreamResponse object** (A2A Specification Section 3.2.3) containing exactly one of: `task` (Task object), `message` (Message object), `statusUpdate` (TaskStatusUpdateEvent), or `artifactUpdate` (TaskArtifactUpdateEvent).
 
+**Status change event (`input-required`) - using `statusUpdate`:**
+```json
+POST /webhook-endpoint
+{
+  "statusUpdate": {
+    "taskId": "task_123",
+    "contextId": "ctx_abc123",
+    "status": {
+      "state": "input-required",
+      "timestamp": "2025-01-22T10:15:00Z",
+      "message": {
+        "messageId": "msg_123_001",
+        "role": "agent",
+        "parts": [
+          {"text": "Campaign requires approval"},
+          {"data": {
+            "buyer_ref": "campaign_2024_q1"
+          }}
+        ]
+      }
+    },
+    "final": false
+  }
+}
+```
+
+**Final completion (`completed`) - using `task` for full state:**
 ```json
 POST /webhook-endpoint
 {
@@ -480,6 +507,8 @@ POST /webhook-endpoint
       "state": "completed",
       "timestamp": "2025-01-22T10:30:00Z",
       "message": {
+        "messageId": "msg_123_002",
+        "role": "agent",
         "parts": [
           {"text": "Media buy approved and live"},
           {"data": {
@@ -496,12 +525,14 @@ POST /webhook-endpoint
 
 **Key differences from synchronous A2A responses:**
 - Webhooks use StreamResponse wrapper containing `task`, `message`, `statusUpdate`, or `artifactUpdate` (not direct Task/Message)
-- For task updates, use the `task` variant: `{task: {id, contextId, status: {state, message: {parts: [...]}, timestamp}, ...}}`
-- Task ID is in `task.id` (not top-level `taskId`)
-- Task status state is in `task.status.state`
-- Extract AdCP data by finding the DataPart in `task.status.message.parts` array (part with `data` property)
+- For status change events (like `input-required`, `failed`, `working`), use the `statusUpdate` variant: `{statusUpdate: {taskId, contextId, status: {state, message: {parts: [...]}, timestamp}, final}}`
+- For final completion with full task state, use the `task` variant: `{task: {id, contextId, status: {state, message: {parts: [...]}, timestamp}, ...}}`
+- Task ID is in `statusUpdate.taskId` (for statusUpdate) or `task.id` (for task variant)
+- Task status state is in `statusUpdate.status.state` or `task.status.state`
+- Extract AdCP data by finding the DataPart in `statusUpdate.status.message.parts` or `task.status.message.parts` array (part with `data` property)
 - Use the last DataPart as authoritative when multiple data parts exist
 - ADCP declares only the structure of `parts[].data` (DataPart data field)
+- The `statusUpdate.final` flag indicates if this is the final event in the stream
 
 **For webhook authentication, retry patterns, and security**, see [Core Concepts - Webhook Reliability](/docs/protocols/core-concepts#webhook-reliability).
 

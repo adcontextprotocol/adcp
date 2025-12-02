@@ -445,7 +445,7 @@ Task management integrates with protocol-level webhook configuration for push no
 
 ### Webhook Configuration
 
-Configure webhooks at the protocol level when making async task calls. See **[Core Concepts: Protocol-Level Webhook Configuration](/docs/protocols/core-concepts.mdx#protocol-level-webhook-configuration)** for complete setup examples.
+Configure webhooks at the protocol level when making async task calls. See **[Core Concepts: Protocol-Level Webhook Configuration](/docs/protocols/core-concepts#protocol-level-webhook-configuration)** for complete setup examples.
 
 **Quick example:**
 ```javascript
@@ -471,12 +471,21 @@ When a task's status changes, the publisher POSTs a payload following **A2A Prot
 
 **StreamResponse structure (A2A Section 3.2.3):**
 The payload contains exactly one of:
-- `task`: A Task object with the current task state (most common for ADCP webhooks)
+- `statusUpdate`: A TaskStatusUpdateEvent indicating a status change (used for status transitions like `input-required`, `failed`, `working`)
+- `task`: A Task object with the current task state (used for final completion with full context)
 - `message`: A Message object containing a message response
-- `statusUpdate`: A TaskStatusUpdateEvent indicating a status change
 - `artifactUpdate`: A TaskArtifactUpdateEvent indicating artifact update
 
-**Task object structure (when using `task` variant):**
+**TaskStatusUpdateEvent structure (when using `statusUpdate` variant - most common for status changes):**
+- `taskId` (required) — Unique identifier for the task
+- `contextId` (required) — Unique identifier for the contextual collection
+- `status` (required) — TaskStatus object containing:
+  - `state` (required) — Current task state (A2A TaskState enum)
+  - `message` (optional) — Message object with parts array
+  - `timestamp` (optional) — ISO 8601 timestamp when status was recorded
+- `final` (required) — Boolean indicating if this is the final event in the stream
+
+**Task object structure (when using `task` variant - for final completion):**
 - `id` (required) — Unique identifier for the task (not top-level `taskId`)
 - `contextId` (required) — Unique identifier for the contextual collection
 - `status` (required) — TaskStatus object containing:
@@ -484,7 +493,7 @@ The payload contains exactly one of:
   - `message` (optional) — Message object with parts array
   - `timestamp` (optional) — ISO 8601 timestamp when status was recorded
 
-**Message.parts structure (within task.status.message):**
+**Message.parts structure (within status.message or task.status.message):**
 - `parts[]` — Array of message parts (A2A Part union type)
   - TextPart: `{text: string}` — Human-readable context (optional)
   - DataPart: `{data: object}` — Task-specific payload (ADCP declares only this structure)
@@ -494,13 +503,34 @@ The payload contains exactly one of:
 ```javascript
 function extractWebhookData(webhookPayload) {
   // A2A StreamResponse contains exactly one of: task, message, statusUpdate, artifactUpdate
+  
+  // Handle statusUpdate (for status change events like input-required, failed, working)
+  if (webhookPayload.statusUpdate) {
+    const event = webhookPayload.statusUpdate;
+    const taskId = event.taskId; // Note: taskId in statusUpdate, not id
+    const status = event.status.state;
+    const message = event.status.message;
+    
+    if (message?.parts) {
+      const dataPart = message.parts.find(part => part.data !== undefined);
+      return {
+        taskId,
+        status,
+        data: dataPart?.data, // This is the AdCP task-specific payload
+        final: event.final // Indicates if this is the final event
+      };
+    }
+    
+    return { taskId, status, final: event.final };
+  }
+  
+  // Handle task (for final completion with full task state)
   if (webhookPayload.task) {
     const task = webhookPayload.task;
-    const taskId = task.id; // Task ID is in task.id, not top-level
-    const status = task.status.state; // Status state is in task.status.state
-    
-    // Find the DataPart in task.status.message.parts array
+    const taskId = task.id; // Task ID is in task.id
+    const status = task.status.state;
     const message = task.status.message;
+    
     if (message?.parts) {
       const dataPart = message.parts.find(part => part.data !== undefined);
       return {
@@ -511,7 +541,7 @@ function extractWebhookData(webhookPayload) {
     }
   }
   
-  // Handle other StreamResponse variants...
+  // Handle other StreamResponse variants (message, artifactUpdate)...
   return null;
 }
 ```
@@ -524,13 +554,15 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
-  "task": {
-    "id": "task_456",
+  "statusUpdate": {
+    "taskId": "task_456",
     "contextId": "ctx_abc123",
     "status": {
       "state": "input-required",
       "timestamp": "2025-01-22T10:15:00Z",
       "message": {
+        "messageId": "msg_456_001",
+        "role": "agent",
         "parts": [
           {
             "text": "Campaign budget $150K requires VP approval to proceed"
@@ -542,7 +574,8 @@ Content-Type: application/json
           }
         ]
       }
-    }
+    },
+    "final": false
   }
 }
 ```
@@ -583,25 +616,49 @@ Content-Type: application/json
 }
 ```
 
-The webhook receives the **full A2A-compatible StreamResponse structure** for each status. Extract task data from `task.status.message.parts[]` array by finding the DataPart (part with `data` property). Task ID is in `task.id` and status state is in `task.status.state`. This means your webhook handler gets all the context and data needed to take appropriate action.
+The webhook receives the **full A2A-compatible StreamResponse structure** for each status change. For `statusUpdate` events, extract task data from `statusUpdate.status.message.parts[]` array by finding the DataPart (part with `data` property). Task ID is in `statusUpdate.taskId` and status state is in `statusUpdate.status.state`. For `task` events, use `task.id` and `task.status.state`. The `statusUpdate.final` flag indicates if this is the final event in the stream. This means your webhook handler gets all the context and data needed to take appropriate action.
 
 ### Webhook Handling Example
 
 ```javascript
 app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) => {
   const { task_type, agent_id, operation_id } = req.params;
-  const response = req.body;
+  const payload = req.body;
+
+  // Extract data from A2A StreamResponse format
+  let taskId, status, data, final;
+  
+  if (payload.statusUpdate) {
+    // Status change event
+    const event = payload.statusUpdate;
+    taskId = event.taskId;
+    status = event.status.state;
+    final = event.final;
+    const dataPart = event.status.message?.parts?.find(p => p.data);
+    data = dataPart?.data;
+  } else if (payload.task) {
+    // Final task state
+    const task = payload.task;
+    taskId = task.id;
+    status = task.status.state;
+    const dataPart = task.status.message?.parts?.find(p => p.data);
+    data = dataPart?.data;
+    final = true; // task variant typically indicates final state
+  } else {
+    return res.status(400).json({ error: 'Invalid webhook payload format' });
+  }
 
   // Webhooks are only called for 'submitted' operations
   // So we only need to handle status changes that occur after submission
-  switch (response.status) {
+  switch (status) {
     case 'input-required':
       // Alert human that input is needed
       await notifyHuman({
+        taskId,
         operation_id,
-        message: response.message,
-        context_id: response.context_id,
-        approval_data: response.data
+        message: payload.statusUpdate?.status?.message?.parts?.find(p => p.text)?.text,
+        context_id: payload.statusUpdate?.contextId,
+        approval_data: data
       });
       break;
 
@@ -609,26 +666,30 @@ app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) =
       // Process the completed operation
       if (task_type === 'create_media_buy') {
         await handleMediaBuyCreated({
-          media_buy_id: response.result?.media_buy_id,
-          buyer_ref: response.result?.buyer_ref,
-          packages: response.result?.packages,
-          creative_deadline: response.result?.creative_deadline
+          taskId,
+          media_buy_id: data?.media_buy_id,
+          buyer_ref: data?.buyer_ref,
+          packages: data?.packages,
+          creative_deadline: data?.creative_deadline
         });
       }
       break;
 
     case 'failed':
       // Handle failure
+      const errorMessage = payload.statusUpdate?.status?.message?.parts?.find(p => p.text)?.text;
       await handleOperationFailed({
+        taskId,
         operation_id,
-        error: response.error,
-        message: response.message
+        error: data?.errors || [{ message: errorMessage }],
+        message: errorMessage
       });
       break;
 
     case 'canceled':
       // Handle cancellation
-      await handleOperationCanceled(operation_id, response.message);
+      const cancelMessage = payload.statusUpdate?.status?.message?.parts?.find(p => p.text)?.text;
+      await handleOperationCanceled(taskId, operation_id, cancelMessage);
       break;
   }
 
@@ -640,7 +701,7 @@ app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) =
 
 **Important**: Webhooks use at-least-once delivery semantics and may be duplicated or arrive out of order.
 
-See **[Core Concepts: Webhook Reliability](/docs/protocols/core-concepts.mdx#webhook-reliability)** for detailed implementation guidance including:
+See **[Core Concepts: Webhook Reliability](/docs/protocols/core-concepts#webhook-reliability)** for detailed implementation guidance including:
 - Idempotent webhook handlers
 - Sequence handling and out-of-order detection
 - Security considerations (signature verification)

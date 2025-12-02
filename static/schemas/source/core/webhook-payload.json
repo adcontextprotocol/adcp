@@ -54,21 +54,23 @@
     "Webhooks are ONLY triggered when the initial response status is 'submitted' (long-running operations)",
     "This payload structure fully adopts A2A Protocol's push notification payload format (A2A Specification Section 4.3.3)",
     "The payload is a StreamResponse object (A2A Specification Section 3.2.3) containing exactly one of: task, message, statusUpdate, or artifactUpdate",
-    "For task updates, the most common structure is {task: {id, contextId, status: {state, message: {parts: [...]}, timestamp}, ...}}",
-    "Task ID is in task.id (not top-level taskId). Extract using payload.task.id",
-    "Task status state is in task.status.state. Extract using payload.task.status.state",
+    "For status change events (like input-required, failed, working), use statusUpdate: {statusUpdate: {taskId, contextId, status: {state, message: {parts: [...]}, timestamp}, final}}",
+    "For final completion with full task state, use task: {task: {id, contextId, status: {state, message: {parts: [...]}, timestamp}, ...}}",
+    "Task ID is in statusUpdate.taskId (for statusUpdate) or task.id (for task variant)",
+    "Task status state is in statusUpdate.status.state or task.status.state",
     "ADCP declares only the structure of parts[].data (DataPart data field) within Message objects - the task-specific payload",
-    "Extract task data from task.status.message.parts array: find the DataPart (part with 'data' property) and use its data field",
-    "For example, a create_media_buy webhook will have task.status.message.parts with a DataPart containing {data: {media_buy_id, buyer_ref, packages, ...}}",
+    "Extract task data from statusUpdate.status.message.parts or task.status.message.parts array: find the DataPart (part with 'data' property) and use its data field",
+    "For example, a create_media_buy webhook will have statusUpdate.status.message.parts or task.status.message.parts with a DataPart containing {data: {media_buy_id, buyer_ref, packages, ...}}",
     "TextPart (part with 'text' property) provides human-readable context but is optional",
+    "The statusUpdate.final flag indicates if this is the final event in the stream",
     "Your webhook handler receives the complete A2A-compatible StreamResponse structure needed to process the result"
   ],
   "examples": [
     {
-      "description": "Webhook for input-required status (human approval needed) - A2A with task object",
+      "description": "Webhook for input-required status (human approval needed) - A2A StreamResponse with statusUpdate",
       "data": {
-        "task": {
-          "id": "task_456",
+        "statusUpdate": {
+          "taskId": "task_456",
           "contextId": "ctx_abc123",
           "status": {
             "state": "input-required",
@@ -93,7 +95,8 @@
                 }
               ]
             }
-          }
+          },
+          "final": false
         }
       }
     },
@@ -145,10 +148,10 @@
       }
     },
     {
-      "description": "Webhook for failed sync_creatives - A2A StreamResponse with task object",
+      "description": "Webhook for failed sync_creatives - A2A StreamResponse with statusUpdate",
       "data": {
-        "task": {
-          "id": "task_789",
+        "statusUpdate": {
+          "taskId": "task_789",
           "contextId": "ctx_abc123",
           "status": {
             "state": "failed",
@@ -162,7 +165,8 @@
                 }
               ]
             }
-          }
+          },
+          "final": true
         }
       }
     }

@@ -353,26 +353,9 @@ await a2a.send({
 });
 ```
 
-### Server Decision on Webhook Usage
-
-The server decides whether to use webhooks based on the initial response status:
-
-- **`completed`, `failed`, `rejected`**: Synchronous response - webhook is NOT called (client already has complete response)
-- **`working`**: Will respond synchronously within ~120 seconds - webhook is NOT called (just wait for the response)
-- **`submitted`**: Long-running async operation - webhook WILL be called on ALL subsequent status changes
-- **Client choice**: Webhook is optional - clients can always poll with `tasks/get`
-
-**Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted`.
-
-**When webhooks are called (for `submitted` operations):**
-- Status changes to `input-required` → Webhook called (human needs to respond)
-- Status changes to `completed` → Webhook called (final result)
-- Status changes to `failed` → Webhook called (error details)
-- Status changes to `canceled` → Webhook called (cancellation confirmation)
-
 ### Webhook POST Format
 
-When an async operation changes status, the publisher POSTs a payload following **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload uses A2A's Task structure with a Message containing parts array. ADCP declares only the structure of `parts[].data` (DataPart data field) for task-specific payloads.
+When an async operation changes status, the publisher POSTs a payload following **A2A Protocol's push notification payload structure** (A2A Specification Section 4.3.3). The payload is a **StreamResponse object** (A2A Specification Section 3.2.3) containing exactly one of: `statusUpdate` (TaskStatusUpdateEvent for status changes), `task` (Task object for final completion), `message` (Message object), or `artifactUpdate` (TaskArtifactUpdateEvent). For status change events, use `statusUpdate` which contains a TaskStatus object with a Message containing parts array. ADCP declares only the structure of `parts[].data` (DataPart data field) for task-specific payloads.
 
 #### Webhook Scenarios
 
@@ -429,20 +412,22 @@ const response = await session.call('create_media_buy', params, {
   "message": "Campaign requires sales approval. Expected time: 2-4 hours."
 }
 
-// Later: Webhook POST when approval is needed (A2A StreamResponse format)
+// Later: Webhook POST when approval is needed (A2A StreamResponse format - statusUpdate for status change)
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 Content-Type: application/json
 X-ADCP-Signature: sha256=...
 X-ADCP-Timestamp: 2025-01-22T10:15:00Z
 
 {
-  "task": {
-    "id": "task_456",
+  "statusUpdate": {
+    "taskId": "task_456",
     "contextId": "ctx_abc123",
     "status": {
       "state": "input-required",
       "timestamp": "2025-01-22T10:15:00Z",
       "message": {
+        "messageId": "msg_456_001",
+        "role": "agent",
         "parts": [
           {
             "text": "Please approve $150K campaign to proceed"
@@ -454,7 +439,8 @@ X-ADCP-Timestamp: 2025-01-22T10:15:00Z
           }
         ]
       }
-    }
+    },
+    "final": false
   }
 }
 
@@ -532,13 +518,15 @@ Your webhook handler can parse the URL path to route to the correct handler base
 **`input-required` webhook (human needs to respond) - A2A StreamResponse format:**
 ```json
 {
-  "task": {
-    "id": "task_456",
+  "statusUpdate": {
+    "taskId": "task_456",
     "contextId": "ctx_abc123",
     "status": {
       "state": "input-required",
       "timestamp": "2025-01-22T10:15:00Z",
       "message": {
+        "messageId": "msg_456_001",
+        "role": "agent",
         "parts": [
           {
             "text": "Campaign budget requires VP approval to proceed"
@@ -557,7 +545,8 @@ Your webhook handler can parse the URL path to route to the correct handler base
           }
         ]
       }
-    }
+    },
+    "final": false
   }
 }
 ```
@@ -599,20 +588,23 @@ Your webhook handler can parse the URL path to route to the correct handler base
 **`failed` webhook (operation failed) - A2A StreamResponse format:**
 ```json
 {
-  "task": {
-    "id": "task_456",
+  "statusUpdate": {
+    "taskId": "task_456",
     "contextId": "ctx_abc123",
     "status": {
       "state": "failed",
       "timestamp": "2025-01-22T10:46:00Z",
       "message": {
+        "messageId": "msg_456_003",
+        "role": "agent",
         "parts": [
           {
             "text": "Requested targeting yielded 0 available impressions"
           }
         ]
       }
-    }
+    },
+    "final": true
   }
 }
 ```
@@ -622,6 +614,39 @@ Your webhook handler can parse the URL path to route to the correct handler base
 ```javascript
 function extractWebhookData(webhookPayload) {
   // A2A StreamResponse contains exactly one of: task, message, statusUpdate, artifactUpdate
+  
+  // Handle statusUpdate (for status change events like input-required, failed, working)
+  if (webhookPayload.statusUpdate) {
+    const event = webhookPayload.statusUpdate;
+    const taskId = event.taskId; // Note: taskId in statusUpdate, not id
+    const status = event.status.state;
+    const message = event.status.message;
+    
+    if (message?.parts) {
+      const dataPart = message.parts.find(part => part.data !== undefined);
+      if (dataPart) {
+        return {
+          taskId,
+          status,
+          data: dataPart.data, // This is the AdCP task-specific payload
+          final: event.final // Indicates if this is the final event
+        };
+      }
+      
+      // For interim statuses, extract text message
+      const textPart = message.parts.find(part => part.text !== undefined);
+      return {
+        taskId,
+        status,
+        message: textPart?.text,
+        final: event.final
+      };
+    }
+    
+    return { taskId, status, final: event.final };
+  }
+  
+  // Handle task (for final completion with full task state)
   if (webhookPayload.task) {
     const task = webhookPayload.task;
     const taskId = task.id;
@@ -639,7 +664,6 @@ function extractWebhookData(webhookPayload) {
         };
       }
       
-      // For interim statuses, extract text message
       const textPart = message.parts.find(part => part.text !== undefined);
       return {
         taskId,
@@ -649,7 +673,7 @@ function extractWebhookData(webhookPayload) {
     }
   }
   
-  // Handle other StreamResponse variants (message, statusUpdate, artifactUpdate)
+  // Handle other StreamResponse variants (message, artifactUpdate)
   // ...
 }
 ```
@@ -658,12 +682,14 @@ function extractWebhookData(webhookPayload) {
 - Webhooks are ONLY called for `submitted` operations
 - Payload structure fully adopts A2A Protocol's push notification format (Section 4.3.3)
 - Payload is a StreamResponse containing exactly one of: `task`, `message`, `statusUpdate`, or `artifactUpdate`
-- For task updates, use the `task` variant: `{task: {id, contextId, status: {state, message: {parts: [...]}, timestamp}, ...}}`
-- Task ID is in `task.id` (not top-level `taskId`)
-- Task status state is in `task.status.state`
-- Task-specific data is in `task.status.message.parts[]` array - find the DataPart (part with `data` property)
+- For status change events (like `input-required`, `failed`, `working`), use the `statusUpdate` variant: `{statusUpdate: {taskId, contextId, status: {state, message: {parts: [...]}, timestamp}, final}}`
+- For final completion with full task state, use the `task` variant: `{task: {id, contextId, status: {state, message: {parts: [...]}, timestamp}, ...}}`
+- Task ID is in `statusUpdate.taskId` (for statusUpdate) or `task.id` (for task variant)
+- Task status state is in `statusUpdate.status.state` or `task.status.state`
+- Task-specific data is in `statusUpdate.status.message.parts[]` or `task.status.message.parts[]` array - find the DataPart (part with `data` property)
 - ADCP declares only the structure of `parts[].data` - the DataPart's data field contains the task response schema
 - TextPart (part with `text` property) provides human-readable context but is optional
+- The `statusUpdate.final` flag indicates if this is the final event in the stream
 
 ### Task State Reconciliation
 
