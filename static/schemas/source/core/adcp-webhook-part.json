@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/adcp-part.json",
-  "title": "ADCP Part",
-  "description": "ADCP extension of A2A Part union type. Extends a2a-part.json with task-specific validation for parts[].data (DataPart data field). The data field is a union of all possible task-specific async response schemas.",
+  "$id": "/schemas/core/adcp-webhook-part.json",
+  "title": "ADCP Webhook Part",
+  "description": "ADCP extension of A2A Part union type for webhook payloads. Extends a2a-part.json with task-specific validation for parts[].data (DataPart data field). The data field is a union of all possible task-specific async response schemas.",
   "oneOf": [
     {
       "type": "object",

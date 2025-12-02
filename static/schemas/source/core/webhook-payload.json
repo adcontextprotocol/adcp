@@ -9,7 +9,72 @@
       "type": "object",
       "properties": {
         "task": {
-          "$ref": "/schemas/core/adcp-task.json",
+          "allOf": [
+            {
+              "$ref": "/schemas/core/a2a-task.json"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "allOf": [
+                    {
+                      "$ref": "/schemas/core/a2a-task-status.json"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "allOf": [
+                            {
+                              "$ref": "/schemas/core/a2a-message.json"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "parts": {
+                                  "type": "array",
+                                  "description": "Parts is the container of the message content. Array of ADCP Part union type with task-specific validation for parts[].data.",
+                                  "items": {
+                                    "$ref": "/schemas/core/adcp-webhook-part.json"
+                                  },
+                                  "minItems": 1
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "history": {
+                  "type": "array",
+                  "description": "The history of interactions from a task (using ADCP Message with task-specific validation).",
+                  "items": {
+                    "allOf": [
+                      {
+                        "$ref": "/schemas/core/a2a-message.json"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "parts": {
+                            "type": "array",
+                            "description": "Parts is the container of the message content. Array of ADCP Part union type with task-specific validation for parts[].data.",
+                            "items": {
+                              "$ref": "/schemas/core/adcp-part.json"
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
           "description": "A Task object containing the current state of the task (A2A Specification Section 4.1.1). Uses ADCP extension with task-specific validation for parts[].data."
         }
       },
@@ -20,7 +85,24 @@
       "type": "object",
       "properties": {
         "message": {
-          "$ref": "/schemas/core/adcp-message.json",
+          "allOf": [
+            {
+              "$ref": "/schemas/core/a2a-message.json"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "parts": {
+                  "type": "array",
+                  "description": "Parts is the container of the message content. Array of ADCP Part union type with task-specific validation for parts[].data.",
+                  "items": {
+                    "$ref": "/schemas/core/adcp-part.json"
+                  },
+                  "minItems": 1
+                }
+              }
+            }
+          ],
           "description": "A Message object containing a message response (A2A Specification Section 4.1.4). Uses ADCP extension with task-specific validation for parts[].data (DataPart data field)."
         }
       },
@@ -31,7 +113,48 @@
       "type": "object",
       "properties": {
         "statusUpdate": {
-          "$ref": "/schemas/core/adcp-task-status-update-event.json",
+          "allOf": [
+            {
+              "$ref": "/schemas/core/a2a-task-status-update-event.json"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "allOf": [
+                    {
+                      "$ref": "/schemas/core/a2a-task-status.json"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "allOf": [
+                            {
+                              "$ref": "/schemas/core/a2a-message.json"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "parts": {
+                                  "type": "array",
+                                  "description": "Parts is the container of the message content. Array of ADCP Part union type with task-specific validation for parts[].data.",
+                                  "items": {
+                                    "$ref": "/schemas/core/adcp-webhook-part.json"
+                                  },
+                                  "minItems": 1
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
           "description": "A TaskStatusUpdateEvent indicating a status change (A2A Specification Section 4.2.1). Uses ADCP extension with task-specific validation for parts[].data."
         }
       },
@@ -42,7 +165,36 @@
       "type": "object",
       "properties": {
         "artifactUpdate": {
-          "$ref": "/schemas/core/adcp-task-artifact-update-event.json",
+          "allOf": [
+            {
+              "$ref": "/schemas/core/a2a-task-artifact-update-event.json"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "artifact": {
+                  "allOf": [
+                    {
+                      "$ref": "/schemas/core/a2a-artifact.json"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "parts": {
+                          "type": "array",
+                          "description": "Array of parts making up the artifact content (ADCP Part union type with task-specific validation).",
+                          "items": {
+                            "$ref": "/schemas/core/adcp-part.json"
+                          },
+                          "minItems": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
           "description": "A TaskArtifactUpdateEvent indicating artifact update (A2A Specification Section 4.2.2). Uses ADCP extension with task-specific validation for parts[].data."
         }
       },
@@ -60,8 +212,8 @@
     "Task status state is in statusUpdate.status.state or task.status.state",
     "ADCP declares only the structure of parts[].data (DataPart data field) within Message objects - the task-specific payload",
     "Extract task data from statusUpdate.status.message.parts or task.status.message.parts array: find the DataPart (part with 'data' property) and use its data field",
-    "This schema uses ADCP extensions (adcp-task.json, adcp-message.json, adcp-task-status-update-event.json, etc.) which extend A2A schemas with task-specific validation",
-    "The parts[].data field is validated as a union of all task-specific async response schemas (see adcp-part.json)",
+    "This schema uses ADCP extensions which extend A2A schemas with task-specific validation (inline in this schema)",
+    "The parts[].data field is validated as a union of all task-specific async response schemas (see adcp-webhook-part.json)",
     "For create_media_buy, parts.data validates against: create-media-buy-async-response-input-required.json, create-media-buy-async-response-failed.json, create-media-buy-async-response-working.json, or create-media-buy-response.json",
     "TextPart (part with 'text' property) provides human-readable context but is optional",
     "The statusUpdate.final flag indicates if this is the final event in the stream",
