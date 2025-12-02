@@ -11,12 +11,15 @@ Migrate webhook payload structure to fully adopt A2A Protocol's push notificatio
 **Breaking Changes:**
 
 - **Webhook payload structure completely changed** - Now uses A2A StreamResponse format instead of custom ADCP format
-- **Field paths changed**:
-  - `task_id` → `task.id`
-  - `status` → `task.status.state`
-  - `result` → `task.status.message.parts[].data` (nested in parts array)
-- **Top-level fields removed** - All task data now nested under `task` object
-- **Schema structure changed** - Uses `oneOf` with A2A schemas (`task`, `message`, `statusUpdate`, `artifactUpdate`)
+- **Payload is a StreamResponse object** containing exactly one of: `statusUpdate` (TaskStatusUpdateEvent), `task` (Task object), `message` (Message object), or `artifactUpdate` (TaskArtifactUpdateEvent)
+- **Field paths depend on StreamResponse variant**:
+  - For `statusUpdate`: `statusUpdate.taskId`, `statusUpdate.status.state`, `statusUpdate.status.message.parts[].data`
+  - For `task`: `task.id`, `task.status.state`, `task.status.message.parts[].data`
+  - For `artifactUpdate`: `artifactUpdate.taskId`, `artifactUpdate.artifact.parts[].data`
+- **Status change events use `statusUpdate`** (most common for webhooks)
+- **Final completion may use `task`** (for full task state)
+- **Top-level fields removed** - All task data now nested within StreamResponse variants
+- **Schema structure changed** - Uses `oneOf` with A2A schemas
 
 **What Changed:**
 
@@ -36,21 +39,21 @@ Migrate webhook payload structure to fully adopt A2A Protocol's push notificatio
 
 **Migration Required:**
 
-All webhook handlers must be updated to extract data from the new A2A structure:
+All webhook handlers must be updated to handle the new A2A StreamResponse structure. The payload format depends on the event type:
 
-**Before:**
-const taskId = payload.task_id;
-const status = payload.status;
-const data = payload.result;**After:**ascript
-const taskId = payload.task.id;
-const status = payload.task.status.state;
-const dataPart = payload.task.status.message.parts.find(p => p.data);
-const data = dataPart?.data;**Benefits:**
+- **Status changes** (`input-required`, `failed`, `working`) → Use `statusUpdate` variant
+- **Final completion** → May use `task` variant for full state
+- **Artifact updates** → Use `artifactUpdate` variant
+
+Webhook handlers must check which StreamResponse variant is present and extract data accordingly. See updated documentation for complete extraction examples.
+
+**Benefits:**
 
 - Full A2A Protocol compliance for webhook payloads
 - Standardized structure across all A2A-compatible agents
 - Better interoperability with A2A ecosystem
 - Version tracking enables easier future A2A spec updates
+- Semantically correct event types (`statusUpdate` for status changes vs `task` for full state)
 
 **Reference:**
 
