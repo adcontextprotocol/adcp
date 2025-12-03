@@ -19,7 +19,7 @@
       "type": "object",
       "properties": {
         "data": {
-          "oneOf": [
+          "anyOf": [
             {
               "$ref": "/schemas/media-buy/create-media-buy-async-response-input-required.json"
             },

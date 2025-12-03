@@ -63,7 +63,7 @@
                             "type": "array",
                             "description": "Parts is the container of the message content. Array of ADCP Part union type with task-specific validation for parts[].data.",
                             "items": {
-                              "$ref": "/schemas/core/adcp-part.json"
+                              "$ref": "/schemas/core/adcp-webhook-data-part.json"
                             },
                             "minItems": 1
                           }
@@ -96,7 +96,7 @@
                   "type": "array",
                   "description": "Parts is the container of the message content. Array of ADCP Part union type with task-specific validation for parts[].data.",
                   "items": {
-                    "$ref": "/schemas/core/adcp-part.json"
+                    "$ref": "/schemas/core/adcp-webhook-data-part.json"
                   },
                   "minItems": 1
                 }
@@ -184,7 +184,7 @@
                           "type": "array",
                           "description": "Array of parts making up the artifact content (ADCP Part union type with task-specific validation).",
                           "items": {
-                            "$ref": "/schemas/core/adcp-part.json"
+                            "$ref": "/schemas/core/adcp-webhook-data-part.json"
                           },
                           "minItems": 1
                         }
