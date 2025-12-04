@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/pricing-options/cpv-option.json",
-  "title": "CPV Pricing Option",
-  "description": "Cost Per View (at publisher-defined threshold) fixed-rate pricing for video/audio",
+  "$id": "/schemas/pricing-options/cpv-fixed-option.json",
+  "title": "CPV Fixed Rate Pricing Option",
+  "description": "Cost Per View (at publisher-defined threshold) with guaranteed fixed rate - common for direct/guaranteed video deals",
   "type": "object",
   "properties": {
     "pricing_option_id": {

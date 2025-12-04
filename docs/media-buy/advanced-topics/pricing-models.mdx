@@ -118,7 +118,7 @@ By accepting the product, buyers agree to use the declared measurement provider 
 
 **Use Cases**: Video campaigns, audio ads, pre-roll video
 
-**Example**:
+**Fixed Example**:
 ```json
 {
   "pricing_option_id": "cpcv_usd_guaranteed",
@@ -126,6 +126,21 @@ By accepting the product, buyers agree to use the declared measurement provider 
   "rate": 0.15,
   "currency": "USD",
   "is_fixed": true
+}
+```
+
+**Auction Example**:
+```json
+{
+  "pricing_option_id": "cpcv_usd_auction",
+  "pricing_model": "cpcv",
+  "currency": "USD",
+  "is_fixed": false,
+  "price_guidance": {
+    "floor": 0.08,
+    "p50": 0.12,
+    "p75": 0.15
+  }
 }
 ```
 
@@ -138,13 +153,32 @@ By accepting the product, buyers agree to use the declared measurement provider 
 
 **Use Cases**: Video campaigns with shorter completion requirements
 
-**Example**:
+**Fixed Example**:
 ```json
 {
+  "pricing_option_id": "cpv_usd_50pct",
   "pricing_model": "cpv",
   "rate": 0.08,
   "currency": "USD",
   "is_fixed": true,
+  "parameters": {
+    "view_threshold": 0.5
+  }
+}
+```
+
+**Auction Example**:
+```json
+{
+  "pricing_option_id": "cpv_usd_50pct_auction",
+  "pricing_model": "cpv",
+  "currency": "USD",
+  "is_fixed": false,
+  "price_guidance": {
+    "floor": 0.04,
+    "p50": 0.07,
+    "p75": 0.10
+  },
   "parameters": {
     "view_threshold": 0.5
   }
@@ -163,9 +197,10 @@ By accepting the product, buyers agree to use the declared measurement provider 
 
 **Use Cases**: Connected TV, linear TV, radio, audio streaming
 
-**Example**:
+**Fixed Example**:
 ```json
 {
+  "pricing_option_id": "cpp_usd_a18-49",
   "pricing_model": "cpp",
   "rate": 250.00,
   "currency": "USD",
@@ -175,6 +210,25 @@ By accepting the product, buyers agree to use the declared measurement provider 
     "min_points": 50
   },
   "min_spend_per_package": 12500
+}
+```
+
+**Auction Example**:
+```json
+{
+  "pricing_option_id": "cpp_usd_a18-49_auction",
+  "pricing_model": "cpp",
+  "currency": "USD",
+  "is_fixed": false,
+  "price_guidance": {
+    "floor": 150.00,
+    "p50": 225.00,
+    "p75": 275.00
+  },
+  "parameters": {
+    "demographic": "A18-49",
+    "min_points": 50
+  }
 }
 ```
 
@@ -219,11 +273,22 @@ Buyers should verify the measurement provider meets their campaign requirements 
 
 **Use Cases**: Direct response campaigns, search ads, social advertising
 
-**Example**:
+**Fixed Example**:
 ```json
 {
+  "pricing_option_id": "cpc_usd_fixed",
   "pricing_model": "cpc",
   "rate": 1.50,
+  "currency": "USD",
+  "is_fixed": true
+}
+```
+
+**Auction Example**:
+```json
+{
+  "pricing_option_id": "cpc_usd_auction",
+  "pricing_model": "cpc",
   "currency": "USD",
   "is_fixed": false,
   "price_guidance": {
@@ -243,9 +308,10 @@ Buyers should verify the measurement provider meets their campaign requirements 
 
 **Use Cases**: Sponsorships, takeovers, exclusive placements, branded content
 
-**Example**:
+**Fixed Example**:
 ```json
 {
+  "pricing_option_id": "flat_rate_usd_takeover",
   "pricing_model": "flat_rate",
   "rate": 50000.00,
   "currency": "USD",
@@ -253,7 +319,22 @@ Buyers should verify the measurement provider meets their campaign requirements 
 }
 ```
 
-**Billing**: Fixed cost for the entire campaign period
+**Auction Example**:
+```json
+{
+  "pricing_option_id": "flat_rate_usd_takeover_auction",
+  "pricing_model": "flat_rate",
+  "currency": "USD",
+  "is_fixed": false,
+  "price_guidance": {
+    "floor": 35000.00,
+    "p50": 45000.00,
+    "p75": 55000.00
+  }
+}
+```
+
+**Billing**: Fixed cost for the entire campaign period (fixed) or auction-determined price for the placement (auction)
 
 ---
 
@@ -335,6 +416,8 @@ Publishers can offer the same product in multiple currencies:
 
 ## Fixed vs. Auction Pricing
 
+**All pricing models** (CPM, vCPM, CPC, CPCV, CPV, CPP, and Flat Rate) support both fixed and auction pricing variants.
+
 ### Fixed Pricing (`is_fixed: true`)
 - Publisher sets a fixed rate
 - Rate is guaranteed and predictable
@@ -344,10 +427,27 @@ Publishers can offer the same product in multiple currencies:
 ### Auction Pricing (`is_fixed: false`)
 - Final price determined through auction
 - Publisher provides `price_guidance` with floor and percentiles
-- Common for non-guaranteed inventory
+- Common for non-guaranteed/programmatic inventory
 - Buyer submits `bid_price` in media buy request
 
-**Auction Example**:
+**Auction CPM Example**:
+```json
+{
+  "pricing_option_id": "cpm_usd_auction",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "is_fixed": false,
+  "price_guidance": {
+    "floor": 8.00,
+    "p25": 10.00,
+    "p50": 12.00,
+    "p75": 15.00,
+    "p90": 18.00
+  }
+}
+```
+
+**Auction CPCV Example**:
 ```json
 {
   "pricing_option_id": "cpcv_usd_auction",

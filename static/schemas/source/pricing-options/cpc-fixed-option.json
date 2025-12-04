@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/pricing-options/cpc-option.json",
-  "title": "CPC Pricing Option",
-  "description": "Cost Per Click fixed-rate pricing for performance-driven advertising campaigns",
+  "$id": "/schemas/pricing-options/cpc-fixed-option.json",
+  "title": "CPC Fixed Rate Pricing Option",
+  "description": "Cost Per Click with guaranteed fixed rate - common for direct/guaranteed performance campaigns",
   "type": "object",
   "properties": {
     "pricing_option_id": {

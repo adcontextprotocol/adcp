@@ -17,19 +17,34 @@
       "$ref": "/schemas/pricing-options/vcpm-auction-option.json"
     },
     {
-      "$ref": "/schemas/pricing-options/cpc-option.json"
+      "$ref": "/schemas/pricing-options/cpc-fixed-option.json"
     },
     {
-      "$ref": "/schemas/pricing-options/cpcv-option.json"
+      "$ref": "/schemas/pricing-options/cpc-auction-option.json"
     },
     {
-      "$ref": "/schemas/pricing-options/cpv-option.json"
+      "$ref": "/schemas/pricing-options/cpcv-fixed-option.json"
     },
     {
-      "$ref": "/schemas/pricing-options/cpp-option.json"
+      "$ref": "/schemas/pricing-options/cpcv-auction-option.json"
     },
     {
-      "$ref": "/schemas/pricing-options/flat-rate-option.json"
+      "$ref": "/schemas/pricing-options/cpv-fixed-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/cpv-auction-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/cpp-fixed-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/cpp-auction-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/flat-rate-fixed-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/flat-rate-auction-option.json"
     }
   ]
 }
