@@ -343,7 +343,7 @@ MCP:  { result: { media_buy_id, packages, ... } }
 A2A:  { status: { message: { parts: [{ data: { media_buy_id, packages, ... } }] } } }
 ```
 
-Both validate against the same schema (e.g., `create-media-buy-async-response-completed.json`).
+Both validate against the same schemas. For `completed`/`failed`, use the full task response schema. For other statuses, use the status-specific schemas.
 
 ### When Webhooks Are Called
 
@@ -430,21 +430,21 @@ The data payload (`result` in MCP, `status.message.parts[].data` in A2A) uses st
 
 | Status | Data Schema | Contents |
 |--------|-------------|----------|
-| `completed` | `[task]-async-response-completed.json` | Success payload (IDs, packages, etc.) |
-| `failed` | `[task]-async-response-failed.json` | Error details (`errors` array) |
+| `completed` | `[task]-response.json` | Full task response (success branch) |
+| `failed` | `[task]-response.json` | Full task response (error branch) |
 | `working` | `[task]-async-response-working.json` | Progress info (`percentage`, `step`) |
 | `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
 | `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
 
 #### Supported Async Operations
 
-Each async operation has status-specific data schemas:
+Each async operation uses its main response schema for `completed`/`failed` statuses:
 
-| Task | Completed Schema | Failed Schema |
-|------|-----------------|---------------|
-| `create_media_buy` | `create-media-buy-async-response-completed.json` | `create-media-buy-async-response-failed.json` |
-| `update_media_buy` | `update-media-buy-async-response-completed.json` | `update-media-buy-async-response-failed.json` |
-| `sync_creatives` | `sync-creatives-async-response-completed.json` | `sync-creatives-async-response-failed.json` |
+| Task | Response Schema |
+|------|-----------------|
+| `create_media_buy` | `create-media-buy-response.json` |
+| `update_media_buy` | `update-media-buy-response.json` |
+| `sync_creatives` | `sync-creatives-response.json` |
 
 #### MCP Webhook URL Patterns
 

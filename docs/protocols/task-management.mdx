@@ -447,7 +447,7 @@ Both MCP and A2A use HTTP webhooks to deliver async task updates. Instead of pol
 | **MCP** | AdCP specifies this | `pushNotificationConfig` | `mcp-webhook-payload.json` | `result` field |
 | **A2A** | Native to protocol | `pushNotificationConfig` | `Task` or `TaskStatusUpdateEvent` | `status.message.parts[].data` |
 
-Both protocols use **identical AdCP data schemas** (e.g., `create-media-buy-async-response-completed.json`).
+Both protocols use **identical AdCP data schemas**. For `completed`/`failed`, this is the full task response schema. For other statuses, use the status-specific schemas.
 
 ### MCP Webhook Configuration
 
@@ -543,7 +543,7 @@ Webhooks are triggered when **all** of the following are true:
 - `message` (optional) — Human-readable context
 
 **Data field (AdCP data layer):**
-- `result` — Task-specific payload validated against status-specific schema
+- `result` — Task-specific payload. Schema: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json)
 
 **Example: MCP `completed` webhook:**
 ```http
@@ -604,6 +604,9 @@ Per the [A2A specification](https://a2a-protocol.org/latest/specification/#433-p
 | **`TaskStatusUpdateEvent`** | Status transitions during execution (`working`, `input-required`) |
 | **`TaskArtifactUpdateEvent`** | Streaming artifact updates |
 
+**Data field (AdCP data layer):**
+- `status.message.parts[].data` — Task-specific payload. Schema: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json)
+
 **Example: `Task` payload for completed state:**
 ```json
 {
@@ -662,8 +665,8 @@ The data payload (`result` in MCP, `status.message.parts[].data` in A2A) is vali
 
 | Status | Schema |
 |--------|--------|
-| `completed` | `[task]-async-response-completed.json` |
-| `failed` | `[task]-async-response-failed.json` |
+| `completed` | `[task]-response.json` (success branch) |
+| `failed` | `[task]-response.json` (error branch) |
 | `working` | `[task]-async-response-working.json` |
 | `input-required` | `[task]-async-response-input-required.json` |
 | `submitted` | `[task]-async-response-submitted.json` |

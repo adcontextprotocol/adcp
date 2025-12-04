@@ -273,7 +273,7 @@ if (response.status === 'submitted') {
 }
 ```
 
-The `result` field contains the AdCP data payload, validated against status-specific schemas (e.g., `create-media-buy-async-response-completed.json`).
+The `result` field contains the AdCP data payload. For `completed`/`failed` statuses, this is the full task response (e.g., `create-media-buy-response.json`). For other statuses, use the status-specific schemas (e.g., `create-media-buy-async-response-working.json`).
 
 #### Task Management and Polling
 ```javascript
