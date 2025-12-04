@@ -162,7 +162,7 @@ Both MCP and A2A use HTTP webhooks for async task updates. AdCP keeps the **enve
 
 | Aspect | MCP | A2A |
 |--------|-----|-----|
-| **Spec Status** | AdCP provides the webhook mechanism | Native protocol feature |
+| **Spec Status** | AdCP specifies this | Native protocol feature |
 | **Configuration** | `pushNotificationConfig` | `pushNotificationConfig` |
 | **Envelope** | `mcp-webhook-payload.json` | `Task`, `TaskStatusUpdateEvent`, or `TaskArtifactUpdateEvent` |
 | **Data Location** | `result` field | `status.message.parts[].data` |
@@ -170,7 +170,7 @@ Both MCP and A2A use HTTP webhooks for async task updates. AdCP keeps the **enve
 
 ### MCP Webhooks
 
-MCP doesn't define push notifications, so AdCP provides this capability. When you configure a webhook, the server will POST task updates to your URL instead of requiring you to poll.
+MCP doesn't define push notifications. AdCP fills this gap by specifying the webhook configuration (`pushNotificationConfig`) and payload format (`mcp-webhook-payload.json`). When you configure a webhook, the server will POST task updates to your URL instead of requiring you to poll.
 
 **Envelope Schema:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)
 

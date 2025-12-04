@@ -279,7 +279,7 @@ Both MCP and A2A use HTTP webhooks for async task updates. Instead of polling, y
 
 | Aspect | MCP | A2A |
 |--------|-----|-----|
-| **Spec Status** | AdCP provides this | Native protocol feature |
+| **Spec Status** | AdCP specifies this | Native protocol feature |
 | **Configuration** | `pushNotificationConfig` | `pushNotificationConfig` |
 | **Envelope** | `mcp-webhook-payload.json` | `Task` or `TaskStatusUpdateEvent` |
 | **Data Location** | `result` field | `status.message.parts[].data` |
@@ -287,7 +287,7 @@ Both MCP and A2A use HTTP webhooks for async task updates. Instead of polling, y
 
 #### MCP Webhooks
 
-MCP doesn't define push notifications, so AdCP provides this capability using the same configuration structure as A2A.
+MCP doesn't define push notifications. AdCP fills this gap by specifying the webhook configuration (`pushNotificationConfig`) and payload format (`mcp-webhook-payload.json`).
 
 **Envelope:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)  
 **Data location:** `result` field
@@ -345,22 +345,22 @@ A2A:  { status: { message: { parts: [{ data: { media_buy_id, packages, ... } }] 
 
 Both validate against the same schema (e.g., `create-media-buy-async-response-completed.json`).
 
-### Server Decision on Webhook Usage
+### When Webhooks Are Called
 
-The server decides whether to use webhooks based on the initial response status:
+Webhooks are triggered when **all** of the following are true:
 
-- **`completed`, `failed`, `rejected`**: Synchronous response - webhook is NOT called (client already has complete response)
-- **`working`**: Will respond synchronously within ~120 seconds - webhook is NOT called (just wait for the response)
-- **`submitted`**: Long-running async operation - webhook WILL be called on ALL subsequent status changes
-- **Client choice**: Webhook is optional - clients can always poll with `tasks/get`
+1. **Task type supports async execution** (e.g., `create_media_buy`, `sync_creatives`)
+2. **`pushNotificationConfig` is provided** in the request
+3. **Task requires async processing** — initial response is `working` or `submitted`
 
-**Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted`.
+If the initial response is already terminal (`completed`, `failed`, `rejected`), no webhook is sent — the client already has the final result.
 
-**When webhooks are called (for `submitted` operations):**
-- Status changes to `input-required` → Webhook called (human needs to respond)
-- Status changes to `completed` → Webhook called (final result)
-- Status changes to `failed` → Webhook called (error details)
-- Status changes to `canceled` → Webhook called (cancellation confirmation)
+**Status changes that trigger webhooks:**
+- `working` → Progress update
+- `input-required` → Human input needed
+- `completed` → Final result available
+- `failed` → Error details
+- `canceled` → Cancellation confirmed
 
 ### Push Notification Format by Protocol
 
@@ -456,7 +456,7 @@ https://buyer.com/webhooks/adcp/{task_name}/{agent_id}/{operation_id}
 
 Your webhook handler can parse the URL path to route to the correct handler.
 
-**Key principle:** Push notifications are ONLY sent for `submitted` operations. The data payload uses the same schema regardless of transport (MCP webhook or A2A native message).
+**Key principle:** For async tasks with `pushNotificationConfig`, push notifications are sent for all status changes after the initial response. The data payload uses the same schema regardless of transport (MCP webhook or A2A native message).
 
 ### Task State Reconciliation
 
