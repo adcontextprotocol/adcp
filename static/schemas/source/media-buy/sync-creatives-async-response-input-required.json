@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-creatives-async-response-input-required.json",
+  "title": "Sync Creatives - Input Required",
+  "description": "Payload when sync_creatives task is paused waiting for user input or approval.",
+  "type": "object",
+  "properties": {
+    "reason": {
+      "type": "string",
+      "description": "Machine-readable reason code (e.g., APPROVAL_REQUIRED, ASSET_CONFIRMATION)"
+    },
+    "requirements": {
+      "type": "array",
+      "description": "List of fields or decisions required to proceed",
+      "items": {
+        "type": "string"
+      }
+    },
+    "data": {
+      "type": "object",
+      "description": "Current state or preview data for review"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": false
+}
+

@@ -154,45 +154,126 @@ await a2a.send({
 });
 ```
 
-## Webhook & Task Management Differences
+## Push Notification Architecture
 
-### Webhook Configuration
+Both MCP and A2A use HTTP webhooks for async task updates. AdCP keeps the **envelope format** protocol-specific while using **identical data schemas** for the business payload.
 
-Both protocols support webhooks but with different implementation approaches:
+### Key Differences
 
-#### MCP: Protocol Wrapper Extension
+| Aspect | MCP | A2A |
+|--------|-----|-----|
+| **Spec Status** | AdCP provides the webhook mechanism | Native protocol feature |
+| **Configuration** | `pushNotificationConfig` | `pushNotificationConfig` |
+| **Envelope** | `mcp-webhook-payload.json` | `Task`, `TaskStatusUpdateEvent`, or `TaskArtifactUpdateEvent` |
+| **Data Location** | `result` field | `status.message.parts[].data` |
+| **Data Schemas** | **Identical** AdCP schemas | **Identical** AdCP schemas |
+
+### MCP Webhooks
+
+MCP doesn't define push notifications, so AdCP provides this capability. When you configure a webhook, the server will POST task updates to your URL instead of requiring you to poll.
+
+**Envelope Schema:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)
+
 ```javascript
-// AdCP uses A2A-compatible structure for MCP as well
-class McpAdcpSession {
-  async call(tool, params, options = {}) {
-    const request = { tool, arguments: params };
-
-    // Same structure as A2A - no mapping needed
-    if (options.push_notification_config) {
-      request.push_notification_config = options.push_notification_config;
+// Configure webhook when calling MCP tool
+const response = await session.call('create_media_buy',
+  { /* task params */ },
+  {
+    pushNotificationConfig: {
+      url: "https://buyer.com/webhooks/adcp",
+      authentication: {
+        schemes: ["HMAC-SHA256"],
+        credentials: "shared_secret_32_chars"
+      }
     }
+  }
+);
+```
 
-    return await this.mcp.call(request);
+**MCP Webhook POST:**
+```json
+{
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "message": "Media buy created successfully",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "buyer_ref": "nike_q1_campaign",
+    "packages": [...]
   }
 }
 ```
 
-#### A2A: Native Push Notifications
+### A2A Webhooks
+
+A2A defines push notifications natively via `PushNotificationConfig`. Per the [A2A spec](https://a2a-protocol.org/latest/specification/#433-push-notification-payload), the server can send `Task`, `TaskStatusUpdateEvent`, or `TaskArtifactUpdateEvent` depending on the situation.
+
+**Data Location:** `status.message.parts[].data`
+
 ```javascript
-// Built-in PushNotificationConfig - AdCP uses this structure universally
+// Configure push notification when sending A2A task
 await a2a.send({
-  message: { /* task */ },
-  push_notification_config: {
-    url: "https://buyer.com/webhooks",
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "create_media_buy",
+        parameters: { /* task params */ }
+      }
+    }]
+  },
+  pushNotificationConfig: {
+    url: "https://buyer.com/webhooks/a2a",
     authentication: {
-      schemes: ["HMAC-SHA256"],  // or ["Bearer"]
+      schemes: ["bearer"],
       credentials: "shared_secret_32_chars"
     }
   }
 });
 ```
 
-**Key Insight:** AdCP adopts A2A's `PushNotificationConfig` structure as the universal webhook configuration format across all protocols. This eliminates protocol-specific mapping and provides a consistent developer experience.
+**A2A Webhook POST (Task object for completed state):**
+```json
+{
+  "id": "task_456",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Media buy created successfully" },
+        {
+          "data": {
+            "media_buy_id": "mb_12345",
+            "buyer_ref": "nike_q1_campaign",
+            "packages": [...]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:30:00Z"
+  }
+}
+```
+
+### Unified Data Schemas
+
+Both protocols use HTTP webhooks. The **data payload** uses identical AdCP schemas regardless of envelope format:
+
+| Status | MCP Location | A2A Location | Schema |
+|--------|--------------|--------------|--------|
+| `completed` | `result` | `status.message.parts[].data` | `create-media-buy-async-response-completed.json` |
+| `failed` | `result` | `status.message.parts[].data` | `create-media-buy-async-response-failed.json` |
+| `working` | `result` | `status.message.parts[].data` | `create-media-buy-async-response-working.json` |
+| `input-required` | `result` | `status.message.parts[].data` | `create-media-buy-async-response-input-required.json` |
+
+This separation ensures:
+- **Consistent validation** of AdCP data across protocols
+- **Native protocol behavior** preserved (A2A SSE, MCP polling)
+- **No redundant envelope** in A2A (uses native message structure)
 
 ### Task Management
 

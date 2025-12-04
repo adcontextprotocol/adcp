@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/update-media-buy-async-response-input-required.json",
+  "title": "Update Media Buy - Input Required",
+  "description": "Payload when update_media_buy task is paused waiting for user input or approval.",
+  "type": "object",
+  "properties": {
+    "reason": {
+      "type": "string",
+      "description": "Machine-readable reason code (e.g., APPROVAL_REQUIRED, BUDGET_CONFIRMATION)"
+    },
+    "requirements": {
+      "type": "array",
+      "description": "List of fields or decisions required to proceed",
+      "items": {
+        "type": "string"
+      }
+    },
+    "data": {
+      "type": "object",
+      "description": "Current/partial media buy state provided for context/review"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": false
+}
+

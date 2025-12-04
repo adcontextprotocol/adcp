@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-creatives-async-response-completed.json",
+  "title": "Sync Creatives - Completed",
+  "description": "Data payload for successfully completed sync_creatives task.",
+  "type": "object",
+  "properties": {
+    "dry_run": {
+      "type": "boolean",
+      "description": "Whether this was a dry run (no actual changes made)"
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Results for each creative processed. Items with action='failed' indicate per-item validation/processing failures.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Creative ID from the request"
+          },
+          "action": {
+            "$ref": "/schemas/enums/creative-action.json",
+            "description": "Action taken for this creative"
+          },
+          "platform_id": {
+            "type": "string",
+            "description": "Platform-specific ID assigned to the creative"
+          },
+          "changes": {
+            "type": "array",
+            "description": "Field names that were modified (only present when action='updated')",
+            "items": {
+              "type": "string"
+            }
+          },
+          "errors": {
+            "type": "array",
+            "description": "Validation or processing errors (only present when action='failed')",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "description": "Non-fatal warnings about this creative",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preview_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Preview URL for generative creatives"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when preview link expires"
+          },
+          "assigned_to": {
+            "type": "array",
+            "description": "Package IDs this creative was successfully assigned to",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assignment_errors": {
+            "type": "object",
+            "description": "Assignment errors by package ID",
+            "patternProperties": {
+              "^[a-zA-Z0-9_-]+$": {
+                "type": "string",
+                "description": "Error message for this package assignment"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": ["creative_id", "action"],
+        "additionalProperties": false
+      }
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["creatives"],
+  "additionalProperties": false
+}
+

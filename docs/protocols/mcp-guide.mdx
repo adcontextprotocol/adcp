@@ -226,8 +226,13 @@ const refined = await session.call('get_products', {
 ```
 
 #### Async Operations with Webhooks
+
+MCP doesn't define push notifications, so AdCP provides this capability. When you configure a webhook, the server will POST task updates to your URL instead of requiring you to poll.
+
+**Webhook Envelope:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)
+
 ```javascript
-// Create media buy with webhook configuration
+// Configure webhook when calling MCP tool
 const response = await session.call('create_media_buy',
   {
     buyer_ref: "nike_q1_2025",
@@ -235,10 +240,10 @@ const response = await session.call('create_media_buy',
     budget: { total: 150000, currency: "USD" }
   },
   {
-    push_notification_config: {
+    pushNotificationConfig: {
       url: "https://buyer.com/webhooks/adcp",
       authentication: {
-        schemes: ["HMAC-SHA256"],  // or ["Bearer"] for simple auth
+        schemes: ["HMAC-SHA256"],  // or ["bearer"] for simple auth
         credentials: "shared_secret_32_chars"
       }
     }
@@ -247,11 +252,28 @@ const response = await session.call('create_media_buy',
 
 if (response.status === 'submitted') {
   console.log(`Task ${response.task_id} submitted for long-running execution`);
-  // Webhook will notify when complete, or poll manually
+  // Server will POST status updates to your webhook URL
 } else if (response.status === 'completed') {
   console.log(`Media buy created: ${response.media_buy_id}`);
 }
 ```
+
+**Webhook POST format:**
+```json
+{
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "buyer_ref": "nike_q1_2025",
+    "packages": [...]
+  }
+}
+```
+
+The `result` field contains the AdCP data payload, validated against status-specific schemas (e.g., `create-media-buy-async-response-completed.json`).
 
 #### Task Management and Polling
 ```javascript
@@ -292,11 +314,18 @@ async function handleContextExpiration(session, tool, params) {
 
 **Key Difference**: Unlike A2A which manages context automatically, MCP requires explicit context_id management.
 
-## Async Operations (MCP-Specific)
+## Handling Async Operations
 
-MCP handles long-running operations through polling with `context_id`:
+When a task returns `working` or `submitted` status, you have two options for receiving updates:
 
-### Polling Pattern
+| Approach | Best For | Trade-offs |
+|----------|----------|------------|
+| **Polling** | Simple integrations, short tasks | Easy to implement, but inefficient for long waits |
+| **Webhooks** | Production systems, long-running tasks | More efficient, but requires a public endpoint |
+
+### Option 1: Polling
+
+Use `tasks/get` to check task status periodically:
 
 ```javascript
 async function waitForCompletion(session, initialResponse) {
@@ -304,10 +333,11 @@ async function waitForCompletion(session, initialResponse) {
     return initialResponse; // Already completed
   }
   
+  // Poll more frequently for 'working' (will finish soon)
+  // Poll less frequently for 'submitted' (may take hours)
   let pollInterval = initialResponse.status === 'working' ? 5000 : 30000;
   
   while (true) {
-    // Poll using tasks/get with task_id
     const response = await session.pollTask(initialResponse.task_id, true);
     
     if (['completed', 'failed', 'canceled'].includes(response.status)) {
@@ -315,26 +345,50 @@ async function waitForCompletion(session, initialResponse) {
     }
     
     if (response.status === 'input-required') {
-      // Handle user input requirement
       const input = await promptUser(response.message);
-      // Continue conversation with context_id
       return session.call('create_media_buy', {
         context_id: response.context_id,
         additional_info: input
       });
     }
     
-    // Adjust polling frequency based on status
     pollInterval = response.status === 'working' ? 5000 : 30000;
     await new Promise(resolve => setTimeout(resolve, pollInterval));
   }
 }
 ```
 
-### Async Operation Example
+### Option 2: Webhooks
+
+Configure a webhook URL and the server will POST updates to you directly. This is more efficient for long-running tasks since you don't need to keep polling.
 
 ```javascript
-// Start async operation
+const response = await session.call('create_media_buy',
+  {
+    buyer_ref: "nike_q1_2025",
+    packages: [...],
+    budget: { total: 150000, currency: "USD" }
+  },
+  {
+    pushNotificationConfig: {
+      url: "https://buyer.com/webhooks/adcp",
+      authentication: {
+        schemes: ["HMAC-SHA256"],
+        credentials: "shared_secret_32_chars"
+      }
+    }
+  }
+);
+
+// If status is 'submitted', the server will POST updates to your webhook
+// You don't need to poll - just wait for the webhook
+```
+
+See [Task Management](/docs/protocols/task-management) for webhook payload formats and handling examples.
+
+### Handling Different Statuses
+
+```javascript
 const initial = await session.call('create_media_buy', {
   buyer_ref: "nike_q1_2025",
   packages: [...],
@@ -343,29 +397,29 @@ const initial = await session.call('create_media_buy', {
 
 switch (initial.status) {
   case 'completed':
-    console.log('Created immediately:', initial.media_buy_id);
+    // Done immediately - no async handling needed
+    console.log('Created:', initial.media_buy_id);
     break;
     
   case 'working':
-    console.log('Processing, will complete within 2 minutes...');
+    // Will finish within ~2 minutes - poll or wait
+    console.log('Processing...');
     const final = await waitForCompletion(session, initial);
     console.log('Created:', final.result.media_buy_id);
     break;
     
   case 'submitted':
-    console.log(`Queued for approval - long-running operation`);
-    console.log(`Track with task ID: ${initial.task_id}`);
-    // Use webhook or poll manually
+    // Long-running (hours/days) - use webhooks or poll infrequently
+    console.log(`Task ${initial.task_id} queued for approval`);
+    // Webhook will notify when complete, or poll manually
     break;
     
   case 'input-required':
-    console.log('Need additional info:', initial.message);
-    // Handle user input
+    // Blocked on user input
+    console.log('Need more info:', initial.message);
     break;
 }
 ```
-
-**Note**: Use `tasks/get` for polling specific tasks, or `tasks/list` for state reconciliation. See [Task Management](/docs/protocols/task-management) for complete documentation on task tracking patterns and webhook integration.
 
 ## Integration Example
 

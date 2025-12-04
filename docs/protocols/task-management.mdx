@@ -1,6 +1,6 @@
 ---
 title: Task Management
-sidebar_position: 8
+sidebar_position: 6
 ---
 
 # Task Management
@@ -438,23 +438,29 @@ await a2a.send({
 });
 ```
 
-## Webhook Integration
+## Push Notification Integration
 
-Task management integrates with protocol-level webhook configuration for push notifications.
+Both MCP and A2A use HTTP webhooks to deliver async task updates. Instead of polling, you provide a webhook URL and the server POSTs status changes directly to you.
 
-### Webhook Configuration
+| Protocol | Spec Status | Configuration | Envelope | Data Location |
+|----------|-------------|---------------|----------|---------------|
+| **MCP** | AdCP provides this | `pushNotificationConfig` | `mcp-webhook-payload.json` | `result` field |
+| **A2A** | Native to protocol | `pushNotificationConfig` | `Task` or `TaskStatusUpdateEvent` | `status.message.parts[].data` |
 
-Configure webhooks at the protocol level when making async task calls. See **[Core Concepts: Protocol-Level Webhook Configuration](/docs/protocols/core-concepts.mdx#protocol-level-webhook-configuration)** for complete setup examples.
+Both protocols use **identical AdCP data schemas** (e.g., `create-media-buy-async-response-completed.json`).
 
-**Quick example:**
+### MCP Webhook Configuration
+
+MCP doesn't define push notifications, so AdCP provides this capability using the same configuration structure as A2A.
+
 ```javascript
 const response = await session.call('create_media_buy',
   { /* task params */ },
   {
-    push_notification_config: {
+    pushNotificationConfig: {
       url: "https://buyer.com/webhooks/adcp/create_media_buy/agent_id/operation_id",
       authentication: {
-        schemes: ["HMAC-SHA256"],  // or ["Bearer"] for simple auth
+        schemes: ["HMAC-SHA256"],  // or ["bearer"] for simple auth
         credentials: "shared_secret_32_chars"
       }
     }
@@ -462,59 +468,76 @@ const response = await session.call('create_media_buy',
 );
 ```
 
-### Webhook POST Format
+### A2A Webhook Configuration
 
-When a task's status changes, the publisher POSTs a payload with protocol fields at the top-level and the task-specific payload nested under `result` to your webhook URL.
+A2A defines push notifications natively via `PushNotificationConfig`:
 
-**Webhook Payload Schema**: [`https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/webhook-payload.json)
-
-**Top-level fields:**
-- `operation_id` (required) — Correlates a sequence of updates for this operation
-- `domain` - AdCP domain ("media-buy" or "signals")
-- `task_type` (required) — e.g., "create_media_buy", "sync_creatives", "activate_signal"
-- `status` (required) — Current task status
-- `task_id` (optional) — Present when server exposes task tracking id
-- `context_id` (optional) — Conversation/session id
-- `message` (optional) — Human-readable context
-- `timestamp` (optional) — ISO 8601 time when webhook was generated
-- `result` (optional) — Task-specific payload for this status
-- `error` (optional) — Error message string when status is `failed`
-
-**Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted` (long-running operations).
-
-**When webhooks are NOT triggered:**
-- Initial response is `completed`, `failed`, or `rejected` → Synchronous response, client already has result
-- Initial response is `working` → Will complete synchronously within ~120 seconds, client should wait for response
-
-**When webhooks ARE triggered (for `submitted` operations only):**
-- Status changes to `input-required` → Webhook called (alerts that human input needed)
-- Status changes to `completed` → Webhook called (final result available)
-- Status changes to `failed` → Webhook called (error details provided)
-- Status changes to `canceled` → Webhook called (cancellation confirmed)
-
-**Example: `input-required` webhook (human approval needed):**
-```http
-POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
-Host: buyer.example.com
-Authorization: Bearer your-secret-token
-Content-Type: application/json
-
-{
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "domain": "media-buy",
-  "status": "input-required",
-  "timestamp": "2025-01-22T10:15:00Z",
-  "context_id": "ctx_abc123",
-  "message": "Campaign budget $150K requires VP approval to proceed",
-  "result": {
-    "buyer_ref": "nike_q1_campaign_2024"
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "create_media_buy",
+        parameters: { /* task params */ }
+      }
+    }]
+  },
+  pushNotificationConfig: {
+    url: "https://buyer.com/webhooks/a2a",
+    token: "client-validation-token",  // Optional: for client-side validation
+    authentication: {
+      schemes: ["bearer"],
+      credentials: "shared_secret_32_chars"
+    }
   }
-}
+});
 ```
 
-**Example: `completed` webhook (after approval granted - full create_media_buy response):**
+#### A2A Payload Types
+
+Per the [A2A specification](https://a2a-protocol.org/latest/specification/#433-push-notification-payload), the server sends one of three payload types:
+
+| Payload Type | When Used | Contains |
+|--------------|-----------|----------|
+| **`Task`** | Final states (`completed`, `failed`, `canceled`) or when client needs full context | Complete task object with all history |
+| **`TaskStatusUpdateEvent`** | Status transitions during execution (`working`, `input-required`) | Just the status change with message |
+| **`TaskArtifactUpdateEvent`** | Streaming artifact updates | Artifact data as it becomes available |
+
+For AdCP, most push notifications will be `Task` (for final results) or `TaskStatusUpdateEvent` (for progress updates).
+
+### Webhook Trigger Rules
+
+**Webhooks (MCP) / Status Updates (A2A) are ONLY triggered when the initial response status is `submitted`** (long-running operations).
+
+**When push notifications are NOT sent:**
+- Initial response is `completed`, `failed`, or `rejected` → Synchronous response, client already has result
+- Initial response is `working` → Will complete synchronously within ~120 seconds, client should wait
+
+**When push notifications ARE sent (for `submitted` operations only):**
+- Status changes to `input-required` → Notification sent (human input needed)
+- Status changes to `completed` → Notification sent (final result available)
+- Status changes to `failed` → Notification sent (error details provided)
+- Status changes to `canceled` → Notification sent (cancellation confirmed)
+
+### MCP Webhook POST Format
+
+**Envelope Schema:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)
+
+**Envelope fields (transport layer):**
+- `task_id` (required) — Unique task identifier
+- `task_type` (required) — e.g., "create_media_buy", "sync_creatives"
+- `status` (required) — Current task status
+- `timestamp` (required) — ISO 8601 time when webhook was generated
+- `operation_id` (optional) — Correlates a sequence of updates
+- `domain` (optional) — AdCP domain ("media-buy" or "signals")
+- `context_id` (optional) — Conversation/session id
+- `message` (optional) — Human-readable context
+
+**Data field (AdCP data layer):**
+- `result` — Task-specific payload validated against status-specific schema
+
+**Example: MCP `completed` webhook:**
 ```http
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 Host: buyer.example.com
@@ -522,13 +545,12 @@ Authorization: Bearer your-secret-token
 Content-Type: application/json
 
 {
-  "operation_id": "op_456",
   "task_id": "task_456",
   "task_type": "create_media_buy",
   "domain": "media-buy",
   "status": "completed",
   "timestamp": "2025-01-22T10:30:00Z",
-  "message": "Media buy created successfully with 2 packages ready for creative assignment",
+  "message": "Media buy created successfully",
   "result": {
     "media_buy_id": "mb_12345",
     "buyer_ref": "nike_q1_campaign_2024",
@@ -540,7 +562,105 @@ Content-Type: application/json
 }
 ```
 
-The webhook receives the **full response object** for each status, not just a notification. This means your webhook handler gets all the context and data needed to take appropriate action.
+**Example: MCP `input-required` webhook:**
+```http
+POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
+Host: buyer.example.com
+Authorization: Bearer your-secret-token
+Content-Type: application/json
+
+{
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "status": "input-required",
+  "timestamp": "2025-01-22T10:15:00Z",
+  "message": "Campaign budget $150K requires VP approval to proceed",
+  "result": {
+    "reason": "APPROVAL_REQUIRED",
+    "requirements": ["budget_approval"],
+    "data": {
+      "buyer_ref": "nike_q1_campaign_2024",
+      "requested_budget": 150000
+    }
+  }
+}
+```
+
+### A2A Webhook POST Format
+
+Per the [A2A specification](https://a2a-protocol.org/latest/specification/#433-push-notification-payload), the server sends one of three payload types:
+
+| Payload | When Used |
+|---------|-----------|
+| **`Task`** | Final states (`completed`, `failed`) or when full context is needed |
+| **`TaskStatusUpdateEvent`** | Status transitions during execution (`working`, `input-required`) |
+| **`TaskArtifactUpdateEvent`** | Streaming artifact updates |
+
+**Example: `Task` payload for completed state:**
+```json
+{
+  "id": "task_456",
+  "contextId": "ctx_abc123",
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Media buy created successfully" },
+        {
+          "data": {
+            "media_buy_id": "mb_12345",
+            "buyer_ref": "nike_q1_campaign_2024",
+            "creative_deadline": "2024-01-30T23:59:59Z",
+            "packages": [
+              { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_package" }
+            ]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:30:00Z"
+  }
+}
+```
+
+**Example: `TaskStatusUpdateEvent` for input-required:**
+```json
+{
+  "taskId": "task_456",
+  "contextId": "ctx_abc123",
+  "status": {
+    "state": "input-required",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Campaign budget $150K requires VP approval" },
+        {
+          "data": {
+            "reason": "APPROVAL_REQUIRED",
+            "requirements": ["budget_approval"]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:15:00Z"
+  }
+}
+```
+
+### Data Schema Validation
+
+The data payload (`result` in MCP, `status.message.parts[].data` in A2A) is validated against status-specific schemas:
+
+| Status | Schema |
+|--------|--------|
+| `completed` | `[task]-async-response-completed.json` |
+| `failed` | `[task]-async-response-failed.json` |
+| `working` | `[task]-async-response-working.json` |
+| `input-required` | `[task]-async-response-input-required.json` |
+| `submitted` | `[task]-async-response-submitted.json` |
+
+This ensures the data payload is **transport-agnostic** and can be validated identically regardless of which protocol's webhook envelope is used.
 
 ### Webhook Handling Example
 

@@ -214,6 +214,34 @@ return { status: response.status };
 
 **For complete response structure requirements, error handling, and implementation patterns, see [A2A Response Format](/docs/protocols/a2a-response-format).**
 
+## Push Notifications (A2A-Specific)
+
+A2A defines push notifications natively via `PushNotificationConfig`. When you configure a webhook URL, the server will POST task updates directly to your endpoint instead of requiring you to poll.
+
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "create_media_buy",
+        parameters: { /* task params */ }
+      }
+    }]
+  },
+  pushNotificationConfig: {
+    url: "https://buyer.com/webhooks/a2a",
+    token: "client-validation-token",  // Optional: for client-side validation
+    authentication: {
+      schemes: ["bearer"],
+      credentials: "shared_secret_32_chars"
+    }
+  }
+});
+```
+
+For webhook payload formats, protocol comparison, and detailed handling examples, see [Task Management - Push Notification Integration](/docs/protocols/task-management#push-notification-integration).
+
 ## SSE Streaming (A2A-Specific)
 
 A2A's key advantage is real-time updates via Server-Sent Events:
@@ -272,8 +300,8 @@ const response = await a2a.send({
   }
 });
 
-// Monitor in real-time
-if (response.status === 'working') {
+// Monitor in real-time via SSE
+if (response.status === 'working' || response.status === 'submitted') {
   const monitor = new A2aTaskMonitor(response.taskId);
   
   monitor.on('progress', (data) => {
@@ -285,6 +313,68 @@ if (response.status === 'working') {
   });
 }
 ```
+
+### A2A Webhook Payload Examples
+
+**Example 1: `Task` payload for completed operation**
+
+When a task finishes, the server typically sends the full `Task` object:
+
+```json
+{
+  "id": "task_456",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Media buy created successfully" },
+        {
+          "data": {
+            "media_buy_id": "mb_12345",
+            "buyer_ref": "nike_q1_campaign",
+            "creative_deadline": "2024-01-30T23:59:59Z",
+            "packages": [
+              { "package_id": "pkg_001", "buyer_ref": "nike_ctv_package" }
+            ]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:30:00Z"
+  }
+}
+```
+
+**Example 2: `TaskStatusUpdateEvent` for progress updates**
+
+During execution, status changes arrive as lightweight updates:
+
+```json
+{
+  "taskId": "task_456",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "input-required",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Campaign budget $150K requires VP approval" },
+        {
+          "data": {
+            "reason": "APPROVAL_REQUIRED",
+            "requirements": ["budget_approval"]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:15:00Z"
+  }
+}
+```
+
+The `status.message.parts[].data` payload uses the same AdCP schemas as MCP's `result` field (e.g., `create-media-buy-async-response-completed.json`).
 
 ## Context Management (A2A-Specific)
 
