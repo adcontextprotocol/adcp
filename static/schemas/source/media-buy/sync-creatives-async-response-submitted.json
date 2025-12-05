@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-creatives-async-response-submitted.json",
+  "title": "Sync Creatives - Submitted",
+  "description": "Payload acknowledging sync_creatives task is queued for processing.",
+  "type": "object",
+  "properties": {
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": false
+}
+
