@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/deal-targeting.json",
+  "title": "Deal Targeting",
+  "description": "Targeting parameters for a deal. All fields are optional. Omitting this object or specific fields implies targeting all available inventory for those dimensions.",
+  "type": "object",
+  "properties": {
+    "geo": {
+      "type": "array",
+      "description": "Geographic targeting. Values can encode countries, regions, cities, postal codes, or metro codes. Omitting implies target all geographies.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "devices": {
+      "type": "array",
+      "description": "Device types to target. Omitting implies target all devices.",
+      "items": {
+        "type": "string",
+        "enum": ["Desktop", "Tablet", "Mobile", "CTV"]
+      }
+    },
+    "allow_lists": {
+      "type": "array",
+      "description": "Included domain or app list IDs in the ad decisioning platform. Omitting implies allow everything.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "block_lists": {
+      "type": "array",
+      "description": "Excluded domain or app list IDs in the ad decisioning platform",
+      "items": {
+        "type": "string"
+      }
+    },
+    "include_segments": {
+      "type": "array",
+      "description": "Included segment IDs in the ad decisioning platform. Can reference signal IDs from the Signals Protocol.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "exclude_segments": {
+      "type": "array",
+      "description": "Excluded segment IDs in the ad decisioning platform",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

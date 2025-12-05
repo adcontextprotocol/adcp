@@ -1,0 +1,279 @@
+---
+sidebar_position: 1
+title: Overview
+---
+
+# Deals Protocol Overview
+
+The Deals Protocol enables AI assistants to discover and activate pre-packaged and ad-hoc inventory deal packages from publishers and ad decisioning platforms through natural language—simplifying the complex landscape of programmatic deal buying.
+
+## The Challenge: Navigating Deal Marketplaces
+
+Modern programmatic advertising offers numerous deal opportunities across publishers and SSPs. While this provides access to premium inventory, it creates challenges:
+- **Fragmented discovery**: Deals scattered across multiple SSPs and sellers
+- **Varying deal structures**: PMPs, curated packages, guaranteed deals with different terms
+- **Complex targeting**: Deals may include pre-applied audiences, context, or brand safety
+- **Pricing opacity**: Floor vs. fixed pricing, margins, and package costs vary
+- **Manual activation**: Setting up deals across SSPs is time-intensive
+
+## How AI Assistants Transform Deal Discovery
+
+### Current Approach
+```
+Human → Navigate multiple SSP UIs → Evaluate deal terms → Manual setup across platforms
+```
+- **Challenges**: Time-intensive, miss opportunities, requires platform expertise
+
+### With Deals Protocol
+```
+Human describes objectives → AI discovers matching deals → Streamlined activation
+```
+- **Benefits**: Comprehensive discovery, transparent comparison, efficient activation
+
+## The Power of AI-Assisted Deal Discovery
+
+### AI Can Process and Compare Deals at Scale
+
+```
+Human: I need premium video inventory for automotive brand with
+       guaranteed viewability and brand-safe context
+
+AI: Analyzing 143 video deals across 8 publishers and 5 SSPs...
+
+Best match: AutoMedia Network's "Premium Automotive Bundle"
+- Deal Type: Curated package
+- SSP: Magnite
+- Inventory: Top 15 automotive content sites
+- Ad Format: Video (pre-roll and mid-roll)
+- Pricing: $18 CPM fixed + 15% curation margin
+- Targeting: Automotive context + auto intender audiences (optional)
+- Brand Safety: IAS verification, blocked competitor categories
+- Availability: Q1 2026, 50M impressions reserved
+- Viewability: 85% guaranteed or make-good
+
+Alternatives with trade-offs:
+- CarContent Direct PMP: Lower cost ($15 CPM) but single publisher
+- PremiumVideo Curator: Higher viewability (90%) but $22 CPM
+```
+
+### Flexible Deal Structures
+
+The Deals Protocol supports diverse deal types:
+
+#### Private Marketplace (PMP) Deals
+Direct relationships with fixed or floor pricing:
+```
+"Sports Publisher Premium Video PMP"
+- Deal Type: PMP
+- SSP: Pubmatic
+- Pricing: $12 CPM floor
+- Inventory: All premium sports video inventory
+- Bidding: Open auction above floor
+```
+
+#### Curated Deals
+Enhanced packages with added targeting and safety:
+```
+"Contextual Curator - Tech Enthusiast Video Package"
+- Deal Type: Curated
+- SSP: Index Exchange
+- Base Cost: $10 CPM
+- Margin: 20% ($2 CPM curator fee)
+- Enhancement: AI-powered contextual selection + viewability optimization
+- Audience: Tech enthusiast targeting included
+- Brand Safety: Category blocks and verification
+```
+
+## From Fragmented Platforms to Unified Discovery
+
+### Traditional Approach: Multi-Platform Navigation
+- Log into multiple SSP platforms individually
+- Manually search deal catalogs in each system
+- Compare terms across different interfaces
+- Set up deals individually on each SSP
+- Track performance separately per platform
+
+### Enhanced with Deals Protocol: AI-Powered Unified Access
+
+```
+Human: Find video inventory deals targeting parents, ensure kid-safe content
+
+AI: Found 5 matching deals across 3 SSPs:
+
+1. FamilyContent Network - "Parent-Targeted Video Bundle"
+   SSP: OpenX
+   Type: Curated
+   Pricing: $14 CPM + 12% margin
+   Safety: COPPA-compliant, family-safe categories only
+   Audience: Parents with children under 12
+   Scale: 30M impressions/month
+
+2. KidSafe Curator - "Family-Friendly Premium Video"
+   SSP: Magnite
+   Type: Curated
+   Pricing: $16 CPM + 15% margin
+   Safety: AI verification + manual review for kid-safe context
+   Audience: Optional parent targeting
+   Scale: 45M impressions/month
+
+3. PremiumFamily Sites - "Direct Parent Deal"
+   SSP: Pubmatic
+   Type: PMP
+   Pricing: $10 CPM floor
+   Safety: Category-based blocks
+   Audience: None (reach all visitors)
+   Scale: 20M impressions/month
+
+Select deals to activate on SSPs?
+```
+
+## Deal Discovery with Natural Language
+
+### Describing Deal Objectives
+
+The AI assistant helps translate campaign objectives into deal criteria:
+
+**Objective**: "I need high-impact display placements for luxury brand awareness"
+
+**AI Translation**:
+- Ad Type: Display (likely high-impact formats)
+- Targeting: Affluent audiences, premium contexts
+- Brand Alignment: Luxury-appropriate environments
+- Deal Types: Likely curated packages with quality guarantees
+
+**Objective**: "Cost-efficient video scale for product launch"
+
+**AI Translation**:
+- Ad Type: Video
+- Pricing: Floor pricing or market-rate deals preferred
+- Scale: Large impression volumes
+- Deal Types: PMP deals or broad curation packages
+
+### Intelligent Filtering and Recommendations
+
+The AI assistant can:
+- **Filter by constraints**: Budget, scale requirements, timing
+- **Compare pricing models**: Floor vs. fixed, with/without margins
+- **Evaluate targeting fit**: Match deal targeting to campaign objectives
+- **Assess brand safety**: Verify appropriate controls are in place
+- **Recommend combinations**: Multiple deals to achieve scale or coverage
+
+## Integration with Signals Protocol
+
+**Integration Architecture**: The Deals Agent integrates with Signals Agents behind the scenes. The Buyer Agent interacts only with the Deals Agent—not directly with Signals Agents.
+
+```
+Buyer Agent → Deals Agent → Signals Agent
+   (Deals Protocol)  (Signals Protocol)
+```
+
+This is parallel to how the Media Buy Protocol works with Sales Agents.
+
+### How Deals Agents Leverage Signals
+
+When the Buyer Agent requests deals, the Deals Agent can:
+- Discover relevant audience signals from integrated Signals Agents
+- Include those signals in the targeting of returned deals
+- Bundle audience targeting with inventory in curated packages
+- Provide deals with pre-selected segments for brand safety or performance
+
+### Signals-Enhanced Deals
+
+```
+Human (to Buyer Agent): Find video deals for luxury automotive brand
+
+Buyer Agent → Deals Agent: get_deals request with automotive specifications
+
+Deals Agent workflow:
+1. Searches available video inventory deals
+2. Queries integrated Signals Agents for relevant automotive audiences
+3. Matches signals with appropriate inventory packages
+
+Deals Agent → Buyer Agent: Returns deals including:
+   → "Premium Video Curator - Auto Context" on Magnite
+   → Includes automotive content + "Luxury Auto Intenders" segment
+   → Targeting pre-configured with signal IDs from Signals Agent
+
+Result: Buyer Agent receives deals with inventory + audience targeting combined
+```
+
+### Deals with Included Targeting
+
+Deals can return targeting that includes:
+- **Context-based signals**: Automotive content, premium publishers
+- **Audience signals**: Segments obtained from Signals Agents (referenced by signal IDs)
+- **Brand safety**: Block lists and allow lists for appropriate content
+- **Geographic targeting**: Regional or local inventory packages
+
+The Buyer Agent doesn't need to know how the Deals Agent obtained the signals—it just receives deals with targeting ready to use.
+
+## Activation and Deployment
+
+Once deals are discovered, activation is streamlined:
+
+### Single-Platform Activation
+```
+Activate "Premium Video Bundle" on Magnite
+→ Deal ID configured in SSP
+→ Ready for buyers to access
+```
+
+### Multi-Platform Deployment
+```
+Activate "Cross-Publisher PMP" on:
+- Pubmatic (seller account: publisher_abc)
+- Index Exchange (seller account: publisher_abc)
+→ Same deal available across both SSPs
+→ Unified reporting and management
+```
+
+### Asynchronous Activation
+Large or complex deals may require asynchronous activation:
+```
+Activate deal → Receive operation_id
+→ Webhook notification when ready
+→ Or poll for activation status
+→ Use deal once deployed
+```
+
+## Use Cases
+
+### Premium Brand Campaigns
+- Discover high-quality inventory packages
+- Ensure brand-safe environments
+- Access guaranteed viewability or performance
+- Activate across multiple premium SSPs
+
+### Performance Marketing at Scale
+- Find floor-priced PMPs for efficient buying
+- Access large-scale deal inventory
+- Combine multiple deals for reach
+- Optimize spend with market-rate opportunities
+
+### Contextual Targeting Campaigns
+- Discover context-aligned deal packages
+- Access curated inventory with AI-powered selection
+- Combine contextual deals with audience signals
+- Ensure content relevance to campaign messaging
+
+### Retail Media and Commerce
+- Access retailer-specific deal inventory
+- Combine first-party audience data with publisher deals
+- Leverage commerce-focused curation packages
+- Target high-intent shoppers in relevant contexts
+
+## Next Steps
+
+- **[Protocol Specification](/docs/deals/specification)**: Technical details, data models, and complete task reference
+- **[Signals Protocol](/docs/signals/overview)**: Combine deals with audience targeting
+
+## Get Involved
+
+Want to help shape the Deals Protocol?
+
+- Join our [working group](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg) (discussion in the #pmp-protocol channel)
+- Share your use cases
+- Review early drafts
+- Implement the protocol
+
+Subscribe to updates: announcements@adcontextprotocol.org

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/get-deals-request.json",
+  "title": "Get Deals Request",
+  "description": "Request parameters for discovering deal packages based on natural language description",
+  "type": "object",
+  "properties": {
+    "deal_spec": {
+      "type": "string",
+      "description": "Natural language description of the desired deal package, including any filtering criteria (deal type, ad format, pricing constraints, dates, etc.)"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Maximum number of results to return",
+      "minimum": 1
+    },
+    "context": {
+      "type": "object",
+      "description": "Initiator-provided context included in the request payload. Agents must echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
+      "additionalProperties": true
+    }
+  },
+  "required": ["deal_spec"],
+  "additionalProperties": false
+}
