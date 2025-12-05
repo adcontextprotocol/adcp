@@ -90,9 +90,17 @@
             ]
           },
           {
-            "group": "Curation Protocol",
+            "group": "Deals Protocol",
             "pages": [
-              "docs/curation/coming-soon"
+              "docs/deals/overview",
+              "docs/deals/specification",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/deals/tasks/get_deals",
+                  "docs/deals/tasks/activate_deal"
+                ]
+              }
             ]
           },
           {
