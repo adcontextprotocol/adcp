@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/pricing-options/cpcv-option.json",
-  "title": "CPCV Pricing Option",
-  "description": "Cost Per Completed View (100% video/audio completion) fixed-rate pricing",
+  "$id": "/schemas/pricing-options/cpcv-fixed-option.json",
+  "title": "CPCV Fixed Rate Pricing Option",
+  "description": "Cost Per Completed View (100% video/audio completion) with guaranteed fixed rate - common for direct/guaranteed deals",
   "type": "object",
   "properties": {
     "pricing_option_id": {
