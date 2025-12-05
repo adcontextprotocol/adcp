@@ -2796,7 +2796,7 @@ export class HTTPServer {
           roleSlug: 'owner',
         });
 
-        logger.info({ userId: user.id, orgId: workosOrg.id }, 'User added as organization member');
+        logger.info({ userId: user.id, orgId: workosOrg.id }, 'User added as organization owner');
 
         // Create organization record in our database
         await orgDb.createOrganization({

@@ -242,6 +242,41 @@
     .agreements a:hover {
       text-decoration: underline;
     }
+    .agreements-checkbox {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 15px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .agreements-checkbox:hover {
+      background: #f5f5f5;
+    }
+    .agreements-checkbox input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .agreements-checkbox label {
+      cursor: pointer;
+      font-weight: normal;
+      margin-bottom: 0;
+      line-height: 1.5;
+    }
+    .agreements-checkbox a {
+      color: #667eea;
+      text-decoration: none;
+    }
+    .agreements-checkbox a:hover {
+      text-decoration: underline;
+    }
     .back-link {
       display: inline-block;
       margin-bottom: 20px;
@@ -337,10 +372,11 @@
             <label for="orgName">Organization Name *</label>
             <input type="text" id="orgName" required placeholder="Acme Corporation">
           </div>
-          <div class="agreements">
-            By creating an organization, you agree to our
-            <a href="/api/agreement?type=terms_of_service" target="_blank">Terms of Service</a> and
-            <a href="/api/agreement?type=privacy_policy" target="_blank">Privacy Policy</a>.
+          <div class="agreements-checkbox" onclick="document.getElementById('tosAgree').click(); event.stopPropagation();">
+            <input type="checkbox" id="tosAgree" required onclick="event.stopPropagation();">
+            <label for="tosAgree" onclick="event.stopPropagation();">
+              I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Service</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
+            </label>
           </div>
           <button type="submit" class="btn" id="createBtn">Create Organization</button>
         </form>
@@ -353,10 +389,11 @@
         <p style="color: #666; margin-bottom: 20px; line-height: 1.6;">
           We'll create a personal workspace for you. You can always create or join an organization later from your dashboard.
         </p>
-        <div class="agreements">
-          By continuing, you agree to our
-          <a href="/api/agreement?type=terms_of_service" target="_blank">Terms of Service</a> and
-          <a href="/api/agreement?type=privacy_policy" target="_blank">Privacy Policy</a>.
+        <div class="agreements-checkbox" onclick="document.getElementById('tosAgreeIndividual').click(); event.stopPropagation();">
+          <input type="checkbox" id="tosAgreeIndividual" onclick="event.stopPropagation();">
+          <label for="tosAgreeIndividual" onclick="event.stopPropagation();">
+            I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Service</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
+          </label>
         </div>
         <button class="btn" id="individualBtn" onclick="createIndividualWorkspace()">Create Personal Workspace</button>
       </div>
@@ -531,10 +568,16 @@
       e.preventDefault();
 
       var orgName = document.getElementById('orgName').value.trim();
+      var tosAgree = document.getElementById('tosAgree').checked;
       var createBtn = document.getElementById('createBtn');
 
       if (!orgName) {
         showError('Please enter an organization name');
+        return;
+      }
+
+      if (!tosAgree) {
+        showError('Please agree to the Terms of Service and Privacy Policy');
         return;
       }
 
@@ -564,7 +607,14 @@
 
     // Create individual workspace
     async function createIndividualWorkspace() {
+      var tosAgree = document.getElementById('tosAgreeIndividual').checked;
       var btn = document.getElementById('individualBtn');
+
+      if (!tosAgree) {
+        showError('Please agree to the Terms of Service and Privacy Policy');
+        return;
+      }
+
       btn.disabled = true;
       btn.textContent = 'Creating...';
 
