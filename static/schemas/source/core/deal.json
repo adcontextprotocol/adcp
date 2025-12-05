@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/deal.json",
+  "title": "Deal",
+  "description": "A deal package representing pre-packaged or ad-hoc inventory from publishers or ad decisioning platforms",
+  "type": "object",
+  "properties": {
+    "deal_id": {
+      "type": "string",
+      "description": "Unique identifier for the deal"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for the deal"
+    },
+    "advertiser": {
+      "type": "string",
+      "description": "Advertiser name or identifier for whom this deal is available"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Start date of the deal in YYYY-MM-DD format"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "End date of the deal in YYYY-MM-DD format"
+    },
+    "deal_type": {
+      "type": "string",
+      "description": "Type of deal",
+      "enum": ["PMP", "Curated"]
+    },
+    "ad_type": {
+      "type": "string",
+      "description": "Type of ad format for this deal",
+      "enum": ["Banner", "Video", "Native"]
+    },
+    "platforms": {
+      "type": "array",
+      "description": "List of SSP platform identifiers where this deal can be activated. Each deal must be available on at least one platform.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "pricing": {
+      "$ref": "/schemas/core/deal-pricing.json"
+    },
+    "targeting": {
+      "$ref": "/schemas/core/deal-targeting.json"
+    },
+    "status": {
+      "type": "string",
+      "description": "Current status of the deal",
+      "enum": ["draft", "active", "inactive"]
+    }
+  },
+  "required": [
+    "deal_id",
+    "name",
+    "advertiser",
+    "start_date",
+    "end_date",
+    "deal_type",
+    "ad_type",
+    "platforms",
+    "pricing",
+    "status"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "deal_type": {
+            "const": "Curated"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "pricing": {
+            "required": ["margin"]
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/deal-pricing.json",
+  "title": "Deal Pricing",
+  "description": "Pricing information for a deal, including pricing type and optional margin for curated deals",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "Pricing type for the deal",
+      "enum": ["Floor", "Fixed", "Market"]
+    },
+    "cpm": {
+      "type": "number",
+      "description": "CPM price in USD. Required for Floor and Fixed pricing types. For Floor, represents the minimum CPM. For Fixed, represents the exact CPM price.",
+      "minimum": 0
+    },
+    "margin": {
+      "type": "object",
+      "description": "Margin configuration for curated deals. Required when deal_type is Curated.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "Percentage"
+            },
+            "percentage": {
+              "type": "number",
+              "description": "Margin as a percentage",
+              "minimum": 0,
+              "maximum": 100
+            }
+          },
+          "required": ["type", "percentage"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "CPM"
+            },
+            "cpm": {
+              "type": "number",
+              "description": "Margin as a CPM value in USD",
+              "minimum": 0
+            }
+          },
+          "required": ["type", "cpm"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": ["type"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": ["Floor", "Fixed"]
+          }
+        }
+      },
+      "then": {
+        "required": ["cpm"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}
