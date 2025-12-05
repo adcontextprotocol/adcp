@@ -165,101 +165,6 @@ Later, webhook notification:
 }
 ```
 
-## REST API
-
-### Successful Response (200 OK)
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-X-AdCP-Context-Id: ctx_abc123
-X-AdCP-Status: completed
-
-{
-  "message": "Found 3 products matching your criteria for CTV inventory",
-  "data": {
-    "context": { "ui": "buyer_dashboard" },
-    "products": [...]
-  }
-}
-```
-
-**Key Points**:
-- HTTP status code indicates success/failure
-- Protocol fields in custom headers
-- Human message at top level
-- Task payload in `data` field
-
-### Async Response (202 Accepted)
-
-```http
-HTTP/1.1 202 Accepted
-Content-Type: application/json
-Location: /api/v1/tasks/task_789
-X-AdCP-Context-Id: ctx_def456
-X-AdCP-Task-Id: task_789
-
-{
-  "message": "Creating media buy. This will take 5-10 minutes.",
-  "task_id": "task_789",
-  "status": "submitted",
-  "status_url": "https://sales.example.com/api/v1/tasks/task_789",
-  "estimated_duration_seconds": 600,
-  "data": {
-    "context": { "ui": "buyer_dashboard" },
-    "buyer_ref": "campaign_2024_q1"
-  }
-}
-```
-
-Poll for status:
-```http
-GET /api/v1/tasks/task_789
-```
-
-Response when complete:
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-X-AdCP-Context-Id: ctx_def456
-X-AdCP-Task-Id: task_789
-X-AdCP-Status: completed
-
-{
-  "message": "Media buy created successfully",
-  "status": "completed",
-  "data": {
-    "context": { "ui": "buyer_dashboard" },
-    "media_buy_id": "mb_123",
-    "buyer_ref": "campaign_2024_q1",
-    "packages": [...]
-  }
-}
-```
-
-### Error Response (400 Bad Request)
-
-```http
-HTTP/1.1 400 Bad Request
-Content-Type: application/json
-X-AdCP-Context-Id: ctx_ghi789
-
-{
-  "message": "Invalid targeting parameters",
-  "status": "failed",
-  "data": {
-    "errors": [
-      {
-        "code": "INVALID_TARGETING",
-        "message": "Geographic targeting codes are invalid",
-        "field": "targeting.geo_codes",
-        "severity": "error"
-      }
-    ]
-  }
-}
-```
-
 ## Protocol Compliance Testing
 
 ### Validating Your Implementation
@@ -268,7 +173,7 @@ Here's how to test that your protocol adapter is compliant:
 
 ```typescript
 import { validateTaskResponse } from '@adcp/schemas';
-import { mcpAdapter, a2aAdapter, restAdapter } from './protocol-adapters';
+import { mcpAdapter, a2aAdapter } from './protocol-adapters';
 
 // 1. Test task response schema (domain-specific)
 const taskResponse = getProductsHandler(request);
@@ -299,17 +204,6 @@ const a2aEnvelope = a2aAdapter.wrap({
 
 assert(a2aEnvelope.task.task_id, 'A2A must have task_id');
 assert(a2aEnvelope.messages[0].role === 'assistant', 'Must have assistant message');
-
-// 4. Test REST envelope
-const restEnvelope = restAdapter.wrap({
-  contextId: 'ctx_123',
-  status: 'completed',
-  message: 'Found 3 products',
-  payload: taskResponse
-});
-
-assert(restEnvelope.data, 'REST must have data field');
-assert(restEnvelope.message, 'REST must have message field');
 ```
 
 ### Testing Cross-Protocol Compatibility
@@ -322,16 +216,11 @@ test('task response works across all protocols', () => {
   // All adapters should successfully wrap the response
   const mcp = mcpAdapter.wrap({ payload: taskResponse, status: 'completed' });
   const a2a = a2aAdapter.wrap({ payload: taskResponse, status: 'completed' });
-  const rest = restAdapter.wrap({ payload: taskResponse, status: 'completed' });
 
   // All should extract the same payload
   assert.deepEqual(
     mcpAdapter.unwrap(mcp),
     a2aAdapter.unwrap(a2a)
-  );
-  assert.deepEqual(
-    a2aAdapter.unwrap(a2a),
-    restAdapter.unwrap(rest)
   );
 });
 ```
@@ -413,6 +302,5 @@ function wrapResponse(taskResponse, metadata) {
 |----------|-----------------|------------------|-----------------|
 | **MCP** | `content[].text` | `content[].resource.text` | Progress notifications |
 | **A2A** | `messages[].content` | `task.artifacts[].content` | Task state + webhooks |
-| **REST** | `message` field | `data` field | Polling or webhooks |
 
 The envelope schema (`/schemas/v2/core/protocol-envelope.json`) provides the conceptual model. This document shows how each protocol actually serializes that model on the wire.
