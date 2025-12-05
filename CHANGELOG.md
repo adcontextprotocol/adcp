@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.1
+
+### Patch Changes
+
+- 1af0c10: Add Terms of Service checkbox to onboarding forms. Users must now explicitly agree to the Terms of Service and Privacy Policy before creating an organization or personal workspace.
+
 ## 2.5.0
 
 ### Minor Changes
