@@ -7,7 +7,11 @@
   "properties": {
     "reason": {
       "type": "string",
-      "description": "Machine-readable reason code (e.g., CLARIFICATION_NEEDED, BUDGET_REQUIRED)"
+      "enum": [
+        "CLARIFICATION_NEEDED",
+        "BUDGET_REQUIRED"
+      ],
+      "description": "Reason code indicating why input is needed"
     },
     "requirements": {
       "type": "array",

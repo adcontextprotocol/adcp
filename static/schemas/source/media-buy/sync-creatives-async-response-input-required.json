@@ -7,7 +7,12 @@
   "properties": {
     "reason": {
       "type": "string",
-      "description": "Machine-readable reason code (e.g., APPROVAL_REQUIRED, ASSET_CONFIRMATION)"
+      "enum": [
+        "APPROVAL_REQUIRED",
+        "ASSET_CONFIRMATION",
+        "FORMAT_CLARIFICATION"
+      ],
+      "description": "Reason code indicating why input is needed"
     },
     "requirements": {
       "type": "array",
