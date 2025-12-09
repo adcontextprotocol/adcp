@@ -289,6 +289,8 @@ Both MCP and A2A use HTTP webhooks for async task updates. Instead of polling, y
 
 MCP doesn't define push notifications. AdCP fills this gap by specifying the webhook configuration (`pushNotificationConfig`) and payload format (`mcp-webhook-payload.json`).
 
+> **Note:** If MCP adds native push notification support in future versions, AdCP will adopt that mechanism in a future major version to maintain alignment with the protocol's evolution.
+
 **Envelope:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)  
 **Data location:** `result` field
 
