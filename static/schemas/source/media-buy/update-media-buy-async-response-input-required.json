@@ -13,17 +13,6 @@
       ],
       "description": "Reason code indicating why input is needed"
     },
-    "requirements": {
-      "type": "array",
-      "description": "List of fields or decisions required to proceed",
-      "items": {
-        "type": "string"
-      }
-    },
-    "data": {
-      "type": "object",
-      "description": "Current/partial media buy state provided for context/review"
-    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

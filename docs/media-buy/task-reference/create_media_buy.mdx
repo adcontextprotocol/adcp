@@ -879,11 +879,13 @@ Task is paused waiting for clarification or approval.
       {
         "data": {
           "reason": "APPROVAL_REQUIRED",
-          "requirements": ["budget_confirmation"],
-          "data": {
-            "requested_budget": 500000,
-            "approved_limit": 100000
-          }
+          "errors": [
+            {
+              "code": "BUDGET_EXCEEDS_LIMIT",
+              "message": "Requested budget exceeds pre-approved limit",
+              "field": "total_budget"
+            }
+          ]
         }
       }
     ]

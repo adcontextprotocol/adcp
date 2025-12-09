@@ -13,13 +13,6 @@
       ],
       "description": "Reason code indicating why input is needed"
     },
-    "requirements": {
-      "type": "array",
-      "description": "List of information needed to continue the search",
-      "items": {
-        "type": "string"
-      }
-    },
     "partial_results": {
       "type": "array",
       "description": "Partial product results that may help inform the clarification",

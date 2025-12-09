@@ -13,20 +13,9 @@
       ],
       "description": "Reason code indicating why input is needed"
     },
-    "requirements": {
-      "type": "array",
-      "description": "List of fields or decisions required to proceed",
-      "items": {
-        "type": "string"
-      }
-    },
-    "data": {
-      "type": "object",
-      "description": "Current/partial media buy state provided for context/review"
-    },
     "errors": {
       "type": "array",
-      "description": "Optional list of validation errors or warnings that triggered the input requirement",
+      "description": "Optional validation errors or warnings for debugging purposes. Helps explain why input is required.",
       "items": {
         "$ref": "/schemas/core/error.json"
       }

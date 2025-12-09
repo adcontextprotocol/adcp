@@ -584,12 +584,14 @@ Content-Type: application/json
   "timestamp": "2025-01-22T10:15:00Z",
   "message": "Campaign budget $150K requires VP approval to proceed",
   "result": {
-    "reason": "APPROVAL_REQUIRED",
-    "requirements": ["budget_approval"],
-    "data": {
-      "buyer_ref": "nike_q1_campaign_2024",
-      "requested_budget": 150000
-    }
+    "reason": "BUDGET_EXCEEDS_LIMIT",
+    "errors": [
+      {
+        "code": "APPROVAL_REQUIRED",
+        "message": "Budget exceeds auto-approval threshold",
+        "field": "total_budget"
+      }
+    ]
   }
 }
 ```
@@ -648,8 +650,7 @@ Per the [A2A specification](https://a2a-protocol.org/latest/specification/#433-p
         { "text": "Campaign budget $150K requires VP approval" },
         {
           "data": {
-            "reason": "APPROVAL_REQUIRED",
-            "requirements": ["budget_approval"]
+            "reason": "BUDGET_EXCEEDS_LIMIT"
           }
         }
       ]
