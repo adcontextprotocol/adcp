@@ -2,27 +2,28 @@
 "adcontextprotocol": minor
 ---
 
-Add auction pricing variants for all pricing models
+Add auction pricing for all pricing models with consolidated schema
 
-Previously only CPM and vCPM supported both fixed and auction pricing. This change adds auction variants for:
+Previously only CPM and vCPM supported both fixed and auction pricing. Now all pricing models support both variants:
+- CPM, vCPM (already supported)
 - CPC (Cost Per Click)
 - CPCV (Cost Per Completed View)
 - CPV (Cost Per View)
 - CPP (Cost Per Point)
 - Flat Rate
 
-All pricing models now support both `is_fixed: true` (fixed rate with `rate` field) and `is_fixed: false` (auction-based with `price_guidance` object).
+**Schema Architecture Change:**
+Consolidated 14 individual pricing option schemas into a single unified `pricing-option.json` using a two-level discriminated union:
+- Level 1: `is_fixed: true` (fixed rate with `rate` field) vs `is_fixed: false` (auction with `price_guidance` field)
+- Level 2: `pricing_model` enum (cpm, vcpm, cpc, cpcv, cpv, cpp, flat_rate)
 
-**New schemas:**
-- cpc-auction-option.json
-- cpcv-auction-option.json
-- cpv-auction-option.json
-- cpp-auction-option.json
-- flat-rate-auction-option.json
+This eliminates the need to enumerate every pricing model + pricing type combination as separate files, making the schema more maintainable and scalable.
 
-**Renamed schemas (for consistency):**
-- cpc-option.json → cpc-fixed-option.json
-- cpcv-option.json → cpcv-fixed-option.json
-- cpv-option.json → cpv-fixed-option.json
-- cpp-option.json → cpp-fixed-option.json
-- flat-rate-option.json → flat-rate-fixed-option.json
+**Removed schemas:**
+- All individual pricing option schemas (cpm-fixed-option.json, cpm-auction-option.json, etc.)
+- The pricing-options directory
+
+**TypeScript type safety maintained:**
+Uses proper discriminated union with `is_fixed` as the discriminator, enabling TypeScript to narrow types correctly:
+- `if (opt.is_fixed) { opt.rate... }`
+- `else { opt.price_guidance... }`
