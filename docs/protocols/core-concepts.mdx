@@ -173,15 +173,15 @@ Async operations start with `working` and provide updates:
 AdCP operations fall into three categories:
 
 1. **Synchronous** - Return immediately with `completed` or `failed`
-   - `get_products`, `list_creative_formats`
+   - `list_creative_formats`, `list_authorized_properties`
    - Fast operations that don't require external systems
 
 2. **Interactive** - May return `input-required` before proceeding
-   - `get_products` (when brief is vague)
-   - Operations that need clarification or approval
+   - `get_products` (when brief is vague or needs clarification)
+   - Operations that need user input to proceed
 
 3. **Asynchronous** - Return `working` or `submitted` and require polling/streaming
-   - `create_media_buy`, `activate_signal`, `sync_creatives`
+   - `create_media_buy`, `activate_signal`, `sync_creatives`, `get_products`
    - Operations that integrate with external systems or require human approval
 
 ### Timeout Handling
@@ -273,52 +273,32 @@ All async operations return a `task_id` at the protocol level for tracking:
 }
 ```
 
-### Protocol-Level Webhook Configuration
+### Push Notification Architecture
 
-Webhook configuration is handled at the protocol wrapper level, not in individual task parameters:
+Both MCP and A2A use HTTP webhooks for async task updates. Instead of polling, you provide a webhook URL and the server POSTs status changes to you directly.
 
-#### MCP Webhook Pattern
+| Aspect | MCP | A2A |
+|--------|-----|-----|
+| **Spec Status** | AdCP specifies this | Native protocol feature |
+| **Configuration** | `pushNotificationConfig` | `pushNotificationConfig` |
+| **Envelope** | `mcp-webhook-payload.json` | `Task` or `TaskStatusUpdateEvent` |
+| **Data Location** | `result` field | `status.message.parts[].data` |
+| **Data Schemas** | **Identical** AdCP schemas | **Identical** AdCP schemas |
+
+#### MCP Webhooks
+
+MCP doesn't define push notifications. AdCP fills this gap by specifying the webhook configuration (`pushNotificationConfig`) and payload format (`mcp-webhook-payload.json`).
+
+> **Note:** If MCP adds native push notification support in future versions, AdCP will adopt that mechanism in a future major version to maintain alignment with the protocol's evolution.
+
+**Envelope:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)  
+**Data location:** `result` field
+
 ```javascript
-class McpAdcpSession {
-  async call(tool, params, options = {}) {
-    const request = {
-      tool: tool,
-      arguments: params
-    };
-
-    // Protocol-level extensions (like context_id)
-    if (this.contextId) {
-      request.context_id = this.contextId;
-    }
-
-    // Use A2A-compatible push_notification_config
-    if (options.push_notification_config) {
-      request.push_notification_config = options.push_notification_config;
-    }
-
-    return await this.mcp.call(request);
-  }
-}
-
-// Usage (Bearer token)
 const response = await session.call('create_media_buy',
   { /* task params */ },
   {
-    push_notification_config: {
-      url: "https://buyer.com/webhooks/adcp",
-      authentication: {
-        schemes: ["Bearer"],
-        credentials: "secret_token_32_chars"
-      }
-    }
-  }
-);
-
-// Usage (HMAC signature - recommended for production)
-const response = await session.call('create_media_buy',
-  { /* task params */ },
-  {
-    push_notification_config: {
+    pushNotificationConfig: {
       url: "https://buyer.com/webhooks/adcp",
       authentication: {
         schemes: ["HMAC-SHA256"],
@@ -329,10 +309,13 @@ const response = await session.call('create_media_buy',
 );
 ```
 
-#### A2A Native Support
+#### A2A Webhooks
+
+A2A defines push notifications natively. Per the [A2A spec](https://a2a-protocol.org/latest/specification/#433-push-notification-payload), the server sends `Task`, `TaskStatusUpdateEvent`, or `TaskArtifactUpdateEvent` depending on what changed.
+
+**Data location:** `status.message.parts[].data`
+
 ```javascript
-// A2A has native webhook support via PushNotificationConfig
-// AdCP uses the same structure - no mapping needed!
 await a2a.send({
   message: {
     parts: [{
@@ -343,197 +326,140 @@ await a2a.send({
       }
     }]
   },
-  push_notification_config: {
-    url: "https://buyer.com/webhooks/adcp",
+  pushNotificationConfig: {
+    url: "https://buyer.com/webhooks/a2a",
     authentication: {
-      schemes: ["HMAC-SHA256"],  // or ["Bearer"]
+      schemes: ["bearer"],
       credentials: "shared_secret_32_chars"
     }
   }
 });
 ```
 
-### Server Decision on Webhook Usage
+#### Unified Data Schemas
 
-The server decides whether to use webhooks based on the initial response status:
+The **data payload** uses identical AdCP schemas regardless of envelope format:
 
-- **`completed`, `failed`, `rejected`**: Synchronous response - webhook is NOT called (client already has complete response)
-- **`working`**: Will respond synchronously within ~120 seconds - webhook is NOT called (just wait for the response)
-- **`submitted`**: Long-running async operation - webhook WILL be called on ALL subsequent status changes
-- **Client choice**: Webhook is optional - clients can always poll with `tasks/get`
-
-**Webhook trigger rule:** Webhooks are ONLY used when the initial response status is `submitted`.
-
-**When webhooks are called (for `submitted` operations):**
-- Status changes to `input-required` → Webhook called (human needs to respond)
-- Status changes to `completed` → Webhook called (final result)
-- Status changes to `failed` → Webhook called (error details)
-- Status changes to `canceled` → Webhook called (cancellation confirmation)
-
-### Webhook POST Format
-
-When an async operation changes status, the publisher POSTs a payload with protocol fields at the top-level and the task-specific payload nested under `result`.
-
-#### Webhook Scenarios
-
-**Scenario 1: Synchronous completion (no webhook)**
-```javascript
-// Initial request
-const response = await session.call('create_media_buy', params, { webhook_url: "..." });
-
-// Response is immediate and complete - webhook is NOT called
-{
-  "status": "completed",
-  "media_buy_id": "mb_12345",
-  "packages": [...]
-}
+```
+MCP:  { result: { media_buy_id, packages, ... } }
+A2A:  { status: { message: { parts: [{ data: { media_buy_id, packages, ... } }] } } }
 ```
 
-**Scenario 2: Quick async processing (no webhook - use working status)**
-```javascript
-// Initial response indicates processing will complete soon
-const response = await session.call('create_media_buy', params, { webhook_url: "..." });
-{
-  "status": "working",
-  "task_id": "task_789",
-  "message": "Creating media buy..."
-}
+Both validate against the same schemas. For `completed`/`failed`, use the full task response schema. For other statuses, use the status-specific schemas.
 
-// Wait for synchronous response (within ~120 seconds)
-// Webhook is NOT called - client should wait for the response to complete
-// The call will return the final result synchronously
-```
+### When Webhooks Are Called
 
-**Scenario 3: Long-running operation (webhook IS called)**
-```javascript
-// Initial request
-const response = await session.call('create_media_buy', params, {
-  webhook_url: "https://buyer.com/webhooks/adcp/create_media_buy/agent_123/op_456"
-});
+Webhooks are triggered when **all** of the following are true:
 
-// Response indicates long-running async operation
-{
-  "status": "submitted",
-  "task_id": "task_456",
-  "buyer_ref": "nike_q1_campaign_2024",
-  "message": "Campaign requires sales approval. Expected time: 2-4 hours."
-}
+1. **Task type supports async execution** (e.g., `get_products`, `create_media_buy`, `sync_creatives`)
+2. **`pushNotificationConfig` is provided** in the request
+3. **Task requires async processing** — initial response is `working` or `submitted`
 
-// Later: Webhook POST when approval is needed
+If the initial response is already terminal (`completed`, `failed`, `rejected`), no webhook is sent — the client already has the final result.
+
+**Status changes that trigger webhooks:**
+- `working` → Progress update
+- `input-required` → Human input needed
+- `completed` → Final result available
+- `failed` → Error details
+- `canceled` → Cancellation confirmed
+
+### Push Notification Format by Protocol
+
+#### MCP: HTTP Webhook POST
+
+When an MCP async operation changes status, the publisher POSTs to your webhook URL.
+
+**Envelope Schema:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)
+
+```http
 POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
-{
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "status": "input-required",
-  "timestamp": "2025-01-22T10:15:00Z",
-  "message": "Please approve $150K campaign to proceed",
-  "result": {
-    "buyer_ref": "nike_q1_campaign_2024"
-  }
-}
+Host: buyer.example.com
+Authorization: Bearer your-secret-token
+Content-Type: application/json
 
-// Later: Webhook POST when approved and completed (result nested)
-POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
 {
-  "operation_id": "op_456",
   "task_id": "task_456",
   "task_type": "create_media_buy",
   "status": "completed",
   "timestamp": "2025-01-22T10:30:00Z",
+  "message": "Media buy created successfully",
   "result": {
     "media_buy_id": "mb_12345",
     "buyer_ref": "nike_q1_campaign_2024",
     "creative_deadline": "2024-01-30T23:59:59Z",
     "packages": [
-      {
-        "package_id": "pkg_12345_001",
-        "buyer_ref": "nike_ctv_sports_package"
-      },
-      {
-        "package_id": "pkg_12345_002",
-        "buyer_ref": "nike_audio_drive_package"
-      }
+      { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package" }
     ]
   }
 }
 ```
 
-#### For Other Async Operations
+#### A2A Webhook POST
 
-Each async operation posts its specific response schema:
+A2A sends `Task` (for final states) or `TaskStatusUpdateEvent` (for progress updates):
 
-- **`activate_signal`** → `activate-signal-response.json`
-- **`sync_creatives`** → `sync-creatives-response.json`
-- **`update_media_buy`** → `update-media-buy-response.json`
+```json
+{
+  "id": "task_456",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Media buy created successfully" },
+        {
+          "data": {
+            "media_buy_id": "mb_12345",
+            "buyer_ref": "nike_q1_campaign_2024",
+            "creative_deadline": "2024-01-30T23:59:59Z",
+            "packages": [
+              { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package" }
+            ]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:30:00Z"
+  }
+}
+```
 
-#### Webhook URL Patterns
+#### Status-Specific Data Schemas
 
-Structure your webhook URLs to identify the operation and agent:
+The data payload (`result` in MCP, `status.message.parts[].data` in A2A) uses status-specific schemas:
+
+| Status | Data Schema | Contents |
+|--------|-------------|----------|
+| `completed` | `[task]-response.json` | Full task response (success branch) |
+| `failed` | `[task]-response.json` | Full task response (error branch) |
+| `working` | `[task]-async-response-working.json` | Progress info (`percentage`, `step`) |
+| `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
+| `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
+
+#### Supported Async Operations
+
+Each async operation uses its main response schema for `completed`/`failed` statuses:
+
+| Task | Response Schema |
+|------|-----------------|
+| `get_products` | `get-products-response.json` |
+| `create_media_buy` | `create-media-buy-response.json` |
+| `update_media_buy` | `update-media-buy-response.json` |
+| `sync_creatives` | `sync-creatives-response.json` |
+
+#### MCP Webhook URL Patterns
+
+For MCP HTTP webhooks, structure URLs to identify the operation:
 
 ```
 https://buyer.com/webhooks/adcp/{task_name}/{agent_id}/{operation_id}
 ```
 
-**Example URLs:**
-- `https://buyer.com/webhooks/adcp/create_media_buy/agent_abc/op_xyz`
-- `https://buyer.com/webhooks/adcp/activate_signal/agent_abc/op_123`
-- `https://buyer.com/webhooks/adcp/sync_creatives/agent_abc/op_456`
+Your webhook handler can parse the URL path to route to the correct handler.
 
-Your webhook handler can parse the URL path to route to the correct handler based on the task name.
-
-#### Webhook Payload Structure
-
-Every webhook POST contains protocol fields plus a `result` object for the task-specific payload of that status.
-
-**`input-required` webhook (human needs to respond):**
-```json
-{
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "status": "input-required",
-  "message": "Campaign budget requires VP approval to proceed",
-  "result": {
-    "buyer_ref": "nike_q1_campaign_2024"
-  }
-}
-```
-
-**`completed` webhook (operation finished - full create_media_buy response):**
-```json
-{
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "status": "completed",
-  "result": {
-    "media_buy_id": "mb_12345",
-    "buyer_ref": "nike_q1_campaign_2024",
-    "creative_deadline": "2024-01-30T23:59:59Z",
-    "packages": [
-      {
-        "package_id": "pkg_001",
-        "buyer_ref": "nike_ctv_package"
-      }
-    ]
-  }
-}
-```
-
-**`failed` webhook (operation failed):**
-```json
-{
-  "operation_id": "op_456",
-  "task_id": "task_456",
-  "task_type": "create_media_buy",
-  "status": "failed",
-  "message": "Requested targeting yielded 0 available impressions",
-  "error": "insufficient_inventory"
-}
-```
-
-**Key principle:** Webhooks are ONLY called for `submitted` operations, and each webhook contains an envelope plus `result` matching the task's response schema.
+**Key principle:** For async tasks with `pushNotificationConfig`, push notifications are sent for all status changes after the initial response. The data payload uses the same schema regardless of transport (MCP webhook or A2A native message).
 
 ### Task State Reconciliation
 

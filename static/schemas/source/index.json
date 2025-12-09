@@ -133,9 +133,9 @@
           "$ref": "/schemas/core/placement.json",
           "description": "Represents a specific ad placement within a product's inventory"
         },
-        "webhook-payload": {
-          "$ref": "/schemas/core/webhook-payload.json",
-          "description": "Webhook payload structure sent when async task status changes - protocol-level fields at top-level (operation_id, task_type, status, etc.) and task-specific payload nested under 'result'"
+        "mcp-webhook-payload": {
+          "$ref": "/schemas/core/mcp-webhook-payload.json",
+          "description": "MCP-specific webhook payload structure for HTTP-based push notifications. Protocol-level fields at top-level (task_id, status, etc.) and AdCP data layer nested under 'result'. NOT used in A2A (uses native statusUpdate)."
         },
         "destination": {
           "$ref": "/schemas/core/destination.json",

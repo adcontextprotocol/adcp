@@ -214,6 +214,34 @@ return { status: response.status };
 
 **For complete response structure requirements, error handling, and implementation patterns, see [A2A Response Format](/docs/protocols/a2a-response-format).**
 
+## Push Notifications (A2A-Specific)
+
+A2A defines push notifications natively via `PushNotificationConfig`. When you configure a webhook URL, the server will POST task updates directly to your endpoint instead of requiring you to poll.
+
+```javascript
+await a2a.send({
+  message: {
+    parts: [{
+      kind: "data",
+      data: {
+        skill: "create_media_buy",
+        parameters: { /* task params */ }
+      }
+    }]
+  },
+  pushNotificationConfig: {
+    url: "https://buyer.com/webhooks/a2a",
+    token: "client-validation-token",  // Optional: for client-side validation
+    authentication: {
+      schemes: ["bearer"],
+      credentials: "shared_secret_32_chars"
+    }
+  }
+});
+```
+
+For webhook payload formats, protocol comparison, and detailed handling examples, see [Task Management - Push Notification Integration](/docs/protocols/task-management#push-notification-integration).
+
 ## SSE Streaming (A2A-Specific)
 
 A2A's key advantage is real-time updates via Server-Sent Events:
@@ -272,8 +300,8 @@ const response = await a2a.send({
   }
 });
 
-// Monitor in real-time
-if (response.status === 'working') {
+// Monitor in real-time via SSE
+if (response.status === 'working' || response.status === 'submitted') {
   const monitor = new A2aTaskMonitor(response.taskId);
   
   monitor.on('progress', (data) => {
@@ -284,6 +312,191 @@ if (response.status === 'working') {
     console.log('Created:', final.artifacts[0].parts[1].data.media_buy_id);
   });
 }
+```
+
+### A2A Webhook Payload Examples
+
+**Example 1: `Task` payload for completed operation**
+
+When a task finishes, the server typically sends the full `Task` object:
+
+```json
+{
+  "id": "task_456",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Media buy created successfully" },
+        {
+          "data": {
+            "media_buy_id": "mb_12345",
+            "buyer_ref": "nike_q1_campaign",
+            "creative_deadline": "2024-01-30T23:59:59Z",
+            "packages": [
+              { "package_id": "pkg_001", "buyer_ref": "nike_ctv_package" }
+            ]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:30:00Z"
+  }
+}
+```
+
+**Example 2: `TaskStatusUpdateEvent` for progress updates**
+
+During execution, status changes arrive as lightweight updates:
+
+```json
+{
+  "taskId": "task_456",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "input-required",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Campaign budget $150K requires VP approval" },
+        {
+          "data": {
+            "reason": "BUDGET_EXCEEDS_LIMIT"
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:15:00Z"
+  }
+}
+```
+
+The `status.message.parts[].data` payload uses the same AdCP schemas as MCP's `result` field. Schema: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json)
+
+### A2A Webhook Payload Types
+
+Per the [A2A specification](https://a2a-protocol.org/latest/specification/#433-push-notification-payload), the server sends different payload types based on the situation:
+
+| Payload Type | When Used | What It Contains |
+|--------------|-----------|------------------|
+| **`Task`** | Final states (`completed`, `failed`, `canceled`) or when full context needed | Complete task object with all history and artifact data |
+| **`TaskStatusUpdateEvent`** | Status transitions during execution (`working`, `input-required`) | Lightweight status change with message parts |
+| **`TaskArtifactUpdateEvent`** | Streaming artifact updates | Artifact data as it becomes available |
+
+For AdCP, most webhooks will be:
+- **`Task`** for final results (`completed`, `failed`)
+- **`TaskStatusUpdateEvent`** for progress updates (`working`, `input-required`)
+
+### Webhook Trigger Rules
+
+Webhooks are sent when **all** of these conditions are met:
+
+1. **Task type supports async** (e.g., `create_media_buy`, `sync_creatives`, `get_products`)
+2. **`pushNotificationConfig` is provided** in the request
+3. **Task runs asynchronously** — initial response is `working` or `submitted`
+
+If the initial response is already terminal (`completed`, `failed`, `rejected`), no webhook is sent—you already have the result.
+
+**Status changes that trigger webhooks:**
+- `working` → Progress update (task actively processing)
+- `input-required` → Human input needed
+- `completed` → Final result available
+- `failed` → Error details
+- `canceled` → Cancellation confirmed
+
+### Data Schema Validation
+
+The `status.message.parts[].data` field in A2A webhooks uses status-specific schemas:
+
+| Status | Schema | Contents |
+|--------|--------|----------|
+| `completed` | `[task]-response.json` | Full task response (success branch) |
+| `failed` | `[task]-response.json` | Full task response (error branch) |
+| `working` | `[task]-async-response-working.json` | Progress info (`percentage`, `step`) |
+| `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
+| `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
+
+Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json)
+
+### Webhook Handler Example
+
+```javascript
+const express = require('express');
+const app = express();
+
+app.post('/webhooks/a2a', async (req, res) => {
+  const webhook = req.body;
+
+  // Verify webhook authenticity (Bearer token example)
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing Authorization header' });
+  }
+  const token = authHeader.substring(7);
+  if (token !== process.env.A2A_WEBHOOK_TOKEN) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  // Extract data from A2A webhook payload
+  const taskId = webhook.id || webhook.taskId;
+  const contextId = webhook.contextId;
+  const status = webhook.status?.state || webhook.status;
+  
+  // Get AdCP data from status.message.parts[].data
+  const dataPart = webhook.status?.message?.parts?.find(p => p.data);
+  const adcpData = dataPart?.data;
+
+  // Handle status changes
+  switch (status) {
+    case 'input-required':
+      // Alert human that input is needed
+      await notifyHuman({
+        task_id: taskId,
+        context_id: contextId,
+        message: webhook.status.message.parts.find(p => p.text)?.text,
+        data: adcpData
+      });
+      break;
+
+    case 'completed':
+      // Process the completed operation
+      if (adcpData?.media_buy_id) {
+        await handleMediaBuyCreated({
+          media_buy_id: adcpData.media_buy_id,
+          buyer_ref: adcpData.buyer_ref,
+          packages: adcpData.packages
+        });
+      }
+      break;
+
+    case 'failed':
+      // Handle failure
+      await handleOperationFailed({
+        task_id: taskId,
+        error: adcpData?.errors,
+        message: webhook.status.message.parts.find(p => p.text)?.text
+      });
+      break;
+
+    case 'working':
+      // Update progress UI
+      await updateProgress({
+        task_id: taskId,
+        percentage: adcpData?.percentage,
+        message: webhook.status.message.parts.find(p => p.text)?.text
+      });
+      break;
+
+    case 'canceled':
+      await handleOperationCanceled(taskId);
+      break;
+  }
+
+  // Always return 200 for successful processing
+  res.status(200).json({ status: 'processed' });
+});
 ```
 
 ## Context Management (A2A-Specific)

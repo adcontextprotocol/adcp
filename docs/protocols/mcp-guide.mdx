@@ -226,8 +226,13 @@ const refined = await session.call('get_products', {
 ```
 
 #### Async Operations with Webhooks
+
+MCP doesn't define push notifications. AdCP fills this gap by specifying the webhook configuration (`pushNotificationConfig`) and payload format (`mcp-webhook-payload.json`). When you configure a webhook, the server will POST task updates to your URL instead of requiring you to poll.
+
+**Webhook Envelope:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)
+
 ```javascript
-// Create media buy with webhook configuration
+// Configure webhook when calling MCP tool
 const response = await session.call('create_media_buy',
   {
     buyer_ref: "nike_q1_2025",
@@ -235,10 +240,10 @@ const response = await session.call('create_media_buy',
     budget: { total: 150000, currency: "USD" }
   },
   {
-    push_notification_config: {
+    pushNotificationConfig: {
       url: "https://buyer.com/webhooks/adcp",
       authentication: {
-        schemes: ["HMAC-SHA256"],  // or ["Bearer"] for simple auth
+        schemes: ["HMAC-SHA256"],  // or ["bearer"] for simple auth
         credentials: "shared_secret_32_chars"
       }
     }
@@ -247,9 +252,152 @@ const response = await session.call('create_media_buy',
 
 if (response.status === 'submitted') {
   console.log(`Task ${response.task_id} submitted for long-running execution`);
-  // Webhook will notify when complete, or poll manually
+  // Server will POST status updates to your webhook URL
 } else if (response.status === 'completed') {
   console.log(`Media buy created: ${response.media_buy_id}`);
+}
+```
+
+**Webhook POST format:**
+```json
+{
+  "task_id": "task_456",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "buyer_ref": "nike_q1_2025",
+    "packages": [...]
+  }
+}
+```
+
+The `result` field contains the AdCP data payload. For `completed`/`failed` statuses, this is the full task response (e.g., `create-media-buy-response.json`). For other statuses, use the status-specific schemas (e.g., `create-media-buy-async-response-working.json`).
+
+#### MCP Webhook Envelope Fields
+
+The [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json) envelope includes:
+
+**Required fields:**
+- `task_id` — Unique task identifier for correlation
+- `task_type` — Task name (e.g., "create_media_buy", "sync_creatives")
+- `status` — Current task status (completed, failed, working, input-required, etc.)
+- `timestamp` — ISO 8601 timestamp when webhook was generated
+
+**Optional fields:**
+- `operation_id` — Correlates a sequence of updates for the same operation
+- `domain` — AdCP domain ("media-buy" or "signals")
+- `context_id` — Conversation/session identifier
+- `message` — Human-readable context about the status change
+
+**Data field:**
+- `result` — Task-specific AdCP payload (see Data Schema Validation below)
+
+#### Webhook Trigger Rules
+
+Webhooks are sent when **all** of these conditions are met:
+
+1. **Task type supports async** (e.g., `create_media_buy`, `sync_creatives`, `get_products`)
+2. **`pushNotificationConfig` is provided** in the request
+3. **Task runs asynchronously** — initial response is `working` or `submitted`
+
+If the initial response is already terminal (`completed`, `failed`, `rejected`), no webhook is sent—you already have the result.
+
+**Status changes that trigger webhooks:**
+- `working` → Progress update (task actively processing)
+- `input-required` → Human input needed
+- `completed` → Final result available
+- `failed` → Error details
+
+#### Data Schema Validation
+
+The `result` field in MCP webhooks uses status-specific schemas:
+
+| Status | Schema | Contents |
+|--------|--------|----------|
+| `completed` | `[task]-response.json` | Full task response (success branch) |
+| `failed` | `[task]-response.json` | Full task response (error branch) |
+| `working` | `[task]-async-response-working.json` | Progress info (`percentage`, `step`) |
+| `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
+| `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
+
+Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json)
+
+#### Webhook Handler Example
+
+```javascript
+const express = require('express');
+const app = express();
+
+app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) => {
+  const { task_type, agent_id, operation_id } = req.params;
+  const webhook = req.body;
+
+  // Verify webhook authenticity (HMAC-SHA256 example)
+  const signature = req.headers['x-adcp-signature'];
+  const timestamp = req.headers['x-adcp-timestamp'];
+  if (!verifySignature(webhook, signature, timestamp)) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  // Handle status changes
+  switch (webhook.status) {
+    case 'input-required':
+      // Alert human that input is needed
+      await notifyHuman({
+        operation_id,
+        message: webhook.message,
+        context_id: webhook.context_id,
+        data: webhook.result
+      });
+      break;
+
+    case 'completed':
+      // Process the completed operation
+      if (task_type === 'create_media_buy') {
+        await handleMediaBuyCreated({
+          media_buy_id: webhook.result.media_buy_id,
+          buyer_ref: webhook.result.buyer_ref,
+          packages: webhook.result.packages
+        });
+      }
+      break;
+
+    case 'failed':
+      // Handle failure
+      await handleOperationFailed({
+        operation_id,
+        error: webhook.result?.errors,
+        message: webhook.message
+      });
+      break;
+
+    case 'working':
+      // Update progress UI
+      await updateProgress({
+        operation_id,
+        percentage: webhook.result?.percentage,
+        message: webhook.message
+      });
+      break;
+
+    case 'canceled':
+      await handleOperationCanceled(operation_id, webhook.message);
+      break;
+  }
+
+  // Always return 200 for successful processing
+  res.status(200).json({ status: 'processed' });
+});
+
+function verifySignature(payload, signature, timestamp) {
+  const crypto = require('crypto');
+  const expectedSig = crypto
+    .createHmac('sha256', process.env.WEBHOOK_SECRET)
+    .update(timestamp + JSON.stringify(payload))
+    .digest('hex');
+  return signature === `sha256=${expectedSig}`;
 }
 ```
 
@@ -292,11 +440,18 @@ async function handleContextExpiration(session, tool, params) {
 
 **Key Difference**: Unlike A2A which manages context automatically, MCP requires explicit context_id management.
 
-## Async Operations (MCP-Specific)
+## Handling Async Operations
 
-MCP handles long-running operations through polling with `context_id`:
+When a task returns `working` or `submitted` status, you have two options for receiving updates:
 
-### Polling Pattern
+| Approach | Best For | Trade-offs |
+|----------|----------|------------|
+| **Polling** | Simple integrations, short tasks | Easy to implement, but inefficient for long waits |
+| **Webhooks** | Production systems, long-running tasks | More efficient, but requires a public endpoint |
+
+### Option 1: Polling
+
+Use `tasks/get` to check task status periodically:
 
 ```javascript
 async function waitForCompletion(session, initialResponse) {
@@ -304,10 +459,11 @@ async function waitForCompletion(session, initialResponse) {
     return initialResponse; // Already completed
   }
   
+  // Poll more frequently for 'working' (will finish soon)
+  // Poll less frequently for 'submitted' (may take hours)
   let pollInterval = initialResponse.status === 'working' ? 5000 : 30000;
   
   while (true) {
-    // Poll using tasks/get with task_id
     const response = await session.pollTask(initialResponse.task_id, true);
     
     if (['completed', 'failed', 'canceled'].includes(response.status)) {
@@ -315,26 +471,50 @@ async function waitForCompletion(session, initialResponse) {
     }
     
     if (response.status === 'input-required') {
-      // Handle user input requirement
       const input = await promptUser(response.message);
-      // Continue conversation with context_id
       return session.call('create_media_buy', {
         context_id: response.context_id,
         additional_info: input
       });
     }
     
-    // Adjust polling frequency based on status
     pollInterval = response.status === 'working' ? 5000 : 30000;
     await new Promise(resolve => setTimeout(resolve, pollInterval));
   }
 }
 ```
 
-### Async Operation Example
+### Option 2: Webhooks
+
+Configure a webhook URL and the server will POST updates to you directly. This is more efficient for long-running tasks since you don't need to keep polling.
 
 ```javascript
-// Start async operation
+const response = await session.call('create_media_buy',
+  {
+    buyer_ref: "nike_q1_2025",
+    packages: [...],
+    budget: { total: 150000, currency: "USD" }
+  },
+  {
+    pushNotificationConfig: {
+      url: "https://buyer.com/webhooks/adcp",
+      authentication: {
+        schemes: ["HMAC-SHA256"],
+        credentials: "shared_secret_32_chars"
+      }
+    }
+  }
+);
+
+// If status is 'submitted', the server will POST updates to your webhook
+// You don't need to poll - just wait for the webhook
+```
+
+See [Task Management](/docs/protocols/task-management) for webhook payload formats and handling examples.
+
+### Handling Different Statuses
+
+```javascript
 const initial = await session.call('create_media_buy', {
   buyer_ref: "nike_q1_2025",
   packages: [...],
@@ -343,29 +523,29 @@ const initial = await session.call('create_media_buy', {
 
 switch (initial.status) {
   case 'completed':
-    console.log('Created immediately:', initial.media_buy_id);
+    // Done immediately - no async handling needed
+    console.log('Created:', initial.media_buy_id);
     break;
     
   case 'working':
-    console.log('Processing, will complete within 2 minutes...');
+    // Will finish within ~2 minutes - poll or wait
+    console.log('Processing...');
     const final = await waitForCompletion(session, initial);
     console.log('Created:', final.result.media_buy_id);
     break;
     
   case 'submitted':
-    console.log(`Queued for approval - long-running operation`);
-    console.log(`Track with task ID: ${initial.task_id}`);
-    // Use webhook or poll manually
+    // Long-running (hours/days) - use webhooks or poll infrequently
+    console.log(`Task ${initial.task_id} queued for approval`);
+    // Webhook will notify when complete, or poll manually
     break;
     
   case 'input-required':
-    console.log('Need additional info:', initial.message);
-    // Handle user input
+    // Blocked on user input
+    console.log('Need more info:', initial.message);
     break;
 }
 ```
-
-**Note**: Use `tasks/get` for polling specific tasks, or `tasks/list` for state reconciliation. See [Task Management](/docs/protocols/task-management) for complete documentation on task tracking patterns and webhook integration.
 
 ## Integration Example
 

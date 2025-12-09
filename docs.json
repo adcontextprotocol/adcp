@@ -63,8 +63,9 @@
                 ]
               },
               "docs/protocols/protocol-comparison",
-              "docs/protocols/envelope-examples",
-              "docs/protocols/context-management"
+              "docs/protocols/context-management",
+              "docs/protocols/task-management",
+              "docs/protocols/envelope-examples"
             ]
           },
           {

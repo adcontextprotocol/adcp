@@ -154,45 +154,27 @@ await a2a.send({
 });
 ```
 
-## Webhook & Task Management Differences
+## Push Notification Architecture
 
-### Webhook Configuration
+Both MCP and A2A use HTTP webhooks for async task updates. AdCP keeps the **envelope format** protocol-specific while using **identical data schemas** for the business payload.
 
-Both protocols support webhooks but with different implementation approaches:
+| Aspect | MCP | A2A |
+|--------|-----|-----|
+| **Spec Status** | AdCP specifies this | Native protocol feature |
+| **Configuration** | `pushNotificationConfig` | `pushNotificationConfig` |
+| **Envelope** | `mcp-webhook-payload.json` | `Task`, `TaskStatusUpdateEvent`, or `TaskArtifactUpdateEvent` |
+| **Data Location** | `result` field | `status.message.parts[].data` |
+| **Data Schemas** | **Identical** AdCP schemas | **Identical** AdCP schemas |
 
-#### MCP: Protocol Wrapper Extension
-```javascript
-// AdCP uses A2A-compatible structure for MCP as well
-class McpAdcpSession {
-  async call(tool, params, options = {}) {
-    const request = { tool, arguments: params };
+### Key Principles
 
-    // Same structure as A2A - no mapping needed
-    if (options.push_notification_config) {
-      request.push_notification_config = options.push_notification_config;
-    }
+- **Same data, different envelopes**: The AdCP payload (media buy data, product lists, etc.) is identical regardless of protocol
+- **Protocol-native delivery**: MCP uses `mcp-webhook-payload.json`, A2A uses native `Task` objects
+- **Unified configuration**: Both use `pushNotificationConfig` with the same authentication structure
 
-    return await this.mcp.call(request);
-  }
-}
-```
-
-#### A2A: Native Push Notifications
-```javascript
-// Built-in PushNotificationConfig - AdCP uses this structure universally
-await a2a.send({
-  message: { /* task */ },
-  push_notification_config: {
-    url: "https://buyer.com/webhooks",
-    authentication: {
-      schemes: ["HMAC-SHA256"],  // or ["Bearer"]
-      credentials: "shared_secret_32_chars"
-    }
-  }
-});
-```
-
-**Key Insight:** AdCP adopts A2A's `PushNotificationConfig` structure as the universal webhook configuration format across all protocols. This eliminates protocol-specific mapping and provides a consistent developer experience.
+**For protocol-specific examples and implementation details:**
+- MCP webhooks: See [MCP Guide - Async Operations](/docs/protocols/mcp-guide#async-operations-mcp-specific)
+- A2A webhooks: See [A2A Guide - Push Notifications](/docs/protocols/a2a-guide#push-notifications-a2a-specific)
 
 ### Task Management
 

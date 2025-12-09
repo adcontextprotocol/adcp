@@ -595,6 +595,327 @@ asyncio.run(compare_auth())
 
 See [Authentication Guide](/docs/reference/authentication) for details.
 
+## Asynchronous Operations
+
+Most product searches complete immediately, but some scenarios require asynchronous processing. When this happens, you'll receive a status other than `completed` and can track progress through webhooks or polling.
+
+### When Search Runs Asynchronously
+
+Product search may require async processing in these situations:
+
+- **Complex searches**: Searching across multiple inventory sources or custom curation
+- **Needs clarification**: Your brief is vague and the system needs more information
+- **Custom products**: Bespoke product packages that require human review
+
+### Async Status Flow
+
+<Tabs>
+<Tab title="MCP">
+
+#### Immediate Completion (Most Common)
+
+```json
+POST /api/mcp/call_tool
+
+{
+  "name": "get_products",
+  "arguments": {
+    "brief": "CTV inventory for sports audience",
+    "brand_manifest": { "name": "Nike", "url": "https://nike.com" }
+  }
+}
+
+Response (200 OK):
+{
+  "status": "completed",
+  "message": "Found 3 products matching your requirements",
+  "data": {
+    "products": [...]
+  }
+}
+```
+
+#### Needs Clarification
+
+When the brief is unclear, the system asks for more details:
+
+```json
+Response (200 OK):
+{
+  "status": "input-required",
+  "message": "I need a bit more information. What's your budget range and campaign duration?",
+  "task_id": "task_789",
+  "context_id": "ctx_123",
+  "data": {
+    "reason": "CLARIFICATION_NEEDED",
+    "partial_results": [],
+    "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
+  }
+}
+```
+
+Continue the conversation with the same `context_id`:
+
+```json
+POST /api/mcp/continue
+
+{
+  "context_id": "ctx_123",
+  "message": "Budget is $75K for a 3-week campaign in March"
+}
+
+Response (200 OK):
+{
+  "status": "completed",
+  "message": "Perfect! Found 5 products within your budget",
+  "data": {
+    "products": [...]
+  }
+}
+```
+
+#### Complex Search (With Webhook)
+
+For searches requiring deep inventory analysis, configure a webhook:
+
+```json
+POST /api/mcp/call_tool
+
+{
+  "name": "get_products",
+  "arguments": {
+    "brief": "Premium inventory across all formats for luxury automotive brand",
+    "brand_manifest": { "name": "Porsche", "url": "https://porsche.com" },
+    "pushNotificationConfig": {
+      "url": "https://buyer.com/webhooks/adcp/get_products",
+      "authentication": {
+        "schemes": ["Bearer"],
+        "credentials": "secret_token_32_chars"
+      }
+    }
+  }
+}
+
+Response (200 OK):
+{
+  "status": "working",
+  "message": "Searching premium inventory across display, video, and audio",
+  "task_id": "task_456",
+  "context_id": "ctx_123",
+  "data": {
+    "percentage": 10,
+    "current_step": "searching_inventory"
+  }
+}
+
+// Later, webhook POST to https://buyer.com/webhooks/adcp/get_products
+{
+  "task_id": "task_456",
+  "task_type": "get_products",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "message": "Found 12 premium products across all formats",
+  "result": {
+    "products": [...]
+  }
+}
+```
+
+</Tab>
+<Tab title="A2A">
+
+#### Immediate Completion (Most Common)
+
+```json
+POST /api/a2a
+
+{
+  "message": {
+    "role": "user",
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "get_products",
+        "parameters": {
+          "brief": "CTV inventory for sports audience",
+          "brand_manifest": { "name": "Nike", "url": "https://nike.com" }
+        }
+      }
+    }]
+  }
+}
+
+Response (200 OK):
+{
+  "id": "task_123",
+  "contextId": "ctx_456",
+  "artifact": {
+    "kind": "data",
+    "data": {
+      "products": [...]
+    }
+  },
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [{ "text": "Found 3 products matching your requirements" }]
+    }
+  }
+}
+```
+
+#### Needs Clarification
+
+Real-time updates via SSE when clarification is needed:
+
+```json
+// Initial response
+{
+  "id": "task_789",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "input-required",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "I need a bit more information. What's your budget range and campaign duration?" },
+        {
+          "data": {
+            "reason": "CLARIFICATION_NEEDED",
+            "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
+          }
+        }
+      ]
+    }
+  }
+}
+
+// Send follow-up
+POST /api/a2a
+
+{
+  "contextId": "ctx_123",
+  "message": {
+    "role": "user",
+    "parts": [{ "text": "Budget is $75K for a 3-week campaign in March" }]
+  }
+}
+
+// SSE update: task completed
+{
+  "id": "task_789",
+  "contextId": "ctx_123",
+  "artifact": {
+    "kind": "data",
+    "data": { "products": [...] }
+  },
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [{ "text": "Perfect! Found 5 products within your budget" }]
+    }
+  }
+}
+```
+
+#### Complex Search (With Webhook)
+
+Configure push notifications for long searches:
+
+```json
+POST /api/a2a
+
+{
+  "message": {
+    "role": "user",
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "get_products",
+        "parameters": {
+          "brief": "Premium inventory across all formats for luxury automotive brand",
+          "brand_manifest": { "name": "Porsche", "url": "https://porsche.com" }
+        }
+      }
+    }]
+  },
+  "pushNotificationConfig": {
+    "url": "https://buyer.com/webhooks/a2a/get_products",
+    "authentication": {
+      "schemes": ["bearer"],
+      "credentials": "secret_token_32_chars"
+    }
+  }
+}
+
+Response (200 OK):
+{
+  "id": "task_456",
+  "contextId": "ctx_789",
+  "status": {
+    "state": "working",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Searching premium inventory across display, video, and audio" },
+        {
+          "data": {
+            "percentage": 10,
+            "current_step": "searching_inventory"
+          }
+        }
+      ]
+    }
+  }
+}
+
+// Later, webhook POST to https://buyer.com/webhooks/a2a/get_products
+{
+  "id": "task_456",
+  "contextId": "ctx_789",
+  "artifact": {
+    "kind": "data",
+    "data": {
+      "products": [...]
+    }
+  },
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "text": "Found 12 premium products across all formats" },
+        {
+          "data": {
+            "products": [...]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:30:00Z"
+  }
+}
+```
+
+</Tab>
+</Tabs>
+
+### Status Overview
+
+| Status | When It Happens | What You Do |
+|--------|----------------|-------------|
+| `completed` | Search finished successfully | Process the product results |
+| `input-required` | Need clarification on the brief | Answer the question and continue |
+| `working` | Searching across multiple sources | Wait for webhook or poll for updates |
+| `submitted` | Custom curation queued | Wait for webhook notification |
+| `failed` | Search couldn't complete | Check error message, adjust brief |
+
+**Note:** For the complete status list see [Core Concepts - Task Status System](/docs/protocols/core-concepts#task-status-system).
+
+**Most searches complete immediately.** Async processing is only needed for complex scenarios or when the system needs your input.
+
 ## Next Steps
 
 After discovering products:

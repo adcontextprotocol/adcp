@@ -582,46 +582,359 @@ Invalid format example:
 
 ## Asynchronous Operations
 
-This operation can complete instantly or take days depending on complexity and approval requirements.
+This task can complete instantly or take days depending on complexity and approval requirements. The response includes a `status` field that tells you what happened and what to do next.
 
-### Response Patterns
+| Status | Meaning | Your Action |
+|--------|---------|-------------|
+| `completed` | Done immediately | Process the result |
+| `working` | Processing (~2 min) | Poll frequently or wait for webhook |
+| `submitted` | Long-running (hours/days) | Use webhooks or poll infrequently |
+| `input-required` | Needs your input | Read message, respond with info |
+| `failed` | Error occurred | Handle the error |
 
-**Synchronous (completed immediately)**:
+**Note:** For the complete status list see [Core Concepts - Task Status System](/docs/protocols/core-concepts#task-status-system).
+
+<Tabs>
+  <Tab title="MCP">
+
+### Immediate Success (`completed`)
+
+The task completed synchronously. No async handling needed.
+
+**Request:**
+```javascript
+const response = await session.call('create_media_buy', {
+  buyer_ref: 'summer_campaign_2025',
+  brand_manifest: { name: 'Nike', url: 'https://nike.com' },
+  packages: [
+    {
+      buyer_ref: 'ctv_package',
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'cpm_fixed',
+      budget: 50000
+    }
+  ]
+});
+```
+
+**Response:**
 ```json
 {
+  "status": "completed",
   "media_buy_id": "mb_12345",
   "buyer_ref": "summer_campaign_2025",
-  "packages": []
+  "creative_deadline": "2025-06-15T23:59:59Z",
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "buyer_ref": "ctv_package",
+      "product_id": "prod_ctv_sports"
+    }
+  ]
 }
 ```
 
-**Asynchronous (processing)**:
-```json
-{
-  "status": "working",
-  "message": "Creating media buy..."
-}
-```
-Poll for completion or use webhooks/streaming.
+### Long-Running (`submitted`)
 
-**Manual Approval Required**:
+The task is queued for manual approval. Configure a webhook to receive updates.
+
+**Request with webhook:**
+```javascript
+const response = await session.call('create_media_buy',
+  {
+    buyer_ref: 'enterprise_campaign',
+    brand_manifest: { name: 'Nike', url: 'https://nike.com' },
+    packages: [
+      {
+        buyer_ref: 'premium_package',
+        product_id: 'prod_premium_ctv',
+        pricing_option_id: 'cpm_fixed',
+        budget: 500000  // Large budget triggers approval
+      }
+    ]
+  },
+  {
+    pushNotificationConfig: {
+      url: 'https://your-app.com/webhooks/adcp',
+      authentication: {
+        schemes: ['bearer'],
+        credentials: 'your_webhook_secret'
+      }
+    }
+  }
+);
+```
+
+**Initial response:**
 ```json
 {
   "status": "submitted",
-  "message": "Large budget requires sales approval (2-4 hours)"
+  "task_id": "task_abc123",
+  "message": "Budget exceeds auto-approval limit. Sales review required (2-4 hours)."
 }
 ```
-Will take hours to days.
 
-### Protocol-Specific Handling
+**Webhook POST when approved:**
+```json
+{
+  "task_id": "task_abc123",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "timestamp": "2025-01-22T14:30:00Z",
+  "message": "Media buy approved and created",
+  "result": {
+    "media_buy_id": "mb_67890",
+    "buyer_ref": "enterprise_campaign",
+    "creative_deadline": "2025-06-20T23:59:59Z",
+    "packages": [
+      {
+        "package_id": "pkg_002",
+        "buyer_ref": "premium_package"
+      }
+    ]
+  }
+}
+```
 
-AdCP tasks work across multiple protocols (MCP, A2A, REST). Each protocol handles async operations differently:
+### Error (`failed`)
 
-- **Status checking**: Polling, webhooks, or streaming
-- **Updates**: Protocol-specific mechanisms
-- **Long-running tasks**: Different timeout and notification patterns
+**Response:**
+```json
+{
+  "status": "failed",
+  "errors": [
+    {
+      "code": "INSUFFICIENT_INVENTORY",
+      "message": "Requested targeting yields no available impressions",
+      "field": "packages[0].targeting",
+      "suggestion": "Expand geographic targeting or increase CPM bid"
+    }
+  ]
+}
+```
 
-See [Task Management](/docs/protocols/task-management) for protocol-specific async patterns and examples.
+  </Tab>
+  <Tab title="A2A">
+
+### Immediate Success (`completed`)
+
+**Request:**
+```javascript
+const response = await a2a.send({
+  message: {
+    parts: [{
+      kind: 'data',
+      data: {
+        skill: 'create_media_buy',
+        parameters: {
+          buyer_ref: 'summer_campaign_2025',
+          brand_manifest: { name: 'Nike', url: 'https://nike.com' },
+          packages: [
+            {
+              buyer_ref: 'ctv_package',
+              product_id: 'prod_ctv_sports',
+              pricing_option_id: 'cpm_fixed',
+              budget: 50000
+            }
+          ]
+        }
+      }
+    }]
+  }
+});
+```
+
+**Response:**
+```json
+{
+  "status": "completed",
+  "taskId": "task_123",
+  "contextId": "ctx_456",
+  "artifacts": [{
+    "parts": [
+      { "text": "Media buy created successfully" },
+      {
+        "data": {
+          "media_buy_id": "mb_12345",
+          "buyer_ref": "summer_campaign_2025",
+          "creative_deadline": "2025-06-15T23:59:59Z",
+          "packages": [
+            {
+              "package_id": "pkg_001",
+              "buyer_ref": "ctv_package"
+            }
+          ]
+        }
+      }
+    ]
+  }]
+}
+```
+
+### Processing (`working`)
+
+Task is actively processing. Use SSE streaming or poll for updates.
+
+**Initial response:**
+```json
+{
+  "status": "working",
+  "taskId": "task_789",
+  "contextId": "ctx_456"
+}
+```
+
+**SSE status update:**
+```json
+{
+  "taskId": "task_789",
+  "status": {
+    "state": "working",
+    "message": {
+      "parts": [
+        { "text": "Validating inventory availability..." },
+        {
+          "data": {
+            "percentage": 50,
+            "current_step": "inventory_check"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### Long-Running (`submitted`)
+
+**Request with push notification:**
+```javascript
+const response = await a2a.send({
+  message: {
+    parts: [{
+      kind: 'data',
+      data: {
+        skill: 'create_media_buy',
+        parameters: {
+          buyer_ref: 'enterprise_campaign',
+          packages: [{ budget: 500000 }]  // Triggers approval
+        }
+      }
+    }]
+  },
+  pushNotificationConfig: {
+    url: 'https://your-app.com/webhooks/a2a',
+    authentication: {
+      schemes: ['bearer'],
+      credentials: 'your_webhook_secret'
+    }
+  }
+});
+```
+
+**Initial response:**
+```json
+{
+  "status": "submitted",
+  "taskId": "task_abc",
+  "contextId": "ctx_456"
+}
+```
+
+**Webhook POST (Task) when completed:**
+```json
+{
+  "id": "task_abc",
+  "contextId": "ctx_456",
+  "status": {
+    "state": "completed",
+    "message": {
+      "parts": [
+        { "text": "Media buy approved and created" },
+        {
+          "data": {
+            "media_buy_id": "mb_67890",
+            "buyer_ref": "enterprise_campaign",
+            "packages": [{ "package_id": "pkg_002" }]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T14:30:00Z"
+  }
+}
+```
+
+### Input Required (`input-required`)
+
+Task is paused waiting for clarification or approval.
+
+**Response:**
+```json
+{
+  "status": "input-required",
+  "taskId": "task_def",
+  "contextId": "ctx_456",
+  "artifacts": [{
+    "parts": [
+      { "text": "The requested budget exceeds your pre-approved limit. Please confirm you want to proceed with $500K spend." },
+      {
+        "data": {
+          "reason": "APPROVAL_REQUIRED",
+          "errors": [
+            {
+              "code": "BUDGET_EXCEEDS_LIMIT",
+              "message": "Requested budget exceeds pre-approved limit",
+              "field": "total_budget"
+            }
+          ]
+        }
+      }
+    ]
+  }]
+}
+```
+
+**Follow-up to approve:**
+```javascript
+await a2a.send({
+  contextId: 'ctx_456',  // Continue the conversation
+  message: {
+    parts: [{ kind: 'text', text: 'Yes, I confirm the $500K budget' }]
+  }
+});
+```
+
+### Error (`failed`)
+
+**Response:**
+```json
+{
+  "status": "failed",
+  "taskId": "task_xyz",
+  "artifacts": [{
+    "parts": [
+      { "text": "Failed to create media buy" },
+      {
+        "data": {
+          "errors": [
+            {
+              "code": "INSUFFICIENT_INVENTORY",
+              "message": "Requested targeting yields no available impressions",
+              "suggestion": "Expand geographic targeting"
+            }
+          ]
+        }
+      }
+    ]
+  }]
+}
+```
+
+  </Tab>
+</Tabs>
+
+For complete async handling patterns, see [Task Management](/docs/protocols/task-management).
 
 ## Usage Notes
 
