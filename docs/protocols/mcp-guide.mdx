@@ -275,6 +275,132 @@ if (response.status === 'submitted') {
 
 The `result` field contains the AdCP data payload. For `completed`/`failed` statuses, this is the full task response (e.g., `create-media-buy-response.json`). For other statuses, use the status-specific schemas (e.g., `create-media-buy-async-response-working.json`).
 
+#### MCP Webhook Envelope Fields
+
+The [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json) envelope includes:
+
+**Required fields:**
+- `task_id` — Unique task identifier for correlation
+- `task_type` — Task name (e.g., "create_media_buy", "sync_creatives")
+- `status` — Current task status (completed, failed, working, input-required, etc.)
+- `timestamp` — ISO 8601 timestamp when webhook was generated
+
+**Optional fields:**
+- `operation_id` — Correlates a sequence of updates for the same operation
+- `domain` — AdCP domain ("media-buy" or "signals")
+- `context_id` — Conversation/session identifier
+- `message` — Human-readable context about the status change
+
+**Data field:**
+- `result` — Task-specific AdCP payload (see Data Schema Validation below)
+
+#### Webhook Trigger Rules
+
+Webhooks are sent when **all** of these conditions are met:
+
+1. **Task type supports async** (e.g., `create_media_buy`, `sync_creatives`, `get_products`)
+2. **`pushNotificationConfig` is provided** in the request
+3. **Task runs asynchronously** — initial response is `working` or `submitted`
+
+If the initial response is already terminal (`completed`, `failed`, `rejected`), no webhook is sent—you already have the result.
+
+**Status changes that trigger webhooks:**
+- `working` → Progress update (task actively processing)
+- `input-required` → Human input needed
+- `completed` → Final result available
+- `failed` → Error details
+
+#### Data Schema Validation
+
+The `result` field in MCP webhooks uses status-specific schemas:
+
+| Status | Schema | Contents |
+|--------|--------|----------|
+| `completed` | `[task]-response.json` | Full task response (success branch) |
+| `failed` | `[task]-response.json` | Full task response (error branch) |
+| `working` | `[task]-async-response-working.json` | Progress info (`percentage`, `step`) |
+| `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
+| `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
+
+Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json)
+
+#### Webhook Handler Example
+
+```javascript
+const express = require('express');
+const app = express();
+
+app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) => {
+  const { task_type, agent_id, operation_id } = req.params;
+  const webhook = req.body;
+
+  // Verify webhook authenticity (HMAC-SHA256 example)
+  const signature = req.headers['x-adcp-signature'];
+  const timestamp = req.headers['x-adcp-timestamp'];
+  if (!verifySignature(webhook, signature, timestamp)) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  // Handle status changes
+  switch (webhook.status) {
+    case 'input-required':
+      // Alert human that input is needed
+      await notifyHuman({
+        operation_id,
+        message: webhook.message,
+        context_id: webhook.context_id,
+        data: webhook.result
+      });
+      break;
+
+    case 'completed':
+      // Process the completed operation
+      if (task_type === 'create_media_buy') {
+        await handleMediaBuyCreated({
+          media_buy_id: webhook.result.media_buy_id,
+          buyer_ref: webhook.result.buyer_ref,
+          packages: webhook.result.packages
+        });
+      }
+      break;
+
+    case 'failed':
+      // Handle failure
+      await handleOperationFailed({
+        operation_id,
+        error: webhook.result?.errors,
+        message: webhook.message
+      });
+      break;
+
+    case 'working':
+      // Update progress UI
+      await updateProgress({
+        operation_id,
+        percentage: webhook.result?.percentage,
+        message: webhook.message
+      });
+      break;
+
+    case 'canceled':
+      await handleOperationCanceled(operation_id, webhook.message);
+      break;
+  }
+
+  // Always return 200 for successful processing
+  res.status(200).json({ status: 'processed' });
+});
+
+function verifySignature(payload, signature, timestamp) {
+  const crypto = require('crypto');
+  const expectedSig = crypto
+    .createHmac('sha256', process.env.WEBHOOK_SECRET)
+    .update(timestamp + JSON.stringify(payload))
+    .digest('hex');
+  return signature === `sha256=${expectedSig}`;
+}
+```
+
 #### Task Management and Polling
 ```javascript
 // Check status of specific task
