@@ -78,7 +78,7 @@ const envConfig: EnvConfig = {
     {
       name: 'MEMBERSHIP_ENABLED',
       description: 'Enable membership/billing features (true/false)',
-      defaultValue: 'true',
+      defaultValue: 'false',
     },
   ],
 };
