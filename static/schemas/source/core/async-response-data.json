@@ -5,6 +5,26 @@
   "description": "Union of all possible data payloads for async task webhook responses. For completed/failed statuses, use the main task response schema. For working/input-required/submitted, use the status-specific schemas.",
   "anyOf": [
     {
+      "title": "GetProductsResponse",
+      "description": "Response for completed or failed get_products",
+      "$ref": "/schemas/media-buy/get-products-response.json"
+    },
+    {
+      "title": "GetProductsAsyncWorking",
+      "description": "Progress data for working get_products",
+      "$ref": "/schemas/media-buy/get-products-async-response-working.json"
+    },
+    {
+      "title": "GetProductsAsyncInputRequired",
+      "description": "Input requirements for get_products needing clarification",
+      "$ref": "/schemas/media-buy/get-products-async-response-input-required.json"
+    },
+    {
+      "title": "GetProductsAsyncSubmitted",
+      "description": "Acknowledgment for submitted get_products (custom curation)",
+      "$ref": "/schemas/media-buy/get-products-async-response-submitted.json"
+    },
+    {
       "title": "CreateMediaBuyResponse",
       "description": "Response for completed or failed create_media_buy",
       "$ref": "/schemas/media-buy/create-media-buy-response.json"

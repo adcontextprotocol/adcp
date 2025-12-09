@@ -173,15 +173,15 @@ Async operations start with `working` and provide updates:
 AdCP operations fall into three categories:
 
 1. **Synchronous** - Return immediately with `completed` or `failed`
-   - `get_products`, `list_creative_formats`
+   - `list_creative_formats`, `list_authorized_properties`
    - Fast operations that don't require external systems
 
 2. **Interactive** - May return `input-required` before proceeding
-   - `get_products` (when brief is vague)
-   - Operations that need clarification or approval
+   - `get_products` (when brief is vague or needs clarification)
+   - Operations that need user input to proceed
 
 3. **Asynchronous** - Return `working` or `submitted` and require polling/streaming
-   - `create_media_buy`, `activate_signal`, `sync_creatives`
+   - `create_media_buy`, `activate_signal`, `sync_creatives`, `get_products`
    - Operations that integrate with external systems or require human approval
 
 ### Timeout Handling
@@ -351,7 +351,7 @@ Both validate against the same schemas. For `completed`/`failed`, use the full t
 
 Webhooks are triggered when **all** of the following are true:
 
-1. **Task type supports async execution** (e.g., `create_media_buy`, `sync_creatives`)
+1. **Task type supports async execution** (e.g., `get_products`, `create_media_buy`, `sync_creatives`)
 2. **`pushNotificationConfig` is provided** in the request
 3. **Task requires async processing** — initial response is `working` or `submitted`
 
@@ -444,6 +444,7 @@ Each async operation uses its main response schema for `completed`/`failed` stat
 
 | Task | Response Schema |
 |------|-----------------|
+| `get_products` | `get-products-response.json` |
 | `create_media_buy` | `create-media-buy-response.json` |
 | `update_media_buy` | `update-media-buy-response.json` |
 | `sync_creatives` | `sync-creatives-response.json` |

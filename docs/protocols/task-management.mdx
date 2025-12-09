@@ -515,7 +515,7 @@ Webhooks are triggered when **all** of the following are true:
 3. **Task requires async processing** — initial response is `working` or `submitted`
 
 **When push notifications are NOT sent:**
-- Task type is always synchronous (e.g., `get_products`, `list_creative_formats`)
+- Task type is always synchronous (e.g., `list_creative_formats`)
 - Initial response is already terminal (`completed`, `failed`, `rejected`) — client has the result
 - `pushNotificationConfig` was not provided — client chose polling instead
 
