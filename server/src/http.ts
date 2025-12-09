@@ -13,13 +13,15 @@ import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { closeDatabase, getPool } from "./db/client.js";
-import { getPropertyIndex } from "@adcp/client";
+import { getPropertyIndex, CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { AgentType, AgentWithStats, Company } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo } from "./billing/stripe-client.js";
 import Stripe from "stripe";
 import { OrganizationDatabase } from "./db/organization-db.js";
-import { requireAuth, requireAdmin } from "./middleware/auth.js";
+import { MemberDatabase } from "./db/member-db.js";
+import { RegistryDatabase } from "./db/registry-db.js";
+import { requireAuth, requireAdmin, optionalAuth } from "./middleware/auth.js";
 import { invitationRateLimiter, authRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -141,6 +143,30 @@ export class HTTPServer {
     });
 
     // API endpoints
+
+    // Public config endpoint - returns feature flags and auth state for nav
+    this.app.get("/api/config", optionalAuth, (req, res) => {
+      // User is populated by optionalAuth middleware if authenticated
+      let isAdmin = false;
+      if (req.user) {
+        const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+        isAdmin = adminEmails.includes(req.user.email.toLowerCase());
+      }
+
+      const user = req.user ? {
+        email: req.user.email,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        isAdmin,
+      } : null;
+
+      res.json({
+        membershipEnabled: process.env.MEMBERSHIP_ENABLED !== 'false',
+        authEnabled: AUTH_ENABLED,
+        user,
+      });
+    });
+
     this.app.get("/api/agents", async (req, res) => {
       const type = req.query.type as AgentType | undefined;
       const withHealth = req.query.health === "true";
@@ -922,6 +948,30 @@ export class HTTPServer {
       res.sendFile(adagentsPath);
     });
 
+    // Member Profile UI route - serve member-profile.html at /member-profile
+    this.app.get("/member-profile", (req, res) => {
+      const memberProfilePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/member-profile.html")
+        : path.join(__dirname, "../public/member-profile.html");
+      res.sendFile(memberProfilePath);
+    });
+
+    // Member Directory UI route - serve members.html at /members
+    this.app.get("/members", (req, res) => {
+      const membersPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/members.html")
+        : path.join(__dirname, "../public/members.html");
+      res.sendFile(membersPath);
+    });
+
+    // Individual member profile page
+    this.app.get("/members/:slug", (req, res) => {
+      const membersPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/members.html")
+        : path.join(__dirname, "../public/members.html");
+      res.sendFile(membersPath);
+    });
+
     // AdAgents API Routes
     // Validate domain's adagents.json
     this.app.post("/api/adagents/validate", async (req, res) => {
@@ -1186,38 +1236,43 @@ export class HTTPServer {
 
             // Update database with subscription status and period end
             // This allows admin dashboard to display data without querying Stripe API
-            const customerId = subscription.customer as string;
-            const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+            try {
+              const customerId = subscription.customer as string;
+              const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
 
-            if (org) {
-              // Calculate period end from subscription or invoice
-              let periodEnd: Date | null = null;
+              if (org) {
+                // Calculate period end from subscription or invoice
+                let periodEnd: Date | null = null;
 
-              if ((subscription as any).current_period_end) {
-                periodEnd = new Date((subscription as any).current_period_end * 1000);
+                if ((subscription as any).current_period_end) {
+                  periodEnd = new Date((subscription as any).current_period_end * 1000);
+                }
+
+                await pool.query(
+                  `UPDATE organizations
+                   SET subscription_status = $1,
+                       stripe_subscription_id = $2,
+                       subscription_current_period_end = $3,
+                       updated_at = NOW()
+                   WHERE workos_organization_id = $4`,
+                  [
+                    subscription.status,
+                    subscription.id,
+                    periodEnd,
+                    org.workos_organization_id
+                  ]
+                );
+
+                logger.info({
+                  orgId: org.workos_organization_id,
+                  subscriptionId: subscription.id,
+                  status: subscription.status,
+                  periodEnd: periodEnd?.toISOString(),
+                }, 'Subscription data synced to database');
               }
-
-              await pool.query(
-                `UPDATE organizations
-                 SET subscription_status = $1,
-                     stripe_subscription_id = $2,
-                     subscription_current_period_end = $3,
-                     updated_at = NOW()
-                 WHERE workos_organization_id = $4`,
-                [
-                  subscription.status,
-                  subscription.id,
-                  periodEnd,
-                  org.workos_organization_id
-                ]
-              );
-
-              logger.info({
-                orgId: org.workos_organization_id,
-                subscriptionId: subscription.id,
-                status: subscription.status,
-                periodEnd: periodEnd?.toISOString(),
-              }, 'Subscription data synced to database');
+            } catch (syncError) {
+              logger.error({ error: syncError }, 'Failed to sync subscription data to database');
+              // Don't throw - let webhook succeed even if sync fails
             }
             break;
           }
@@ -2063,6 +2118,126 @@ export class HTTPServer {
         res.status(500).json({
           error: 'Internal server error',
           message: 'Unable to sync organization data',
+        });
+      }
+    });
+
+    // PATCH /api/admin/members/:orgId/memberships/:membershipId - Update membership role (admin bootstrap)
+    // Used to fix organizations that have no owner
+    this.app.patch('/api/admin/members/:orgId/memberships/:membershipId', requireAuth, requireAdmin, async (req, res) => {
+      const { orgId, membershipId } = req.params;
+      const { role } = req.body;
+
+      if (!role || !['owner', 'admin', 'member'].includes(role)) {
+        return res.status(400).json({
+          error: 'Invalid role',
+          message: 'Role must be owner, admin, or member',
+        });
+      }
+
+      try {
+        // Verify membership belongs to this org
+        const membership = await workos!.userManagement.getOrganizationMembership(membershipId);
+        if (membership.organizationId !== orgId) {
+          return res.status(400).json({
+            error: 'Invalid membership',
+            message: 'This membership does not belong to the specified organization',
+          });
+        }
+
+        // Update the membership role
+        const updatedMembership = await workos!.userManagement.updateOrganizationMembership(membershipId, {
+          roleSlug: role,
+        });
+
+        logger.info({ orgId, membershipId, role, adminEmail: req.user!.email }, 'Admin updated membership role');
+
+        res.json({
+          success: true,
+          membership: {
+            id: updatedMembership.id,
+            user_id: updatedMembership.userId,
+            role: updatedMembership.role?.slug || 'member',
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error, orgId, membershipId }, 'Admin update membership role error');
+        res.status(500).json({
+          error: 'Failed to update membership role',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/agreements/record - Admin endpoint to record missing agreement acceptances
+    // Used to fix organizations where agreement wasn't properly recorded during subscription
+    this.app.post('/api/admin/agreements/record', requireAuth, requireAdmin, async (req, res) => {
+      const { workos_user_id, email, agreement_type, agreement_version, workos_organization_id } = req.body;
+
+      if (!workos_user_id || !email || !agreement_type) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          message: 'workos_user_id, email, and agreement_type are required',
+        });
+      }
+
+      const validTypes = ['terms_of_service', 'privacy_policy', 'membership'];
+      if (!validTypes.includes(agreement_type)) {
+        return res.status(400).json({
+          error: 'Invalid agreement type',
+          message: 'Type must be: terms_of_service, privacy_policy, or membership',
+        });
+      }
+
+      const orgDb = new OrganizationDatabase();
+
+      try {
+        // Get current agreement version if not provided
+        let version = agreement_version;
+        if (!version) {
+          const currentAgreement = await orgDb.getCurrentAgreementByType(agreement_type);
+          if (!currentAgreement) {
+            return res.status(400).json({
+              error: 'No agreement found',
+              message: `No ${agreement_type} agreement exists in the system`,
+            });
+          }
+          version = currentAgreement.version;
+        }
+
+        // Record the acceptance
+        await orgDb.recordUserAgreementAcceptance({
+          workos_user_id,
+          email,
+          agreement_type,
+          agreement_version: version,
+          workos_organization_id: workos_organization_id || null,
+          ip_address: 'admin-recorded',
+          user_agent: `Admin: ${req.user!.email}`,
+        });
+
+        logger.info({
+          workos_user_id,
+          email,
+          agreement_type,
+          agreement_version: version,
+          recorded_by: req.user!.email,
+        }, 'Admin recorded agreement acceptance');
+
+        res.json({
+          success: true,
+          recorded: {
+            workos_user_id,
+            email,
+            agreement_type,
+            agreement_version: version,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Admin record agreement error');
+        res.status(500).json({
+          error: 'Failed to record agreement',
+          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -3829,6 +4004,1191 @@ export class HTTPServer {
       }
     });
     */
+
+    // Member Profile Routes
+    const memberDb = new MemberDatabase();
+
+    // GET /api/members - List public member profiles (for directory)
+    this.app.get('/api/members', async (req, res) => {
+      try {
+        const { search, offerings, limit, offset } = req.query;
+
+        const profiles = await memberDb.getPublicProfiles({
+          search: search as string,
+          offerings: offerings ? (offerings as string).split(',') as any : undefined,
+          limit: limit ? parseInt(limit as string, 10) : 50,
+          offset: offset ? parseInt(offset as string, 10) : 0,
+        });
+
+        res.json({ members: profiles });
+      } catch (error) {
+        logger.error({ err: error }, 'List members error');
+        res.status(500).json({
+          error: 'Failed to list members',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/members/carousel - Get member profiles for homepage carousel
+    this.app.get('/api/members/carousel', async (req, res) => {
+      try {
+        const profiles = await memberDb.getCarouselProfiles();
+        res.json({ members: profiles });
+      } catch (error) {
+        logger.error({ err: error }, 'Get carousel members error');
+        res.status(500).json({
+          error: 'Failed to get carousel members',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/members/:slug - Get single member profile by slug
+    this.app.get('/api/members/:slug', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const profile = await memberDb.getProfileBySlug(slug);
+
+        if (!profile) {
+          return res.status(404).json({
+            error: 'Member not found',
+            message: `No member found with slug: ${slug}`,
+          });
+        }
+
+        // Only return if public (unless authenticated user owns it)
+        if (!profile.is_public) {
+          // Check if authenticated user owns this profile
+          const sessionCookie = req.cookies?.['wos-session'];
+          if (!sessionCookie || !AUTH_ENABLED || !workos) {
+            return res.status(404).json({
+              error: 'Member not found',
+              message: `No member found with slug: ${slug}`,
+            });
+          }
+
+          try {
+            const result = await workos.userManagement.authenticateWithSessionCookie({
+              sessionData: sessionCookie,
+              cookiePassword: WORKOS_COOKIE_PASSWORD,
+            });
+
+            if (!result.authenticated || !('user' in result) || !result.user) {
+              return res.status(404).json({
+                error: 'Member not found',
+                message: `No member found with slug: ${slug}`,
+              });
+            }
+
+            // Check if user is member of the organization
+            const memberships = await workos.userManagement.listOrganizationMemberships({
+              userId: result.user.id,
+              organizationId: profile.workos_organization_id,
+            });
+
+            if (memberships.data.length === 0) {
+              return res.status(404).json({
+                error: 'Member not found',
+                message: `No member found with slug: ${slug}`,
+              });
+            }
+          } catch {
+            return res.status(404).json({
+              error: 'Member not found',
+              message: `No member found with slug: ${slug}`,
+            });
+          }
+        }
+
+        res.json({ member: profile });
+      } catch (error) {
+        logger.error({ err: error }, 'Get member error');
+        res.status(500).json({
+          error: 'Failed to get member',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/public/discover-agent - Public endpoint to discover agent info (for members directory)
+    this.app.get('/api/public/discover-agent', async (req, res) => {
+      const { url } = req.query;
+
+      if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: 'URL is required' });
+      }
+
+      try {
+        // Use SingleAgentClient which handles protocol detection and connection automatically
+        const client = new SingleAgentClient({
+          id: 'discovery',
+          name: 'discovery-client',
+          agent_uri: url,
+          protocol: 'mcp', // Library handles protocol detection internally
+        });
+
+        // getAgentInfo() handles all the protocol detection and tool discovery
+        const agentInfo = await client.getAgentInfo();
+        const tools = agentInfo.tools || [];
+
+        // Detect agent type from tools
+        // Check for sales first since sales agents may also expose creative tools
+        let agentType = 'unknown';
+        const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
+        if (toolNames.some((n: string) => n.includes('get_product') || n.includes('media_buy') || n.includes('create_media'))) {
+          agentType = 'sales';
+        } else if (toolNames.some((n: string) => n.includes('signal') || n.includes('audience'))) {
+          agentType = 'signals';
+        } else if (toolNames.some((n: string) => n.includes('creative') || n.includes('format') || n.includes('preview'))) {
+          agentType = 'creative';
+        }
+
+        // The library returns our config name, so extract real name from URL or use hostname
+        const hostname = new URL(url).hostname;
+        const agentName = (agentInfo.name && agentInfo.name !== 'discovery-client')
+          ? agentInfo.name
+          : hostname;
+
+        // Detect protocols - check if both MCP and A2A are available
+        const protocols: string[] = [agentInfo.protocol];
+        try {
+          // Check for A2A agent card if we detected MCP
+          if (agentInfo.protocol === 'mcp') {
+            const a2aUrl = new URL('/.well-known/agent.json', url).toString();
+            const a2aResponse = await fetch(a2aUrl, {
+              headers: { 'Accept': 'application/json' },
+              signal: AbortSignal.timeout(3000),
+            });
+            if (a2aResponse.ok) {
+              protocols.push('a2a');
+            }
+          }
+        } catch {
+          // Ignore A2A check failures
+        }
+
+        // Fetch type-specific stats
+        let stats: {
+          format_count?: number;
+          product_count?: number;
+          publisher_count?: number;
+        } = {};
+
+        if (agentType === 'creative') {
+          try {
+            const creativeClient = new CreativeAgentClient({ agentUrl: url });
+            const formats = await creativeClient.listFormats();
+            stats.format_count = formats.length;
+          } catch (statsError) {
+            logger.debug({ err: statsError, url }, 'Failed to fetch creative formats');
+            stats.format_count = 0;
+          }
+        } else if (agentType === 'sales') {
+          // Always show product and publisher counts for sales agents
+          stats.product_count = 0;
+          stats.publisher_count = 0;
+          try {
+            const result = await client.getProducts({ brief: '' });
+            if (result.data?.products) {
+              stats.product_count = result.data.products.length;
+            }
+          } catch (statsError) {
+            logger.debug({ err: statsError, url }, 'Failed to fetch products');
+          }
+          try {
+            const pubResult = await client.listAuthorizedProperties({});
+            if (pubResult.data?.publisher_domains) {
+              stats.publisher_count = pubResult.data.publisher_domains.length;
+            }
+          } catch (statsError) {
+            logger.debug({ err: statsError, url }, 'Failed to fetch publishers');
+          }
+        }
+
+        return res.json({
+          name: agentName,
+          description: agentInfo.description,
+          protocols,
+          type: agentType,
+          stats,
+        });
+      } catch (error) {
+        logger.error({ err: error, url }, 'Public agent discovery error');
+
+        if (error instanceof Error && error.name === 'TimeoutError') {
+          return res.status(504).json({
+            error: 'Connection timeout',
+            message: 'Agent did not respond within 10 seconds',
+          });
+        }
+
+        return res.status(500).json({
+          error: 'Agent discovery failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/public/agent-formats - Public endpoint to fetch creative formats from a creative agent
+    this.app.get('/api/public/agent-formats', async (req, res) => {
+      const { url } = req.query;
+
+      if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: 'URL is required' });
+      }
+
+      try {
+        // CreativeAgentClient handles protocol detection internally
+        const creativeClient = new CreativeAgentClient({
+          agentUrl: url,
+        });
+
+        const formats = await creativeClient.listFormats();
+
+        return res.json({
+          success: true,
+          formats: formats.map(format => ({
+            format_id: format.format_id,
+            name: format.name,
+            type: format.type,
+            description: format.description,
+            preview_image: format.preview_image,
+            example_url: format.example_url,
+            renders: format.renders,
+            assets_required: format.assets_required,
+            output_format_ids: format.output_format_ids,
+            agent_url: format.agent_url,
+          })),
+        });
+      } catch (error) {
+        logger.error({ err: error, url }, 'Agent formats fetch error');
+
+        if (error instanceof Error && error.name === 'TimeoutError') {
+          return res.status(504).json({
+            error: 'Connection timeout',
+            message: 'Agent did not respond within the timeout period',
+          });
+        }
+
+        return res.status(500).json({
+          error: 'Failed to fetch formats',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/me/member-profile - Get current user's organization's member profile
+    // Supports ?org=org_id query parameter to specify which organization
+    this.app.get('/api/me/member-profile', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const requestedOrgId = req.query.org as string | undefined;
+
+        // Get user's organization memberships
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(404).json({
+            error: 'No organization',
+            message: 'User is not a member of any organization',
+          });
+        }
+
+        // Determine which org to use
+        let targetOrgId: string;
+        if (requestedOrgId) {
+          // Verify user is a member of the requested org
+          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+          if (!isMember) {
+            return res.status(403).json({
+              error: 'Not authorized',
+              message: 'User is not a member of the requested organization',
+            });
+          }
+          targetOrgId = requestedOrgId;
+        } else {
+          // Default to first org
+          targetOrgId = memberships.data[0].organizationId;
+        }
+
+        const profile = await memberDb.getProfileByOrgId(targetOrgId);
+
+        // Get org name from WorkOS
+        const org = await workos!.organizations.getOrganization(targetOrgId);
+
+        res.json({
+          profile: profile || null,
+          organization_id: targetOrgId,
+          organization_name: org.name,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Get my member profile error');
+        res.status(500).json({
+          error: 'Failed to get member profile',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/me/member-profile - Create member profile for current user's organization
+    // Supports ?org=org_id query parameter to specify which organization
+    this.app.post('/api/me/member-profile', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const requestedOrgId = req.query.org as string | undefined;
+        const {
+          display_name,
+          slug,
+          tagline,
+          description,
+          logo_url,
+          logo_light_url,
+          logo_dark_url,
+          brand_color,
+          contact_email,
+          contact_website,
+          contact_phone,
+          linkedin_url,
+          twitter_url,
+          offerings,
+          tags,
+          is_public,
+          show_in_carousel,
+        } = req.body;
+
+        // Validate required fields
+        if (!display_name || !slug) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'display_name and slug are required',
+          });
+        }
+
+        // Validate slug format
+        if (!/^[a-z0-9-]+$/.test(slug)) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+          });
+        }
+
+        // Get user's organization memberships
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(400).json({
+            error: 'No organization',
+            message: 'User must be a member of an organization to create a profile',
+          });
+        }
+
+        // Determine which org to use
+        let targetOrgId: string;
+        if (requestedOrgId) {
+          // Verify user is a member of the requested org
+          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+          if (!isMember) {
+            return res.status(403).json({
+              error: 'Not authorized',
+              message: 'User is not a member of the requested organization',
+            });
+          }
+          targetOrgId = requestedOrgId;
+        } else {
+          // Default to first org
+          targetOrgId = memberships.data[0].organizationId;
+        }
+
+        // Check if profile already exists for this org
+        const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
+        if (existingProfile) {
+          return res.status(409).json({
+            error: 'Profile already exists',
+            message: 'Organization already has a member profile. Use PUT to update.',
+          });
+        }
+
+        // Check slug availability
+        const slugAvailable = await memberDb.isSlugAvailable(slug);
+        if (!slugAvailable) {
+          return res.status(409).json({
+            error: 'Slug not available',
+            message: 'This slug is already taken. Please choose a different one.',
+          });
+        }
+
+        // Validate offerings if provided
+        const validOfferings = ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'consulting', 'other'];
+        if (offerings && Array.isArray(offerings)) {
+          const invalidOfferings = offerings.filter((o: string) => !validOfferings.includes(o));
+          if (invalidOfferings.length > 0) {
+            return res.status(400).json({
+              error: 'Invalid offerings',
+              message: `Invalid offerings: ${invalidOfferings.join(', ')}. Valid options: ${validOfferings.join(', ')}`,
+            });
+          }
+        }
+
+        const profile = await memberDb.createProfile({
+          workos_organization_id: targetOrgId,
+          display_name,
+          slug,
+          tagline,
+          description,
+          logo_url,
+          logo_light_url,
+          logo_dark_url,
+          brand_color,
+          contact_email,
+          contact_website,
+          contact_phone,
+          linkedin_url,
+          twitter_url,
+          offerings: offerings || [],
+          tags: tags || [],
+          is_public: is_public ?? false,
+          show_in_carousel: show_in_carousel ?? false,
+        });
+
+        logger.info({ profileId: profile.id, orgId: targetOrgId, slug }, 'Member profile created');
+
+        res.status(201).json({ profile });
+      } catch (error) {
+        logger.error({ err: error }, 'Create member profile error');
+        res.status(500).json({
+          error: 'Failed to create member profile',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/me/member-profile - Update current user's organization's member profile
+    // Supports ?org=org_id query parameter to specify which organization
+    this.app.put('/api/me/member-profile', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const requestedOrgId = req.query.org as string | undefined;
+        const updates = req.body;
+
+        // Get user's organization memberships
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(400).json({
+            error: 'No organization',
+            message: 'User must be a member of an organization to update a profile',
+          });
+        }
+
+        // Determine which org to use
+        let targetOrgId: string;
+        if (requestedOrgId) {
+          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+          if (!isMember) {
+            return res.status(403).json({
+              error: 'Not authorized',
+              message: 'User is not a member of the requested organization',
+            });
+          }
+          targetOrgId = requestedOrgId;
+        } else {
+          targetOrgId = memberships.data[0].organizationId;
+        }
+
+        // Check if profile exists
+        const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
+        if (!existingProfile) {
+          return res.status(404).json({
+            error: 'Profile not found',
+            message: 'No member profile exists for your organization. Use POST to create one.',
+          });
+        }
+
+        // Validate offerings if provided
+        const validOfferings = ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'consulting', 'other'];
+        if (updates.offerings && Array.isArray(updates.offerings)) {
+          const invalidOfferings = updates.offerings.filter((o: string) => !validOfferings.includes(o));
+          if (invalidOfferings.length > 0) {
+            return res.status(400).json({
+              error: 'Invalid offerings',
+              message: `Invalid offerings: ${invalidOfferings.join(', ')}. Valid options: ${validOfferings.join(', ')}`,
+            });
+          }
+        }
+
+        // Remove fields that shouldn't be updated directly
+        delete updates.id;
+        delete updates.workos_organization_id;
+        delete updates.slug; // Slug changes not allowed via this endpoint
+        delete updates.created_at;
+        delete updates.updated_at;
+        delete updates.featured; // Only admins can set featured
+
+        const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
+
+        logger.info({ profileId: profile?.id, orgId: targetOrgId }, 'Member profile updated');
+
+        res.json({ profile });
+      } catch (error) {
+        logger.error({ err: error }, 'Update member profile error');
+        res.status(500).json({
+          error: 'Failed to update member profile',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/me/member-profile - Delete current user's organization's member profile
+    // Supports ?org=org_id query parameter to specify which organization
+    this.app.delete('/api/me/member-profile', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const requestedOrgId = req.query.org as string | undefined;
+
+        // Get user's organization memberships
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(400).json({
+            error: 'No organization',
+            message: 'User must be a member of an organization',
+          });
+        }
+
+        // Determine which org to use
+        let targetOrgId: string;
+        if (requestedOrgId) {
+          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+          if (!isMember) {
+            return res.status(403).json({
+              error: 'Not authorized',
+              message: 'User is not a member of the requested organization',
+            });
+          }
+          targetOrgId = requestedOrgId;
+        } else {
+          targetOrgId = memberships.data[0].organizationId;
+        }
+
+        // Check if profile exists
+        const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
+        if (!existingProfile) {
+          return res.status(404).json({
+            error: 'Profile not found',
+            message: 'No member profile exists for your organization',
+          });
+        }
+
+        await memberDb.deleteProfile(existingProfile.id);
+
+        logger.info({ profileId: existingProfile.id, orgId: targetOrgId }, 'Member profile deleted');
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete member profile error');
+        res.status(500).json({
+          error: 'Failed to delete member profile',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Admin routes for member profiles
+    // GET /api/admin/member-profiles - List all member profiles (admin)
+    this.app.get('/api/admin/member-profiles', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { is_public, search, limit, offset } = req.query;
+
+        const profiles = await memberDb.listProfiles({
+          is_public: is_public === 'true' ? true : is_public === 'false' ? false : undefined,
+          search: search as string,
+          limit: limit ? parseInt(limit as string, 10) : 100,
+          offset: offset ? parseInt(offset as string, 10) : 0,
+        });
+
+        res.json({ profiles });
+      } catch (error) {
+        logger.error({ err: error }, 'Admin list member profiles error');
+        res.status(500).json({
+          error: 'Failed to list member profiles',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/admin/member-profiles/:id - Update any member profile (admin)
+    this.app.put('/api/admin/member-profiles/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        // Remove fields that shouldn't be updated
+        delete updates.id;
+        delete updates.workos_organization_id;
+        delete updates.created_at;
+        delete updates.updated_at;
+
+        const profile = await memberDb.updateProfile(id, updates);
+
+        if (!profile) {
+          return res.status(404).json({
+            error: 'Profile not found',
+            message: `No member profile found with ID: ${id}`,
+          });
+        }
+
+        logger.info({ profileId: id, adminUpdate: true }, 'Member profile updated by admin');
+
+        res.json({ profile });
+      } catch (error) {
+        logger.error({ err: error }, 'Admin update member profile error');
+        res.status(500).json({
+          error: 'Failed to update member profile',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/admin/member-profiles/:id - Delete any member profile (admin)
+    this.app.delete('/api/admin/member-profiles/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        const deleted = await memberDb.deleteProfile(id);
+
+        if (!deleted) {
+          return res.status(404).json({
+            error: 'Profile not found',
+            message: `No member profile found with ID: ${id}`,
+          });
+        }
+
+        logger.info({ profileId: id, adminDelete: true }, 'Member profile deleted by admin');
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Admin delete member profile error');
+        res.status(500).json({
+          error: 'Failed to delete member profile',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // ========================================
+    // Organization Agent Management Endpoints
+    // ========================================
+    const registryDb = new RegistryDatabase();
+
+    // GET /api/me/agents - List agents for the current user's organization
+    this.app.get('/api/me/agents', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const requestedOrgId = req.query.org as string | undefined;
+
+        // Get user's organization memberships
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(404).json({
+            error: 'No organization',
+            message: 'User is not a member of any organization',
+          });
+        }
+
+        // Determine which org to use
+        let targetOrgId: string;
+        if (requestedOrgId) {
+          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+          if (!isMember) {
+            return res.status(403).json({
+              error: 'Not authorized',
+              message: 'User is not a member of the requested organization',
+            });
+          }
+          targetOrgId = requestedOrgId;
+        } else {
+          targetOrgId = memberships.data[0].organizationId;
+        }
+
+        // Get agents for this organization
+        const agents = await registryDb.getEntriesByOrg(targetOrgId, 'agent');
+
+        // Get org info
+        const org = await workos!.organizations.getOrganization(targetOrgId);
+
+        res.json({
+          agents,
+          organization_id: targetOrgId,
+          organization_name: org.name,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Get org agents error');
+        res.status(500).json({
+          error: 'Failed to get agents',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/me/agents - Create a new agent for the current user's organization
+    this.app.post('/api/me/agents', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const requestedOrgId = req.query.org as string | undefined;
+        const {
+          name,
+          slug,
+          url,
+          agent_type, // sales, creative, signals
+          description,
+          contact_name,
+          contact_email,
+          contact_website,
+          tags,
+        } = req.body;
+
+        // Validate required fields
+        if (!name || !slug || !url || !agent_type) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'name, slug, url, and agent_type are required',
+          });
+        }
+
+        // Validate agent type
+        const validAgentTypes = ['sales', 'creative', 'signals'];
+        if (!validAgentTypes.includes(agent_type)) {
+          return res.status(400).json({
+            error: 'Invalid agent type',
+            message: `agent_type must be one of: ${validAgentTypes.join(', ')}`,
+          });
+        }
+
+        // Validate slug format
+        if (!/^[a-z0-9-]+$/.test(slug)) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+          });
+        }
+
+        // Validate URL format
+        try {
+          new URL(url);
+        } catch {
+          return res.status(400).json({
+            error: 'Invalid URL',
+            message: 'Please provide a valid URL',
+          });
+        }
+
+        // Get user's organization memberships
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(400).json({
+            error: 'No organization',
+            message: 'User must be a member of an organization to create an agent',
+          });
+        }
+
+        // Determine which org to use
+        let targetOrgId: string;
+        if (requestedOrgId) {
+          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+          if (!isMember) {
+            return res.status(403).json({
+              error: 'Not authorized',
+              message: 'User is not a member of the requested organization',
+            });
+          }
+          targetOrgId = requestedOrgId;
+        } else {
+          targetOrgId = memberships.data[0].organizationId;
+        }
+
+        // Check slug availability
+        const slugAvailable = await registryDb.isSlugAvailable(slug);
+        if (!slugAvailable) {
+          return res.status(409).json({
+            error: 'Slug not available',
+            message: 'This slug is already taken. Please choose a different one.',
+          });
+        }
+
+        // Create the agent entry
+        const entry = await registryDb.createEntry({
+          entry_type: 'agent',
+          name,
+          slug,
+          url,
+          metadata: {
+            agent_type,
+            description: description || '',
+            mcp_endpoint: url,
+            protocol: 'mcp',
+          },
+          tags: tags || [agent_type],
+          contact_name,
+          contact_email,
+          contact_website,
+          approval_status: 'pending', // New agents need approval
+          workos_organization_id: targetOrgId,
+        });
+
+        logger.info({
+          entryId: entry.id,
+          orgId: targetOrgId,
+          agentType: agent_type,
+        }, 'Agent created');
+
+        res.status(201).json({
+          agent: entry,
+          message: 'Agent created successfully. It will be visible in the registry once approved.',
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Create agent error');
+        res.status(500).json({
+          error: 'Failed to create agent',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/me/agents/:agentId - Update an agent
+    this.app.put('/api/me/agents/:agentId', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { agentId } = req.params;
+        const requestedOrgId = req.query.org as string | undefined;
+        const updates = req.body;
+
+        // Get user's organization memberships
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'User is not a member of any organization',
+          });
+        }
+
+        // Determine which org to use
+        let targetOrgId: string;
+        if (requestedOrgId) {
+          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+          if (!isMember) {
+            return res.status(403).json({
+              error: 'Not authorized',
+              message: 'User is not a member of the requested organization',
+            });
+          }
+          targetOrgId = requestedOrgId;
+        } else {
+          targetOrgId = memberships.data[0].organizationId;
+        }
+
+        // Get the agent to verify ownership
+        const existingAgent = await registryDb.getEntryById(agentId);
+        if (!existingAgent) {
+          return res.status(404).json({
+            error: 'Not found',
+            message: 'Agent not found',
+          });
+        }
+
+        // Verify this agent belongs to the user's organization
+        if (existingAgent.workos_organization_id !== targetOrgId) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'You can only update agents owned by your organization',
+          });
+        }
+
+        // Build update object (only allow certain fields to be updated)
+        const allowedUpdates: any = {};
+        if (updates.name) allowedUpdates.name = updates.name;
+        if (updates.url) {
+          try {
+            new URL(updates.url);
+            allowedUpdates.url = updates.url;
+          } catch {
+            return res.status(400).json({
+              error: 'Invalid URL',
+              message: 'Please provide a valid URL',
+            });
+          }
+        }
+        if (updates.contact_name !== undefined) allowedUpdates.contact_name = updates.contact_name;
+        if (updates.contact_email !== undefined) allowedUpdates.contact_email = updates.contact_email;
+        if (updates.contact_website !== undefined) allowedUpdates.contact_website = updates.contact_website;
+        if (updates.tags) allowedUpdates.tags = updates.tags;
+
+        // Update metadata fields
+        if (updates.description !== undefined || updates.agent_type !== undefined) {
+          const metadata = { ...existingAgent.metadata };
+          if (updates.description !== undefined) metadata.description = updates.description;
+          if (updates.agent_type !== undefined) {
+            const validAgentTypes = ['sales', 'creative', 'signals'];
+            if (!validAgentTypes.includes(updates.agent_type)) {
+              return res.status(400).json({
+                error: 'Invalid agent type',
+                message: `agent_type must be one of: ${validAgentTypes.join(', ')}`,
+              });
+            }
+            metadata.agent_type = updates.agent_type;
+          }
+          allowedUpdates.metadata = metadata;
+        }
+
+        // Updates reset approval status to pending (agent needs re-review)
+        if (Object.keys(allowedUpdates).length > 0) {
+          allowedUpdates.approval_status = 'pending';
+        }
+
+        const updatedAgent = await registryDb.updateEntry(existingAgent.slug, allowedUpdates);
+
+        logger.info({
+          agentId,
+          orgId: targetOrgId,
+        }, 'Agent updated');
+
+        res.json({
+          agent: updatedAgent,
+          message: 'Agent updated successfully. Changes will be visible once approved.',
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Update agent error');
+        res.status(500).json({
+          error: 'Failed to update agent',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/me/agents/:agentId - Delete an agent
+    this.app.delete('/api/me/agents/:agentId', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { agentId } = req.params;
+        const requestedOrgId = req.query.org as string | undefined;
+
+        // Get user's organization memberships
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'User is not a member of any organization',
+          });
+        }
+
+        // Determine which org to use
+        let targetOrgId: string;
+        if (requestedOrgId) {
+          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+          if (!isMember) {
+            return res.status(403).json({
+              error: 'Not authorized',
+              message: 'User is not a member of the requested organization',
+            });
+          }
+          targetOrgId = requestedOrgId;
+        } else {
+          targetOrgId = memberships.data[0].organizationId;
+        }
+
+        // Delete the agent (only if it belongs to this org)
+        const deleted = await registryDb.deleteEntryByIdForOrg(agentId, targetOrgId);
+
+        if (!deleted) {
+          return res.status(404).json({
+            error: 'Not found',
+            message: 'Agent not found or you do not have permission to delete it',
+          });
+        }
+
+        logger.info({
+          agentId,
+          orgId: targetOrgId,
+        }, 'Agent deleted');
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete agent error');
+        res.status(500).json({
+          error: 'Failed to delete agent',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/agents/check-slug/:slug - Check agent slug availability
+    this.app.get('/api/agents/check-slug/:slug', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const available = await registryDb.isSlugAvailable(slug);
+        res.json({ available, slug });
+      } catch (error) {
+        logger.error({ err: error }, 'Check agent slug error');
+        res.status(500).json({
+          error: 'Failed to check slug availability',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Utility: Check slug availability
+    this.app.get('/api/members/check-slug/:slug', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const available = await memberDb.isSlugAvailable(slug);
+        res.json({ available, slug });
+      } catch (error) {
+        logger.error({ err: error }, 'Check slug error');
+        res.status(500).json({
+          error: 'Failed to check slug availability',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Agent Discovery: Fetch agent info from URL
+    this.app.get('/api/discover-agent', requireAuth, async (req, res) => {
+      const { url } = req.query;
+
+      if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: 'URL is required' });
+      }
+
+      try {
+        // Use SingleAgentClient which handles protocol detection and connection automatically
+        const client = new SingleAgentClient({
+          id: 'discovery',
+          name: 'discovery-client',
+          agent_uri: url,
+          protocol: 'mcp', // Library handles protocol detection internally
+        });
+
+        // getAgentInfo() handles all the protocol detection and tool discovery
+        const agentInfo = await client.getAgentInfo();
+        const tools = agentInfo.tools || [];
+
+        // Detect agent type from tools
+        // Check for sales first since sales agents may also expose creative tools
+        let agentType = 'unknown';
+        const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
+        if (toolNames.some((n: string) => n.includes('get_product') || n.includes('media_buy') || n.includes('create_media'))) {
+          agentType = 'sales';
+        } else if (toolNames.some((n: string) => n.includes('signal') || n.includes('audience'))) {
+          agentType = 'signals';
+        } else if (toolNames.some((n: string) => n.includes('creative') || n.includes('format') || n.includes('preview'))) {
+          agentType = 'creative';
+        }
+
+        // The library returns our config name, so extract real name from URL or use hostname
+        const hostname = new URL(url).hostname;
+        const agentName = (agentInfo.name && agentInfo.name !== 'discovery-client')
+          ? agentInfo.name
+          : hostname;
+
+        // Detect protocols - check if both MCP and A2A are available
+        const protocols: string[] = [agentInfo.protocol];
+        try {
+          // Check for A2A agent card if we detected MCP
+          if (agentInfo.protocol === 'mcp') {
+            const a2aUrl = new URL('/.well-known/agent.json', url).toString();
+            const a2aResponse = await fetch(a2aUrl, {
+              headers: { 'Accept': 'application/json' },
+              signal: AbortSignal.timeout(3000),
+            });
+            if (a2aResponse.ok) {
+              protocols.push('a2a');
+            }
+          }
+        } catch {
+          // Ignore A2A check failures
+        }
+
+        // Fetch type-specific stats
+        let stats: {
+          format_count?: number;
+          product_count?: number;
+          publisher_count?: number;
+        } = {};
+
+        if (agentType === 'creative') {
+          try {
+            const creativeClient = new CreativeAgentClient({ agentUrl: url });
+            const formats = await creativeClient.listFormats();
+            stats.format_count = formats.length;
+          } catch (statsError) {
+            logger.debug({ err: statsError, url }, 'Failed to fetch creative formats');
+            stats.format_count = 0;
+          }
+        } else if (agentType === 'sales') {
+          // Always show product and publisher counts for sales agents
+          stats.product_count = 0;
+          stats.publisher_count = 0;
+          try {
+            const result = await client.getProducts({ brief: '' });
+            if (result.data?.products) {
+              stats.product_count = result.data.products.length;
+            }
+          } catch (statsError) {
+            logger.debug({ err: statsError, url }, 'Failed to fetch products');
+          }
+          try {
+            const pubResult = await client.listAuthorizedProperties({});
+            if (pubResult.data?.publisher_domains) {
+              stats.publisher_count = pubResult.data.publisher_domains.length;
+            }
+          } catch (statsError) {
+            logger.debug({ err: statsError, url }, 'Failed to fetch publishers');
+          }
+        }
+
+        return res.json({
+          name: agentName,
+          description: agentInfo.description,
+          protocols,
+          type: agentType,
+          stats,
+        });
+      } catch (error) {
+        logger.error({ err: error, url }, 'Agent discovery error');
+
+        if (error instanceof Error && error.name === 'TimeoutError') {
+          return res.status(504).json({
+            error: 'Connection timeout',
+            message: 'Agent did not respond within 10 seconds',
+          });
+        }
+
+        return res.status(500).json({
+          error: 'Agent discovery failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
   }
 
   async start(port: number = 3000): Promise<void> {

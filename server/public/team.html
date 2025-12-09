@@ -11,45 +11,6 @@
       background: #f5f5f5;
       min-height: 100vh;
     }
-    .header {
-      background: white;
-      border-bottom: 1px solid #e0e0e0;
-      padding: 20px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .header-content {
-      max-width: 1200px;
-      margin: 0 auto;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .logo {
-      font-size: 24px;
-      font-weight: 700;
-      color: #667eea;
-      text-decoration: none;
-    }
-    .user-menu {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-    }
-    .user-info {
-      color: #666;
-    }
-    .btn-logout {
-      padding: 8px 16px;
-      background: #f5f5f5;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      text-decoration: none;
-      color: #333;
-    }
-    .btn-logout:hover {
-      background: #e0e0e0;
-    }
     .container {
       max-width: 1200px;
       margin: 40px auto;
@@ -347,6 +308,10 @@
   </style>
 </head>
 <body>
+  <!-- Shared Navigation -->
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
   <!-- Invite Modal -->
   <div id="inviteModal" class="modal-overlay">
     <div class="modal">
@@ -410,16 +375,6 @@
       <div class="modal-buttons">
         <button type="button" class="btn-secondary" onclick="closeRemoveModal()">Cancel</button>
         <button type="button" class="btn-danger" onclick="confirmRemoveMember()">Remove Member</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="header">
-    <div class="header-content">
-      <a href="/dashboard" class="logo">AdCP Registry</a>
-      <div class="user-menu">
-        <span class="user-info" id="userEmail">Loading...</span>
-        <a href="/auth/logout" class="btn-logout">Logout</a>
       </div>
     </div>
   </div>
@@ -532,8 +487,6 @@
 
         const data = await response.json();
         currentUser = data.user;
-
-        document.getElementById('userEmail').textContent = currentUser.email;
 
         // Populate organization dropdown
         const orgSelect = document.getElementById('orgSelect');

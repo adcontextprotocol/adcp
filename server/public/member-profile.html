@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Member Profile - AdCP</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      padding-top: 60px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+    h2 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 20px;
+      border-bottom: 2px solid #10b981;
+      padding-bottom: 10px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      color: #333;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .form-group .hint {
+      font-size: 13px;
+      color: #888;
+      margin-top: 4px;
+    }
+    .form-group input[type="text"],
+    .form-group input[type="email"],
+    .form-group input[type="url"],
+    .form-group input[type="tel"],
+    .form-group textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #10b981;
+    }
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 600px) {
+      .form-row { grid-template-columns: 1fr; }
+    }
+    .checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: #f9fafb;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .checkbox-item:hover {
+      border-color: #10b981;
+    }
+    .checkbox-item.selected {
+      background: #d1fae5;
+      border-color: #10b981;
+    }
+    .checkbox-item input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #10b981;
+      cursor: pointer;
+    }
+    .toggle-group {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-top: 10px;
+    }
+    .toggle-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .toggle-item .toggle-label {
+      font-size: 15px;
+      color: #333;
+      cursor: pointer;
+    }
+    .toggle {
+      position: relative;
+      width: 50px;
+      height: 26px;
+      flex-shrink: 0;
+    }
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: 0.4s;
+      border-radius: 26px;
+    }
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.4s;
+      border-radius: 50%;
+    }
+    .toggle input:checked + .toggle-slider {
+      background-color: #10b981;
+    }
+    .toggle input:checked + .toggle-slider:before {
+      transform: translateX(24px);
+    }
+    .preview-section {
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+    .preview-section h3 {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .logo-preview {
+      display: flex;
+      gap: 20px;
+      align-items: stretch;
+      flex-wrap: wrap;
+    }
+    .logo-preview-box {
+      padding: 15px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      min-width: 150px;
+    }
+    .logo-preview-box.light {
+      background: #ffffff;
+      border: 1px solid #e0e0e0;
+    }
+    .logo-preview-box.dark {
+      background: #1f2937;
+    }
+    .logo-preview-box .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .logo-preview-box.light .label { color: #666; }
+    .logo-preview-box.dark .label { color: #9ca3af; }
+    .logo-preview img {
+      max-width: 120px;
+      max-height: 60px;
+      object-fit: contain;
+    }
+    .logo-preview .placeholder {
+      width: 120px;
+      height: 60px;
+      background: #e0e0e0;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+      font-size: 12px;
+    }
+    .logo-preview-box.dark .placeholder {
+      background: #374151;
+      color: #9ca3af;
+    }
+    .gravatar-note {
+      font-size: 12px;
+      color: #666;
+      margin-top: 10px;
+      padding: 10px;
+      background: #fff;
+      border-radius: 6px;
+      border-left: 3px solid #10b981;
+    }
+    .logo-input-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .logo-input-group input[type="text"] {
+      display: none;
+    }
+    .logo-input-group .upload-filename {
+      flex: 1;
+      min-width: 100px;
+      padding: 10px 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #374151;
+      background: #f9fafb;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .logo-input-group .upload-filename:empty::before {
+      content: 'No file selected';
+      color: #9ca3af;
+    }
+    .logo-input-group .upload-filename.has-file {
+      background: #d1fae5;
+      border-color: #10b981;
+      color: #065f46;
+    }
+    .logo-input-group .btn-upload {
+      padding: 10px 16px;
+      background: #f3f4f6;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #374151;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .logo-input-group .btn-upload:hover {
+      background: #e5e7eb;
+      border-color: #10b981;
+    }
+    .logo-input-group .btn-clear {
+      padding: 10px 12px;
+      background: #fee2e2;
+      border: 2px solid #fecaca;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #dc2626;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .logo-input-group .btn-clear:hover {
+      background: #fecaca;
+      border-color: #dc2626;
+    }
+    .logo-input-group input[type="file"] {
+      display: none;
+    }
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 30px;
+    }
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #10b981;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #059669;
+    }
+    .btn-primary:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: #f3f4f6;
+      color: #374151;
+    }
+    .btn-secondary:hover {
+      background: #e5e7eb;
+    }
+    .btn-danger {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    .btn-danger:hover {
+      background: #fecaca;
+    }
+    .alert {
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .alert-success {
+      background: #d1fae5;
+      color: #065f46;
+      border-left: 4px solid #10b981;
+    }
+    .alert-error {
+      background: #fee2e2;
+      color: #991b1b;
+      border-left: 4px solid #dc2626;
+    }
+    .alert-info {
+      background: #dbeafe;
+      color: #1e40af;
+      border-left: 4px solid #3b82f6;
+    }
+    .loading {
+      text-align: center;
+      padding: 60px;
+      color: #666;
+    }
+    .slug-input-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+    .slug-prefix {
+      padding: 10px 14px;
+      background: #f3f4f6;
+      border: 2px solid #e0e0e0;
+      border-right: none;
+      border-radius: 8px 0 0 8px;
+      color: #666;
+      font-size: 14px;
+    }
+    .slug-input-wrapper input {
+      border-radius: 0 8px 8px 0 !important;
+    }
+    .slug-status {
+      margin-left: 10px;
+      font-size: 13px;
+    }
+    .slug-status.available { color: #10b981; }
+    .slug-status.taken { color: #dc2626; }
+    .tags-input {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 8px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      min-height: 44px;
+      cursor: text;
+    }
+    .tags-input:focus-within {
+      border-color: #10b981;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      background: #dbeafe;
+      color: #1e40af;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .tag-remove {
+      cursor: pointer;
+      opacity: 0.7;
+    }
+    .tag-remove:hover {
+      opacity: 1;
+    }
+    .tags-input input {
+      flex: 1;
+      min-width: 100px;
+      border: none;
+      outline: none;
+      padding: 4px;
+      font-size: 14px;
+    }
+    .no-profile {
+      text-align: center;
+      padding: 60px 20px;
+    }
+    .no-profile h2 {
+      border: none;
+      margin-bottom: 20px;
+    }
+    /* Agent URLs section */
+    .agent-urls-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .agent-url-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: #f9fafb;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+    }
+    .agent-url-item.checking {
+      border-color: #fbbf24;
+      background: #fefce8;
+    }
+    .agent-url-item.success {
+      border-color: #10b981;
+      background: #d1fae5;
+    }
+    .agent-url-item.error {
+      border-color: #dc2626;
+      background: #fee2e2;
+    }
+    .agent-url-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .agent-url-info .url {
+      font-family: monospace;
+      font-size: 13px;
+      color: #374151;
+      word-break: break-all;
+    }
+    .agent-url-info .agent-name {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 2px;
+    }
+    .agent-url-info .agent-meta {
+      font-size: 12px;
+      color: #666;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .agent-type-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .agent-type-badge.creative {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+    .agent-type-badge.sales {
+      background: #dcfce7;
+      color: #15803d;
+    }
+    .agent-type-badge.signals {
+      background: #fef3c7;
+      color: #b45309;
+    }
+    .agent-type-badge.unknown {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+    .protocol-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      background: #e5e7eb;
+      color: #374151;
+    }
+    .agent-url-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .agent-url-status .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #fbbf24;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .agent-url-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .agent-url-actions button {
+      padding: 6px 10px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .agent-url-actions .btn-remove {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    .agent-url-actions .btn-remove:hover {
+      background: #fecaca;
+    }
+    /* Agent visibility toggle */
+    .agent-visibility {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+    }
+    .agent-visibility label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #666;
+    }
+    .agent-visibility .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background: #e5e7eb;
+      border-radius: 10px;
+      transition: background 0.2s;
+    }
+    .agent-visibility input:checked + .toggle {
+      background: #10b981;
+    }
+    .agent-visibility .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .agent-visibility input:checked + .toggle::after {
+      transform: translateX(16px);
+    }
+    .agent-visibility input {
+      display: none;
+    }
+    .visibility-badge-small {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .visibility-badge-small.public {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .visibility-badge-small.private {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+    .add-agent-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .add-agent-row input {
+      flex: 1;
+    }
+    /* Member card styles are now loaded from member-card.js */
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+  <script src="/member-card.js"></script>
+
+  <div class="container">
+    <div id="loading" class="loading">Loading your profile...</div>
+
+    <div id="error-container" style="display: none;"></div>
+
+    <div id="no-profile" class="card no-profile" style="display: none;">
+      <h2>Create Your Member Profile</h2>
+      <p>You don't have a member profile yet. Create one to appear in the member directory and have your logo shown on the homepage.</p>
+      <button class="btn btn-primary" onclick="showCreateForm()">Create Profile</button>
+    </div>
+
+    <div id="profile-form" style="display: none;">
+      <div class="card">
+        <h1 id="form-title">Member Profile</h1>
+        <p class="subtitle">Customize how your organization appears in the AdCP member directory</p>
+
+        <div id="success-message" class="alert alert-success" style="display: none;"></div>
+        <div id="error-message" class="alert alert-error" style="display: none;"></div>
+
+        <form id="memberProfileForm" onsubmit="saveProfile(event)">
+          <!-- Basic Information -->
+          <h2>Basic Information</h2>
+
+          <div class="form-group">
+            <label for="display_name">Display Name *</label>
+            <input type="text" id="display_name" name="display_name" required placeholder="Your company name">
+          </div>
+
+          <div class="form-group" id="slug-group">
+            <label for="slug">Profile URL *</label>
+            <div class="slug-input-wrapper">
+              <span class="slug-prefix">adcontextprotocol.org/members/</span>
+              <input type="text" id="slug" name="slug" required placeholder="your-company" pattern="[a-z0-9-]+" title="Only lowercase letters, numbers, and hyphens">
+              <span id="slug-status" class="slug-status"></span>
+            </div>
+            <div class="hint">Choose a unique URL for your profile page</div>
+          </div>
+
+          <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" placeholder="Tell people about your company and what you offer..."></textarea>
+            <div class="hint">The first 200 characters will appear in the directory card</div>
+          </div>
+
+          <!-- Offerings -->
+          <h2>What Do You Offer?</h2>
+          <div class="form-group">
+            <label>Select all that apply:</label>
+            <div class="checkbox-group" id="offerings-group">
+              <label class="checkbox-item" data-value="buyer_agent">
+                <input type="checkbox" name="offerings" value="buyer_agent">
+                <span>Buyer Agent</span>
+              </label>
+              <label class="checkbox-item" data-value="sales_agent">
+                <input type="checkbox" name="offerings" value="sales_agent">
+                <span>Sales Agent</span>
+              </label>
+              <label class="checkbox-item" data-value="creative_agent">
+                <input type="checkbox" name="offerings" value="creative_agent">
+                <span>Creative Agent</span>
+              </label>
+              <label class="checkbox-item" data-value="signals_agent">
+                <input type="checkbox" name="offerings" value="signals_agent">
+                <span>Signals Agent</span>
+              </label>
+              <label class="checkbox-item" data-value="consulting">
+                <input type="checkbox" name="offerings" value="consulting">
+                <span>Consulting</span>
+              </label>
+              <label class="checkbox-item" data-value="other">
+                <input type="checkbox" name="offerings" value="other">
+                <span>Other</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Branding -->
+          <h2>Logos</h2>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="logo_light_url">Logo for Light Backgrounds</label>
+              <div class="logo-input-group">
+                <input type="text" id="logo_light_url" name="logo_light_url" placeholder="https://example.com/logo-dark.png" readonly>
+                <span class="upload-filename" id="logo_light_filename"></span>
+                <label class="btn-upload">
+                  Upload
+                  <input type="file" id="logo_light_upload" accept="image/*" onchange="handleLogoUpload(this, 'logo_light_url', 'logo_light_filename')">
+                </label>
+                <button type="button" class="btn-clear" id="logo_light_clear" onclick="clearLogo('logo_light_url', 'logo_light_filename')" style="display: none;">Clear</button>
+              </div>
+              <div class="hint">Dark-colored logo that looks good on white/light pages</div>
+            </div>
+            <div class="form-group">
+              <label for="logo_dark_url">Logo for Dark Backgrounds</label>
+              <div class="logo-input-group">
+                <input type="text" id="logo_dark_url" name="logo_dark_url" placeholder="https://example.com/logo-light.png" readonly>
+                <span class="upload-filename" id="logo_dark_filename"></span>
+                <label class="btn-upload">
+                  Upload
+                  <input type="file" id="logo_dark_upload" accept="image/*" onchange="handleLogoUpload(this, 'logo_dark_url', 'logo_dark_filename')">
+                </label>
+                <button type="button" class="btn-clear" id="logo_dark_clear" onclick="clearLogo('logo_dark_url', 'logo_dark_filename')" style="display: none;">Clear</button>
+              </div>
+              <div class="hint">Light-colored logo that looks good on dark pages</div>
+            </div>
+          </div>
+          <div class="hint" style="margin-top: -10px; margin-bottom: 15px;">If you only upload one logo, we'll use it for both backgrounds.</div>
+
+          <!-- Hidden field to store primary logo for backwards compatibility -->
+          <input type="hidden" id="logo_url" name="logo_url">
+
+          <div class="preview-section">
+            <h3>Logo Preview</h3>
+            <div class="logo-preview" id="logo-preview-container">
+              <div class="logo-preview-box light">
+                <span class="label">Light Background</span>
+                <div id="logo-light-preview" class="placeholder">No logo</div>
+              </div>
+              <div class="logo-preview-box dark">
+                <span class="label">Dark Background</span>
+                <div id="logo-dark-preview" class="placeholder">No logo</div>
+              </div>
+            </div>
+            <div class="gravatar-note" id="gravatar-note" style="display: none;">
+              <strong>Tip:</strong> No logo? We'll use your <a href="https://gravatar.com" target="_blank">Gravatar</a> based on your contact email as a fallback.
+            </div>
+          </div>
+
+          <div class="preview-section" style="margin-top: 30px;">
+            <h3>Member Card Preview</h3>
+            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">This is how your organization will appear in the member directory:</p>
+            <div id="member-card-preview">
+              <!-- Initial placeholder - will be replaced by updateMemberCardPreview() -->
+              <div class="member-card">
+                <div class="member-card-header">
+                  <div class="member-logo-placeholder">Y</div>
+                  <div class="member-info">
+                    <div class="member-name">Your Company</div>
+                  </div>
+                </div>
+                <div class="member-card-body">
+                  <div class="member-description" style="color: #999;">Add a description to tell people about your company...</div>
+                  <div class="member-offerings"></div>
+                </div>
+                <div class="member-card-footer">
+                  <div class="member-contact"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contact Information -->
+          <h2>Contact Information</h2>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="contact_email">Contact Email</label>
+              <input type="email" id="contact_email" name="contact_email" placeholder="contact@example.com">
+            </div>
+            <div class="form-group">
+              <label for="contact_phone">Contact Phone</label>
+              <input type="tel" id="contact_phone" name="contact_phone" placeholder="+1 (555) 123-4567">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="contact_website">Website</label>
+            <input type="url" id="contact_website" name="contact_website" placeholder="https://example.com">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="linkedin_url">LinkedIn URL</label>
+              <input type="url" id="linkedin_url" name="linkedin_url" placeholder="https://linkedin.com/company/...">
+            </div>
+            <div class="form-group">
+              <label for="twitter_url">Twitter/X URL</label>
+              <input type="url" id="twitter_url" name="twitter_url" placeholder="https://twitter.com/...">
+            </div>
+          </div>
+
+          <!-- Agent URLs -->
+          <h2>Your Agents</h2>
+          <div class="form-group">
+            <label>Register your AdCP agents (MCP or A2A endpoints):</label>
+            <div id="agent-urls-container" class="agent-urls-list">
+              <!-- Agent URLs will be rendered here -->
+            </div>
+            <div class="add-agent-row">
+              <input type="url" id="new-agent-url" placeholder="https://your-agent.example.com" onkeydown="if(event.key === 'Enter') { event.preventDefault(); addAgentUrl(); }">
+              <button type="button" class="btn btn-secondary" onclick="addAgentUrl()">Add Agent</button>
+            </div>
+            <div class="hint">Enter your agent's base URL. We'll automatically detect the protocol and fetch agent info.</div>
+          </div>
+
+          <!-- Tags -->
+          <h2>Tags</h2>
+          <div class="form-group">
+            <label>Add searchable tags:</label>
+            <div class="tags-input" id="tags-container" onclick="document.getElementById('tag-input').focus()">
+              <input type="text" id="tag-input" placeholder="Type and press Enter to add tags">
+            </div>
+            <div class="hint">Press Enter or comma to add a tag</div>
+            <input type="hidden" id="tags" name="tags">
+          </div>
+
+          <!-- Visibility -->
+          <h2>Visibility</h2>
+          <div class="toggle-group">
+            <div class="toggle-item">
+              <label class="toggle">
+                <input type="checkbox" id="is_public" name="is_public">
+                <span class="toggle-slider"></span>
+              </label>
+              <span class="toggle-label" onclick="document.getElementById('is_public').click()">Show in member directory</span>
+            </div>
+          </div>
+          <p class="hint" style="margin-top: 10px;">Public profiles appear in the member directory and logo carousel on the homepage.</p>
+          <!-- Hidden field to keep show_in_carousel in sync with is_public -->
+          <input type="hidden" id="show_in_carousel" name="show_in_carousel">
+
+          <!-- Actions -->
+          <div class="btn-group">
+            <button type="submit" class="btn btn-primary" id="save-btn">Save Profile</button>
+            <a href="#" class="btn btn-secondary" id="preview-btn" style="display: none;" target="_blank">View Live Profile</a>
+            <button type="button" class="btn btn-secondary" onclick="window.location.href='/dashboard'">Cancel</button>
+            <button type="button" class="btn btn-danger" id="delete-btn" style="display: none;" onclick="deleteProfile()">Delete Profile</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let isNewProfile = true;
+    let currentProfile = null;
+    let tags = [];
+    let agents = []; // Array of {url: string, is_public: boolean}
+    let agentInfo = {}; // Cache of discovered agent info by URL
+    let slugCheckTimeout = null;
+    let currentOrgId = null;
+    let currentOrgName = null;
+
+    // Get org ID from query parameter
+    function getOrgIdFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('org');
+    }
+
+    // Build API URL with org parameter
+    function buildApiUrl(base) {
+      const orgId = getOrgIdFromUrl();
+      if (orgId) {
+        return `${base}?org=${encodeURIComponent(orgId)}`;
+      }
+      return base;
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      loadProfile();
+      setupOfferingsToggle();
+      setupTagsInput();
+      setupSlugCheck();
+      setupLogoPreview();
+      setupMemberCardPreview();
+    });
+
+    function setupMemberCardPreview() {
+      // Update preview when key fields change
+      const fields = ['display_name', 'description', 'contact_email', 'contact_website'];
+      fields.forEach(fieldId => {
+        const el = document.getElementById(fieldId);
+        if (el) {
+          el.addEventListener('input', updateMemberCardPreview);
+        }
+      });
+
+      // Also update when offerings change
+      document.querySelectorAll('input[name="offerings"]').forEach(cb => {
+        cb.addEventListener('change', updateMemberCardPreview);
+      });
+    }
+
+    async function loadProfile() {
+      try {
+        const response = await fetch(buildApiUrl('/api/me/member-profile'), {
+          credentials: 'include'
+        });
+
+        if (response.status === 401) {
+          const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+          window.location.href = `/auth/login?redirect=${returnUrl}`;
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error('Failed to load profile');
+        }
+
+        const data = await response.json();
+
+        // Store org info
+        currentOrgId = data.organization_id;
+        currentOrgName = data.organization_name;
+
+        document.getElementById('loading').style.display = 'none';
+
+        // Update page title/subtitle with org name
+        if (currentOrgName) {
+          document.querySelector('.subtitle').textContent = `Customize how ${currentOrgName} appears in the AdCP member directory`;
+        }
+
+        if (data.profile) {
+          currentProfile = data.profile;
+          isNewProfile = false;
+          populateForm(data.profile);
+          document.getElementById('profile-form').style.display = 'block';
+          document.getElementById('form-title').textContent = currentOrgName ? `Edit ${currentOrgName} Profile` : 'Edit Member Profile';
+          document.getElementById('delete-btn').style.display = 'block';
+          document.getElementById('slug-group').style.display = 'none'; // Can't change slug after creation
+          // Show preview button with link to public profile
+          if (data.profile.slug) {
+            const previewBtn = document.getElementById('preview-btn');
+            previewBtn.href = `/members/${data.profile.slug}`;
+            previewBtn.style.display = 'inline-block';
+          }
+        } else {
+          document.getElementById('no-profile').style.display = 'block';
+          // Update no-profile message with org name
+          if (currentOrgName) {
+            document.querySelector('#no-profile p').textContent =
+              `${currentOrgName} doesn't have a member profile yet. Create one to appear in the member directory and have your logo shown on the homepage.`;
+          }
+        }
+      } catch (error) {
+        console.error('Load profile error:', error);
+        document.getElementById('loading').style.display = 'none';
+        showError('Failed to load your profile. Please try again.');
+      }
+    }
+
+    function showCreateForm() {
+      document.getElementById('no-profile').style.display = 'none';
+      document.getElementById('profile-form').style.display = 'block';
+      document.getElementById('form-title').textContent = currentOrgName ? `Create ${currentOrgName} Profile` : 'Create Member Profile';
+      document.getElementById('slug-group').style.display = 'block';
+    }
+
+    function populateForm(profile) {
+      document.getElementById('display_name').value = profile.display_name || '';
+      document.getElementById('slug').value = profile.slug || '';
+      document.getElementById('description').value = profile.description || '';
+      document.getElementById('logo_url').value = profile.logo_url || '';
+      document.getElementById('logo_light_url').value = profile.logo_light_url || '';
+      document.getElementById('logo_dark_url').value = profile.logo_dark_url || '';
+      document.getElementById('contact_email').value = profile.contact_email || '';
+      document.getElementById('contact_phone').value = profile.contact_phone || '';
+      document.getElementById('contact_website').value = profile.contact_website || '';
+      document.getElementById('linkedin_url').value = profile.linkedin_url || '';
+      document.getElementById('twitter_url').value = profile.twitter_url || '';
+      document.getElementById('is_public').checked = profile.is_public || false;
+
+      // Set offerings
+      if (profile.offerings) {
+        profile.offerings.forEach(offering => {
+          const checkbox = document.querySelector(`input[value="${offering}"]`);
+          if (checkbox) {
+            checkbox.checked = true;
+            checkbox.closest('.checkbox-item').classList.add('selected');
+          }
+        });
+      }
+
+      // Set tags
+      if (profile.tags) {
+        tags = [...profile.tags];
+        renderTags();
+      }
+
+      // Set agents (with backward compatibility for agent_urls)
+      if (profile.agents && profile.agents.length > 0) {
+        agents = [...profile.agents];
+      } else if (profile.agent_urls && profile.agent_urls.length > 0) {
+        // Convert legacy agent_urls to agents format
+        agents = profile.agent_urls.map(url => ({ url, is_public: true }));
+      } else {
+          agents = [];
+      }
+      renderAgents();
+      // Discover info for each agent
+      agents.forEach(agent => discoverAgentInfo(agent.url));
+
+      // Update filename displays for logos
+      updateFilenameDisplay('logo_light_url', 'logo_light_filename');
+      updateFilenameDisplay('logo_dark_url', 'logo_dark_filename');
+
+      // Update logo preview
+      updateLogoPreview();
+    }
+
+    function setupOfferingsToggle() {
+      document.querySelectorAll('.checkbox-item').forEach(item => {
+        // The <label> element natively toggles the checkbox when clicked
+        // We just need to update the visual state on change
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        checkbox.addEventListener('change', () => {
+          item.classList.toggle('selected', checkbox.checked);
+        });
+      });
+    }
+
+    function setupTagsInput() {
+      const input = document.getElementById('tag-input');
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ',') {
+          e.preventDefault();
+          addTag(input.value.trim());
+          input.value = '';
+        } else if (e.key === 'Backspace' && input.value === '' && tags.length > 0) {
+          tags.pop();
+          renderTags();
+        }
+      });
+    }
+
+    function addTag(tag) {
+      tag = tag.replace(/,/g, '').trim().toLowerCase();
+      if (tag && !tags.includes(tag)) {
+        tags.push(tag);
+        renderTags();
+      }
+    }
+
+    function removeTag(index) {
+      tags.splice(index, 1);
+      renderTags();
+    }
+
+    function renderTags() {
+      const container = document.getElementById('tags-container');
+      const input = document.getElementById('tag-input');
+
+      // Remove existing tags
+      container.querySelectorAll('.tag').forEach(t => t.remove());
+
+      // Add tags
+      tags.forEach((tag, index) => {
+        const tagEl = document.createElement('span');
+        tagEl.className = 'tag';
+        tagEl.innerHTML = `${tag} <span class="tag-remove" onclick="removeTag(${index})">x</span>`;
+        container.insertBefore(tagEl, input);
+      });
+
+      // Update hidden input
+      document.getElementById('tags').value = JSON.stringify(tags);
+    }
+
+    function setupSlugCheck() {
+      const slugInput = document.getElementById('slug');
+      slugInput.addEventListener('input', () => {
+        // Convert to lowercase and replace spaces/invalid chars
+        slugInput.value = slugInput.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+
+        clearTimeout(slugCheckTimeout);
+        slugCheckTimeout = setTimeout(() => checkSlugAvailability(slugInput.value), 300);
+      });
+    }
+
+    async function checkSlugAvailability(slug) {
+      const statusEl = document.getElementById('slug-status');
+
+      if (!slug || slug.length < 2) {
+        statusEl.textContent = '';
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/members/check-slug/${slug}`);
+        const data = await response.json();
+
+        if (data.available) {
+          statusEl.textContent = 'Available';
+          statusEl.className = 'slug-status available';
+        } else {
+          statusEl.textContent = 'Already taken';
+          statusEl.className = 'slug-status taken';
+        }
+      } catch (error) {
+        statusEl.textContent = '';
+      }
+    }
+
+    function setupLogoPreview() {
+      document.getElementById('logo_light_url').addEventListener('input', updateLogoPreview);
+      document.getElementById('logo_dark_url').addEventListener('input', updateLogoPreview);
+      document.getElementById('contact_email').addEventListener('input', updateLogoPreview);
+    }
+
+    function getGravatarUrl(email, size = 120) {
+      if (!email) return null;
+      // Simple hash function for Gravatar (MD5 would be ideal but this works for demo)
+      const hash = email.trim().toLowerCase();
+      // Use identicon as default if no Gravatar exists
+      return `https://www.gravatar.com/avatar/${btoa(hash).substring(0, 32)}?s=${size}&d=identicon`;
+    }
+
+    function updateLogoPreview() {
+      const logoLightUrl = document.getElementById('logo_light_url').value;
+      const logoDarkUrl = document.getElementById('logo_dark_url').value;
+      const contactEmail = document.getElementById('contact_email').value;
+
+      const lightPreview = document.getElementById('logo-light-preview');
+      const darkPreview = document.getElementById('logo-dark-preview');
+      const gravatarNote = document.getElementById('gravatar-note');
+
+      // If only one logo provided, use it for both
+      const lightLogo = logoLightUrl || logoDarkUrl;
+      const darkLogo = logoDarkUrl || logoLightUrl;
+
+      // Also set the hidden logo_url field to the light logo for backwards compatibility
+      document.getElementById('logo_url').value = logoLightUrl || logoDarkUrl || '';
+
+      const hasAnyLogo = logoLightUrl || logoDarkUrl;
+      const gravatarUrl = getGravatarUrl(contactEmail);
+
+      // Show gravatar note if no logos but has email
+      gravatarNote.style.display = (!hasAnyLogo && contactEmail) ? 'block' : 'none';
+
+      // Update light background preview
+      if (lightLogo) {
+        const lightImg = document.createElement('img');
+        lightImg.id = 'logo-light-preview';
+        lightImg.src = lightLogo;
+        lightImg.alt = 'Logo on light';
+        lightImg.onerror = function() {
+          this.outerHTML = '<div id="logo-light-preview" class="placeholder">Invalid URL</div>';
+        };
+        lightPreview.replaceWith(lightImg);
+      } else if (gravatarUrl) {
+        const lightImg = document.createElement('img');
+        lightImg.id = 'logo-light-preview';
+        lightImg.src = gravatarUrl;
+        lightImg.alt = 'Gravatar fallback';
+        lightImg.style.borderRadius = '50%';
+        lightPreview.replaceWith(lightImg);
+      } else {
+        if (lightPreview.tagName === 'IMG') {
+          lightPreview.outerHTML = '<div id="logo-light-preview" class="placeholder">No logo</div>';
+        }
+      }
+
+      // Update dark background preview
+      if (darkLogo) {
+        const darkImg = document.createElement('img');
+        darkImg.id = 'logo-dark-preview';
+        darkImg.src = darkLogo;
+        darkImg.alt = 'Logo on dark';
+        darkImg.onerror = function() {
+          this.outerHTML = '<div id="logo-dark-preview" class="placeholder">Invalid URL</div>';
+        };
+        darkPreview.replaceWith(darkImg);
+      } else if (gravatarUrl) {
+        const darkImg = document.createElement('img');
+        darkImg.id = 'logo-dark-preview';
+        darkImg.src = gravatarUrl;
+        darkImg.alt = 'Gravatar fallback';
+        darkImg.style.borderRadius = '50%';
+        darkPreview.replaceWith(darkImg);
+      } else {
+        if (darkPreview.tagName === 'IMG') {
+          darkPreview.outerHTML = '<div id="logo-dark-preview" class="placeholder">No logo</div>';
+        }
+      }
+
+      // Update member card preview
+      updateMemberCardPreview();
+    }
+
+    async function handleLogoUpload(input, targetFieldId, filenameId) {
+      const file = input.files[0];
+      if (!file) return;
+
+      // Check file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        alert('File too large. Maximum size is 2MB.');
+        input.value = '';
+        return;
+      }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file.');
+        input.value = '';
+        return;
+      }
+
+      // Update filename display
+      const filenameEl = document.getElementById(filenameId);
+      filenameEl.textContent = file.name;
+      filenameEl.classList.add('has-file');
+
+      // Show clear button
+      const clearBtn = document.getElementById(targetFieldId.replace('_url', '_clear'));
+      if (clearBtn) clearBtn.style.display = 'block';
+
+      // Convert to data URL
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        document.getElementById(targetFieldId).value = e.target.result;
+        updateLogoPreview();
+      };
+      reader.readAsDataURL(file);
+
+      // Clear file input for potential re-upload
+      input.value = '';
+    }
+
+    function clearLogo(fieldId, filenameId) {
+      document.getElementById(fieldId).value = '';
+      const filenameEl = document.getElementById(filenameId);
+      filenameEl.textContent = '';
+      filenameEl.classList.remove('has-file');
+      document.getElementById(fieldId.replace('_url', '_clear')).style.display = 'none';
+      updateLogoPreview();
+    }
+
+    function updateFilenameDisplay(fieldId, filenameId) {
+      const value = document.getElementById(fieldId).value;
+      const filenameEl = document.getElementById(filenameId);
+      const clearBtn = document.getElementById(fieldId.replace('_url', '_clear'));
+
+      if (value) {
+        // Check if it's a data URL or regular URL
+        if (value.startsWith('data:')) {
+          filenameEl.textContent = 'Uploaded image';
+        } else {
+          // Extract filename from URL
+          try {
+            const url = new URL(value);
+            filenameEl.textContent = url.pathname.split('/').pop() || value;
+          } catch {
+            filenameEl.textContent = value.substring(0, 30) + (value.length > 30 ? '...' : '');
+          }
+        }
+        filenameEl.classList.add('has-file');
+        if (clearBtn) clearBtn.style.display = 'block';
+      } else {
+        filenameEl.textContent = '';
+        filenameEl.classList.remove('has-file');
+        if (clearBtn) clearBtn.style.display = 'none';
+      }
+    }
+
+    // offeringLabels and renderMemberCard are now in member-card.js
+
+    function updateMemberCardPreview() {
+      // Inject member card styles from shared module
+      injectMemberCardStyles();
+      const previewEl = document.getElementById('member-card-preview');
+      if (!previewEl) return;
+
+      // Build member object from form values
+      const member = {
+        display_name: document.getElementById('display_name').value || 'Your Company',
+        description: document.getElementById('description').value || '',
+        logo_url: document.getElementById('logo_light_url').value || document.getElementById('logo_dark_url').value || null,
+        contact_website: document.getElementById('contact_website').value || null,
+        linkedin_url: document.getElementById('linkedin_url').value || null,
+        offerings: Array.from(document.querySelectorAll('input[name="offerings"]:checked')).map(cb => cb.value)
+      };
+
+      // Use shared renderMemberCard with preview mode (no click handlers)
+      previewEl.innerHTML = renderMemberCard(member, { isPreview: true });
+    }
+
+    async function saveProfile(event) {
+      event.preventDefault();
+
+      const saveBtn = document.getElementById('save-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      hideMessages();
+
+      // Gather form data
+      const logoLightUrl = document.getElementById('logo_light_url').value || null;
+      const logoDarkUrl = document.getElementById('logo_dark_url').value || null;
+      const description = document.getElementById('description').value || null;
+
+      const formData = {
+        display_name: document.getElementById('display_name').value,
+        tagline: null, // No longer using separate tagline - description is truncated where needed
+        description,
+        logo_url: logoLightUrl || logoDarkUrl, // Use first available for backwards compat
+        logo_light_url: logoLightUrl,
+        logo_dark_url: logoDarkUrl,
+        contact_email: document.getElementById('contact_email').value || null,
+        contact_phone: document.getElementById('contact_phone').value || null,
+        contact_website: document.getElementById('contact_website').value || null,
+        linkedin_url: document.getElementById('linkedin_url').value || null,
+        twitter_url: document.getElementById('twitter_url').value || null,
+        offerings: Array.from(document.querySelectorAll('input[name="offerings"]:checked')).map(cb => cb.value),
+        agents: agents,
+        tags: tags,
+        is_public: document.getElementById('is_public').checked,
+        show_in_carousel: document.getElementById('is_public').checked, // Sync with is_public
+      };
+
+      // Add slug only for new profiles
+      if (isNewProfile) {
+        formData.slug = document.getElementById('slug').value;
+      }
+
+      try {
+        const method = isNewProfile ? 'POST' : 'PUT';
+        const response = await fetch(buildApiUrl('/api/me/member-profile'), {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+          credentials: 'include'
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to save profile');
+        }
+
+        currentProfile = data.profile;
+        isNewProfile = false;
+
+        // Redirect to dashboard after successful save
+        const orgParam = currentOrgId ? `?org=${currentOrgId}` : '';
+        window.location.href = `/dashboard${orgParam}`;
+      } catch (error) {
+        console.error('Save error:', error);
+        showError(error.message || 'Failed to save profile. Please try again.');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Profile';
+      }
+    }
+
+    async function deleteProfile() {
+      const confirmMsg = currentOrgName
+        ? `Are you sure you want to delete the member profile for ${currentOrgName}? This action cannot be undone.`
+        : 'Are you sure you want to delete your member profile? This action cannot be undone.';
+
+      if (!confirm(confirmMsg)) {
+        return;
+      }
+
+      try {
+        const response = await fetch(buildApiUrl('/api/me/member-profile'), {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to delete profile');
+        }
+
+        window.location.href = '/dashboard';
+      } catch (error) {
+        console.error('Delete error:', error);
+        showError('Failed to delete profile. Please try again.');
+      }
+    }
+
+    function showSuccess(message) {
+      const el = document.getElementById('success-message');
+      el.textContent = message;
+      el.style.display = 'block';
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function showError(message) {
+      const el = document.getElementById('error-message');
+      el.textContent = message;
+      el.style.display = 'block';
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function hideMessages() {
+      document.getElementById('success-message').style.display = 'none';
+      document.getElementById('error-message').style.display = 'none';
+    }
+
+    // Agent management
+    function addAgentUrl() {
+      const input = document.getElementById('new-agent-url');
+      let url = input.value.trim();
+
+      if (!url) return;
+
+      // Normalize URL
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+      }
+
+      // Remove trailing slash
+      url = url.replace(/\/$/, '');
+
+      // Check if already added
+      if (agents.some(a => a.url === url)) {
+        alert('This agent URL is already added.');
+        return;
+      }
+
+      // Validate URL format
+      try {
+        new URL(url);
+      } catch {
+        alert('Please enter a valid URL.');
+        return;
+      }
+
+      // Add agent with default public visibility
+      agents.push({ url, is_public: true });
+      input.value = '';
+      renderAgents();
+      discoverAgentInfo(url);
+    }
+
+    function removeAgent(index) {
+      const agent = agents[index];
+      if (agent) {
+        delete agentInfo[agent.url];
+        agents.splice(index, 1);
+        renderAgents();
+      }
+    }
+
+    function renderAgents() {
+      const container = document.getElementById('agent-urls-container');
+
+      // Inject shared agent card styles
+      injectAgentCardStyles();
+
+      if (agents.length === 0) {
+        container.innerHTML = '<div style="color: #666; font-size: 13px; padding: 10px;">No agents registered yet.</div>';
+        return;
+      }
+
+      // Use shared renderAgentCard from member-card.js
+      container.innerHTML = agents.map((agent, index) => {
+        const info = agentInfo[agent.url];
+        return renderAgentCard(info, agent.url, {
+          showVisibilityToggle: true,
+          isPublic: agent.is_public,
+          index: index,
+          showRemoveButton: true,
+          showStatus: true
+        });
+      }).join('');
+    }
+
+    function toggleAgentVisibility(index, isPublic) {
+      if (agents[index]) {
+        agents[index].is_public = isPublic;
+        renderAgents();
+      }
+    }
+
+    async function discoverAgentInfo(url) {
+      try {
+        const response = await fetch(`/api/discover-agent?url=${encodeURIComponent(url)}`, {
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          agentInfo[url] = { error: data.message || 'Failed to connect' };
+        } else {
+          const data = await response.json();
+          agentInfo[url] = data;
+        }
+      } catch (error) {
+        agentInfo[url] = { error: 'Failed to connect to agent' };
+      }
+
+      renderAgents();
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

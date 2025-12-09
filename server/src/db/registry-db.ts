@@ -20,6 +20,7 @@ export interface RegistryEntry {
   created_at: Date;
   updated_at: Date;
   active: boolean;
+  workos_organization_id?: string;
 }
 
 export interface CreateRegistryEntryInput {
@@ -35,6 +36,7 @@ export interface CreateRegistryEntryInput {
   contact_email?: string;
   contact_website?: string;
   approval_status?: "pending" | "approved" | "rejected";
+  workos_organization_id?: string;
 }
 
 export interface ListRegistryEntriesOptions {
@@ -44,6 +46,7 @@ export interface ListRegistryEntriesOptions {
   active?: boolean;
   limit?: number;
   offset?: number;
+  workos_organization_id?: string;
 }
 
 /**
@@ -59,8 +62,8 @@ export class RegistryDatabase {
         entry_type, name, slug, url,
         card_manifest_url, card_format_id, metadata, tags,
         contact_name, contact_email, contact_website,
-        approval_status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        approval_status, workos_organization_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *`,
       [
         input.entry_type,
@@ -74,11 +77,12 @@ export class RegistryDatabase {
         input.contact_name || null,
         input.contact_email || null,
         input.contact_website || null,
-        input.approval_status || "approved",
+        input.approval_status || "pending",
+        input.workos_organization_id || null,
       ]
     );
 
-    return result.rows[0];
+    return this.deserializeEntry(result.rows[0]);
   }
 
   /**
@@ -153,6 +157,11 @@ export class RegistryDatabase {
     if (options.tags && options.tags.length > 0) {
       conditions.push(`tags && $${paramIndex++}::text[]`);
       params.push(options.tags);
+    }
+
+    if (options.workos_organization_id) {
+      conditions.push(`workos_organization_id = $${paramIndex++}`);
+      params.push(options.workos_organization_id);
     }
 
     const whereClause =
@@ -236,7 +245,7 @@ export class RegistryDatabase {
   }
 
   /**
-   * Delete registry entry
+   * Delete registry entry by slug
    */
   async deleteEntry(slug: string): Promise<boolean> {
     const result = await query(
@@ -245,6 +254,59 @@ export class RegistryDatabase {
     );
 
     return (result.rowCount || 0) > 0;
+  }
+
+  /**
+   * Delete registry entry by ID (for org-scoped deletion)
+   */
+  async deleteEntryById(id: string): Promise<boolean> {
+    const result = await query(
+      "DELETE FROM registry_entries WHERE id = $1",
+      [id]
+    );
+
+    return (result.rowCount || 0) > 0;
+  }
+
+  /**
+   * Delete registry entry only if it belongs to the specified organization
+   * Returns false if entry doesn't exist or doesn't belong to the org
+   */
+  async deleteEntryByIdForOrg(id: string, workos_organization_id: string): Promise<boolean> {
+    const result = await query(
+      "DELETE FROM registry_entries WHERE id = $1 AND workos_organization_id = $2",
+      [id, workos_organization_id]
+    );
+
+    return (result.rowCount || 0) > 0;
+  }
+
+  /**
+   * Get entries by organization
+   */
+  async getEntriesByOrg(workos_organization_id: string, entry_type?: "agent" | "partner" | "product" | "format"): Promise<RegistryEntry[]> {
+    return this.listEntries({
+      workos_organization_id,
+      entry_type,
+    });
+  }
+
+  /**
+   * Check if slug is available (for creating new entries)
+   */
+  async isSlugAvailable(slug: string, excludeId?: string): Promise<boolean> {
+    let sql = 'SELECT 1 FROM registry_entries WHERE slug = $1';
+    const params: unknown[] = [slug];
+
+    if (excludeId) {
+      sql += ' AND id != $2';
+      params.push(excludeId);
+    }
+
+    sql += ' LIMIT 1';
+
+    const result = await query(sql, params);
+    return result.rows.length === 0;
   }
 
   /**
