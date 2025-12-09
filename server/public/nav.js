@@ -1,6 +1,7 @@
 /**
  * Shared Navigation Component for AdCP
  * Automatically detects current page and localhost environment
+ * Fetches config to conditionally show membership features and auth widget
  */
 
 (function() {
@@ -12,9 +13,10 @@
   // In local dev, try to detect Mintlify port (usually HTTP port + 1)
   // Common Conductor pattern: HTTP on 55020, Mintlify on 55021
   let docsUrl = 'https://docs.adcontextprotocol.org';
-  let registryUrl = 'https://adcontextprotocol.org/registry';
   let adagentsUrl = 'https://adcontextprotocol.org/adagents';
+  let membersUrl = 'https://adcontextprotocol.org/members';
   let homeUrl = 'https://adcontextprotocol.org';
+  let apiBaseUrl = '';
 
   if (isLocal) {
     const currentPort = window.location.port;
@@ -27,43 +29,89 @@
     if (parseInt(currentPort) === likelyMintlifyPort || parseInt(currentPort) === 3001) {
       // We're on docs site, link back to HTTP server
       docsUrl = `http://localhost:${currentPort}`;
-      registryUrl = `http://localhost:${likelyHttpPort}/registry`;
       adagentsUrl = `http://localhost:${likelyHttpPort}/adagents`;
+      membersUrl = `http://localhost:${likelyHttpPort}/members`;
       homeUrl = `http://localhost:${likelyHttpPort}`;
+      apiBaseUrl = `http://localhost:${likelyHttpPort}`;
     } else {
       // We're on HTTP server, use relative links for same-server pages
       docsUrl = `http://localhost:${likelyMintlifyPort}`;
-      registryUrl = '/registry';
       adagentsUrl = '/adagents';
+      membersUrl = '/members';
       homeUrl = '/';
+      apiBaseUrl = '';
     }
   }
 
   // Get current path to mark active link
   const currentPath = window.location.pathname;
 
-  // Navigation HTML
-  const navHTML = `
-    <nav class="navbar">
-      <div class="navbar__inner">
-        <div class="navbar__items">
-          <a class="navbar__brand" href="${homeUrl}">
-            <div class="navbar__logo">
-              <img src="/logo/light.svg" alt="AdCP Logo" class="logo-light" style="display: block;">
-              <img src="/logo/dark.svg" alt="AdCP Logo" class="logo-dark" style="display: none;">
+  // Build navigation HTML - will be updated after config fetch
+  function buildNavHTML(config) {
+    const user = config?.user;
+    const membershipEnabled = config?.membershipEnabled !== false;
+    const authEnabled = config?.authEnabled !== false;
+
+    // Build auth section based on state
+    let authSection = '';
+    if (authEnabled) {
+      if (user) {
+        // User is logged in - show account dropdown
+        const displayName = user.firstName || user.email.split('@')[0];
+        const adminLink = user.isAdmin ? '<a href="/admin" class="navbar__dropdown-item">Admin</a>' : '';
+        authSection = `
+          <div class="navbar__account">
+            <button class="navbar__account-btn" id="accountMenuBtn">
+              <span class="navbar__account-name">${displayName}</span>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              </svg>
+            </button>
+            <div class="navbar__dropdown" id="accountDropdown">
+              <div class="navbar__dropdown-header">${user.email}</div>
+              <a href="/dashboard" class="navbar__dropdown-item">Dashboard</a>
+              ${adminLink}
+              <a href="/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
             </div>
-            <b class="navbar__title">AdCP</b>
-          </a>
-          <a href="${docsUrl}" class="navbar__link">Docs</a>
-          <a href="${registryUrl}" class="navbar__link ${currentPath === '/registry' ? 'active' : ''}">Agent Registry</a>
-          <a href="${adagentsUrl}" class="navbar__link ${currentPath === '/adagents' ? 'active' : ''}">AdAgents Manager</a>
+          </div>
+        `;
+      } else if (membershipEnabled) {
+        // Not logged in but auth is available and membership enabled - show login/signup
+        authSection = `
+          <a href="/auth/login" class="navbar__link">Log in</a>
+          <a href="/auth/login" class="navbar__btn navbar__btn--primary">Sign up</a>
+        `;
+      }
+    }
+
+    // Build members link (only if membership is enabled)
+    const membersLink = membershipEnabled
+      ? `<a href="${membersUrl}" class="navbar__link ${currentPath.startsWith('/members') ? 'active' : ''}">Members</a>`
+      : '';
+
+    return `
+      <nav class="navbar">
+        <div class="navbar__inner">
+          <div class="navbar__items">
+            <a class="navbar__brand" href="${homeUrl}">
+              <div class="navbar__logo">
+                <img src="/adcp_logo.svg" alt="AdCP Logo" class="logo-light" style="display: block;">
+                <img src="/adcp_logo.svg" alt="AdCP Logo" class="logo-dark" style="display: none;">
+              </div>
+              <b class="navbar__title">AdCP</b>
+            </a>
+            <a href="${docsUrl}" class="navbar__link">Docs</a>
+            <a href="${adagentsUrl}" class="navbar__link ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
+            ${membersLink}
+          </div>
+          <div class="navbar__items navbar__items--right">
+            <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
+            ${authSection}
+          </div>
         </div>
-        <div class="navbar__items">
-          <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
-        </div>
-      </div>
-    </nav>
-  `;
+      </nav>
+    `;
+  }
 
   // Navigation CSS
   const navCSS = `
@@ -98,6 +146,10 @@
         display: flex;
         align-items: center;
         gap: 1.5rem;
+      }
+
+      .navbar__items--right {
+        gap: 1rem;
       }
 
       .navbar__brand {
@@ -145,6 +197,98 @@
         font-weight: 600;
       }
 
+      /* Primary button style */
+      .navbar__btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        border-radius: 0.375rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.2s;
+      }
+
+      .navbar__btn--primary {
+        background: #10b981;
+        color: #fff;
+      }
+
+      .navbar__btn--primary:hover {
+        background: #059669;
+      }
+
+      /* Account dropdown */
+      .navbar__account {
+        position: relative;
+      }
+
+      .navbar__account-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.375rem;
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #000;
+        transition: all 0.2s;
+      }
+
+      .navbar__account-btn:hover {
+        background: rgba(0, 0, 0, 0.05);
+        border-color: #d1d5db;
+      }
+
+      .navbar__dropdown {
+        display: none;
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        right: 0;
+        min-width: 200px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        overflow: hidden;
+        z-index: 1001;
+      }
+
+      .navbar__dropdown.open {
+        display: block;
+      }
+
+      .navbar__dropdown-header {
+        padding: 0.75rem 1rem;
+        font-size: 0.75rem;
+        color: #6b7280;
+        border-bottom: 1px solid #e5e7eb;
+        background: #f9fafb;
+      }
+
+      .navbar__dropdown-item {
+        display: block;
+        padding: 0.75rem 1rem;
+        text-decoration: none;
+        color: #000;
+        font-size: 0.875rem;
+        transition: background-color 0.2s;
+      }
+
+      .navbar__dropdown-item:hover {
+        background: #f3f4f6;
+      }
+
+      .navbar__dropdown-item--danger {
+        color: #dc2626;
+      }
+
+      .navbar__dropdown-item--danger:hover {
+        background: #fef2f2;
+      }
+
       /* Logo switching for dark mode */
       .logo-dark {
         display: none;
@@ -164,6 +308,39 @@
 
         .navbar__link:hover {
           background: rgba(255, 255, 255, 0.1);
+        }
+
+        .navbar__account-btn {
+          color: #fff;
+          border-color: #374151;
+        }
+
+        .navbar__account-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          border-color: #4b5563;
+        }
+
+        .navbar__dropdown {
+          background: #1f2937;
+          border-color: #374151;
+        }
+
+        .navbar__dropdown-header {
+          background: #111827;
+          border-color: #374151;
+          color: #9ca3af;
+        }
+
+        .navbar__dropdown-item {
+          color: #fff;
+        }
+
+        .navbar__dropdown-item:hover {
+          background: #374151;
+        }
+
+        .navbar__dropdown-item--danger:hover {
+          background: #7f1d1d;
         }
 
         .logo-light {
@@ -189,6 +366,39 @@
         background: rgba(255, 255, 255, 0.1);
       }
 
+      [data-theme="dark"] .navbar__account-btn {
+        color: #fff;
+        border-color: #374151;
+      }
+
+      [data-theme="dark"] .navbar__account-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: #4b5563;
+      }
+
+      [data-theme="dark"] .navbar__dropdown {
+        background: #1f2937;
+        border-color: #374151;
+      }
+
+      [data-theme="dark"] .navbar__dropdown-header {
+        background: #111827;
+        border-color: #374151;
+        color: #9ca3af;
+      }
+
+      [data-theme="dark"] .navbar__dropdown-item {
+        color: #fff;
+      }
+
+      [data-theme="dark"] .navbar__dropdown-item:hover {
+        background: #374151;
+      }
+
+      [data-theme="dark"] .navbar__dropdown-item--danger:hover {
+        background: #7f1d1d;
+      }
+
       [data-theme="dark"] .logo-light {
         display: none;
       }
@@ -199,10 +409,49 @@
     </style>
   `;
 
+  // Setup dropdown toggle after nav is inserted
+  function setupDropdown() {
+    const btn = document.getElementById('accountMenuBtn');
+    const dropdown = document.getElementById('accountDropdown');
+
+    if (!btn || !dropdown) return;
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle('open');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', () => {
+      dropdown.classList.remove('open');
+    });
+
+    // Prevent dropdown from closing when clicking inside it
+    dropdown.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+
   // Insert CSS and navigation when DOM is ready
-  function insertNav() {
-    // Add CSS to head
+  async function insertNav() {
+    // Add CSS to head first
     document.head.insertAdjacentHTML('beforeend', navCSS);
+
+    // Fetch config to determine what to show
+    let config = { membershipEnabled: true, authEnabled: false, user: null };
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/config`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        config = await response.json();
+      }
+    } catch (err) {
+      // Config fetch failed, use defaults (membership enabled, auth disabled)
+      console.debug('Nav config fetch failed, using defaults:', err);
+    }
+
+    const navHTML = buildNavHTML(config);
 
     // Find placeholder or insert at start of body
     const placeholder = document.getElementById('adcp-nav');
@@ -211,6 +460,9 @@
     } else {
       document.body.insertAdjacentHTML('afterbegin', navHTML);
     }
+
+    // Setup dropdown toggle
+    setupDropdown();
   }
 
   // Run when DOM is ready

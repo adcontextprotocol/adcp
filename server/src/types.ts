@@ -153,3 +153,109 @@ export interface WorkOSUser {
   createdAt: string;
   updatedAt: string;
 }
+
+// Member Profile Types
+
+export type MemberOffering =
+  | 'buyer_agent'
+  | 'sales_agent'
+  | 'creative_agent'
+  | 'signals_agent'
+  | 'consulting'
+  | 'other';
+
+/**
+ * Agent configuration stored in member profiles
+ * Each agent has a URL and visibility settings
+ */
+export interface AgentConfig {
+  url: string;
+  is_public: boolean;
+  // Cached info from discovery (optional, refreshed periodically)
+  name?: string;
+  type?: 'sales' | 'creative' | 'signals' | 'buyer' | 'unknown';
+}
+
+export interface MemberProfile {
+  id: string;
+  workos_organization_id: string;
+  display_name: string;
+  slug: string;
+  tagline?: string;
+  description?: string;
+  logo_url?: string;
+  logo_light_url?: string;
+  logo_dark_url?: string;
+  brand_color?: string;
+  contact_email?: string;
+  contact_website?: string;
+  contact_phone?: string;
+  linkedin_url?: string;
+  twitter_url?: string;
+  offerings: MemberOffering[];
+  agents: AgentConfig[];
+  agent_urls: string[]; // Derived from agents for backward compatibility
+  metadata: Record<string, unknown>;
+  tags: string[];
+  is_public: boolean;
+  show_in_carousel: boolean;
+  featured: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateMemberProfileInput {
+  workos_organization_id: string;
+  display_name: string;
+  slug: string;
+  tagline?: string;
+  description?: string;
+  logo_url?: string;
+  logo_light_url?: string;
+  logo_dark_url?: string;
+  brand_color?: string;
+  contact_email?: string;
+  contact_website?: string;
+  contact_phone?: string;
+  linkedin_url?: string;
+  twitter_url?: string;
+  offerings?: MemberOffering[];
+  agents?: AgentConfig[];
+  agent_urls?: string[]; // Legacy: will be converted to agents
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  is_public?: boolean;
+  show_in_carousel?: boolean;
+}
+
+export interface UpdateMemberProfileInput {
+  display_name?: string;
+  tagline?: string;
+  description?: string;
+  logo_url?: string;
+  logo_light_url?: string;
+  logo_dark_url?: string;
+  brand_color?: string;
+  contact_email?: string;
+  contact_website?: string;
+  contact_phone?: string;
+  linkedin_url?: string;
+  twitter_url?: string;
+  offerings?: MemberOffering[];
+  agents?: AgentConfig[];
+  agent_urls?: string[]; // Legacy: will be converted to agents
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  is_public?: boolean;
+  show_in_carousel?: boolean;
+}
+
+export interface ListMemberProfilesOptions {
+  is_public?: boolean;
+  show_in_carousel?: boolean;
+  offerings?: MemberOffering[];
+  featured?: boolean;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}

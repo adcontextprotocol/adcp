@@ -12,56 +12,17 @@
       background: #f5f5f5;
       min-height: 100vh;
     }
-    .header {
-      background: white;
+    .dashboard-toolbar {
+      background: #f9fafb;
       border-bottom: 1px solid #e0e0e0;
-      padding: 20px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      padding: 10px 20px;
     }
-    .header-content {
+    .dashboard-toolbar-content {
       max-width: 1200px;
       margin: 0 auto;
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: center;
-    }
-    .logo {
-      font-size: 24px;
-      font-weight: 700;
-      color: #667eea;
-    }
-    .user-menu {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-    }
-    .user-info {
-      color: #666;
-    }
-    .btn-admin {
-      padding: 8px 16px;
-      background: #667eea;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      text-decoration: none;
-      color: white;
-      font-weight: 600;
-    }
-    .btn-admin:hover {
-      background: #5568d3;
-    }
-    .btn-logout {
-      padding: 8px 16px;
-      background: #f5f5f5;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      text-decoration: none;
-      color: #333;
-    }
-    .btn-logout:hover {
-      background: #e0e0e0;
     }
     .container {
       max-width: 1200px;
@@ -166,9 +127,9 @@
     .btn-secondary:hover {
       background: #d0d0d0;
     }
+    /* Org Switcher */
     .org-switcher {
       position: relative;
-      margin-right: 15px;
     }
     .org-switcher-btn {
       display: flex;
@@ -176,94 +137,84 @@
       gap: 8px;
       padding: 8px 12px;
       background: #f5f5f5;
-      border: 1px solid #ddd;
+      border: 1px solid #e0e0e0;
       border-radius: 6px;
       cursor: pointer;
       font-size: 14px;
       color: #333;
+      min-width: 180px;
     }
     .org-switcher-btn:hover {
-      background: #e0e0e0;
+      background: #e8e8e8;
     }
-    .org-switcher-icon {
-      font-size: 18px;
-    }
-    .org-switcher-name {
-      max-width: 200px;
+    .org-switcher-btn .org-name {
+      flex: 1;
+      text-align: left;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .org-switcher-badge {
-      display: inline-block;
-      padding: 2px 6px;
-      border-radius: 8px;
+    .org-switcher-btn .arrow {
       font-size: 10px;
-      margin-left: 5px;
+      color: #666;
     }
-    .org-switcher-badge.personal { background: #e3f2fd; color: #1565c0; }
-    .org-switcher-badge.team { background: #e8f5e9; color: #2e7d32; }
-    .org-dropdown {
+    .org-switcher-dropdown {
       display: none;
       position: absolute;
       top: 100%;
+      left: 0;
       right: 0;
       margin-top: 4px;
       background: white;
-      border: 1px solid #ddd;
-      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      min-width: 280px;
       z-index: 100;
+      max-height: 300px;
+      overflow-y: auto;
     }
-    .org-dropdown.show {
+    .org-switcher-dropdown.show {
       display: block;
     }
-    .org-dropdown-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
+    .org-switcher-item {
+      padding: 10px 12px;
       cursor: pointer;
       border-bottom: 1px solid #f0f0f0;
     }
-    .org-dropdown-item:last-child {
+    .org-switcher-item:last-child {
       border-bottom: none;
     }
-    .org-dropdown-item:hover {
-      background: #f9f9f9;
+    .org-switcher-item:hover {
+      background: #f5f5f5;
     }
-    .org-dropdown-item.active {
-      background: #f0f3ff;
+    .org-switcher-item.selected {
+      background: #e3f2fd;
     }
-    .org-dropdown-name {
+    .org-switcher-item .item-name {
       font-weight: 500;
       color: #333;
     }
-    .org-dropdown-role {
-      font-size: 12px;
-      color: #666;
+    .org-switcher-item .item-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      font-size: 10px;
+      border-radius: 10px;
+      margin-left: 6px;
     }
-    .org-dropdown-header {
-      padding: 10px 16px;
-      font-size: 12px;
-      color: #666;
-      font-weight: 600;
-      text-transform: uppercase;
-      border-bottom: 1px solid #e0e0e0;
-      background: #fafafa;
+    .org-switcher-item .item-badge.active {
+      background: #d1fae5;
+      color: #065f46;
     }
-    .org-dropdown-footer {
-      padding: 12px 16px;
-      border-top: 1px solid #e0e0e0;
+    .org-switcher-item .item-badge.inactive {
+      background: #f3f4f6;
+      color: #6b7280;
     }
-    .org-dropdown-footer a {
-      color: #667eea;
-      text-decoration: none;
-      font-size: 14px;
-    }
-    .org-dropdown-footer a:hover {
-      text-decoration: underline;
+
+    /* Responsive layout for dashboard */
+    @media (max-width: 900px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr !important;
+      }
     }
   </style>
 </head>
@@ -285,53 +236,51 @@
 
   <!-- Agreement Viewer Modal -->
   <div id="agreementViewerModal" class="modal-overlay">
-    <div class="modal" style="max-width: 800px; max-height: 90vh;">
-      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+    <div class="modal" style="max-width: 700px; max-height: 85vh; display: flex; flex-direction: column; margin: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px; flex-shrink: 0;">
         <div>
-          <h2 id="agreementViewerTitle">Agreement</h2>
-          <p id="agreementViewerMeta" style="color: #666; font-size: 14px; margin: 5px 0 0 0;"></p>
+          <h2 id="agreementViewerTitle" style="font-size: 18px;">Agreement</h2>
+          <p id="agreementViewerMeta" style="color: #666; font-size: 13px; margin: 5px 0 0 0;"></p>
         </div>
         <button onclick="closeAgreementViewer()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666; padding: 0; line-height: 1;">×</button>
       </div>
-      <div id="agreementViewerContent" style="overflow-y: auto; max-height: calc(90vh - 150px); padding: 15px; background: #f9f9f9; border-radius: 6px; font-size: 14px; line-height: 1.6;">
+      <div id="agreementViewerContent" style="overflow-y: auto; flex: 1; min-height: 0; padding: 15px; background: #f9f9f9; border-radius: 6px; font-size: 13px; line-height: 1.6;">
         Loading...
       </div>
-      <div id="agreementViewerButtons" class="modal-buttons" style="margin-top: 15px;">
+      <div id="agreementViewerButtons" class="modal-buttons" style="margin-top: 15px; flex-shrink: 0;">
         <button class="btn-primary" onclick="closeAgreementViewer()">Close</button>
       </div>
     </div>
   </div>
 
-  <div class="header">
-    <div class="header-content">
-      <div class="logo">AdCP Registry</div>
-      <div class="user-menu">
-        <div id="orgSwitcher" class="org-switcher" style="display: none;">
-          <button class="org-switcher-btn" onclick="toggleOrgDropdown()">
-            <span class="org-switcher-icon">&#127970;</span>
-            <span class="org-switcher-name" id="currentOrgName">Loading...</span>
-            <span id="currentOrgBadge" class="org-switcher-badge"></span>
-            <span>&#9662;</span>
-          </button>
-          <div id="orgDropdown" class="org-dropdown">
-            <div class="org-dropdown-header">Switch Organization</div>
-            <div id="orgDropdownList"></div>
-            <div class="org-dropdown-footer">
-              <a href="/onboarding">+ Create New Organization</a>
-            </div>
-          </div>
-        </div>
-        <span class="user-info" id="userEmail">Loading...</span>
-        <a href="/admin" class="btn-admin" id="adminLink" style="display: none;">Admin</a>
-        <a href="/auth/logout" class="btn-logout">Logout</a>
+  <!-- Shared Navigation -->
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+  <script src="/member-card.js"></script>
+
+  <!-- Dashboard Toolbar (org switcher only - login/logout moved to nav.js) -->
+  <div class="dashboard-toolbar">
+    <div class="dashboard-toolbar-content">
+      <div class="org-switcher" id="orgSwitcher" style="display: none;">
+        <button class="org-switcher-btn" onclick="toggleOrgDropdown()">
+          <span class="org-name" id="selectedOrgName">Select Organization</span>
+          <span class="arrow">▼</span>
+        </button>
+        <div class="org-switcher-dropdown" id="orgDropdown"></div>
       </div>
     </div>
   </div>
 
   <div class="container">
-    <div class="welcome">
-      <h1>Welcome to Your Dashboard</h1>
-      <p>Manage your AdCP registry entries and team members from here.</p>
+    <!-- Welcome Header with Org Info -->
+    <div class="welcome" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 20px;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+          <h1 id="orgName" style="margin: 0;">Dashboard</h1>
+          <span id="orgBadge"></span>
+        </div>
+        <p id="orgRole" style="margin: 0; font-size: 14px; color: #666;"></p>
+      </div>
     </div>
 
     <div id="loading" class="loading">
@@ -339,17 +288,60 @@
     </div>
 
     <div id="content" style="display:none;">
-      <div class="card">
-        <h2>Your Companies</h2>
-        <div id="companies"></div>
+      <!-- Main Layout: Member Profile (large) + Sidebar (Membership, Team, Agreements) -->
+      <div class="dashboard-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; align-items: start;">
+
+        <!-- LEFT COLUMN: Member Profile (prominent) -->
+        <div class="card" id="memberProfileCard" style="padding: 0; overflow: hidden;">
+          <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 20px 24px; color: white;">
+            <h2 style="margin: 0; color: white; display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 24px;">🏢</span> Member Profile
+            </h2>
+            <p style="margin: 8px 0 0 0; opacity: 0.9; font-size: 14px;">Your public presence in the AdCP member directory</p>
+          </div>
+          <div id="memberProfileDetails" style="padding: 24px;"></div>
+        </div>
+
+        <!-- RIGHT COLUMN: Membership, Team, Agreements -->
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+
+          <!-- Membership Card -->
+          <div class="card">
+            <h2 style="display: flex; align-items: center; gap: 8px; font-size: 16px;">
+              <span style="font-size: 18px;">💳</span> Membership
+            </h2>
+            <div id="billingDetails"></div>
+          </div>
+
+          <!-- Team Card -->
+          <div class="card">
+            <h2 style="display: flex; align-items: center; gap: 8px; font-size: 16px;">
+              <span style="font-size: 18px;">👥</span> Team
+            </h2>
+            <div id="teamDetails"></div>
+          </div>
+
+          <!-- Agreements (compact) -->
+          <div class="card" style="background: #f9fafb;">
+            <h2 style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #666; margin-bottom: 10px;">
+              <span style="font-size: 16px;">📋</span> Agreements
+            </h2>
+            <div id="agreementsSection" style="font-size: 13px;">
+              <p style="color: #666;">Loading...</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div id="membershipCard" class="card" style="display:none;">
-        <h2>🎉 Join AgenticAdvertising.org</h2>
-        <p style="margin-bottom: 20px;">Become a paid member to support the AdCP ecosystem and access premium features.</p>
+      <!-- Membership section - shown for non-subscribers -->
+      <div id="membershipSection" class="card" style="display:none; margin-top: 24px;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; color: white; margin-bottom: 20px;">
+          <h3 style="margin: 0 0 8px 0; color: white;">Become a Member</h3>
+          <p style="margin: 0; color: rgba(255,255,255,0.9); font-size: 14px;">Unlock your public member profile, appear in the directory, and support the AdCP ecosystem.</p>
+        </div>
 
         <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; background: #fafafa; margin-bottom: 20px;">
-          <h3 style="margin-bottom: 10px; font-size: 18px;">Membership Agreement</h3>
+          <h4 style="margin: 0 0 10px 0; font-size: 16px;">Membership Agreement</h4>
           <div id="membershipAgreementContent" style="max-height: 200px; overflow-y: auto; padding: 15px; background: white; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 15px; font-size: 14px; line-height: 1.6;">
             Loading agreement...
           </div>
@@ -369,126 +361,483 @@
         </div>
 
         <div id="agreementWarning" style="display: block; text-align: center; color: #666; font-size: 14px; margin-top: 10px; padding: 10px; background: #fff7ed; border: 1px solid #ffd699; border-radius: 4px;">
-          ⚠️ Please accept the membership agreement above to continue
+          Please accept the membership agreement above to continue
         </div>
       </div>
 
-      <div class="card">
-        <h2>Agreement History</h2>
-        <div id="agreementHistory">
-          <p style="color: #666;">Loading agreement history...</p>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Registry Entries</h2>
-        <div class="info-box">
-          Registry management UI coming soon. For now, entries are managed via API.
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Quick Links</h2>
-        <ul style="list-style: none; padding: 0;">
-          <li style="margin-bottom: 10px;">
-            <a href="/team" style="color: #667eea;">→ Manage Team Members</a>
-          </li>
-          <li style="margin-bottom: 10px;">
-            <a href="/api/agents" style="color: #667eea;">→ View All Agents</a>
-          </li>
-          <li style="margin-bottom: 10px;">
-            <a href="https://docs.adcontextprotocol.org" style="color: #667eea;">→ Documentation</a>
-          </li>
-          <li style="margin-bottom: 10px;">
-            <a href="https://github.com/adcontextprotocol/adcp" style="color: #667eea;">→ GitHub Repository</a>
-          </li>
-        </ul>
-      </div>
     </div>
   </div>
 
   <script>
     let currentOrg = null;
-    let allOrganizations = [];
     let selectedOrgId = null;
+    let allOrganizations = [];
     let membershipAgreement = null;
 
-    // Org switcher functions
+    // Get org ID from URL param or localStorage
+    function getInitialOrgId() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlOrgId = urlParams.get('org');
+      if (urlOrgId) return urlOrgId;
+      return localStorage.getItem('selectedOrgId');
+    }
+
+    // Toggle org dropdown
     function toggleOrgDropdown() {
       const dropdown = document.getElementById('orgDropdown');
       dropdown.classList.toggle('show');
-    }
-
-    function closeOrgDropdown() {
-      const dropdown = document.getElementById('orgDropdown');
-      dropdown.classList.remove('show');
-    }
-
-    function selectOrg(orgId) {
-      selectedOrgId = orgId;
-      localStorage.setItem('selectedOrgId', orgId);
-      updateOrgSwitcher();
-      closeOrgDropdown();
-      // Scroll to and highlight the selected org in the companies list
-      highlightSelectedOrg(orgId);
-    }
-
-    function updateOrgSwitcher() {
-      if (allOrganizations.length === 0) return;
-
-      // Get selected org or default to first
-      if (!selectedOrgId) {
-        selectedOrgId = localStorage.getItem('selectedOrgId');
-      }
-      const selectedOrg = allOrganizations.find(o => o.id === selectedOrgId) || allOrganizations[0];
-      selectedOrgId = selectedOrg.id;
-
-      // Update current org display
-      document.getElementById('currentOrgName').textContent = selectedOrg.name;
-      const badge = document.getElementById('currentOrgBadge');
-      if (selectedOrg.is_personal) {
-        badge.textContent = 'Personal';
-        badge.className = 'org-switcher-badge personal';
-      } else {
-        badge.textContent = 'Team';
-        badge.className = 'org-switcher-badge team';
-      }
-
-      // Build dropdown list
-      const dropdownList = document.getElementById('orgDropdownList');
-      dropdownList.innerHTML = allOrganizations.map(org => {
-        const isActive = org.id === selectedOrgId;
-        const badgeClass = org.is_personal ? 'personal' : 'team';
-        const badgeText = org.is_personal ? 'Personal' : 'Team';
-        return `
-          <div class="org-dropdown-item ${isActive ? 'active' : ''}" onclick="selectOrg('${org.id}')">
-            <div>
-              <div class="org-dropdown-name">${org.name}</div>
-              <div class="org-dropdown-role">${org.role || 'member'}</div>
-            </div>
-            <span class="org-switcher-badge ${badgeClass}">${badgeText}</span>
-          </div>
-        `;
-      }).join('');
-
-      // Show switcher
-      document.getElementById('orgSwitcher').style.display = 'block';
-    }
-
-    function highlightSelectedOrg(orgId) {
-      // Add visual highlight to selected org card
-      document.querySelectorAll('.org-card').forEach(card => {
-        card.style.borderColor = card.dataset.orgId === orgId ? '#667eea' : '#e0e0e0';
-      });
     }
 
     // Close dropdown when clicking outside
     document.addEventListener('click', (e) => {
       const switcher = document.getElementById('orgSwitcher');
       if (switcher && !switcher.contains(e.target)) {
-        closeOrgDropdown();
+        document.getElementById('orgDropdown').classList.remove('show');
       }
     });
+
+    // Select an organization
+    function selectOrg(orgId) {
+      selectedOrgId = orgId;
+      localStorage.setItem('selectedOrgId', orgId);
+      document.getElementById('orgDropdown').classList.remove('show');
+
+      // Update URL without reload
+      const url = new URL(window.location);
+      url.searchParams.set('org', orgId);
+      window.history.replaceState({}, '', url);
+
+      // Re-render the selected org
+      renderSelectedOrg();
+    }
+
+    // Update org switcher dropdown
+    function updateOrgSwitcher() {
+      const switcher = document.getElementById('orgSwitcher');
+      const dropdown = document.getElementById('orgDropdown');
+      const selectedName = document.getElementById('selectedOrgName');
+
+      if (allOrganizations.length <= 1) {
+        // Hide switcher if only one org
+        switcher.style.display = 'none';
+        return;
+      }
+
+      switcher.style.display = 'block';
+
+      // Update dropdown items
+      dropdown.innerHTML = allOrganizations.map(org => {
+        const isSelected = org.id === selectedOrgId;
+        const hasSubscription = org.billing?.status === 'active';
+        const badgeClass = hasSubscription ? 'active' : 'inactive';
+        const badgeText = hasSubscription ? 'Member' : 'Free';
+
+        return `
+          <div class="org-switcher-item ${isSelected ? 'selected' : ''}" onclick="selectOrg('${org.id}')">
+            <span class="item-name">${org.name}</span>
+            <span class="item-badge ${badgeClass}">${badgeText}</span>
+          </div>
+        `;
+      }).join('');
+
+      // Update selected name
+      const selected = allOrganizations.find(o => o.id === selectedOrgId);
+      if (selected) {
+        selectedName.textContent = selected.name;
+      }
+    }
+
+    // Render the currently selected organization
+    function renderSelectedOrg() {
+      const org = allOrganizations.find(o => o.id === selectedOrgId);
+      if (!org) return;
+
+      currentOrg = org;
+
+      // Update org switcher display
+      const selectedOrgNameEl = document.getElementById('selectedOrgName');
+      if (selectedOrgNameEl) {
+        selectedOrgNameEl.textContent = org.name;
+      }
+
+      // Build billing info display
+      let billingInfo = '';
+
+      if (org.billingError) {
+        billingInfo = `
+          <div style="margin-top: 8px; padding: 10px; background: #fee; border-left: 3px solid #c33; border-radius: 4px;">
+            <div style="color: #c33; font-weight: bold; margin-bottom: 4px;">⚠ Error Loading Billing Info</div>
+            <small style="color: #666;">${org.billingError}</small>
+            <br>
+            <small style="color: #666;">Please refresh the page or contact support if this persists.</small>
+          </div>
+        `;
+      } else if (org.billing?.status === 'active') {
+        const renewalDate = org.billing.current_period_end
+          ? new Date(org.billing.current_period_end * 1000).toLocaleDateString()
+          : '';
+        const productName = org.billing.product_name || 'Subscription';
+        const cancelNote = org.billing.cancel_at_period_end
+          ? ' (cancels at period end)'
+          : '';
+        const memberSince = org.agreement_signed_at
+          ? new Date(org.agreement_signed_at).toLocaleDateString()
+          : '';
+
+        billingInfo = `
+          <div style="margin-top: 8px; padding: 10px; background: #f0f9ff; border-left: 3px solid #0a0; border-radius: 4px;">
+            <div style="color: #0a0; font-weight: bold; margin-bottom: 4px;">✓ ${productName}</div>
+            ${memberSince ? `<small style="color: #666; display: block;">Member since: ${memberSince}</small>` : ''}
+            <small style="color: #666;">Renews: ${renewalDate}${cancelNote}</small>
+          </div>
+        `;
+      } else if (org.billing?.status === 'past_due') {
+        billingInfo = `
+          <div style="margin-top: 8px; padding: 10px; background: #fff7ed; border-left: 3px solid #f90; border-radius: 4px;">
+            <div style="color: #f90; font-weight: bold;">⚠ Payment Past Due</div>
+            <small style="color: #666;">Please update your payment method</small>
+          </div>
+        `;
+      } else if (org.billing?.status === 'none') {
+        billingInfo = `
+          <div style="margin-top: 8px; padding: 10px; background: #f9f9f9; border-left: 3px solid #999; border-radius: 4px;">
+            <div style="color: #666;">No Active Subscription</div>
+          </div>
+        `;
+      } else {
+        billingInfo = `
+          <div style="margin-top: 8px; padding: 10px; background: #fee; border-left: 3px solid #c33; border-radius: 4px;">
+            <div style="color: #c33; font-weight: bold;">Unexpected billing status: ${org.billing?.status || 'unknown'}</div>
+          </div>
+        `;
+      }
+
+      // Show different UI for personal vs team workspaces
+      const isPersonal = org.is_personal || false;
+      const personalBadge = isPersonal
+        ? `<span style="display: inline-block; padding: 2px 8px; background: #e3f2fd; color: #1565c0; border-radius: 10px; font-size: 11px;">Personal</span>`
+        : `<span style="display: inline-block; padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 10px; font-size: 11px;">Team</span>`;
+
+      // Subscription badge - shows AdCP membership status
+      const subscriptionBadge = org.billing?.status === 'active'
+        ? `<span style="display: inline-block; padding: 2px 8px; background: #d1fae5; color: #065f46; border-radius: 10px; font-size: 11px;">✓ Subscribed</span>`
+        : '';
+
+      // Update welcome header with org info
+      document.getElementById('orgName').textContent = org.name;
+      document.getElementById('orgBadge').innerHTML = personalBadge + ' ' + subscriptionBadge;
+      document.getElementById('orgRole').textContent = `Your role: ${org.role || 'member'}`;
+
+      // Render Billing Card
+      const billingDetailsDiv = document.getElementById('billingDetails');
+      billingDetailsDiv.innerHTML = `
+        ${billingInfo}
+        <div style="margin-top: 15px;">
+          <button
+            onclick="openBillingPortal('${org.id}')"
+            style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%;"
+          >
+            Manage Billing
+          </button>
+        </div>
+      `;
+
+      // Render Team Card
+      const teamDetailsDiv = document.getElementById('teamDetails');
+      if (isPersonal) {
+        teamDetailsDiv.innerHTML = `
+          <div style="padding: 15px; background: #f9fafb; border-radius: 8px; margin-bottom: 15px;">
+            <p style="margin: 0; color: #666; font-size: 14px;">Personal workspace - upgrade to team to invite members.</p>
+          </div>
+          <button
+            onclick="convertToTeam('${org.id}')"
+            style="padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%;"
+            title="Convert to a team workspace to invite members"
+          >
+            Upgrade to Team
+          </button>
+        `;
+      } else {
+        // Load team members with avatars
+        loadTeamPreview(org.id);
+        teamDetailsDiv.innerHTML = `
+          <div id="teamMembersPreview" style="margin-bottom: 12px;">
+            <p style="color: #666; font-size: 13px;">Loading team...</p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <a
+              href="/team?org=${org.id}&action=invite"
+              style="flex: 1; display: block; text-align: center; padding: 8px 12px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 13px;"
+            >
+              + Invite
+            </a>
+            <a
+              href="/team?org=${org.id}"
+              style="flex: 1; display: block; text-align: center; padding: 8px 12px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; font-size: 13px;"
+            >
+              Manage
+            </a>
+          </div>
+        `;
+      }
+
+      // Render Member Profile Card
+      const memberProfileDetailsDiv = document.getElementById('memberProfileDetails');
+      const memberProfileCard = document.getElementById('memberProfileCard');
+
+      if (org.billing?.status === 'active') {
+        memberProfileCard.style.opacity = '1';
+        // Load member profile preview
+        loadMemberProfilePreview(org.id);
+        memberProfileDetailsDiv.innerHTML = `
+          <div id="memberProfilePreview" style="min-height: 150px;">
+            <p style="color: #666; font-size: 14px;">Loading profile...</p>
+          </div>
+          <div id="memberProfileActions" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;"></div>
+        `;
+      } else {
+        memberProfileCard.style.opacity = '0.6';
+        memberProfileDetailsDiv.innerHTML = `
+          <div style="text-align: center; padding: 40px 20px;">
+            <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;">🔒</div>
+            <h3 style="margin: 0 0 8px 0; color: #374151;">Subscribe to Unlock</h3>
+            <p style="margin: 0 0 20px 0; color: #6b7280; font-size: 14px;">Get your public member profile, directory listing, and homepage carousel placement.</p>
+            <a
+              href="#membershipSection"
+              onclick="scrollToMembership(); return false;"
+              style="display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+            >
+              View Membership Options
+            </a>
+          </div>
+        `;
+      }
+
+      // Show/hide membership section based on this org's subscription status
+      const membershipSection = document.getElementById('membershipSection');
+
+      // Show membership section for any org without an active subscription
+      if (org.billing?.status !== 'active') {
+        membershipSection.style.display = 'block';
+
+        // Update pricing table with this org's customer session (if available)
+        if (org.customerSessionSecret) {
+          updatePricingTable(org);
+        }
+      } else {
+        membershipSection.style.display = 'none';
+      }
+    }
+
+    // Update pricing table for current org
+    function updatePricingTable(org) {
+      if (!org.customerSessionSecret) return;
+
+      const pricingWrapper = document.getElementById('pricingTableWrapper');
+      if (!pricingWrapper) return;
+
+      // Update existing pricing table with new customer session
+      const existingTable = pricingWrapper.querySelector('stripe-pricing-table');
+      if (existingTable) {
+        existingTable.setAttribute('customer-session-client-secret', org.customerSessionSecret);
+      }
+    }
+
+    // Load team preview with member avatars
+    async function loadTeamPreview(orgId) {
+      try {
+        const response = await fetch(`/api/organizations/${orgId}/members`);
+        if (!response.ok) throw new Error('Failed to load team');
+
+        const data = await response.json();
+        const members = data.members || [];
+        const previewEl = document.getElementById('teamMembersPreview');
+        if (previewEl) {
+          if (members.length === 0) {
+            previewEl.innerHTML = `<p style="color: #666; font-size: 13px;">No team members yet</p>`;
+            return;
+          }
+
+          // Show member avatars (max 5) with overflow indicator
+          const maxAvatars = 5;
+          const displayMembers = members.slice(0, maxAvatars);
+          const overflow = members.length - maxAvatars;
+
+          const avatars = displayMembers.map((m, i) => {
+            // Get initials from first_name/last_name or fall back to email
+            let initials = '';
+            if (m.first_name && m.last_name) {
+              initials = m.first_name[0] + m.last_name[0];
+            } else if (m.first_name) {
+              initials = m.first_name.substring(0, 2);
+            } else if (m.email) {
+              // Use first two chars of email username
+              initials = m.email.split('@')[0].substring(0, 2);
+            } else {
+              initials = '?';
+            }
+            const colors = ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+            const bgColor = colors[i % colors.length];
+            return `
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: ${bgColor}; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 600; border: 2px solid white; margin-left: ${i === 0 ? '0' : '-8px'};" title="${m.email || 'Member'}">
+                ${initials.toUpperCase()}
+              </div>
+            `;
+          }).join('');
+
+          const overflowBadge = overflow > 0
+            ? `<div style="width: 32px; height: 32px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 10px; font-weight: 600; border: 2px solid white; margin-left: -8px;">+${overflow}</div>`
+            : '';
+
+          const memberText = members.length === 1 ? '1 member' : `${members.length} members`;
+
+          previewEl.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="display: flex;">${avatars}${overflowBadge}</div>
+              <span style="color: #666; font-size: 12px;">${memberText}</span>
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error loading team preview:', error);
+        const previewEl = document.getElementById('teamMembersPreview');
+        if (previewEl) {
+          previewEl.innerHTML = `<p style="color: #999; font-size: 13px;">Unable to load team</p>`;
+        }
+      }
+    }
+
+    // Load member profile preview (full preview for prominent display)
+    // Uses shared renderMemberCard function from member-card.js
+    async function loadMemberProfilePreview(orgId) {
+      // Inject shared styles for member card
+      injectMemberCardStyles();
+
+      try {
+        const response = await fetch(`/api/me/member-profile?org=${orgId}`);
+        const previewEl = document.getElementById('memberProfilePreview');
+        const actionsContainer = document.getElementById('memberProfileActions');
+
+        if (!response.ok || response.status === 404) {
+          if (previewEl) {
+            previewEl.innerHTML = `
+              <div style="text-align: center; padding: 30px 20px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
+                <h3 style="margin: 0 0 8px 0; color: #374151;">Create Your Profile</h3>
+                <p style="margin: 0; color: #6b7280; font-size: 14px; max-width: 300px; margin: 0 auto;">
+                  Set up your member profile to appear in the AdCP member directory and build your presence in the ecosystem.
+                </p>
+              </div>
+            `;
+          }
+          if (actionsContainer) {
+            actionsContainer.innerHTML = `
+              <a
+                href="/member-profile?org=${orgId}"
+                style="display: block; text-align: center; padding: 12px 24px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+              >
+                Create Profile
+              </a>
+            `;
+          }
+          return;
+        }
+
+        const data = await response.json();
+        const profile = data.profile;
+
+        if (previewEl && profile) {
+          // Store profile data for use in action buttons
+          window.currentMemberProfile = profile;
+
+          // Use shared renderMemberCard function with preview mode and visibility badge
+          // This creates a wrapper div, then extracts the inner content for our preview container
+          const cardHtml = renderMemberCard(profile, { isPreview: true, showVisibilityBadge: true });
+
+          // Render the card (skip outer div since our container provides that)
+          previewEl.innerHTML = cardHtml;
+
+          // Add "preview" class to prevent hover effects
+          const card = previewEl.querySelector('.member-card');
+          if (card) {
+            card.classList.add('preview');
+            // Remove box-shadow since we're inside a card already
+            card.style.boxShadow = 'none';
+          }
+
+          // Update action buttons in footer section (separate from the card)
+          // Note: Website/LinkedIn links are already shown in the member card footer, so we only show action buttons here
+          if (actionsContainer) {
+            actionsContainer.style.cssText = 'padding: 1rem 0 0 0; background: transparent; display: flex; justify-content: flex-end; align-items: center; border-top: 1px solid #f3f4f6; margin-top: 0;';
+
+            if (profile.is_public && profile.slug) {
+              actionsContainer.innerHTML = `
+                <div style="display: flex; gap: 8px;">
+                  <a
+                    href="/members/${profile.slug}"
+                    target="_blank"
+                    style="padding: 8px 16px; background: white; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; text-decoration: none; font-size: 14px;"
+                  >
+                    View Live
+                  </a>
+                  <a
+                    href="/member-profile?org=${orgId}"
+                    style="padding: 8px 16px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+                  >
+                    Edit
+                  </a>
+                </div>
+              `;
+            } else {
+              actionsContainer.innerHTML = `
+                <a
+                  href="/member-profile?org=${orgId}"
+                  style="padding: 8px 16px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+                >
+                  ${profile.is_public ? 'Edit' : 'Complete & Publish'}
+                </a>
+              `;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error loading member profile preview:', error);
+        const previewEl = document.getElementById('memberProfilePreview');
+        const actionsContainer = document.getElementById('memberProfileActions');
+        if (previewEl) {
+          previewEl.innerHTML = `
+            <div style="text-align: center; padding: 30px 20px;">
+              <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
+              <h3 style="margin: 0 0 8px 0; color: #374151;">Create Your Profile</h3>
+              <p style="margin: 0; color: #6b7280; font-size: 14px;">Set up your member profile to appear in the directory.</p>
+            </div>
+          `;
+        }
+        if (actionsContainer) {
+          actionsContainer.innerHTML = `
+            <a
+              href="/member-profile?org=${orgId}"
+              style="display: block; text-align: center; padding: 12px 24px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+            >
+              Create Profile
+            </a>
+          `;
+        }
+      }
+    }
+
+    // offeringLabels is now in member-card.js
+    function formatOffering(offering) {
+      return offeringLabels[offering] || offering;
+    }
+
+    // Scroll to membership section
+    function scrollToMembership() {
+      const membershipSection = document.getElementById('membershipSection');
+      if (membershipSection) {
+        membershipSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
 
     // Load membership agreement
     async function loadMembershipAgreement() {
@@ -505,6 +854,89 @@
         console.error('Error loading membership agreement:', error);
         document.getElementById('membershipAgreementContent').innerHTML =
           '<p style="color: #c33;">Failed to load agreement. Please refresh.</p>';
+      }
+    }
+
+    // Load and display user's agreements (compact view)
+    // Shows both signed agreements AND required but missing ones
+    async function loadMyAgreements() {
+      const section = document.getElementById('agreementsSection');
+      try {
+        const response = await fetch('/api/me/agreements');
+        if (!response.ok) throw new Error('Failed to load agreements');
+
+        const data = await response.json();
+        const agreements = data.agreements || [];
+
+        // For paying members, show membership agreement even if not signed
+        // For non-subscribers, filter out membership (they don't need it yet)
+        const relevantAgreements = agreements.filter(a => {
+          if (a.type === 'membership') {
+            // Only show membership agreement for paying members
+            return window.hasActiveSubscription;
+          }
+          // Always show ToS and Privacy Policy
+          return true;
+        });
+
+        if (relevantAgreements.length === 0) {
+          section.innerHTML = '<p style="color: #9ca3af; font-size: 12px;">No agreements.</p>';
+          return;
+        }
+
+        section.innerHTML = relevantAgreements.map(agreement => {
+          const isSigned = !!agreement.version;
+          const isOutdated = agreement.is_outdated;
+
+          // Missing/unsigned = red, outdated = orange, current = green
+          let statusDot, statusText, actionButton;
+          if (!isSigned) {
+            statusDot = '<span style="width: 6px; height: 6px; background: #ef4444; border-radius: 50%; display: inline-block;"></span>';
+            statusText = '<span style="color: #ef4444; font-size: 10px; font-weight: 500;">Required</span>';
+            actionButton = `<button onclick="viewAgreementForAcceptance('${agreement.type}', '${agreement.current_version}')"
+                      style="padding: 4px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">
+                Sign
+              </button>`;
+          } else if (isOutdated) {
+            statusDot = '<span style="width: 6px; height: 6px; background: #f59e0b; border-radius: 50%; display: inline-block;"></span>';
+            statusText = '';
+            actionButton = `<button onclick="viewAgreement('${agreement.type}', '${agreement.version}')"
+                      style="padding: 4px 8px; background: transparent; color: #667eea; border: none; font-size: 12px; cursor: pointer; text-decoration: underline;">
+                View
+              </button>`;
+          } else {
+            statusDot = '<span style="width: 6px; height: 6px; background: #10b981; border-radius: 50%; display: inline-block;"></span>';
+            statusText = '';
+            actionButton = `<button onclick="viewAgreement('${agreement.type}', '${agreement.version}')"
+                      style="padding: 4px 8px; background: transparent; color: #667eea; border: none; font-size: 12px; cursor: pointer; text-decoration: underline;">
+                View
+              </button>`;
+          }
+
+          return `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                ${statusDot}
+                <span style="color: #374151; font-size: 13px;">${formatAgreementType(agreement.type)}</span>
+                ${statusText}
+              </div>
+              ${actionButton}
+            </div>
+          `;
+        }).join('');
+
+        // If there's a missing membership agreement for a paying member, auto-pop it
+        // But only if user hasn't dismissed it this session
+        const missingMembership = relevantAgreements.find(a => a.type === 'membership' && !a.version);
+        if (missingMembership && window.hasActiveSubscription && shouldShowAgreementModal()) {
+          // Give a moment for the page to render, then pop the agreement
+          setTimeout(() => {
+            viewAgreementForAcceptance('membership', missingMembership.current_version);
+          }, 500);
+        }
+      } catch (error) {
+        console.error('Error loading agreements:', error);
+        section.innerHTML = '<p style="color: #ef4444; font-size: 12px;">Failed to load.</p>';
       }
     }
 
@@ -613,17 +1045,6 @@
 
         const data = await response.json();
 
-        document.getElementById('userEmail').textContent = data.user.email;
-
-        // Show admin link if user is an admin (email ends with @agenticadvertising.org)
-        if (data.user.email.endsWith('@agenticadvertising.org')) {
-          document.getElementById('adminLink').style.display = 'inline-block';
-        }
-
-        const companiesDiv = document.getElementById('companies');
-        let hasActiveSubscription = false;
-        let firstOrgWithoutSubscription = null;
-
         if (data.organizations && data.organizations.length > 0) {
           // Load billing info for each organization
           const orgsWithBilling = await Promise.all(
@@ -640,7 +1061,6 @@
                     billingError: null
                   };
                 } else {
-                  // Explicitly handle API errors
                   const errorData = await billingResponse.json().catch(() => ({ message: 'Unknown error' }));
                   return {
                     ...org,
@@ -659,143 +1079,49 @@
             })
           );
 
-          // Check if any org has active subscription
-          hasActiveSubscription = orgsWithBilling.some(org => org.billing?.status === 'active');
+          // Store organizations globally
+          allOrganizations = orgsWithBilling;
 
-          // Store globally for use in agreement checking
+          // Check if any org has active subscription (for global flag)
+          const hasActiveSubscription = orgsWithBilling.some(org => org.billing?.status === 'active');
           window.hasActiveSubscription = hasActiveSubscription;
 
-          // Store organizations for the org switcher
-          allOrganizations = orgsWithBilling;
+          // Determine which org to show
+          const initialOrgId = getInitialOrgId();
+          if (initialOrgId && orgsWithBilling.some(o => o.id === initialOrgId)) {
+            selectedOrgId = initialOrgId;
+          } else {
+            // Default to first org
+            selectedOrgId = orgsWithBilling[0].id;
+          }
+
+          // Update URL with selected org if not already there
+          const url = new URL(window.location);
+          if (!url.searchParams.get('org')) {
+            url.searchParams.set('org', selectedOrgId);
+            window.history.replaceState({}, '', url);
+          }
+
+          // Update org switcher dropdown
           updateOrgSwitcher();
 
-          // Find first org without subscription (for pricing table)
-          if (!hasActiveSubscription) {
-            firstOrgWithoutSubscription = orgsWithBilling.find(org =>
-              org.billing?.status !== 'active' && org.stripeCustomerId
-            );
-          }
+          // Render the selected organization
+          renderSelectedOrg();
 
-          companiesDiv.innerHTML = orgsWithBilling.map(org => {
-            // Build billing info display
-            let billingInfo = '';
-
-            if (org.billingError) {
-              // Show explicit error - don't hide it
-              billingInfo = `
-                <div style="margin-top: 8px; padding: 10px; background: #fee; border-left: 3px solid #c33; border-radius: 4px;">
-                  <div style="color: #c33; font-weight: bold; margin-bottom: 4px;">⚠ Error Loading Billing Info</div>
-                  <small style="color: #666;">${org.billingError}</small>
-                  <br>
-                  <small style="color: #666;">Please refresh the page or contact support if this persists.</small>
-                </div>
-              `;
-            } else if (org.billing?.status === 'active') {
-              const renewalDate = org.billing.current_period_end
-                ? new Date(org.billing.current_period_end * 1000).toLocaleDateString()
-                : '';
-              const productName = org.billing.product_name || 'Subscription';
-              const cancelNote = org.billing.cancel_at_period_end
-                ? ' (cancels at period end)'
-                : '';
-              const memberSince = org.agreement_signed_at
-                ? new Date(org.agreement_signed_at).toLocaleDateString()
-                : '';
-
-              billingInfo = `
-                <div style="margin-top: 8px; padding: 10px; background: #f0f9ff; border-left: 3px solid #0a0; border-radius: 4px;">
-                  <div style="color: #0a0; font-weight: bold; margin-bottom: 4px;">✓ ${productName}</div>
-                  ${memberSince ? `<small style="color: #666; display: block;">Member since: ${memberSince}</small>` : ''}
-                  <small style="color: #666;">Renews: ${renewalDate}${cancelNote}</small>
-                </div>
-              `;
-            } else if (org.billing?.status === 'past_due') {
-              billingInfo = `
-                <div style="margin-top: 8px; padding: 10px; background: #fff7ed; border-left: 3px solid #f90; border-radius: 4px;">
-                  <div style="color: #f90; font-weight: bold;">⚠ Payment Past Due</div>
-                  <small style="color: #666;">Please update your payment method</small>
-                </div>
-              `;
-            } else if (org.billing?.status === 'none') {
-              billingInfo = `
-                <div style="margin-top: 8px; padding: 10px; background: #f9f9f9; border-left: 3px solid #999; border-radius: 4px;">
-                  <div style="color: #666;">No Active Subscription</div>
-                </div>
-              `;
-            } else {
-              // Unexpected state - show it
-              billingInfo = `
-                <div style="margin-top: 8px; padding: 10px; background: #fee; border-left: 3px solid #c33; border-radius: 4px;">
-                  <div style="color: #c33; font-weight: bold;">Unexpected billing status: ${org.billing?.status || 'unknown'}</div>
-                </div>
-              `;
-            }
-
-            // Show different UI for personal vs team workspaces
-            const isPersonal = org.is_personal || false;
-            const personalBadge = isPersonal
-              ? `<span style="display: inline-block; padding: 2px 8px; background: #e3f2fd; color: #1565c0; border-radius: 10px; font-size: 11px; margin-left: 8px; vertical-align: middle;">Personal</span>`
-              : `<span style="display: inline-block; padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 10px; font-size: 11px; margin-left: 8px; vertical-align: middle;">Team</span>`;
-
-            const teamButton = isPersonal
-              ? `<button
-                  onclick="convertToTeam('${org.id}')"
-                  style="padding: 8px 16px; background: #f5f5f5; color: #333; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 14px;"
-                  title="Convert to a team workspace to invite members"
-                >
-                  Upgrade to Team
-                </button>`
-              : `<a
-                  href="/team?org=${org.id}"
-                  style="padding: 8px 16px; background: #f5f5f5; color: #333; border: 1px solid #ddd; border-radius: 6px; text-decoration: none; font-size: 14px;"
-                >
-                  Manage Team
-                </a>`;
-
-            return `
-              <div style="padding: 15px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 10px;">
-                <div style="display: flex; justify-content: space-between; align-items: start;">
-                  <div style="flex: 1;">
-                    <strong style="font-size: 18px;">${org.name}</strong>${personalBadge}
-                    <br>
-                    <small style="color: #666;">Your role: ${org.role || 'member'}</small>
-                    ${billingInfo}
-                  </div>
-                  <div style="display: flex; gap: 10px;">
-                    ${teamButton}
-                    <button
-                      onclick="openBillingPortal('${org.id}')"
-                      style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
-                    >
-                      Manage Billing
-                    </button>
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join('');
-        } else {
-          companiesDiv.innerHTML = '<p style="color: #666;">No organizations yet. <a href="/onboarding">Create one now</a></p>';
-        }
-
-        // Show membership card if no active subscription
-        // Agreement acceptance will be recorded atomically when subscription payment succeeds
-        if (!hasActiveSubscription && firstOrgWithoutSubscription) {
-          currentOrg = firstOrgWithoutSubscription;
-          const membershipCard = document.getElementById('membershipCard');
-          membershipCard.style.display = 'block';
-
-          // Load membership agreement
+          // Load membership agreement if needed for any org
           await loadMembershipAgreement();
-
-          // Set up checkbox handler
           setupAgreementCheckbox();
 
-          // Set customer session secret on pricing table
-          const pricingTable = membershipCard.querySelector('stripe-pricing-table');
-          if (pricingTable && firstOrgWithoutSubscription.customerSessionSecret) {
-            pricingTable.setAttribute('customer-session-client-secret', firstOrgWithoutSubscription.customerSessionSecret);
-          }
+          // Load user's signed agreements
+          await loadMyAgreements();
+
+        } else {
+          // No organizations - show message in the org header
+          document.getElementById('orgName').textContent = 'No Organizations';
+          document.getElementById('orgBadge').innerHTML = '';
+          document.getElementById('orgRole').innerHTML = '<a href="/onboarding">Create your first organization</a>';
+          // Hide the cards grid for users without orgs
+          document.querySelector('[style*="display: grid"]').style.display = 'none';
         }
 
         document.getElementById('loading').style.display = 'none';
@@ -907,6 +1233,18 @@
       document.getElementById('agreementViewerModal').style.display = 'none';
     }
 
+    // Dismiss required agreement for this session (will show again on next visit)
+    // Use sessionStorage to prevent re-popup during current session
+    function dismissAgreementForNow() {
+      sessionStorage.setItem('dismissedAgreementModal', 'true');
+      closeAgreementViewer();
+    }
+
+    // Check if we should auto-show agreement modals
+    function shouldShowAgreementModal() {
+      return !sessionStorage.getItem('dismissedAgreementModal');
+    }
+
     // View agreement for acceptance (with Accept button)
     async function viewAgreementForAcceptance(type, version) {
       try {
@@ -939,12 +1277,13 @@
           buttonsDiv.innerHTML = `
             <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
               <input type="checkbox" id="agreeCheckbox" style="width: 18px; height: 18px; cursor: pointer;">
-              <span style="font-size: 14px;">I have read and agree to this ${formatAgreementType(type).toLowerCase()}</span>
+              <span style="font-size: 13px;">I have read and agree to this ${formatAgreementType(type).toLowerCase()}</span>
             </label>
             <div style="display: flex; gap: 10px; width: 100%;">
-              <button class="btn-secondary" onclick="closeAgreementViewer()">Cancel</button>
+              <button class="btn-secondary" onclick="dismissAgreementForNow()">Later</button>
               <button class="btn-primary" id="acceptButton" onclick="acceptAgreement('${type}', '${version}')" disabled style="opacity: 0.5;">Accept Agreement</button>
             </div>
+            <p style="font-size: 11px; color: #9ca3af; margin-top: 10px; text-align: center;">This agreement is required. You'll be reminded to accept it next time.</p>
           `;
 
           // Enable accept button when checkbox is checked
@@ -991,24 +1330,30 @@
         // Close modal
         closeAgreementViewer();
 
+        // Reload agreements list to update UI
+        await loadMyAgreements();
+
         // Check if there are more agreements to accept
         const agreementsResponse = await fetch('/api/me/agreements');
         if (agreementsResponse.ok) {
           const data = await agreementsResponse.json();
-          const outdated = data.agreements.filter(a => !a.accepted || a.needs_reacceptance);
+          // Filter for unsigned (!version) or outdated agreements
+          // Also filter based on subscription status for membership
+          const needsAcceptance = data.agreements.filter(a => {
+            // Skip membership for non-subscribers
+            if (a.type === 'membership' && !window.hasActiveSubscription) {
+              return false;
+            }
+            // Agreement needs acceptance if not signed or outdated
+            return !a.version || a.is_outdated;
+          });
 
-          if (outdated.length > 0) {
+          if (needsAcceptance.length > 0) {
             // Show next agreement
-            const next = outdated[0];
+            const next = needsAcceptance[0];
             await viewAgreementForAcceptance(next.type, next.current_version);
-          } else {
-            // All done! Reload page to update UI
-            alert('All agreements have been accepted. Thank you!');
-            window.location.reload();
           }
-        } else {
-          // Just reload to update UI
-          window.location.reload();
+          // No more - just let the page update naturally (no alert)
         }
       } catch (error) {
         console.error('Error accepting agreement:', error);
@@ -1122,7 +1467,6 @@
     }
 
     loadUserData();
-    loadAgreementHistory();
     checkOutdatedAgreements();
 
     // Handle browser back/forward cache (bfcache) restoration
