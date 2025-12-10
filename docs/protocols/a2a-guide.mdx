@@ -218,7 +218,36 @@ return { status: response.status };
 
 A2A defines push notifications natively via `PushNotificationConfig`. When you configure a webhook URL, the server will POST task updates directly to your endpoint instead of requiring you to poll.
 
+### Best Practice: URL-Based Routing
+
+**Recommended:** Encode routing information (`task_type`, `operation_id`) in the webhook URL, not the payload.
+
+**Why this approach?**
+- ✅ **Industry standard pattern** - Widely adopted for webhook routing across major APIs
+- ✅ **Separation of concerns** - URLs handle routing, payloads contain data
+- ✅ **Protocol-agnostic** - Same pattern works for MCP, A2A, REST, future protocols
+- ✅ **Cleaner handlers** - Route with URL framework, not payload parsing
+
+**URL Pattern Options:**
+
 ```javascript
+// Option 1: Path parameters (recommended)
+url: `https://buyer.com/webhooks/a2a/${taskType}/${operationId}`
+// Example: /webhooks/a2a/create_media_buy/op_nike_q1_2025
+
+// Option 2: Query parameters
+url: `https://buyer.com/webhooks/a2a?task=${taskType}&op=${operationId}`
+
+// Option 3: Subdomain routing
+url: `https://${taskType}.webhooks.buyer.com/${operationId}`
+```
+
+**Example Configuration:**
+
+```javascript
+const operationId = "op_nike_q1_2025";
+const taskType = "create_media_buy";
+
 await a2a.send({
   message: {
     parts: [{
@@ -230,7 +259,7 @@ await a2a.send({
     }]
   },
   pushNotificationConfig: {
-    url: "https://buyer.com/webhooks/a2a",
+    url: `https://buyer.com/webhooks/a2a/${taskType}/${operationId}`,
     token: "client-validation-token",  // Optional: for client-side validation
     authentication: {
       schemes: ["bearer"],
@@ -318,7 +347,7 @@ if (response.status === 'working' || response.status === 'submitted') {
 
 **Example 1: `Task` payload for completed operation**
 
-When a task finishes, the server typically sends the full `Task` object:
+When a task finishes, the server sends the full `Task` object with **task result in `.artifacts`**:
 
 ```json
 {
@@ -326,30 +355,36 @@ When a task finishes, the server typically sends the full `Task` object:
   "contextId": "ctx_123",
   "status": {
     "state": "completed",
-    "message": {
-      "role": "agent",
-      "parts": [
-        { "text": "Media buy created successfully" },
-        {
-          "data": {
-            "media_buy_id": "mb_12345",
-            "buyer_ref": "nike_q1_campaign",
-            "creative_deadline": "2024-01-30T23:59:59Z",
-            "packages": [
-              { "package_id": "pkg_001", "buyer_ref": "nike_ctv_package" }
-            ]
-          }
-        }
-      ]
-    },
     "timestamp": "2025-01-22T10:30:00Z"
-  }
+  },
+  "artifacts": [{
+    "name": "task_result",
+    "parts": [
+      {
+        "kind": "text",
+        "text": "Media buy created successfully"
+      },
+      {
+        "kind": "data",
+        "data": {
+          "media_buy_id": "mb_12345",
+          "buyer_ref": "nike_q1_campaign",
+          "creative_deadline": "2024-01-30T23:59:59Z",
+          "packages": [
+            { "package_id": "pkg_001", "buyer_ref": "nike_ctv_package" }
+          ]
+        }
+      }
+    ]
+  }]
 }
 ```
 
+**CRITICAL**: For **`completed` or `failed`** status, the AdCP task result **MUST** be in `.artifacts[0].parts[]`, NOT in `status.message.parts[]`.
+
 **Example 2: `TaskStatusUpdateEvent` for progress updates**
 
-During execution, status changes arrive as lightweight updates:
+During execution, interim status updates can include optional data in `status.message.parts[]`:
 
 ```json
 {
@@ -373,7 +408,7 @@ During execution, status changes arrive as lightweight updates:
 }
 ```
 
-The `status.message.parts[].data` payload uses the same AdCP schemas as MCP's `result` field. Schema: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json)
+**All status payloads use AdCP schemas**: Both final statuses (completed/failed) and interim statuses (working, input-required, submitted) have corresponding AdCP schemas referenced in [`async-response-data.json`](https://adcontextprotocol.org/schemas/v2/core/async-response-data.json). Note that interim status schemas are evolving and may change in future versions, so implementors may choose to handle them more loosely.
 
 ### A2A Webhook Payload Types
 
@@ -426,7 +461,8 @@ Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/sch
 const express = require('express');
 const app = express();
 
-app.post('/webhooks/a2a', async (req, res) => {
+app.post('/webhooks/a2a/:taskType/:operationId', async (req, res) => {
+  const { taskType, operationId } = req.params;
   const webhook = req.body;
 
   // Verify webhook authenticity (Bearer token example)
@@ -439,14 +475,27 @@ app.post('/webhooks/a2a', async (req, res) => {
     return res.status(401).json({ error: 'Invalid token' });
   }
 
-  // Extract data from A2A webhook payload
+  // Extract basic fields from A2A webhook payload
   const taskId = webhook.id || webhook.taskId;
   const contextId = webhook.contextId;
   const status = webhook.status?.state || webhook.status;
-  
-  // Get AdCP data from status.message.parts[].data
-  const dataPart = webhook.status?.message?.parts?.find(p => p.data);
-  const adcpData = dataPart?.data;
+
+  // Extract AdCP data based on status
+  let adcpData, textMessage;
+
+  if (status === 'completed' || status === 'failed') {
+    // FINAL STATES: Extract from .artifacts
+    const dataPart = webhook.artifacts?.[0]?.parts?.find(p => p.kind === 'data');
+    const textPart = webhook.artifacts?.[0]?.parts?.find(p => p.kind === 'text');
+    adcpData = dataPart?.data;
+    textMessage = textPart?.text;
+  } else {
+    // INTERIM STATES: Extract from status.message.parts (optional)
+    const dataPart = webhook.status?.message?.parts?.find(p => p.data);
+    const textPart = webhook.status?.message?.parts?.find(p => p.text);
+    adcpData = dataPart?.data;
+    textMessage = textPart?.text;
+  }
 
   // Handle status changes
   switch (status) {
@@ -455,7 +504,7 @@ app.post('/webhooks/a2a', async (req, res) => {
       await notifyHuman({
         task_id: taskId,
         context_id: contextId,
-        message: webhook.status.message.parts.find(p => p.text)?.text,
+        message: textMessage,
         data: adcpData
       });
       break;
@@ -476,7 +525,7 @@ app.post('/webhooks/a2a', async (req, res) => {
       await handleOperationFailed({
         task_id: taskId,
         error: adcpData?.errors,
-        message: webhook.status.message.parts.find(p => p.text)?.text
+        message: textMessage
       });
       break;
 
@@ -485,7 +534,7 @@ app.post('/webhooks/a2a', async (req, res) => {
       await updateProgress({
         task_id: taskId,
         percentage: adcpData?.percentage,
-        message: webhook.status.message.parts.find(p => p.text)?.text
+        message: textMessage
       });
       break;
 

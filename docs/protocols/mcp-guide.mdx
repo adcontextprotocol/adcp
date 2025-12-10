@@ -231,8 +231,37 @@ MCP doesn't define push notifications. AdCP fills this gap by specifying the web
 
 **Webhook Envelope:** [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/mcp-webhook-payload.json)
 
+##### Best Practice: URL-Based Routing
+
+**Recommended:** Encode routing information (`task_type`, `operation_id`) in the webhook URL, not the payload.
+
+**Why this approach?**
+- ✅ **Industry standard pattern** - Widely adopted for webhook routing across major APIs
+- ✅ **Separation of concerns** - URLs handle routing, payloads contain data
+- ✅ **Protocol-agnostic** - Same pattern works for MCP, A2A, REST, future protocols
+- ✅ **Simpler handlers** - Route with URL framework, not payload parsing
+
+**URL Pattern Options:**
+
 ```javascript
-// Configure webhook when calling MCP tool
+// Option 1: Path parameters (recommended)
+url: `https://buyer.com/webhooks/adcp/${taskType}/${operationId}`
+// Example: /webhooks/adcp/create_media_buy/op_nike_q1_2025
+
+// Option 2: Query parameters
+url: `https://buyer.com/webhooks/adcp?task=${taskType}&op=${operationId}`
+
+// Option 3: Subdomain routing
+url: `https://${taskType}.webhooks.buyer.com/${operationId}`
+```
+
+**Example Configuration:**
+
+```javascript
+const operationId = "op_nike_q1_2025";
+const taskType = "create_media_buy";
+
+// Configure webhook with routing in URL
 const response = await session.call('create_media_buy',
   {
     buyer_ref: "nike_q1_2025",
@@ -241,7 +270,7 @@ const response = await session.call('create_media_buy',
   },
   {
     pushNotificationConfig: {
-      url: "https://buyer.com/webhooks/adcp",
+      url: `https://buyer.com/webhooks/adcp/${taskType}/${operationId}`,
       authentication: {
         schemes: ["HMAC-SHA256"],  // or ["bearer"] for simple auth
         credentials: "shared_secret_32_chars"
@@ -262,7 +291,6 @@ if (response.status === 'submitted') {
 ```json
 {
   "task_id": "task_456",
-  "task_type": "create_media_buy",
   "status": "completed",
   "timestamp": "2025-01-22T10:30:00Z",
   "result": {
@@ -273,6 +301,8 @@ if (response.status === 'submitted') {
 }
 ```
 
+**Note:** This example follows the recommended URL-based routing pattern where `task_type` and `operation_id` are passed in the URL (e.g., `/webhooks/adcp/create_media_buy/op_456`). While the schema still supports these fields in the payload for backward compatibility, they are deprecated.
+
 The `result` field contains the AdCP data payload. For `completed`/`failed` statuses, this is the full task response (e.g., `create-media-buy-response.json`). For other statuses, use the status-specific schemas (e.g., `create-media-buy-async-response-working.json`).
 
 #### MCP Webhook Envelope Fields
@@ -281,15 +311,17 @@ The [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v2/core/m
 
 **Required fields:**
 - `task_id` — Unique task identifier for correlation
-- `task_type` — Task name (e.g., "create_media_buy", "sync_creatives")
 - `status` — Current task status (completed, failed, working, input-required, etc.)
 - `timestamp` — ISO 8601 timestamp when webhook was generated
 
 **Optional fields:**
-- `operation_id` — Correlates a sequence of updates for the same operation
 - `domain` — AdCP domain ("media-buy" or "signals")
 - `context_id` — Conversation/session identifier
 - `message` — Human-readable context about the status change
+
+**Deprecated fields (supported but not recommended):**
+- `task_type` — Task name (e.g., "create_media_buy", "sync_creatives") - ⚠️ **Deprecated:** See [URL-Based Routing](#best-practice-url-based-routing)
+- `operation_id` — Correlates a sequence of updates for the same operation - ⚠️ **Deprecated:** See [URL-Based Routing](#best-practice-url-based-routing)
 
 **Data field:**
 - `result` — Task-specific AdCP payload (see Data Schema Validation below)
