@@ -374,6 +374,11 @@
     let allOrganizations = [];
     let membershipAgreement = null;
 
+    // Helper to check if the CURRENT org (not any org) has active subscription
+    function currentOrgHasActiveSubscription() {
+      return currentOrg?.billing?.status === 'active';
+    }
+
     // Get org ID from URL param or localStorage
     function getInitialOrgId() {
       const urlParams = new URLSearchParams(window.location.search);
@@ -581,37 +586,20 @@
         `;
       }
 
-      // Render Member Profile Card
+      // Render Member Profile Card - always accessible for all users
       const memberProfileDetailsDiv = document.getElementById('memberProfileDetails');
       const memberProfileCard = document.getElementById('memberProfileCard');
+      const hasSubscription = org.billing?.status === 'active';
 
-      if (org.billing?.status === 'active') {
-        memberProfileCard.style.opacity = '1';
-        // Load member profile preview
-        loadMemberProfilePreview(org.id);
-        memberProfileDetailsDiv.innerHTML = `
-          <div id="memberProfilePreview" style="min-height: 150px;">
-            <p style="color: #666; font-size: 14px;">Loading profile...</p>
-          </div>
-          <div id="memberProfileActions" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;"></div>
-        `;
-      } else {
-        memberProfileCard.style.opacity = '0.6';
-        memberProfileDetailsDiv.innerHTML = `
-          <div style="text-align: center; padding: 40px 20px;">
-            <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;">🔒</div>
-            <h3 style="margin: 0 0 8px 0; color: #374151;">Subscribe to Unlock</h3>
-            <p style="margin: 0 0 20px 0; color: #6b7280; font-size: 14px;">Get your public member profile, directory listing, and homepage carousel placement.</p>
-            <a
-              href="#membershipSection"
-              onclick="scrollToMembership(); return false;"
-              style="display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
-            >
-              View Membership Options
-            </a>
-          </div>
-        `;
-      }
+      memberProfileCard.style.opacity = '1';
+      // Load member profile preview for everyone
+      loadMemberProfilePreview(org.id, hasSubscription);
+      memberProfileDetailsDiv.innerHTML = `
+        <div id="memberProfilePreview" style="min-height: 150px;">
+          <p style="color: #666; font-size: 14px;">Loading profile...</p>
+        </div>
+        <div id="memberProfileActions" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;"></div>
+      `;
 
       // Show/hide membership section based on this org's subscription status
       const membershipSection = document.getElementById('membershipSection');
@@ -709,7 +697,7 @@
 
     // Load member profile preview (full preview for prominent display)
     // Uses shared renderMemberCard function from member-card.js
-    async function loadMemberProfilePreview(orgId) {
+    async function loadMemberProfilePreview(orgId, hasSubscription = false) {
       // Inject shared styles for member card
       injectMemberCardStyles();
 
@@ -725,7 +713,7 @@
                 <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
                 <h3 style="margin: 0 0 8px 0; color: #374151;">Create Your Profile</h3>
                 <p style="margin: 0; color: #6b7280; font-size: 14px; max-width: 300px; margin: 0 auto;">
-                  Set up your member profile to appear in the AdCP member directory and build your presence in the ecosystem.
+                  Set up your member profile to build your presence in the ecosystem. Your profile will be published to the member directory when you subscribe as a member.
                 </p>
               </div>
             `;
@@ -768,10 +756,64 @@
           // Update action buttons in footer section (separate from the card)
           // Note: Website/LinkedIn links are already shown in the member card footer, so we only show action buttons here
           if (actionsContainer) {
-            actionsContainer.style.cssText = 'padding: 1rem 0 0 0; background: transparent; display: flex; justify-content: flex-end; align-items: center; border-top: 1px solid #f3f4f6; margin-top: 0;';
+            actionsContainer.style.cssText = 'padding: 1rem 0 0 0; background: transparent; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f3f4f6; margin-top: 0;';
 
+            // Build visibility status/action on left
+            let visibilitySection = '';
+            if (profile.is_public) {
+              visibilitySection = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: #d1fae5; color: #059669; border-radius: 4px; font-size: 12px; font-weight: 500;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>
+                    Public
+                  </span>
+                  <button
+                    onclick="toggleProfileVisibility('${orgId}', false)"
+                    style="padding: 4px 10px; background: transparent; color: #6b7280; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; cursor: pointer;"
+                  >
+                    Unpublish
+                  </button>
+                </div>
+              `;
+            } else if (hasSubscription) {
+              // Has subscription but not public - can make public
+              visibilitySection = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: #f3f4f6; color: #6b7280; border-radius: 4px; font-size: 12px; font-weight: 500;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Draft
+                  </span>
+                  <button
+                    onclick="toggleProfileVisibility('${orgId}', true)"
+                    style="padding: 4px 10px; background: #10b981; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;"
+                  >
+                    Make Public
+                  </button>
+                </div>
+              `;
+            } else {
+              // No subscription - show upgrade prompt
+              visibilitySection = `
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: #f3f4f6; color: #6b7280; border-radius: 4px; font-size: 12px; font-weight: 500;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Draft
+                  </span>
+                  <button
+                    onclick="scrollToMembership()"
+                    style="padding: 4px 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;"
+                    title="Membership required to publish"
+                  >
+                    🔒 Publish
+                  </button>
+                </div>
+              `;
+            }
+
+            // Build edit/view buttons on right
+            let editButtons = '';
             if (profile.is_public && profile.slug) {
-              actionsContainer.innerHTML = `
+              editButtons = `
                 <div style="display: flex; gap: 8px;">
                   <a
                     href="/members/${profile.slug}"
@@ -789,15 +831,17 @@
                 </div>
               `;
             } else {
-              actionsContainer.innerHTML = `
+              editButtons = `
                 <a
                   href="/member-profile?org=${orgId}"
                   style="padding: 8px 16px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
                 >
-                  ${profile.is_public ? 'Edit' : 'Complete & Publish'}
+                  Edit
                 </a>
               `;
             }
+
+            actionsContainer.innerHTML = visibilitySection + editButtons;
           }
         } else if (previewEl) {
           // No profile exists - show "Create Your Profile" UI
@@ -806,7 +850,7 @@
               <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
               <h3 style="margin: 0 0 8px 0; color: #374151;">Create Your Profile</h3>
               <p style="margin: 0; color: #6b7280; font-size: 14px; max-width: 300px; margin: 0 auto;">
-                Set up your member profile to appear in the AdCP member directory and build your presence in the ecosystem.
+                Set up your member profile to build your presence in the ecosystem. Your profile will be published to the member directory when you subscribe as a member.
               </p>
             </div>
           `;
@@ -830,7 +874,7 @@
             <div style="text-align: center; padding: 30px 20px;">
               <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
               <h3 style="margin: 0 0 8px 0; color: #374151;">Create Your Profile</h3>
-              <p style="margin: 0; color: #6b7280; font-size: 14px;">Set up your member profile to appear in the directory.</p>
+              <p style="margin: 0; color: #6b7280; font-size: 14px;">Set up your member profile. It will be published when you subscribe as a member.</p>
             </div>
           `;
         }
@@ -860,6 +904,34 @@
       }
     }
 
+    // Toggle profile visibility (make public or unpublish)
+    async function toggleProfileVisibility(orgId, makePublic) {
+      try {
+        const response = await fetch(`/api/me/member-profile/visibility?org=${orgId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            is_public: makePublic,
+            show_in_carousel: makePublic
+          }),
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to update visibility');
+        }
+
+        // Reload the profile preview to show updated state
+        const org = allOrganizations.find(o => o.id === orgId);
+        const hasSubscription = org?.billing?.status === 'active';
+        loadMemberProfilePreview(orgId, hasSubscription);
+      } catch (error) {
+        console.error('Error toggling visibility:', error);
+        alert('Failed to update visibility: ' + error.message);
+      }
+    }
+
     // Load membership agreement
     async function loadMembershipAgreement() {
       try {
@@ -884,8 +956,8 @@
       const section = document.getElementById('agreementsSection');
       const agreementsCard = document.getElementById('agreementsCard');
 
-      // Only show agreements card for subscribers
-      if (!window.hasActiveSubscription) {
+      // Only show agreements card for subscribers of the CURRENT org
+      if (!currentOrgHasActiveSubscription()) {
         if (agreementsCard) agreementsCard.style.display = 'none';
         return;
       }
@@ -1228,7 +1300,7 @@
         const outdated = data.agreements
           .filter(a => {
             // Skip membership agreement if user doesn't have a subscription
-            if (a.type === 'membership' && !window.hasActiveSubscription) {
+            if (a.type === 'membership' && !currentOrgHasActiveSubscription()) {
               return false;
             }
             return !a.accepted || a.needs_reacceptance;
@@ -1416,7 +1488,7 @@
           // Also filter based on subscription status for membership
           const needsAcceptance = data.agreements.filter(a => {
             // Skip membership for non-subscribers
-            if (a.type === 'membership' && !window.hasActiveSubscription) {
+            if (a.type === 'membership' && !currentOrgHasActiveSubscription()) {
               return false;
             }
             // Agreement needs acceptance if not signed or outdated
@@ -1439,8 +1511,8 @@
     // Check for outdated agreements and show modal if needed
     // Only for subscribers - non-subscribers handle agreements inline when subscribing
     async function checkOutdatedAgreements() {
-      // Skip for non-subscribers
-      if (!window.hasActiveSubscription) return;
+      // Skip for non-subscribers of the CURRENT org
+      if (!currentOrgHasActiveSubscription()) return;
 
       try {
         const response = await fetch('/api/me/agreements');
@@ -1456,7 +1528,7 @@
             .filter(a => {
               if (a.type === 'membership') {
                 // Only show membership if user has active subscription and never accepted
-                return window.hasActiveSubscription && a.is_outdated && !a.version;
+                return currentOrgHasActiveSubscription() && a.is_outdated && !a.version;
               } else {
                 // Show ToS/Privacy if outdated (just FYI)
                 return a.is_outdated;
