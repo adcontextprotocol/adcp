@@ -17,48 +17,125 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 ## Quick Start
 
-Pause an entire campaign:
+Create a media buy, then pause it:
 
 <CodeGroup>
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { CreateMediaBuyResponseSchema, UpdateMediaBuyResponseSchema } from '@adcp/client';
 
-const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'summer_campaign_2025',
+// First, create a media buy to update
+const uniqueRef = `test_campaign_${Date.now()}`;
+
+// Use dates in the future
+const startDate = new Date();
+startDate.setDate(startDate.getDate() + 7); // Start 1 week from now
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 37); // End 5 weeks from now
+
+const createResult = await testAgent.createMediaBuy({
+  buyer_ref: uniqueRef,
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  },
+  packages: [{
+    buyer_ref: 'display_pkg',
+    product_id: 'prod_d979b543',
+    pricing_option_id: 'cpm_usd_auction',
+    format_ids: [{
+      agent_url: 'https://creative.adcontextprotocol.org',
+      id: 'display_300x250_image'
+    }],
+    budget: 10000,
+    bid_price: 5.00
+  }],
+  start_time: startDate.toISOString(),
+  end_time: endDate.toISOString()
+});
+
+if (!createResult.success) {
+  throw new Error(`Create failed: ${createResult.error}`);
+}
+
+const created = CreateMediaBuyResponseSchema.parse(createResult.data);
+if ('errors' in created && created.errors) {
+  throw new Error(`Create failed: ${JSON.stringify(created.errors)}`);
+}
+
+console.log(`Created media buy ${created.media_buy_id}`);
+
+// Now update it - pause the campaign
+const updateResult = await testAgent.updateMediaBuy({
+  buyer_ref: uniqueRef,
   paused: true
 });
 
-// Check for errors (discriminated union response)
-if (result.errors) {
-  console.error('Update failed:', result.errors);
-} else {
-  console.log(`Campaign ${result.media_buy_id} paused`);
-  if (result.implementation_date) {
-    console.log(`Changes take effect: ${result.implementation_date}`);
-  }
+if (!updateResult.success) {
+  throw new Error(`Update failed: ${updateResult.error}`);
 }
+
+const updated = UpdateMediaBuyResponseSchema.parse(updateResult.data);
+if ('errors' in updated && updated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(updated.errors)}`);
+}
+
+console.log(`Campaign ${updated.media_buy_id} paused`);
 ```
 
 ```python Python
 import asyncio
+import time
+from datetime import datetime, timedelta
 from adcp import test_agent
 
-async def pause_campaign():
-    result = await test_agent.simple.update_media_buy(
-        buyer_ref='summer_campaign_2025',
+async def create_and_pause_campaign():
+    # First, create a media buy to update
+    unique_ref = f"test_campaign_{int(time.time() * 1000)}"
+
+    # Use dates in the future
+    start_date = datetime.utcnow() + timedelta(days=7)
+    end_date = datetime.utcnow() + timedelta(days=37)
+
+    create_result = await test_agent.simple.create_media_buy(
+        buyer_ref=unique_ref,
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        },
+        packages=[{
+            'buyer_ref': 'display_pkg',
+            'product_id': 'prod_d979b543',
+            'pricing_option_id': 'cpm_usd_auction',
+            'format_ids': [{
+                'agent_url': 'https://creative.adcontextprotocol.org',
+                'id': 'display_300x250_image'
+            }],
+            'budget': 10000,
+            'bid_price': 5.00
+        }],
+        start_time=start_date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        end_time=end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+    )
+
+    if hasattr(create_result, 'errors') and create_result.errors:
+        raise Exception(f"Create failed: {create_result.errors}")
+
+    print(f"Created media buy {create_result.media_buy_id}")
+
+    # Now update it - pause the campaign
+    update_result = await test_agent.simple.update_media_buy(
+        buyer_ref=unique_ref,
         paused=True
     )
 
-    # Check for errors (discriminated union response)
-    if hasattr(result, 'errors') and result.errors:
-        print('Update failed:', result.errors)
-    else:
-        print(f"Campaign {result.media_buy_id} paused")
-        if result.implementation_date:
-            print(f"Changes take effect: {result.implementation_date}")
+    if hasattr(update_result, 'errors') and update_result.errors:
+        raise Exception(f"Update failed: {update_result.errors}")
 
-asyncio.run(pause_campaign())
+    print(f"Campaign {update_result.media_buy_id} paused")
+
+asyncio.run(create_and_pause_campaign())
 ```
 
 </CodeGroup>
@@ -120,44 +197,54 @@ Increase budget for a specific package:
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript test=false JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'summer_campaign_2025',
+  media_buy_id: 'mb_12345',
   packages: [{
     buyer_ref: 'ctv_package',
     budget: 50000  // Increased from 30000
   }]
 });
 
-console.log('Full response:', JSON.stringify(result, null, 2));
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
 
-if (result.errors) {
-  console.error('Update failed:', result.errors);
-} else {
-  const pkg = result.affected_packages[0];
+const validated = UpdateMediaBuyResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+const pkg = validated.affected_packages?.find(p => p.buyer_ref === 'ctv_package');
+if (pkg) {
   console.log(`Package budget updated to ${pkg.budget}`);
 }
 ```
 
-```python Python
+```python test=false Python
 import asyncio
 from adcp import test_agent
+from adcp.types import UpdateMediaBuyRequest
 
 async def increase_budget():
-    result = await test_agent.simple.update_media_buy(
-        buyer_ref='summer_campaign_2025',
-        packages=[{
-            'buyer_ref': 'ctv_package',
-            'budget': 50000
-        }]
+    result = await test_agent.update_media_buy(
+        UpdateMediaBuyRequest(
+            media_buy_id='mb_12345',
+            packages=[
+                {'buyer_ref': 'ctv_package', 'budget': 50000}
+            ]
+        )
     )
 
     if hasattr(result, 'errors') and result.errors:
-        print('Update failed:', result.errors)
-    else:
-        pkg = result.affected_packages[0]
+        raise Exception(f"Update failed: {result.errors}")
+
+    pkg = next((p for p in result.affected_packages if p.buyer_ref == 'ctv_package'), None)
+    if pkg:
         print(f"Package budget updated to {pkg.budget}")
 
 asyncio.run(increase_budget())
@@ -171,37 +258,47 @@ Extend campaign end date:
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript test=false JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
   buyer_ref: 'summer_campaign_2025',
   end_time: '2025-09-30T23:59:59Z'
 });
 
-if (result.errors) {
-  console.error('Update failed:', result.errors);
-} else {
-  console.log('Campaign end date extended');
-  console.log(`Effective: ${result.implementation_date}`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
 }
+
+const validated = UpdateMediaBuyResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+console.log('Campaign end date extended');
+console.log(`Effective: ${validated.implementation_date}`);
 ```
 
-```python Python
+```python test=false Python
 import asyncio
 from adcp import test_agent
+from adcp.types import UpdateMediaBuyRequest
 
 async def extend_campaign():
-    result = await test_agent.simple.update_media_buy(
-        buyer_ref='summer_campaign_2025',
-        end_time='2025-09-30T23:59:59Z'
+    result = await test_agent.update_media_buy(
+        UpdateMediaBuyRequest(
+            buyer_ref='summer_campaign_2025',
+            end_time='2025-09-30T23:59:59Z'
+        )
     )
 
     if hasattr(result, 'errors') and result.errors:
-        print('Update failed:', result.errors)
-    else:
-        print('Campaign end date extended')
-        print(f"Effective: {result.implementation_date}")
+        raise Exception(f"Update failed: {result.errors}")
+
+    print('Campaign end date extended')
+    print(f"Effective: {result.implementation_date}")
 
 asyncio.run(extend_campaign())
 ```
@@ -214,11 +311,12 @@ Add or modify geographic restrictions:
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript test=false JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'summer_campaign_2025',
+  media_buy_id: 'mb_12345',
   packages: [{
     buyer_ref: 'ctv_package',
     targeting_overlay: {
@@ -228,33 +326,44 @@ const result = await testAgent.updateMediaBuy({
   }]
 });
 
-if (result.errors) {
-  console.error('Update failed:', result.errors);
-} else {
-  console.log('Targeting updated successfully');
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
 }
+
+const validated = UpdateMediaBuyResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+console.log('Targeting updated successfully');
 ```
 
-```python Python
+```python test=false Python
 import asyncio
 from adcp import test_agent
+from adcp.types import UpdateMediaBuyRequest
 
 async def update_targeting():
-    result = await test_agent.simple.update_media_buy(
-        buyer_ref='summer_campaign_2025',
-        packages=[{
-            'buyer_ref': 'ctv_package',
-            'targeting_overlay': {
-                'geo_country_any_of': ['US', 'CA'],
-                'geo_region_any_of': ['CA', 'NY', 'TX', 'ON', 'QC']
-            }
-        }]
+    result = await test_agent.update_media_buy(
+        UpdateMediaBuyRequest(
+            media_buy_id='mb_12345',
+            packages=[
+                {
+                    'buyer_ref': 'ctv_package',
+                    'targeting_overlay': {
+                        'geo_country_any_of': ['US', 'CA'],
+                        'geo_region_any_of': ['CA', 'NY', 'TX', 'ON', 'QC']
+                    }
+                }
+            ]
+        )
     )
 
     if hasattr(result, 'errors') and result.errors:
-        print('Update failed:', result.errors)
-    else:
-        print('Targeting updated successfully')
+        raise Exception(f"Update failed: {result.errors}")
+
+    print('Targeting updated successfully')
 
 asyncio.run(update_targeting())
 ```
@@ -267,43 +376,57 @@ Swap out creative assets for a package:
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript test=false JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'summer_campaign_2025',
+  media_buy_id: 'mb_12345',
   packages: [{
     buyer_ref: 'ctv_package',
     creative_ids: ['creative_video_v2', 'creative_display_v2']
   }]
 });
 
-if (result.errors) {
-  console.error('Update failed:', result.errors);
-} else {
-  const assignments = result.affected_packages[0].creative_assignments;
-  console.log(`Assigned ${assignments.length} new creatives`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
 }
+
+const validated = UpdateMediaBuyResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+const pkg = validated.affected_packages?.find(p => p.buyer_ref === 'ctv_package');
+const assignmentCount = pkg?.creative_assignments?.length || 0;
+console.log(`Assigned ${assignmentCount} creatives`);
 ```
 
-```python Python
+```python test=false Python
 import asyncio
 from adcp import test_agent
+from adcp.types import UpdateMediaBuyRequest
 
 async def replace_creatives():
-    result = await test_agent.simple.update_media_buy(
-        buyer_ref='summer_campaign_2025',
-        packages=[{
-            'buyer_ref': 'ctv_package',
-            'creative_ids': ['creative_video_v2', 'creative_display_v2']
-        }]
+    result = await test_agent.update_media_buy(
+        UpdateMediaBuyRequest(
+            media_buy_id='mb_12345',
+            packages=[
+                {
+                    'buyer_ref': 'ctv_package',
+                    'creative_ids': ['creative_video_v2', 'creative_display_v2']
+                }
+            ]
+        )
     )
 
     if hasattr(result, 'errors') and result.errors:
-        print('Update failed:', result.errors)
-    else:
-        assignments = result.affected_packages[0].creative_assignments
-        print(f"Assigned {len(assignments)} new creatives")
+        raise Exception(f"Update failed: {result.errors}")
+
+    pkg = next((p for p in result.affected_packages if p.buyer_ref == 'ctv_package'), None)
+    assignment_count = len(pkg.creative_assignments) if pkg and pkg.creative_assignments else 0
+    print(f"Assigned {assignment_count} creatives")
 
 asyncio.run(replace_creatives())
 ```
@@ -316,11 +439,12 @@ Update multiple packages in one call:
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript test=false JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/client';
 
 const result = await testAgent.updateMediaBuy({
-  buyer_ref: 'summer_campaign_2025',
+  media_buy_id: 'mb_12345',
   packages: [
     {
       buyer_ref: 'ctv_package',
@@ -330,43 +454,52 @@ const result = await testAgent.updateMediaBuy({
     {
       buyer_ref: 'audio_package',
       budget: 30000,
-      active: false
+      paused: true
     }
   ]
 });
 
-if (result.errors) {
-  console.error('Update failed:', result.errors);
-} else {
-  console.log(`Updated ${result.affected_packages.length} packages`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
 }
+
+const validated = UpdateMediaBuyResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+console.log(`Updated ${validated.affected_packages?.length || 0} packages`);
 ```
 
-```python Python
+```python test=false Python
 import asyncio
 from adcp import test_agent
+from adcp.types import UpdateMediaBuyRequest
 
 async def update_multiple_packages():
-    result = await test_agent.simple.update_media_buy(
-        buyer_ref='summer_campaign_2025',
-        packages=[
-            {
-                'buyer_ref': 'ctv_package',
-                'budget': 50000,
-                'pacing': 'front_loaded'
-            },
-            {
-                'buyer_ref': 'audio_package',
-                'budget': 30000,
-                'active': False
-            }
-        ]
+    result = await test_agent.update_media_buy(
+        UpdateMediaBuyRequest(
+            media_buy_id='mb_12345',
+            packages=[
+                {
+                    'buyer_ref': 'ctv_package',
+                    'budget': 50000,
+                    'pacing': 'front_loaded'
+                },
+                {
+                    'buyer_ref': 'audio_package',
+                    'budget': 30000,
+                    'paused': True
+                }
+            ]
+        )
     )
 
     if hasattr(result, 'errors') and result.errors:
-        print('Update failed:', result.errors)
-    else:
-        print(f"Updated {len(result.affected_packages)} packages")
+        raise Exception(f"Update failed: {result.errors}")
+
+    print(f"Updated {len(result.affected_packages)} packages")
 
 asyncio.run(update_multiple_packages())
 ```

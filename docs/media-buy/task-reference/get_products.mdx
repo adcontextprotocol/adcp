@@ -22,6 +22,7 @@ Discover products with a natural language brief:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { GetProductsResponseSchema } from '@adcp/client';
 
 const result = await testAgent.getProducts({
   brief: 'Premium athletic footwear with innovative cushioning',
@@ -31,40 +32,18 @@ const result = await testAgent.getProducts({
   }
 });
 
-if (result.success && result.data) {
-  console.log(`Found ${result.data.products.length} products`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
 
-  // Expected response structure
-  const expectedResponse = {
-    products: [{
-      product_id: "connected_tv_premium",
-      name: "Connected TV - Premium Sports",
-      description: "Premium CTV inventory during live sports programming with guaranteed delivery",
-      publisher_properties: [{
-        publisher_domain: "sports-network.com",
-        property_ids: ["live-nfl", "live-nba"],
-        selection_type: "by_id"
-      }],
-      format_ids: ["video_15s_vast", "video_30s_vast"],
-      delivery_type: "guaranteed",
-      delivery_measurement: {
-        metric: "impressions",
-        min_exposures: 1000000,
-        provider: "third_party"
-      },
-      pricing_options: [{
-        pricing_option_id: "cpm_usd_fixed",
-        pricing_model: "cpm",
-        rate: 25.00,
-        currency: "USD",
-        is_fixed: true
-      }],
-      brief_relevance: "Premium sports inventory matches your athletic footwear campaign targeting active audiences"
-    }]
-  };
+// Validate response against schema
+const validated = GetProductsResponseSchema.parse(result.data);
+console.log(`Found ${validated.products.length} products`);
 
-  // In tests, this validates the response structure
-  // validateResponseShape(result.data, expectedResponse);
+// Access validated product fields
+for (const product of validated.products) {
+  console.log(`- ${product.name} (${product.delivery_type})`);
+  console.log(`  Formats: ${product.format_ids.map(f => f.id).join(', ')}`);
 }
 ```
 
@@ -524,12 +503,12 @@ const fullCatalog = await testAgent.getProducts({
   }
 });
 
-if (fullCatalog.success) {
-  console.log(`With auth: ${fullCatalog.data.products.length} products`);
-  console.log(`First product pricing: ${fullCatalog.data.products[0].pricing_options.length} options`);
-} else {
-  console.error(`Failed to get products: ${fullCatalog.error}`);
+if (!fullCatalog.success) {
+  throw new Error(`Failed to get products: ${fullCatalog.error}`);
 }
+
+console.log(`With auth: ${fullCatalog.data.products.length} products`);
+console.log(`First product pricing: ${fullCatalog.data.products[0].pricing_options.length} options`);
 
 // WITHOUT authentication - limited public catalog
 const publicCatalog = await testAgentNoAuth.getProducts({
@@ -540,12 +519,12 @@ const publicCatalog = await testAgentNoAuth.getProducts({
   }
 });
 
-if (publicCatalog.success) {
-  console.log(`Without auth: ${publicCatalog.data.products.length} products`);
-  console.log(`First product pricing: ${publicCatalog.data.products[0].pricing_options?.length || 0} options`);
-} else {
-  console.error(`Failed to get products: ${publicCatalog.error}`);
+if (!publicCatalog.success) {
+  throw new Error(`Failed to get products: ${publicCatalog.error}`);
 }
+
+console.log(`Without auth: ${publicCatalog.data.products.length} products`);
+console.log(`First product pricing: ${publicCatalog.data.products[0].pricing_options?.length || 0} options`);
 ```
 
 ```python Python

@@ -21,6 +21,7 @@ Upload creative assets:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { SyncCreativesResponseSchema } from '@adcp/client';
 
 const result = await testAgent.syncCreatives({
   creatives: [{
@@ -41,11 +42,20 @@ const result = await testAgent.syncCreatives({
   }]
 });
 
-// Check for operation-level errors first
-if (result.errors) {
-  console.error('Operation failed:', result.errors);
-} else {
-  console.log(`Synced ${result.creatives.length} creatives`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+// Check for operation-level errors first (discriminated union)
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('creatives' in validated) {
+  console.log(`Synced ${validated.creatives.length} creatives`);
 }
 ```
 
@@ -75,9 +85,9 @@ async def main():
 
     # Check for operation-level errors first
     if hasattr(result, 'errors') and result.errors:
-        print('Operation failed:', result.errors)
-    else:
-        print(f"Synced {len(result.creatives)} creatives")
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Synced {len(result.creatives)} creatives")
 
 asyncio.run(main())
 ```
@@ -165,6 +175,7 @@ Upload multiple creatives in one call:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { SyncCreativesResponseSchema } from '@adcp/client';
 
 const result = await testAgent.syncCreatives({
   creatives: [
@@ -217,14 +228,21 @@ const result = await testAgent.syncCreatives({
   ]
 });
 
-// Check for operation-level errors first
-if (result.errors) {
-  console.error('Operation failed:', result.errors);
-} else {
-  console.log(`Successfully synced ${result.creatives.length} creatives`);
-  result.creatives.forEach(creative => {
-  console.log(`  ${creative.name}: ${creative.platform_creative_id}`);
-});
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('creatives' in validated) {
+  console.log(`Successfully synced ${validated.creatives.length} creatives`);
+  validated.creatives.forEach(creative => {
+    console.log(`  ${creative.name}: ${creative.platform_creative_id}`);
+  });
 }
 ```
 
@@ -286,11 +304,11 @@ async def main():
 
     # Check for operation-level errors first
     if hasattr(result, 'errors') and result.errors:
-        print('Operation failed:', result.errors)
-    else:
-        print(f"Successfully synced {len(result.creatives)} creatives")
-        for creative in result.creatives:
-            print(f"  {creative.name}: {creative.platform_creative_id}")
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Successfully synced {len(result.creatives)} creatives")
+    for creative in result.creatives:
+        print(f"  {creative.name}: {creative.platform_creative_id}")
 
 asyncio.run(main())
 ```
@@ -305,6 +323,7 @@ Use the creative agent to generate creatives from a brand manifest. See the [Gen
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { SyncCreativesResponseSchema } from '@adcp/client';
 
 const result = await testAgent.syncCreatives({
   creatives: [{
@@ -322,11 +341,18 @@ const result = await testAgent.syncCreatives({
   }]
 });
 
-// Check for operation-level errors first
-if (result.errors) {
-  console.error('Operation failed:', result.errors);
-} else {
-  console.log('Generative creative synced:', result.creatives[0].creative_id);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('creatives' in validated) {
+  console.log('Generative creative synced:', validated.creatives[0].creative_id);
 }
 ```
 
@@ -353,9 +379,9 @@ async def main():
 
     # Check for operation-level errors first
     if hasattr(result, 'errors') and result.errors:
-        print('Operation failed:', result.errors)
-    else:
-        print(f"Generative creative synced: {result.creatives[0].creative_id}")
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Generative creative synced: {result.creatives[0].creative_id}")
 
 asyncio.run(main())
 ```
@@ -370,6 +396,7 @@ Validate creative configuration without uploading:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { SyncCreativesResponseSchema } from '@adcp/client';
 
 const result = await testAgent.syncCreatives({
   dry_run: true,
@@ -391,9 +418,15 @@ const result = await testAgent.syncCreatives({
   }]
 });
 
-if (result.errors && result.errors.length > 0) {
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors && validated.errors.length > 0) {
   console.log('Validation errors found:');
-  result.errors.forEach(error => console.log(`  - ${error.message}`));
+  validated.errors.forEach(error => console.log(`  - ${error.message}`));
 } else {
   console.log('Validation passed! Ready to sync.');
 }
@@ -425,11 +458,10 @@ async def main():
     )
 
     if hasattr(result, 'errors') and result.errors:
-        print('Validation errors found:')
-        for error in result.errors:
-            print(f"  - {error.message}")
-    else:
-        print('Validation passed! Ready to sync.')
+        error_messages = [error.message for error in result.errors]
+        raise Exception(f"Validation errors: {error_messages}")
+
+    print('Validation passed! Ready to sync.')
 
 asyncio.run(main())
 ```
@@ -444,6 +476,7 @@ Update only specific creatives from a large library without affecting others:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { SyncCreativesResponseSchema } from '@adcp/client';
 
 // Update just 2 creatives out of 100+ in the library
 const result = await testAgent.syncCreatives({
@@ -483,10 +516,18 @@ const result = await testAgent.syncCreatives({
   ]
 });
 
-if (result.errors) {
-  console.error('Update failed:', result.errors);
-} else {
-  console.log(`Updated ${result.creatives.length} creatives, others untouched`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('creatives' in validated) {
+  console.log(`Updated ${validated.creatives.length} creatives, others untouched`);
 }
 ```
 
@@ -534,9 +575,9 @@ async def main():
     )
 
     if hasattr(result, 'errors') and result.errors:
-        print('Update failed:', result.errors)
-    else:
-        print(f"Updated {len(result.creatives)} creatives, others untouched")
+        raise Exception(f"Update failed: {result.errors}")
+
+    print(f"Updated {len(result.creatives)} creatives, others untouched")
 
 asyncio.run(main())
 ```
