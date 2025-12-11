@@ -62,31 +62,25 @@ Unlike traditional SSPs:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { ListAuthorizedPropertiesResponseSchema } from '@adcp/client';
 
 // Get all authorized publishers
 const result = await testAgent.listAuthorizedProperties({});
 
-if (result.success && result.data) {
-  console.log(`Agent represents ${result.data.publisher_domains.length} publishers`);
-  console.log(`Primary channels: ${result.data.primary_channels?.join(', ')}`);
-  console.log(`Countries: ${result.data.primary_countries?.join(', ')}`);
-
-  result.data.publisher_domains.forEach(domain => {
-    console.log(`- ${domain}`);
-  });
-
-  // Expected response structure
-  const expectedResponse = {
-    publisher_domains: [
-      "sports-network.com",
-      "news-publisher.com"
-    ],
-    primary_channels: ["ctv", "display", "video"],
-    primary_countries: ["US", "CA", "GB"],
-    portfolio_description: "Premium publisher network focused on sports and news content with engaged audiences across CTV and digital platforms.",
-    last_updated: "2025-01-15T10:00:00Z"
-  };
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
 }
+
+// Validate response against schema
+const validated = ListAuthorizedPropertiesResponseSchema.parse(result.data);
+
+console.log(`Agent represents ${validated.publisher_domains.length} publishers`);
+console.log(`Primary channels: ${validated.primary_channels?.join(', ')}`);
+console.log(`Countries: ${validated.primary_countries?.join(', ')}`);
+
+validated.publisher_domains.forEach(domain => {
+  console.log(`- ${domain}`);
+});
 ```
 
 ```python Python
@@ -99,14 +93,14 @@ async def main():
 
     # Check for errors first
     if hasattr(result, 'errors') and result.errors:
-        print('Operation failed:', result.errors)
-    else:
-        print(f"Agent represents {len(result['publisher_domains'])} publishers")
-        print(f"Primary channels: {', '.join(result.get('primary_channels', []))}")
-        print(f"Countries: {', '.join(result.get('primary_countries', []))}")
+        raise Exception(f"Operation failed: {result.errors}")
 
-        for domain in result['publisher_domains']:
-            print(f"- {domain}")
+    print(f"Agent represents {len(result['publisher_domains'])} publishers")
+    print(f"Primary channels: {', '.join(result.get('primary_channels', []))}")
+    print(f"Countries: {', '.join(result.get('primary_countries', []))}")
+
+    for domain in result['publisher_domains']:
+        print(f"- {domain}")
 
 asyncio.run(main())
 ```
@@ -149,7 +143,7 @@ async def main():
 
     # Check for errors first
     if hasattr(result, 'errors') and result.errors:
-        print('Operation failed:', result.errors)
+        raise Exception(f"Operation failed: {result.errors}")
     elif result['publisher_domains']:
         print(f"Agent represents {len(result['publisher_domains'])} of requested publishers")
         for domain in result['publisher_domains']:
@@ -166,52 +160,53 @@ asyncio.run(main())
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 
 // Step 1: Get authorized publishers
 const authResult = await testAgent.listAuthorizedProperties({});
 
-if (authResult.success && authResult.data) {
-  // Step 2: Fetch property definitions from each publisher
-  const publisherProperties = {};
+if (!authResult.success) {
+  throw new Error(`Failed to get authorized properties: ${authResult.error}`);
+}
 
-  for (const domain of authResult.data.publisher_domains) {
-    try {
-      const response = await fetch(`https://${domain}/.well-known/adagents.json`);
-      const adagents = await response.json();
+// Step 2: Fetch property definitions from each publisher
+const publisherProperties = {};
 
-      // Find this agent in publisher's authorized list
-      const agentAuth = adagents.authorized_agents.find(
-        a => a.url === 'https://test-agent.adcontextprotocol.org/mcp'
+for (const domain of authResult.data.publisher_domains) {
+  const response = await fetch(`https://${domain}/.well-known/adagents.json`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${domain}: ${response.status}`);
+  }
+  const adagents = await response.json();
+
+  // Find this agent in publisher's authorized list
+  const agentAuth = adagents.authorized_agents.find(
+    a => a.url === 'https://test-agent.adcontextprotocol.org/mcp'
+  );
+
+  if (agentAuth) {
+    // Resolve authorized properties based on scope
+    let properties;
+    if (agentAuth.property_ids) {
+      properties = adagents.properties.filter(
+        p => agentAuth.property_ids.includes(p.property_id)
       );
-
-      if (agentAuth) {
-        // Resolve authorized properties based on scope
-        let properties;
-        if (agentAuth.property_ids) {
-          properties = adagents.properties.filter(
-            p => agentAuth.property_ids.includes(p.property_id)
-          );
-        } else if (agentAuth.property_tags) {
-          properties = adagents.properties.filter(
-            p => p.tags?.some(tag => agentAuth.property_tags.includes(tag))
-          );
-        } else {
-          properties = adagents.properties; // All properties
-        }
-
-        publisherProperties[domain] = properties;
-        console.log(`${domain}: ${properties.length} properties authorized`);
-      }
-    } catch (error) {
-      console.error(`Failed to fetch ${domain}: ${error.message}`);
+    } else if (agentAuth.property_tags) {
+      properties = adagents.properties.filter(
+        p => p.tags?.some(tag => agentAuth.property_tags.includes(tag))
+      );
+    } else {
+      properties = adagents.properties; // All properties
     }
+
+    publisherProperties[domain] = properties;
+    console.log(`${domain}: ${properties.length} properties authorized`);
   }
 }
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 from adcp import test_agent
 import requests
@@ -222,38 +217,36 @@ async def main():
 
     # Check for errors first
     if hasattr(auth_result, 'errors') and auth_result.errors:
-        print('Failed to get authorized properties:', auth_result.errors)
-    else:
-        # Step 2: Fetch property definitions from each publisher
-        publisher_properties = {}
+        raise Exception(f"Failed to get authorized properties: {auth_result.errors}")
 
-        for domain in auth_result['publisher_domains']:
-            try:
-                response = requests.get(f"https://{domain}/.well-known/adagents.json")
-                adagents = response.json()
+    # Step 2: Fetch property definitions from each publisher
+    publisher_properties = {}
 
-                # Find this agent in publisher's authorized list
-                agent_auth = next(
-                    (a for a in adagents['authorized_agents'] if a['url'] == 'https://test-agent.adcontextprotocol.org/mcp'),
-                    None
-                )
+    for domain in auth_result['publisher_domains']:
+        response = requests.get(f"https://{domain}/.well-known/adagents.json")
+        response.raise_for_status()
+        adagents = response.json()
 
-                if agent_auth:
-                    # Resolve authorized properties based on scope
-                    if 'property_ids' in agent_auth:
-                        properties = [p for p in adagents['properties']
-                                     if p['property_id'] in agent_auth['property_ids']]
-                    elif 'property_tags' in agent_auth:
-                        properties = [p for p in adagents['properties']
-                                     if any(tag in agent_auth['property_tags']
-                                           for tag in p.get('tags', []))]
-                    else:
-                        properties = adagents['properties']  # All properties
+        # Find this agent in publisher's authorized list
+        agent_auth = next(
+            (a for a in adagents['authorized_agents'] if a['url'] == 'https://test-agent.adcontextprotocol.org/mcp'),
+            None
+        )
 
-                    publisher_properties[domain] = properties
-                    print(f"{domain}: {len(properties)} properties authorized")
-            except Exception as error:
-                print(f"Failed to fetch {domain}: {error}")
+        if agent_auth:
+            # Resolve authorized properties based on scope
+            if 'property_ids' in agent_auth:
+                properties = [p for p in adagents['properties']
+                             if p['property_id'] in agent_auth['property_ids']]
+            elif 'property_tags' in agent_auth:
+                properties = [p for p in adagents['properties']
+                             if any(tag in agent_auth['property_tags']
+                                   for tag in p.get('tags', []))]
+            else:
+                properties = adagents['properties']  # All properties
+
+            publisher_properties[domain] = properties
+            print(f"{domain}: {len(properties)} properties authorized")
 
 asyncio.run(main())
 ```
@@ -303,24 +296,24 @@ async def main():
 
     # Check for errors first
     if hasattr(result, 'errors') and result.errors:
-        print('Operation failed:', result.errors)
-    else:
-        # Check for CTV specialists
-        if 'ctv' in result.get('primary_channels', []):
-            print('CTV specialist')
+        raise Exception(f"Operation failed: {result.errors}")
 
-        # Check geographic focus
-        if 'US' in result.get('primary_countries', []):
-            print('US market focus')
+    # Check for CTV specialists
+    if 'ctv' in result.get('primary_channels', []):
+        print('CTV specialist')
 
-        # Check for multi-channel capability
-        channels = result.get('primary_channels', [])
-        if len(channels) > 2:
-            print(f"Multi-channel agent ({', '.join(channels)})")
+    # Check geographic focus
+    if 'US' in result.get('primary_countries', []):
+        print('US market focus')
 
-        # Read portfolio description
-        if result.get('portfolio_description'):
-            print(f"\nAbout: {result['portfolio_description']}")
+    # Check for multi-channel capability
+    channels = result.get('primary_channels', [])
+    if len(channels) > 2:
+        print(f"Multi-channel agent ({', '.join(channels)})")
+
+    # Read portfolio description
+    if result.get('portfolio_description'):
+        print(f"\nAbout: {result['portfolio_description']}")
 
 asyncio.run(main())
 ```
@@ -376,29 +369,29 @@ async def main():
 
     # Check for errors first
     if hasattr(result, 'errors') and result.errors:
-        print('Operation failed:', result.errors)
-    else:
-        # Example cache from previous fetch (in practice, load from storage)
-        cache = {
-            'example-publisher.com': {
-                'last_updated': '2024-01-15T10:00:00Z',
-                'properties': []
-            }
+        raise Exception(f"Operation failed: {result.errors}")
+
+    # Example cache from previous fetch (in practice, load from storage)
+    cache = {
+        'example-publisher.com': {
+            'last_updated': '2024-01-15T10:00:00Z',
+            'properties': []
         }
+    }
 
-        for domain in result['publisher_domains']:
-            cached = cache.get(domain)
+    for domain in result['publisher_domains']:
+        cached = cache.get(domain)
 
-            if cached and result.get('last_updated'):
-                cached_date = datetime.fromisoformat(cached['last_updated'].replace('Z', '+00:00'))
-                agent_date = datetime.fromisoformat(result['last_updated'].replace('Z', '+00:00'))
+        if cached and result.get('last_updated'):
+            cached_date = datetime.fromisoformat(cached['last_updated'].replace('Z', '+00:00'))
+            agent_date = datetime.fromisoformat(result['last_updated'].replace('Z', '+00:00'))
 
-                if cached_date >= agent_date:
-                    print(f"{domain}: Using cached data (still fresh)")
-                    continue
+            if cached_date >= agent_date:
+                print(f"{domain}: Using cached data (still fresh)")
+                continue
 
-            print(f"{domain}: Fetching updated property definitions")
-            # Fetch from publisher's adagents.json...
+        print(f"{domain}: Fetching updated property definitions")
+        # Fetch from publisher's adagents.json...
 
 asyncio.run(main())
 ```

@@ -139,9 +139,12 @@ function extractCodeBlocks(filePath) {
     // Test if:
     // 1. Page has testable: true in frontmatter, OR
     // 2. Individual block has test=true or testable marker (legacy)
-    const shouldTest = isTestablePage ||
+    // 3. BUT NOT if block has test=false marker (explicit opt-out)
+    const isExplicitlyDisabled = /\btest=false\b/.test(metadata);
+    const shouldTest = !isExplicitlyDisabled && (
+                      isTestablePage ||
                       /\btest=true\b/.test(metadata) ||
-                      /\btestable\b/.test(metadata);
+                      /\btestable\b/.test(metadata));
 
     blocks.push({
       file: filePath,
@@ -234,9 +237,15 @@ async function testJavaScriptSnippet(snippet) {
     fs.writeFileSync(tempFile, snippet.code);
 
     // Execute with Node.js from project root to access node_modules
+    // Set auth token env var - the SDK looks for env var named by auth_token_env value
     const { stdout, stderr } = await execAsync(`node ${tempFile}`, {
       timeout: 60000, // 60 second timeout (API calls can take time)
-      cwd: path.join(__dirname, '..') // Run from project root
+      cwd: path.join(__dirname, '..'), // Run from project root
+      env: {
+        ...process.env,
+        [MCP_TOKEN]: MCP_TOKEN, // SDK expects env var named by token value to contain token
+        [A2A_TOKEN]: A2A_TOKEN
+      }
     });
 
     // Check if stderr contains only warnings (not errors)

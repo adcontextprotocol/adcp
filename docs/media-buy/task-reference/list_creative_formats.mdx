@@ -70,6 +70,7 @@ Buyers can recursively query creative_agents. **Track visited URLs to avoid infi
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
 
 // Get full specs for formats returned by get_products
 const result = await testAgent.listCreativeFormats({
@@ -85,30 +86,40 @@ const result = await testAgent.listCreativeFormats({
   ]
 });
 
-result.formats.forEach(format => {
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+validated.formats.forEach(format => {
   console.log(`${format.name}: ${format.assets_required.length} assets required`);
 });
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
+from adcp.types import ListCreativeFormatsRequest, FormatId
 
-# Get full specs for formats returned by get_products
-result = test_agent.list_creative_formats(
-    format_ids=[
-        {
-            'agent_url': 'https://creative.adcontextprotocol.org',
-            'id': 'video_15s_hosted'
-        },
-        {
-            'agent_url': 'https://creative.adcontextprotocol.org',
-            'id': 'display_300x250'
-        }
-    ]
-)
+async def main():
+    # Get full specs for formats returned by get_products
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(
+            format_ids=[
+                FormatId(agent_url='https://creative.adcontextprotocol.org', id='video_15s_hosted'),
+                FormatId(agent_url='https://creative.adcontextprotocol.org', id='display_300x250')
+            ]
+        )
+    )
 
-for format in result['formats']:
-    print(f"{format['name']}: {len(format['assets_required'])} assets required")
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    for fmt in result.formats:
+        print(f"{fmt.name}: {len(fmt.assets_required)} assets required")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -119,16 +130,22 @@ for format in result['formats']:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
 
 // Find formats that accept images and text
 const result = await testAgent.listCreativeFormats({
   asset_types: ['image', 'text']
 });
 
-console.log(`Found ${result.formats.length} formats`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+console.log(`Found ${validated.formats.length} formats`);
 
 // Examine asset requirements
-result.formats.forEach(format => {
+validated.formats.forEach(format => {
   console.log(`\n${format.name}:`);
   format.assets_required.forEach(asset => {
     console.log(`  - ${asset.asset_role}: ${asset.asset_type}`);
@@ -137,20 +154,26 @@ result.formats.forEach(format => {
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
+from adcp.types import ListCreativeFormatsRequest
 
-# Find formats that accept images and text
-result = test_agent.list_creative_formats(
-    asset_types=['image', 'text']
-)
+async def main():
+    # Find formats that accept images and text
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(asset_types=['image', 'text'])
+    )
 
-print(f"Found {len(result['formats'])} formats")
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
 
-# Examine asset requirements
-for format in result['formats']:
-    print(f"\n{format['name']}:")
-    for asset in format['assets_required']:
-        print(f"  - {asset['asset_role']}: {asset['asset_type']}")
+    print(f"Found {len(result.formats)} formats")
+    for fmt in result.formats:
+        print(f"\n{fmt.name}:")
+        for asset in fmt.assets_required:
+            print(f"  - {asset.asset_role}: {asset.asset_type}")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -161,6 +184,7 @@ for format in result['formats']:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
 
 // Find formats that accept JavaScript or HTML tags
 const result = await testAgent.listCreativeFormats({
@@ -169,9 +193,14 @@ const result = await testAgent.listCreativeFormats({
   max_height: 250
 });
 
-console.log(`Found ${result.formats.length} third-party tag formats ≤ 970×250`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
 
-result.formats.forEach(format => {
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+console.log(`Found ${validated.formats.length} third-party tag formats ≤ 970×250`);
+
+validated.formats.forEach(format => {
   const renders = format.renders || [];
   if (renders.length > 0) {
     const dims = renders[0].dimensions;
@@ -181,22 +210,30 @@ result.formats.forEach(format => {
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
+from adcp.types import ListCreativeFormatsRequest
 
-# Find formats that accept JavaScript or HTML tags
-result = test_agent.list_creative_formats(
-    asset_types=['javascript', 'html'],
-    max_width=970,
-    max_height=250
-)
+async def main():
+    # Find formats that accept JavaScript or HTML tags
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(
+            asset_types=['javascript', 'html'],
+            max_width=970,
+            max_height=250
+        )
+    )
 
-print(f"Found {len(result['formats'])} third-party tag formats ≤ 970×250")
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
 
-for format in result['formats']:
-    renders = format.get('renders', [])
-    if renders:
-        dims = renders[0]['dimensions']
-        print(f"{format['name']}: {dims['width']}×{dims['height']}")
+    print(f"Found {len(result.formats)} third-party tag formats ≤ 970×250")
+    for fmt in result.formats:
+        if fmt.renders:
+            dims = fmt.renders[0].dimensions
+            print(f"{fmt.name}: {dims.width}×{dims.height}")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -207,17 +244,23 @@ for format in result['formats']:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
 
 // Find video formats
 const result = await testAgent.listCreativeFormats({
   type: 'video'
 });
 
-console.log(`Found ${result.formats.length} video formats`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+console.log(`Found ${validated.formats.length} video formats`);
 
 // Group by duration
 const byDuration = {};
-result.formats.forEach(format => {
+validated.formats.forEach(format => {
   const duration = format.requirements?.duration || 'unknown';
   if (!byDuration[duration]) byDuration[duration] = [];
   byDuration[duration].push(format.name);
@@ -229,24 +272,29 @@ Object.entries(byDuration).forEach(([duration, formats]) => {
 ```
 
 ```python Python
-from adcp import test_agent
-
-# Find video formats
-result = test_agent.list_creative_formats(
-    type='video'
-)
-
-print(f"Found {len(result['formats'])} video formats")
-
-# Group by duration
+import asyncio
 from collections import defaultdict
-by_duration = defaultdict(list)
-for format in result['formats']:
-    duration = format.get('requirements', {}).get('duration', 'unknown')
-    by_duration[duration].append(format['name'])
+from adcp import test_agent
+from adcp.types import ListCreativeFormatsRequest
 
-for duration, formats in by_duration.items():
-    print(f"{duration}s: {', '.join(formats)}")
+async def main():
+    # Find video formats
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(type='video')
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    print(f"Found {len(result.formats)} video formats")
+    by_duration = defaultdict(list)
+    for fmt in result.formats:
+        duration = getattr(fmt.requirements, 'duration', 'unknown') if fmt.requirements else 'unknown'
+        by_duration[duration].append(fmt.name)
+    for duration, formats in by_duration.items():
+        print(f"{duration}s: {', '.join(formats)}")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -257,31 +305,44 @@ for duration, formats in by_duration.items():
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
 
 // Find mobile-optimized formats
 const result = await testAgent.listCreativeFormats({
   name_search: 'mobile'
 });
 
-console.log(`Found ${result.formats.length} mobile formats`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
 
-result.formats.forEach(format => {
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+console.log(`Found ${validated.formats.length} mobile formats`);
+
+validated.formats.forEach(format => {
   console.log(`- ${format.name} (${format.type})`);
 });
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
+from adcp.types import ListCreativeFormatsRequest
 
-# Find mobile-optimized formats
-result = test_agent.list_creative_formats(
-    name_search='mobile'
-)
+async def main():
+    # Find mobile-optimized formats
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(name_search='mobile')
+    )
 
-print(f"Found {len(result['formats'])} mobile formats")
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
 
-for format in result['formats']:
-    print(f"- {format['name']} ({format['type']})")
+    print(f"Found {len(result.formats)} mobile formats")
+    for fmt in result.formats:
+        print(f"- {fmt.name} ({fmt.type})")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -292,6 +353,7 @@ for format in result['formats']:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
 
 // Find formats that adapt to container size
 const result = await testAgent.listCreativeFormats({
@@ -299,26 +361,37 @@ const result = await testAgent.listCreativeFormats({
   type: 'display'
 });
 
-console.log(`Found ${result.formats.length} responsive display formats`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
 
-result.formats.forEach(format => {
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+console.log(`Found ${validated.formats.length} responsive display formats`);
+
+validated.formats.forEach(format => {
   console.log(`${format.name}: Adapts to container`);
 });
 ```
 
 ```python Python
+import asyncio
 from adcp import test_agent
+from adcp.types import ListCreativeFormatsRequest
 
-# Find formats that adapt to container size
-result = test_agent.list_creative_formats(
-    is_responsive=True,
-    type='display'
-)
+async def main():
+    # Find formats that adapt to container size
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(is_responsive=True, type='display')
+    )
 
-print(f"Found {len(result['formats'])} responsive display formats")
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
 
-for format in result['formats']:
-    print(f"{format['name']}: Adapts to container")
+    print(f"Found {len(result.formats)} responsive display formats")
+    for fmt in result.formats:
+        print(f"{fmt.name}: Adapts to container")
+
+asyncio.run(main())
 ```
 
 </CodeGroup>
@@ -357,7 +430,7 @@ The `asset_types` parameter uses **OR logic** - formats matching ANY specified a
 
 **To find formats requiring specific combinations**, filter results after retrieval:
 
-```javascript
+```javascript test=false
 // Find formats requiring BOTH image AND text
 const result = await agent.listCreativeFormats();
 const imageAndText = result.formats.filter(format => {
@@ -375,7 +448,7 @@ Some formats produce multiple rendered pieces:
 
 Dimension filters match if **at least one render** fits:
 
-```javascript
+```javascript test=false
 // Find formats with ANY render ≤ 300×250
 const result = await agent.listCreativeFormats({
   max_width: 300,

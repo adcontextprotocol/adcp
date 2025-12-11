@@ -50,12 +50,20 @@ if (result.success && result.data) {
 ```python Python
 import asyncio
 from adcp import test_agent
+from adcp.types import GetProductsRequest, BrandManifest
 
 async def discover():
-    result = await test_agent.simple.get_products(
-        brand_manifest={'name': 'Nike', 'url': 'https://nike.com'},
-        brief='Premium athletic footwear with innovative cushioning'
+    result = await test_agent.get_products(
+        GetProductsRequest(
+            brand_manifest=BrandManifest(name='Nike', url='https://nike.com'),
+            brief='Premium athletic footwear with innovative cushioning'
+        )
     )
+
+    # Check for errors (discriminated union response)
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Error: {result.errors}")
+
     print(f"✓ Found {len(result.products)} matching products")
 
 asyncio.run(discover())

@@ -19,11 +19,12 @@
     "test:examples": "node tests/example-validation-simple.test.js",
     "test:extensions": "node tests/extension-fields.test.js",
     "test:snippets": "node tests/snippet-validation.test.js",
+    "test:error-handling": "node tests/check-error-handling.js",
     "test:unit": "jest --coverage",
     "test:registry": "vitest run server/tests",
     "generate-openapi": "node scripts/generate-openapi.js",
-    "test": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:unit && npm run typecheck",
-    "test:all": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:snippets && npm run typecheck",
+    "test": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:error-handling && npm run test:unit && npm run typecheck",
+    "test:all": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:error-handling && npm run test:snippets && npm run typecheck",
     "precommit": "npm test",
     "prepare": "husky",
     "changeset": "changeset",
@@ -33,7 +34,7 @@
     "verify-version-sync": "node scripts/verify-version-sync.js"
   },
   "dependencies": {
-    "@adcp/client": "^3.2.1",
+    "@adcp/client": "^3.3.3",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "@types/jsonwebtoken": "^9.0.10",
     "@workos-inc/node": "^7.74.2",

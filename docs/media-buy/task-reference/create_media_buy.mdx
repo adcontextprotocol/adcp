@@ -19,11 +19,19 @@ Create a simple media buy with two packages:
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/client';
+
+// Calculate dates dynamically - start tomorrow, end in 90 days
+const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+tomorrow.setHours(0, 0, 0, 0);
+const endDate = new Date(tomorrow);
+endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  buyer_ref: 'summer_campaign_2025',
+  buyer_ref: 'summer_campaign_' + Date.now(),
   brand_manifest: {
     name: 'Nike',
     url: 'https://nike.com'
@@ -39,7 +47,7 @@ const result = await testAgent.createMediaBuy({
           id: 'display_300x250_image'
         }
       ],
-      budget: 30000,
+      budget: 5000,
       bid_price: 5.00
     },
     {
@@ -52,31 +60,46 @@ const result = await testAgent.createMediaBuy({
           id: 'display_300x250_html'
         }
       ],
-      budget: 20000,
+      budget: 5000,
       bid_price: 4.50
     }
   ],
-  start_time: '2025-06-01T00:00:00Z',
-  end_time: '2025-08-31T23:59:59Z'
+  start_time: tomorrow.toISOString(),
+  end_time: endDate.toISOString()
 });
 
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+
 // Check for errors (discriminated union response)
-if (result.errors) {
-  console.error('Failed to create media buy:', result.errors);
-} else {
-  console.log(`Created media buy ${result.media_buy_id}`);
-  console.log(`Upload creatives by: ${result.creative_deadline}`);
-  console.log(`Packages created: ${result.packages.length}`);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Failed to create media buy: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('media_buy_id' in validated) {
+  console.log(`Created media buy ${validated.media_buy_id}`);
+  console.log(`Upload creatives by: ${validated.creative_deadline}`);
+  console.log(`Packages created: ${validated.packages.length}`);
 }
 ```
 
-```python Python
+```python Python test=false
 import asyncio
+import time
+from datetime import datetime, timedelta, timezone
 from adcp import test_agent
 
 async def create_campaign():
+    # Calculate dates dynamically - start tomorrow, end in 90 days
+    tomorrow = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    end_date = tomorrow + timedelta(days=90)
+
     result = await test_agent.simple.create_media_buy(
-        buyer_ref='summer_campaign_2025',
+        buyer_ref=f'summer_campaign_{int(time.time() * 1000)}',
         brand_manifest={
             'name': 'Nike',
             'url': 'https://nike.com'
@@ -92,7 +115,8 @@ async def create_campaign():
                         'id': 'display_300x250_image'
                     }
                 ],
-                'budget': 30000
+                'budget': 5000,
+                'bid_price': 5.00
             },
             {
                 'buyer_ref': 'audio_package',
@@ -104,25 +128,26 @@ async def create_campaign():
                         'id': 'display_300x250_html'
                     }
                 ],
-                'budget': 20000
+                'budget': 5000,
+                'bid_price': 4.50
             }
         ],
-        start_time='2025-06-01T00:00:00Z',
-        end_time='2025-08-31T23:59:59Z'
+        start_time=tomorrow.isoformat().replace('+00:00', 'Z'),
+        end_time=end_date.isoformat().replace('+00:00', 'Z')
     )
 
     # Check for errors (discriminated union response)
     if hasattr(result, 'errors') and result.errors:
-        print('Failed to create media buy:', result.errors)
-    else:
-        print(f"Created media buy {result.media_buy_id}")
-        print(f"Upload creatives by: {result.creative_deadline}")
-        print(f"Packages created: {len(result.packages)}")
+        raise Exception(f"Failed to create media buy: {result.errors}")
+
+    print(f"Created media buy {result.media_buy_id}")
+    print(f"Upload creatives by: {result.creative_deadline}")
+    print(f"Packages created: {len(result.packages)}")
 
 asyncio.run(create_campaign())
 ```
 
-```bash CLI
+```bash CLI test=false
 npx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   create_media_buy \
@@ -188,9 +213,14 @@ Add geographic restrictions and frequency capping:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/client';
+
+// Calculate end date dynamically - 90 days from now
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  buyer_ref: 'regional_campaign_2025',
+  buyer_ref: 'regional_campaign_' + Date.now(),
   brand_manifest: {
     name: 'Regional Retailer',
     url: 'https://example-retailer.com'
@@ -203,7 +233,8 @@ const result = await testAgent.createMediaBuy({
       agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250_image'
     }],
-    budget: 50000,
+    budget: 5000,
+    bid_price: 5.00,
     targeting_overlay: {
       geo_country_any_of: ['US'],
       geo_region_any_of: ['CA', 'NY'],
@@ -213,36 +244,49 @@ const result = await testAgent.createMediaBuy({
     }
   }],
   start_time: 'asap',
-  end_time: '2025-12-31T23:59:59Z'
+  end_time: endDate.toISOString()
 });
 
-if (result.errors) {
-  console.error('Creation failed:', result.errors);
-} else {
-  console.log(`Campaign ${result.media_buy_id} created with targeting`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Creation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('media_buy_id' in validated) {
+  console.log(`Campaign ${validated.media_buy_id} created with targeting`);
 }
 ```
 
 ```python Python
 import asyncio
+import time
+from datetime import datetime, timedelta, timezone
 from adcp import test_agent
 
 async def create_targeted_campaign():
+    # Calculate end date dynamically - 90 days from now
+    end_date = datetime.now(timezone.utc) + timedelta(days=90)
+
     result = await test_agent.simple.create_media_buy(
-        buyer_ref='regional_campaign_2025',
+        buyer_ref=f'regional_campaign_{int(time.time() * 1000)}',
         brand_manifest={
             'name': 'Regional Retailer',
             'url': 'https://example-retailer.com'
         },
         packages=[{
             'buyer_ref': 'ctv_regional',
-            'product_id': 'ctv_sports_premium',
-            'pricing_option_id': 'cpm-fixed-sports',
+            'product_id': 'prod_d979b543',
+            'pricing_option_id': 'cpm_usd_auction',
             'format_ids': [{
                 'agent_url': 'https://creative.adcontextprotocol.org',
-                'id': 'video_standard_30s'
+                'id': 'display_300x250_image'
             }],
-            'budget': 50000,
+            'budget': 5000,
+            'bid_price': 5.00,
             'targeting_overlay': {
                 'geo_country_any_of': ['US'],
                 'geo_region_any_of': ['CA', 'NY'],
@@ -252,13 +296,13 @@ async def create_targeted_campaign():
             }
         }],
         start_time='asap',
-        end_time='2025-12-31T23:59:59Z'
+        end_time=end_date.isoformat().replace('+00:00', 'Z')
     )
 
     if hasattr(result, 'errors') and result.errors:
-        print('Creation failed:', result.errors)
-    else:
-        print(f"Campaign {result.media_buy_id} created with targeting")
+        raise Exception(f"Creation failed: {result.errors}")
+
+    print(f"Campaign {result.media_buy_id} created with targeting")
 
 asyncio.run(create_targeted_campaign())
 ```
@@ -271,11 +315,16 @@ Upload creatives at the same time as creating the campaign:
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/client';
+
+// Calculate end date dynamically - 90 days from now
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  buyer_ref: 'campaign_with_creatives',
+  buyer_ref: 'campaign_with_creatives_' + Date.now(),
   brand_manifest: {
     name: 'Nike',
     url: 'https://nike.com'
@@ -288,7 +337,8 @@ const result = await testAgent.createMediaBuy({
       agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250_image'
     }],
-    budget: 30000,
+    budget: 5000,
+    bid_price: 5.00,
     creatives: [{
       creative_id: 'hero_video_30s',
       name: 'Hero Video',
@@ -297,71 +347,82 @@ const result = await testAgent.createMediaBuy({
         id: 'display_300x250_image'
       },
       assets: {
-        video: {
-          url: 'https://cdn.example.com/hero-30s.mp4',
-          width: 1920,
-          height: 1080,
-          duration_ms: 30000
+        image: {
+          url: 'https://cdn.example.com/hero-banner.jpg',
+          width: 300,
+          height: 250
         }
       }
     }]
   }],
   start_time: 'asap',
-  end_time: '2025-12-31T23:59:59Z'
+  end_time: endDate.toISOString()
 });
 
-if (result.errors) {
-  console.error('Creation failed:', result.errors);
-} else {
-  console.log(`Campaign created with ${result.packages[0].creative_assignments.length} creatives`);
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Creation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('packages' in validated) {
+  console.log(`Campaign created with ${validated.packages[0].creative_assignments.length} creatives`);
 }
 ```
 
-```python Python
+```python Python test=false
 import asyncio
+import time
+from datetime import datetime, timedelta, timezone
 from adcp import test_agent
 
 async def create_with_creatives():
+    # Calculate end date dynamically - 90 days from now
+    end_date = datetime.now(timezone.utc) + timedelta(days=90)
+
     result = await test_agent.simple.create_media_buy(
-        buyer_ref='campaign_with_creatives',
+        buyer_ref=f'campaign_with_creatives_{int(time.time() * 1000)}',
         brand_manifest={
             'name': 'Nike',
             'url': 'https://nike.com'
         },
         packages=[{
             'buyer_ref': 'ctv_package',
-            'product_id': 'ctv_sports_premium',
-            'pricing_option_id': 'cpm-fixed-sports',
+            'product_id': 'prod_d979b543',
+            'pricing_option_id': 'cpm_usd_auction',
             'format_ids': [{
                 'agent_url': 'https://creative.adcontextprotocol.org',
-                'id': 'video_standard_30s'
+                'id': 'display_300x250_image'
             }],
-            'budget': 30000,
+            'budget': 5000,
+            'bid_price': 5.00,
             'creatives': [{
                 'creative_id': 'hero_video_30s',
                 'name': 'Hero Video',
                 'format_id': {
                     'agent_url': 'https://creative.adcontextprotocol.org',
-                    'id': 'video_standard_30s'
+                    'id': 'display_300x250_image'
                 },
                 'assets': {
-                    'video': {
-                        'url': 'https://cdn.example.com/hero-30s.mp4',
-                        'width': 1920,
-                        'height': 1080,
-                        'duration_ms': 30000
+                    'image': {
+                        'url': 'https://cdn.example.com/hero-banner.jpg',
+                        'width': 300,
+                        'height': 250
                     }
                 }
             }]
         }],
         start_time='asap',
-        end_time='2025-12-31T23:59:59Z'
+        end_time=end_date.isoformat().replace('+00:00', 'Z')
     )
 
     if hasattr(result, 'errors') and result.errors:
-        print('Creation failed:', result.errors)
-    else:
-        print(f"Campaign created with {len(result.packages[0].creative_assignments)} creatives")
+        raise Exception(f"Creation failed: {result.errors}")
+
+    print(f"Campaign created with {len(result.packages[0].creative_assignments)} creatives")
 
 asyncio.run(create_with_creatives())
 ```
@@ -376,9 +437,14 @@ Receive automated reporting notifications:
 
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/client';
+
+// Calculate end date dynamically - 90 days from now
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  buyer_ref: 'campaign_with_reporting',
+  buyer_ref: 'campaign_with_reporting_' + Date.now(),
   brand_manifest: {
     name: 'Nike',
     url: 'https://nike.com'
@@ -391,10 +457,11 @@ const result = await testAgent.createMediaBuy({
       agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250_image'
     }],
-    budget: 30000
+    budget: 5000,
+    bid_price: 5.00
   }],
   start_time: 'asap',
-  end_time: '2025-12-31T23:59:59Z',
+  end_time: endDate.toISOString(),
   reporting_webhook: {
     url: 'https://buyer.example.com/webhooks/reporting',
     authentication: {
@@ -406,36 +473,49 @@ const result = await testAgent.createMediaBuy({
   }
 });
 
-if (result.errors) {
-  console.error('Creation failed:', result.errors);
-} else {
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Creation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('media_buy_id' in validated) {
   console.log(`Campaign created - daily reports will be sent to webhook`);
 }
 ```
 
 ```python Python
 import asyncio
+import time
+from datetime import datetime, timedelta, timezone
 from adcp import test_agent
 
 async def create_with_reporting():
+    # Calculate end date dynamically - 90 days from now
+    end_date = datetime.now(timezone.utc) + timedelta(days=90)
+
     result = await test_agent.simple.create_media_buy(
-        buyer_ref='campaign_with_reporting',
+        buyer_ref=f'campaign_with_reporting_{int(time.time() * 1000)}',
         brand_manifest={
             'name': 'Nike',
             'url': 'https://nike.com'
         },
         packages=[{
             'buyer_ref': 'ctv_package',
-            'product_id': 'ctv_sports_premium',
-            'pricing_option_id': 'cpm-fixed-sports',
+            'product_id': 'prod_d979b543',
+            'pricing_option_id': 'cpm_usd_auction',
             'format_ids': [{
                 'agent_url': 'https://creative.adcontextprotocol.org',
-                'id': 'video_standard_30s'
+                'id': 'display_300x250_image'
             }],
-            'budget': 30000
+            'budget': 5000,
+            'bid_price': 5.00
         }],
         start_time='asap',
-        end_time='2025-12-31T23:59:59Z',
+        end_time=end_date.isoformat().replace('+00:00', 'Z'),
         reporting_webhook={
             'url': 'https://buyer.example.com/webhooks/reporting',
             'authentication': {
@@ -448,9 +528,9 @@ async def create_with_reporting():
     )
 
     if hasattr(result, 'errors') and result.errors:
-        print('Creation failed:', result.errors)
-    else:
-        print('Campaign created - daily reports will be sent to webhook')
+        raise Exception(f"Creation failed: {result.errors}")
+
+    print('Campaign created - daily reports will be sent to webhook')
 
 asyncio.run(create_with_reporting())
 ```

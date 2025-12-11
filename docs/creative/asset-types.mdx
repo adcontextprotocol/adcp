@@ -337,7 +337,7 @@ The keys in the assets object correspond to the `asset_id` values defined in the
 
 ## Usage in Creative Formats
 
-Creative formats specify their required assets using these standardized types:
+Creative formats specify their required assets using `assets_required` (an array):
 
 ```json
 {
@@ -345,16 +345,19 @@ Creative formats specify their required assets using these standardized types:
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_15s_hosted"
   },
-  "assets": [
+  "assets_required": [
     {
+      "item_type": "individual",
       "asset_id": "video_file",
       "asset_type": "video",
       "required": true,
-      "duration_seconds": 15,
-      "acceptable_formats": ["mp4"],
-      "acceptable_codecs": ["h264"],
-      "acceptable_resolutions": ["1920x1080", "1280x720"],
-      "max_file_size_mb": 30
+      "requirements": {
+        "duration_seconds": 15,
+        "acceptable_formats": ["mp4"],
+        "acceptable_codecs": ["h264"],
+        "acceptable_resolutions": ["1920x1080", "1280x720"],
+        "max_file_size_mb": 30
+      }
     }
   ]
 }
