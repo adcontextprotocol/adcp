@@ -866,21 +866,6 @@
             <input type="hidden" id="tags" name="tags">
           </div>
 
-          <!-- Visibility -->
-          <h2>Visibility</h2>
-          <div class="toggle-group">
-            <div class="toggle-item">
-              <label class="toggle">
-                <input type="checkbox" id="is_public" name="is_public">
-                <span class="toggle-slider"></span>
-              </label>
-              <span class="toggle-label" onclick="document.getElementById('is_public').click()">Show in member directory</span>
-            </div>
-          </div>
-          <p class="hint" style="margin-top: 10px;">Public profiles appear in the member directory and logo carousel on the homepage.</p>
-          <!-- Hidden field to keep show_in_carousel in sync with is_public -->
-          <input type="hidden" id="show_in_carousel" name="show_in_carousel">
-
           <!-- Actions -->
           <div class="btn-group">
             <button type="submit" class="btn btn-primary" id="save-btn">Save Profile</button>
@@ -951,6 +936,7 @@
         });
 
         if (response.status === 401) {
+          // Redirect to login
           const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
           window.location.href = `/auth/login?redirect=${returnUrl}`;
           return;
@@ -965,6 +951,7 @@
         // Store org info
         currentOrgId = data.organization_id;
         currentOrgName = data.organization_name;
+        hasActiveSubscription = data.has_active_subscription || false;
 
         document.getElementById('loading').style.display = 'none';
 
@@ -995,6 +982,7 @@
               `${currentOrgName} doesn't have a member profile yet. Create one to appear in the member directory and have your logo shown on the homepage.`;
           }
         }
+
       } catch (error) {
         console.error('Load profile error:', error);
         document.getElementById('loading').style.display = 'none';
@@ -1021,7 +1009,6 @@
       document.getElementById('contact_website').value = profile.contact_website || '';
       document.getElementById('linkedin_url').value = profile.linkedin_url || '';
       document.getElementById('twitter_url').value = profile.twitter_url || '';
-      document.getElementById('is_public').checked = profile.is_public || false;
 
       // Set markets
       if (profile.markets) {
@@ -1377,8 +1364,7 @@
         offerings: Array.from(document.querySelectorAll('input[name="offerings"]:checked')).map(cb => cb.value),
         agents: agents,
         tags: tags,
-        is_public: document.getElementById('is_public').checked,
-        show_in_carousel: document.getElementById('is_public').checked, // Sync with is_public
+        // Note: is_public and show_in_carousel are managed from the dashboard, not here
       };
 
       // Add slug only for new profiles

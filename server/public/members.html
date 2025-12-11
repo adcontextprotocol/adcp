@@ -308,6 +308,72 @@
       background: #10b981;
       color: white;
     }
+    .detail-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .share-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 10px 20px;
+      background: white;
+      border: 2px solid #e5e7eb;
+      color: #374151;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .share-btn:hover {
+      border-color: #10b981;
+      color: #10b981;
+    }
+    .share-btn.copied {
+      background: #d1fae5;
+      border-color: #10b981;
+      color: #065f46;
+    }
+    .share-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 8px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      min-width: 200px;
+      z-index: 100;
+      display: none;
+      overflow: hidden;
+    }
+    .share-dropdown.active {
+      display: block;
+    }
+    .share-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      color: #374151;
+      text-decoration: none;
+      transition: background 0.2s;
+      cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+      font-size: 14px;
+    }
+    .share-dropdown-item:hover {
+      background: #f3f4f6;
+    }
+    .share-dropdown-item svg {
+      flex-shrink: 0;
+    }
     .detail-card {
       background: white;
       border-radius: 12px;
@@ -1109,7 +1175,7 @@
           <span class="coming-soon-badge">Coming Soon</span>
           <span class="coming-soon-text">Members-only tools, market data, and benchmarking resources</span>
         </div>
-        <a href="/auth/login?redirect=/dashboard" class="membership-cta-btn">Join AgenticAdvertising.org</a>
+        <a href="/auth/login?redirect=/member-profile" class="membership-cta-btn">Join AgenticAdvertising.org</a>
       </section>
 
       <!-- Join CTA Banner (for returning visitors scrolling through directory) -->
@@ -1117,9 +1183,9 @@
         <div class="join-cta-content">
           <div class="join-cta-text">
             <h2>List Your Organization</h2>
-            <p>Add your company to the member directory and showcase your role in the agentic advertising ecosystem.</p>
+            <p>Join the community and showcase your role in agentic advertising.</p>
           </div>
-          <a href="/auth/login?redirect=/dashboard" class="join-cta-btn">Add Your Company</a>
+          <a href="/auth/login?redirect=/member-profile" class="join-cta-btn">Join Now</a>
         </div>
       </div>
 
@@ -1158,9 +1224,51 @@
   <!-- Detail View -->
   <div id="detail-view" class="member-detail">
     <div class="container">
-      <button class="back-btn" onclick="showListView()">
-        <span>&larr;</span> Back to Directory
-      </button>
+      <div class="detail-actions">
+        <button class="back-btn" onclick="showListView()" style="margin-bottom: 0;">
+          <span>&larr;</span> Back to Directory
+        </button>
+        <div style="position: relative;">
+          <button class="share-btn" id="share-btn" onclick="toggleShareDropdown(event)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="18" cy="5" r="3"></circle>
+              <circle cx="6" cy="12" r="3"></circle>
+              <circle cx="18" cy="19" r="3"></circle>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+            <span id="share-btn-text">Share</span>
+          </button>
+          <div class="share-dropdown" id="share-dropdown">
+            <button class="share-dropdown-item" onclick="copyProfileLink()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              Copy link
+            </button>
+            <a class="share-dropdown-item" id="share-linkedin" href="#" target="_blank" onclick="closeShareDropdown()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+              </svg>
+              Share on LinkedIn
+            </a>
+            <a class="share-dropdown-item" id="share-twitter" href="#" target="_blank" onclick="closeShareDropdown()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+              Share on X
+            </a>
+            <a class="share-dropdown-item" id="share-email" href="#" onclick="closeShareDropdown()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                <polyline points="22,6 12,13 2,6"></polyline>
+              </svg>
+              Share via email
+            </a>
+          </div>
+        </div>
+      </div>
 
       <div id="detail-content" class="detail-card">
         <!-- Populated by JavaScript -->
@@ -1425,6 +1533,9 @@
       // Update page title
       document.title = `${member.display_name} - AgenticAdvertising.org Member Directory`;
 
+      // Update share links with member info
+      updateShareLinks(member);
+
       // Discover agent info for each registered agent
       if (member.agent_urls && member.agent_urls.length > 0) {
         discoverAgents(member.agent_urls);
@@ -1480,6 +1591,74 @@
         loadMemberBySlug(match[1]);
       } else {
         showListView();
+      }
+    });
+
+    // Share Functions
+    let currentMemberForShare = null;
+
+    function updateShareLinks(member) {
+      currentMemberForShare = member;
+      const profileUrl = window.location.href;
+      const shareText = `Check out ${member.display_name} on AgenticAdvertising.org`;
+
+      // LinkedIn share
+      const linkedinUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(profileUrl)}`;
+      document.getElementById('share-linkedin').href = linkedinUrl;
+
+      // Twitter/X share
+      const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(profileUrl)}&text=${encodeURIComponent(shareText)}`;
+      document.getElementById('share-twitter').href = twitterUrl;
+
+      // Email share
+      const emailSubject = `${member.display_name} - AgenticAdvertising.org Member`;
+      const emailBody = `${shareText}\n\n${profileUrl}`;
+      const emailUrl = `mailto:?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+      document.getElementById('share-email').href = emailUrl;
+    }
+
+    function toggleShareDropdown(event) {
+      event.stopPropagation();
+      const dropdown = document.getElementById('share-dropdown');
+      dropdown.classList.toggle('active');
+    }
+
+    function closeShareDropdown() {
+      const dropdown = document.getElementById('share-dropdown');
+      dropdown.classList.remove('active');
+    }
+
+    async function copyProfileLink() {
+      const profileUrl = window.location.href;
+      try {
+        await navigator.clipboard.writeText(profileUrl);
+        const btn = document.getElementById('share-btn');
+        const btnText = document.getElementById('share-btn-text');
+        btn.classList.add('copied');
+        btnText.textContent = 'Copied!';
+        closeShareDropdown();
+
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btnText.textContent = 'Share';
+        }, 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+        // Fallback: select text in a temp input
+        const input = document.createElement('input');
+        input.value = profileUrl;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        closeShareDropdown();
+      }
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.share-btn') && !e.target.closest('.share-dropdown')) {
+        closeShareDropdown();
       }
     });
 

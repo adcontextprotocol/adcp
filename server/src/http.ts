@@ -4683,6 +4683,87 @@ export class HTTPServer {
       }
     });
 
+    // PUT /api/me/member-profile/visibility - Update visibility only (with subscription check)
+    // Supports ?org=org_id query parameter to specify which organization
+    this.app.put('/api/me/member-profile/visibility', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const requestedOrgId = req.query.org as string | undefined;
+        const { is_public, show_in_carousel } = req.body;
+
+        // Validate request body
+        if (typeof is_public !== 'boolean') {
+          return res.status(400).json({
+            error: 'Invalid request',
+            message: 'is_public must be a boolean',
+          });
+        }
+
+        // Get user's organization memberships
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(400).json({
+            error: 'No organization',
+            message: 'User must be a member of an organization to update visibility',
+          });
+        }
+
+        // Determine which org to use
+        let targetOrgId: string;
+        if (requestedOrgId) {
+          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+          if (!isMember) {
+            return res.status(403).json({
+              error: 'Not authorized',
+              message: 'User is not a member of the requested organization',
+            });
+          }
+          targetOrgId = requestedOrgId;
+        } else {
+          targetOrgId = memberships.data[0].organizationId;
+        }
+
+        // Check if profile exists
+        const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
+        if (!existingProfile) {
+          return res.status(404).json({
+            error: 'Profile not found',
+            message: 'No member profile exists for your organization.',
+          });
+        }
+
+        // If trying to make public, check subscription status
+        if (is_public) {
+          const subscriptionInfo = await orgDb.getSubscriptionInfo(targetOrgId);
+          if (!subscriptionInfo || subscriptionInfo.status !== 'active') {
+            return res.status(403).json({
+              error: 'Subscription required',
+              message: 'An active membership subscription is required to make your profile public.',
+            });
+          }
+        }
+
+        // Update visibility
+        const profile = await memberDb.updateProfileByOrgId(targetOrgId, {
+          is_public,
+          show_in_carousel: show_in_carousel ?? is_public, // Default to match is_public
+        });
+
+        logger.info({ profileId: profile?.id, orgId: targetOrgId, is_public }, 'Member profile visibility updated');
+
+        res.json({ profile });
+      } catch (error) {
+        logger.error({ err: error }, 'Update member profile visibility error');
+        res.status(500).json({
+          error: 'Failed to update visibility',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // DELETE /api/me/member-profile - Delete current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.delete('/api/me/member-profile', requireAuth, async (req, res) => {
