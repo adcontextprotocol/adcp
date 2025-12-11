@@ -4,9 +4,14 @@
  * Fetches config to conditionally show membership features and auth widget
  *
  * Host-based feature flagging:
- * - agenticadvertising.org (beta): New AAO branding + membership features
- * - adcontextprotocol.org (production): Old AdCP branding, no membership
+ * - agenticadvertising.org (beta): New AAO branding, membership features, auth
+ * - adcontextprotocol.org (production): Old AdCP branding, membership links redirect to AAO
  * - localhost: Follows beta behavior for testing
+ *
+ * Auth routing:
+ * - All auth operations (login, logout, dashboard) route to agenticadvertising.org
+ * - Users on adcontextprotocol.org see login/signup links that redirect to AAO
+ * - Session cookies are domain-scoped to agenticadvertising.org
  */
 
 (function() {
@@ -35,12 +40,15 @@
   }
 
   // Determine base URLs based on site type and environment
-  // Beta (AAO) site uses agenticadvertising.org, production uses adcontextprotocol.org
-  const productionHomeUrl = isBetaSite ? 'https://agenticadvertising.org' : 'https://adcontextprotocol.org';
+  // AAO content (members, insights, about) always lives on agenticadvertising.org
+  // Docs always live on docs.adcontextprotocol.org
+  const aaoBaseUrl = 'https://agenticadvertising.org';
+  const adcpBaseUrl = 'https://adcontextprotocol.org';
+  const homeBaseUrl = isBetaSite ? aaoBaseUrl : adcpBaseUrl;
   let docsUrl = 'https://docs.adcontextprotocol.org';
-  let adagentsUrl = `${productionHomeUrl}/adagents`;
-  let membersUrl = `${productionHomeUrl}/members`;
-  let homeUrl = productionHomeUrl;
+  let adagentsUrl = `${aaoBaseUrl}/adagents`;
+  let membersUrl = `${aaoBaseUrl}/members`;
+  let homeUrl = homeBaseUrl;
   let apiBaseUrl = '';
 
   if (isLocal) {
@@ -75,17 +83,21 @@
   // Build navigation HTML - will be updated after config fetch
   function buildNavHTML(config) {
     const user = config?.user;
-    // Membership features enabled on beta site only (hostname-based)
-    const membershipEnabled = isBetaSite;
-    const authEnabled = isBetaSite && config?.authEnabled !== false;
+    // Membership features always enabled - auth redirects to AAO site when on production
+    const membershipEnabled = true;
+    // Auth is enabled on beta site (AAO) with config flag, always available on production (redirects to AAO)
+    const authEnabled = isBetaSite ? config?.authEnabled !== false : true;
+
+    // Auth base URL - always points to AAO for auth operations
+    const authBaseUrl = isBetaSite ? '' : 'https://agenticadvertising.org';
 
     // Build auth section based on state
     let authSection = '';
     if (authEnabled) {
-      if (user) {
-        // User is logged in - show account dropdown
+      if (user && isBetaSite) {
+        // User is logged in and on beta site - show account dropdown
         const displayName = user.firstName || user.email.split('@')[0];
-        const adminLink = user.isAdmin ? '<a href="/admin" class="navbar__dropdown-item">Admin</a>' : '';
+        const adminLink = user.isAdmin ? `<a href="${authBaseUrl}/admin" class="navbar__dropdown-item">Admin</a>` : '';
         authSection = `
           <div class="navbar__account">
             <button class="navbar__account-btn" id="accountMenuBtn">
@@ -96,17 +108,17 @@
             </button>
             <div class="navbar__dropdown" id="accountDropdown">
               <div class="navbar__dropdown-header">${user.email}</div>
-              <a href="/dashboard" class="navbar__dropdown-item">Dashboard</a>
+              <a href="${authBaseUrl}/dashboard" class="navbar__dropdown-item">Dashboard</a>
               ${adminLink}
-              <a href="/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
+              <a href="${authBaseUrl}/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
             </div>
           </div>
         `;
       } else if (membershipEnabled) {
-        // Not logged in but auth is available and membership enabled - show login/signup
+        // Not logged in OR on production site - show login/signup (links to AAO)
         authSection = `
-          <a href="/auth/login" class="navbar__link">Log in</a>
-          <a href="/auth/login" class="navbar__btn navbar__btn--primary">Sign up</a>
+          <a href="${authBaseUrl}/auth/login" class="navbar__link">Log in</a>
+          <a href="${authBaseUrl}/auth/login" class="navbar__btn navbar__btn--primary">Sign up</a>
         `;
       }
     }
@@ -136,25 +148,47 @@
     // AdCP logo should display normally
     const logoNeedsInvert = isBetaSite;
 
+    // Only show AdCP link on beta site (AAO) - on production (AdCP) the logo already goes to adcontextprotocol.org
+    const adcpLink = isBetaSite
+      ? '<a href="https://adcontextprotocol.org" class="navbar__link">AdCP</a>'
+      : '';
+
     return `
       <nav class="navbar">
         <div class="navbar__inner">
           <div class="navbar__items">
             <a class="navbar__brand" href="${homeUrl}">
               <div class="navbar__logo">
-                <img src="${logoSrc}" alt="${logoAlt}" class="logo-light" ${logoNeedsInvert ? '' : 'style="filter: none;"'}>
-                <img src="${logoSrc}" alt="${logoAlt}" class="logo-dark" ${logoNeedsInvert ? '' : 'style="filter: none;"'}>
+                <img src="${logoSrc}" alt="${logoAlt}" class="navbar__logo-img" ${logoNeedsInvert ? 'data-invert="true"' : ''}>
               </div>
             </a>
-            ${membersLink}
-            ${insightsLink}
-            ${aboutLink}
+            <div class="navbar__links-desktop">
+              ${membersLink}
+              ${insightsLink}
+              ${aboutLink}
+            </div>
           </div>
           <div class="navbar__items navbar__items--right">
-            <a href="${docsUrl}" class="navbar__link">AdCP Docs</a>
-            <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
+            <div class="navbar__links-desktop">
+              ${adcpLink}
+              <a href="${docsUrl}" class="navbar__link">Docs</a>
+              <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
+            </div>
             ${authSection}
+            <button class="navbar__hamburger" id="mobileMenuBtn" aria-label="Toggle menu">
+              <span class="navbar__hamburger-line"></span>
+              <span class="navbar__hamburger-line"></span>
+              <span class="navbar__hamburger-line"></span>
+            </button>
           </div>
+        </div>
+        <div class="navbar__mobile-menu" id="mobileMenu">
+          ${membersLink}
+          ${insightsLink}
+          ${aboutLink}
+          ${adcpLink}
+          <a href="${docsUrl}" class="navbar__link">Docs</a>
+          <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
         </div>
       </nav>
     `;
@@ -241,7 +275,7 @@
       }
 
       .navbar__link.active {
-        color: #10b981;
+        color: #1a36b4;
         font-weight: 600;
       }
 
@@ -257,12 +291,12 @@
       }
 
       .navbar__btn--primary {
-        background: #10b981;
+        background: #1a36b4;
         color: #fff;
       }
 
       .navbar__btn--primary:hover {
-        background: #059669;
+        background: #2d4fd6;
       }
 
       /* Account dropdown */
@@ -337,17 +371,15 @@
         background: #fef2f2;
       }
 
-      /* Logo switching for dark mode */
-      /* The AAO logo is white text - needs invert for light backgrounds */
-      .logo-light {
+      /* Logo styling */
+      .navbar__logo-img {
         display: block;
         height: 24px;
-        filter: invert(1);
       }
 
-      .logo-dark {
-        display: none;
-        height: 24px;
+      /* AAO logo (white) needs invert for light backgrounds */
+      .navbar__logo-img[data-invert="true"] {
+        filter: invert(1);
       }
 
       /* Dark mode support */
@@ -399,12 +431,8 @@
           background: #7f1d1d;
         }
 
-        .logo-light {
-          display: none !important;
-        }
-
-        .logo-dark {
-          display: block !important;
+        /* In dark mode, remove invert filter for AAO logo (it's already white) */
+        .navbar__logo-img[data-invert="true"] {
           filter: none;
         }
       }
@@ -456,37 +484,175 @@
         background: #7f1d1d;
       }
 
-      [data-theme="dark"] .logo-light {
-        display: none !important;
+      /* In dark mode, remove invert filter for AAO logo */
+      [data-theme="dark"] .navbar__logo-img[data-invert="true"] {
+        filter: none;
       }
 
-      [data-theme="dark"] .logo-dark {
-        display: block !important;
-        filter: none;
+      /* Hamburger menu button */
+      .navbar__hamburger {
+        display: none;
+        flex-direction: column;
+        justify-content: space-between;
+        width: 24px;
+        height: 18px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+        z-index: 1002;
+      }
+
+      .navbar__hamburger-line {
+        display: block;
+        width: 100%;
+        height: 2px;
+        background: #000;
+        border-radius: 1px;
+        transition: all 0.3s ease;
+      }
+
+      .navbar__hamburger.open .navbar__hamburger-line:nth-child(1) {
+        transform: rotate(45deg) translate(5px, 5px);
+      }
+
+      .navbar__hamburger.open .navbar__hamburger-line:nth-child(2) {
+        opacity: 0;
+      }
+
+      .navbar__hamburger.open .navbar__hamburger-line:nth-child(3) {
+        transform: rotate(-45deg) translate(5px, -5px);
+      }
+
+      /* Mobile menu */
+      .navbar__mobile-menu {
+        display: none;
+        position: absolute;
+        top: 60px;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-top: 1px solid #e5e7eb;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        padding: 1rem;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .navbar__mobile-menu.open {
+        display: flex;
+      }
+
+      .navbar__mobile-menu .navbar__link {
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        display: block;
+      }
+
+      .navbar__mobile-menu .navbar__link:hover {
+        background: #f3f4f6;
+      }
+
+      /* Desktop-only links wrapper */
+      .navbar__links-desktop {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+      }
+
+      /* Mobile responsive breakpoint */
+      @media (max-width: 768px) {
+        .navbar__links-desktop {
+          display: none;
+        }
+
+        .navbar__hamburger {
+          display: flex;
+        }
+
+        .navbar__items--right {
+          gap: 0.75rem;
+        }
+      }
+
+      /* Dark mode for hamburger and mobile menu */
+      @media (prefers-color-scheme: dark) {
+        .navbar__hamburger-line {
+          background: #fff;
+        }
+
+        .navbar__mobile-menu {
+          background: #1b1b1d;
+          border-top-color: #374151;
+        }
+
+        .navbar__mobile-menu .navbar__link:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+      }
+
+      [data-theme="dark"] .navbar__hamburger-line {
+        background: #fff;
+      }
+
+      [data-theme="dark"] .navbar__mobile-menu {
+        background: #1b1b1d;
+        border-top-color: #374151;
+      }
+
+      [data-theme="dark"] .navbar__mobile-menu .navbar__link:hover {
+        background: rgba(255, 255, 255, 0.1);
       }
     </style>
   `;
 
-  // Setup dropdown toggle after nav is inserted
+  // Setup dropdown and mobile menu toggles after nav is inserted
   function setupDropdown() {
-    const btn = document.getElementById('accountMenuBtn');
-    const dropdown = document.getElementById('accountDropdown');
+    const accountBtn = document.getElementById('accountMenuBtn');
+    const accountDropdown = document.getElementById('accountDropdown');
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const mobileMenu = document.getElementById('mobileMenu');
 
-    if (!btn || !dropdown) return;
+    // Account dropdown toggle
+    if (accountBtn && accountDropdown) {
+      accountBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        accountDropdown.classList.toggle('open');
+        // Close mobile menu if open
+        if (mobileMenu) mobileMenu.classList.remove('open');
+        if (mobileMenuBtn) mobileMenuBtn.classList.remove('open');
+      });
 
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      dropdown.classList.toggle('open');
-    });
+      // Prevent dropdown from closing when clicking inside it
+      accountDropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    }
 
-    // Close dropdown when clicking outside
+    // Mobile menu toggle
+    if (mobileMenuBtn && mobileMenu) {
+      mobileMenuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        mobileMenuBtn.classList.toggle('open');
+        mobileMenu.classList.toggle('open');
+        // Close account dropdown if open
+        if (accountDropdown) accountDropdown.classList.remove('open');
+      });
+
+      // Close mobile menu when clicking a link
+      mobileMenu.querySelectorAll('.navbar__link').forEach(link => {
+        link.addEventListener('click', () => {
+          mobileMenuBtn.classList.remove('open');
+          mobileMenu.classList.remove('open');
+        });
+      });
+    }
+
+    // Close all menus when clicking outside
     document.addEventListener('click', () => {
-      dropdown.classList.remove('open');
-    });
-
-    // Prevent dropdown from closing when clicking inside it
-    dropdown.addEventListener('click', (e) => {
-      e.stopPropagation();
+      if (accountDropdown) accountDropdown.classList.remove('open');
+      if (mobileMenu) mobileMenu.classList.remove('open');
+      if (mobileMenuBtn) mobileMenuBtn.classList.remove('open');
     });
   }
 

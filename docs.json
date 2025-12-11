@@ -204,7 +204,6 @@
   "footerSocials": {
     "github": "https://github.com/adcontextprotocol/adcp"
   },
-  "backgroundImage": "/img/background.png",
   "api": {
     "maintainOrder": true
   },

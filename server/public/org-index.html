@@ -38,28 +38,57 @@
       line-height: 1.6;
     }
 
-    /* Hero Section - Clean, AAIF-style */
+    /* Hero Section */
     .hero {
-      background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
+      background: linear-gradient(135deg, #1a36b4 0%, #2d4fd6 100%);
       color: white;
-      padding: 6rem 2rem 5rem;
+      padding: 5rem 2rem 4rem;
       text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    /* Subtle background pattern */
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image:
+        radial-gradient(circle at 20% 80%, rgba(164,194,244,0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(164,194,244,0.15) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(255,255,255,0.08) 0%, transparent 30%);
+      pointer-events: none;
     }
     .hero-container {
       max-width: 800px;
       margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-logo {
+      margin-bottom: 2rem;
+    }
+    .aao-logo {
+      height: 80px;
+      width: auto;
+      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
     }
     .hero h1 {
-      font-size: 3rem;
+      font-size: 2.75rem;
       font-weight: 700;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
       line-height: 1.15;
     }
     .hero-subtitle {
-      font-size: 1.35rem;
+      font-size: 1.25rem;
       opacity: 0.95;
       margin-bottom: 2.5rem;
       line-height: 1.6;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
     }
     .hero-buttons {
       display: flex;
@@ -79,10 +108,10 @@
     }
     .btn-primary {
       background: white;
-      color: #065f46;
+      color: #1a36b4;
     }
     .btn-primary:hover {
-      background: #f0fdf4;
+      background: #f6f5ec;
       transform: translateY(-1px);
     }
     .btn-secondary {
@@ -98,7 +127,7 @@
     /* Mission Statement */
     .mission {
       padding: 4rem 2rem;
-      background: #f9fafb;
+      background: #f6f5ec;
       text-align: center;
     }
     .mission-container {
@@ -145,13 +174,13 @@
       transition: all 0.2s;
     }
     .project-card:hover {
-      border-color: #10b981;
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+      border-color: #1a36b4;
+      box-shadow: 0 4px 12px rgba(26, 54, 180, 0.1);
     }
     .project-icon {
       width: 48px;
       height: 48px;
-      background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
+      background: linear-gradient(135deg, #1a36b4 0%, #2d4fd6 100%);
       border-radius: 10px;
       display: flex;
       align-items: center;
@@ -172,7 +201,7 @@
       margin-bottom: 1.25rem;
     }
     .project-card a {
-      color: #10b981;
+      color: #1a36b4;
       font-weight: 600;
       text-decoration: none;
       font-size: 0.95rem;
@@ -184,7 +213,7 @@
     /* Members Section */
     .members {
       padding: 5rem 2rem;
-      background: #f9fafb;
+      background: #f6f5ec;
     }
     .members-container {
       max-width: 1100px;
@@ -237,7 +266,7 @@
       margin-top: 2.5rem;
     }
     .all-members-link a {
-      color: #10b981;
+      color: #1a36b4;
       font-weight: 600;
       text-decoration: none;
     }
@@ -248,7 +277,7 @@
     /* CTA Section */
     .cta {
       padding: 5rem 2rem;
-      background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
+      background: linear-gradient(135deg, #1a36b4 0%, #2d4fd6 100%);
       text-align: center;
       color: white;
     }
@@ -294,7 +323,7 @@
       transition: color 0.2s;
     }
     .footer-links a:hover {
-      color: #10b981;
+      color: #a4c2f4;
     }
     .footer-copyright {
       font-size: 0.875rem;
@@ -302,13 +331,19 @@
 
     @media (max-width: 768px) {
       .hero {
-        padding: 4rem 1.5rem 3rem;
+        padding: 3rem 1.5rem 2.5rem;
+      }
+      .aao-logo {
+        height: 60px;
+      }
+      .hero-logo {
+        margin-bottom: 1.5rem;
       }
       .hero h1 {
-        font-size: 2rem;
+        font-size: 1.75rem;
       }
       .hero-subtitle {
-        font-size: 1.1rem;
+        font-size: 1.05rem;
       }
       .section-title {
         font-size: 1.5rem;
@@ -328,6 +363,9 @@
   <!-- Hero Section -->
   <section class="hero">
     <div class="hero-container">
+      <div class="hero-logo">
+        <img src="/AAo.svg" alt="AgenticAdvertising.org" class="aao-logo">
+      </div>
       <h1>Advancing AI-Powered Advertising Together</h1>
       <p class="hero-subtitle">
         AgenticAdvertising.org is the independent industry organization building open standards and best practices for agentic advertising.
@@ -335,6 +373,12 @@
       <div class="hero-buttons">
         <a href="/members#join" class="btn btn-primary">Become a Member</a>
         <a href="/about" class="btn btn-secondary">Learn More</a>
+        <a href="https://www.youtube.com/watch?v=QWmxvVS1RA8" class="btn btn-secondary" target="_blank" rel="noopener">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 0.5rem;">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          Watch Launch Video
+        </a>
       </div>
     </div>
   </section>
@@ -365,7 +409,7 @@
           <p>
             The open standard enabling AI agents to execute advertising tasks across any platform. From media buying to creative generation to audience activation.
           </p>
-          <a href="https://docs.adcontextprotocol.org">Explore the protocol &rarr;</a>
+          <a href="https://adcontextprotocol.org">Explore the protocol &rarr;</a>
         </div>
 
         <div class="project-card">
@@ -398,18 +442,6 @@
           <a href="/about#membership">Join a working group &rarr;</a>
         </div>
 
-        <div class="project-card">
-          <div class="project-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-          </div>
-          <h3>Governance</h3>
-          <p>
-            How AgenticAdvertising.org operates: decision-making processes, membership structure, and how standards are developed and maintained.
-          </p>
-          <a href="/about/governance">Learn about governance &rarr;</a>
-        </div>
       </div>
     </div>
   </section>
