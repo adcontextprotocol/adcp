@@ -161,7 +161,6 @@ export class HTTPServer {
       } : null;
 
       res.json({
-        membershipEnabled: process.env.MEMBERSHIP_ENABLED !== 'false',
         authEnabled: AUTH_ENABLED,
         user,
       });

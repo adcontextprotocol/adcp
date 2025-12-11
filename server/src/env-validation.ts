@@ -75,11 +75,6 @@ const envConfig: EnvConfig = {
       name: 'ADMIN_EMAILS',
       description: 'Comma-separated list of admin email addresses for /admin/* access',
     },
-    {
-      name: 'MEMBERSHIP_ENABLED',
-      description: 'Enable membership/billing features (true/false)',
-      defaultValue: 'false',
-    },
   ],
 };
 

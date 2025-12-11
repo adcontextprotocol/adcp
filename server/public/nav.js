@@ -73,8 +73,8 @@
   // Build navigation HTML - will be updated after config fetch
   function buildNavHTML(config) {
     const user = config?.user;
-    // Membership features only enabled on beta site AND when config allows
-    const membershipEnabled = isBetaSite && config?.membershipEnabled !== false;
+    // Membership features enabled on beta site only (hostname-based)
+    const membershipEnabled = isBetaSite;
     const authEnabled = isBetaSite && config?.authEnabled !== false;
 
     // Build auth section based on state
