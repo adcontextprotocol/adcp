@@ -980,6 +980,21 @@ export class HTTPServer {
       res.sendFile(aboutPath);
     });
 
+    // Insights section
+    this.app.get("/insights", (req, res) => {
+      const insightsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/insights/index.html")
+        : path.join(__dirname, "../public/insights/index.html");
+      res.sendFile(insightsPath);
+    });
+
+    this.app.get("/insights/agentic-protocol-landscape", (req, res) => {
+      const articlePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/insights/agentic-protocol-landscape.html")
+        : path.join(__dirname, "../public/insights/agentic-protocol-landscape.html");
+      res.sendFile(articlePath);
+    });
+
     // AdAgents API Routes
     // Validate domain's adagents.json
     this.app.post("/api/adagents/validate", async (req, res) => {

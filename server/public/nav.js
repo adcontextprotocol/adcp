@@ -120,6 +120,12 @@
       ? `<a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>`
       : '';
 
+    // Build insights link (only on beta site)
+    const insightsUrl = isLocal ? '/insights' : 'https://agenticadvertising.org/insights';
+    const insightsLink = membershipEnabled
+      ? `<a href="${insightsUrl}" class="navbar__link ${currentPath.startsWith('/insights') ? 'active' : ''}">Insights</a>`
+      : '';
+
     // Choose logo based on site - beta gets AAO, production gets AdCP
     const logoSrc = isBetaSite ? '/AAo.svg' : '/adcp_logo.svg';
     const logoAlt = isBetaSite ? 'Agentic Advertising' : 'AdCP';
@@ -140,6 +146,7 @@
             <a href="${docsUrl}" class="navbar__link">Docs</a>
             <a href="${adagentsUrl}" class="navbar__link ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
             ${membersLink}
+            ${insightsLink}
             ${aboutLink}
           </div>
           <div class="navbar__items navbar__items--right">
