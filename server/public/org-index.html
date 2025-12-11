@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgenticAdvertising.org - Open Standards for AI-Powered Advertising</title>
+  <meta name="description" content="AgenticAdvertising.org is the independent industry organization advancing open standards for AI-powered advertising. We steward protocols like AdCP and bring together brands, agencies, publishers, and technology providers.">
+  <meta property="og:title" content="AgenticAdvertising.org">
+  <meta property="og:description" content="The independent industry organization advancing open standards for AI-powered advertising.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agenticadvertising.org">
+  <meta property="og:image" content="https://agenticadvertising.org/img/aao-social-card.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "AgenticAdvertising.org",
+    "alternateName": "AAO",
+    "url": "https://agenticadvertising.org",
+    "logo": "https://agenticadvertising.org/AAo.svg",
+    "description": "The independent industry organization advancing open standards for AI-powered advertising",
+    "foundingDate": "2025",
+    "sameAs": [
+      "https://github.com/adcontextprotocol/adcp",
+      "https://join.slack.com/t/agenticads"
+    ]
+  }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #fff;
+      min-height: 100vh;
+      color: #1a1a1a;
+      line-height: 1.6;
+    }
+
+    /* Hero Section - Clean, AAIF-style */
+    .hero {
+      background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
+      color: white;
+      padding: 6rem 2rem 5rem;
+      text-align: center;
+    }
+    .hero-container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .hero h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      line-height: 1.15;
+    }
+    .hero-subtitle {
+      font-size: 1.35rem;
+      opacity: 0.95;
+      margin-bottom: 2.5rem;
+      line-height: 1.6;
+    }
+    .hero-buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.875rem 2rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 1rem;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: white;
+      color: #065f46;
+    }
+    .btn-primary:hover {
+      background: #f0fdf4;
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: transparent;
+      color: white;
+      border: 2px solid rgba(255,255,255,0.5);
+    }
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: white;
+    }
+
+    /* Mission Statement */
+    .mission {
+      padding: 4rem 2rem;
+      background: #f9fafb;
+      text-align: center;
+    }
+    .mission-container {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .mission p {
+      font-size: 1.25rem;
+      color: #374151;
+      line-height: 1.8;
+    }
+
+    /* Projects Section */
+    .projects {
+      padding: 5rem 2rem;
+    }
+    .projects-container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .section-title {
+      font-size: 2rem;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 1rem;
+      color: #1a1a1a;
+    }
+    .section-subtitle {
+      text-align: center;
+      font-size: 1.1rem;
+      color: #6b7280;
+      margin-bottom: 3rem;
+    }
+    .projects-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+    }
+    .project-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 2rem;
+      transition: all 0.2s;
+    }
+    .project-card:hover {
+      border-color: #10b981;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+    }
+    .project-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.25rem;
+      font-size: 1.5rem;
+    }
+    .project-card h3 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      color: #1a1a1a;
+    }
+    .project-card p {
+      font-size: 1rem;
+      color: #6b7280;
+      line-height: 1.7;
+      margin-bottom: 1.25rem;
+    }
+    .project-card a {
+      color: #10b981;
+      font-weight: 600;
+      text-decoration: none;
+      font-size: 0.95rem;
+    }
+    .project-card a:hover {
+      text-decoration: underline;
+    }
+
+    /* Members Section */
+    .members {
+      padding: 5rem 2rem;
+      background: #f9fafb;
+    }
+    .members-container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .member-tier {
+      margin-bottom: 3rem;
+    }
+    .member-tier:last-child {
+      margin-bottom: 0;
+    }
+    .tier-label {
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 1.5rem;
+    }
+    .member-logos {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 2.5rem;
+    }
+    .member-logo {
+      height: 40px;
+      width: auto;
+      opacity: 0.8;
+      transition: opacity 0.2s;
+    }
+    .member-logo:hover {
+      opacity: 1;
+    }
+    .launch-members {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 1rem 2rem;
+      margin-top: 1rem;
+    }
+    .launch-member {
+      font-size: 0.95rem;
+      color: #6b7280;
+    }
+    .all-members-link {
+      text-align: center;
+      margin-top: 2.5rem;
+    }
+    .all-members-link a {
+      color: #10b981;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .all-members-link a:hover {
+      text-decoration: underline;
+    }
+
+    /* CTA Section */
+    .cta {
+      padding: 5rem 2rem;
+      background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
+      text-align: center;
+      color: white;
+    }
+    .cta-container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .cta h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+    .cta p {
+      font-size: 1.15rem;
+      opacity: 0.95;
+      margin-bottom: 2rem;
+    }
+
+    /* Footer */
+    .footer {
+      background: #1f2937;
+      color: #9ca3af;
+      padding: 3rem 2rem;
+    }
+    .footer-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+    }
+    .footer-links {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: #d1d5db;
+      text-decoration: none;
+      font-size: 0.95rem;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover {
+      color: #10b981;
+    }
+    .footer-copyright {
+      font-size: 0.875rem;
+    }
+
+    @media (max-width: 768px) {
+      .hero {
+        padding: 4rem 1.5rem 3rem;
+      }
+      .hero h1 {
+        font-size: 2rem;
+      }
+      .hero-subtitle {
+        font-size: 1.1rem;
+      }
+      .section-title {
+        font-size: 1.5rem;
+      }
+      .footer-container {
+        flex-direction: column;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-container">
+      <h1>Advancing AI-Powered Advertising Together</h1>
+      <p class="hero-subtitle">
+        AgenticAdvertising.org is the independent industry organization building open standards and best practices for agentic advertising.
+      </p>
+      <div class="hero-buttons">
+        <a href="/members#join" class="btn btn-primary">Become a Member</a>
+        <a href="/about" class="btn btn-secondary">Learn More</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mission Statement -->
+  <section class="mission">
+    <div class="mission-container">
+      <p>
+        We bring together brands, agencies, publishers, and technology providers to ensure AI advertising develops as shared infrastructure that benefits the entire ecosystem.
+      </p>
+    </div>
+  </section>
+
+  <!-- Projects Section -->
+  <section class="projects">
+    <div class="projects-container">
+      <h2 class="section-title">Our Projects</h2>
+      <p class="section-subtitle">Open standards and resources stewarded by AgenticAdvertising.org</p>
+
+      <div class="projects-grid">
+        <div class="project-card">
+          <div class="project-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <h3>Ad Context Protocol (AdCP)</h3>
+          <p>
+            The open standard enabling AI agents to execute advertising tasks across any platform. From media buying to creative generation to audience activation.
+          </p>
+          <a href="https://docs.adcontextprotocol.org">Explore the protocol &rarr;</a>
+        </div>
+
+        <div class="project-card">
+          <div class="project-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+          </div>
+          <h3>adagents.json</h3>
+          <p>
+            A standard discovery mechanism for advertising agents. Add an adagents.json file to your domain to make your agents discoverable by AI assistants and orchestrators.
+          </p>
+          <a href="/adagents">Learn more &rarr;</a>
+        </div>
+
+        <div class="project-card">
+          <div class="project-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <h3>Working Groups</h3>
+          <p>
+            Industry experts collaborating on protocol development, implementation standards, and best practices for responsible AI advertising deployment.
+          </p>
+          <a href="/about#membership">Join a working group &rarr;</a>
+        </div>
+
+        <div class="project-card">
+          <div class="project-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <h3>Governance</h3>
+          <p>
+            How AgenticAdvertising.org operates: decision-making processes, membership structure, and how standards are developed and maintained.
+          </p>
+          <a href="/about/governance">Learn about governance &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Members Section -->
+  <section class="members">
+    <div class="members-container">
+      <h2 class="section-title">Our Members</h2>
+      <p class="section-subtitle">Industry leaders building the future of advertising together</p>
+
+      <!-- Founding Members with Logos -->
+      <div class="member-tier">
+        <div class="tier-label">Founding Members</div>
+        <div class="member-logos">
+          <img src="/img/members/ebiquity.png" alt="Ebiquity" class="member-logo">
+          <img src="/img/members/optable.png" alt="Optable" class="member-logo">
+          <img src="/img/members/pubmatic.png" alt="PubMatic" class="member-logo">
+          <img src="/img/members/scope3-bright.png" alt="Scope3" class="member-logo">
+          <img src="/img/members/swivel.png" alt="Swivel" class="member-logo">
+          <img src="/img/members/triton-digital.png" alt="Triton Digital" class="member-logo">
+          <img src="/img/members/yahoo-purple.png" alt="Yahoo" class="member-logo">
+        </div>
+      </div>
+
+      <!-- Launch Members as Text -->
+      <div class="member-tier">
+        <div class="tier-label">Launch Members</div>
+        <div class="launch-members">
+          <span class="launch-member">Accuweather</span>
+          <span class="launch-member">Adgent</span>
+          <span class="launch-member">Bidcliq</span>
+          <span class="launch-member">Butler/Till</span>
+          <span class="launch-member">Classify</span>
+          <span class="launch-member">HYPD</span>
+          <span class="launch-member">Kargo</span>
+          <span class="launch-member">Kiln</span>
+          <span class="launch-member">LG Ad Solutions</span>
+          <span class="launch-member">Locala</span>
+          <span class="launch-member">Magnite</span>
+          <span class="launch-member">Media.net</span>
+          <span class="launch-member">MiQ</span>
+          <span class="launch-member">Nativo</span>
+          <span class="launch-member">Newton Research</span>
+          <span class="launch-member">OpenAds</span>
+          <span class="launch-member">Raptive</span>
+          <span class="launch-member">Samba TV</span>
+          <span class="launch-member">Scribd</span>
+          <span class="launch-member">The Product Counsel</span>
+          <span class="launch-member">The Weather Company</span>
+        </div>
+      </div>
+
+      <div class="all-members-link">
+        <a href="/members">View all members &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta">
+    <div class="cta-container">
+      <h2>Shape the Future of Advertising</h2>
+      <p>
+        Join the organizations building open standards for AI-powered advertising.
+      </p>
+      <a href="/members#join" class="btn btn-primary">Become a Member</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-links">
+        <a href="/">Home</a>
+        <a href="/about">About</a>
+        <a href="/members">Members</a>
+        <a href="https://docs.adcontextprotocol.org">AdCP Docs</a>
+        <a href="https://github.com/adcontextprotocol/adcp">GitHub</a>
+        <a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA">Slack</a>
+      </div>
+      <div class="footer-copyright">
+        &copy; 2025 AgenticAdvertising.org
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

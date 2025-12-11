@@ -34,17 +34,19 @@
     isBetaSite = isLocal || hostname.includes('agenticadvertising');
   }
 
-  // In local dev, try to detect Mintlify port (usually HTTP port + 1)
-  // Common Conductor pattern: HTTP on 55020, Mintlify on 55021
+  // Determine base URLs based on site type and environment
+  // Beta (AAO) site uses agenticadvertising.org, production uses adcontextprotocol.org
+  const productionHomeUrl = isBetaSite ? 'https://agenticadvertising.org' : 'https://adcontextprotocol.org';
   let docsUrl = 'https://docs.adcontextprotocol.org';
-  let adagentsUrl = 'https://adcontextprotocol.org/adagents';
-  let membersUrl = 'https://adcontextprotocol.org/members';
-  let homeUrl = 'https://adcontextprotocol.org';
+  let adagentsUrl = `${productionHomeUrl}/adagents`;
+  let membersUrl = `${productionHomeUrl}/members`;
+  let homeUrl = productionHomeUrl;
   let apiBaseUrl = '';
 
   if (isLocal) {
     const currentPort = window.location.port;
     // Mintlify typically runs on HTTP port + 1
+    // Common Conductor pattern: HTTP on 55020, Mintlify on 55021
     const likelyMintlifyPort = currentPort ? (parseInt(currentPort) + 1) : 3001;
     const likelyHttpPort = currentPort ? (parseInt(currentPort) - 1) : 55020;
 
@@ -115,9 +117,10 @@
       : '';
 
     // Build about link (only on beta site - links to trade association)
+    // Spell out full name to clarify this is about the org, not the protocol
     const aboutUrl = isLocal ? '/about' : 'https://agenticadvertising.org/about';
     const aboutLink = membershipEnabled
-      ? `<a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>`
+      ? `<a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About AgenticAdvertising.org</a>`
       : '';
 
     // Build insights link (only on beta site)
@@ -143,13 +146,12 @@
                 <img src="${logoSrc}" alt="${logoAlt}" class="logo-dark" ${logoNeedsInvert ? '' : 'style="filter: none;"'}>
               </div>
             </a>
-            <a href="${docsUrl}" class="navbar__link">Docs</a>
-            <a href="${adagentsUrl}" class="navbar__link ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
             ${membersLink}
             ${insightsLink}
             ${aboutLink}
           </div>
           <div class="navbar__items navbar__items--right">
+            <a href="${docsUrl}" class="navbar__link">AdCP Docs</a>
             <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
             ${authSection}
           </div>

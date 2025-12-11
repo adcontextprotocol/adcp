@@ -102,10 +102,12 @@ export class HTTPServer {
     // Serve homepage and public assets at root
     // In prod: __dirname is dist, public is at ../server/public
     // In dev: __dirname is server/src, public is at ../public
+    // Note: index: false prevents automatic index.html serving - we handle "/" route explicitly
+    // to serve different homepages based on hostname (AAO vs AdCP)
     const publicPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../server/public")
       : path.join(__dirname, "../public");
-    this.app.use(express.static(publicPath));
+    this.app.use(express.static(publicPath, { index: false }));
   }
 
 
@@ -923,12 +925,32 @@ export class HTTPServer {
       });
     });
 
-    // Homepage route - serve index.html at root
+    // Homepage route - serve different homepage based on host
+    // agenticadvertising.org (beta): Org-focused homepage
+    // adcontextprotocol.org (production): Protocol-focused homepage
     this.app.get("/", (req, res) => {
-      const homepagePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/index.html")
-        : path.join(__dirname, "../public/index.html");
-      res.sendFile(homepagePath);
+      const hostname = req.hostname || '';
+      const betaOverride = req.query.beta;
+
+      // Determine if this is the beta/org site
+      // Beta sites: agenticadvertising.org, localhost (for testing)
+      // Production sites: adcontextprotocol.org
+      let isBetaSite: boolean;
+      if (betaOverride !== undefined) {
+        isBetaSite = betaOverride !== 'false';
+      } else {
+        isBetaSite = hostname.includes('agenticadvertising') ||
+                     hostname === 'localhost' ||
+                     hostname === '127.0.0.1';
+      }
+
+      const publicDir = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public")
+        : path.join(__dirname, "../public");
+
+      // Beta site gets org-focused homepage, production gets protocol homepage
+      const homepageFile = isBetaSite ? 'org-index.html' : 'index.html';
+      res.sendFile(path.join(publicDir, homepageFile));
     });
 
     // Registry UI route - serve registry.html at /registry
