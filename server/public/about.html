@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AgenticAdvertising.org: About the Organization</title>
   <meta name="description" content="AgenticAdvertising.org is the independent industry body overseeing development, education, and rollout of standards and practices for agentic advertising deployment.">
-  <link rel="icon" href="/adcp_logo.svg" type="image/svg+xml">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/aao-theme.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -18,7 +19,7 @@
 
     /* Hero Section */
     .hero {
-      background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
+      background: linear-gradient(135deg, var(--aao-primary) 0%, var(--aao-primary-light) 100%);
       color: white;
       padding: 4rem 2rem 3rem;
       text-align: center;
@@ -68,12 +69,12 @@
       transition: all 0.2s;
     }
     .sub-nav-links a:hover {
-      color: #065f46;
-      background: #f0fdf4;
+      color: var(--aao-primary);
+      background: #eef4fc;
     }
     .sub-nav-links a.active {
-      color: #065f46;
-      border-bottom-color: #10b981;
+      color: var(--aao-primary);
+      border-bottom-color: var(--aao-primary);
     }
 
     /* Main Content */
@@ -92,10 +93,10 @@
     .section h2 {
       font-size: 1.75rem;
       font-weight: 700;
-      color: #065f46;
+      color: var(--aao-primary);
       margin-bottom: 1.5rem;
       padding-bottom: 0.75rem;
-      border-bottom: 3px solid #10b981;
+      border-bottom: 3px solid var(--aao-primary);
     }
     .section h3 {
       font-size: 1.25rem;
@@ -117,7 +118,7 @@
       margin-bottom: 0;
     }
     .section a:not(.cta-btn) {
-      color: #10b981;
+      color: var(--aao-primary);
       font-weight: 500;
     }
     .section a:not(.cta-btn):hover {
@@ -135,15 +136,15 @@
 
     /* Mission Statement Box */
     .mission-box {
-      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-      border: 2px solid #10b981;
+      background: linear-gradient(135deg, #eef4fc 0%, #dbe8fc 100%);
+      border: 2px solid var(--aao-accent);
       border-radius: 12px;
       padding: 2rem;
       margin: 2rem 0;
     }
     .mission-label {
       display: inline-block;
-      background: #10b981;
+      background: var(--aao-primary);
       color: white;
       padding: 0.25rem 0.75rem;
       border-radius: 20px;
@@ -156,23 +157,23 @@
     .mission-box p {
       font-size: 1.2rem;
       line-height: 1.7;
-      color: #065f46;
+      color: #1e3a5f;
       font-weight: 500;
       margin: 0;
     }
 
     /* News Banner */
     .news-banner {
-      background: #fef3c7;
-      border: 1px solid #f59e0b;
+      background: linear-gradient(135deg, #eef4fc 0%, #dbe8fc 100%);
+      border: 2px solid var(--aao-accent);
       border-radius: 12px;
       padding: 1.5rem 2rem;
       margin-bottom: 2rem;
     }
     .news-pill {
       display: inline-block;
-      background: #f59e0b;
-      color: #78350f;
+      background: var(--aao-primary);
+      color: white;
       padding: 0.25rem 0.75rem;
       border-radius: 20px;
       font-size: 0.75rem;
@@ -182,13 +183,13 @@
       margin-bottom: 0.75rem;
     }
     .news-banner p {
-      color: #78350f;
+      color: #1e3a5f;
       font-size: 1rem;
       line-height: 1.6;
       margin: 0;
     }
     .news-banner a {
-      color: #92400e;
+      color: var(--aao-primary);
       font-weight: 600;
     }
     .news-banner a:hover {
@@ -206,12 +207,12 @@
       background: #f9fafb;
       border-radius: 12px;
       padding: 1.5rem;
-      border-left: 4px solid #10b981;
+      border-left: 4px solid var(--aao-primary);
     }
     .comparison-card h4 {
       font-size: 1.15rem;
       font-weight: 700;
-      color: #065f46;
+      color: var(--aao-primary);
       margin-bottom: 0.5rem;
     }
     .comparison-card .subtitle {
@@ -229,8 +230,8 @@
 
     /* CTA Section */
     .cta-section {
-      background: #f0fdf4;
-      border: 2px solid #10b981;
+      background: linear-gradient(135deg, #eef4fc 0%, #dbe8fc 100%);
+      border: 2px solid var(--aao-accent);
       border-radius: 12px;
       padding: 2rem;
       text-align: center;
@@ -238,7 +239,7 @@
     }
     .cta-section h3 {
       font-size: 1.5rem;
-      color: #065f46;
+      color: var(--aao-primary);
       margin-bottom: 1rem;
       margin-top: 0;
     }
@@ -248,7 +249,7 @@
     }
     .cta-btn {
       display: inline-block;
-      background: #10b981;
+      background: var(--aao-primary);
       color: white;
       padding: 0.875rem 2rem;
       border-radius: 8px;
@@ -258,7 +259,7 @@
       transition: background 0.2s;
     }
     .cta-btn:hover {
-      background: #059669;
+      background: var(--aao-primary-light);
       text-decoration: none;
     }
 
@@ -279,7 +280,7 @@
       width: 120px;
       height: 120px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #10b981, #059669);
+      background: linear-gradient(135deg, var(--aao-primary), var(--aao-primary-light));
       margin: 0 auto 1rem;
       display: flex;
       align-items: center;
@@ -287,6 +288,12 @@
       color: white;
       font-size: 2.5rem;
       font-weight: 700;
+      overflow: hidden;
+    }
+    .leader-photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
     .leader-name {
       font-size: 1.2rem;
@@ -296,7 +303,7 @@
     }
     .leader-title {
       font-size: 0.9rem;
-      color: #10b981;
+      color: var(--aao-primary);
       font-weight: 500;
       margin-bottom: 0.75rem;
     }
@@ -338,7 +345,7 @@
       transition: color 0.2s;
     }
     .footer-links a:hover {
-      color: #10b981;
+      color: var(--aao-accent);
     }
     .footer-copyright {
       font-size: 0.875rem;
@@ -520,13 +527,17 @@
       </p>
       <div class="leaders-grid">
         <div class="leader-card">
-          <div class="leader-photo">RR</div>
+          <div class="leader-photo">
+            <img src="/randall-rothenberg.jpeg" alt="Randall Rothenberg">
+          </div>
           <div class="leader-name">Randall Rothenberg</div>
           <div class="leader-title">Interim Advisor</div>
           <p class="leader-bio">Former CEO of the Interactive Advertising Bureau (IAB)</p>
         </div>
         <div class="leader-card">
-          <div class="leader-photo">ME</div>
+          <div class="leader-photo">
+            <img src="/matt-egol.jpeg" alt="Matthew Egol">
+          </div>
           <div class="leader-name">Matthew Egol</div>
           <div class="leader-title">Interim Advisor</div>
           <p class="leader-bio">Former Partner at Booz & Company / Strategy&</p>

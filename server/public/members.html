@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Member Directory - AgenticAdvertising.org</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/aao-theme.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -13,7 +15,7 @@
       padding-top: 60px;
     }
     .header {
-      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      background: linear-gradient(135deg, var(--aao-primary) 0%, var(--aao-primary-light) 100%);
       color: white;
       padding: 3rem 0;
       text-align: center;
@@ -52,11 +54,11 @@
     }
     .search-bar input:focus {
       outline: none;
-      border-color: #10b981;
+      border-color: var(--aao-primary);
     }
     .search-bar button {
       padding: 12px 24px;
-      background: #10b981;
+      background: var(--aao-primary);
       color: white;
       border: none;
       border-radius: 8px;
@@ -65,7 +67,7 @@
       transition: background 0.2s;
     }
     .search-bar button:hover {
-      background: #059669;
+      background: var(--aao-primary-light);
     }
     .market-filter {
       padding: 10px 14px;
@@ -79,7 +81,7 @@
     }
     .market-filter:focus {
       outline: none;
-      border-color: #10b981;
+      border-color: var(--aao-primary);
     }
     .filters {
       display: flex;
@@ -96,12 +98,12 @@
       transition: all 0.2s;
     }
     .filter-btn:hover {
-      border-color: #10b981;
+      border-color: var(--aao-primary);
     }
     .filter-btn.active {
-      background: #d1fae5;
-      border-color: #10b981;
-      color: #065f46;
+      background: #dbe8fc;
+      border-color: var(--aao-primary);
+      color: var(--aao-primary);
     }
     .members-grid {
       display: grid;
@@ -141,10 +143,10 @@
     }
     .membership-intro h2 {
       font-size: 1.75rem;
-      color: #065f46;
+      color: var(--aao-primary);
       margin-bottom: 1rem;
       padding-bottom: 0.75rem;
-      border-bottom: 3px solid #10b981;
+      border-bottom: 3px solid var(--aao-primary);
     }
     .membership-intro > p {
       font-size: 1.1rem;
@@ -166,13 +168,13 @@
     .benefit-icon {
       width: 48px;
       height: 48px;
-      background: #d1fae5;
+      background: #dbe8fc;
       border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      color: #065f46;
+      color: var(--aao-primary);
     }
     .benefit-content h3 {
       font-size: 1.1rem;
@@ -188,27 +190,27 @@
     .membership-cta-btn {
       display: inline-block;
       padding: 14px 32px;
-      background: #10b981;
+      background: var(--aao-primary);
       color: white;
       text-decoration: none;
       border-radius: 8px;
       font-weight: 600;
       font-size: 1.05rem;
       transition: all 0.2s;
-      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+      box-shadow: 0 2px 8px rgba(26, 54, 180, 0.3);
     }
     .membership-cta-btn:hover {
-      background: #059669;
+      background: var(--aao-primary-light);
       transform: translateY(-2px);
-      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+      box-shadow: 0 4px 16px rgba(26, 54, 180, 0.4);
     }
     .coming-soon-teaser {
       display: flex;
       align-items: center;
       gap: 0.75rem;
       padding: 1rem 1.25rem;
-      background: #f0fdf4;
-      border: 1px dashed #86efac;
+      background: #eef4fc;
+      border: 1px dashed var(--aao-accent);
       border-radius: 8px;
       margin-bottom: 1.5rem;
     }
@@ -218,23 +220,23 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
       padding: 0.25rem 0.5rem;
-      background: #10b981;
+      background: var(--aao-primary);
       color: white;
       border-radius: 4px;
       flex-shrink: 0;
     }
     .coming-soon-text {
       font-size: 0.95rem;
-      color: #065f46;
+      color: #1e3a5f;
     }
 
     /* Join CTA Banner */
     .join-cta {
-      background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
+      background: linear-gradient(135deg, var(--aao-primary) 0%, var(--aao-primary-light) 100%);
       border-radius: 12px;
       padding: 1.5rem 2rem;
       margin-bottom: 2rem;
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+      box-shadow: 0 4px 12px rgba(26, 54, 180, 0.3);
     }
     .join-cta-content {
       display: flex;
@@ -259,7 +261,7 @@
       display: inline-block;
       padding: 12px 28px;
       background: white;
-      color: #065f46;
+      color: var(--aao-primary);
       text-decoration: none;
       border-radius: 8px;
       font-weight: 600;
@@ -296,8 +298,8 @@
       gap: 0.5rem;
       padding: 10px 20px;
       background: white;
-      border: 2px solid #10b981;
-      color: #10b981;
+      border: 2px solid var(--aao-primary);
+      color: var(--aao-primary);
       border-radius: 8px;
       font-weight: 600;
       cursor: pointer;
@@ -305,7 +307,7 @@
       transition: all 0.2s;
     }
     .back-btn:hover {
-      background: #10b981;
+      background: var(--aao-primary);
       color: white;
     }
     .detail-actions {
@@ -329,13 +331,13 @@
       position: relative;
     }
     .share-btn:hover {
-      border-color: #10b981;
-      color: #10b981;
+      border-color: var(--aao-primary);
+      color: var(--aao-primary);
     }
     .share-btn.copied {
-      background: #d1fae5;
-      border-color: #10b981;
-      color: #065f46;
+      background: #dbe8fc;
+      border-color: var(--aao-primary);
+      color: var(--aao-primary);
     }
     .share-dropdown {
       position: absolute;
@@ -395,7 +397,7 @@
     .detail-logo-placeholder {
       width: 150px;
       height: 100px;
-      background: linear-gradient(135deg, #10b981, #059669);
+      background: linear-gradient(135deg, var(--aao-primary), var(--aao-primary-light));
       border-radius: 12px;
       display: flex;
       align-items: center;
@@ -449,7 +451,7 @@
       color: #333;
       margin-bottom: 1rem;
       padding-bottom: 0.5rem;
-      border-bottom: 2px solid #10b981;
+      border-bottom: 2px solid var(--aao-primary);
     }
     .detail-description {
       color: #666;
@@ -479,7 +481,7 @@
       border-radius: 8px;
     }
     .contact-item a {
-      color: #10b981;
+      color: var(--aao-primary);
       text-decoration: none;
     }
     .contact-item a:hover {
@@ -515,8 +517,8 @@
       transition: all 0.2s;
     }
     .agent-item:hover {
-      border-color: #10b981;
-      background: #f0fdf4;
+      border-color: var(--aao-primary);
+      background: #eef4fc;
     }
     .agent-icon {
       width: 48px;
@@ -580,11 +582,11 @@
       animation: pulse 1.5s infinite;
     }
     .agent-status.online {
-      background: #d1fae5;
-      color: #065f46;
+      background: #dbe8fc;
+      color: var(--aao-primary);
     }
     .agent-status.online .status-dot {
-      background: #10b981;
+      background: var(--aao-primary);
     }
     .agent-status.offline {
       background: #fee2e2;
@@ -656,7 +658,7 @@
     }
     .agent-modal-url {
       font-size: 0.9rem;
-      color: #10b981;
+      color: var(--aao-primary);
       word-break: break-all;
     }
     .agent-modal-close {
@@ -725,7 +727,7 @@
       background: #f9fafb;
       padding: 1rem;
       border-radius: 8px;
-      border-left: 3px solid #10b981;
+      border-left: 3px solid var(--aao-primary);
     }
     .agent-tool-name {
       font-family: Monaco, monospace;
@@ -784,7 +786,7 @@
       width: 32px;
       height: 32px;
       border: 3px solid #e5e7eb;
-      border-top-color: #10b981;
+      border-top-color: var(--aao-primary);
       border-radius: 50%;
       animation: spin 1s linear infinite;
       margin: 0 auto 1rem;
@@ -813,7 +815,7 @@
     .format-card:hover {
       transform: translateY(-2px);
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-      border-color: #10b981;
+      border-color: var(--aao-primary);
     }
     .format-card-preview {
       width: 100%;
@@ -890,7 +892,7 @@
       color: #666;
     }
     .format-card-generative-badge {
-      background: #10b981;
+      background: var(--aao-primary);
       color: white;
       padding: 3px 8px;
       border-radius: 10px;
@@ -911,7 +913,7 @@
       width: 24px;
       height: 24px;
       border: 3px solid #e5e7eb;
-      border-top-color: #10b981;
+      border-top-color: var(--aao-primary);
       border-radius: 50%;
       animation: spin 1s linear infinite;
       margin: 0 auto 0.5rem;
@@ -931,8 +933,8 @@
       transition: all 0.2s ease;
     }
     .product-card:hover {
-      border-color: #10b981;
-      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+      border-color: var(--aao-primary);
+      box-shadow: 0 2px 8px rgba(26, 54, 180, 0.15);
     }
     .product-card-header {
       display: flex;
@@ -980,8 +982,8 @@
     }
     .product-card-price {
       padding: 2px 6px;
-      background: #d1fae5;
-      color: #065f46;
+      background: #dbe8fc;
+      color: var(--aao-primary);
       border-radius: 4px;
       font-weight: 600;
     }
@@ -1046,11 +1048,11 @@
       margin-bottom: 1rem;
     }
     .agent-stat-card {
-      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+      background: linear-gradient(135deg, #eef4fc 0%, #dbe8fc 100%);
       border-radius: 10px;
       padding: 1rem;
       text-align: center;
-      border: 1px solid #bbf7d0;
+      border: 1px solid var(--aao-accent);
     }
     .agent-stat-card.products {
       background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);

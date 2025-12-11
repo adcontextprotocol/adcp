@@ -2552,13 +2552,23 @@ export class HTTPServer {
           }
         }
 
-        // Clear the cookie
-        res.clearCookie('wos-session');
+        // Clear the cookie - must match the options used when setting it
+        res.clearCookie('wos-session', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+        });
         res.redirect('/');
       } catch (error) {
         logger.error({ err: error }, 'Error during logout');
         // Still clear the cookie and redirect even if revocation failed
-        res.clearCookie('wos-session');
+        res.clearCookie('wos-session', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+        });
         res.redirect('/');
       }
     });

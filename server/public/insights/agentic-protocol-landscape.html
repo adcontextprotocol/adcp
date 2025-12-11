@@ -6,7 +6,8 @@
   <title>Understanding the Agentic Protocol Landscape | AgenticAdvertising.org</title>
   <meta name="description" content="How horizontal middleware (AAIF) and vertical transaction protocols (AdCP, ACP) work together. A comprehensive guide to agentic AI standards and where to get involved.">
   <meta name="keywords" content="agentic protocols, AI agent standards, AAIF, AdCP, ACP, MCP, A2A, Model Context Protocol, agentic AI, open standards">
-  <link rel="icon" href="/adcp_logo.svg" type="image/svg+xml">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/aao-theme.css">
 
   <!-- Open Graph -->
   <meta property="og:title" content="Understanding the Agentic Protocol Landscape">
@@ -14,392 +15,11 @@
   <meta property="og:type" content="article">
 
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #fff;
-      min-height: 100vh;
-      color: #1a1a1a;
-      line-height: 1.6;
-    }
+    /* Page-specific: nav offset */
+    body { padding-top: 60px; }
 
-    /* Hero Section */
-    .hero {
-      background: linear-gradient(135deg, #065f46 0%, #10b981 100%);
-      color: white;
-      padding: 4rem 2rem 3rem;
-      text-align: center;
-    }
-    .hero-container {
-      max-width: 900px;
-      margin: 0 auto;
-    }
-    .hero-breadcrumb {
-      font-size: 0.9rem;
-      opacity: 0.8;
-      margin-bottom: 1rem;
-    }
-    .hero-breadcrumb a {
-      color: white;
-      text-decoration: none;
-    }
-    .hero-breadcrumb a:hover {
-      text-decoration: underline;
-    }
-    .hero h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      margin-bottom: 1rem;
-      line-height: 1.2;
-    }
-    .hero-subtitle {
-      font-size: 1.25rem;
-      opacity: 0.95;
-    }
-
-    /* Sub-Navigation */
-    .sub-nav {
-      background: #f9fafb;
-      border-bottom: 1px solid #e5e7eb;
-      position: sticky;
-      top: 60px;
-      z-index: 100;
-    }
-    .sub-nav-container {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 0 2rem;
-    }
-    .sub-nav-links {
-      display: flex;
-      gap: 0;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .sub-nav-links a {
-      padding: 1rem 1.5rem;
-      color: #4b5563;
-      text-decoration: none;
-      font-weight: 500;
-      font-size: 0.95rem;
-      white-space: nowrap;
-      border-bottom: 3px solid transparent;
-      transition: all 0.2s;
-    }
-    .sub-nav-links a:hover {
-      color: #065f46;
-      background: #f0fdf4;
-    }
-    .sub-nav-links a.active {
-      color: #065f46;
-      border-bottom-color: #10b981;
-    }
-
-    /* Main Content */
-    .container {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 3rem 2rem;
-    }
-    .section {
-      margin-bottom: 4rem;
-      scroll-margin-top: 140px;
-    }
-    .section:last-child {
-      margin-bottom: 0;
-    }
-    .section h2 {
-      font-size: 1.75rem;
-      font-weight: 700;
-      color: #065f46;
-      margin-bottom: 1.5rem;
-      padding-bottom: 0.75rem;
-      border-bottom: 3px solid #10b981;
-    }
-    .section h3 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      color: #1a1a1a;
-      margin-top: 2rem;
-      margin-bottom: 1rem;
-    }
-    .section h3:first-child {
-      margin-top: 0;
-    }
-    .section p {
-      font-size: 1.1rem;
-      line-height: 1.8;
-      color: #374151;
-      margin-bottom: 1rem;
-    }
-    .section p:last-child {
-      margin-bottom: 0;
-    }
-    .section a:not(.cta-btn):not(.org-card) {
-      color: #10b981;
-      font-weight: 500;
-    }
-    .section a:not(.cta-btn):not(.org-card):hover {
-      text-decoration: underline;
-    }
-    .section ul {
-      margin: 1rem 0 1.5rem 1.5rem;
-      color: #374151;
-    }
-    .section ul li {
-      margin-bottom: 0.5rem;
-      font-size: 1.05rem;
-      line-height: 1.7;
-    }
-
-    /* Diagram */
-    .diagram-container {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 2rem;
-      margin: 2rem 0;
-      text-align: center;
-    }
-    .diagram {
-      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-      font-size: 0.9rem;
-      line-height: 1.8;
-      color: #374151;
-    }
-    .diagram-layer {
-      margin-bottom: 1rem;
-    }
-    .diagram-layer-label {
-      font-weight: 700;
-      color: #065f46;
-    }
-    .diagram-horizontal {
-      background: #dbeafe;
-      border: 2px solid #3b82f6;
-      border-radius: 8px;
-      padding: 1rem;
-      margin-bottom: 0.5rem;
-    }
-    .diagram-vertical {
-      display: flex;
-      justify-content: center;
-      gap: 1rem;
-      flex-wrap: wrap;
-    }
-    .diagram-vertical-item {
-      background: #f0fdf4;
-      border: 2px solid #10b981;
-      border-radius: 8px;
-      padding: 0.75rem 1.5rem;
-      min-width: 140px;
-    }
-    .diagram-traditional {
-      background: #fef3c7;
-      border: 2px solid #f59e0b;
-      border-radius: 8px;
-      padding: 0.75rem 1.5rem;
-      margin-top: 0.5rem;
-    }
-    .diagram-arrow {
-      color: #6b7280;
-      font-size: 1.5rem;
-      margin: 0.25rem 0;
-    }
-    .diagram-caption {
-      font-size: 0.85rem;
-      color: #6b7280;
-      margin-top: 1rem;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-
-    /* Protocol Cards */
-    .protocol-card {
-      background: #f9fafb;
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin: 1.5rem 0;
-      border-left: 4px solid #10b981;
-    }
-    .protocol-card.horizontal {
-      border-left-color: #3b82f6;
-    }
-    .protocol-card.traditional {
-      border-left-color: #f59e0b;
-    }
-    .protocol-card h4 {
-      font-size: 1.15rem;
-      font-weight: 700;
-      color: #065f46;
-      margin-bottom: 0.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .protocol-card.horizontal h4 {
-      color: #1e40af;
-    }
-    .protocol-card.traditional h4 {
-      color: #92400e;
-    }
-    .protocol-card .subtitle {
-      font-size: 0.85rem;
-      color: #6b7280;
-      margin-bottom: 0.75rem;
-    }
-    .protocol-card p {
-      font-size: 0.95rem;
-      line-height: 1.7;
-      color: #374151;
-      margin-bottom: 0.75rem;
-    }
-    .protocol-card p:last-child {
-      margin-bottom: 0;
-    }
-    .protocol-card ul {
-      margin: 0.5rem 0 0.75rem 1.25rem;
-      font-size: 0.95rem;
-    }
-    .protocol-card .external-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      font-size: 0.9rem;
-      margin-top: 0.5rem;
-    }
-
-    /* Key Point Box */
-    .key-point {
-      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-      border: 2px solid #10b981;
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin: 2rem 0;
-    }
-    .key-point-label {
-      display: inline-block;
-      background: #10b981;
-      color: white;
-      padding: 0.25rem 0.75rem;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 0.75rem;
-    }
-    .key-point p {
-      font-size: 1.1rem;
-      line-height: 1.7;
-      color: #065f46;
-      font-weight: 500;
-      margin: 0;
-    }
-
-    /* Get Involved Cards */
-    .org-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.5rem;
-      margin-top: 2rem;
-    }
-    .org-card {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 1.5rem;
-      text-decoration: none;
-      color: inherit;
-      transition: all 0.2s;
-      display: flex;
-      flex-direction: column;
-    }
-    .org-card:hover {
-      border-color: #10b981;
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
-      transform: translateY(-2px);
-    }
-    .org-card h4 {
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: #065f46;
-      margin-bottom: 0.25rem;
-    }
-    .org-card .org-type {
-      font-size: 0.8rem;
-      color: #6b7280;
-      margin-bottom: 0.75rem;
-    }
-    .org-card p {
-      font-size: 0.9rem;
-      color: #374151;
-      line-height: 1.6;
-      flex: 1;
-    }
-    .org-card .visit-link {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-      color: #10b981;
-      font-weight: 600;
-      font-size: 0.9rem;
-      margin-top: 1rem;
-    }
-    .org-card:hover .visit-link svg {
-      transform: translateX(4px);
-    }
-    .org-card .visit-link svg {
-      transition: transform 0.2s;
-    }
-
-    /* Footer */
-    .footer {
-      background: #1f2937;
-      color: #9ca3af;
-      padding: 3rem 2rem;
-      text-align: center;
-    }
-    .footer-links {
-      display: flex;
-      justify-content: center;
-      gap: 2rem;
-      margin-bottom: 1.5rem;
-      flex-wrap: wrap;
-    }
-    .footer-links a {
-      color: #d1d5db;
-      text-decoration: none;
-      transition: color 0.2s;
-    }
-    .footer-links a:hover {
-      color: #10b981;
-    }
-    .footer-copyright {
-      font-size: 0.875rem;
-    }
-
-    @media (max-width: 768px) {
-      .hero {
-        padding: 3rem 1.5rem 2rem;
-      }
-      .hero h1 {
-        font-size: 1.75rem;
-      }
-      .container {
-        padding: 2rem 1.5rem;
-      }
-      .sub-nav-links a {
-        padding: 0.875rem 1rem;
-        font-size: 0.875rem;
-      }
-      .section {
-        scroll-margin-top: 120px;
-      }
-      .diagram-vertical {
-        flex-direction: column;
-        align-items: center;
-      }
-    }
+    /* Page-specific: narrower container for article content */
+    .container { max-width: 900px; }
   </style>
 </head>
 <body>
@@ -408,7 +28,7 @@
   <script src="/nav.js"></script>
 
   <!-- Hero Section -->
-  <section class="hero">
+  <section class="hero hero--article">
     <div class="hero-container">
       <div class="hero-breadcrumb">
         <a href="/insights">Insights</a> / Ecosystem
@@ -434,7 +54,7 @@
   <!-- Main Content -->
   <div class="container">
     <!-- Overview Section -->
-    <section class="section" id="overview">
+    <section class="article-section" id="overview">
       <h2>Overview</h2>
 
       <p>
@@ -506,7 +126,7 @@
     </section>
 
     <!-- Horizontal Middleware Section -->
-    <section class="section" id="horizontal-middleware">
+    <section class="article-section" id="horizontal-middleware">
       <h2>Horizontal Middleware</h2>
 
       <p>
@@ -557,7 +177,7 @@
     </section>
 
     <!-- Vertical Protocols Section -->
-    <section class="section" id="vertical-protocols">
+    <section class="article-section" id="vertical-protocols">
       <h2>Vertical Transaction Protocols</h2>
 
       <p>
@@ -623,7 +243,7 @@
     </section>
 
     <!-- Traditional Standards Section -->
-    <section class="section" id="traditional-standards">
+    <section class="article-section" id="traditional-standards">
       <h2>Traditional Standards</h2>
 
       <p>
@@ -670,7 +290,7 @@
     </section>
 
     <!-- Get Involved Section -->
-    <section class="section" id="get-involved">
+    <section class="article-section" id="get-involved">
       <h2>Get Involved</h2>
 
       <p>
@@ -772,7 +392,7 @@
   </div>
 
   <!-- Footer -->
-  <footer class="footer">
+  <footer class="footer footer--centered">
     <div class="footer-links">
       <a href="/">Home</a>
       <a href="/insights">Insights</a>
@@ -787,7 +407,7 @@
 
   <script>
     // Sub-nav active state on scroll
-    const sections = document.querySelectorAll('.section[id]');
+    const sections = document.querySelectorAll('.article-section[id]');
     const navLinks = document.querySelectorAll('.sub-nav-links a');
 
     function updateActiveNav() {

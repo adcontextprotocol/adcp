@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - AdCP Registry</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/aao-theme.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -114,11 +116,11 @@
       font-weight: 500;
     }
     .btn-primary {
-      background: #667eea;
+      background: var(--aao-primary);
       color: white;
     }
     .btn-primary:hover {
-      background: #5568d3;
+      background: var(--aao-primary-light);
     }
     .btn-secondary {
       background: #e0e0e0;
@@ -202,7 +204,7 @@
       margin-left: 6px;
     }
     .org-switcher-item .item-badge.active {
-      background: #d1fae5;
+      background: #dbe8fc;
       color: #065f46;
     }
     .org-switcher-item .item-badge.inactive {
@@ -293,7 +295,7 @@
 
         <!-- LEFT COLUMN: Member Profile (prominent) -->
         <div class="card" id="memberProfileCard" style="padding: 0; overflow: hidden;">
-          <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 20px 24px; color: white;">
+          <div style="background: linear-gradient(135deg, var(--aao-primary) 0%, var(--aao-primary-light) 100%); padding: 20px 24px; color: white;">
             <h2 style="margin: 0; color: white; display: flex; align-items: center; gap: 10px;">
               <span style="font-size: 24px;">🏢</span> Member Profile
             </h2>
@@ -335,7 +337,7 @@
 
       <!-- Membership section - shown for non-subscribers -->
       <div id="membershipSection" class="card" style="display:none; margin-top: 24px;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; color: white; margin-bottom: 20px;">
+        <div style="background: linear-gradient(135deg, var(--aao-primary) 0%, var(--aao-primary-light) 100%); padding: 20px; border-radius: 8px; color: white; margin-bottom: 20px;">
           <h3 style="margin: 0 0 8px 0; color: white;">Become a Member</h3>
           <p style="margin: 0; color: rgba(255,255,255,0.9); font-size: 14px;">Unlock your public member profile, appear in the directory, and support the AdCP ecosystem.</p>
         </div>
@@ -525,7 +527,7 @@
 
       // Subscription badge - shows AdCP membership status
       const subscriptionBadge = org.billing?.status === 'active'
-        ? `<span style="display: inline-block; padding: 2px 8px; background: #d1fae5; color: #065f46; border-radius: 10px; font-size: 11px;">✓ Subscribed</span>`
+        ? `<span style="display: inline-block; padding: 2px 8px; background: #dbe8fc; color: #065f46; border-radius: 10px; font-size: 11px;">✓ Subscribed</span>`
         : '';
 
       // Update welcome header with org info
@@ -540,7 +542,7 @@
         <div style="margin-top: 15px;">
           <button
             onclick="openBillingPortal('${org.id}')"
-            style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%;"
+            style="padding: 10px 20px; background: #1a36b4; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%;"
           >
             Manage Billing
           </button>
@@ -556,7 +558,7 @@
           </div>
           <button
             onclick="convertToTeam('${org.id}')"
-            style="padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%;"
+            style="padding: 10px 20px; background: #1a36b4; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%;"
             title="Convert to a team workspace to invite members"
           >
             Upgrade to Team
@@ -572,7 +574,7 @@
           <div style="display: flex; gap: 8px;">
             <a
               href="/team?org=${org.id}&action=invite"
-              style="flex: 1; display: block; text-align: center; padding: 8px 12px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 13px;"
+              style="flex: 1; display: block; text-align: center; padding: 8px 12px; background: #1a36b4; color: white; border-radius: 6px; text-decoration: none; font-size: 13px;"
             >
               + Invite
             </a>
@@ -664,7 +666,7 @@
             } else {
               initials = '?';
             }
-            const colors = ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+            const colors = ['#1a36b4', '#2d4fd6', '#f59e0b', '#ef4444', '#8b5cf6'];
             const bgColor = colors[i % colors.length];
             return `
               <div style="width: 32px; height: 32px; border-radius: 50%; background: ${bgColor}; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 600; border: 2px solid white; margin-left: ${i === 0 ? '0' : '-8px'};" title="${m.email || 'Member'}">
@@ -722,7 +724,7 @@
             actionsContainer.innerHTML = `
               <a
                 href="/member-profile?org=${orgId}"
-                style="display: block; text-align: center; padding: 12px 24px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+                style="display: block; text-align: center; padding: 12px 24px; background: #1a36b4; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
               >
                 Create Profile
               </a>
@@ -763,7 +765,7 @@
             if (profile.is_public) {
               visibilitySection = `
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: #d1fae5; color: #059669; border-radius: 4px; font-size: 12px; font-weight: 500;">
+                  <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: #dbe8fc; color: #1a36b4; border-radius: 4px; font-size: 12px; font-weight: 500;">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>
                     Public
                   </span>
@@ -785,7 +787,7 @@
                   </span>
                   <button
                     onclick="toggleProfileVisibility('${orgId}', true)"
-                    style="padding: 4px 10px; background: #10b981; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;"
+                    style="padding: 4px 10px; background: #1a36b4; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;"
                   >
                     Make Public
                   </button>
@@ -801,7 +803,7 @@
                   </span>
                   <button
                     onclick="scrollToMembership()"
-                    style="padding: 4px 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;"
+                    style="padding: 4px 10px; background: linear-gradient(135deg, #1a36b4 0%, #2d4fd6 100%); color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;"
                     title="Membership required to publish"
                   >
                     🔒 Publish
@@ -824,7 +826,7 @@
                   </a>
                   <a
                     href="/member-profile?org=${orgId}"
-                    style="padding: 8px 16px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+                    style="padding: 8px 16px; background: #1a36b4; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
                   >
                     Edit
                   </a>
@@ -834,7 +836,7 @@
               editButtons = `
                 <a
                   href="/member-profile?org=${orgId}"
-                  style="padding: 8px 16px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+                  style="padding: 8px 16px; background: #1a36b4; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
                 >
                   Edit
                 </a>
@@ -858,7 +860,7 @@
             actionsContainer.innerHTML = `
               <a
                 href="/member-profile?org=${orgId}"
-                style="display: block; text-align: center; padding: 12px 24px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+                style="display: block; text-align: center; padding: 12px 24px; background: #1a36b4; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
               >
                 Create Profile
               </a>
@@ -882,7 +884,7 @@
           actionsContainer.innerHTML = `
             <a
               href="/member-profile?org=${orgId}"
-              style="display: block; text-align: center; padding: 12px 24px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+              style="display: block; text-align: center; padding: 12px 24px; background: #1a36b4; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
             >
               Create Profile
             </a>
@@ -994,14 +996,14 @@
             statusDot = '<span style="width: 6px; height: 6px; background: #f59e0b; border-radius: 50%; display: inline-block;"></span>';
             statusText = '';
             actionButton = `<button onclick="viewAgreement('${agreement.type}', '${agreement.version}')"
-                      style="padding: 4px 8px; background: transparent; color: #667eea; border: none; font-size: 12px; cursor: pointer; text-decoration: underline;">
+                      style="padding: 4px 8px; background: transparent; color: #1a36b4; border: none; font-size: 12px; cursor: pointer; text-decoration: underline;">
                 View
               </button>`;
           } else {
-            statusDot = '<span style="width: 6px; height: 6px; background: #10b981; border-radius: 50%; display: inline-block;"></span>';
+            statusDot = '<span style="width: 6px; height: 6px; background: #1a36b4; border-radius: 50%; display: inline-block;"></span>';
             statusText = '';
             actionButton = `<button onclick="viewAgreement('${agreement.type}', '${agreement.version}')"
-                      style="padding: 4px 8px; background: transparent; color: #667eea; border: none; font-size: 12px; cursor: pointer; text-decoration: underline;">
+                      style="padding: 4px 8px; background: transparent; color: #1a36b4; border: none; font-size: 12px; cursor: pointer; text-decoration: underline;">
                 View
               </button>`;
           }
@@ -1584,7 +1586,7 @@
                     <td style="padding: 10px;">${formatAgreementType(acceptance.type)}</td>
                     <td style="padding: 10px;">
                       ${acceptance.version
-                        ? `<a href="javascript:void(0)" onclick="viewAgreement('${acceptance.type}', '${acceptance.version}')" style="color: #667eea; text-decoration: underline; cursor: pointer;">${acceptance.version}</a>`
+                        ? `<a href="javascript:void(0)" onclick="viewAgreement('${acceptance.type}', '${acceptance.version}')" style="color: #1a36b4; text-decoration: underline; cursor: pointer;">${acceptance.version}</a>`
                         : 'Not accepted'}
                       ${acceptance.is_outdated && acceptance.current_version
                         ? `<br><small style="color: #f90;">→ <a href="javascript:void(0)" onclick="viewAgreement('${acceptance.type}', '${acceptance.current_version}')" style="color: #f90; text-decoration: underline; cursor: pointer;">${acceptance.current_version} available</a></small>`
