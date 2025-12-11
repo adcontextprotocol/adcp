@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Member Directory - AdCP</title>
+  <title>Member Directory - AgenticAdvertising.org</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -67,6 +67,20 @@
     .search-bar button:hover {
       background: #059669;
     }
+    .market-filter {
+      padding: 10px 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 15px;
+      background: white;
+      color: #333;
+      cursor: pointer;
+      min-width: 140px;
+    }
+    .market-filter:focus {
+      outline: none;
+      border-color: #10b981;
+    }
     .filters {
       display: flex;
       flex-wrap: wrap;
@@ -94,52 +108,7 @@
       grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
       gap: 1.5rem;
     }
-    .member-card {
-      background: white;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      transition: transform 0.2s, box-shadow 0.2s;
-      cursor: pointer;
-    }
-    .member-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
-    }
-    .member-card-header {
-      padding: 1.5rem;
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      border-bottom: 1px solid #f3f4f6;
-    }
-    .member-logo {
-      width: 80px;
-      height: 60px;
-      object-fit: contain;
-      border-radius: 8px;
-    }
-    .member-logo-placeholder {
-      width: 80px;
-      height: 60px;
-      background: linear-gradient(135deg, #10b981, #059669);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 24px;
-      font-weight: bold;
-    }
-    .member-info {
-      flex: 1;
-    }
-    .member-name {
-      font-size: 1.2rem;
-      font-weight: 600;
-      color: #333;
-      margin-bottom: 4px;
-    }
+    /* Member card styles loaded from member-card.js via injectMemberCardStyles() */
     .member-tagline {
       font-size: 0.9rem;
       color: #666;
@@ -147,65 +116,6 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
-    }
-    .member-card-body {
-      padding: 1.5rem;
-    }
-    .member-description {
-      color: #666;
-      font-size: 0.95rem;
-      line-height: 1.6;
-      margin-bottom: 1rem;
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .member-offerings {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }
-    .offering-tag {
-      padding: 4px 10px;
-      background: #dbeafe;
-      color: #1e40af;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 500;
-    }
-    .member-card-footer {
-      padding: 1rem 1.5rem;
-      background: #f9fafb;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .member-contact {
-      display: flex;
-      gap: 1rem;
-    }
-    .member-contact a {
-      color: #10b981;
-      text-decoration: none;
-      font-size: 14px;
-    }
-    .member-contact a:hover {
-      text-decoration: underline;
-    }
-    .view-profile-btn {
-      padding: 8px 16px;
-      background: #10b981;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .view-profile-btn:hover {
-      background: #059669;
     }
     .loading {
       text-align: center;
@@ -219,6 +129,103 @@
     }
     .no-results h3 {
       margin-bottom: 0.5rem;
+    }
+
+    /* Membership Intro Section */
+    .membership-intro {
+      background: white;
+      border-radius: 12px;
+      padding: 2.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .membership-intro h2 {
+      font-size: 1.75rem;
+      color: #065f46;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 3px solid #10b981;
+    }
+    .membership-intro > p {
+      font-size: 1.1rem;
+      color: #374151;
+      line-height: 1.7;
+      margin-bottom: 2rem;
+    }
+    .membership-benefits {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .benefit-item {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+    }
+    .benefit-icon {
+      width: 48px;
+      height: 48px;
+      background: #d1fae5;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: #065f46;
+    }
+    .benefit-content h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 0.25rem;
+    }
+    .benefit-content p {
+      font-size: 0.95rem;
+      color: #6b7280;
+      line-height: 1.5;
+    }
+    .membership-cta-btn {
+      display: inline-block;
+      padding: 14px 32px;
+      background: #10b981;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 1.05rem;
+      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+    }
+    .membership-cta-btn:hover {
+      background: #059669;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+    }
+    .coming-soon-teaser {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+      background: #f0fdf4;
+      border: 1px dashed #86efac;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+    }
+    .coming-soon-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.5rem;
+      background: #10b981;
+      color: white;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .coming-soon-text {
+      font-size: 0.95rem;
+      color: #065f46;
     }
 
     /* Join CTA Banner */
@@ -339,6 +346,28 @@
     .detail-title .tagline {
       font-size: 1.1rem;
       color: #666;
+    }
+    .detail-markets {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 0.75rem 2rem;
+      background: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+    }
+    .markets-label {
+      font-size: 0.85rem;
+      color: #6b7280;
+      font-weight: 500;
+    }
+    .market-badge {
+      padding: 4px 12px;
+      background: #dbeafe;
+      color: #1e40af;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
     }
     .detail-body {
       padding: 2rem;
@@ -822,6 +851,182 @@
       margin: 0 auto 0.5rem;
     }
 
+    /* Product Cards for Sales Agents */
+    .product-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .product-card {
+      background: #f9fafb;
+      border-radius: 10px;
+      padding: 1rem;
+      border: 1px solid #e5e7eb;
+      transition: all 0.2s ease;
+    }
+    .product-card:hover {
+      border-color: #10b981;
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+    }
+    .product-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    .product-card-name {
+      font-weight: 600;
+      color: #111;
+      font-size: 0.95rem;
+      line-height: 1.3;
+    }
+    .product-card-type {
+      padding: 3px 8px;
+      background: #ede9fe;
+      color: #5b21b6;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .product-card-description {
+      font-size: 0.85rem;
+      color: #666;
+      line-height: 1.5;
+      margin-bottom: 0.75rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .product-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+    }
+    .product-card-tag {
+      padding: 2px 6px;
+      background: #e5e7eb;
+      color: #4b5563;
+      border-radius: 4px;
+    }
+    .product-card-price {
+      padding: 2px 6px;
+      background: #d1fae5;
+      color: #065f46;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    /* Publisher Cards for Sales Agents */
+    .publisher-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .publisher-card {
+      background: #f9fafb;
+      border-radius: 10px;
+      padding: 1rem;
+      border: 1px solid #e5e7eb;
+      transition: all 0.2s ease;
+    }
+    .publisher-card:hover {
+      border-color: #6366f1;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+    }
+    .publisher-card-domain {
+      font-weight: 600;
+      color: #111;
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
+      word-break: break-all;
+    }
+    .publisher-card-stats {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .publisher-card-stat {
+      padding: 2px 6px;
+      background: #dbeafe;
+      color: #1e40af;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+    .publisher-card-types {
+      margin-top: 0.5rem;
+      display: flex;
+      gap: 0.25rem;
+      flex-wrap: wrap;
+    }
+    .publisher-type-badge {
+      padding: 2px 6px;
+      background: #fef3c7;
+      color: #92400e;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 500;
+    }
+
+    /* Stats Summary for Sales Agents */
+    .agent-stats-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .agent-stat-card {
+      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+      border-radius: 10px;
+      padding: 1rem;
+      text-align: center;
+      border: 1px solid #bbf7d0;
+    }
+    .agent-stat-card.products {
+      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+      border-color: #fcd34d;
+    }
+    .agent-stat-card.publishers {
+      background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+      border-color: #93c5fd;
+    }
+    .agent-stat-card.channels {
+      background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+      border-color: #d8b4fe;
+    }
+    .agent-stat-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #111;
+      line-height: 1;
+    }
+    .agent-stat-label {
+      font-size: 0.7rem;
+      color: #666;
+      text-transform: uppercase;
+      margin-top: 0.25rem;
+      letter-spacing: 0.5px;
+    }
+
+    /* Delivery Channels */
+    .channel-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .channel-badge {
+      padding: 6px 12px;
+      background: #f3e8ff;
+      color: #7c3aed;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
     @media (max-width: 768px) {
       .members-grid {
         grid-template-columns: 1fr;
@@ -846,16 +1051,73 @@
   <div id="list-view">
     <div class="header">
       <h1>Member Directory</h1>
-      <p class="subtitle">Discover AdCP ecosystem partners and service providers</p>
+      <p class="subtitle">Organizations building the future of agentic advertising</p>
     </div>
 
     <div class="container">
-      <!-- Join CTA Banner -->
+      <!-- Membership Introduction -->
+      <section class="membership-intro" id="join">
+        <h2>Become a Member</h2>
+        <p>
+          AgenticAdvertising.org membership is open to brands, agencies, publishers, and technology providers committed to advancing open standards in AI-powered advertising.
+        </p>
+        <div class="membership-benefits">
+          <div class="benefit-item">
+            <div class="benefit-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                <path d="M2 17l10 5 10-5"></path>
+                <path d="M2 12l10 5 10-5"></path>
+              </svg>
+            </div>
+            <div class="benefit-content">
+              <h3>Shape the Standards</h3>
+              <p>Participate in working groups and help define how AI agents transact across the advertising ecosystem.</p>
+            </div>
+          </div>
+          <div class="benefit-item">
+            <div class="benefit-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+            </div>
+            <div class="benefit-content">
+              <h3>Connect with Peers</h3>
+              <p>Join a community of forward-thinking leaders navigating the transition to agentic advertising.</p>
+            </div>
+          </div>
+          <div class="benefit-item">
+            <div class="benefit-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+              </svg>
+            </div>
+            <div class="benefit-content">
+              <h3>Share Your Capabilities</h3>
+              <p>List your organization in the member directory and showcase your role in the ecosystem.</p>
+            </div>
+          </div>
+        </div>
+        <div class="coming-soon-teaser">
+          <span class="coming-soon-badge">Coming Soon</span>
+          <span class="coming-soon-text">Members-only tools, market data, and benchmarking resources</span>
+        </div>
+        <a href="/auth/login?redirect=/dashboard" class="membership-cta-btn">Join AgenticAdvertising.org</a>
+      </section>
+
+      <!-- Join CTA Banner (for returning visitors scrolling through directory) -->
       <div class="join-cta">
         <div class="join-cta-content">
           <div class="join-cta-text">
-            <h2>Join the AdCP Community</h2>
-            <p>List your company in our directory and connect with the growing ecosystem of AI-powered advertising professionals.</p>
+            <h2>List Your Organization</h2>
+            <p>Add your company to the member directory and showcase your role in the agentic advertising ecosystem.</p>
           </div>
           <a href="/auth/login?redirect=/dashboard" class="join-cta-btn">Add Your Company</a>
         </div>
@@ -863,7 +1125,15 @@
 
       <div class="search-section">
         <div class="search-bar">
-          <input type="text" id="search-input" placeholder="Search members by name, description, or tags..." onkeyup="handleSearch(event)">
+          <input type="text" id="search-input" placeholder="Search by name, location, or tags..." onkeyup="handleSearch(event)">
+          <select id="market-filter" class="market-filter" onchange="setMarketFilter(this.value)">
+            <option value="">All Markets</option>
+            <option value="North America">North America</option>
+            <option value="EMEA">EMEA</option>
+            <option value="APAC">APAC</option>
+            <option value="LATAM">LATAM</option>
+            <option value="Global">Global</option>
+          </select>
           <button onclick="searchMembers()">Search</button>
         </div>
         <div class="filters">
@@ -927,12 +1197,14 @@
     let allMembers = [];
     let currentFilter = '';
     let currentSearch = '';
+    let currentMarket = '';
 
     // offeringLabels is now in member-card.js
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
       // Inject shared styles
+      injectMemberCardStyles();
       injectAgentCardStyles();
 
       // Check if we're viewing a specific member
@@ -950,6 +1222,7 @@
         const params = new URLSearchParams();
         if (currentSearch) params.set('search', currentSearch);
         if (currentFilter) params.set('offerings', currentFilter);
+        if (currentMarket) params.set('markets', currentMarket);
 
         const response = await fetch(`/api/members?${params}`);
         if (!response.ok) throw new Error('Failed to load members');
@@ -1000,6 +1273,13 @@
       btn.classList.add('active');
 
       currentFilter = filter;
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('members-grid').innerHTML = '';
+      loadMembers();
+    }
+
+    function setMarketFilter(market) {
+      currentMarket = market;
       document.getElementById('loading').style.display = 'block';
       document.getElementById('members-grid').innerHTML = '';
       loadMembers();
@@ -1057,6 +1337,13 @@
             ${member.tagline ? `<p class="tagline">${member.tagline}</p>` : ''}
           </div>
         </div>
+
+        ${member.markets && member.markets.length > 0 ? `
+          <div class="detail-markets">
+            <span class="markets-label">Markets:</span>
+            ${member.markets.map(m => `<span class="market-badge">${m}</span>`).join('')}
+          </div>
+        ` : ''}
 
         <div class="detail-body">
           ${member.description ? `
@@ -1136,7 +1423,7 @@
       `;
 
       // Update page title
-      document.title = `${member.display_name} - AdCP Member Directory`;
+      document.title = `${member.display_name} - AgenticAdvertising.org Member Directory`;
 
       // Discover agent info for each registered agent
       if (member.agent_urls && member.agent_urls.length > 0) {
@@ -1177,7 +1464,7 @@
       history.pushState({}, '', '/members');
       document.getElementById('detail-view').classList.remove('active');
       document.getElementById('list-view').style.display = 'block';
-      document.title = 'Member Directory - AdCP';
+      document.title = 'Member Directory - AgenticAdvertising.org';
 
       // Load members if not already loaded
       if (allMembers.length === 0) {
@@ -1266,11 +1553,17 @@
         modalIcon.className = `agent-modal-icon ${agentType}`;
 
         // Render body content based on agent type
-        renderAgentModalBody(data, agentType);
+        renderAgentModalBody(data, agentType, url);
 
         // If this is a creative agent, also fetch formats
         if (agentType === 'creative') {
           loadAgentFormats(url);
+        }
+
+        // If this is a sales agent, fetch products and publishers
+        if (agentType === 'sales') {
+          loadAgentProducts(url);
+          loadAgentPublishers(url);
         }
 
       } catch (error) {
@@ -1282,6 +1575,147 @@
           </div>
         `;
       }
+    }
+
+    async function loadAgentProducts(url) {
+      const container = document.getElementById('agent-products-container');
+      if (!container) return;
+
+      try {
+        const response = await fetch(`/api/public/agent-products?url=${encodeURIComponent(url)}`);
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch products');
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.products && data.products.length > 0) {
+          renderProductCards(data.products);
+        } else {
+          container.innerHTML = `
+            <p style="color: #666; text-align: center; padding: 1rem;">
+              No products currently available from this agent.
+            </p>
+          `;
+        }
+      } catch (error) {
+        console.error('Failed to load agent products:', error);
+        container.innerHTML = `
+          <p style="color: #888; text-align: center; padding: 1rem;">
+            Unable to load products.
+          </p>
+        `;
+      }
+    }
+
+    function renderProductCards(products) {
+      const container = document.getElementById('agent-products-container');
+      if (!container) return;
+
+      // Collect all unique channels across products
+      const allChannels = new Set();
+      products.forEach(p => {
+        (p.delivery_channels || []).forEach(c => allChannels.add(c));
+      });
+
+      const html = `
+        <div class="product-cards-grid">
+          ${products.slice(0, 12).map(product => {
+            const formatPrice = (p) => {
+              if (!p.base_rate) return null;
+              const currency = p.currency || 'USD';
+              const model = p.pricing_model || 'CPM';
+              return `${currency} ${p.base_rate} ${model}`;
+            };
+            const price = formatPrice(product);
+
+            return `
+              <div class="product-card">
+                <div class="product-card-header">
+                  <div class="product-card-name">${escapeHtml(product.name || product.product_id)}</div>
+                  ${product.property_type ? `<span class="product-card-type">${escapeHtml(product.property_type)}</span>` : ''}
+                </div>
+                ${product.description ? `<div class="product-card-description">${escapeHtml(product.description)}</div>` : ''}
+                <div class="product-card-meta">
+                  ${product.property_name ? `<span class="product-card-tag">${escapeHtml(product.property_name)}</span>` : ''}
+                  ${price ? `<span class="product-card-price">${price}</span>` : ''}
+                  ${(product.format_ids || []).length > 0 ? `<span class="product-card-tag">${product.format_ids.length} format${product.format_ids.length > 1 ? 's' : ''}</span>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        ${products.length > 12 ? `
+          <div style="text-align: center; padding: 1rem; color: #666; font-size: 0.9rem;">
+            + ${products.length - 12} more products available
+          </div>
+        ` : ''}
+      `;
+
+      container.innerHTML = html;
+    }
+
+    async function loadAgentPublishers(url) {
+      const container = document.getElementById('agent-publishers-container');
+      if (!container) return;
+
+      try {
+        const response = await fetch(`/api/public/agent-publishers?url=${encodeURIComponent(url)}`);
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch publishers');
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.publishers && data.publishers.length > 0) {
+          renderPublisherCards(data.publishers, data.total_properties);
+        } else {
+          container.innerHTML = `
+            <p style="color: #666; text-align: center; padding: 1rem;">
+              No authorized publishers found.
+            </p>
+          `;
+        }
+      } catch (error) {
+        console.error('Failed to load agent publishers:', error);
+        container.innerHTML = `
+          <p style="color: #888; text-align: center; padding: 1rem;">
+            Unable to load publishers.
+          </p>
+        `;
+      }
+    }
+
+    function renderPublisherCards(publishers, totalProperties) {
+      const container = document.getElementById('agent-publishers-container');
+      if (!container) return;
+
+      const html = `
+        <div class="publisher-cards-grid">
+          ${publishers.slice(0, 8).map(pub => `
+            <div class="publisher-card">
+              <div class="publisher-card-domain">${escapeHtml(pub.domain)}</div>
+              <div class="publisher-card-stats">
+                ${pub.property_count > 0 ? `<span class="publisher-card-stat">${pub.property_count} properties</span>` : ''}
+              </div>
+              ${pub.property_types && pub.property_types.length > 0 ? `
+                <div class="publisher-card-types">
+                  ${pub.property_types.map(t => `<span class="publisher-type-badge">${escapeHtml(t)}</span>`).join('')}
+                </div>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+        ${publishers.length > 8 ? `
+          <div style="text-align: center; padding: 1rem; color: #666; font-size: 0.9rem;">
+            + ${publishers.length - 8} more publishers
+          </div>
+        ` : ''}
+      `;
+
+      container.innerHTML = html;
     }
 
     async function loadAgentFormats(url) {
@@ -1412,38 +1846,97 @@
       return 'unknown';
     }
 
-    function renderAgentModalBody(data, agentType) {
+    function renderAgentModalBody(data, agentType, agentUrl) {
       const modalBody = document.getElementById('agent-modal-body');
       const tools = data.tools || [];
+      const stats = data.stats || {};
 
       let html = '';
 
-      // Basic info section
-      html += `
-        <div class="agent-modal-section">
-          <h3>Overview</h3>
-          <div class="agent-meta-grid">
-            <div class="agent-meta-item">
-              <div class="agent-meta-label">Status</div>
-              <div class="agent-meta-value" style="color: #10b981;">Online</div>
-            </div>
-            <div class="agent-meta-item">
-              <div class="agent-meta-label">Protocol</div>
-              <div class="agent-meta-value">${(data.protocol || 'MCP').toUpperCase()}</div>
-            </div>
-            <div class="agent-meta-item">
-              <div class="agent-meta-label">Tools</div>
-              <div class="agent-meta-value">${data.tools_count || tools.length}</div>
+      // For sales agents, show a summary stats section
+      if (agentType === 'sales') {
+        html += `
+          <div class="agent-modal-section">
+            <h3>Overview</h3>
+            <div class="agent-stats-summary">
+              <div class="agent-stat-card">
+                <div class="agent-stat-value" style="color: #10b981;">Online</div>
+                <div class="agent-stat-label">Status</div>
+              </div>
+              <div class="agent-stat-card products">
+                <div class="agent-stat-value">${stats.product_count || 0}</div>
+                <div class="agent-stat-label">Products</div>
+              </div>
+              <div class="agent-stat-card publishers">
+                <div class="agent-stat-value">${stats.publisher_count || 0}</div>
+                <div class="agent-stat-label">Publishers</div>
+              </div>
+              <div class="agent-stat-card">
+                <div class="agent-stat-value">${(data.protocols || ['MCP']).map(p => p.toUpperCase()).join(', ')}</div>
+                <div class="agent-stat-label">Protocol</div>
+              </div>
             </div>
             ${data.description ? `
-              <div class="agent-meta-item" style="grid-column: span 3;">
-                <div class="agent-meta-label">Description</div>
-                <div class="agent-meta-value" style="font-size: 0.95rem; font-weight: normal;">${escapeHtml(data.description)}</div>
+              <div style="background: #f9fafb; padding: 1rem; border-radius: 8px; margin-top: 0.5rem;">
+                <div style="font-size: 0.95rem; color: #666; line-height: 1.6;">${escapeHtml(data.description)}</div>
               </div>
             ` : ''}
           </div>
-        </div>
-      `;
+        `;
+
+        // Products section with loading state
+        html += `
+          <div class="agent-modal-section">
+            <h3>Available Products</h3>
+            <div id="agent-products-container">
+              <div class="formats-loading">
+                <div class="spinner"></div>
+                <div>Loading products...</div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Publishers section with loading state
+        html += `
+          <div class="agent-modal-section">
+            <h3>Authorized Publishers</h3>
+            <div id="agent-publishers-container">
+              <div class="formats-loading">
+                <div class="spinner"></div>
+                <div>Loading publishers...</div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        // Basic info section for non-sales agents
+        html += `
+          <div class="agent-modal-section">
+            <h3>Overview</h3>
+            <div class="agent-meta-grid">
+              <div class="agent-meta-item">
+                <div class="agent-meta-label">Status</div>
+                <div class="agent-meta-value" style="color: #10b981;">Online</div>
+              </div>
+              <div class="agent-meta-item">
+                <div class="agent-meta-label">Protocol</div>
+                <div class="agent-meta-value">${(data.protocols || [data.protocol || 'MCP']).map(p => p.toUpperCase()).join(', ')}</div>
+              </div>
+              <div class="agent-meta-item">
+                <div class="agent-meta-label">Tools</div>
+                <div class="agent-meta-value">${data.tools_count || tools.length}</div>
+              </div>
+              ${data.description ? `
+                <div class="agent-meta-item" style="grid-column: span 3;">
+                  <div class="agent-meta-label">Description</div>
+                  <div class="agent-meta-value" style="font-size: 0.95rem; font-weight: normal;">${escapeHtml(data.description)}</div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }
 
       // Role-specific content
       if (agentType === 'creative') {
@@ -1461,29 +1954,8 @@
         `;
       }
 
-      if (agentType === 'sales' && data.properties && data.properties.length > 0) {
-        html += `
-          <div class="agent-modal-section">
-            <h3>Authorized Properties</h3>
-            <div class="agent-properties-list">
-              ${data.properties.slice(0, 10).map(p => `
-                <div class="agent-property-item">
-                  <span class="agent-property-domain">${escapeHtml(p.domain || p.name || p)}</span>
-                  ${p.type ? `<span class="agent-property-type">${escapeHtml(p.type)}</span>` : ''}
-                </div>
-              `).join('')}
-              ${data.properties.length > 10 ? `
-                <div style="color: #666; font-size: 0.9rem; padding: 0.5rem;">
-                  + ${data.properties.length - 10} more properties
-                </div>
-              ` : ''}
-            </div>
-          </div>
-        `;
-      }
-
-      // Tools section
-      if (tools.length > 0) {
+      // Tools section (collapsed for sales agents since it's less interesting)
+      if (tools.length > 0 && agentType !== 'sales') {
         html += `
           <div class="agent-modal-section">
             <h3>Available Tools</h3>

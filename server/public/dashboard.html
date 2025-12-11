@@ -321,8 +321,8 @@
             <div id="teamDetails"></div>
           </div>
 
-          <!-- Agreements (compact) -->
-          <div class="card" style="background: #f9fafb;">
+          <!-- Agreements (compact) - only shown for subscribers -->
+          <div id="agreementsCard" class="card" style="background: #f9fafb; display: none;">
             <h2 style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #666; margin-bottom: 10px;">
               <span style="font-size: 16px;">📋</span> Agreements
             </h2>
@@ -799,9 +799,30 @@
               `;
             }
           }
+        } else if (previewEl) {
+          // No profile exists - show "Create Your Profile" UI
+          previewEl.innerHTML = `
+            <div style="text-align: center; padding: 30px 20px;">
+              <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
+              <h3 style="margin: 0 0 8px 0; color: #374151;">Create Your Profile</h3>
+              <p style="margin: 0; color: #6b7280; font-size: 14px; max-width: 300px; margin: 0 auto;">
+                Set up your member profile to appear in the AdCP member directory and build your presence in the ecosystem.
+              </p>
+            </div>
+          `;
+          if (actionsContainer) {
+            actionsContainer.innerHTML = `
+              <a
+                href="/member-profile?org=${orgId}"
+                style="display: block; text-align: center; padding: 12px 24px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+              >
+                Create Profile
+              </a>
+            `;
+          }
         }
       } catch (error) {
-        console.error('Error loading member profile preview:', error);
+        console.error('loadMemberProfilePreview: Error caught:', error);
         const previewEl = document.getElementById('memberProfilePreview');
         const actionsContainer = document.getElementById('memberProfileActions');
         if (previewEl) {
@@ -858,9 +879,20 @@
     }
 
     // Load and display user's agreements (compact view)
-    // Shows both signed agreements AND required but missing ones
+    // Only shown for subscribers - non-subscribers see inline agreement in membership section
     async function loadMyAgreements() {
       const section = document.getElementById('agreementsSection');
+      const agreementsCard = document.getElementById('agreementsCard');
+
+      // Only show agreements card for subscribers
+      if (!window.hasActiveSubscription) {
+        if (agreementsCard) agreementsCard.style.display = 'none';
+        return;
+      }
+
+      // Show the card for subscribers
+      if (agreementsCard) agreementsCard.style.display = 'block';
+
       try {
         const response = await fetch('/api/me/agreements');
         if (!response.ok) throw new Error('Failed to load agreements');
@@ -868,23 +900,12 @@
         const data = await response.json();
         const agreements = data.agreements || [];
 
-        // For paying members, show membership agreement even if not signed
-        // For non-subscribers, filter out membership (they don't need it yet)
-        const relevantAgreements = agreements.filter(a => {
-          if (a.type === 'membership') {
-            // Only show membership agreement for paying members
-            return window.hasActiveSubscription;
-          }
-          // Always show ToS and Privacy Policy
-          return true;
-        });
-
-        if (relevantAgreements.length === 0) {
+        if (agreements.length === 0) {
           section.innerHTML = '<p style="color: #9ca3af; font-size: 12px;">No agreements.</p>';
           return;
         }
 
-        section.innerHTML = relevantAgreements.map(agreement => {
+        section.innerHTML = agreements.map(agreement => {
           const isSigned = !!agreement.version;
           const isOutdated = agreement.is_outdated;
 
@@ -925,15 +946,8 @@
           `;
         }).join('');
 
-        // If there's a missing membership agreement for a paying member, auto-pop it
-        // But only if user hasn't dismissed it this session
-        const missingMembership = relevantAgreements.find(a => a.type === 'membership' && !a.version);
-        if (missingMembership && window.hasActiveSubscription && shouldShowAgreementModal()) {
-          // Give a moment for the page to render, then pop the agreement
-          setTimeout(() => {
-            viewAgreementForAcceptance('membership', missingMembership.current_version);
-          }, 500);
-        }
+        // Note: We don't auto-popup membership agreements anymore
+        // Users accept them inline when choosing a plan, which is less intrusive
       } catch (error) {
         console.error('Error loading agreements:', error);
         section.innerHTML = '<p style="color: #ef4444; font-size: 12px;">Failed to load.</p>';
@@ -1112,8 +1126,14 @@
           await loadMembershipAgreement();
           setupAgreementCheckbox();
 
-          // Load user's signed agreements
+          // Load user's signed agreements (only shown for subscribers)
           await loadMyAgreements();
+
+          // Check if membership agreement already accepted - if so, enable pricing table
+          await checkMembershipAgreementStatus();
+
+          // Check for outdated agreements (only for subscribers)
+          await checkOutdatedAgreements();
 
         } else {
           // No organizations - show message in the org header
@@ -1142,10 +1162,41 @@
         if (!response.ok) return false;
 
         const data = await response.json();
-        return data.agreements.some(a => a.type === 'membership');
+        // Check if membership agreement has a signed version (not just exists in the list)
+        const membership = data.agreements.find(a => a.type === 'membership');
+        return membership && membership.version; // version exists = signed
       } catch (error) {
         console.error('Error checking membership agreement:', error);
         return false;
+      }
+    }
+
+    // Check membership agreement status and update UI accordingly
+    async function checkMembershipAgreementStatus() {
+      const hasAccepted = await hasAcceptedMembershipAgreement();
+
+      if (hasAccepted) {
+        // User has already accepted - hide the inline agreement section and enable pricing
+        const checkbox = document.getElementById('membershipAgreementCheckbox');
+        const pricingWrapper = document.getElementById('pricingTableWrapper');
+        const warning = document.getElementById('agreementWarning');
+
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+        if (pricingWrapper) {
+          pricingWrapper.style.opacity = '1';
+          pricingWrapper.style.pointerEvents = 'auto';
+        }
+        if (warning) {
+          warning.style.display = 'none';
+        }
+
+        // Hide the agreement acceptance section since it's already done
+        const agreementBox = document.querySelector('#membershipSection > div:nth-child(2)');
+        if (agreementBox && agreementBox.querySelector('#membershipAgreementCheckbox')) {
+          agreementBox.style.display = 'none';
+        }
       }
     }
 
@@ -1330,6 +1381,30 @@
         // Close modal
         closeAgreementViewer();
 
+        // If membership agreement was accepted, auto-enable the pricing table
+        if (type === 'membership') {
+          const checkbox = document.getElementById('membershipAgreementCheckbox');
+          const pricingWrapper = document.getElementById('pricingTableWrapper');
+          const warning = document.getElementById('agreementWarning');
+          const agreementSection = document.querySelector('#membershipSection .agreements');
+
+          if (checkbox) {
+            checkbox.checked = true;
+          }
+          if (pricingWrapper) {
+            pricingWrapper.style.opacity = '1';
+            pricingWrapper.style.pointerEvents = 'auto';
+          }
+          if (warning) {
+            warning.style.display = 'none';
+          }
+          // Hide the agreement acceptance section since it's already done
+          const agreementBox = document.querySelector('#membershipSection > div:nth-child(2)');
+          if (agreementBox && agreementBox.querySelector('#membershipAgreementCheckbox')) {
+            agreementBox.style.display = 'none';
+          }
+        }
+
         // Reload agreements list to update UI
         await loadMyAgreements();
 
@@ -1362,7 +1437,11 @@
     }
 
     // Check for outdated agreements and show modal if needed
+    // Only for subscribers - non-subscribers handle agreements inline when subscribing
     async function checkOutdatedAgreements() {
+      // Skip for non-subscribers
+      if (!window.hasActiveSubscription) return;
+
       try {
         const response = await fetch('/api/me/agreements');
         if (!response.ok) return;
@@ -1467,7 +1546,6 @@
     }
 
     loadUserData();
-    checkOutdatedAgreements();
 
     // Handle browser back/forward cache (bfcache) restoration
     // When user hits back from Stripe, reinitialize the pricing table

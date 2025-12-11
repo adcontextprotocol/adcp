@@ -27,9 +27,9 @@ export class MemberDatabase {
         logo_url, logo_light_url, logo_dark_url, brand_color,
         contact_email, contact_website, contact_phone,
         linkedin_url, twitter_url,
-        offerings, agents, agent_urls, metadata, tags,
+        offerings, agents, agent_urls, headquarters, markets, metadata, tags,
         is_public, show_in_carousel
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
       RETURNING *`,
       [
         input.workos_organization_id,
@@ -49,6 +49,8 @@ export class MemberDatabase {
         input.offerings || [],
         JSON.stringify(agents),
         agentUrls,
+        input.headquarters || null,
+        input.markets || [],
         JSON.stringify(input.metadata || {}),
         input.tags || [],
         input.is_public ?? false,
@@ -128,6 +130,8 @@ export class MemberDatabase {
       offerings: 'offerings',
       agents: 'agents',
       agent_urls: 'agent_urls',
+      headquarters: 'headquarters',
+      markets: 'markets',
       metadata: 'metadata',
       tags: 'tags',
       is_public: 'is_public',
@@ -226,12 +230,19 @@ export class MemberDatabase {
       params.push(options.offerings);
     }
 
+    // Filter by markets (array overlap)
+    if (options.markets && options.markets.length > 0) {
+      conditions.push(`markets && $${paramIndex++}::text[]`);
+      params.push(options.markets);
+    }
+
     // Full-text search
     if (options.search) {
       conditions.push(`(
         display_name ILIKE $${paramIndex} OR
         tagline ILIKE $${paramIndex} OR
         description ILIKE $${paramIndex} OR
+        headquarters ILIKE $${paramIndex} OR
         tags::text ILIKE $${paramIndex}
       )`);
       params.push(`%${options.search}%`);
@@ -279,6 +290,7 @@ export class MemberDatabase {
   async getPublicProfiles(options: {
     search?: string;
     offerings?: MemberOffering[];
+    markets?: string[];
     limit?: number;
     offset?: number;
   } = {}): Promise<MemberProfile[]> {
@@ -330,6 +342,7 @@ export class MemberDatabase {
       agents,
       // Derive agent_urls from agents for backward compatibility
       agent_urls: agents.map(a => a.url),
+      markets: row.markets || [],
       metadata: typeof row.metadata === 'string'
         ? JSON.parse(row.metadata)
         : row.metadata || {},

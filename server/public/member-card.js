@@ -51,6 +51,12 @@ function renderMemberCard(member, options = {}) {
     ? `<span class="agent-badge">${agentCount} Agent${agentCount > 1 ? 's' : ''}</span>`
     : '';
 
+  // Markets display - show regions served if available
+  const markets = member.markets || [];
+  const marketsHtml = markets.length > 0
+    ? `<div class="member-markets">${markets.map(m => `<span class="market-tag">${m}</span>`).join('')}</div>`
+    : '';
+
   return `
     <div class="member-card" ${clickHandler}>
       <div class="member-card-header">
@@ -64,6 +70,7 @@ function renderMemberCard(member, options = {}) {
             ${agentBadge}
             ${visibilityBadge}
           </div>
+          ${marketsHtml}
         </div>
       </div>
       <div class="member-card-body">
@@ -138,6 +145,19 @@ function getMemberCardStyles() {
       font-size: 1.2rem;
       font-weight: 600;
       color: #333;
+    }
+    .member-markets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .member-markets .market-tag {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      background: #f3f4f6;
+      color: #6b7280;
+      border-radius: 3px;
     }
     .member-card-body {
       padding: 1.5rem;
