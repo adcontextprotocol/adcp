@@ -161,7 +161,6 @@ export class HTTPServer {
       } : null;
 
       res.json({
-        membershipEnabled: process.env.MEMBERSHIP_ENABLED !== 'false',
         authEnabled: AUTH_ENABLED,
         user,
       });
@@ -970,6 +969,29 @@ export class HTTPServer {
         ? path.join(__dirname, "../server/public/members.html")
         : path.join(__dirname, "../public/members.html");
       res.sendFile(membersPath);
+    });
+
+    // About AAO page - serve about.html at /about
+    this.app.get("/about", (req, res) => {
+      const aboutPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/about.html")
+        : path.join(__dirname, "../public/about.html");
+      res.sendFile(aboutPath);
+    });
+
+    // Insights section
+    this.app.get("/insights", (req, res) => {
+      const insightsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/insights/index.html")
+        : path.join(__dirname, "../public/insights/index.html");
+      res.sendFile(insightsPath);
+    });
+
+    this.app.get("/insights/agentic-protocol-landscape", (req, res) => {
+      const articlePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/insights/agentic-protocol-landscape.html")
+        : path.join(__dirname, "../public/insights/agentic-protocol-landscape.html");
+      res.sendFile(articlePath);
     });
 
     // AdAgents API Routes
@@ -4011,11 +4033,12 @@ export class HTTPServer {
     // GET /api/members - List public member profiles (for directory)
     this.app.get('/api/members', async (req, res) => {
       try {
-        const { search, offerings, limit, offset } = req.query;
+        const { search, offerings, markets, limit, offset } = req.query;
 
         const profiles = await memberDb.getPublicProfiles({
           search: search as string,
           offerings: offerings ? (offerings as string).split(',') as any : undefined,
+          markets: markets ? (markets as string).split(',') : undefined,
           limit: limit ? parseInt(limit as string, 10) : 50,
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
@@ -4278,6 +4301,115 @@ export class HTTPServer {
       }
     });
 
+    // GET /api/public/agent-products - Public endpoint to fetch products from a sales agent
+    this.app.get('/api/public/agent-products', async (req, res) => {
+      const { url } = req.query;
+
+      if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: 'URL is required' });
+      }
+
+      try {
+        const client = new SingleAgentClient({
+          id: 'products-discovery',
+          name: 'products-discovery-client',
+          agent_uri: url,
+          protocol: 'mcp',
+        });
+
+        const result = await client.getProducts({ brief: '' });
+        const products = result.data?.products || [];
+
+        return res.json({
+          success: true,
+          products: products.map((p: any) => ({
+            product_id: p.product_id,
+            name: p.name,
+            description: p.description,
+            property_type: p.property_type,
+            property_name: p.property_name,
+            pricing_model: p.pricing_model,
+            base_rate: p.base_rate,
+            currency: p.currency,
+            format_ids: p.format_ids,
+            delivery_channels: p.delivery_channels,
+            // Include any targeting or audience info if available
+            targeting_capabilities: p.targeting_capabilities,
+          })),
+        });
+      } catch (error) {
+        logger.error({ err: error, url }, 'Agent products fetch error');
+
+        if (error instanceof Error && error.name === 'TimeoutError') {
+          return res.status(504).json({
+            error: 'Connection timeout',
+            message: 'Agent did not respond within the timeout period',
+          });
+        }
+
+        return res.status(500).json({
+          error: 'Failed to fetch products',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/public/agent-publishers - Public endpoint to fetch authorized publishers from a sales agent
+    this.app.get('/api/public/agent-publishers', async (req, res) => {
+      const { url } = req.query;
+
+      if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: 'URL is required' });
+      }
+
+      try {
+        const client = new SingleAgentClient({
+          id: 'publishers-discovery',
+          name: 'publishers-discovery-client',
+          agent_uri: url,
+          protocol: 'mcp',
+        });
+
+        const result = await client.listAuthorizedProperties({});
+        const publishers = (result.data as any)?.publisher_domains || [];
+
+        // Build enriched publisher info
+        const enrichedPublishers = publishers.map((domain: string) => {
+          const properties = (result.data as any)?.properties?.filter((p: any) => p.domain === domain) || [];
+          return {
+            domain,
+            property_count: properties.length,
+            property_types: [...new Set(properties.map((p: any) => p.type))],
+            properties: properties.slice(0, 10).map((p: any) => ({
+              type: p.type,
+              name: p.name,
+              value: p.value,
+            })),
+          };
+        });
+
+        return res.json({
+          success: true,
+          publishers: enrichedPublishers,
+          total_properties: (result.data as any)?.properties?.length || 0,
+        });
+      } catch (error) {
+        logger.error({ err: error, url }, 'Agent publishers fetch error');
+
+        if (error instanceof Error && error.name === 'TimeoutError') {
+          return res.status(504).json({
+            error: 'Connection timeout',
+            message: 'Agent did not respond within the timeout period',
+          });
+        }
+
+        return res.status(500).json({
+          error: 'Failed to fetch publishers',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // GET /api/me/member-profile - Get current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.get('/api/me/member-profile', requireAuth, async (req, res) => {
@@ -4354,6 +4486,9 @@ export class HTTPServer {
           linkedin_url,
           twitter_url,
           offerings,
+          agents,
+          headquarters,
+          markets,
           tags,
           is_public,
           show_in_carousel,
@@ -4450,6 +4585,9 @@ export class HTTPServer {
           linkedin_url,
           twitter_url,
           offerings: offerings || [],
+          agents: agents || [],
+          headquarters,
+          markets: markets || [],
           tags: tags || [],
           is_public: is_public ?? false,
           show_in_carousel: show_in_carousel ?? false,

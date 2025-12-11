@@ -2,6 +2,11 @@
  * Shared Navigation Component for AdCP
  * Automatically detects current page and localhost environment
  * Fetches config to conditionally show membership features and auth widget
+ *
+ * Host-based feature flagging:
+ * - agenticadvertising.org (beta): New AAO branding + membership features
+ * - adcontextprotocol.org (production): Old AdCP branding, no membership
+ * - localhost: Follows beta behavior for testing
  */
 
 (function() {
@@ -9,6 +14,25 @@
 
   // Determine if running locally
   const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+  // Determine if this is the beta site (AAO) or production site (AdCP)
+  // Beta sites: agenticadvertising.org, localhost (for testing)
+  // Production sites: adcontextprotocol.org
+  //
+  // Local testing: Add ?beta=false to URL to simulate production site
+  //                Add ?beta=true to force beta mode (default for localhost)
+  const hostname = window.location.hostname;
+  const urlParams = new URLSearchParams(window.location.search);
+  const betaOverride = urlParams.get('beta');
+
+  let isBetaSite;
+  if (betaOverride !== null) {
+    // URL parameter overrides hostname detection
+    isBetaSite = betaOverride !== 'false';
+  } else {
+    // Default: localhost and agenticadvertising.org are beta
+    isBetaSite = isLocal || hostname.includes('agenticadvertising');
+  }
 
   // In local dev, try to detect Mintlify port (usually HTTP port + 1)
   // Common Conductor pattern: HTTP on 55020, Mintlify on 55021
@@ -49,8 +73,9 @@
   // Build navigation HTML - will be updated after config fetch
   function buildNavHTML(config) {
     const user = config?.user;
-    const membershipEnabled = config?.membershipEnabled !== false;
-    const authEnabled = config?.authEnabled !== false;
+    // Membership features enabled on beta site only (hostname-based)
+    const membershipEnabled = isBetaSite;
+    const authEnabled = isBetaSite && config?.authEnabled !== false;
 
     // Build auth section based on state
     let authSection = '';
@@ -84,10 +109,29 @@
       }
     }
 
-    // Build members link (only if membership is enabled)
+    // Build members link (only if membership is enabled on beta site)
     const membersLink = membershipEnabled
       ? `<a href="${membersUrl}" class="navbar__link ${currentPath.startsWith('/members') ? 'active' : ''}">Members</a>`
       : '';
+
+    // Build about link (only on beta site - links to trade association)
+    const aboutUrl = isLocal ? '/about' : 'https://agenticadvertising.org/about';
+    const aboutLink = membershipEnabled
+      ? `<a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>`
+      : '';
+
+    // Build insights link (only on beta site)
+    const insightsUrl = isLocal ? '/insights' : 'https://agenticadvertising.org/insights';
+    const insightsLink = membershipEnabled
+      ? `<a href="${insightsUrl}" class="navbar__link ${currentPath.startsWith('/insights') ? 'active' : ''}">Insights</a>`
+      : '';
+
+    // Choose logo based on site - beta gets AAO, production gets AdCP
+    const logoSrc = isBetaSite ? '/AAo.svg' : '/adcp_logo.svg';
+    const logoAlt = isBetaSite ? 'Agentic Advertising' : 'AdCP';
+    // AAO logo is white, needs invert on light background
+    // AdCP logo should display normally
+    const logoNeedsInvert = isBetaSite;
 
     return `
       <nav class="navbar">
@@ -95,14 +139,15 @@
           <div class="navbar__items">
             <a class="navbar__brand" href="${homeUrl}">
               <div class="navbar__logo">
-                <img src="/adcp_logo.svg" alt="AdCP Logo" class="logo-light" style="display: block;">
-                <img src="/adcp_logo.svg" alt="AdCP Logo" class="logo-dark" style="display: none;">
+                <img src="${logoSrc}" alt="${logoAlt}" class="logo-light" ${logoNeedsInvert ? '' : 'style="filter: none;"'}>
+                <img src="${logoSrc}" alt="${logoAlt}" class="logo-dark" ${logoNeedsInvert ? '' : 'style="filter: none;"'}>
               </div>
-              <b class="navbar__title">AdCP</b>
             </a>
             <a href="${docsUrl}" class="navbar__link">Docs</a>
             <a href="${adagentsUrl}" class="navbar__link ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
             ${membersLink}
+            ${insightsLink}
+            ${aboutLink}
           </div>
           <div class="navbar__items navbar__items--right">
             <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
@@ -158,6 +203,7 @@
         gap: 0.75rem;
         text-decoration: none;
         color: inherit;
+        cursor: pointer;
       }
 
       .navbar__logo {
@@ -290,8 +336,16 @@
       }
 
       /* Logo switching for dark mode */
+      /* The AAO logo is white text - needs invert for light backgrounds */
+      .logo-light {
+        display: block;
+        height: 24px;
+        filter: invert(1);
+      }
+
       .logo-dark {
         display: none;
+        height: 24px;
       }
 
       /* Dark mode support */
@@ -344,11 +398,12 @@
         }
 
         .logo-light {
-          display: none;
+          display: none !important;
         }
 
         .logo-dark {
-          display: block;
+          display: block !important;
+          filter: none;
         }
       }
 
@@ -400,11 +455,12 @@
       }
 
       [data-theme="dark"] .logo-light {
-        display: none;
+        display: none !important;
       }
 
       [data-theme="dark"] .logo-dark {
-        display: block;
+        display: block !important;
+        filter: none;
       }
     </style>
   `;

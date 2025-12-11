@@ -195,6 +195,8 @@ export interface MemberProfile {
   offerings: MemberOffering[];
   agents: AgentConfig[];
   agent_urls: string[]; // Derived from agents for backward compatibility
+  headquarters?: string; // City, Country (e.g., "Singapore", "New York, USA")
+  markets: string[]; // Regions/markets served (e.g., ["APAC", "North America"])
   metadata: Record<string, unknown>;
   tags: string[];
   is_public: boolean;
@@ -222,6 +224,8 @@ export interface CreateMemberProfileInput {
   offerings?: MemberOffering[];
   agents?: AgentConfig[];
   agent_urls?: string[]; // Legacy: will be converted to agents
+  headquarters?: string;
+  markets?: string[];
   metadata?: Record<string, unknown>;
   tags?: string[];
   is_public?: boolean;
@@ -244,6 +248,8 @@ export interface UpdateMemberProfileInput {
   offerings?: MemberOffering[];
   agents?: AgentConfig[];
   agent_urls?: string[]; // Legacy: will be converted to agents
+  headquarters?: string;
+  markets?: string[];
   metadata?: Record<string, unknown>;
   tags?: string[];
   is_public?: boolean;
@@ -254,6 +260,7 @@ export interface ListMemberProfilesOptions {
   is_public?: boolean;
   show_in_carousel?: boolean;
   offerings?: MemberOffering[];
+  markets?: string[];
   featured?: boolean;
   search?: string;
   limit?: number;

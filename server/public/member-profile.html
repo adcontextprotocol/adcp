@@ -811,6 +811,36 @@
             </div>
           </div>
 
+          <!-- Markets -->
+          <h2>Markets</h2>
+
+          <div class="form-group">
+            <label>Markets Served</label>
+            <div class="checkbox-group" id="markets-group">
+              <label class="checkbox-item" data-value="North America">
+                <input type="checkbox" name="markets" value="North America">
+                <span>North America</span>
+              </label>
+              <label class="checkbox-item" data-value="EMEA">
+                <input type="checkbox" name="markets" value="EMEA">
+                <span>EMEA</span>
+              </label>
+              <label class="checkbox-item" data-value="APAC">
+                <input type="checkbox" name="markets" value="APAC">
+                <span>APAC</span>
+              </label>
+              <label class="checkbox-item" data-value="LATAM">
+                <input type="checkbox" name="markets" value="LATAM">
+                <span>LATAM</span>
+              </label>
+              <label class="checkbox-item" data-value="Global">
+                <input type="checkbox" name="markets" value="Global">
+                <span>Global</span>
+              </label>
+            </div>
+            <div class="hint">Select the regions where you provide services</div>
+          </div>
+
           <!-- Agent URLs -->
           <h2>Your Agents</h2>
           <div class="form-group">
@@ -992,6 +1022,17 @@
       document.getElementById('linkedin_url').value = profile.linkedin_url || '';
       document.getElementById('twitter_url').value = profile.twitter_url || '';
       document.getElementById('is_public').checked = profile.is_public || false;
+
+      // Set markets
+      if (profile.markets) {
+        profile.markets.forEach(market => {
+          const checkbox = document.querySelector(`input[name="markets"][value="${market}"]`);
+          if (checkbox) {
+            checkbox.checked = true;
+            checkbox.closest('.checkbox-item').classList.add('selected');
+          }
+        });
+      }
 
       // Set offerings
       if (profile.offerings) {
@@ -1332,6 +1373,7 @@
         contact_website: document.getElementById('contact_website').value || null,
         linkedin_url: document.getElementById('linkedin_url').value || null,
         twitter_url: document.getElementById('twitter_url').value || null,
+        markets: Array.from(document.querySelectorAll('input[name="markets"]:checked')).map(cb => cb.value),
         offerings: Array.from(document.querySelectorAll('input[name="offerings"]:checked')).map(cb => cb.value),
         agents: agents,
         tags: tags,
