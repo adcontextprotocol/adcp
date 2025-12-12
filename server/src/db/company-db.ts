@@ -231,7 +231,10 @@ export class CompanyDatabase {
   async getCurrentAgreement(): Promise<Agreement | null> {
     const pool = getPool();
     const result = await pool.query(
-      'SELECT * FROM agreements ORDER BY effective_date DESC LIMIT 1'
+      `SELECT * FROM agreements
+       ORDER BY effective_date DESC,
+         string_to_array(version, '.')::int[] DESC
+       LIMIT 1`
     );
     return result.rows.length > 0 ? this.mapAgreement(result.rows[0]) : null;
   }
