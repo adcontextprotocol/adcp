@@ -2655,15 +2655,16 @@ export class HTTPServer {
         // Sync subscription data to organizations for MRR calculation
         // This populates subscription_amount, subscription_interval, subscription_current_period_end
         let subscriptionsSynced = 0;
+        let subscriptionsFailed = 0;
         if (stripe) {
           for (const [customerId, workosOrgId] of customerOrgMap) {
             try {
-              // Get customer with subscriptions
+              // Get customer with subscriptions and expanded price/product data in single API call
               const customer = await stripe.customers.retrieve(customerId, {
-                expand: ['subscriptions'],
+                expand: ['subscriptions.data.items.data.price.product'],
               });
 
-              if ((customer as Stripe.Customer).deleted) {
+              if ('deleted' in customer && customer.deleted) {
                 continue;
               }
 
@@ -2672,19 +2673,14 @@ export class HTTPServer {
                 continue;
               }
 
-              // Get the first active subscription
+              // Get the first active subscription (already has expanded items)
               const subscription = subscriptions.data[0];
               if (!subscription || !['active', 'trialing', 'past_due'].includes(subscription.status)) {
                 continue;
               }
 
-              // Get full subscription details
-              const fullSubscription = await stripe.subscriptions.retrieve(subscription.id, {
-                expand: ['items.data.price.product'],
-              });
-
-              // Get primary subscription item
-              const primaryItem = fullSubscription.items.data[0];
+              // Get primary subscription item directly from expanded data
+              const primaryItem = subscription.items.data[0];
               if (!primaryItem) {
                 continue;
               }
@@ -2711,8 +2707,8 @@ export class HTTPServer {
                   amount,
                   interval,
                   price?.currency || 'usd',
-                  fullSubscription.current_period_end ? new Date(fullSubscription.current_period_end * 1000) : null,
-                  fullSubscription.canceled_at ? new Date(fullSubscription.canceled_at * 1000) : null,
+                  subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+                  subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
                   product?.id || null,
                   product?.name || null,
                   price?.id || null,
@@ -2723,6 +2719,7 @@ export class HTTPServer {
               subscriptionsSynced++;
               logger.debug({ workosOrgId, customerId, amount, interval }, 'Synced subscription data');
             } catch (subError) {
+              subscriptionsFailed++;
               logger.error({ err: subError, customerId, workosOrgId }, 'Failed to sync subscription for customer');
               // Continue with other customers
             }
@@ -2735,6 +2732,7 @@ export class HTTPServer {
           imported,
           skipped,
           subscriptionsSynced,
+          subscriptionsFailed,
         }, 'Revenue backfill completed');
 
         res.json({
@@ -2745,6 +2743,7 @@ export class HTTPServer {
           imported,
           skipped,
           subscriptions_synced: subscriptionsSynced,
+          subscriptions_failed: subscriptionsFailed,
         });
       } catch (error) {
         logger.error({ err: error }, 'Error during revenue backfill');
