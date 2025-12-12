@@ -435,6 +435,30 @@
       border: none;
       margin-bottom: 20px;
     }
+    /* Status badge styles */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .status-badge.draft {
+      background: #f3f4f6;
+      color: #6b7280;
+      border: 1px solid #e5e7eb;
+    }
+    .status-badge.published {
+      background: #dbe8fc;
+      color: #1a36b4;
+      border: 1px solid #bfcfee;
+    }
+    .status-badge svg {
+      width: 16px;
+      height: 16px;
+    }
     /* Agent URLs section */
     .agent-urls-list {
       display: flex;
@@ -642,8 +666,16 @@
 
     <div id="profile-form" style="display: none;">
       <div class="card">
-        <h1 id="form-title">Member Profile</h1>
-        <p class="subtitle">Customize how your organization appears in the AdCP member directory</p>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 15px; margin-bottom: 10px;">
+          <div>
+            <h1 id="form-title" style="margin-bottom: 5px;">Member Profile</h1>
+            <p class="subtitle" style="margin-bottom: 0;">Customize how your organization appears in the AdCP member directory</p>
+          </div>
+          <!-- Status indicator - only shown for existing profiles -->
+          <div id="profile-status-indicator" style="display: none;">
+            <div id="status-badge" class="status-badge"></div>
+          </div>
+        </div>
 
         <div id="success-message" class="alert alert-success" style="display: none;"></div>
         <div id="error-message" class="alert alert-error" style="display: none;"></div>
@@ -870,7 +902,7 @@
           <div class="btn-group">
             <button type="submit" class="btn btn-primary" id="save-btn">Save Profile</button>
             <a href="#" class="btn btn-secondary" id="preview-btn" style="display: none;" target="_blank">View Live Profile</a>
-            <button type="button" class="btn btn-secondary" onclick="window.location.href='/dashboard'">Cancel</button>
+            <button type="button" class="btn btn-secondary" id="back-btn" onclick="goToDashboard()">Back to Dashboard</button>
             <button type="button" class="btn btn-danger" id="delete-btn" style="display: none;" onclick="deleteProfile()">Delete Profile</button>
           </div>
         </form>
@@ -911,6 +943,8 @@
       setupSlugCheck();
       setupLogoPreview();
       setupMemberCardPreview();
+      setupPhoneFormatting();
+      setupMarketsAutoSelect();
     });
 
     function setupMemberCardPreview() {
@@ -975,12 +1009,9 @@
             previewBtn.style.display = 'inline-block';
           }
         } else {
-          document.getElementById('no-profile').style.display = 'block';
-          // Update no-profile message with org name
-          if (currentOrgName) {
-            document.querySelector('#no-profile p').textContent =
-              `${currentOrgName} doesn't have a member profile yet. Create one to appear in the member directory and have your logo shown on the homepage.`;
-          }
+          // No profile exists - show the create form directly instead of an intermediate step
+          // This avoids the "duplicate Create Profile button" issue
+          showCreateForm();
         }
 
       } catch (error) {
@@ -991,10 +1022,13 @@
     }
 
     function showCreateForm() {
+      document.getElementById('loading').style.display = 'none';
       document.getElementById('no-profile').style.display = 'none';
       document.getElementById('profile-form').style.display = 'block';
       document.getElementById('form-title').textContent = currentOrgName ? `Create ${currentOrgName} Profile` : 'Create Member Profile';
       document.getElementById('slug-group').style.display = 'block';
+      // Hide status indicator for new profiles
+      document.getElementById('profile-status-indicator').style.display = 'none';
     }
 
     function populateForm(profile) {
@@ -1057,6 +1091,42 @@
 
       // Update logo preview
       updateLogoPreview();
+
+      // Update status badge
+      updateStatusBadge(profile);
+    }
+
+    function updateStatusBadge(profile) {
+      const indicator = document.getElementById('profile-status-indicator');
+      const badge = document.getElementById('status-badge');
+
+      if (!indicator || !badge || !profile) {
+        if (indicator) indicator.style.display = 'none';
+        return;
+      }
+
+      indicator.style.display = 'block';
+
+      if (profile.is_public) {
+        badge.className = 'status-badge published';
+        badge.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="16 12 12 8 8 12"/>
+            <line x1="12" y1="16" x2="12" y2="8"/>
+          </svg>
+          Published
+        `;
+      } else {
+        badge.className = 'status-badge draft';
+        badge.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          Draft
+        `;
+      }
     }
 
     function setupOfferingsToggle() {
@@ -1077,9 +1147,89 @@
           e.preventDefault();
           addTag(input.value.trim());
           input.value = '';
-        } else if (e.key === 'Backspace' && input.value === '' && tags.length > 0) {
-          tags.pop();
-          renderTags();
+        }
+        // Note: Removed backspace-to-delete-tag behavior
+        // Users should use the X button on tags to delete them
+        // Backspace now only edits text in the input field as expected
+      });
+    }
+
+    function setupPhoneFormatting() {
+      const phoneInput = document.getElementById('contact_phone');
+      if (!phoneInput) return;
+
+      phoneInput.addEventListener('input', (e) => {
+        let value = e.target.value;
+
+        // Store cursor position
+        const cursorPos = e.target.selectionStart;
+        const oldLength = value.length;
+
+        // Remove all non-digit characters except + at the start
+        const startsWithPlus = value.startsWith('+');
+        const digits = value.replace(/\D/g, '');
+
+        // Format based on number of digits
+        let formatted = '';
+        if (startsWithPlus && digits.length > 0) {
+          // International format: +1 (555) 123-4567
+          if (digits.length <= 1) {
+            formatted = '+' + digits;
+          } else if (digits.length <= 4) {
+            formatted = '+' + digits.slice(0, 1) + ' (' + digits.slice(1);
+          } else if (digits.length <= 7) {
+            formatted = '+' + digits.slice(0, 1) + ' (' + digits.slice(1, 4) + ') ' + digits.slice(4);
+          } else {
+            formatted = '+' + digits.slice(0, 1) + ' (' + digits.slice(1, 4) + ') ' + digits.slice(4, 7) + '-' + digits.slice(7, 11);
+          }
+        } else if (digits.length > 0) {
+          // US format: (555) 123-4567
+          if (digits.length <= 3) {
+            formatted = '(' + digits;
+          } else if (digits.length <= 6) {
+            formatted = '(' + digits.slice(0, 3) + ') ' + digits.slice(3);
+          } else {
+            formatted = '(' + digits.slice(0, 3) + ') ' + digits.slice(3, 6) + '-' + digits.slice(6, 10);
+          }
+        }
+
+        e.target.value = formatted;
+
+        // Adjust cursor position
+        const newLength = formatted.length;
+        const diff = newLength - oldLength;
+        const newCursorPos = Math.max(0, cursorPos + diff);
+        e.target.setSelectionRange(newCursorPos, newCursorPos);
+      });
+    }
+
+    function setupMarketsAutoSelect() {
+      const marketCheckboxes = document.querySelectorAll('input[name="markets"]');
+      const globalCheckbox = document.querySelector('input[name="markets"][value="Global"]');
+      const regionCheckboxes = Array.from(marketCheckboxes).filter(cb => cb.value !== 'Global');
+
+      if (!globalCheckbox || regionCheckboxes.length === 0) return;
+
+      // When individual regions change, check if all are selected
+      regionCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+          const allRegionsSelected = regionCheckboxes.every(cb => cb.checked);
+
+          if (allRegionsSelected && !globalCheckbox.checked) {
+            // Auto-select Global when all regions are selected
+            globalCheckbox.checked = true;
+            globalCheckbox.closest('.checkbox-item').classList.add('selected');
+          }
+        });
+      });
+
+      // When Global is selected, select all regions
+      globalCheckbox.addEventListener('change', () => {
+        if (globalCheckbox.checked) {
+          regionCheckboxes.forEach(cb => {
+            cb.checked = true;
+            cb.closest('.checkbox-item').classList.add('selected');
+          });
         }
       });
     }
@@ -1388,17 +1538,40 @@
         }
 
         currentProfile = data.profile;
+        const wasNewProfile = isNewProfile;
         isNewProfile = false;
 
-        // Redirect to dashboard after successful save
-        const orgParam = currentOrgId ? `?org=${currentOrgId}` : '';
-        window.location.href = `/dashboard${orgParam}`;
+        // Show success message and stay on page
+        showSuccess('Profile saved successfully!');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Profile';
+
+        // Update status badge with new profile data
+        updateStatusBadge(data.profile);
+
+        // If this was a new profile, update the UI to reflect it's now in edit mode
+        if (wasNewProfile) {
+          document.getElementById('form-title').textContent = currentOrgName ? `Edit ${currentOrgName} Profile` : 'Edit Member Profile';
+          document.getElementById('delete-btn').style.display = 'block';
+          document.getElementById('slug-group').style.display = 'none';
+          // Show preview button
+          if (data.profile.slug) {
+            const previewBtn = document.getElementById('preview-btn');
+            previewBtn.href = `/members/${data.profile.slug}`;
+            previewBtn.style.display = 'inline-block';
+          }
+        }
       } catch (error) {
         console.error('Save error:', error);
         showError(error.message || 'Failed to save profile. Please try again.');
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save Profile';
       }
+    }
+
+    function goToDashboard() {
+      const orgParam = currentOrgId ? `?org=${currentOrgId}` : '';
+      window.location.href = `/dashboard${orgParam}`;
     }
 
     async function deleteProfile() {
