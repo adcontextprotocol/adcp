@@ -14,22 +14,14 @@
   // Determine if running locally
   const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-  // adcontextprotocol.org is just a deep link to the AdCP page on AAO
-  // All sites show the full AAO nav with auth
-  const urlParams = new URLSearchParams(window.location.search);
-  const betaOverride = urlParams.get('beta');
-  const isBetaSite = betaOverride !== 'false';
-
-  // Determine base URLs based on site type and environment
+  // All sites use identical AAO-branded navigation
   // AAO content (members, insights, about) always lives on agenticadvertising.org
   // Docs always live on docs.adcontextprotocol.org
   const aaoBaseUrl = 'https://agenticadvertising.org';
-  const adcpBaseUrl = 'https://adcontextprotocol.org';
-  const homeBaseUrl = isBetaSite ? aaoBaseUrl : adcpBaseUrl;
   let docsUrl = 'https://docs.adcontextprotocol.org';
   let adagentsUrl = `${aaoBaseUrl}/adagents`;
   let membersUrl = `${aaoBaseUrl}/members`;
-  let homeUrl = homeBaseUrl;
+  let homeUrl = aaoBaseUrl;
   let apiBaseUrl = '';
 
   if (isLocal) {
@@ -127,10 +119,8 @@
     // AAO logo is white, needs invert on light background
     const logoNeedsInvert = true;
 
-    // Only show AdCP link on beta site (AAO) - on production (AdCP) the logo already goes to adcontextprotocol.org
-    const adcpLink = isBetaSite
-      ? '<a href="https://adcontextprotocol.org" class="navbar__link">AdCP</a>'
-      : '';
+    // AdCP link always shown
+    const adcpLink = '<a href="https://adcontextprotocol.org" class="navbar__link">AdCP</a>';
 
     return `
       <nav class="navbar">

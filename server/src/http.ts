@@ -119,6 +119,13 @@ export class HTTPServer {
   }
 
 
+  // Helper to check if request is from adcontextprotocol.org (requires redirect to AAO for auth)
+  // Session cookies are scoped to agenticadvertising.org, so auth pages on AdCP must redirect
+  private isAdcpDomain(req: express.Request): boolean {
+    const hostname = req.hostname || '';
+    return hostname.includes('adcontextprotocol') && !hostname.includes('localhost');
+  }
+
   private setupRoutes(): void {
     // Authentication routes (only if configured)
     if (AUTH_ENABLED) {
@@ -129,9 +136,26 @@ export class HTTPServer {
     }
 
     // UI page routes (serve with environment variables injected)
-    this.app.get('/onboarding', (req, res) => res.redirect('/onboarding.html'));
-    this.app.get('/team', (req, res) => res.redirect('/team.html' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '')));
+    // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
+    // because session cookies are scoped to the AAO domain
+    this.app.get('/onboarding', (req, res) => {
+      if (this.isAdcpDomain(req)) {
+        return res.redirect(`https://agenticadvertising.org/onboarding`);
+      }
+      res.redirect('/onboarding.html');
+    });
+    this.app.get('/team', (req, res) => {
+      if (this.isAdcpDomain(req)) {
+        const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+        return res.redirect(`https://agenticadvertising.org/team${queryString}`);
+      }
+      res.redirect('/team.html' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
+    });
     this.app.get('/dashboard', async (req, res) => {
+      // Redirect to AAO for auth-requiring pages when on AdCP domain
+      if (this.isAdcpDomain(req)) {
+        return res.redirect('https://agenticadvertising.org/dashboard');
+      }
       try {
         const fs = await import('fs/promises');
         const dashboardPath = process.env.NODE_ENV === 'production'
@@ -157,6 +181,11 @@ export class HTTPServer {
 
     // Public config endpoint - returns feature flags and auth state for nav
     this.app.get("/api/config", optionalAuth, (req, res) => {
+      // Prevent caching - auth state changes on login/logout
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
       // User is populated by optionalAuth middleware if authenticated
       let isAdmin = false;
       if (req.user) {
@@ -980,6 +1009,11 @@ export class HTTPServer {
 
     // Member Profile UI route - serve member-profile.html at /member-profile
     this.app.get("/member-profile", (req, res) => {
+      // Redirect to AAO for auth-requiring pages when on AdCP domain
+      if (this.isAdcpDomain(req)) {
+        const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+        return res.redirect(`https://agenticadvertising.org/member-profile${queryString}`);
+      }
       const memberProfilePath = process.env.NODE_ENV === 'production'
         ? path.join(__dirname, "../server/public/member-profile.html")
         : path.join(__dirname, "../public/member-profile.html");
@@ -2455,8 +2489,23 @@ export class HTTPServer {
     const orgDb = new OrganizationDatabase();
 
     // GET /auth/login - Redirect to WorkOS for authentication
+    // On AdCP domain, redirect to AAO first to keep auth on a single domain
     this.app.get('/auth/login', authRateLimiter, (req, res) => {
       try {
+        // If on AdCP domain, redirect to AAO for login (keeps cookies on single domain)
+        if (this.isAdcpDomain(req)) {
+          const returnTo = req.query.return_to as string;
+          // Rewrite return_to to AAO domain if it's a relative URL
+          let aaoReturnTo = returnTo;
+          if (returnTo && returnTo.startsWith('/')) {
+            aaoReturnTo = `https://agenticadvertising.org${returnTo}`;
+          }
+          const redirectUrl = aaoReturnTo
+            ? `https://agenticadvertising.org/auth/login?return_to=${encodeURIComponent(aaoReturnTo)}`
+            : 'https://agenticadvertising.org/auth/login';
+          return res.redirect(redirectUrl);
+        }
+
         const returnTo = req.query.return_to as string;
         const state = returnTo ? JSON.stringify({ return_to: returnTo }) : undefined;
 
