@@ -154,6 +154,45 @@
       margin-bottom: 16px;
       opacity: 0.3;
     }
+
+    .actions-bar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 20px;
+      gap: 12px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+
+    .btn-primary {
+      background-color: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: #5a6fd6;
+    }
+
+    .btn-primary:disabled {
+      background-color: #a0a0a0;
+      cursor: not-allowed;
+    }
+
+    .success-message {
+      background-color: #d1fae5;
+      color: #065f46;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
   </style>
 </head>
 <body>
@@ -161,6 +200,14 @@
 
   <div class="container">
     <h1>Analytics Dashboard</h1>
+
+    <div class="actions-bar">
+      <button id="backfill-btn" class="btn btn-primary" onclick="backfillRevenue()">
+        Sync from Stripe
+      </button>
+    </div>
+
+    <div id="backfill-message" class="success-message" style="display: none;"></div>
 
     <div id="loading" class="loading">
       <div class="loading-spinner"></div>
@@ -336,6 +383,42 @@
         document.getElementById('loading').style.display = 'none';
         document.getElementById('error').textContent = 'Error loading analytics data. Please try again later.';
         document.getElementById('error').style.display = 'block';
+      }
+    }
+
+    async function backfillRevenue() {
+      const btn = document.getElementById('backfill-btn');
+      const messageEl = document.getElementById('backfill-message');
+
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Syncing...';
+        messageEl.style.display = 'none';
+
+        const response = await fetch('/api/admin/backfill-revenue', {
+          method: 'POST',
+        });
+
+        if (!response.ok) {
+          throw new Error('Backfill request failed');
+        }
+
+        const result = await response.json();
+
+        messageEl.textContent = `Sync complete: Found ${result.invoices_found} invoices and ${result.refunds_found} refunds. Imported ${result.imported} new records, ${result.skipped} already existed.`;
+        messageEl.style.display = 'block';
+        messageEl.className = 'success-message';
+
+        // Reload analytics data
+        await loadAnalytics();
+      } catch (error) {
+        console.error('Backfill error:', error);
+        messageEl.textContent = 'Error syncing revenue data. Please try again.';
+        messageEl.style.display = 'block';
+        messageEl.className = 'error';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sync from Stripe';
       }
     }
 

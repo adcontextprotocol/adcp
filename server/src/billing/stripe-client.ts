@@ -233,3 +233,194 @@ export async function listCustomersWithOrgIds(): Promise<
     return [];
   }
 }
+
+export interface RevenueEvent {
+  workos_organization_id: string;
+  stripe_invoice_id: string;
+  stripe_subscription_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_charge_id: string | null;
+  amount_paid: number;
+  currency: string;
+  revenue_type: string;
+  billing_reason: string | null;
+  product_id: string | null;
+  product_name: string | null;
+  price_id: string | null;
+  billing_interval: string | null;
+  paid_at: Date;
+  period_start: Date | null;
+  period_end: Date | null;
+}
+
+/**
+ * Fetch all paid invoices from Stripe and return revenue events
+ * Used for backfilling historical revenue data
+ */
+export async function fetchAllPaidInvoices(
+  customerOrgMap: Map<string, string>
+): Promise<RevenueEvent[]> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot fetch invoices');
+    return [];
+  }
+
+  const events: RevenueEvent[] = [];
+
+  try {
+    // Fetch all paid invoices
+    for await (const invoice of stripe.invoices.list({
+      status: 'paid',
+      limit: 100,
+      expand: ['data.subscription', 'data.charge'],
+    })) {
+      const customerId = typeof invoice.customer === 'string'
+        ? invoice.customer
+        : invoice.customer?.id;
+
+      if (!customerId) {
+        continue;
+      }
+
+      const workosOrgId = customerOrgMap.get(customerId);
+      if (!workosOrgId) {
+        logger.debug({ customerId, invoiceId: invoice.id }, 'No org mapping for customer');
+        continue;
+      }
+
+      // Get the primary line item for product info
+      const primaryLine = invoice.lines?.data[0];
+      let productId: string | null = null;
+      let productName: string | null = null;
+      let priceId: string | null = null;
+      let billingInterval: string | null = null;
+
+      if (primaryLine) {
+        const price = primaryLine.price;
+        if (price) {
+          priceId = price.id;
+          billingInterval = price.recurring?.interval || null;
+          const product = price.product;
+          if (typeof product === 'string') {
+            productId = product;
+            // Try to fetch product name
+            try {
+              const productObj = await stripe.products.retrieve(product);
+              productName = productObj.name;
+            } catch {
+              productName = primaryLine.description || null;
+            }
+          } else if (product && typeof product === 'object' && 'name' in product) {
+            productId = product.id;
+            productName = product.name;
+          }
+        }
+      }
+
+      // Determine revenue type
+      let revenueType = 'subscription_recurring';
+      if (invoice.billing_reason === 'subscription_create') {
+        revenueType = 'subscription_initial';
+      } else if (!invoice.subscription) {
+        revenueType = 'one_time';
+      }
+
+      const charge = typeof invoice.charge === 'object' ? invoice.charge : null;
+
+      events.push({
+        workos_organization_id: workosOrgId,
+        stripe_invoice_id: invoice.id,
+        stripe_subscription_id: typeof invoice.subscription === 'string'
+          ? invoice.subscription
+          : invoice.subscription?.id || null,
+        stripe_payment_intent_id: typeof invoice.payment_intent === 'string'
+          ? invoice.payment_intent
+          : invoice.payment_intent?.id || null,
+        stripe_charge_id: charge?.id || null,
+        amount_paid: invoice.amount_paid,
+        currency: invoice.currency,
+        revenue_type: revenueType,
+        billing_reason: invoice.billing_reason || null,
+        product_id: productId,
+        product_name: productName,
+        price_id: priceId,
+        billing_interval: billingInterval,
+        paid_at: new Date((invoice.status_transitions?.paid_at || invoice.created) * 1000),
+        period_start: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
+        period_end: invoice.period_end ? new Date(invoice.period_end * 1000) : null,
+      });
+    }
+
+    logger.info({ count: events.length }, 'Fetched paid invoices from Stripe');
+    return events;
+  } catch (error) {
+    logger.error({ err: error }, 'Error fetching invoices from Stripe');
+    throw error;
+  }
+}
+
+/**
+ * Fetch all refunds from Stripe and return revenue events
+ */
+export async function fetchAllRefunds(
+  customerOrgMap: Map<string, string>
+): Promise<RevenueEvent[]> {
+  if (!stripe) {
+    logger.warn('Stripe not initialized - cannot fetch refunds');
+    return [];
+  }
+
+  const events: RevenueEvent[] = [];
+
+  try {
+    for await (const refund of stripe.refunds.list({
+      limit: 100,
+      expand: ['data.charge'],
+    })) {
+      const charge = typeof refund.charge === 'object' ? refund.charge : null;
+      if (!charge) continue;
+
+      const customerId = typeof charge.customer === 'string'
+        ? charge.customer
+        : charge.customer?.id;
+
+      if (!customerId) continue;
+
+      const workosOrgId = customerOrgMap.get(customerId);
+      if (!workosOrgId) continue;
+
+      // Get invoice ID from charge metadata or use refund ID as fallback
+      const chargeInvoice = (charge as Stripe.Charge & { invoice?: string | { id: string } | null }).invoice;
+      const invoiceId = typeof chargeInvoice === 'string'
+        ? chargeInvoice
+        : chargeInvoice?.id || `refund_${refund.id}`;
+
+      events.push({
+        workos_organization_id: workosOrgId,
+        stripe_invoice_id: invoiceId,
+        stripe_subscription_id: null,
+        stripe_payment_intent_id: typeof refund.payment_intent === 'string'
+          ? refund.payment_intent
+          : refund.payment_intent?.id || null,
+        stripe_charge_id: charge.id,
+        amount_paid: -refund.amount, // Negative for refunds
+        currency: refund.currency,
+        revenue_type: 'refund',
+        billing_reason: null,
+        product_id: null,
+        product_name: null,
+        price_id: null,
+        billing_interval: null,
+        paid_at: new Date(refund.created * 1000),
+        period_start: null,
+        period_end: null,
+      });
+    }
+
+    logger.info({ count: events.length }, 'Fetched refunds from Stripe');
+    return events;
+  } catch (error) {
+    logger.error({ err: error }, 'Error fetching refunds from Stripe');
+    throw error;
+  }
+}
