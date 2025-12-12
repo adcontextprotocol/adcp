@@ -356,10 +356,8 @@
 
         <div id="pricingTableWrapper" style="opacity: 0.5; pointer-events: none; transition: opacity 0.3s;">
           <script async src="https://js.stripe.com/v3/pricing-table.js"></script>
-          <stripe-pricing-table
-            pricing-table-id="{{STRIPE_PRICING_TABLE_ID}}"
-            publishable-key="{{STRIPE_PUBLISHABLE_KEY}}">
-          </stripe-pricing-table>
+          <!-- Pricing table will be dynamically inserted here with customer session -->
+          <div id="pricingTableContainer"></div>
         </div>
 
         <div id="agreementWarning" style="display: block; text-align: center; color: #666; font-size: 14px; margin-top: 10px; padding: 10px; background: #fff7ed; border: 1px solid #ffd699; border-radius: 4px;">
@@ -610,27 +608,33 @@
       if (org.billing?.status !== 'active') {
         membershipSection.style.display = 'block';
 
-        // Update pricing table with this org's customer session (if available)
-        if (org.customerSessionSecret) {
-          updatePricingTable(org);
-        }
+        // Create pricing table (includes customer session if available for payment method pre-fill)
+        updatePricingTable(org);
       } else {
         membershipSection.style.display = 'none';
       }
     }
 
     // Update pricing table for current org
+    // Dynamically creates the pricing table element to ensure customer session is included from the start
     function updatePricingTable(org) {
-      if (!org.customerSessionSecret) return;
+      const container = document.getElementById('pricingTableContainer');
+      if (!container) return;
 
-      const pricingWrapper = document.getElementById('pricingTableWrapper');
-      if (!pricingWrapper) return;
+      // Clear any existing pricing table
+      container.innerHTML = '';
 
-      // Update existing pricing table with new customer session
-      const existingTable = pricingWrapper.querySelector('stripe-pricing-table');
-      if (existingTable) {
-        existingTable.setAttribute('customer-session-client-secret', org.customerSessionSecret);
+      // Create new pricing table element with all attributes set upfront
+      const pricingTable = document.createElement('stripe-pricing-table');
+      pricingTable.setAttribute('pricing-table-id', '{{STRIPE_PRICING_TABLE_ID}}');
+      pricingTable.setAttribute('publishable-key', '{{STRIPE_PUBLISHABLE_KEY}}');
+
+      // Include customer session if available (enables payment method pre-fill)
+      if (org.customerSessionSecret) {
+        pricingTable.setAttribute('customer-session-client-secret', org.customerSessionSecret);
       }
+
+      container.appendChild(pricingTable);
     }
 
     // Load team preview with member avatars
@@ -1624,17 +1628,12 @@
     // Handle browser back/forward cache (bfcache) restoration
     // When user hits back from Stripe, reinitialize the pricing table
     window.addEventListener('pageshow', (event) => {
-      if (event.persisted) {
+      if (event.persisted && currentOrg) {
         // Page was restored from bfcache
         console.log('Page restored from cache, reloading pricing table');
 
-        // Check if pricing table exists and needs reinitialization
-        const pricingTable = document.querySelector('stripe-pricing-table');
-        if (pricingTable) {
-          // Force re-render by cloning the element
-          const clone = pricingTable.cloneNode(true);
-          pricingTable.parentNode.replaceChild(clone, pricingTable);
-        }
+        // Recreate pricing table with current org's customer session
+        updatePricingTable(currentOrg);
       }
     });
   </script>
