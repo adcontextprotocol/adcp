@@ -3536,6 +3536,92 @@ export class HTTPServer {
       }
     });
 
+    // PUT /api/organizations/:orgId - Update organization (rename)
+    this.app.put('/api/organizations/:orgId', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+        const { name } = req.body;
+
+        // Validate name is provided
+        if (!name) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'name is required',
+          });
+        }
+
+        // Validate organization name format
+        const nameValidation = validateOrganizationName(name);
+        if (!nameValidation.valid) {
+          return res.status(400).json({
+            error: 'Invalid organization name',
+            message: nameValidation.error,
+          });
+        }
+
+        const trimmedName = name.trim();
+
+        // Verify user is member of this organization with owner or admin role
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        const membership = memberships.data[0];
+        if (!membership) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Only owners and admins can rename
+        const roleSlug = (membership as any).role?.slug || (membership as any).roleSlug;
+        if (roleSlug !== 'owner' && roleSlug !== 'admin') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only organization owners and admins can rename the organization',
+          });
+        }
+
+        // Update in WorkOS
+        const updatedOrg = await workos!.organizations.updateOrganization({
+          organization: orgId,
+          name: trimmedName,
+        });
+
+        // Update in our database
+        await orgDb.updateOrganization(orgId, { name: trimmedName });
+
+        // Record audit log
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'organization_renamed',
+          resource_type: 'organization',
+          resource_id: orgId,
+          details: { new_name: trimmedName },
+        });
+
+        logger.info({ orgId, newName: trimmedName, userId: user.id }, 'Organization renamed');
+
+        res.json({
+          success: true,
+          organization: {
+            id: updatedOrg.id,
+            name: updatedOrg.name,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Update organization error');
+        res.status(500).json({
+          error: 'Failed to update organization',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // Billing Routes
 
     // POST /api/organizations/:orgId/billing/portal - Create Customer Portal session

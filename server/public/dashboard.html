@@ -255,6 +255,22 @@
     </div>
   </div>
 
+  <!-- Rename Organization Modal -->
+  <div id="renameOrgModal" class="modal-overlay">
+    <div class="modal" style="max-width: 400px;">
+      <h2>Rename Organization</h2>
+      <div style="margin: 20px 0;">
+        <label for="newOrgName" style="display: block; margin-bottom: 8px; font-weight: 500;">Organization Name</label>
+        <input type="text" id="newOrgName" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;" placeholder="Enter new name">
+        <p id="renameError" style="color: #e53e3e; font-size: 13px; margin: 8px 0 0 0; display: none;"></p>
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-secondary" onclick="closeRenameModal()">Cancel</button>
+        <button class="btn-primary" id="confirmRenameBtn" onclick="confirmRenameOrg()">Rename</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Shared Navigation -->
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
@@ -279,6 +295,12 @@
       <div>
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
           <h1 id="orgName" style="margin: 0;">Dashboard</h1>
+          <button id="editOrgNameBtn" onclick="openRenameModal()" style="display: none; background: none; border: none; cursor: pointer; padding: 4px; color: #666; opacity: 0.7; transition: opacity 0.2s;" title="Rename organization">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
           <span id="orgBadge"></span>
         </div>
         <p id="orgRole" style="margin: 0; font-size: 14px; color: #666;"></p>
@@ -532,6 +554,14 @@
       document.getElementById('orgName').textContent = org.name;
       document.getElementById('orgBadge').innerHTML = personalBadge + ' ' + subscriptionBadge;
       document.getElementById('orgRole').textContent = `Your role: ${org.role || 'member'}`;
+
+      // Show edit button for owners and admins
+      const editBtn = document.getElementById('editOrgNameBtn');
+      if (org.role === 'owner' || org.role === 'admin') {
+        editBtn.style.display = 'inline-flex';
+      } else {
+        editBtn.style.display = 'none';
+      }
 
       // Render Billing Card
       const billingDetailsDiv = document.getElementById('billingDetails');
@@ -1367,6 +1397,84 @@
     function closeAgreementViewer() {
       document.getElementById('agreementViewerModal').style.display = 'none';
     }
+
+    // Open rename organization modal
+    function openRenameModal() {
+      if (!currentOrg) return;
+      document.getElementById('newOrgName').value = currentOrg.name;
+      document.getElementById('renameError').style.display = 'none';
+      document.getElementById('renameOrgModal').style.display = 'flex';
+      document.getElementById('newOrgName').focus();
+    }
+
+    // Close rename organization modal
+    function closeRenameModal() {
+      document.getElementById('renameOrgModal').style.display = 'none';
+      document.getElementById('renameError').style.display = 'none';
+    }
+
+    // Confirm rename organization
+    async function confirmRenameOrg() {
+      if (!currentOrg) return;
+
+      const newName = document.getElementById('newOrgName').value.trim();
+      const errorEl = document.getElementById('renameError');
+      const confirmBtn = document.getElementById('confirmRenameBtn');
+
+      // Validate
+      if (!newName) {
+        errorEl.textContent = 'Organization name is required';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      if (newName === currentOrg.name) {
+        closeRenameModal();
+        return;
+      }
+
+      // Disable button during request
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Renaming...';
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to rename organization');
+        }
+
+        // Update the UI
+        currentOrg.name = data.organization.name;
+        document.getElementById('orgName').textContent = data.organization.name;
+
+        closeRenameModal();
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'block';
+      } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Rename';
+      }
+    }
+
+    // Handle Enter key in rename input
+    document.addEventListener('DOMContentLoaded', () => {
+      const renameInput = document.getElementById('newOrgName');
+      if (renameInput) {
+        renameInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            confirmRenameOrg();
+          }
+        });
+      }
+    });
 
     // Dismiss required agreement for this session (will show again on next visit)
     // Use sessionStorage to prevent re-popup during current session
