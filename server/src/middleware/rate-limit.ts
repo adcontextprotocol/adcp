@@ -34,37 +34,6 @@ export const invitationRateLimiter = rateLimit({
 });
 
 /**
- * Rate limiter for authentication endpoints
- * Limits: 100 attempts per 15 minutes per IP
- *
- * Note: This is relatively permissive because:
- * 1. Auth redirects from failed session validation count against the limit
- * 2. Multiple users may share an IP (office, VPN, etc.)
- * 3. Browser refreshes during auth flow count as attempts
- *
- * WorkOS provides additional protection against credential stuffing.
- */
-export const authRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req: Request) => req.ip || 'unknown',
-  handler: (req: Request, res: Response) => {
-    logger.warn({
-      ip: req.ip,
-      path: req.path,
-    }, 'Rate limit exceeded for authentication');
-
-    res.status(429).json({
-      error: 'Too many requests',
-      message: 'Too many authentication attempts. Please try again later.',
-      retryAfter: Math.ceil(15 * 60),
-    });
-  },
-});
-
-/**
  * Rate limiter for organization creation
  * Limits: 5 orgs per hour per user
  */

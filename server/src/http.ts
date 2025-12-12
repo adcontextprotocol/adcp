@@ -24,7 +24,7 @@ import { RegistryDatabase } from "./db/registry-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth } from "./middleware/auth.js";
-import { invitationRateLimiter, authRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
 import {
@@ -2490,7 +2490,7 @@ export class HTTPServer {
 
     // GET /auth/login - Redirect to WorkOS for authentication
     // On AdCP domain, redirect to AAO first to keep auth on a single domain
-    this.app.get('/auth/login', authRateLimiter, (req, res) => {
+    this.app.get('/auth/login', (req, res) => {
       try {
         // If on AdCP domain, redirect to AAO for login (keeps cookies on single domain)
         if (this.isAdcpDomain(req)) {
@@ -2527,7 +2527,7 @@ export class HTTPServer {
     });
 
     // GET /auth/callback - Handle OAuth callback from WorkOS
-    this.app.get('/auth/callback', authRateLimiter, async (req, res) => {
+    this.app.get('/auth/callback', async (req, res) => {
       const code = req.query.code as string;
       const state = req.query.state as string;
 
