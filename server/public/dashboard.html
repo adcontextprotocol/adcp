@@ -229,7 +229,7 @@
         <p id="outdatedAgreementModalMessage">One or more agreements have been updated.</p>
         <div id="outdatedAgreementsList" style="margin: 20px 0;"></div>
       </div>
-      <div class="modal-buttons">
+      <div id="outdatedAgreementButtons" class="modal-buttons">
         <button class="btn-secondary" onclick="dismissAgreementModal()">Remind Me Later</button>
         <button class="btn-primary" onclick="viewOutdatedAgreements()">Review</button>
       </div>
@@ -1329,45 +1329,45 @@
       document.getElementById('outdatedAgreementModal').style.display = 'none';
     }
 
-    // View outdated agreements
+    // Acknowledge TOS/Privacy updates (no re-acceptance required, just dismiss)
+    async function acknowledgeAgreementUpdates() {
+      // Record acknowledgment in session so we don't show again this session
+      sessionStorage.setItem('acknowledgedAgreementUpdates', 'true');
+      dismissAgreementModal();
+    }
+
+    // View outdated agreements (only for membership that requires acceptance)
     async function viewOutdatedAgreements() {
       dismissAgreementModal();
 
-      // Get the first outdated agreement and show it with accept button
+      // Get membership agreement that needs acceptance
       try {
         const response = await fetch('/api/me/agreements');
         if (!response.ok) return;
 
         const data = await response.json();
-        const outdated = data.agreements
-          .filter(a => {
-            // Skip membership agreement if user doesn't have a subscription
-            if (a.type === 'membership' && !currentOrgHasActiveSubscription()) {
-              return false;
-            }
-            return !a.accepted || a.needs_reacceptance;
-          })
-          .sort((a, b) => {
-            // Prioritize membership agreements (require formal acceptance)
-            if (a.type === 'membership' && b.type !== 'membership') return -1;
-            if (a.type !== 'membership' && b.type === 'membership') return 1;
-            return 0;
-          });
+        const membershipAgreement = data.agreements.find(a =>
+          a.type === 'membership' && a.is_outdated && !a.version
+        );
 
-        if (outdated.length > 0) {
-          const first = outdated[0];
-          await viewAgreementForAcceptance(first.type, first.current_version);
+        if (membershipAgreement) {
+          await viewAgreementForAcceptance('membership', membershipAgreement.current_version);
         }
       } catch (error) {
-        console.error('Error loading outdated agreements:', error);
+        console.error('Error loading membership agreement:', error);
       }
     }
 
-    // View specific agreement version
+    // View specific agreement version (read-only mode)
     async function viewAgreement(type, version) {
       try {
         document.getElementById('agreementViewerModal').style.display = 'flex';
         document.getElementById('agreementViewerContent').innerHTML = 'Loading...';
+
+        // Reset buttons to Close-only for read-only view
+        document.getElementById('agreementViewerButtons').innerHTML = `
+          <button class="btn-primary" onclick="closeAgreementViewer()">Close</button>
+        `;
 
         const response = await fetch(`/api/agreement?type=${type}&version=${version}&format=json`, {
           credentials: 'same-origin'
@@ -1599,29 +1599,6 @@
 
         // Reload agreements list to update UI
         await loadMyAgreements();
-
-        // Check if there are more agreements to accept
-        const agreementsResponse = await fetch('/api/me/agreements');
-        if (agreementsResponse.ok) {
-          const data = await agreementsResponse.json();
-          // Filter for unsigned (!version) or outdated agreements
-          // Also filter based on subscription status for membership
-          const needsAcceptance = data.agreements.filter(a => {
-            // Skip membership for non-subscribers
-            if (a.type === 'membership' && !currentOrgHasActiveSubscription()) {
-              return false;
-            }
-            // Agreement needs acceptance if not signed or outdated
-            return !a.version || a.is_outdated;
-          });
-
-          if (needsAcceptance.length > 0) {
-            // Show next agreement
-            const next = needsAcceptance[0];
-            await viewAgreementForAcceptance(next.type, next.current_version);
-          }
-          // No more - just let the page update naturally (no alert)
-        }
       } catch (error) {
         console.error('Error accepting agreement:', error);
         alert('Failed to accept agreement: ' + error.message);
@@ -1641,35 +1618,59 @@
         const data = await response.json();
 
         if (data.needs_reacceptance) {
-          // Build list of outdated agreements
-          // Only show ToS/Privacy if they're outdated
-          // For membership, only show if user has subscription and never accepted
-          const outdatedList = data.agreements
-            .filter(a => {
-              if (a.type === 'membership') {
-                // Only show membership if user has active subscription and never accepted
-                return currentOrgHasActiveSubscription() && a.is_outdated && !a.version;
-              } else {
-                // Show ToS/Privacy if outdated (just FYI)
-                return a.is_outdated;
-              }
+          // Separate membership (requires acceptance) from TOS/Privacy (info only)
+          const outdatedAgreements = data.agreements.filter(a => a.is_outdated);
+          const membershipNeedsAcceptance = outdatedAgreements.find(a =>
+            a.type === 'membership' && !a.version
+          );
+
+          // If only TOS/Privacy updated and already acknowledged this session, skip
+          if (!membershipNeedsAcceptance && sessionStorage.getItem('acknowledgedAgreementUpdates')) {
+            return;
+          }
+
+          // Build the list display
+          const outdatedList = outdatedAgreements
+            .map(a => {
+              const isMembershipRequiringAcceptance = a.type === 'membership' && !a.version;
+              return `
+                <div style="padding: 10px; background: ${isMembershipRequiringAcceptance ? '#fef2f2' : '#fff7ed'}; border-left: 3px solid ${isMembershipRequiringAcceptance ? '#ef4444' : '#f90'}; border-radius: 4px; margin: 8px 0;">
+                  <strong>${formatAgreementType(a.type)}</strong>
+                  ${isMembershipRequiringAcceptance ? '<span style="color: #ef4444; font-size: 11px; margin-left: 8px;">Acceptance Required</span>' : ''}
+                  <br>
+                  <small style="color: #666;">
+                    ${a.version ? `Your version: ${a.version}` : 'Not yet accepted'} →
+                    Current version: ${a.current_version}
+                  </small>
+                  ${!isMembershipRequiringAcceptance ? `<br><a href="javascript:void(0)" onclick="dismissAgreementModal(); viewAgreement('${a.type}', '${a.current_version}')" style="color: #1a36b4; font-size: 12px;">View changes</a>` : ''}
+                </div>
+              `;
             })
-            .map(a => `
-              <div style="padding: 10px; background: #fff7ed; border-left: 3px solid #f90; border-radius: 4px; margin: 8px 0;">
-                <strong>${formatAgreementType(a.type)}</strong>
-                <br>
-                <small style="color: #666;">
-                  ${a.version ? `Accepted version: ${a.version}` : 'Not yet accepted'} →
-                  Current version: ${a.current_version}
-                </small>
-              </div>
-            `)
             .join('');
 
-          // Only show modal if there are agreements to show
           if (!outdatedList) return;
 
+          // Update modal content and buttons based on what needs attention
           document.getElementById('outdatedAgreementsList').innerHTML = outdatedList;
+
+          const buttonsDiv = document.getElementById('outdatedAgreementButtons');
+          if (membershipNeedsAcceptance) {
+            // Membership needs acceptance - show Review button
+            document.getElementById('outdatedAgreementModalMessage').textContent =
+              'Your membership agreement requires acceptance to continue.';
+            buttonsDiv.innerHTML = `
+              <button class="btn-secondary" onclick="dismissAgreementModal()">Remind Me Later</button>
+              <button class="btn-primary" onclick="viewOutdatedAgreements()">Review & Accept</button>
+            `;
+          } else {
+            // Only TOS/Privacy updated - just informational
+            document.getElementById('outdatedAgreementModalMessage').textContent =
+              'The following agreements have been updated. Your continued use constitutes acceptance of the updated terms.';
+            buttonsDiv.innerHTML = `
+              <button class="btn-primary" onclick="acknowledgeAgreementUpdates()">Got It</button>
+            `;
+          }
+
           document.getElementById('outdatedAgreementModal').style.display = 'flex';
         }
       } catch (error) {
