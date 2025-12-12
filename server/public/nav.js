@@ -1,16 +1,10 @@
 /**
- * Shared Navigation Component for AdCP
+ * Shared Navigation Component for Agentic Advertising
  * Automatically detects current page and localhost environment
  * Fetches config to conditionally show membership features and auth widget
  *
- * Host-based feature flagging:
- * - agenticadvertising.org (beta): New AAO branding, membership features, auth
- * - adcontextprotocol.org (production): Old AdCP branding, membership links redirect to AAO
- * - localhost: Follows beta behavior for testing
- *
  * Auth routing:
  * - All auth operations (login, logout, dashboard) route to agenticadvertising.org
- * - Users on adcontextprotocol.org see login/signup links that redirect to AAO
  * - Session cookies are domain-scoped to agenticadvertising.org
  */
 
@@ -20,24 +14,11 @@
   // Determine if running locally
   const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-  // Determine if this is the beta site (AAO) or production site (AdCP)
-  // Beta sites: agenticadvertising.org, localhost (for testing)
-  // Production sites: adcontextprotocol.org
-  //
-  // Local testing: Add ?beta=false to URL to simulate production site
-  //                Add ?beta=true to force beta mode (default for localhost)
-  const hostname = window.location.hostname;
+  // adcontextprotocol.org is just a deep link to the AdCP page on AAO
+  // All sites show the full AAO nav with auth
   const urlParams = new URLSearchParams(window.location.search);
   const betaOverride = urlParams.get('beta');
-
-  let isBetaSite;
-  if (betaOverride !== null) {
-    // URL parameter overrides hostname detection
-    isBetaSite = betaOverride !== 'false';
-  } else {
-    // Default: localhost and agenticadvertising.org are beta
-    isBetaSite = isLocal || hostname.includes('agenticadvertising');
-  }
+  const isBetaSite = betaOverride !== 'false';
 
   // Determine base URLs based on site type and environment
   // AAO content (members, insights, about) always lives on agenticadvertising.org
@@ -85,17 +66,16 @@
     const user = config?.user;
     // Membership features always enabled - auth redirects to AAO site when on production
     const membershipEnabled = true;
-    // Auth is enabled on beta site (AAO) with config flag, always available on production (redirects to AAO)
-    const authEnabled = isBetaSite ? config?.authEnabled !== false : true;
+    const authEnabled = config?.authEnabled !== false;
 
-    // Auth base URL - always points to AAO for auth operations
-    const authBaseUrl = isBetaSite ? '' : 'https://agenticadvertising.org';
+    // Auth uses relative URLs (all sites are AAO)
+    const authBaseUrl = '';
 
     // Build auth section based on state
     let authSection = '';
     if (authEnabled) {
-      if (user && isBetaSite) {
-        // User is logged in and on beta site - show account dropdown
+      if (user) {
+        // User is logged in - show account dropdown
         const displayName = user.firstName || user.email.split('@')[0];
         const adminLink = user.isAdmin ? `<a href="${authBaseUrl}/admin" class="navbar__dropdown-item">Admin</a>` : '';
         authSection = `
@@ -115,7 +95,7 @@
           </div>
         `;
       } else if (membershipEnabled) {
-        // Not logged in OR on production site - show login/signup (links to AAO)
+        // Not logged in - show login/signup (links to AAO)
         authSection = `
           <a href="${authBaseUrl}/auth/login" class="navbar__link">Log in</a>
           <a href="${authBaseUrl}/auth/login" class="navbar__btn navbar__btn--primary">Sign up</a>
@@ -141,12 +121,11 @@
       ? `<a href="${insightsUrl}" class="navbar__link ${currentPath.startsWith('/insights') ? 'active' : ''}">Insights</a>`
       : '';
 
-    // Choose logo based on site - beta gets AAO, production gets AdCP
-    const logoSrc = isBetaSite ? '/AAo.svg' : '/adcp_logo.svg';
-    const logoAlt = isBetaSite ? 'Agentic Advertising' : 'AdCP';
+    // Always use AAO logo
+    const logoSrc = '/AAo.svg';
+    const logoAlt = 'Agentic Advertising';
     // AAO logo is white, needs invert on light background
-    // AdCP logo should display normally
-    const logoNeedsInvert = isBetaSite;
+    const logoNeedsInvert = true;
 
     // Only show AdCP link on beta site (AAO) - on production (AdCP) the logo already goes to adcontextprotocol.org
     const adcpLink = isBetaSite

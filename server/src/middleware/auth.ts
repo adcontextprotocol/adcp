@@ -28,8 +28,22 @@ declare global {
 const companyDb = new CompanyDatabase();
 
 /**
+ * Helper to set the session cookie with consistent options
+ */
+function setSessionCookie(res: Response, sealedSession: string) {
+  res.cookie('wos-session', sealedSession, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  });
+}
+
+/**
  * Middleware to require authentication
  * Checks for WorkOS session cookie and loads user info
+ * Automatically refreshes expired access tokens using the refresh token
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const sessionCookie = req.cookies['wos-session'];
@@ -50,14 +64,45 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    // Note: clientId is configured in the WorkOS instance, not passed here
-    const result = await workos.userManagement.authenticateWithSessionCookie({
+    // Load the sealed session to get access to both authenticate and refresh methods
+    const session = workos.userManagement.loadSealedSession({
       sessionData: sessionCookie,
       cookiePassword: WORKOS_COOKIE_PASSWORD,
     });
 
+    // Try to authenticate with the current session
+    let result = await session.authenticate();
+
+    // If authentication failed, try to refresh the session
     if (!result.authenticated || !('user' in result) || !result.user) {
-      logger.debug('Session validation failed');
+      logger.debug('Session authentication failed, attempting refresh');
+
+      try {
+        const refreshResult = await session.refresh({
+          cookiePassword: WORKOS_COOKIE_PASSWORD,
+        });
+
+        if (refreshResult.authenticated && refreshResult.sealedSession) {
+          // Refresh succeeded - update the cookie and re-authenticate
+          logger.debug('Session refreshed successfully');
+          setSessionCookie(res, refreshResult.sealedSession);
+
+          // Re-authenticate with the new session
+          const newSession = workos.userManagement.loadSealedSession({
+            sessionData: refreshResult.sealedSession,
+            cookiePassword: WORKOS_COOKIE_PASSWORD,
+          });
+          result = await newSession.authenticate();
+        }
+      } catch (refreshError) {
+        logger.debug({ err: refreshError }, 'Session refresh failed');
+        // Continue with the original failed result
+      }
+    }
+
+    // Final check after potential refresh
+    if (!result.authenticated || !('user' in result) || !result.user) {
+      logger.debug('Session validation failed (even after refresh attempt)');
       if (isHtmlRequest) {
         return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
       }
@@ -294,6 +339,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
 
 /**
  * Optional auth middleware - loads user if authenticated, but doesn't require it
+ * Automatically refreshes expired access tokens using the refresh token
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
   const sessionCookie = req.cookies['wos-session'];
@@ -303,11 +349,39 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   }
 
   try {
-    // Note: clientId is configured in the WorkOS instance, not passed here
-    const result = await workos.userManagement.authenticateWithSessionCookie({
+    // Load the sealed session to get access to both authenticate and refresh methods
+    const session = workos.userManagement.loadSealedSession({
       sessionData: sessionCookie,
       cookiePassword: WORKOS_COOKIE_PASSWORD,
     });
+
+    // Try to authenticate with the current session
+    let result = await session.authenticate();
+
+    // If authentication failed, try to refresh the session
+    if (!result.authenticated || !('user' in result) || !result.user) {
+      try {
+        const refreshResult = await session.refresh({
+          cookiePassword: WORKOS_COOKIE_PASSWORD,
+        });
+
+        if (refreshResult.authenticated && refreshResult.sealedSession) {
+          // Refresh succeeded - update the cookie and re-authenticate
+          logger.debug('Session refreshed successfully (optional auth)');
+          setSessionCookie(res, refreshResult.sealedSession);
+
+          // Re-authenticate with the new session
+          const newSession = workos.userManagement.loadSealedSession({
+            sessionData: refreshResult.sealedSession,
+            cookiePassword: WORKOS_COOKIE_PASSWORD,
+          });
+          result = await newSession.authenticate();
+        }
+      } catch (refreshError) {
+        // Silently fail refresh for optional auth
+        logger.debug({ err: refreshError }, 'Optional auth refresh failed');
+      }
+    }
 
     if (result.authenticated && 'user' in result && result.user) {
       req.user = {
