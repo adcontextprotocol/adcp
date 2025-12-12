@@ -569,10 +569,10 @@ Brief description of what changed and why.
 ```
 
 **Changeset types:**
-- `patch` - Bug fixes, documentation updates, no API changes, refactoring/cleanup
-- `minor` - New features, backward-compatible API additions
+- `patch` - Bug fixes to protocol/schemas, documentation updates that affect protocol understanding
+- `minor` - New features, backward-compatible API/schema additions
 - `major` - Breaking changes to APIs or schemas
-- **empty** - Changes that don't affect the package (use `--empty` flag)
+- **empty** - Changes that don't affect the protocol (use `--empty` flag)
 
 **When to use empty changesets:**
 - Changes to CI/CD configuration
@@ -580,6 +580,8 @@ Brief description of what changed and why.
 - Changes to development tools
 - Internal refactoring that doesn't change the public API or schemas
 - Documentation-only changes that don't affect functionality
+- **Server/dashboard/UI changes** - The `server/` directory is implementation, not protocol
+- Any changes that don't affect the AdCP protocol specification or schemas
 
 ```bash
 # For changes that don't need a version bump
