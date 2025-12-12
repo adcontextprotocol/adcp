@@ -23,7 +23,7 @@ import { MemberDatabase } from "./db/member-db.js";
 import { RegistryDatabase } from "./db/registry-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, optionalAuth } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -2869,6 +2869,11 @@ export class HTTPServer {
     this.app.get('/auth/logout', async (req, res) => {
       try {
         const sessionCookie = req.cookies['wos-session'];
+
+        // Invalidate session cache first
+        if (sessionCookie) {
+          invalidateSessionCache(sessionCookie);
+        }
 
         // Revoke the session on WorkOS side if it exists
         if (sessionCookie && workos) {
