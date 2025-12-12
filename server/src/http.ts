@@ -2652,11 +2652,89 @@ export class HTTPServer {
           }
         }
 
+        // Sync subscription data to organizations for MRR calculation
+        // This populates subscription_amount, subscription_interval, subscription_current_period_end
+        let subscriptionsSynced = 0;
+        if (stripe) {
+          for (const [customerId, workosOrgId] of customerOrgMap) {
+            try {
+              // Get customer with subscriptions
+              const customer = await stripe.customers.retrieve(customerId, {
+                expand: ['subscriptions'],
+              });
+
+              if ((customer as Stripe.Customer).deleted) {
+                continue;
+              }
+
+              const subscriptions = (customer as Stripe.Customer).subscriptions;
+              if (!subscriptions || subscriptions.data.length === 0) {
+                continue;
+              }
+
+              // Get the first active subscription
+              const subscription = subscriptions.data[0];
+              if (!subscription || !['active', 'trialing', 'past_due'].includes(subscription.status)) {
+                continue;
+              }
+
+              // Get full subscription details
+              const fullSubscription = await stripe.subscriptions.retrieve(subscription.id, {
+                expand: ['items.data.price.product'],
+              });
+
+              // Get primary subscription item
+              const primaryItem = fullSubscription.items.data[0];
+              if (!primaryItem) {
+                continue;
+              }
+
+              const price = primaryItem.price;
+              const product = price?.product as Stripe.Product | undefined;
+              const amount = price?.unit_amount ?? 0;
+              const interval = price?.recurring?.interval ?? null;
+
+              // Update organization with subscription details
+              await pool.query(
+                `UPDATE organizations
+                 SET subscription_amount = $1,
+                     subscription_interval = $2,
+                     subscription_currency = $3,
+                     subscription_current_period_end = $4,
+                     subscription_canceled_at = $5,
+                     subscription_product_id = $6,
+                     subscription_product_name = $7,
+                     subscription_price_id = $8,
+                     updated_at = NOW()
+                 WHERE workos_organization_id = $9`,
+                [
+                  amount,
+                  interval,
+                  price?.currency || 'usd',
+                  fullSubscription.current_period_end ? new Date(fullSubscription.current_period_end * 1000) : null,
+                  fullSubscription.canceled_at ? new Date(fullSubscription.canceled_at * 1000) : null,
+                  product?.id || null,
+                  product?.name || null,
+                  price?.id || null,
+                  workosOrgId,
+                ]
+              );
+
+              subscriptionsSynced++;
+              logger.debug({ workosOrgId, customerId, amount, interval }, 'Synced subscription data');
+            } catch (subError) {
+              logger.error({ err: subError, customerId, workosOrgId }, 'Failed to sync subscription for customer');
+              // Continue with other customers
+            }
+          }
+        }
+
         logger.info({
           invoices: invoices.length,
           refunds: refunds.length,
           imported,
           skipped,
+          subscriptionsSynced,
         }, 'Revenue backfill completed');
 
         res.json({
@@ -2666,6 +2744,7 @@ export class HTTPServer {
           refunds_found: refunds.length,
           imported,
           skipped,
+          subscriptions_synced: subscriptionsSynced,
         });
       } catch (error) {
         logger.error({ err: error }, 'Error during revenue backfill');
