@@ -2057,12 +2057,25 @@ export class HTTPServer {
                   organizationId: row.workos_organization_id,
                 });
 
-                // Find the first member (in a real system, you'd look for admin role)
-                // WorkOS doesn't have a built-in "owner" role, but organizations typically
-                // have at least one admin who can be considered the primary contact
+                // Find the owner or first admin, or fallback to first member
                 if (memberships.data && memberships.data.length > 0) {
-                  const firstMember = memberships.data[0];
-                  ownerEmail = firstMember.user?.email || 'Unknown';
+                  // Sort by role preference: owner > admin > member
+                  const sortedMembers = [...memberships.data].sort((a, b) => {
+                    const roleOrder = { owner: 0, admin: 1, member: 2 };
+                    const aRole = (a.role?.slug || 'member') as keyof typeof roleOrder;
+                    const bRole = (b.role?.slug || 'member') as keyof typeof roleOrder;
+                    return (roleOrder[aRole] ?? 2) - (roleOrder[bRole] ?? 2);
+                  });
+
+                  const primaryMember = sortedMembers[0];
+                  // Fetch user details since membership.user is not populated
+                  try {
+                    const user = await workos.userManagement.getUser(primaryMember.userId);
+                    ownerEmail = user.email;
+                  } catch (userError) {
+                    logger.warn({ err: userError, userId: primaryMember.userId }, 'Failed to fetch user details');
+                    ownerEmail = 'Unknown';
+                  }
                 }
               }
             } catch (error) {
@@ -2151,13 +2164,29 @@ export class HTTPServer {
             });
 
             if (memberships.data && memberships.data.length > 0) {
-              const firstMember = memberships.data[0];
-              const email = firstMember.user?.email;
+              // Sort by role preference: owner > admin > member
+              const sortedMembers = [...memberships.data].sort((a, b) => {
+                const roleOrder = { owner: 0, admin: 1, member: 2 };
+                const aRole = (a.role?.slug || 'member') as keyof typeof roleOrder;
+                const bRole = (b.role?.slug || 'member') as keyof typeof roleOrder;
+                return (roleOrder[aRole] ?? 2) - (roleOrder[bRole] ?? 2);
+              });
 
-              syncResults.workos = {
-                success: true,
-                email: email || undefined,
-              };
+              const primaryMember = sortedMembers[0];
+              // Fetch user details since membership.user is not populated
+              try {
+                const user = await workos.userManagement.getUser(primaryMember.userId);
+                syncResults.workos = {
+                  success: true,
+                  email: user.email,
+                };
+              } catch (userError) {
+                logger.warn({ err: userError, userId: primaryMember.userId }, 'Failed to fetch user details during sync');
+                syncResults.workos = {
+                  success: true,
+                  error: 'Could not fetch user email',
+                };
+              }
             } else {
               syncResults.workos = {
                 success: true,
