@@ -83,6 +83,24 @@ export class HTTPServer {
   }
 
   private setupMiddleware(): void {
+    // Request logging for /api/me/member-profile to help diagnose issues
+    this.app.use('/api/me/member-profile', (req, res, next) => {
+      const startTime = Date.now();
+      logger.debug({ method: req.method, path: req.path, query: req.query }, 'member-profile request received');
+
+      // Log when response finishes
+      res.on('finish', () => {
+        logger.debug({
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          durationMs: Date.now() - startTime
+        }, 'member-profile response sent');
+      });
+
+      next();
+    });
+
     // Use JSON parser for all routes EXCEPT Stripe webhooks (which need raw body)
     this.app.use((req, res, next) => {
       if (req.path === '/api/webhooks/stripe') {
@@ -5307,6 +5325,8 @@ export class HTTPServer {
     // GET /api/me/member-profile - Get current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.get('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id, org: req.query.org }, 'GET /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5317,6 +5337,7 @@ export class HTTPServer {
         });
 
         if (memberships.data.length === 0) {
+          logger.info({ userId: user.id, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: no organization');
           return res.status(404).json({
             error: 'No organization',
             message: 'User is not a member of any organization',
@@ -5329,6 +5350,7 @@ export class HTTPServer {
           // Verify user is a member of the requested org
           const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
           if (!isMember) {
+            logger.info({ userId: user.id, requestedOrgId, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: not authorized');
             return res.status(403).json({
               error: 'Not authorized',
               message: 'User is not a member of the requested organization',
@@ -5345,13 +5367,14 @@ export class HTTPServer {
         // Get org name from WorkOS
         const org = await workos!.organizations.getOrganization(targetOrgId);
 
+        logger.info({ userId: user.id, orgId: targetOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed');
         res.json({
           profile: profile || null,
           organization_id: targetOrgId,
           organization_name: org.name,
         });
       } catch (error) {
-        logger.error({ err: error }, 'Get my member profile error');
+        logger.error({ err: error, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile error');
         res.status(500).json({
           error: 'Failed to get member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -5362,6 +5385,8 @@ export class HTTPServer {
     // POST /api/me/member-profile - Create member profile for current user's organization
     // Supports ?org=org_id query parameter to specify which organization
     this.app.post('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id, org: req.query.org }, 'POST /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5487,11 +5512,11 @@ export class HTTPServer {
           show_in_carousel: show_in_carousel ?? false,
         });
 
-        logger.info({ profileId: profile.id, orgId: targetOrgId, slug }, 'Member profile created');
+        logger.info({ profileId: profile.id, orgId: targetOrgId, slug, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile completed');
 
         res.status(201).json({ profile });
       } catch (error) {
-        logger.error({ err: error }, 'Create member profile error');
+        logger.error({ err: error, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile error');
         res.status(500).json({
           error: 'Failed to create member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -5502,6 +5527,8 @@ export class HTTPServer {
     // PUT /api/me/member-profile - Update current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.put('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id }, 'PUT /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5565,11 +5592,13 @@ export class HTTPServer {
 
         const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
 
-        logger.info({ profileId: profile?.id, orgId: targetOrgId }, 'Member profile updated');
+        const duration = Date.now() - startTime;
+        logger.info({ profileId: profile?.id, orgId: targetOrgId, durationMs: duration }, 'Member profile updated');
 
         res.json({ profile });
       } catch (error) {
-        logger.error({ err: error }, 'Update member profile error');
+        const duration = Date.now() - startTime;
+        logger.error({ err: error, durationMs: duration }, 'Update member profile error');
         res.status(500).json({
           error: 'Failed to update member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -5661,6 +5690,8 @@ export class HTTPServer {
     // DELETE /api/me/member-profile - Delete current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.delete('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id, org: req.query.org }, 'DELETE /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5703,11 +5734,11 @@ export class HTTPServer {
 
         await memberDb.deleteProfile(existingProfile.id);
 
-        logger.info({ profileId: existingProfile.id, orgId: targetOrgId }, 'Member profile deleted');
+        logger.info({ profileId: existingProfile.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile completed');
 
         res.json({ success: true });
       } catch (error) {
-        logger.error({ err: error }, 'Delete member profile error');
+        logger.error({ err: error, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile error');
         res.status(500).json({
           error: 'Failed to delete member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
