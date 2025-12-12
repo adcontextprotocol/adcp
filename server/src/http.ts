@@ -27,6 +27,12 @@ import { requireAuth, requireAdmin, optionalAuth } from "./middleware/auth.js";
 import { invitationRateLimiter, authRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
+import {
+  notifyNewSubscription,
+  notifyPaymentSucceeded,
+  notifyPaymentFailed,
+  notifySubscriptionCancelled,
+} from "./notifications/slack.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1279,6 +1285,36 @@ export class HTTPServer {
                       agreementVersion,
                       userEmail,
                     }, 'Subscription created - membership agreement recorded atomically');
+
+                    // Send Slack notification for new subscription
+                    // Get subscription details for notification
+                    const subItems = subscription.items?.data || [];
+                    const firstItem = subItems[0];
+                    let productName: string | undefined;
+                    let amount: number | undefined;
+                    let interval: string | undefined;
+
+                    if (firstItem?.price) {
+                      amount = firstItem.price.unit_amount || undefined;
+                      interval = firstItem.price.recurring?.interval;
+                      if (firstItem.price.product) {
+                        try {
+                          const product = await stripe.products.retrieve(firstItem.price.product as string);
+                          productName = product.name;
+                        } catch (e) {
+                          // Ignore product fetch errors
+                        }
+                      }
+                    }
+
+                    notifyNewSubscription({
+                      organizationName: org.name || 'Unknown Organization',
+                      customerEmail: userEmail,
+                      productName,
+                      amount,
+                      currency: subscription.currency,
+                      interval,
+                    }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
                   } else {
                     logger.error({ userEmail }, 'Could not find WorkOS user for Stripe customer');
                   }
@@ -1323,6 +1359,13 @@ export class HTTPServer {
                   status: subscription.status,
                   periodEnd: periodEnd?.toISOString(),
                 }, 'Subscription data synced to database');
+
+                // Send Slack notification for subscription cancellation
+                if (event.type === 'customer.subscription.deleted') {
+                  notifySubscriptionCancelled({
+                    organizationName: org.name || 'Unknown Organization',
+                  }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
+                }
               }
             } catch (syncError) {
               logger.error({ error: syncError }, 'Failed to sync subscription data to database');
@@ -1531,6 +1574,15 @@ export class HTTPServer {
                 revenueType,
                 productName,
               }, 'Revenue event recorded');
+
+              // Send Slack notification for payment
+              notifyPaymentSucceeded({
+                organizationName: org.name || 'Unknown Organization',
+                amount: invoice.amount_paid,
+                currency: invoice.currency,
+                productName: productName || undefined,
+                isRecurring: revenueType === 'subscription_recurring',
+              }).catch(err => logger.error({ err }, 'Failed to send Slack payment notification'));
             }
             break;
           }
@@ -1594,8 +1646,15 @@ export class HTTPServer {
                 }, 'Failed to insert failed payment event');
                 // Continue processing - don't fail the webhook
               }
+
+              // Send Slack notification for failed payment
+              notifyPaymentFailed({
+                organizationName: org.name || 'Unknown Organization',
+                amount: invoice.amount_due,
+                currency: invoice.currency,
+                attemptCount: invoice.attempt_count || 1,
+              }).catch(err => logger.error({ err }, 'Failed to send Slack failed payment notification'));
             }
-            // Could send email notification here
             break;
           }
 
