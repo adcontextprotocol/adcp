@@ -406,7 +406,9 @@
 
         const result = await response.json();
 
-        messageEl.textContent = `Sync complete: Found ${result.invoices_found} invoices and ${result.refunds_found} refunds. Imported ${result.imported} new records, ${result.skipped} already existed.`;
+        const subsSyncedMsg = result.subscriptions_synced ? ` Synced ${result.subscriptions_synced} subscriptions.` : '';
+        const subsFailedMsg = result.subscriptions_failed ? ` (${result.subscriptions_failed} failed)` : '';
+        messageEl.textContent = `Sync complete: Found ${result.invoices_found} invoices and ${result.refunds_found} refunds. Imported ${result.imported} new records, ${result.skipped} already existed.${subsSyncedMsg}${subsFailedMsg}`;
         messageEl.style.display = 'block';
         messageEl.className = 'success-message';
 
