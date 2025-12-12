@@ -5959,7 +5959,7 @@ export class HTTPServer {
           contact_name,
           contact_email,
           contact_website,
-          approval_status: 'pending', // New agents need approval
+          approval_status: 'approved',
           workos_organization_id: targetOrgId,
         });
 
@@ -5971,7 +5971,7 @@ export class HTTPServer {
 
         res.status(201).json({
           agent: entry,
-          message: 'Agent created successfully. It will be visible in the registry once approved.',
+          message: 'Agent created successfully.',
         });
       } catch (error) {
         logger.error({ err: error }, 'Create agent error');
@@ -6070,11 +6070,6 @@ export class HTTPServer {
           allowedUpdates.metadata = metadata;
         }
 
-        // Updates reset approval status to pending (agent needs re-review)
-        if (Object.keys(allowedUpdates).length > 0) {
-          allowedUpdates.approval_status = 'pending';
-        }
-
         const updatedAgent = await registryDb.updateEntry(existingAgent.slug, allowedUpdates);
 
         logger.info({
@@ -6084,7 +6079,7 @@ export class HTTPServer {
 
         res.json({
           agent: updatedAgent,
-          message: 'Agent updated successfully. Changes will be visible once approved.',
+          message: 'Agent updated successfully.',
         });
       } catch (error) {
         logger.error({ err: error }, 'Update agent error');
