@@ -16,7 +16,7 @@ import { closeDatabase, getPool } from "./db/client.js";
 import { getPropertyIndex, CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { AgentType, AgentWithStats, Company } from "./types.js";
 import type { Server } from "http";
-import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo } from "./billing/stripe-client.js";
+import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, type RevenueEvent } from "./billing/stripe-client.js";
 import Stripe from "stripe";
 import { OrganizationDatabase } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -1260,7 +1260,25 @@ export class HTTPServer {
             // For subscription created, record agreement acceptance atomically
             if (event.type === 'customer.subscription.created') {
               const customerId = subscription.customer as string;
-              const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+              // Try to find org by stripe_customer_id first
+              let org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+              // If not found, look up by workos_organization_id in Stripe customer metadata
+              if (!org) {
+                logger.info({ customerId }, 'Org not found by customer ID, checking Stripe metadata');
+                const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+                const workosOrgId = customer.metadata?.workos_organization_id;
+
+                if (workosOrgId) {
+                  org = await orgDb.getOrganization(workosOrgId);
+                  if (org) {
+                    // Link the Stripe customer ID to the organization
+                    await orgDb.setStripeCustomerId(workosOrgId, customerId);
+                    logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to organization');
+                  }
+                }
+              }
 
               if (org) {
                 // Get agreement info from organization's pending fields
@@ -1418,7 +1436,38 @@ export class HTTPServer {
 
             // Get organization from customer ID
             const customerId = invoice.customer as string;
-            const org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+            // Try to find org by stripe_customer_id first
+            let org = await orgDb.getOrganizationByStripeCustomerId(customerId);
+
+            // If not found, look up by workos_organization_id in Stripe customer metadata
+            if (!org) {
+              logger.info({ customerId, invoiceId: invoice.id }, 'Org not found by customer ID, checking Stripe metadata');
+              const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+              const workosOrgId = customer.metadata?.workos_organization_id;
+
+              if (workosOrgId) {
+                org = await orgDb.getOrganization(workosOrgId);
+                if (org) {
+                  // Link the Stripe customer ID to the organization
+                  await orgDb.setStripeCustomerId(workosOrgId, customerId);
+                  logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to organization from invoice webhook');
+                }
+              }
+            }
+
+            if (!org) {
+              logger.warn({
+                customerId,
+                invoiceId: invoice.id,
+                amount: invoice.amount_paid,
+              }, 'Invoice payment received but no organization found for Stripe customer');
+            } else if (invoice.amount_paid === 0) {
+              logger.debug({
+                customerId,
+                invoiceId: invoice.id,
+              }, 'Skipping zero-amount invoice');
+            }
 
             if (org && invoice.amount_paid > 0) {
               // Determine revenue type
@@ -2481,6 +2530,148 @@ export class HTTPServer {
         res.status(500).json({
           error: 'Internal server error',
           message: 'Unable to fetch analytics data',
+        });
+      }
+    });
+
+    // POST /api/admin/backfill-revenue - Backfill revenue data from Stripe
+    this.app.post('/api/admin/backfill-revenue', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+        const orgDb = new OrganizationDatabase();
+
+        // Build map of Stripe customer IDs to WorkOS organization IDs
+        // First, get all orgs that already have stripe_customer_id linked
+        const orgsResult = await pool.query(`
+          SELECT stripe_customer_id, workos_organization_id
+          FROM organizations
+          WHERE stripe_customer_id IS NOT NULL
+        `);
+
+        const customerOrgMap = new Map<string, string>();
+        for (const row of orgsResult.rows) {
+          customerOrgMap.set(row.stripe_customer_id, row.workos_organization_id);
+        }
+
+        // Also fetch all Stripe customers and link any that have workos_organization_id in metadata
+        if (stripe) {
+          let customersLinked = 0;
+          for await (const customer of stripe.customers.list({ limit: 100 })) {
+            // Skip if already in map
+            if (customerOrgMap.has(customer.id)) continue;
+
+            const workosOrgId = customer.metadata?.workos_organization_id;
+            if (workosOrgId) {
+              // Verify org exists
+              const org = await orgDb.getOrganization(workosOrgId);
+              if (org) {
+                customerOrgMap.set(customer.id, workosOrgId);
+                // Link the customer ID to the org in our DB
+                await orgDb.setStripeCustomerId(workosOrgId, customer.id);
+                customersLinked++;
+                logger.info({ customerId: customer.id, workosOrgId }, 'Linked Stripe customer during backfill');
+              }
+            }
+          }
+          if (customersLinked > 0) {
+            logger.info({ customersLinked }, 'Linked additional customers from Stripe metadata');
+          }
+        }
+
+        if (customerOrgMap.size === 0) {
+          return res.json({
+            success: true,
+            message: 'No organizations with Stripe customers found',
+            invoices_imported: 0,
+            refunds_imported: 0,
+            skipped: 0,
+          });
+        }
+
+        // Fetch all revenue events from Stripe
+        const [invoices, refunds] = await Promise.all([
+          fetchAllPaidInvoices(customerOrgMap),
+          fetchAllRefunds(customerOrgMap),
+        ]);
+
+        const allEvents = [...invoices, ...refunds];
+
+        // Import events, skipping duplicates
+        let imported = 0;
+        let skipped = 0;
+
+        for (const event of allEvents) {
+          try {
+            await pool.query(
+              `INSERT INTO revenue_events (
+                workos_organization_id,
+                stripe_invoice_id,
+                stripe_subscription_id,
+                stripe_payment_intent_id,
+                stripe_charge_id,
+                amount_paid,
+                currency,
+                revenue_type,
+                billing_reason,
+                product_id,
+                product_name,
+                price_id,
+                billing_interval,
+                paid_at,
+                period_start,
+                period_end
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+              ON CONFLICT (stripe_invoice_id) DO NOTHING`,
+              [
+                event.workos_organization_id,
+                event.stripe_invoice_id,
+                event.stripe_subscription_id,
+                event.stripe_payment_intent_id,
+                event.stripe_charge_id,
+                event.amount_paid,
+                event.currency,
+                event.revenue_type,
+                event.billing_reason,
+                event.product_id,
+                event.product_name,
+                event.price_id,
+                event.billing_interval,
+                event.paid_at,
+                event.period_start,
+                event.period_end,
+              ]
+            );
+            imported++;
+          } catch (err: unknown) {
+            // Check for unique constraint violation
+            if ((err as { code?: string }).code === '23505') {
+              skipped++;
+            } else {
+              throw err;
+            }
+          }
+        }
+
+        logger.info({
+          invoices: invoices.length,
+          refunds: refunds.length,
+          imported,
+          skipped,
+        }, 'Revenue backfill completed');
+
+        res.json({
+          success: true,
+          message: `Backfill completed`,
+          invoices_found: invoices.length,
+          refunds_found: refunds.length,
+          imported,
+          skipped,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Error during revenue backfill');
+        res.status(500).json({
+          error: 'Internal server error',
+          message: error instanceof Error ? error.message : 'Revenue backfill failed',
         });
       }
     });
