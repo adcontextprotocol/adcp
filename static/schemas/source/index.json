@@ -356,47 +356,6 @@
         }
       }
     },
-    "pricing-options": {
-      "description": "Individual pricing model schemas with model-specific validation. CPM and vCPM support both fixed and auction pricing; all other models are fixed-rate only.",
-      "schemas": {
-        "cpm-fixed-option": {
-          "$ref": "/schemas/pricing-options/cpm-fixed-option.json",
-          "description": "Cost Per Mille (CPM) fixed-rate pricing for direct/guaranteed deals"
-        },
-        "cpm-auction-option": {
-          "$ref": "/schemas/pricing-options/cpm-auction-option.json",
-          "description": "Cost Per Mille (CPM) auction-based pricing for programmatic/non-guaranteed inventory"
-        },
-        "vcpm-fixed-option": {
-          "$ref": "/schemas/pricing-options/vcpm-fixed-option.json",
-          "description": "Viewable Cost Per Mille (vCPM) fixed-rate pricing for viewability-guaranteed deals"
-        },
-        "vcpm-auction-option": {
-          "$ref": "/schemas/pricing-options/vcpm-auction-option.json",
-          "description": "Viewable Cost Per Mille (vCPM) auction-based pricing for programmatic inventory with viewability guarantee"
-        },
-        "cpc-option": {
-          "$ref": "/schemas/pricing-options/cpc-option.json",
-          "description": "Cost Per Click (CPC) fixed-rate pricing for performance campaigns"
-        },
-        "cpcv-option": {
-          "$ref": "/schemas/pricing-options/cpcv-option.json",
-          "description": "Cost Per Completed View (CPCV) fixed-rate pricing for video/audio"
-        },
-        "cpv-option": {
-          "$ref": "/schemas/pricing-options/cpv-option.json",
-          "description": "Cost Per View (CPV) fixed-rate pricing with threshold"
-        },
-        "cpp-option": {
-          "$ref": "/schemas/pricing-options/cpp-option.json",
-          "description": "Cost Per Point (CPP) fixed-rate pricing for TV/audio with demographic measurement"
-        },
-        "flat-rate-option": {
-          "$ref": "/schemas/pricing-options/flat-rate-option.json",
-          "description": "Flat rate pricing for DOOH and sponsorships"
-        }
-      }
-    },
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {
