@@ -1,0 +1,279 @@
+---
+sidebar_position: 2
+title: Protocol Specification
+---
+
+# Deals Protocol RFC
+
+**Status**: Request for Comments
+**Last Updated**: November 18, 2025
+
+## Abstract
+
+The Deals Protocol defines a standard Model Context Protocol (MCP) interface for AI-powered deal discovery and activation systems. This protocol enables AI assistants to help buyers discover and activate pre-packaged and ad-hoc deal packages from publishers and ad decisioning platforms through natural language interactions.
+
+## Overview
+
+The Deals Protocol provides:
+
+- Natural language deal discovery based on campaign objectives
+- Pre-packaged and ad-hoc deal packages from publishers and decisioning platforms
+- Deal activation for specific platforms and accounts
+- Transparent pricing with Floor, Fixed, and Market pricing models
+- Support for PMP (Private Marketplace) and Curated deals
+- Flexible targeting including context, audiences, and brand safety
+
+## Core Concepts
+
+### Agent Integration
+
+The Deals Protocol operates within the broader [AdCP Ecosystem Layers](/docs/intro#the-adcp-ecosystem-layers), enabling deals agents to facilitate buyer-seller transactions for inventory packages.
+
+**Direct Integration Model**: Deals agents act as intermediaries between buyers and sellers, providing discovery and activation of inventory packages with optional audience targeting, contextual selection, and brand safety controls.
+
+### Request Roles and Relationships
+
+Every deal discovery request involves two key roles:
+
+#### Orchestrator
+The platform or system making the API request to the deals agent:
+- **Examples**: Trading desk platform, campaign management tool, AI assistant
+- **Responsibilities**: Makes API calls, handles authentication, manages the technical interaction
+- **Account**: Has technical credentials and API access to the deals platform
+
+#### Principal
+The entity on whose behalf the request is being made:
+- **Examples**: Advertiser (Nike), agency (Omnicom), brand team, media buyer
+- **Responsibilities**: Owns the campaign objectives, budget, and business relationship
+- **Pricing**: May have negotiated rates, contract terms, or access to private deal packages
+
+#### How This Works in Practice
+
+1. **Request Flow**: Orchestrator → Deals Agent (on behalf of Principal) → Decisioning Platform
+2. **Authentication**: Orchestrator authenticates with technical credentials
+3. **Authorization**: Principal's identity determines available deals and pricing
+4. **Activation**: Deals are activated for Principal's account on the decisioning platform
+5. **Billing**: Principal is responsible for usage costs and campaign spend
+
+### Deal Types
+
+#### Private Marketplace (PMP) Deals
+Fixed-price or floor-price deals between specific buyers and sellers:
+- **Pricing**: Fixed CPM or floor CPM with market bidding above the floor
+- **Access**: Available to specific advertisers based on relationships
+- **Inventory**: Guaranteed access to premium inventory
+- **Use Case**: Direct relationships between buyers and sellers
+
+#### Curated Deals
+Inventory packages assembled and enhanced by curators with added value:
+- **Pricing**: Includes margin (percentage or CPM) on top of media costs
+- **Access**: May be marketplace or bespoke
+- **Enhancement**: May include audience targeting, brand safety, contextual selection
+- **Use Case**: Simplified buying with added curation services
+
+### Deal Agent Types
+
+#### Publisher Deal Agents
+Agents owned by publishers offering their inventory directly:
+- **Examples**: Premium publisher direct deals, content network packages
+- **Business Model**: Direct deals with floor or fixed pricing
+- **Inventory**: First-party publisher inventory
+
+#### Curation Platform Agents
+Platforms that assemble and curate inventory packages:
+- **Examples**: SSP curation products, independent curation platforms
+- **Business Model**: Curated deals with margin on media costs
+- **Inventory**: Multi-publisher packages with targeting and safety controls
+
+#### DSP Deal Agents
+DSPs offering packaged deal inventory to their buyers:
+- **Examples**: Major DSPs with curated marketplace deals
+- **Business Model**: Both PMP and Curated deal types
+- **Inventory**: Cross-publisher inventory accessible through the DSP
+
+## Protocol Tasks
+
+The Deals Protocol defines the following tasks that agents can perform:
+
+### [get_deals](/docs/deals/tasks/get_deals)
+
+Discover deal packages based on natural language description. The Deals Agent returns deals across all supported SSP platforms with pricing, targeting, and platform availability details.
+
+### [activate_deal](/docs/deals/tasks/activate_deal)
+
+Activate a discovered deal on one or more SSP platforms. This task handles the activation request and returns deployment status for each platform.
+
+## Data Models
+
+### Deal
+
+Represents a deal package with inventory, pricing, targeting, and platform availability.
+
+**Required Fields:**
+- `deal_id`: Unique identifier
+- `name`: Human-readable deal name
+- `advertiser`: Advertiser for whom this deal is available
+- `start_date`: Deal start date (YYYY-MM-DD)
+- `end_date`: Deal end date (YYYY-MM-DD)
+- `deal_type`: Either "PMP" or "Curated"
+- `ad_type`: Ad format type ("Banner", "Video", or "Native")
+- `platforms`: Array of SSP platform identifiers where this deal can be activated (minimum 1)
+- `pricing`: Pricing configuration object
+- `status`: Deal status ("draft", "active", or "inactive")
+
+**Optional Fields:**
+- `targeting`: Targeting parameters (geo, devices, allow/block lists, segments)
+
+### Pricing
+
+Pricing configuration for a deal.
+
+**Fields:**
+- `type` (required): Pricing type ("Floor", "Fixed", or "Market")
+- `cpm` (conditional): CPM price in USD (required for Floor and Fixed types)
+- `margin` (conditional): Margin configuration (required for Curated deals)
+  - `type`: Either "Percentage" or "CPM"
+  - `percentage`: Margin as percentage (0-100)
+  - `cpm`: Margin as CPM value
+
+**Pricing Type Semantics:**
+- **Floor**: Minimum CPM with market bidding above the floor
+- **Fixed**: Exact CPM price, no bidding
+- **Market**: Market-rate pricing determined at impression time
+
+### Targeting
+
+Optional targeting parameters for a deal. Omitting the targeting object or specific fields implies targeting all available inventory for those dimensions.
+
+**Fields (all optional):**
+- `geo`: Array of geographic targets (countries, regions, cities, postal codes, metro codes)
+- `devices`: Array of device types ("Desktop", "Tablet", "Mobile", "CTV")
+- `allow_lists`: Array of included domain/app list IDs in the decisioning platform
+- `block_lists`: Array of excluded domain/app list IDs in the decisioning platform
+- `include_segments`: Array of included segment IDs (can reference Signal IDs from Signals Protocol)
+- `exclude_segments`: Array of excluded segment IDs
+
+## Integration with Other Protocols
+
+### Signals Protocol Integration
+
+**Integration Architecture**: The Deals Agent integrates with Signals Agents using the Signals Protocol. The Buyer Agent interacts with the Deals Agent using the Deals Protocol. The Buyer Agent does not directly call Signals Agents.
+
+```
+Buyer Agent → Deals Agent → Signals Agent
+   (Deals Protocol)  (Signals Protocol)
+```
+
+This is parallel to the Media Buy Protocol architecture:
+```
+Buyer Agent → Sales Agent → Signals Agent
+   (Media Buy Protocol)  (Signals Protocol)
+```
+
+**How It Works:**
+- The Deals Agent integrates with Signals Agents to discover and access audience segments
+- When the Buyer Agent calls `get_deals`, the Deals Agent returns deals that may include targeting with signals obtained from Signals Agents
+- Deal targeting `include_segments` and `exclude_segments` can reference `signal_agent_segment_id` values
+- Curated deals can bundle pre-selected audience segments with inventory
+
+**Example Integration Flow:**
+1. Deals Agent integrates with Signals Agents (using Signals Protocol)
+2. Buyer Agent calls `get_deals` on Deals Agent (using Deals Protocol)
+3. Deals Agent returns deals with targeting that includes signal IDs obtained from Signals Agents
+4. Buyer Agent activates selected deal, which includes inventory + audience targeting
+
+### Relationship to Media Buy Protocol
+
+The Deals Protocol is an **alternative** to the Media Buy Protocol, not complementary:
+- **Media Buy Protocol**: Direct campaign execution with publishers via Sales Agents
+- **Deals Protocol**: Package-based buying through Deals Agents (typically SSPs or curators)
+- **Use Case Separation**: Choose one approach per campaign based on buying strategy
+- **Similar Architecture**: Both protocols enable Sales/Deals Agents to integrate with Signals Agents
+
+## Security and Authentication
+
+### Principal Authentication
+
+Deals agents must authenticate both the orchestrator (technical credentials) and the principal (on whose behalf the request is made):
+- Orchestrator credentials validate API access
+- Principal identity determines available deals and pricing
+- Deal activation requires principal authorization on the destination platform
+
+### Authorization Model
+
+Deal discovery and activation follow a permission hierarchy:
+1. **Orchestrator** must have API access to the deals agent
+2. **Principal** must be authorized for the specific deals returned
+3. **Destination platform** must accept deal activations from the deals agent
+4. **Principal** must have an account on the destination platform
+
+## Asynchronous Operations
+
+Deal activation may be asynchronous:
+- Initial response includes `operation_id` for tracking
+- Status updates delivered via webhooks (if configured)
+- Poll for status using the operation tracking endpoint
+- Final status indicates successful deployment or error
+
+## Error Handling
+
+### Discovery Errors
+
+Errors during deal discovery (`get_deals`):
+- Invalid destination platforms
+- No deals matching criteria
+- Pricing or availability lookup failures
+- Authorization issues
+
+### Activation Errors
+
+Errors during deal activation (`activate_deal`):
+- Deal no longer available
+- Principal not authorized for the deal
+- Destination platform connectivity issues
+- Deal configuration errors
+
+## Best Practices
+
+### Deal Discovery
+
+1. **Use Natural Language**: Describe campaign objectives clearly in `deal_spec`
+2. **Filter Appropriately**: Use filters to refine results, but don't over-constrain
+3. **Check Pricing**: Verify pricing models match budget expectations
+4. **Review Targeting**: Understand what targeting is pre-applied to the deal
+
+### Deal Activation
+
+1. **Verify Availability**: Check deal status before attempting activation
+2. **Handle Asynchronous Operations**: Use webhooks or polling for activation status
+3. **Error Recovery**: Implement retry logic for transient failures
+4. **Track Deployments**: Store deployment IDs for reporting and reconciliation
+
+### Signal Integration
+
+1. **Activate Signals First**: Complete signal activation before discovering deals
+2. **Reference Signal IDs**: Include activated signal IDs in deal discovery requests
+3. **Coordinate Timing**: Ensure signal and deal activation timeframes align
+
+## Versioning and Compatibility
+
+The Deals Protocol follows AdCP versioning principles:
+- **Path-based versioning**: Version in URL path (`/schemas/v1/deals/`)
+- **Semantic versioning**: Major.Minor.Patch version numbers
+- **Backward compatibility**: Minor versions maintain compatibility
+- **Breaking changes**: Require major version increment
+
+## Future Enhancements
+
+Potential future additions to the Deals Protocol:
+- **Dynamic pricing**: Real-time pricing based on market conditions
+- **Deal recommendations**: AI-powered deal suggestions based on campaign objectives
+- **Performance guarantees**: Deals with guaranteed delivery or performance metrics
+- **Multi-format deals**: Single deal ID covering multiple ad formats
+- **Deal analytics**: Reporting and insights on deal performance
+
+## References
+
+- [Signals Protocol Specification](/docs/signals/specification)
+- [Media Buy Protocol](/docs/media-buy/)
+- [AdCP Core Concepts](/docs/intro)

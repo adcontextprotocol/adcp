@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/deals/activate-deal-response.json",
+  "title": "Activate Deal Response",
+  "description": "Response payload for activate_deal task. Returns either complete success data OR error information, never both. This enforces atomic operation semantics - the deal is either fully activated or not activated at all.",
+  "type": "object",
+  "oneOf": [
+    {
+      "description": "Success response - deal activated successfully to one or more destinations",
+      "type": "object",
+      "properties": {
+        "deployments": {
+          "type": "array",
+          "description": "Array of deployment results for each destination",
+          "items": {
+            "$ref": "/schemas/core/deployment.json"
+          }
+        },
+        "context": {
+          "type": "object",
+          "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+          "additionalProperties": true
+        }
+      },
+      "required": ["deployments"],
+      "additionalProperties": false,
+      "not": {
+        "required": ["errors"]
+      }
+    },
+    {
+      "description": "Error response - operation failed, deal not activated",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Array of errors explaining why activation failed (e.g., platform connectivity issues, deal configuration problems, authentication failures)",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "type": "object",
+          "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
+          "additionalProperties": true
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": false,
+      "not": {
+        "required": ["deployments"]
+      }
+    }
+  ]
+}
