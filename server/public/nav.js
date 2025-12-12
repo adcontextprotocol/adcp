@@ -107,10 +107,10 @@
       ? `<a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About AgenticAdvertising.org</a>`
       : '';
 
-    // Build insights link (only on beta site)
-    const insightsUrl = isLocal ? '/insights' : 'https://agenticadvertising.org/insights';
-    const insightsLink = membershipEnabled
-      ? `<a href="${insightsUrl}" class="navbar__link ${currentPath.startsWith('/insights') ? 'active' : ''}">Insights</a>`
+    // Build perspectives link (only on beta site)
+    const perspectivesUrl = isLocal ? '/insights' : 'https://agenticadvertising.org/insights';
+    const perspectivesLink = membershipEnabled
+      ? `<a href="${perspectivesUrl}" class="navbar__link ${currentPath.startsWith('/insights') ? 'active' : ''}">Perspectives</a>`
       : '';
 
     // Always use AAO logo
@@ -119,8 +119,8 @@
     // AAO logo is white, needs invert on light background
     const logoNeedsInvert = true;
 
-    // AdCP link always shown
-    const adcpLink = '<a href="https://adcontextprotocol.org" class="navbar__link">AdCP</a>';
+    // About AdCP link always shown
+    const aboutAdcpLink = '<a href="https://adcontextprotocol.org" class="navbar__link">About AdCP</a>';
 
     return `
       <nav class="navbar">
@@ -132,14 +132,14 @@
               </div>
             </a>
             <div class="navbar__links-desktop">
+              ${aboutAdcpLink}
               ${membersLink}
-              ${insightsLink}
+              ${perspectivesLink}
               ${aboutLink}
             </div>
           </div>
           <div class="navbar__items navbar__items--right">
             <div class="navbar__links-desktop">
-              ${adcpLink}
               <a href="${docsUrl}" class="navbar__link">Docs</a>
               <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
             </div>
@@ -152,10 +152,10 @@
           </div>
         </div>
         <div class="navbar__mobile-menu" id="mobileMenu">
+          ${aboutAdcpLink}
           ${membersLink}
-          ${insightsLink}
+          ${perspectivesLink}
           ${aboutLink}
-          ${adcpLink}
           <a href="${docsUrl}" class="navbar__link">Docs</a>
           <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
         </div>
