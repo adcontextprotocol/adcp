@@ -176,7 +176,10 @@ export class OrganizationDatabase {
   async getCurrentAgreement(): Promise<Agreement | null> {
     const pool = getPool();
     const result = await pool.query(
-      'SELECT * FROM agreements ORDER BY effective_date DESC LIMIT 1'
+      `SELECT * FROM agreements
+       ORDER BY effective_date DESC,
+         string_to_array(version, '.')::int[] DESC
+       LIMIT 1`
     );
     return result.rows[0] || null;
   }
@@ -285,7 +288,11 @@ export class OrganizationDatabase {
   async getCurrentAgreementByType(type: string): Promise<Agreement | null> {
     const pool = getPool();
     const result = await pool.query(
-      'SELECT * FROM agreements WHERE agreement_type = $1 ORDER BY effective_date DESC LIMIT 1',
+      `SELECT * FROM agreements
+       WHERE agreement_type = $1
+       ORDER BY effective_date DESC,
+         string_to_array(version, '.')::int[] DESC
+       LIMIT 1`,
       [type]
     );
     return result.rows[0] || null;

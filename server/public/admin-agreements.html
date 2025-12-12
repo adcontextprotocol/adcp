@@ -284,6 +284,22 @@
       }
     }
 
+    // Compare semantic versions (e.g., "1.1.1" > "1.1" > "1.0")
+    function compareVersions(a, b) {
+      const partsA = a.split('.').map(Number);
+      const partsB = b.split('.').map(Number);
+      const maxLen = Math.max(partsA.length, partsB.length);
+
+      for (let i = 0; i < maxLen; i++) {
+        const numA = partsA[i] || 0;
+        const numB = partsB[i] || 0;
+        if (numA !== numB) {
+          return numB - numA; // Descending order (higher versions first)
+        }
+      }
+      return 0;
+    }
+
     // Render agreements list
     function renderAgreementsList() {
       const listDiv = document.getElementById('agreementsList');
@@ -300,6 +316,11 @@
           grouped[agreement.agreement_type] = [];
         }
         grouped[agreement.agreement_type].push(agreement);
+      });
+
+      // Sort each group by version (descending - newest first)
+      Object.keys(grouped).forEach(type => {
+        grouped[type].sort((a, b) => compareVersions(a.version, b.version));
       });
 
       const formatType = (type) => {
