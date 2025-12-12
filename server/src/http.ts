@@ -21,6 +21,8 @@ import Stripe from "stripe";
 import { OrganizationDatabase } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { RegistryDatabase } from "./db/registry-db.js";
+import { JoinRequestDatabase } from "./db/join-request-db.js";
+import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth } from "./middleware/auth.js";
 import { invitationRateLimiter, authRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
@@ -134,7 +136,8 @@ export class HTTPServer {
         // Replace template variables with environment values
         html = html
           .replace('{{STRIPE_PUBLISHABLE_KEY}}', process.env.STRIPE_PUBLISHABLE_KEY || '')
-          .replace('{{STRIPE_PRICING_TABLE_ID}}', process.env.STRIPE_PRICING_TABLE_ID || '');
+          .replace('{{STRIPE_PRICING_TABLE_ID}}', process.env.STRIPE_PRICING_TABLE_ID || '')
+          .replace('{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}', process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
 
         res.setHeader('Content-Type', 'text/html');
         res.send(html);
@@ -1013,6 +1016,13 @@ export class HTTPServer {
       const articlePath = process.env.NODE_ENV === 'production'
         ? path.join(__dirname, "../server/public/insights/agentic-protocol-landscape.html")
         : path.join(__dirname, "../public/insights/agentic-protocol-landscape.html");
+      res.sendFile(articlePath);
+    });
+
+    this.app.get("/insights/launch-announcement", (req, res) => {
+      const articlePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/insights/launch-announcement.html")
+        : path.join(__dirname, "../public/insights/launch-announcement.html");
       res.sendFile(articlePath);
     });
 
@@ -2807,6 +2817,444 @@ export class HTTPServer {
         logger.error({ err: error }, 'Accept invitation error:');
         res.status(500).json({
           error: 'Failed to accept invitation',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/me/joinable-organizations - Get organizations the user can request to join
+    // Shows: 1) Published orgs (public member profiles) 2) Orgs with admin matching user's company domain
+    this.app.get('/api/me/joinable-organizations', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const memberDb = new MemberDatabase();
+        const joinRequestDb = new JoinRequestDatabase();
+
+        // Get user's company domain (null if free email provider)
+        const userDomain = getCompanyDomain(user.email);
+
+        // Get all public member profiles (published orgs)
+        const publicProfiles = await memberDb.getPublicProfiles({ limit: 100 });
+
+        // Get user's current org memberships to exclude
+        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+        const userOrgIds = new Set(userMemberships.data.map(m => m.organizationId));
+
+        // Get user's pending join requests
+        const pendingRequests = await joinRequestDb.getUserPendingRequests(user.id);
+        const pendingOrgIds = new Set(pendingRequests.map(r => r.workos_organization_id));
+
+        // Build list of joinable orgs from public profiles
+        const joinableOrgs: Array<{
+          organization_id: string;
+          name: string;
+          logo_url: string | null;
+          tagline: string | null;
+          match_reason: 'public' | 'domain';
+          request_pending: boolean;
+        }> = [];
+
+        for (const profile of publicProfiles) {
+          // Skip if user is already a member
+          if (userOrgIds.has(profile.workos_organization_id)) {
+            continue;
+          }
+
+          joinableOrgs.push({
+            organization_id: profile.workos_organization_id,
+            name: profile.display_name,
+            logo_url: profile.logo_url || null,
+            tagline: profile.tagline || null,
+            match_reason: 'public',
+            request_pending: pendingOrgIds.has(profile.workos_organization_id),
+          });
+        }
+
+        // If user has a company domain, find orgs with admins from the same domain
+        if (userDomain) {
+          // Get all organizations
+          const allOrgs = await workos!.organizations.listOrganizations({ limit: 100 });
+
+          for (const org of allOrgs.data) {
+            // Skip if user is already a member or if org is already in list
+            if (userOrgIds.has(org.id) || joinableOrgs.some(o => o.organization_id === org.id)) {
+              continue;
+            }
+
+            // Get org's members to check admin domains
+            try {
+              const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+                organizationId: org.id,
+              });
+
+              // Check if any admin/owner has the same company domain
+              const hasMatchingAdmin = orgMemberships.data.some(membership => {
+                const role = membership.role?.slug || 'member';
+                if (role !== 'admin' && role !== 'owner') {
+                  return false;
+                }
+                const memberEmail = membership.user?.email;
+                if (!memberEmail) {
+                  return false;
+                }
+                const memberDomain = getCompanyDomain(memberEmail);
+                return memberDomain === userDomain;
+              });
+
+              if (hasMatchingAdmin) {
+                // Try to get the member profile for logo/tagline
+                const profile = await memberDb.getProfileByOrgId(org.id);
+
+                joinableOrgs.push({
+                  organization_id: org.id,
+                  name: org.name,
+                  logo_url: profile?.logo_url || null,
+                  tagline: profile?.tagline || null,
+                  match_reason: 'domain',
+                  request_pending: pendingOrgIds.has(org.id),
+                });
+              }
+            } catch (error) {
+              // Skip orgs we can't get memberships for
+              logger.debug({ orgId: org.id, err: error }, 'Could not check org memberships');
+            }
+          }
+        }
+
+        res.json({
+          organizations: joinableOrgs,
+          user_domain: userDomain,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Get joinable organizations error:');
+        res.status(500).json({
+          error: 'Failed to get joinable organizations',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/join-requests - Request to join an organization
+    this.app.post('/api/join-requests', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { organization_id } = req.body;
+
+        if (!organization_id) {
+          return res.status(400).json({
+            error: 'Missing parameter',
+            message: 'organization_id is required',
+          });
+        }
+
+        const joinRequestDb = new JoinRequestDatabase();
+
+        // Check if user is already a member
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: organization_id,
+        });
+
+        if (memberships.data.length > 0) {
+          return res.status(400).json({
+            error: 'Already a member',
+            message: 'You are already a member of this organization',
+          });
+        }
+
+        // Check for existing pending request
+        const existingRequest = await joinRequestDb.getPendingRequest(user.id, organization_id);
+        if (existingRequest) {
+          return res.status(400).json({
+            error: 'Request already pending',
+            message: 'You already have a pending request to join this organization',
+            request_id: existingRequest.id,
+          });
+        }
+
+        // Create the join request
+        const request = await joinRequestDb.createRequest({
+          workos_user_id: user.id,
+          user_email: user.email,
+          workos_organization_id: organization_id,
+        });
+
+        // Get org name for response
+        let orgName = 'Organization';
+        try {
+          const org = await workos!.organizations.getOrganization(organization_id);
+          orgName = org.name;
+        } catch {
+          // Org may not exist
+        }
+
+        logger.info({
+          userId: user.id,
+          orgId: organization_id,
+          requestId: request.id,
+        }, 'Join request created');
+
+        res.status(201).json({
+          success: true,
+          message: `Request to join ${orgName} submitted`,
+          request: {
+            id: request.id,
+            organization_id: organization_id,
+            organization_name: orgName,
+            status: request.status,
+            created_at: request.created_at,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Create join request error:');
+        res.status(500).json({
+          error: 'Failed to create join request',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/join-requests/:requestId - Cancel a pending join request
+    this.app.delete('/api/join-requests/:requestId', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { requestId } = req.params;
+
+        const joinRequestDb = new JoinRequestDatabase();
+
+        // Cancel the request (will only work if it belongs to this user and is pending)
+        const cancelled = await joinRequestDb.cancelRequest(requestId, user.id);
+
+        if (!cancelled) {
+          return res.status(404).json({
+            error: 'Request not found',
+            message: 'No pending join request found with this ID',
+          });
+        }
+
+        logger.info({ userId: user.id, requestId }, 'Join request cancelled');
+
+        res.json({
+          success: true,
+          message: 'Join request cancelled',
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Cancel join request error:');
+        res.status(500).json({
+          error: 'Failed to cancel join request',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/organizations/:orgId/join-requests - Get pending join requests for an org (admin only)
+    this.app.get('/api/organizations/:orgId/join-requests', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+
+        // Verify user is admin/owner of this organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        const userRole = memberships.data[0].role?.slug || 'member';
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only admins and owners can view join requests',
+          });
+        }
+
+        const joinRequestDb = new JoinRequestDatabase();
+        const requests = await joinRequestDb.getOrganizationPendingRequests(orgId);
+
+        res.json({
+          requests: requests.map(r => ({
+            id: r.id,
+            user_email: r.user_email,
+            status: r.status,
+            created_at: r.created_at,
+          })),
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Get org join requests error:');
+        res.status(500).json({
+          error: 'Failed to get join requests',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/organizations/:orgId/join-requests/:requestId/approve - Approve a join request (admin only)
+    this.app.post('/api/organizations/:orgId/join-requests/:requestId/approve', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId, requestId } = req.params;
+        const { role = 'member' } = req.body;
+
+        // Verify user is admin/owner of this organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        const userRole = memberships.data[0].role?.slug || 'member';
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only admins and owners can approve join requests',
+          });
+        }
+
+        const joinRequestDb = new JoinRequestDatabase();
+
+        // Get the request
+        const request = await joinRequestDb.getRequest(requestId);
+        if (!request || request.workos_organization_id !== orgId) {
+          return res.status(404).json({
+            error: 'Request not found',
+            message: 'No pending join request found with this ID',
+          });
+        }
+
+        if (request.status !== 'pending') {
+          return res.status(400).json({
+            error: 'Request not pending',
+            message: 'This join request has already been processed',
+          });
+        }
+
+        // Send invitation via WorkOS
+        await workos!.userManagement.sendInvitation({
+          email: request.user_email,
+          organizationId: orgId,
+          inviterUserId: user.id,
+          roleSlug: role,
+        });
+
+        // Mark request as approved
+        await joinRequestDb.approveRequest(requestId, user.id);
+
+        logger.info({
+          adminId: user.id,
+          requestId,
+          orgId,
+          requesterId: request.workos_user_id,
+          email: request.user_email,
+        }, 'Join request approved');
+
+        res.json({
+          success: true,
+          message: `Invitation sent to ${request.user_email}`,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Approve join request error:');
+
+        // Check for specific WorkOS errors
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage.includes('already a member')) {
+          return res.status(400).json({
+            error: 'User already a member',
+            message: 'This user is already a member of the organization',
+          });
+        }
+        if (errorMessage.includes('pending invitation')) {
+          return res.status(400).json({
+            error: 'Invitation exists',
+            message: 'There is already a pending invitation for this user',
+          });
+        }
+
+        res.status(500).json({
+          error: 'Failed to approve join request',
+          message: errorMessage,
+        });
+      }
+    });
+
+    // POST /api/organizations/:orgId/join-requests/:requestId/reject - Reject a join request (admin only)
+    this.app.post('/api/organizations/:orgId/join-requests/:requestId/reject', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId, requestId } = req.params;
+        const { reason } = req.body;
+
+        // Verify user is admin/owner of this organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        const userRole = memberships.data[0].role?.slug || 'member';
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only admins and owners can reject join requests',
+          });
+        }
+
+        const joinRequestDb = new JoinRequestDatabase();
+
+        // Get the request
+        const request = await joinRequestDb.getRequest(requestId);
+        if (!request || request.workos_organization_id !== orgId) {
+          return res.status(404).json({
+            error: 'Request not found',
+            message: 'No pending join request found with this ID',
+          });
+        }
+
+        if (request.status !== 'pending') {
+          return res.status(400).json({
+            error: 'Request not pending',
+            message: 'This join request has already been processed',
+          });
+        }
+
+        // Mark request as rejected
+        await joinRequestDb.rejectRequest(requestId, user.id, reason);
+
+        logger.info({
+          adminId: user.id,
+          requestId,
+          orgId,
+          requesterId: request.workos_user_id,
+          reason,
+        }, 'Join request rejected');
+
+        res.json({
+          success: true,
+          message: 'Join request rejected',
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Reject join request error:');
+        res.status(500).json({
+          error: 'Failed to reject join request',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }

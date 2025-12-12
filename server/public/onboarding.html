@@ -300,6 +300,124 @@
       padding: 40px;
       color: #666;
     }
+
+    /* Joinable organizations */
+    .joinable-section {
+      margin-top: 20px;
+    }
+    .joinable-section h3 {
+      font-size: 16px;
+      color: #333;
+      margin-bottom: 15px;
+    }
+    .domain-hint {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #f5f5f5;
+      border-radius: 6px;
+    }
+    .domain-hint strong {
+      color: #667eea;
+    }
+    .org-card {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 12px;
+      transition: border-color 0.2s;
+    }
+    .org-card:hover {
+      border-color: #667eea;
+    }
+    .org-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      background: #f5f5f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: #999;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .org-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .org-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .org-name {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 2px;
+    }
+    .org-tagline {
+      font-size: 13px;
+      color: #666;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .org-match {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-top: 4px;
+    }
+    .match-domain {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .match-public {
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+    .btn-request {
+      padding: 8px 16px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-request:hover {
+      background: #5a6fd6;
+    }
+    .btn-request:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .btn-pending {
+      background: #f5f5f5;
+      color: #666;
+      cursor: default;
+    }
+    .btn-pending:hover {
+      background: #f5f5f5;
+    }
+    .no-orgs {
+      color: #666;
+      font-size: 14px;
+      padding: 20px;
+      background: #f5f5f5;
+      border-radius: 6px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -355,11 +473,26 @@
       <div id="joinForm" class="form-section">
         <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
         <h2 style="margin-bottom: 20px;">Join an Organization</h2>
-        <div class="no-invitations" id="noInvitationsMessage">
-          <p style="margin-bottom: 15px;">You don't have any pending invitations.</p>
-          <p>Ask an admin from your organization to send you an invite using your email address.</p>
+
+        <!-- Pending invitations in join form -->
+        <div id="joinInvitationsSection" style="display: none;">
+          <h3 style="font-size: 16px; color: #1976d2; margin-bottom: 15px;">Your Pending Invitations</h3>
+          <div id="joinInvitationsList"></div>
         </div>
-        <div id="joinInvitationsList"></div>
+
+        <!-- Joinable organizations -->
+        <div id="joinableSection" class="joinable-section" style="display: none;">
+          <h3>Organizations You Can Request to Join</h3>
+          <div id="domainHint" class="domain-hint" style="display: none;"></div>
+          <div id="joinableOrgsList"></div>
+        </div>
+
+        <!-- No options message -->
+        <div class="no-invitations" id="noJoinOptionsMessage" style="display: none;">
+          <p style="margin-bottom: 15px;">No organizations found for your account.</p>
+          <p>Ask an admin from your organization to send you an invite, or create a new organization.</p>
+        </div>
+
         <button class="btn btn-secondary" style="margin-top: 20px;" onclick="showOptions()">Back to Options</button>
       </div>
 
@@ -403,6 +536,8 @@
   <script>
     let currentUser = null;
     let pendingInvitations = [];
+    let joinableOrgs = [];
+    let userDomain = null;
 
     // Initialize page
     async function init() {
@@ -429,8 +564,11 @@
           document.getElementById('welcomeName').textContent = ', ' + currentUser.first_name;
         }
 
-        // Load pending invitations for this user
-        await loadInvitations();
+        // Load pending invitations and joinable organizations
+        await Promise.all([
+          loadInvitations(),
+          loadJoinableOrganizations()
+        ]);
 
         // Show main content
         document.getElementById('loading').style.display = 'none';
@@ -456,6 +594,19 @@
         }
       } catch (error) {
         console.error('Failed to load invitations:', error);
+      }
+    }
+
+    async function loadJoinableOrganizations() {
+      try {
+        const response = await fetch('/api/me/joinable-organizations');
+        if (response.ok) {
+          const data = await response.json();
+          joinableOrgs = data.organizations || [];
+          userDomain = data.user_domain;
+        }
+      } catch (error) {
+        console.error('Failed to load joinable organizations:', error);
       }
     }
 
@@ -516,9 +667,10 @@
       // Show appropriate form
       if (option === 'join') {
         document.getElementById('joinForm').classList.add('active');
-        // If there are invitations, show them in the join form
+
+        // Show invitations if any
         if (pendingInvitations.length > 0) {
-          document.getElementById('noInvitationsMessage').style.display = 'none';
+          document.getElementById('joinInvitationsSection').style.display = 'block';
           document.getElementById('joinInvitationsList').innerHTML = pendingInvitations.map(inv => {
             const role = inv.role || 'member';
             const roleClass = 'role-' + role;
@@ -533,14 +685,112 @@
             '</div>';
           }).join('');
         } else {
-          document.getElementById('noInvitationsMessage').style.display = 'block';
-          document.getElementById('joinInvitationsList').innerHTML = '';
+          document.getElementById('joinInvitationsSection').style.display = 'none';
         }
+
+        // Show joinable organizations if any
+        if (joinableOrgs.length > 0) {
+          document.getElementById('joinableSection').style.display = 'block';
+
+          // Show domain hint if user has a company domain
+          if (userDomain) {
+            document.getElementById('domainHint').style.display = 'block';
+            document.getElementById('domainHint').innerHTML =
+              'Showing organizations matching your email domain: <strong>' + escapeHtml(userDomain) + '</strong>';
+          } else {
+            document.getElementById('domainHint').style.display = 'none';
+          }
+
+          renderJoinableOrgs();
+        } else {
+          document.getElementById('joinableSection').style.display = 'none';
+        }
+
+        // Show no options message if nothing available
+        if (pendingInvitations.length === 0 && joinableOrgs.length === 0) {
+          document.getElementById('noJoinOptionsMessage').style.display = 'block';
+        } else {
+          document.getElementById('noJoinOptionsMessage').style.display = 'none';
+        }
+
       } else if (option === 'create') {
         document.getElementById('createForm').classList.add('active');
       } else if (option === 'individual') {
         document.getElementById('individualForm').classList.add('active');
       }
+    }
+
+    function renderJoinableOrgs() {
+      const container = document.getElementById('joinableOrgsList');
+      container.innerHTML = joinableOrgs.map(org => {
+        const matchLabel = org.match_reason === 'domain' ? 'Same domain' : 'Public member';
+        const matchClass = org.match_reason === 'domain' ? 'match-domain' : 'match-public';
+        const logoHtml = org.logo_url
+          ? '<img src="' + escapeHtml(org.logo_url) + '" alt="">'
+          : '&#127970;';
+
+        const buttonHtml = org.request_pending
+          ? '<button class="btn-request btn-pending" disabled>Request Pending</button>'
+          : '<button class="btn-request" onclick="requestToJoin(\'' + org.organization_id + '\', this)">Request to Join</button>';
+
+        return '<div class="org-card" data-org-id="' + org.organization_id + '">' +
+          '<div class="org-logo">' + logoHtml + '</div>' +
+          '<div class="org-info">' +
+            '<div class="org-name">' + escapeHtml(org.name) + '</div>' +
+            (org.tagline ? '<div class="org-tagline">' + escapeHtml(org.tagline) + '</div>' : '') +
+            '<span class="org-match ' + matchClass + '">' + matchLabel + '</span>' +
+          '</div>' +
+          buttonHtml +
+        '</div>';
+      }).join('');
+    }
+
+    async function requestToJoin(orgId, button) {
+      button.disabled = true;
+      button.textContent = 'Requesting...';
+
+      try {
+        const response = await fetch('/api/join-requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organization_id: orgId }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to send request');
+        }
+
+        // Update button to show pending state
+        button.textContent = 'Request Pending';
+        button.classList.add('btn-pending');
+
+        // Update local state
+        const org = joinableOrgs.find(o => o.organization_id === orgId);
+        if (org) {
+          org.request_pending = true;
+        }
+
+        // Show success message
+        showInfo('Request sent! An admin will review your request.');
+
+      } catch (error) {
+        showError(error.message);
+        button.disabled = false;
+        button.textContent = 'Request to Join';
+      }
+    }
+
+    function showInfo(message) {
+      const errorDiv = document.getElementById('error');
+      errorDiv.textContent = message;
+      errorDiv.className = 'info';
+      errorDiv.style.display = 'block';
+      setTimeout(() => {
+        errorDiv.style.display = 'none';
+        errorDiv.className = 'error';
+      }, 5000);
     }
 
     function showOptions() {

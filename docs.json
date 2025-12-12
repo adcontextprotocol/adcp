@@ -14,6 +14,10 @@
   },
   "topbarLinks": [
     {
+      "name": "Home",
+      "url": "https://agenticadvertising.org"
+    },
+    {
       "name": "Agent Registry",
       "url": "https://adcontextprotocol.org/registry"
     },
