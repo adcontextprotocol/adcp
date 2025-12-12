@@ -1016,6 +1016,13 @@ export class HTTPServer {
       res.sendFile(articlePath);
     });
 
+    this.app.get("/insights/launch-announcement", (req, res) => {
+      const articlePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/insights/launch-announcement.html")
+        : path.join(__dirname, "../public/insights/launch-announcement.html");
+      res.sendFile(articlePath);
+    });
+
     // AdAgents API Routes
     // Validate domain's adagents.json
     this.app.post("/api/adagents/validate", async (req, res) => {
