@@ -55,7 +55,11 @@ const envConfig: EnvConfig = {
     },
     {
       name: 'STRIPE_PRICING_TABLE_ID',
-      description: 'Stripe pricing table ID for subscription UI',
+      description: 'Stripe pricing table ID for team/organization subscriptions',
+    },
+    {
+      name: 'STRIPE_PRICING_TABLE_ID_INDIVIDUAL',
+      description: 'Stripe pricing table ID for individual subscriptions (falls back to STRIPE_PRICING_TABLE_ID)',
     },
     {
       name: 'STRIPE_WEBHOOK_SECRET',

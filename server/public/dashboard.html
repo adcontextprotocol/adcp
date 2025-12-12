@@ -617,6 +617,7 @@
 
     // Update pricing table for current org
     // Dynamically creates the pricing table element to ensure customer session is included from the start
+    // Shows different pricing tables for personal vs team workspaces
     function updatePricingTable(org) {
       const container = document.getElementById('pricingTableContainer');
       if (!container) return;
@@ -624,9 +625,14 @@
       // Clear any existing pricing table
       container.innerHTML = '';
 
+      // Choose pricing table based on workspace type
+      const pricingTableId = org.is_personal
+        ? '{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}'
+        : '{{STRIPE_PRICING_TABLE_ID}}';
+
       // Create new pricing table element with all attributes set upfront
       const pricingTable = document.createElement('stripe-pricing-table');
-      pricingTable.setAttribute('pricing-table-id', '{{STRIPE_PRICING_TABLE_ID}}');
+      pricingTable.setAttribute('pricing-table-id', pricingTableId);
       pricingTable.setAttribute('publishable-key', '{{STRIPE_PUBLISHABLE_KEY}}');
 
       // Include customer session if available (enables payment method pre-fill)
