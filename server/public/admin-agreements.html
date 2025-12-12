@@ -43,12 +43,10 @@
       border: 1px solid #e0e0e0;
       border-radius: 6px;
       padding: 15px;
-      cursor: pointer;
       transition: all 0.2s;
     }
     .agreement-item:hover {
-      border-color: #667eea;
-      box-shadow: 0 2px 8px rgba(102,126,234,0.15);
+      border-color: #e0e0e0;
     }
     .agreement-item h3 {
       font-size: 16px;
@@ -58,6 +56,19 @@
     .agreement-meta {
       font-size: 14px;
       color: #666;
+    }
+    .agreement-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .agreement-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
     }
     .btn {
       padding: 10px 20px;
@@ -147,9 +158,33 @@
       max-height: 500px;
       overflow-y: auto;
     }
+    .preview-pane h1 {
+      font-size: 24px;
+      margin-top: 30px;
+      margin-bottom: 15px;
+    }
+    .preview-pane h1:first-child {
+      margin-top: 0;
+    }
+    .preview-pane h2 {
+      font-size: 20px;
+      margin-top: 30px;
+      margin-bottom: 15px;
+    }
     .preview-pane h3 {
-      margin-top: 15px;
+      font-size: 18px;
+      margin-top: 25px;
       margin-bottom: 10px;
+    }
+    .preview-pane p {
+      margin-bottom: 15px;
+    }
+    .preview-pane ul, .preview-pane ol {
+      margin-bottom: 15px;
+      padding-left: 25px;
+    }
+    .preview-pane li {
+      margin-bottom: 8px;
     }
   </style>
 </head>
@@ -281,12 +316,21 @@
         html += `<div style="margin-bottom: 30px;">`;
         html += `<h2>${formatType(type)}</h2>`;
         grouped[type].forEach(agreement => {
+          const viewUrl = `/api/agreement?type=${agreement.agreement_type}&version=${agreement.version}`;
           html += `
-            <div class="agreement-item" onclick="editAgreement(${agreement.id})">
-              <h3>Version ${agreement.version}</h3>
-              <div class="agreement-meta">
-                Effective: ${new Date(agreement.effective_date).toLocaleDateString()} •
-                Created: ${new Date(agreement.created_at).toLocaleDateString()}
+            <div class="agreement-item">
+              <div class="agreement-header">
+                <div>
+                  <h3>Version ${agreement.version}</h3>
+                  <div class="agreement-meta">
+                    Effective: ${new Date(agreement.effective_date).toLocaleDateString()} •
+                    Created: ${new Date(agreement.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+                <div class="agreement-actions">
+                  <button class="btn btn-secondary btn-small" onclick="event.stopPropagation(); window.open('${viewUrl}', '_blank')">View</button>
+                  <button class="btn btn-primary btn-small" onclick="event.stopPropagation(); editAgreement(${agreement.id})">Edit</button>
+                </div>
               </div>
             </div>
           `;

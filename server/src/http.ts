@@ -3447,12 +3447,12 @@ export class HTTPServer {
       padding-bottom: 20px;
       border-bottom: 2px solid #e0e0e0;
     }
-    .content h1 { margin-top: 30px; font-size: 24px; }
-    .content h2 { margin-top: 25px; font-size: 20px; }
-    .content h3 { margin-top: 20px; font-size: 18px; }
-    .content p { margin: 15px 0; }
-    .content ul, .content ol { margin: 15px 0; padding-left: 30px; }
-    .content li { margin: 8px 0; }
+    .content h1 { margin-top: 30px; margin-bottom: 15px; font-size: 24px; }
+    .content h2 { margin-top: 30px; margin-bottom: 15px; font-size: 20px; }
+    .content h3 { margin-top: 25px; margin-bottom: 10px; font-size: 18px; }
+    .content p { margin-bottom: 15px; }
+    .content ul, .content ol { margin-bottom: 15px; padding-left: 30px; }
+    .content li { margin-bottom: 8px; }
     .back-link {
       display: inline-block;
       margin-top: 30px;
