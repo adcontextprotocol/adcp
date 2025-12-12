@@ -13,6 +13,54 @@ const workos = new WorkOS(process.env.WORKOS_API_KEY!, {
 const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID!;
 const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD!;
 
+// Session validation cache to reduce WorkOS API calls
+// Key: hash of session cookie, Value: { user, accessToken, expiresAt, newSealedSession? }
+interface CachedSession {
+  user: WorkOSUser;
+  accessToken: string;
+  expiresAt: number;
+  newSealedSession?: string; // Set if session was refreshed
+}
+const sessionCache = new Map<string, CachedSession>();
+
+// Cache TTL: 60 seconds - short enough to catch revocations, long enough to reduce API calls
+const SESSION_CACHE_TTL_MS = 60 * 1000;
+
+// Clean up expired cache entries periodically (every 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [key, value] of sessionCache.entries()) {
+    if (value.expiresAt < now) {
+      sessionCache.delete(key);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    logger.debug({ cleaned, remaining: sessionCache.size }, 'Cleaned expired session cache entries');
+  }
+}, 5 * 60 * 1000);
+
+// Simple hash function for cache key (we don't need crypto-strength, just uniqueness)
+function hashSessionCookie(cookie: string): string {
+  let hash = 0;
+  for (let i = 0; i < cookie.length; i++) {
+    const char = cookie.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return hash.toString(36);
+}
+
+/**
+ * Invalidate session cache for a specific cookie (e.g., on logout)
+ */
+export function invalidateSessionCache(sessionCookie: string): void {
+  const cacheKey = hashSessionCookie(sessionCookie);
+  sessionCache.delete(cacheKey);
+  logger.debug({ cacheKey }, 'Session cache invalidated');
+}
+
 // Extend Express Request type to include our auth properties
 declare global {
   namespace Express {
@@ -43,6 +91,7 @@ function setSessionCookie(res: Response, sealedSession: string) {
 /**
  * Middleware to require authentication
  * Checks for WorkOS session cookie and loads user info
+ * Uses in-memory cache to reduce WorkOS API calls for session refresh
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -64,16 +113,37 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   try {
+    // Check session cache first to avoid repeated WorkOS API calls
+    const cacheKey = hashSessionCookie(sessionCookie);
+    const cached = sessionCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      // Cache hit - use cached session data
+      logger.debug({ userId: cached.user.id }, 'Using cached session');
+      req.user = cached.user;
+      req.accessToken = cached.accessToken;
+
+      // If session was refreshed, update the cookie
+      if (cached.newSealedSession) {
+        setSessionCookie(res, cached.newSealedSession);
+      }
+
+      return next();
+    }
+
+    // Cache miss or expired - validate with WorkOS
     // Load the sealed session to get access to both authenticate and refresh methods
     const session = workos.userManagement.loadSealedSession({
       sessionData: sessionCookie,
       cookiePassword: WORKOS_COOKIE_PASSWORD,
     });
 
-    // Try to authenticate with the current session
+    // Try to authenticate with the current session (local JWT validation, no API call)
     let result = await session.authenticate();
+    let newSealedSession: string | undefined;
 
-    // If authentication failed, try to refresh the session
+    // If authentication failed, try to refresh the session (this makes an API call)
     if (!result.authenticated || !('user' in result) || !result.user) {
       logger.debug('Session authentication failed, attempting refresh');
 
@@ -85,9 +155,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         if (refreshResult.authenticated && refreshResult.sealedSession) {
           // Refresh succeeded - update the cookie and re-authenticate
           logger.debug('Session refreshed successfully');
+          newSealedSession = refreshResult.sealedSession;
           setSessionCookie(res, refreshResult.sealedSession);
 
-          // Re-authenticate with the new session
+          // Re-authenticate with the new session (local validation)
           const newSession = workos.userManagement.loadSealedSession({
             sessionData: refreshResult.sealedSession,
             cookiePassword: WORKOS_COOKIE_PASSWORD,
@@ -103,6 +174,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     // Final check after potential refresh
     if (!result.authenticated || !('user' in result) || !result.user) {
       logger.debug('Session validation failed (even after refresh attempt)');
+      // Remove any stale cache entry
+      sessionCache.delete(cacheKey);
       if (isHtmlRequest) {
         return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
       }
@@ -114,7 +187,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
 
     // Map WorkOS user to our WorkOSUser type (convert null to undefined)
-    req.user = {
+    const user: WorkOSUser = {
       id: result.user.id,
       email: result.user.email,
       firstName: result.user.firstName ?? undefined,
@@ -123,6 +196,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       createdAt: result.user.createdAt,
       updatedAt: result.user.updatedAt,
     };
+
+    // Cache the validated session
+    sessionCache.set(cacheKey, {
+      user,
+      accessToken: result.accessToken,
+      expiresAt: now + SESSION_CACHE_TTL_MS,
+      newSealedSession,
+    });
+
+    req.user = user;
     req.accessToken = result.accessToken;
     next();
   } catch (error) {
@@ -339,6 +422,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
 
 /**
  * Optional auth middleware - loads user if authenticated, but doesn't require it
+ * Uses in-memory cache to reduce WorkOS API calls for session refresh
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
@@ -349,16 +433,37 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   }
 
   try {
+    // Check session cache first to avoid repeated WorkOS API calls
+    const cacheKey = hashSessionCookie(sessionCookie);
+    const cached = sessionCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      // Cache hit - use cached session data
+      logger.debug({ userId: cached.user.id }, 'Using cached session (optional auth)');
+      req.user = cached.user;
+      req.accessToken = cached.accessToken;
+
+      // If session was refreshed, update the cookie
+      if (cached.newSealedSession) {
+        setSessionCookie(res, cached.newSealedSession);
+      }
+
+      return next();
+    }
+
+    // Cache miss or expired - validate with WorkOS
     // Load the sealed session to get access to both authenticate and refresh methods
     const session = workos.userManagement.loadSealedSession({
       sessionData: sessionCookie,
       cookiePassword: WORKOS_COOKIE_PASSWORD,
     });
 
-    // Try to authenticate with the current session
+    // Try to authenticate with the current session (local JWT validation)
     let result = await session.authenticate();
+    let newSealedSession: string | undefined;
 
-    // If authentication failed, try to refresh the session
+    // If authentication failed, try to refresh the session (API call)
     if (!result.authenticated || !('user' in result) || !result.user) {
       try {
         const refreshResult = await session.refresh({
@@ -368,9 +473,10 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         if (refreshResult.authenticated && refreshResult.sealedSession) {
           // Refresh succeeded - update the cookie and re-authenticate
           logger.debug('Session refreshed successfully (optional auth)');
+          newSealedSession = refreshResult.sealedSession;
           setSessionCookie(res, refreshResult.sealedSession);
 
-          // Re-authenticate with the new session
+          // Re-authenticate with the new session (local validation)
           const newSession = workos.userManagement.loadSealedSession({
             sessionData: refreshResult.sealedSession,
             cookiePassword: WORKOS_COOKIE_PASSWORD,
@@ -384,7 +490,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     }
 
     if (result.authenticated && 'user' in result && result.user) {
-      req.user = {
+      const user: WorkOSUser = {
         id: result.user.id,
         email: result.user.email,
         firstName: result.user.firstName ?? undefined,
@@ -393,6 +499,16 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         createdAt: result.user.createdAt,
         updatedAt: result.user.updatedAt,
       };
+
+      // Cache the validated session
+      sessionCache.set(cacheKey, {
+        user,
+        accessToken: result.accessToken,
+        expiresAt: now + SESSION_CACHE_TTL_MS,
+        newSealedSession,
+      });
+
+      req.user = user;
       req.accessToken = result.accessToken;
     }
   } catch (error) {
