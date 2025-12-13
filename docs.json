@@ -5,7 +5,7 @@
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"
   },
-  "favicon": "/img/favicon.ico",
+  "favicon": "/img/favicon.svg",
   "theme": "mint",
   "colors": {
     "primary": "#0D9373",

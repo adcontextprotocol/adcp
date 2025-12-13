@@ -378,6 +378,30 @@ a:hover {
    ARTICLE & CONTENT PAGE STYLES
    ============================================ */
 
+/* Filter Bar */
+.filter-bar {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-bar select {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--aao-border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: var(--aao-white);
+  color: var(--aao-gray-dark);
+  cursor: pointer;
+}
+
+.filter-bar select:focus {
+  outline: none;
+  border-color: var(--aao-primary);
+}
+
 /* Article Cards Grid */
 .articles-grid {
   display: grid;
@@ -422,6 +446,32 @@ a:hover {
   letter-spacing: 0.5px;
   margin-bottom: 1rem;
   width: fit-content;
+}
+
+.article-badge-new {
+  display: inline-block;
+  background: #10b981;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-left: 0.5rem;
+}
+
+.article-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.article-date {
+  font-size: 0.8rem;
+  color: var(--aao-gray);
 }
 
 .article-card h2 {
