@@ -460,9 +460,18 @@ Different agents for different channels:
 
 ## Fetching and Validating
 
-### Using the Validation API
+### Using the AdAgents.json Builder
 
-AdCP provides a hosted validation API that performs comprehensive checks including structure validation, URL reference resolution, and agent card verification.
+The easiest way to validate or create an adagents.json file is using the **[AdAgents.json Builder](https://adcontextprotocol.org/adagents)** web tool. It provides:
+
+- Domain validation (fetches and checks `/.well-known/adagents.json`)
+- Structure validation against the JSON schema
+- Agent card endpoint verification (checks if agent URLs respond correctly)
+- Guided file creation with proper formatting
+
+### Programmatic Validation
+
+For programmatic validation, use the validation API:
 
 <CodeGroup>
 
@@ -513,56 +522,15 @@ else:
 ```
 
 ```bash CLI
-# Validate a domain using the API
+# Validate a domain's adagents.json file
 curl -X POST https://adcontextprotocol.org/api/adagents/validate \
   -H "Content-Type: application/json" \
   -d '{"domain": "example.com"}' | jq '.data.validation'
-
-# Create and validate a new adagents.json structure
-curl -X POST https://adcontextprotocol.org/api/adagents/create \
-  -H "Content-Type: application/json" \
-  -d '{
-    "authorized_agents": [
-      {
-        "url": "https://my-agent.example.com",
-        "authorized_for": "All properties"
-      }
-    ],
-    "include_schema": true,
-    "include_timestamp": true
-  }' | jq '.'
-
-# Validate agent card endpoints
-curl -X POST https://adcontextprotocol.org/api/adagents/validate-cards \
-  -H "Content-Type: application/json" \
-  -d '{"agent_urls": ["https://test-agent.adcontextprotocol.org"]}' | jq '.'
 ```
 
 </CodeGroup>
 
-### Validation Response
-
-The validation API returns detailed results including:
-
-```json
-{
-  "success": true,
-  "data": {
-    "domain": "example.com",
-    "found": true,
-    "validation": {
-      "valid": true,
-      "errors": [],
-      "warnings": [],
-      "domain": "example.com",
-      "url": "https://example.com/.well-known/adagents.json",
-      "status_code": 200,
-      "raw_data": { /* full adagents.json content */ }
-    }
-  },
-  "timestamp": "2025-01-10T12:00:00Z"
-}
-```
+The validation API fetches `https://{domain}/.well-known/adagents.json`, validates its structure, follows URL references if present, and optionally checks agent card endpoints.
 
 ### Manual Validation
 
@@ -574,7 +542,7 @@ For direct validation without the API:
 # Fetch and inspect authorization file
 curl https://example-publisher.com/.well-known/adagents.json | jq '.'
 
-# Validate against schema
+# Validate against schema using ajv-cli
 curl https://example-publisher.com/.well-known/adagents.json > adagents.json
 npx ajv-cli validate -s https://adcontextprotocol.org/schemas/v2/adagents.json -d adagents.json
 
