@@ -71,13 +71,11 @@ Your manifest **must use those exact asset IDs** as keys:
 {
   "assets": {
     "banner_image": {        // ← Matches asset_id from format
-      "asset_type": "image",
       "url": "https://cdn.example.com/banner.jpg",
       "width": 300,
       "height": 250
     },
     "clickthrough_url": {    // ← Matches asset_id from format
-      "asset_type": "url",
       "url": "https://example.com/landing"
     }
   }
@@ -110,8 +108,7 @@ Here's a complete creative manifest showing the current structure without redund
     "banner_image": {
       "url": "https://cdn.example.com/banner.jpg",
       "width": 300,
-      "height": 250,
-      "format": "jpg"
+      "height": 250
     },
     "headline": {
       "content": "Nutrition Dogs Love",
@@ -147,30 +144,23 @@ Static manifests contain all assets ready for immediate rendering. These are pro
   },
   "assets": {
     "hero_image": {              // asset_id from format spec
-      "asset_type": "image",
       "url": "https://cdn.example.com/hero.jpg",
       "width": 1200,
       "height": 627,
-      "format": "jpg",
-      "alt": "Product image"
+      "alt_text": "Product image"
     },
     "logo": {                    // asset_id from format spec
-      "asset_type": "image",
       "url": "https://cdn.example.com/logo.png",
       "width": 100,
-      "height": 100,
-      "format": "png"
+      "height": 100
     },
     "headline": {                // asset_id from format spec
-      "asset_type": "text",
       "content": "Premium Quality You Can Trust"
     },
     "description": {             // asset_id from format spec
-      "asset_type": "text",
       "content": "Discover why veterinarians recommend our formula"
     },
     "cta_text": {                // asset_id from format spec
-      "asset_type": "text",
       "content": "Learn More"
     }
   }
@@ -195,7 +185,6 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
   },
   "assets": {
     "dynamic_content": {
-      "asset_type": "webhook",
       "url": "https://creative-agent.example.com/render/campaign-123",
       "method": "POST",
       "timeout_ms": 500,
@@ -208,11 +197,9 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
       "fallback_required": true
     },
     "fallback_image": {
-      "asset_type": "image",
       "url": "https://cdn.example.com/fallback-300x250.jpg",
       "width": 300,
-      "height": 250,
-      "format": "jpg"
+      "height": 250
     }
   }
 }
@@ -241,16 +228,13 @@ Digital Out-of-Home (DOOH) creatives use impression tracking just like other for
   "promoted_offering": "Premium Coffee Blend",
   "assets": {
     "billboard_image": {
-      "asset_type": "image",
       "url": "https://cdn.example.com/billboard-1920x1080.jpg",
       "width": 1920,
-      "height": 1080,
-      "format": "jpg"
+      "height": 1080
     },
     "impression_tracker": {
-      "asset_type": "url",
-      "url_type": "tracker",
-      "url": "https://tracking.example.com/imp?screen={SCREEN_ID}&venue={VENUE_TYPE}&ts={PLAY_TIMESTAMP}&lat={VENUE_LAT}&lon={VENUE_LONG}"
+      "url": "https://tracking.example.com/imp?screen={SCREEN_ID}&venue={VENUE_TYPE}&ts={PLAY_TIMESTAMP}&lat={VENUE_LAT}&lon={VENUE_LONG}",
+      "url_type": "tracker_pixel"
     }
   }
 }
@@ -284,13 +268,11 @@ Construct manifests directly by pairing format requirements with your assets:
   "promoted_offering": "Premium Salmon Formula",
   "assets": {
     "hero_image": {
-      "asset_type": "image",
       "url": "https://cdn.example.com/salmon-hero.jpg",
       "width": 1200,
       "height": 627
     },
     "headline": {
-      "asset_type": "text",
       "content": "New Premium Salmon Formula"
     }
   }
@@ -398,11 +380,9 @@ Manifests are submitted to the creative library using `sync_creatives`, then ref
           "promoted_offering": "Fresh Pacific Salmon",
           "assets": {
             "headline": {
-              "asset_type": "text",
               "content": "Fresh Pacific Salmon - 20% Off Today"
             },
             "main_image": {
-              "asset_type": "image",
               "url": "https://cdn.example.com/salmon.jpg",
               "width": 1200,
               "height": 628

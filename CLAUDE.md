@@ -194,6 +194,56 @@ from adcp import ADCPMultiAgentClient
 node tests/snippet-validation.test.js
 ```
 
+### Self-Describing JSON Examples with `$schema`
+
+**IMPORTANT**: JSON examples in documentation should include `$schema` declarations for automated CI validation when they represent complete, schema-compliant objects.
+
+**How it works**:
+- JSON blocks with a `$schema` field are automatically validated against that schema in CI
+- The test file `tests/json-schema-validation.test.js` discovers and validates all such blocks
+- Validation runs as part of `npm test`
+
+**When to add `$schema`**:
+- ✅ Complete error objects that match `/schemas/v2/core/error.json`
+- ✅ Complete product objects, creative manifests, media buys, etc.
+- ✅ Request/response examples that are fully formed
+- ✅ Any JSON that should conform to a published AdCP schema
+
+**When NOT to add `$schema`**:
+- ❌ Illustrative/simplified examples (e.g., channel guide format snippets)
+- ❌ Fragments showing just a few fields
+- ❌ Pseudocode or conceptual examples
+- ❌ Examples with `...` placeholders or comments
+
+**Example - Testable error object**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INVALID_CREDENTIALS",
+  "message": "API key is invalid or has been revoked",
+  "details": {
+    "provided_key": "ak_live_123..."
+  }
+}
+```
+
+**Key rule**: The `$schema` field MUST be the **first property** in the JSON object and MUST point to a valid schema URL.
+
+**Schema URL pattern**: `https://adcontextprotocol.org/schemas/v2/{category}/{schema-name}.json`
+- Categories: `core`, `media-buy`, `creative`, `signals`, `enums`
+- Examples: `core/error.json`, `core/product.json`, `core/creative-manifest.json`
+
+**Running JSON schema validation**:
+```bash
+# Run all tests including JSON schema validation
+npm test
+
+# Run only JSON schema validation
+npm run test:json-schema
+```
+
+**Current coverage**: 45+ JSON blocks across documentation are validated against schemas.
+
 ### Discriminated Union Error Handling - CRITICAL PATTERN
 
 **🚨 ABSOLUTE REQUIREMENT: Always check for errors before accessing success fields in discriminated union responses.**
