@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="pageTitle">Loading... | AgenticAdvertising.org</title>
+  <meta name="description" id="pageDescription" content="Loading...">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/aao-theme.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <style>
+    /* Page-specific: nav offset */
+    body { padding-top: 60px; }
+
+    /* Page-specific: narrower container for article content */
+    .container { max-width: 900px; }
+
+    /* Loading state */
+    .loading-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #6b7280;
+      font-size: 1.1rem;
+    }
+
+    /* Article content styling */
+    .article-content h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+    }
+    .article-content h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .article-content p {
+      font-size: 1.1rem;
+      line-height: 1.8;
+      color: #374151;
+      margin-bottom: 1rem;
+    }
+    .article-content ul, .article-content ol {
+      margin: 1rem 0 1.5rem 1.5rem;
+      color: #374151;
+    }
+    .article-content li {
+      margin-bottom: 0.5rem;
+      font-size: 1.05rem;
+      line-height: 1.7;
+    }
+    .article-content strong {
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+    .article-content a {
+      color: var(--aao-primary);
+      text-decoration: none;
+    }
+    .article-content a:hover {
+      text-decoration: underline;
+    }
+    .article-content blockquote {
+      border-left: 4px solid var(--aao-primary);
+      margin: 1.5rem 0;
+      padding: 1rem 1.5rem;
+      background: #f8fafc;
+      border-radius: 0 8px 8px 0;
+    }
+    .article-content blockquote p {
+      margin: 0;
+      font-style: italic;
+      color: #374151;
+    }
+    .article-content hr {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 2rem 0;
+    }
+
+    .author-info {
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #e5e7eb;
+      color: #6b7280;
+      font-size: 0.95rem;
+    }
+    .author-info strong {
+      color: #374151;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--aao-primary);
+      text-decoration: none;
+      font-weight: 500;
+      margin-bottom: 2rem;
+    }
+    .back-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
+  <!-- Dynamic Hero Section -->
+  <section class="hero hero--article" id="heroSection" style="display: none;">
+    <div class="hero-container">
+      <div class="hero-breadcrumb">
+        <a href="/perspectives">Perspectives</a> / <span id="heroCategory">Article</span>
+      </div>
+      <h1 id="heroTitle">Loading...</h1>
+      <p class="hero-subtitle" id="heroSubtitle"></p>
+    </div>
+  </section>
+
+  <!-- Loading State -->
+  <div id="loadingState" class="loading-state">
+    Loading article...
+  </div>
+
+  <!-- Main Content -->
+  <div class="container" id="mainContent" style="display: none;">
+    <a href="/perspectives" class="back-link">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Back to Perspectives
+    </a>
+
+    <section class="article-section">
+      <div id="articleContent" class="article-content">
+        <!-- Markdown content will be rendered here -->
+      </div>
+
+      <div id="authorInfo" class="author-info" style="display: none;">
+        <p><strong id="authorName"></strong><span id="authorTitle"></span></p>
+      </div>
+    </section>
+  </div>
+
+  <!-- Error State -->
+  <div id="errorState" class="container" style="display: none;">
+    <div class="loading-state">
+      <h2 style="color: #dc2626; margin-bottom: 1rem;">Article Not Found</h2>
+      <p>The article you're looking for doesn't exist or has been removed.</p>
+      <p><a href="/perspectives" style="color: var(--aao-primary);">Return to Perspectives</a></p>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer footer--centered">
+    <div class="footer-links">
+      <a href="/">Home</a>
+      <a href="/perspectives">Perspectives</a>
+      <a href="https://docs.adcontextprotocol.org">AdCP Documentation</a>
+      <a href="/members">Members</a>
+      <a href="https://github.com/adcontextprotocol/adcp">GitHub</a>
+    </div>
+    <div class="footer-copyright">
+      &copy; 2025 AgenticAdvertising.org
+    </div>
+  </footer>
+
+  <script>
+    async function loadArticle() {
+      // Get slug from URL path
+      const pathParts = window.location.pathname.split('/');
+      const slug = pathParts[pathParts.length - 1];
+
+      if (!slug || slug === 'article.html') {
+        showError();
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/perspectives/${slug}`);
+
+        if (!response.ok) {
+          showError();
+          return;
+        }
+
+        const article = await response.json();
+
+        // If it's a link type, redirect to external URL
+        if (article.content_type === 'link' && article.external_url) {
+          window.location.href = article.external_url;
+          return;
+        }
+
+        // Update page title and meta
+        document.getElementById('pageTitle').textContent = `${article.title} | AgenticAdvertising.org`;
+        document.getElementById('pageDescription').content = article.excerpt || article.subtitle || article.title;
+
+        // Update hero section
+        document.getElementById('heroTitle').textContent = article.title;
+        if (article.subtitle) {
+          document.getElementById('heroSubtitle').textContent = article.subtitle;
+          document.getElementById('heroSubtitle').style.display = 'block';
+        }
+        if (article.category) {
+          document.getElementById('heroCategory').textContent = article.category;
+        }
+
+        // Render markdown content
+        if (article.content) {
+          const renderedHtml = marked.parse(article.content);
+          document.getElementById('articleContent').innerHTML = renderedHtml;
+        }
+
+        // Show author info if available
+        if (article.author_name) {
+          document.getElementById('authorName').textContent = article.author_name;
+          if (article.author_title) {
+            document.getElementById('authorTitle').textContent = `, ${article.author_title}`;
+          }
+          document.getElementById('authorInfo').style.display = 'block';
+        }
+
+        // Show content
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('heroSection').style.display = 'block';
+        document.getElementById('mainContent').style.display = 'block';
+
+      } catch (error) {
+        console.error('Error loading article:', error);
+        showError();
+      }
+    }
+
+    function showError() {
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('errorState').style.display = 'block';
+    }
+
+    // Load article when page loads
+    loadArticle();
+  </script>
+</body>
+</html>

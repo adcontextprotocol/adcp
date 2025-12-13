@@ -23,7 +23,7 @@ import { MemberDatabase } from "./db/member-db.js";
 import { RegistryDatabase } from "./db/registry-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, optionalAuth } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -54,6 +54,8 @@ const workos = AUTH_ENABLED ? new WorkOS(process.env.WORKOS_API_KEY!, {
 const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID || '';
 const WORKOS_REDIRECT_URI = process.env.WORKOS_REDIRECT_URI || 'http://localhost:3000/auth/callback';
 const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD || '';
+// Allow insecure cookies for local Docker development
+const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
 
 export class HTTPServer {
   private app: express.Application;
@@ -83,6 +85,24 @@ export class HTTPServer {
   }
 
   private setupMiddleware(): void {
+    // Request logging for /api/me/member-profile to help diagnose issues
+    this.app.use('/api/me/member-profile', (req, res, next) => {
+      const startTime = Date.now();
+      logger.debug({ method: req.method, path: req.path, query: req.query }, 'member-profile request received');
+
+      // Log when response finishes
+      res.on('finish', () => {
+        logger.debug({
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          durationMs: Date.now() - startTime
+        }, 'member-profile response sent');
+      });
+
+      next();
+    });
+
     // Use JSON parser for all routes EXCEPT Stripe webhooks (which need raw body)
     this.app.use((req, res, next) => {
       if (req.path === '/api/webhooks/stripe') {
@@ -1044,26 +1064,28 @@ export class HTTPServer {
       res.sendFile(aboutPath);
     });
 
-    // Insights section
+    // Perspectives section
+    this.app.get("/perspectives", (req, res) => {
+      const perspectivesPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/perspectives/index.html")
+        : path.join(__dirname, "../public/perspectives/index.html");
+      res.sendFile(perspectivesPath);
+    });
+
+    // Dynamic article route - serves article.html which loads content from API
+    this.app.get("/perspectives/:slug", (req, res) => {
+      const articlePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/perspectives/article.html")
+        : path.join(__dirname, "../public/perspectives/article.html");
+      res.sendFile(articlePath);
+    });
+
+    // Legacy redirect from /insights to /perspectives
     this.app.get("/insights", (req, res) => {
-      const insightsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/insights/index.html")
-        : path.join(__dirname, "../public/insights/index.html");
-      res.sendFile(insightsPath);
+      res.redirect(301, "/perspectives");
     });
-
-    this.app.get("/insights/agentic-protocol-landscape", (req, res) => {
-      const articlePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/insights/agentic-protocol-landscape.html")
-        : path.join(__dirname, "../public/insights/agentic-protocol-landscape.html");
-      res.sendFile(articlePath);
-    });
-
-    this.app.get("/insights/launch-announcement", (req, res) => {
-      const articlePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/insights/launch-announcement.html")
-        : path.join(__dirname, "../public/insights/launch-announcement.html");
-      res.sendFile(articlePath);
+    this.app.get("/insights/:slug", (req, res) => {
+      res.redirect(301, `/perspectives/${req.params.slug}`);
     });
 
     // AdAgents API Routes
@@ -2652,11 +2674,87 @@ export class HTTPServer {
           }
         }
 
+        // Sync subscription data to organizations for MRR calculation
+        // This populates subscription_amount, subscription_interval, subscription_current_period_end
+        let subscriptionsSynced = 0;
+        let subscriptionsFailed = 0;
+        if (stripe) {
+          for (const [customerId, workosOrgId] of customerOrgMap) {
+            try {
+              // Get customer with subscriptions and expanded price/product data in single API call
+              const customer = await stripe.customers.retrieve(customerId, {
+                expand: ['subscriptions.data.items.data.price.product'],
+              });
+
+              if ('deleted' in customer && customer.deleted) {
+                continue;
+              }
+
+              const subscriptions = (customer as Stripe.Customer).subscriptions;
+              if (!subscriptions || subscriptions.data.length === 0) {
+                continue;
+              }
+
+              // Get the first active subscription (already has expanded items)
+              const subscription = subscriptions.data[0];
+              if (!subscription || !['active', 'trialing', 'past_due'].includes(subscription.status)) {
+                continue;
+              }
+
+              // Get primary subscription item directly from expanded data
+              const primaryItem = subscription.items.data[0];
+              if (!primaryItem) {
+                continue;
+              }
+
+              const price = primaryItem.price;
+              const product = price?.product as Stripe.Product | undefined;
+              const amount = price?.unit_amount ?? 0;
+              const interval = price?.recurring?.interval ?? null;
+
+              // Update organization with subscription details
+              await pool.query(
+                `UPDATE organizations
+                 SET subscription_amount = $1,
+                     subscription_interval = $2,
+                     subscription_currency = $3,
+                     subscription_current_period_end = $4,
+                     subscription_canceled_at = $5,
+                     subscription_product_id = $6,
+                     subscription_product_name = $7,
+                     subscription_price_id = $8,
+                     updated_at = NOW()
+                 WHERE workos_organization_id = $9`,
+                [
+                  amount,
+                  interval,
+                  price?.currency || 'usd',
+                  subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+                  subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
+                  product?.id || null,
+                  product?.name || null,
+                  price?.id || null,
+                  workosOrgId,
+                ]
+              );
+
+              subscriptionsSynced++;
+              logger.debug({ workosOrgId, customerId, amount, interval }, 'Synced subscription data');
+            } catch (subError) {
+              subscriptionsFailed++;
+              logger.error({ err: subError, customerId, workosOrgId }, 'Failed to sync subscription for customer');
+              // Continue with other customers
+            }
+          }
+        }
+
         logger.info({
           invoices: invoices.length,
           refunds: refunds.length,
           imported,
           skipped,
+          subscriptionsSynced,
+          subscriptionsFailed,
         }, 'Revenue backfill completed');
 
         res.json({
@@ -2666,12 +2764,442 @@ export class HTTPServer {
           refunds_found: refunds.length,
           imported,
           skipped,
+          subscriptions_synced: subscriptionsSynced,
+          subscriptions_failed: subscriptionsFailed,
         });
       } catch (error) {
         logger.error({ err: error }, 'Error during revenue backfill');
         res.status(500).json({
           error: 'Internal server error',
           message: error instanceof Error ? error.message : 'Revenue backfill failed',
+        });
+      }
+    });
+
+    // ========================================
+    // Perspectives Admin Routes
+    // ========================================
+
+    // GET /api/admin/perspectives - List all perspectives
+    this.app.get('/api/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT * FROM perspectives
+           ORDER BY display_order ASC, published_at DESC NULLS LAST, created_at DESC`
+        );
+
+        res.json(result.rows);
+      } catch (error) {
+        logger.error({ err: error }, 'Get all perspectives error:');
+        res.status(500).json({
+          error: 'Failed to get perspectives',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/perspectives/:id - Get single perspective
+    this.app.get('/api/admin/perspectives/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const pool = getPool();
+        const result = await pool.query(
+          'SELECT * FROM perspectives WHERE id = $1',
+          [id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Perspective not found',
+            message: `No perspective found with id ${id}`
+          });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Get perspective error:');
+        res.status(500).json({
+          error: 'Failed to get perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/perspectives/fetch-url - Fetch URL metadata for auto-fill
+    this.app.post('/api/admin/perspectives/fetch-url', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { url } = req.body;
+
+        if (!url) {
+          return res.status(400).json({
+            error: 'URL required',
+            message: 'Please provide a URL to fetch'
+          });
+        }
+
+        // Fetch the page
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+            'Accept': 'text/html,application/xhtml+xml'
+          },
+          redirect: 'follow'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch URL: ${response.status}`);
+        }
+
+        const html = await response.text();
+
+        // Extract metadata from HTML
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+        const ogDescMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
+        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+        const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
+
+        // Helper to decode HTML entities
+        const decodeHtmlEntities = (text: string): string => {
+          return text
+            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
+        };
+
+        // Determine title (prefer og:title, then <title>)
+        let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
+        title = decodeHtmlEntities(title.trim());
+
+        // Determine description (prefer og:description, then meta description)
+        let excerpt = ogDescMatch?.[1] || descMatch?.[1] || '';
+        excerpt = decodeHtmlEntities(excerpt.trim());
+
+        // Site name from og:site_name or parse from URL
+        let site_name = ogSiteMatch?.[1] || '';
+        if (!site_name) {
+          try {
+            const parsedUrl = new URL(url);
+            site_name = parsedUrl.hostname.replace('www.', '');
+            // Capitalize first letter
+            site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
+          } catch {
+            // ignore URL parse errors
+          }
+        }
+        site_name = decodeHtmlEntities(site_name);
+
+        res.json({
+          title,
+          excerpt,
+          site_name
+        });
+
+      } catch (error) {
+        logger.error({ err: error }, 'Fetch URL metadata error:');
+        res.status(500).json({
+          error: 'Failed to fetch URL',
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    });
+
+    // POST /api/admin/perspectives - Create new perspective
+    this.app.post('/api/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const {
+          slug,
+          content_type = 'article',
+          title,
+          subtitle,
+          category,
+          excerpt,
+          content,
+          external_url,
+          external_site_name,
+          author_name,
+          author_title,
+          featured_image_url,
+          status = 'draft',
+          published_at,
+          display_order = 0,
+          tags = [],
+          metadata = {},
+        } = req.body;
+
+        const validContentTypes = ['article', 'link'];
+        const validStatuses = ['draft', 'published', 'archived'];
+
+        if (!slug || !title) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'slug and title are required'
+          });
+        }
+
+        if (!validContentTypes.includes(content_type)) {
+          return res.status(400).json({
+            error: 'Invalid content_type',
+            message: 'content_type must be: article or link'
+          });
+        }
+
+        if (!validStatuses.includes(status)) {
+          return res.status(400).json({
+            error: 'Invalid status',
+            message: 'status must be: draft, published, or archived'
+          });
+        }
+
+        // Validate content_type requirements
+        if (content_type === 'link' && !external_url) {
+          return res.status(400).json({
+            error: 'Missing external_url',
+            message: 'external_url is required for link type perspectives'
+          });
+        }
+
+        const pool = getPool();
+        const result = await pool.query(
+          `INSERT INTO perspectives (
+            slug, content_type, title, subtitle, category, excerpt,
+            content, external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            status, published_at, display_order, tags, metadata
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          RETURNING *`,
+          [
+            slug, content_type, title, subtitle, category, excerpt,
+            content, external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            status, published_at || null, display_order, tags, metadata
+          ]
+        );
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Create perspective error:');
+        // Check for unique constraint violation
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(400).json({
+            error: 'Slug already exists',
+            message: 'A perspective with this slug already exists'
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to create perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/admin/perspectives/:id - Update perspective
+    this.app.put('/api/admin/perspectives/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const {
+          slug,
+          content_type,
+          title,
+          subtitle,
+          category,
+          excerpt,
+          content,
+          external_url,
+          external_site_name,
+          author_name,
+          author_title,
+          featured_image_url,
+          status,
+          published_at,
+          display_order,
+          tags,
+          metadata,
+        } = req.body;
+
+        const validContentTypes = ['article', 'link'];
+        const validStatuses = ['draft', 'published', 'archived'];
+
+        if (!slug || !title) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'slug and title are required'
+          });
+        }
+
+        if (content_type && !validContentTypes.includes(content_type)) {
+          return res.status(400).json({
+            error: 'Invalid content_type',
+            message: 'content_type must be: article or link'
+          });
+        }
+
+        if (status && !validStatuses.includes(status)) {
+          return res.status(400).json({
+            error: 'Invalid status',
+            message: 'status must be: draft, published, or archived'
+          });
+        }
+
+        // Validate content_type requirements
+        if (content_type === 'link' && !external_url) {
+          return res.status(400).json({
+            error: 'Missing external_url',
+            message: 'external_url is required for link type perspectives'
+          });
+        }
+
+        const pool = getPool();
+        const result = await pool.query(
+          `UPDATE perspectives SET
+            slug = $1,
+            content_type = $2,
+            title = $3,
+            subtitle = $4,
+            category = $5,
+            excerpt = $6,
+            content = $7,
+            external_url = $8,
+            external_site_name = $9,
+            author_name = $10,
+            author_title = $11,
+            featured_image_url = $12,
+            status = $13,
+            published_at = $14,
+            display_order = $15,
+            tags = $16,
+            metadata = $17
+          WHERE id = $18
+          RETURNING *`,
+          [
+            slug, content_type, title, subtitle, category, excerpt,
+            content, external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            status, published_at || null, display_order, tags, metadata,
+            id
+          ]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Perspective not found',
+            message: `No perspective found with id ${id}`
+          });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Update perspective error:');
+        // Check for unique constraint violation
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(400).json({
+            error: 'Slug already exists',
+            message: 'A perspective with this slug already exists'
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to update perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/admin/perspectives/:id - Delete perspective
+    this.app.delete('/api/admin/perspectives/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const pool = getPool();
+
+        const result = await pool.query(
+          'DELETE FROM perspectives WHERE id = $1 RETURNING id',
+          [id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Perspective not found',
+            message: `No perspective found with id ${id}`
+          });
+        }
+
+        res.json({ success: true, deleted: id });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete perspective error:');
+        res.status(500).json({
+          error: 'Failed to delete perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // ========================================
+    // Public Perspectives API Routes
+    // ========================================
+
+    // GET /api/perspectives - List published perspectives
+    this.app.get('/api/perspectives', async (req, res) => {
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT
+            id, slug, content_type, title, subtitle, category, excerpt,
+            external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            published_at, display_order, tags
+          FROM perspectives
+          WHERE status = 'published'
+          ORDER BY display_order ASC, published_at DESC NULLS LAST`
+        );
+
+        res.json(result.rows);
+      } catch (error) {
+        logger.error({ err: error }, 'Get published perspectives error:');
+        res.status(500).json({
+          error: 'Failed to get perspectives',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/perspectives/:slug - Get single published perspective by slug
+    this.app.get('/api/perspectives/:slug', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT
+            id, slug, content_type, title, subtitle, category, excerpt,
+            content, external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            published_at, tags, metadata
+          FROM perspectives
+          WHERE slug = $1 AND status = 'published'`,
+          [slug]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Perspective not found',
+            message: `No published perspective found with slug ${slug}`
+          });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Get perspective by slug error:');
+        res.status(500).json({
+          error: 'Failed to get perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     });
@@ -2696,6 +3224,13 @@ export class HTTPServer {
         ? path.join(__dirname, '../server/public/admin-analytics.html')
         : path.join(__dirname, '../public/admin-analytics.html');
       res.sendFile(analyticsPath);
+    });
+
+    this.app.get('/admin/perspectives', requireAuth, requireAdmin, (req, res) => {
+      const perspectivesPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-perspectives.html')
+        : path.join(__dirname, '../public/admin-perspectives.html');
+      res.sendFile(perspectivesPath);
     });
 
   }
@@ -2822,7 +3357,7 @@ export class HTTPServer {
         // Set sealed session cookie
         res.cookie('wos-session', sealedSession!, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
           sameSite: 'lax',
           path: '/',
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -2870,6 +3405,11 @@ export class HTTPServer {
       try {
         const sessionCookie = req.cookies['wos-session'];
 
+        // Invalidate session cache first
+        if (sessionCookie) {
+          invalidateSessionCache(sessionCookie);
+        }
+
         // Revoke the session on WorkOS side if it exists
         if (sessionCookie && workos) {
           try {
@@ -2893,7 +3433,7 @@ export class HTTPServer {
         // Clear the cookie - must match the options used when setting it
         res.clearCookie('wos-session', {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
           sameSite: 'lax',
           path: '/',
         });
@@ -2903,7 +3443,7 @@ export class HTTPServer {
         // Still clear the cookie and redirect even if revocation failed
         res.clearCookie('wos-session', {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
           sameSite: 'lax',
           path: '/',
         });
@@ -2940,12 +3480,17 @@ export class HTTPServer {
           })
         );
 
+        // Check if user is admin
+        const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+        const isAdmin = adminEmails.includes(user.email.toLowerCase());
+
         res.json({
           user: {
             id: user.id,
             email: user.email,
             first_name: user.firstName,
             last_name: user.lastName,
+            isAdmin,
           },
           organizations,
         });
@@ -5317,6 +5862,8 @@ export class HTTPServer {
     // GET /api/me/member-profile - Get current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.get('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id, org: req.query.org }, 'GET /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5327,6 +5874,7 @@ export class HTTPServer {
         });
 
         if (memberships.data.length === 0) {
+          logger.info({ userId: user.id, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: no organization');
           return res.status(404).json({
             error: 'No organization',
             message: 'User is not a member of any organization',
@@ -5339,6 +5887,7 @@ export class HTTPServer {
           // Verify user is a member of the requested org
           const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
           if (!isMember) {
+            logger.info({ userId: user.id, requestedOrgId, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: not authorized');
             return res.status(403).json({
               error: 'Not authorized',
               message: 'User is not a member of the requested organization',
@@ -5355,13 +5904,14 @@ export class HTTPServer {
         // Get org name from WorkOS
         const org = await workos!.organizations.getOrganization(targetOrgId);
 
+        logger.info({ userId: user.id, orgId: targetOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed');
         res.json({
           profile: profile || null,
           organization_id: targetOrgId,
           organization_name: org.name,
         });
       } catch (error) {
-        logger.error({ err: error }, 'Get my member profile error');
+        logger.error({ err: error, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile error');
         res.status(500).json({
           error: 'Failed to get member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -5372,6 +5922,8 @@ export class HTTPServer {
     // POST /api/me/member-profile - Create member profile for current user's organization
     // Supports ?org=org_id query parameter to specify which organization
     this.app.post('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id, org: req.query.org }, 'POST /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5497,11 +6049,11 @@ export class HTTPServer {
           show_in_carousel: show_in_carousel ?? false,
         });
 
-        logger.info({ profileId: profile.id, orgId: targetOrgId, slug }, 'Member profile created');
+        logger.info({ profileId: profile.id, orgId: targetOrgId, slug, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile completed');
 
         res.status(201).json({ profile });
       } catch (error) {
-        logger.error({ err: error }, 'Create member profile error');
+        logger.error({ err: error, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile error');
         res.status(500).json({
           error: 'Failed to create member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -5512,6 +6064,8 @@ export class HTTPServer {
     // PUT /api/me/member-profile - Update current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.put('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id }, 'PUT /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5575,11 +6129,13 @@ export class HTTPServer {
 
         const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
 
-        logger.info({ profileId: profile?.id, orgId: targetOrgId }, 'Member profile updated');
+        const duration = Date.now() - startTime;
+        logger.info({ profileId: profile?.id, orgId: targetOrgId, durationMs: duration }, 'Member profile updated');
 
         res.json({ profile });
       } catch (error) {
-        logger.error({ err: error }, 'Update member profile error');
+        const duration = Date.now() - startTime;
+        logger.error({ err: error, durationMs: duration }, 'Update member profile error');
         res.status(500).json({
           error: 'Failed to update member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -5671,6 +6227,8 @@ export class HTTPServer {
     // DELETE /api/me/member-profile - Delete current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.delete('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id, org: req.query.org }, 'DELETE /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5713,11 +6271,11 @@ export class HTTPServer {
 
         await memberDb.deleteProfile(existingProfile.id);
 
-        logger.info({ profileId: existingProfile.id, orgId: targetOrgId }, 'Member profile deleted');
+        logger.info({ profileId: existingProfile.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile completed');
 
         res.json({ success: true });
       } catch (error) {
-        logger.error({ err: error }, 'Delete member profile error');
+        logger.error({ err: error, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile error');
         res.status(500).json({
           error: 'Failed to delete member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -5969,7 +6527,7 @@ export class HTTPServer {
           contact_name,
           contact_email,
           contact_website,
-          approval_status: 'pending', // New agents need approval
+          approval_status: 'approved',
           workos_organization_id: targetOrgId,
         });
 
@@ -5981,7 +6539,7 @@ export class HTTPServer {
 
         res.status(201).json({
           agent: entry,
-          message: 'Agent created successfully. It will be visible in the registry once approved.',
+          message: 'Agent created successfully.',
         });
       } catch (error) {
         logger.error({ err: error }, 'Create agent error');
@@ -6080,11 +6638,6 @@ export class HTTPServer {
           allowedUpdates.metadata = metadata;
         }
 
-        // Updates reset approval status to pending (agent needs re-review)
-        if (Object.keys(allowedUpdates).length > 0) {
-          allowedUpdates.approval_status = 'pending';
-        }
-
         const updatedAgent = await registryDb.updateEntry(existingAgent.slug, allowedUpdates);
 
         logger.info({
@@ -6094,7 +6647,7 @@ export class HTTPServer {
 
         res.json({
           agent: updatedAgent,
-          message: 'Agent updated successfully. Changes will be visible once approved.',
+          message: 'Agent updated successfully.',
         });
       } catch (error) {
         logger.error({ err: error }, 'Update agent error');

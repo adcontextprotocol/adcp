@@ -869,9 +869,12 @@
       btn.textContent = 'Creating...';
 
       try {
-        // Create a personal workspace using the user's name
-        var workspaceName = currentUser.first_name
-          ? currentUser.first_name + "'s Workspace"
+        // Create a personal workspace using the user's full name
+        var fullName = [currentUser.first_name, currentUser.last_name]
+          .filter(Boolean)
+          .join(' ');
+        var workspaceName = fullName
+          ? fullName + "'s Workspace"
           : 'Personal Workspace';
 
         var response = await fetch('/api/organizations', {

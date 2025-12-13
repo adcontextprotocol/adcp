@@ -10,6 +10,7 @@
     links: [
       { href: '/admin/members', label: 'Members' },
       { href: '/admin/agreements', label: 'Agreements' },
+      { href: '/admin/perspectives', label: 'Perspectives' },
       { href: '/admin/analytics', label: 'Analytics' }
     ],
     backLink: { href: '/dashboard', label: '← Back to Dashboard' }

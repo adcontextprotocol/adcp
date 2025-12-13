@@ -334,7 +334,9 @@
 
     async function loadMembers() {
       try {
+        console.log('[admin-members] Starting loadMembers...');
         const response = await fetch('/api/admin/members');
+        console.log('[admin-members] Response status:', response.status);
         if (!response.ok) {
           if (response.status === 401) {
             window.AdminNav.redirectToLogin();
@@ -344,23 +346,27 @@
         }
 
         allMembers = await response.json();
+        console.log('[admin-members] Loaded', allMembers.length, 'members');
         filteredMembers = allMembers;
         renderMembers();
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
+        console.log('[admin-members] Render complete, content visible');
       } catch (error) {
-        console.error('Error loading members:', error);
+        console.error('[admin-members] Error loading members:', error);
         document.getElementById('loading').innerHTML =
           '<p style="color: #c33;">Failed to load members. <a href="/auth/login">Try logging in again</a></p>';
       }
     }
 
     function applyFilters() {
+      console.log('[admin-members] applyFilters called');
       const statusFilter = document.getElementById('filterStatus').value;
       const expiringFilter = document.getElementById('filterExpiring').value;
       const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
       const agreementFilter = document.getElementById('filterAgreement').value;
+      console.log('[admin-members] Filters:', { statusFilter, expiringFilter, searchFilter, agreementFilter });
 
       filteredMembers = allMembers.filter(member => {
         // Status filter
@@ -380,8 +386,8 @@
 
         // Search filter
         if (searchFilter) {
-          const companyMatch = member.company_name.toLowerCase().includes(searchFilter);
-          const emailMatch = member.owner_email.toLowerCase().includes(searchFilter);
+          const companyMatch = (member.company_name || '').toLowerCase().includes(searchFilter);
+          const emailMatch = (member.owner_email || '').toLowerCase().includes(searchFilter);
           if (!companyMatch && !emailMatch) {
             return false;
           }
@@ -402,6 +408,7 @@
     }
 
     function renderMembers() {
+      console.log('[admin-members] renderMembers called, filteredMembers:', filteredMembers.length);
       const tbody = document.getElementById('membersTableBody');
       const countDiv = document.getElementById('membersCount');
 
@@ -451,8 +458,8 @@
 
         return `
           <tr id="row-${member.company_id}">
-            <td><strong>${member.company_name}</strong></td>
-            <td>${member.owner_email}</td>
+            <td><strong>${member.company_name || 'Unknown'}</strong></td>
+            <td>${member.owner_email || 'No email'}</td>
             <td><span class="status-badge ${statusClass}">${statusText}</span></td>
             <td><strong>${amountText}</strong></td>
             <td class="${isExpiringSoon ? 'expiring-soon' : ''}">${periodEndText}</td>
