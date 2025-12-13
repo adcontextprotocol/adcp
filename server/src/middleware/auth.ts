@@ -75,13 +75,16 @@ declare global {
 
 const companyDb = new CompanyDatabase();
 
+// Allow insecure cookies for local Docker development
+const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
+
 /**
  * Helper to set the session cookie with consistent options
  */
 function setSessionCookie(res: Response, sealedSession: string) {
   res.cookie('wos-session', sealedSession, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
     sameSite: 'lax',
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -404,7 +407,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
           <div class="container">
             <h1>Access Denied</h1>
             <p>This resource is only accessible to administrators.</p>
-            <a href="/dashboard">← Back to Dashboard</a>
+            <a href="/">← Back to Home</a>
           </div>
         </body>
         </html>

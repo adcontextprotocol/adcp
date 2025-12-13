@@ -14,16 +14,8 @@
       background: #f5f5f5;
       min-height: 100vh;
     }
-    .header-content {
-      max-width: 1400px;
-      margin: 0 auto;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .logo { font-size: 20px; font-weight: bold; }
     .container {
-      max-width: 1400px;
+      max-width: 1200px;
       margin: 30px auto;
       padding: 0 20px;
     }
@@ -38,44 +30,43 @@
     h2 { margin-bottom: 15px; color: #2d3748; font-size: 20px; }
     .perspectives-list {
       display: grid;
-      gap: 15px;
+      gap: 12px;
     }
     .perspective-item {
       border: 1px solid #e0e0e0;
       border-radius: 6px;
       padding: 15px;
-      transition: all 0.2s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
     }
     .perspective-item:hover {
-      border-color: #e0e0e0;
+      border-color: #667eea;
     }
-    .perspective-item h3 {
-      font-size: 16px;
-      margin-bottom: 5px;
+    .perspective-info h3 {
+      font-size: 15px;
+      margin-bottom: 4px;
       color: #2d3748;
     }
     .perspective-meta {
-      font-size: 14px;
+      font-size: 13px;
       color: #666;
       display: flex;
-      gap: 15px;
+      gap: 10px;
       flex-wrap: wrap;
       align-items: center;
-    }
-    .perspective-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
     }
     .perspective-actions {
       display: flex;
       gap: 8px;
+      flex-shrink: 0;
     }
     .badge {
       display: inline-block;
       padding: 2px 8px;
       border-radius: 4px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 500;
     }
     .badge-draft { background: #fef3c7; color: #92400e; }
@@ -83,39 +74,22 @@
     .badge-archived { background: #e5e7eb; color: #374151; }
     .badge-article { background: #dbeafe; color: #1e40af; }
     .badge-link { background: #fce7f3; color: #9d174d; }
-    .btn-small {
-      padding: 6px 12px;
-      font-size: 12px;
-    }
     .btn {
-      padding: 10px 20px;
+      padding: 8px 16px;
       border: none;
       border-radius: 6px;
-      font-size: 14px;
+      font-size: 13px;
       cursor: pointer;
       transition: all 0.2s;
     }
-    .btn-primary {
-      background: #667eea;
-      color: white;
-    }
-    .btn-primary:hover {
-      background: #5568d3;
-    }
-    .btn-secondary {
-      background: #e0e0e0;
-      color: #333;
-    }
-    .btn-secondary:hover {
-      background: #d0d0d0;
-    }
-    .btn-danger {
-      background: #ef4444;
-      color: white;
-    }
-    .btn-danger:hover {
-      background: #dc2626;
-    }
+    .btn-small { padding: 6px 12px; font-size: 12px; }
+    .btn-primary { background: #667eea; color: white; }
+    .btn-primary:hover { background: #5568d3; }
+    .btn-primary:disabled { background: #a0aec0; cursor: not-allowed; }
+    .btn-secondary { background: #e0e0e0; color: #333; }
+    .btn-secondary:hover { background: #d0d0d0; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
     .modal-overlay {
       display: none;
       position: fixed;
@@ -133,33 +107,20 @@
       background: white;
       border-radius: 8px;
       padding: 30px;
-      max-width: 1400px;
+      max-width: 900px;
       width: 100%;
       max-height: 90vh;
       overflow-y: auto;
-      position: relative;
-    }
-    .form-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-    .form-row-3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 20px;
     }
     .form-group {
       margin-bottom: 20px;
-    }
-    .form-group.full-width {
-      grid-column: 1 / -1;
     }
     .form-group label {
       display: block;
       margin-bottom: 5px;
       font-weight: 600;
       color: #2d3748;
+      font-size: 14px;
     }
     .form-group input,
     .form-group select,
@@ -171,13 +132,18 @@
       font-size: 14px;
       font-family: inherit;
     }
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
     .form-group textarea {
+      min-height: 120px;
+    }
+    .form-group textarea.content-area {
       min-height: 300px;
       font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
       font-size: 13px;
-    }
-    .form-group textarea.short {
-      min-height: 100px;
     }
     .form-group small {
       display: block;
@@ -185,50 +151,32 @@
       color: #666;
       font-size: 12px;
     }
-    .modal-buttons {
-      display: flex;
-      gap: 10px;
-      justify-content: flex-end;
-      margin-top: 20px;
-    }
-    .editor-preview {
+    .form-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 20px;
     }
-    .preview-pane {
-      border: 1px solid #e0e0e0;
-      border-radius: 6px;
-      padding: 15px;
-      background: #f9f9f9;
-      max-height: 400px;
-      overflow-y: auto;
-    }
-    .preview-pane h1 { font-size: 24px; margin-top: 30px; margin-bottom: 15px; }
-    .preview-pane h1:first-child { margin-top: 0; }
-    .preview-pane h2 { font-size: 20px; margin-top: 30px; margin-bottom: 15px; }
-    .preview-pane h3 { font-size: 18px; margin-top: 25px; margin-bottom: 10px; }
-    .preview-pane p { margin-bottom: 15px; }
-    .preview-pane ul, .preview-pane ol { margin-bottom: 15px; padding-left: 25px; }
-    .preview-pane li { margin-bottom: 8px; }
-    .preview-pane blockquote {
-      border-left: 4px solid #667eea;
-      margin: 1rem 0;
-      padding: 0.5rem 1rem;
-      background: #f5f5f5;
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 25px;
+      padding-top: 20px;
+      border-top: 1px solid #e0e0e0;
     }
     .type-toggle {
       display: flex;
       gap: 10px;
-      margin-bottom: 20px;
+      margin-bottom: 25px;
     }
     .type-toggle button {
-      padding: 10px 20px;
+      padding: 12px 24px;
       border: 2px solid #e0e0e0;
       border-radius: 6px;
       background: white;
       cursor: pointer;
       font-weight: 500;
+      font-size: 14px;
       transition: all 0.2s;
     }
     .type-toggle button.active {
@@ -236,14 +184,12 @@
       background: #f0f4ff;
       color: #667eea;
     }
-    .type-toggle button:hover:not(.active) {
-      border-color: #667eea;
+    .url-input-group {
+      display: flex;
+      gap: 10px;
     }
-    .article-fields, .link-fields {
-      display: none;
-    }
-    .article-fields.active, .link-fields.active {
-      display: block;
+    .url-input-group input {
+      flex: 1;
     }
     .header-bar {
       display: flex;
@@ -271,6 +217,144 @@
       padding: 40px;
       color: #666;
     }
+    .fetch-status {
+      padding: 10px 15px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+    .fetch-status.loading {
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+    .fetch-status.success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .fetch-status.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .preview-pane {
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 15px;
+      background: #f9f9f9;
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+    .preview-pane h1 { font-size: 24px; margin-top: 20px; margin-bottom: 10px; }
+    .preview-pane h1:first-child { margin-top: 0; }
+    .preview-pane h2 { font-size: 20px; margin-top: 20px; margin-bottom: 10px; }
+    .preview-pane p { margin-bottom: 12px; line-height: 1.6; }
+    .preview-pane ul, .preview-pane ol { margin-bottom: 12px; padding-left: 25px; }
+    .preview-pane li { margin-bottom: 6px; }
+    .advanced-toggle {
+      color: #667eea;
+      cursor: pointer;
+      font-size: 13px;
+      margin-bottom: 15px;
+      display: inline-block;
+    }
+    .advanced-toggle:hover {
+      text-decoration: underline;
+    }
+    .advanced-fields {
+      display: none;
+      padding-top: 15px;
+      border-top: 1px solid #e0e0e0;
+      margin-top: 15px;
+    }
+    .advanced-fields.show {
+      display: block;
+    }
+    .char-count {
+      font-size: 12px;
+      color: #666;
+      text-align: right;
+      margin-top: 4px;
+    }
+    .char-count.warning {
+      color: #d97706;
+    }
+    .char-count.over {
+      color: #dc2626;
+    }
+    .preview-section {
+      margin-top: 25px;
+      padding-top: 20px;
+      border-top: 1px solid #e0e0e0;
+    }
+    .preview-section h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 15px;
+    }
+    /* Card preview - matches aao-theme.css */
+    .card-preview-container {
+      max-width: 400px;
+    }
+    .article-card-preview {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+    }
+    .article-card-preview .article-card-content {
+      padding: 1.5rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .article-card-preview .article-category {
+      display: inline-block;
+      background: #dbe8fc;
+      color: #1a36b4;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      margin-bottom: 0.75rem;
+      align-self: flex-start;
+    }
+    .article-card-preview h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 0.75rem;
+      line-height: 1.3;
+    }
+    .article-card-preview p {
+      font-size: 0.95rem;
+      color: #6b7280;
+      line-height: 1.6;
+      flex: 1;
+      margin: 0;
+    }
+    .article-card-preview .article-card-footer {
+      padding: 1rem 1.5rem;
+      background: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .article-card-preview .read-more {
+      color: #1a36b4;
+      font-weight: 500;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
   </style>
 </head>
 <body>
@@ -285,10 +369,10 @@
       <div class="card">
         <div class="header-bar">
           <div>
-            <h1>Perspectives Management</h1>
-            <p class="subtitle">Manage articles, links, and insights content</p>
+            <h1>Perspectives</h1>
+            <p class="subtitle">Articles and links for the Perspectives page</p>
           </div>
-          <button class="btn btn-primary" onclick="showCreateModal()">+ Add New Perspective</button>
+          <button class="btn btn-primary" onclick="showCreateModal()">+ Add New</button>
         </div>
 
         <div class="filter-bar">
@@ -303,6 +387,10 @@
             <option value="article">Articles</option>
             <option value="link">External Links</option>
           </select>
+          <select id="categoryFilter" onchange="renderPerspectivesList()">
+            <option value="">All Categories</option>
+            <!-- Populated dynamically from perspectives -->
+          </select>
         </div>
 
         <div id="perspectivesList" class="perspectives-list">
@@ -312,100 +400,63 @@
     </div>
   </div>
 
-  <!-- Edit/Create Perspective Modal -->
+  <!-- Create/Edit Modal -->
   <div id="perspectiveModal" class="modal-overlay">
     <div class="modal">
-      <h2 id="modalTitle">New Perspective</h2>
+      <h2 id="modalTitle">Add Perspective</h2>
 
       <div class="type-toggle">
-        <button type="button" id="typeArticle" class="active" onclick="setContentType('article')">
-          Article (Full Content)
-        </button>
-        <button type="button" id="typeLink" onclick="setContentType('link')">
+        <button type="button" id="typeLink" class="active" onclick="setContentType('link')">
           External Link
+        </button>
+        <button type="button" id="typeArticle" onclick="setContentType('article')">
+          Article
         </button>
       </div>
 
+      <div id="fetchStatus" class="fetch-status" style="display: none;"></div>
+
       <form id="perspectiveForm" onsubmit="savePerspective(event)">
         <input type="hidden" id="perspectiveId">
-        <input type="hidden" id="contentType" value="article">
+        <input type="hidden" id="contentType" value="link">
 
-        <div class="form-row">
+        <!-- Link Fields -->
+        <div id="linkFields">
           <div class="form-group">
-            <label>Title *</label>
-            <input type="text" id="title" required placeholder="Enter title">
-          </div>
-          <div class="form-group">
-            <label>Slug *</label>
-            <input type="text" id="slug" required placeholder="url-friendly-slug">
-            <small>Used in URLs: /insights/{slug}</small>
+            <label>URL</label>
+            <div class="url-input-group">
+              <input type="url" id="externalUrl" placeholder="https://..." oninput="onUrlChange()">
+              <button type="button" class="btn btn-secondary" id="fetchBtn" onclick="fetchUrlMetadata()" disabled>
+                Fetch Info
+              </button>
+            </div>
+            <small>Paste a URL and click "Fetch Info" to auto-fill title and excerpt</small>
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label>Category</label>
-            <input type="text" id="category" placeholder="e.g., Press Release, Op-Ed, Ecosystem">
-          </div>
-          <div class="form-group">
-            <label>Subtitle</label>
-            <input type="text" id="subtitle" placeholder="Optional subtitle">
-          </div>
+        <!-- Common Fields -->
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="title" required placeholder="Enter title" oninput="updateCardPreview()">
         </div>
 
         <div class="form-group">
           <label>Excerpt</label>
-          <textarea id="excerpt" class="short" placeholder="Short description for cards/listings"></textarea>
+          <textarea id="excerpt" placeholder="Brief description shown on the Perspectives page" oninput="updateExcerptCount(); updateCardPreview();"></textarea>
+          <div class="char-count" id="excerptCount">0 / 160 characters (recommended)</div>
         </div>
 
-        <!-- External Link Fields -->
-        <div id="linkFields" class="link-fields">
-          <div class="form-row">
-            <div class="form-group">
-              <label>External URL *</label>
-              <input type="url" id="externalUrl" placeholder="https://...">
-            </div>
-            <div class="form-group">
-              <label>Site Name</label>
-              <input type="text" id="externalSiteName" placeholder="e.g., Substack, Forbes">
-            </div>
-          </div>
-        </div>
-
-        <!-- Article Content Fields -->
-        <div id="articleFields" class="article-fields active">
+        <!-- Article Content -->
+        <div id="articleFields" style="display: none;">
           <div class="form-group">
             <label>Content (Markdown)</label>
-            <div class="editor-preview">
-              <div>
-                <textarea id="content" oninput="updatePreview()" placeholder="Write your article in Markdown..."></textarea>
-              </div>
-              <div>
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Preview</label>
-                <div id="contentPreview" class="preview-pane">
-                  Enter markdown text to see preview...
-                </div>
-              </div>
-            </div>
+            <textarea id="content" class="content-area" oninput="updatePreview()" placeholder="Write your article in Markdown..."></textarea>
+            <div id="contentPreview" class="preview-pane" style="display: none;"></div>
           </div>
         </div>
 
-        <div class="form-row-3">
-          <div class="form-group">
-            <label>Author Name</label>
-            <input type="text" id="authorName" placeholder="Author name">
-          </div>
-          <div class="form-group">
-            <label>Author Title</label>
-            <input type="text" id="authorTitle" placeholder="Author title/company">
-          </div>
-          <div class="form-group">
-            <label>Featured Image URL</label>
-            <input type="url" id="featuredImageUrl" placeholder="https://...">
-          </div>
-        </div>
-
-        <div class="form-row-3">
+        <!-- Status -->
+        <div class="form-row">
           <div class="form-group">
             <label>Status</label>
             <select id="status">
@@ -415,25 +466,75 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Published Date</label>
-            <input type="datetime-local" id="publishedAt">
-          </div>
-          <div class="form-group">
-            <label>Display Order</label>
-            <input type="number" id="displayOrder" value="0" min="0">
-            <small>Lower numbers appear first</small>
+            <label>Category (optional)</label>
+            <select id="category" onchange="updateCardPreview(); toggleCustomCategory();">
+              <option value="">None</option>
+              <option value="Press Coverage">Press Coverage</option>
+              <option value="Interview">Interview</option>
+              <option value="Industry Analysis">Industry Analysis</option>
+              <option value="Tutorial">Tutorial</option>
+              <option value="Case Study">Case Study</option>
+              <option value="Announcement">Announcement</option>
+              <option value="Opinion">Opinion</option>
+              <option value="__custom__">Other (custom)...</option>
+            </select>
+            <input type="text" id="customCategory" placeholder="Enter custom category" style="display: none; margin-top: 8px;" oninput="updateCardPreview()">
           </div>
         </div>
 
-        <div class="form-group">
-          <label>Tags</label>
-          <input type="text" id="tags" placeholder="tag1, tag2, tag3">
-          <small>Comma-separated list of tags</small>
+        <!-- Card Preview -->
+        <div class="preview-section">
+          <h3>Card Preview</h3>
+          <div class="card-preview-container">
+            <div class="article-card-preview">
+              <div class="article-card-content">
+                <span class="article-category" id="previewCategory" style="display: none;"></span>
+                <h2 id="previewTitle">Title will appear here</h2>
+                <p id="previewExcerpt">Excerpt will appear here</p>
+              </div>
+              <div class="article-card-footer">
+                <span class="read-more" id="previewReadMore">
+                  Read article
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Advanced Options -->
+        <span class="advanced-toggle" onclick="toggleAdvanced()">
+          ▶ Advanced options
+        </span>
+        <div id="advancedFields" class="advanced-fields">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Slug</label>
+              <input type="text" id="slug" placeholder="auto-generated-from-title">
+              <small>URL path: /perspectives/{slug}</small>
+            </div>
+            <div class="form-group">
+              <label>Site Name (for links)</label>
+              <input type="text" id="externalSiteName" placeholder="e.g., Substack, Forbes">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Author Name</label>
+              <input type="text" id="authorName" placeholder="Optional">
+            </div>
+            <div class="form-group">
+              <label>Author Title</label>
+              <input type="text" id="authorTitle" placeholder="Optional">
+            </div>
+          </div>
         </div>
 
         <div class="modal-buttons">
           <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save Perspective</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">Save</button>
         </div>
       </form>
     </div>
@@ -441,10 +542,10 @@
 
   <!-- Delete Confirmation Modal -->
   <div id="deleteModal" class="modal-overlay">
-    <div class="modal" style="max-width: 500px;">
+    <div class="modal" style="max-width: 450px;">
       <h2>Delete Perspective</h2>
       <p style="margin: 20px 0; color: #666;">
-        Are you sure you want to delete "<span id="deleteTitle"></span>"? This action cannot be undone.
+        Are you sure you want to delete "<span id="deleteTitle"></span>"?
       </p>
       <div class="modal-buttons">
         <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
@@ -471,6 +572,7 @@
         }
 
         perspectives = await response.json();
+        populateCategoryFilter();
         renderPerspectivesList();
 
         document.getElementById('loading').style.display = 'none';
@@ -482,11 +584,62 @@
       }
     }
 
+    // Standard category options
+    const STANDARD_CATEGORIES = [
+      'Press Coverage',
+      'Interview',
+      'Industry Analysis',
+      'Tutorial',
+      'Case Study',
+      'Announcement',
+      'Opinion'
+    ];
+
+    // Populate category filter from perspectives
+    function populateCategoryFilter() {
+      const filterSelect = document.getElementById('categoryFilter');
+      const categories = new Set();
+
+      perspectives.forEach(p => {
+        if (p.category) categories.add(p.category);
+      });
+
+      // Keep "All Categories" option, add sorted unique categories
+      let html = '<option value="">All Categories</option>';
+      Array.from(categories).sort().forEach(cat => {
+        html += `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`;
+      });
+      filterSelect.innerHTML = html;
+    }
+
+    // Toggle custom category input
+    function toggleCustomCategory() {
+      const select = document.getElementById('category');
+      const customInput = document.getElementById('customCategory');
+      if (select.value === '__custom__') {
+        customInput.style.display = 'block';
+        customInput.focus();
+      } else {
+        customInput.style.display = 'none';
+        customInput.value = '';
+      }
+    }
+
+    // Get the actual category value (handles custom)
+    function getCategoryValue() {
+      const select = document.getElementById('category');
+      if (select.value === '__custom__') {
+        return document.getElementById('customCategory').value.trim();
+      }
+      return select.value;
+    }
+
     // Render perspectives list
     function renderPerspectivesList() {
       const listDiv = document.getElementById('perspectivesList');
       const statusFilter = document.getElementById('statusFilter').value;
       const typeFilter = document.getElementById('typeFilter').value;
+      const categoryFilter = document.getElementById('categoryFilter').value;
 
       let filtered = perspectives;
       if (statusFilter) {
@@ -494,6 +647,9 @@
       }
       if (typeFilter) {
         filtered = filtered.filter(p => p.content_type === typeFilter);
+      }
+      if (categoryFilter) {
+        filtered = filtered.filter(p => p.category === categoryFilter);
       }
 
       if (filtered.length === 0) {
@@ -505,32 +661,24 @@
       filtered.forEach(perspective => {
         const statusBadge = `<span class="badge badge-${perspective.status}">${perspective.status}</span>`;
         const typeBadge = `<span class="badge badge-${perspective.content_type}">${perspective.content_type}</span>`;
-        const publishedDate = perspective.published_at
-          ? new Date(perspective.published_at).toLocaleDateString()
-          : 'Not published';
         const viewUrl = perspective.content_type === 'link'
           ? perspective.external_url
-          : `/insights/${perspective.slug}`;
-        const viewTarget = perspective.content_type === 'link' ? '_blank' : '_self';
+          : `/perspectives/${perspective.slug}`;
 
         html += `
           <div class="perspective-item">
-            <div class="perspective-header">
-              <div>
-                <h3>${escapeHtml(perspective.title)}</h3>
-                <div class="perspective-meta">
-                  ${statusBadge}
-                  ${typeBadge}
-                  ${perspective.category ? `<span>${escapeHtml(perspective.category)}</span>` : ''}
-                  <span>Order: ${perspective.display_order}</span>
-                  <span>${publishedDate}</span>
-                </div>
+            <div class="perspective-info">
+              <h3>${escapeHtml(perspective.title)}</h3>
+              <div class="perspective-meta">
+                ${statusBadge}
+                ${typeBadge}
+                ${perspective.category ? `<span>${escapeHtml(perspective.category)}</span>` : ''}
               </div>
-              <div class="perspective-actions">
-                <button class="btn btn-secondary btn-small" onclick="event.stopPropagation(); window.open('${viewUrl}', '${viewTarget}')">View</button>
-                <button class="btn btn-primary btn-small" onclick="event.stopPropagation(); editPerspective('${perspective.id}')">Edit</button>
-                <button class="btn btn-danger btn-small" onclick="event.stopPropagation(); showDeleteModal('${perspective.id}', '${escapeHtml(perspective.title)}')">Delete</button>
-              </div>
+            </div>
+            <div class="perspective-actions">
+              <button class="btn btn-secondary btn-small" onclick="window.open('${viewUrl}', '_blank')">View</button>
+              <button class="btn btn-primary btn-small" onclick="editPerspective('${perspective.id}')">Edit</button>
+              <button class="btn btn-danger btn-small" onclick="showDeleteModal('${perspective.id}', '${escapeHtml(perspective.title).replace(/'/g, "\\'")}')">Delete</button>
             </div>
           </div>
         `;
@@ -539,27 +687,149 @@
       listDiv.innerHTML = html;
     }
 
-    // Set content type in form
+    // Set content type
     function setContentType(type) {
       document.getElementById('contentType').value = type;
       document.getElementById('typeArticle').classList.toggle('active', type === 'article');
       document.getElementById('typeLink').classList.toggle('active', type === 'link');
-      document.getElementById('articleFields').classList.toggle('active', type === 'article');
-      document.getElementById('linkFields').classList.toggle('active', type === 'link');
+      document.getElementById('articleFields').style.display = type === 'article' ? 'block' : 'none';
+      document.getElementById('linkFields').style.display = type === 'link' ? 'block' : 'none';
+      updateCardPreview();
+    }
 
-      // Toggle required attribute on external URL
-      document.getElementById('externalUrl').required = (type === 'link');
+    // Update excerpt character count
+    function updateExcerptCount() {
+      const excerpt = document.getElementById('excerpt').value;
+      const count = excerpt.length;
+      const countEl = document.getElementById('excerptCount');
+      countEl.textContent = `${count} / 160 characters (recommended)`;
+      countEl.className = 'char-count';
+      if (count > 200) {
+        countEl.className = 'char-count over';
+      } else if (count > 160) {
+        countEl.className = 'char-count warning';
+      }
+    }
+
+    // Update card preview
+    function updateCardPreview() {
+      const title = document.getElementById('title').value.trim();
+      const excerpt = document.getElementById('excerpt').value.trim();
+      const category = getCategoryValue();
+      const contentType = document.getElementById('contentType').value;
+      const siteName = document.getElementById('externalSiteName').value.trim();
+
+      // Update title
+      document.getElementById('previewTitle').textContent = title || 'Title will appear here';
+
+      // Update excerpt
+      document.getElementById('previewExcerpt').textContent = excerpt || 'Excerpt will appear here';
+
+      // Update category
+      const categoryEl = document.getElementById('previewCategory');
+      if (category) {
+        categoryEl.textContent = category;
+        categoryEl.style.display = 'inline-block';
+      } else {
+        categoryEl.style.display = 'none';
+      }
+
+      // Update read more text
+      const readMoreEl = document.getElementById('previewReadMore');
+      if (contentType === 'link') {
+        const displaySite = siteName || 'external site';
+        readMoreEl.innerHTML = `Read on ${escapeHtml(displaySite)} <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      } else {
+        readMoreEl.innerHTML = `Read article <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      }
+    }
+
+    // URL change handler
+    function onUrlChange() {
+      const url = document.getElementById('externalUrl').value.trim();
+      document.getElementById('fetchBtn').disabled = !url || !isValidUrl(url);
+    }
+
+    function isValidUrl(string) {
+      try {
+        new URL(string);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    // Fetch URL metadata with LLM
+    async function fetchUrlMetadata() {
+      const url = document.getElementById('externalUrl').value.trim();
+      if (!url) return;
+
+      const fetchStatus = document.getElementById('fetchStatus');
+      const fetchBtn = document.getElementById('fetchBtn');
+
+      fetchStatus.style.display = 'block';
+      fetchStatus.className = 'fetch-status loading';
+      fetchStatus.textContent = 'Fetching page info...';
+      fetchBtn.disabled = true;
+
+      try {
+        const response = await fetch('/api/admin/perspectives/fetch-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch URL');
+        }
+
+        const data = await response.json();
+
+        // Fill in the fields
+        if (data.title) {
+          document.getElementById('title').value = data.title;
+        }
+        if (data.excerpt) {
+          document.getElementById('excerpt').value = data.excerpt;
+        }
+        if (data.site_name) {
+          document.getElementById('externalSiteName').value = data.site_name;
+        }
+
+        // Update character count and preview
+        updateExcerptCount();
+        updateCardPreview();
+
+        fetchStatus.className = 'fetch-status success';
+        fetchStatus.textContent = 'Info fetched! Review and edit as needed.';
+
+        setTimeout(() => {
+          fetchStatus.style.display = 'none';
+        }, 3000);
+
+      } catch (error) {
+        console.error('Error fetching URL:', error);
+        fetchStatus.className = 'fetch-status error';
+        fetchStatus.textContent = 'Could not fetch page info. Please fill in manually.';
+      }
+
+      fetchBtn.disabled = false;
     }
 
     // Show create modal
     function showCreateModal() {
       editingPerspective = null;
-      document.getElementById('modalTitle').textContent = 'New Perspective';
+      document.getElementById('modalTitle').textContent = 'Add Perspective';
       document.getElementById('perspectiveForm').reset();
       document.getElementById('perspectiveId').value = '';
-      document.getElementById('displayOrder').value = '0';
-      setContentType('article');
-      document.getElementById('contentPreview').innerHTML = 'Enter markdown text to see preview...';
+      document.getElementById('fetchStatus').style.display = 'none';
+      document.getElementById('advancedFields').classList.remove('show');
+      document.getElementById('customCategory').style.display = 'none';
+      document.getElementById('customCategory').value = '';
+      setContentType('link');
+      document.getElementById('contentPreview').style.display = 'none';
+      updateExcerptCount();
+      updateCardPreview();
       document.getElementById('perspectiveModal').style.display = 'flex';
     }
 
@@ -572,29 +842,49 @@
       document.getElementById('perspectiveId').value = editingPerspective.id;
       document.getElementById('title').value = editingPerspective.title || '';
       document.getElementById('slug').value = editingPerspective.slug || '';
-      document.getElementById('category').value = editingPerspective.category || '';
-      document.getElementById('subtitle').value = editingPerspective.subtitle || '';
       document.getElementById('excerpt').value = editingPerspective.excerpt || '';
       document.getElementById('externalUrl').value = editingPerspective.external_url || '';
       document.getElementById('externalSiteName').value = editingPerspective.external_site_name || '';
       document.getElementById('content').value = editingPerspective.content || '';
       document.getElementById('authorName').value = editingPerspective.author_name || '';
       document.getElementById('authorTitle').value = editingPerspective.author_title || '';
-      document.getElementById('featuredImageUrl').value = editingPerspective.featured_image_url || '';
       document.getElementById('status').value = editingPerspective.status || 'draft';
-      document.getElementById('displayOrder').value = editingPerspective.display_order || 0;
-      document.getElementById('tags').value = (editingPerspective.tags || []).join(', ');
 
-      // Handle published_at datetime
-      if (editingPerspective.published_at) {
-        const date = new Date(editingPerspective.published_at);
-        document.getElementById('publishedAt').value = date.toISOString().slice(0, 16);
+      // Set category - check if it's a standard option or custom
+      const categorySelect = document.getElementById('category');
+      const customCategoryInput = document.getElementById('customCategory');
+      const existingCategory = editingPerspective.category || '';
+
+      if (!existingCategory) {
+        categorySelect.value = '';
+        customCategoryInput.style.display = 'none';
+        customCategoryInput.value = '';
+      } else if (STANDARD_CATEGORIES.includes(existingCategory)) {
+        categorySelect.value = existingCategory;
+        customCategoryInput.style.display = 'none';
+        customCategoryInput.value = '';
       } else {
-        document.getElementById('publishedAt').value = '';
+        // It's a custom category
+        categorySelect.value = '__custom__';
+        customCategoryInput.style.display = 'block';
+        customCategoryInput.value = existingCategory;
       }
 
-      setContentType(editingPerspective.content_type || 'article');
+      document.getElementById('fetchStatus').style.display = 'none';
+      setContentType(editingPerspective.content_type || 'link');
       updatePreview();
+      onUrlChange();
+      updateExcerptCount();
+      updateCardPreview();
+
+      // Show advanced if there are values
+      if (editingPerspective.slug || editingPerspective.external_site_name ||
+          editingPerspective.author_name || editingPerspective.author_title) {
+        document.getElementById('advancedFields').classList.add('show');
+      } else {
+        document.getElementById('advancedFields').classList.remove('show');
+      }
+
       document.getElementById('perspectiveModal').style.display = 'flex';
     }
 
@@ -604,67 +894,70 @@
       editingPerspective = null;
     }
 
+    // Toggle advanced fields
+    function toggleAdvanced() {
+      const advancedFields = document.getElementById('advancedFields');
+      advancedFields.classList.toggle('show');
+      const toggle = document.querySelector('.advanced-toggle');
+      toggle.textContent = advancedFields.classList.contains('show')
+        ? '▼ Advanced options'
+        : '▶ Advanced options';
+    }
+
     // Update preview
     function updatePreview() {
       const text = document.getElementById('content').value;
       const preview = document.getElementById('contentPreview');
 
       if (!text.trim()) {
-        preview.innerHTML = 'Enter markdown text to see preview...';
+        preview.style.display = 'none';
         return;
       }
 
-      const renderedHtml = marked.parse(text);
-      preview.innerHTML = renderedHtml;
+      preview.style.display = 'block';
+      preview.innerHTML = marked.parse(text);
     }
 
-    // Auto-generate slug from title
-    document.getElementById('title').addEventListener('input', function() {
-      const slugField = document.getElementById('slug');
-      // Only auto-generate if slug is empty or matches previous auto-generated value
-      if (!editingPerspective && !slugField.dataset.manual) {
-        const slug = this.value
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, '')
-          .replace(/\s+/g, '-')
-          .replace(/-+/g, '-')
-          .slice(0, 100);
-        slugField.value = slug;
-      }
-    });
-
-    // Mark slug as manually edited
-    document.getElementById('slug').addEventListener('input', function() {
-      this.dataset.manual = 'true';
-    });
+    // Generate slug from title
+    function generateSlug(title) {
+      return title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .slice(0, 100);
+    }
 
     // Save perspective
     async function savePerspective(event) {
       event.preventDefault();
 
       const id = document.getElementById('perspectiveId').value;
-      const publishedAtValue = document.getElementById('publishedAt').value;
-      const tagsValue = document.getElementById('tags').value;
+      const title = document.getElementById('title').value.trim();
+      let slug = document.getElementById('slug').value.trim();
+
+      // Auto-generate slug if empty
+      if (!slug) {
+        slug = generateSlug(title);
+      }
 
       const data = {
-        slug: document.getElementById('slug').value.trim(),
+        slug,
         content_type: document.getElementById('contentType').value,
-        title: document.getElementById('title').value.trim(),
-        subtitle: document.getElementById('subtitle').value.trim() || null,
-        category: document.getElementById('category').value.trim() || null,
+        title,
+        category: getCategoryValue() || null,
         excerpt: document.getElementById('excerpt').value.trim() || null,
         content: document.getElementById('content').value || null,
         external_url: document.getElementById('externalUrl').value.trim() || null,
         external_site_name: document.getElementById('externalSiteName').value.trim() || null,
         author_name: document.getElementById('authorName').value.trim() || null,
         author_title: document.getElementById('authorTitle').value.trim() || null,
-        featured_image_url: document.getElementById('featuredImageUrl').value.trim() || null,
         status: document.getElementById('status').value,
-        published_at: publishedAtValue ? new Date(publishedAtValue).toISOString() : null,
-        display_order: parseInt(document.getElementById('displayOrder').value) || 0,
-        tags: tagsValue ? tagsValue.split(',').map(t => t.trim()).filter(t => t) : [],
-        metadata: {},
       };
+
+      const saveBtn = document.getElementById('saveBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
 
       try {
         const url = id ? `/api/admin/perspectives/${id}` : '/api/admin/perspectives';
@@ -679,16 +972,18 @@
 
         if (!response.ok) {
           const error = await response.json();
-          throw new Error(error.message || 'Failed to save perspective');
+          throw new Error(error.message || 'Failed to save');
         }
 
-        alert('Perspective saved successfully!');
         closeModal();
         loadPerspectives();
       } catch (error) {
-        console.error('Error saving perspective:', error);
-        alert('Failed to save perspective: ' + error.message);
+        console.error('Error saving:', error);
+        alert('Failed to save: ' + error.message);
       }
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
     }
 
     // Show delete modal
@@ -715,15 +1010,14 @@
         });
 
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || 'Failed to delete perspective');
+          throw new Error('Failed to delete');
         }
 
         closeDeleteModal();
         loadPerspectives();
       } catch (error) {
-        console.error('Error deleting perspective:', error);
-        alert('Failed to delete perspective: ' + error.message);
+        console.error('Error deleting:', error);
+        alert('Failed to delete: ' + error.message);
       }
     }
 

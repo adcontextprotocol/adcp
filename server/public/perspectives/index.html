@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Insights | AgenticAdvertising.org</title>
+  <title>Perspectives | AgenticAdvertising.org</title>
   <meta name="description" content="Thought leadership on agentic AI, open standards, and the future of advertising. Educational resources from AgenticAdvertising.org.">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/aao-theme.css">
@@ -11,7 +11,7 @@
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
 
-    /* Page-specific: narrower container for insights listing */
+    /* Page-specific: narrower container for perspectives listing */
     .container { max-width: 1000px; }
 
     /* Loading and empty states */
@@ -38,7 +38,7 @@
   <!-- Hero Section -->
   <section class="hero hero--article">
     <div class="hero-container">
-      <h1>Insights</h1>
+      <h1>Perspectives</h1>
       <p class="hero-subtitle">Thought leadership on agentic AI and the future of advertising</p>
     </div>
   </section>
@@ -95,7 +95,7 @@
         let html = '';
         perspectives.forEach(perspective => {
           const isExternal = perspective.content_type === 'link';
-          const href = isExternal ? perspective.external_url : `/insights/${perspective.slug}`;
+          const href = isExternal ? perspective.external_url : `/perspectives/${perspective.slug}`;
           const target = isExternal ? ' target="_blank" rel="noopener"' : '';
           const readMoreText = isExternal
             ? `Read on ${perspective.external_site_name || 'external site'}`
