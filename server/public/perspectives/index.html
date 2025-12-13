@@ -52,6 +52,12 @@
       <h2>No perspectives yet</h2>
       <p>Check back soon for thought leadership content.</p>
     </div>
+    <div id="filterBar" class="filter-bar" style="display: none;">
+      <select id="categoryFilter" onchange="filterPerspectives()">
+        <option value="">All Categories</option>
+        <!-- Categories populated dynamically -->
+      </select>
+    </div>
     <div id="articlesGrid" class="articles-grid" style="display: none;">
       <!-- Perspectives will be loaded here dynamically -->
     </div>
@@ -72,10 +78,13 @@
   </footer>
 
   <script>
+    let allPerspectives = [];
+
     async function loadPerspectives() {
       const loadingEl = document.getElementById('perspectivesLoading');
       const emptyEl = document.getElementById('perspectivesEmpty');
       const gridEl = document.getElementById('articlesGrid');
+      const filterBar = document.getElementById('filterBar');
 
       try {
         const response = await fetch('/api/perspectives');
@@ -83,51 +92,120 @@
           throw new Error('Failed to load perspectives');
         }
 
-        const perspectives = await response.json();
+        allPerspectives = await response.json();
 
-        if (perspectives.length === 0) {
+        if (allPerspectives.length === 0) {
           loadingEl.style.display = 'none';
           emptyEl.style.display = 'block';
           return;
         }
 
-        // Build HTML for each perspective
-        let html = '';
-        perspectives.forEach(perspective => {
-          const isExternal = perspective.content_type === 'link';
-          const href = isExternal ? perspective.external_url : `/perspectives/${perspective.slug}`;
-          const target = isExternal ? ' target="_blank" rel="noopener"' : '';
-          const readMoreText = isExternal
-            ? `Read on ${perspective.external_site_name || 'external site'}`
-            : 'Read article';
+        // Populate category filter
+        populateCategoryFilter(allPerspectives);
 
-          html += `
-            <a href="${escapeHtml(href)}" class="article-card"${target}>
-              <div class="article-card-content">
-                ${perspective.category ? `<span class="article-category">${escapeHtml(perspective.category)}</span>` : ''}
-                <h2>${escapeHtml(perspective.title)}</h2>
-                <p>${escapeHtml(perspective.excerpt || perspective.subtitle || '')}</p>
-              </div>
-              <div class="article-card-footer">
-                <span class="read-more">
-                  ${readMoreText}
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                </span>
-              </div>
-            </a>
-          `;
-        });
+        // Render perspectives
+        renderPerspectives(allPerspectives);
 
-        gridEl.innerHTML = html;
         loadingEl.style.display = 'none';
+        filterBar.style.display = 'flex';
         gridEl.style.display = 'grid';
 
       } catch (error) {
         console.error('Error loading perspectives:', error);
         loadingEl.innerHTML = '<p style="color: #dc2626;">Failed to load perspectives. Please refresh the page.</p>';
       }
+    }
+
+    function populateCategoryFilter(perspectives) {
+      const select = document.getElementById('categoryFilter');
+      const categories = new Set();
+
+      perspectives.forEach(p => {
+        if (p.category) categories.add(p.category);
+      });
+
+      // Sort and add options
+      Array.from(categories).sort().forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat;
+        option.textContent = cat;
+        select.appendChild(option);
+      });
+    }
+
+    function filterPerspectives() {
+      const category = document.getElementById('categoryFilter').value;
+
+      let filtered = allPerspectives;
+      if (category) {
+        filtered = allPerspectives.filter(p => p.category === category);
+      }
+
+      renderPerspectives(filtered);
+    }
+
+    function renderPerspectives(perspectives) {
+      const gridEl = document.getElementById('articlesGrid');
+
+      if (perspectives.length === 0) {
+        gridEl.innerHTML = '<div class="empty-state"><p>No perspectives match the selected filter.</p></div>';
+        return;
+      }
+
+      let html = '';
+      perspectives.forEach(perspective => {
+        const isExternal = perspective.content_type === 'link';
+        const href = isExternal ? perspective.external_url : `/perspectives/${perspective.slug}`;
+        const target = isExternal ? ' target="_blank" rel="noopener"' : '';
+        const readMoreText = isExternal
+          ? `Read on ${perspective.external_site_name || 'external site'}`
+          : 'Read article';
+
+        // Format date and check if new (within 14 days)
+        const dateInfo = formatDate(perspective.published_at);
+        const isNew = isWithin14Days(perspective.published_at);
+
+        html += `
+          <a href="${escapeHtml(href)}" class="article-card"${target}>
+            <div class="article-card-content">
+              <div class="article-meta">
+                ${perspective.category ? `<span class="article-category">${escapeHtml(perspective.category)}</span>` : ''}
+                ${isNew ? '<span class="article-badge-new">New</span>' : ''}
+              </div>
+              <h2>${escapeHtml(perspective.title)}</h2>
+              <p>${escapeHtml(perspective.excerpt || perspective.subtitle || '')}</p>
+              ${dateInfo ? `<span class="article-date">${dateInfo}</span>` : ''}
+            </div>
+            <div class="article-card-footer">
+              <span class="read-more">
+                ${readMoreText}
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+            </div>
+          </a>
+        `;
+      });
+
+      gridEl.innerHTML = html;
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return null;
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return null;
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function isWithin14Days(dateStr) {
+      if (!dateStr) return false;
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return false;
+      const now = new Date();
+      const diffTime = now - date;
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+      return diffDays <= 14 && diffDays >= 0;
     }
 
     function escapeHtml(text) {
