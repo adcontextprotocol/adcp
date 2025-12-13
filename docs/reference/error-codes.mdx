@@ -18,23 +18,27 @@ Use the optional `errors` array in successful responses for warnings and non-blo
 ```json
 {
   "message": "Operation completed with warnings",
- 
   "context_id": "ctx-123",
-  // ... task-specific success data ...
   "errors": [
     {
       "code": "ERROR_CODE",
       "message": "Human-readable description",
-      "field": "field.path.with.issue",  // Optional
-      "suggestion": "Recommended action",  // Optional
-      "details": {
-        // Additional context (optional)
-      },
-      "retry_after": 30  // Seconds to wait before retry (optional)
+      "field": "field.path.with.issue",
+      "suggestion": "Recommended action",
+      "details": {},
+      "retry_after": 30
     }
   ]
 }
 ```
+
+Error object fields:
+- `code` (required): Error code for programmatic handling
+- `message` (required): Human-readable description
+- `field` (optional): Field path associated with the error
+- `suggestion` (optional): Recommended action
+- `details` (optional): Additional task-specific context
+- `retry_after` (optional): Seconds to wait before retry
 
 ### Protocol-Level Errors (Fatal)
 
@@ -79,13 +83,11 @@ Invalid or malformed authentication credentials.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "INVALID_CREDENTIALS",
-    "message": "API key is invalid or has been revoked",
-    "details": {
-      "provided_key": "ak_live_123..."
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INVALID_CREDENTIALS",
+  "message": "API key is invalid or has been revoked",
+  "details": {
+    "provided_key": "ak_live_123..."
   }
 }
 ```
@@ -98,13 +100,11 @@ Authentication token has expired.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "TOKEN_EXPIRED", 
-    "message": "OAuth token expired",
-    "details": {
-      "expired_at": "2025-01-20T10:30:00Z"
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "TOKEN_EXPIRED",
+  "message": "OAuth token expired",
+  "details": {
+    "expired_at": "2025-01-20T10:30:00Z"
   }
 }
 ```
@@ -117,14 +117,12 @@ Account lacks required permissions for the operation.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "INSUFFICIENT_PERMISSIONS",
-    "message": "Account does not have activation permissions",
-    "details": {
-      "required_permission": "activate_signal",
-      "account_permissions": ["get_signals", "check_signal_status"]
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INSUFFICIENT_PERMISSIONS",
+  "message": "Account does not have activation permissions",
+  "details": {
+    "required_permission": "activate_signal",
+    "account_permissions": ["get_signals", "check_signal_status"]
   }
 }
 ```
@@ -139,14 +137,12 @@ Required request parameter is missing.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "MISSING_REQUIRED_FIELD",
-    "message": "prompt is required for signal discovery",
-    "details": {
-      "field": "prompt",
-      "provided_fields": ["platform", "max_results"]
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "MISSING_REQUIRED_FIELD",
+  "message": "prompt is required for signal discovery",
+  "field": "prompt",
+  "details": {
+    "provided_fields": ["platform", "max_results"]
   }
 }
 ```
@@ -159,15 +155,13 @@ Field value doesn't meet validation requirements.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "INVALID_FIELD_VALUE",
-    "message": "max_results must be between 1 and 50",
-    "details": {
-      "field": "max_results",
-      "provided_value": 100,
-      "valid_range": "1-50"
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INVALID_FIELD_VALUE",
+  "message": "max_results must be between 1 and 50",
+  "field": "max_results",
+  "details": {
+    "provided_value": 100,
+    "valid_range": "1-50"
   }
 }
 ```
@@ -180,15 +174,13 @@ Field format is incorrect.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "INVALID_FIELD_FORMAT",
-    "message": "reporting_date must be in YYYY-MM-DD format",
-    "details": {
-      "field": "reporting_date",
-      "provided_value": "01/20/2025",
-      "expected_format": "YYYY-MM-DD"
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INVALID_FIELD_FORMAT",
+  "message": "reporting_date must be in YYYY-MM-DD format",
+  "field": "reporting_date",
+  "details": {
+    "provided_value": "01/20/2025",
+    "expected_format": "YYYY-MM-DD"
   }
 }
 ```
@@ -203,14 +195,12 @@ Specified segment ID doesn't exist or is no longer available.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "SEGMENT_NOT_FOUND",
-    "message": "Segment ID not found or has expired",
-    "details": {
-      "segment_id": "seg_invalid_123",
-      "suggestion": "Use get_signals to find current segment IDs"
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "SEGMENT_NOT_FOUND",
+  "message": "Segment ID not found or has expired",
+  "suggestion": "Use get_signals to find current segment IDs",
+  "details": {
+    "segment_id": "seg_invalid_123"
   }
 }
 ```
@@ -223,15 +213,13 @@ Signal exists but is not available for the requested platform/seat.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "SIGNAL_UNAVAILABLE",
-    "message": "Signal not available for the specified platform",
-    "details": {
-      "segment_id": "seg_12345",
-      "requested_platform": "unavailable_platform",
-      "available_platforms": ["scope3", "thetradedesk"]
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "SIGNAL_UNAVAILABLE",
+  "message": "Signal not available for the specified platform",
+  "details": {
+    "segment_id": "seg_12345",
+    "requested_platform": "unavailable_platform",
+    "available_platforms": ["scope3", "thetradedesk"]
   }
 }
 ```
@@ -246,14 +234,12 @@ Account lacks access to specified platform.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "PLATFORM_UNAUTHORIZED",
-    "message": "Account not authorized for platform",
-    "details": {
-      "requested_platform": "restricted_platform",
-      "authorized_platforms": ["scope3", "liveramp"]
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "PLATFORM_UNAUTHORIZED",
+  "message": "Account not authorized for platform",
+  "details": {
+    "requested_platform": "restricted_platform",
+    "authorized_platforms": ["scope3", "liveramp"]
   }
 }
 ```
@@ -266,14 +252,12 @@ Account cannot access specified seat.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "SEAT_UNAUTHORIZED",
-    "message": "Account cannot access seat",
-    "details": {
-      "requested_seat": "competitor_seat_001",
-      "authorized_seats": ["brand_us_001", "brand_emea_002"]
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "SEAT_UNAUTHORIZED",
+  "message": "Account cannot access seat",
+  "details": {
+    "requested_seat": "competitor_seat_001",
+    "authorized_seats": ["brand_us_001", "brand_emea_002"]
   }
 }
 ```
@@ -288,17 +272,15 @@ Signal is already active for the specified platform/seat.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "ALREADY_ACTIVATED",
-    "message": "Signal already activated for this platform and seat",
-    "details": {
-      "segment_id": "seg_12345",
-      "platform": "scope3",
-      "seat": "brand_us_001",
-      "activated_at": "2025-01-15T10:30:00Z",
-      "status": "deployed"
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "ALREADY_ACTIVATED",
+  "message": "Signal already activated for this platform and seat",
+  "details": {
+    "segment_id": "seg_12345",
+    "platform": "scope3",
+    "seat": "brand_us_001",
+    "activated_at": "2025-01-15T10:30:00Z",
+    "status": "deployed"
   }
 }
 ```
@@ -311,16 +293,14 @@ Signal activation process failed.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "ACTIVATION_FAILED",
-    "message": "Failed to activate signal due to provider error",
-    "details": {
-      "segment_id": "seg_12345",
-      "provider_error": "Segment temporarily unavailable",
-      "retry_suggested": true
-    },
-    "retry_after": 300
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "ACTIVATION_FAILED",
+  "message": "Failed to activate signal due to provider error",
+  "retry_after": 300,
+  "details": {
+    "segment_id": "seg_12345",
+    "provider_error": "Segment temporarily unavailable",
+    "retry_suggested": true
   }
 }
 ```
@@ -333,15 +313,13 @@ Requested pricing model is not available for this signal.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "INVALID_PRICING_MODEL",
-    "message": "CPM pricing not available for this signal",
-    "details": {
-      "segment_id": "seg_12345",
-      "requested_model": "cpm",
-      "available_models": ["revenue_share"]
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INVALID_PRICING_MODEL",
+  "message": "CPM pricing not available for this signal",
+  "details": {
+    "segment_id": "seg_12345",
+    "requested_model": "cpm",
+    "available_models": ["revenue_share"]
   }
 }
 ```
@@ -356,15 +334,13 @@ Requested AdCP schema version is not supported by the server.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "UNSUPPORTED_VERSION",
-    "message": "AdCP version '2.1.0' is not supported. Server supports versions compatible with 1.0.0 per semantic versioning.",
-    "details": {
-      "requested_version": "2.1.0",
-      "current_server_version": "1.0.0",
-      "compatibility_info": "Use versions 1.x.x for backward compatibility"
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "UNSUPPORTED_VERSION",
+  "message": "AdCP version '2.1.0' is not supported. Server supports versions compatible with 1.0.0 per semantic versioning.",
+  "details": {
+    "requested_version": "2.1.0",
+    "current_server_version": "1.0.0",
+    "compatibility_info": "Use versions 1.x.x for backward compatibility"
   }
 }
 ```
@@ -379,16 +355,14 @@ Too many requests within the rate limit window.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "RATE_LIMIT_EXCEEDED",
-    "message": "Too many requests. Rate limit: 100 requests per minute",
-    "details": {
-      "limit": 100,
-      "window": "60 seconds",
-      "reset_time": "2025-01-20T15:31:00Z"
-    },
-    "retry_after": 45
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "RATE_LIMIT_EXCEEDED",
+  "message": "Too many requests. Rate limit: 100 requests per minute",
+  "retry_after": 45,
+  "details": {
+    "limit": 100,
+    "window": "60 seconds",
+    "reset_time": "2025-01-20T15:31:00Z"
   }
 }
 ```
@@ -403,14 +377,12 @@ Unexpected server error occurred.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "INTERNAL_SERVER_ERROR",
-    "message": "An internal error occurred while processing the request",
-    "details": {
-      "request_id": "req_789123456",
-      "timestamp": "2025-01-20T15:30:00Z"
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An internal error occurred while processing the request",
+  "details": {
+    "request_id": "req_789123456",
+    "timestamp": "2025-01-20T15:30:00Z"
   }
 }
 ```
@@ -423,15 +395,13 @@ External service dependency is temporarily unavailable.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "SERVICE_UNAVAILABLE", 
-    "message": "Data provider service is temporarily unavailable",
-    "details": {
-      "provider": "LiveRamp",
-      "estimated_recovery": "2025-01-20T16:00:00Z"
-    },
-    "retry_after": 900
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "SERVICE_UNAVAILABLE",
+  "message": "Data provider service is temporarily unavailable",
+  "retry_after": 900,
+  "details": {
+    "provider": "LiveRamp",
+    "estimated_recovery": "2025-01-20T16:00:00Z"
   }
 }
 ```
@@ -444,14 +414,12 @@ Request exceeded maximum processing time.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "TIMEOUT",
-    "message": "Request exceeded 30 second timeout",
-    "details": {
-      "timeout_seconds": 30,
-      "suggestion": "Try a more specific prompt or contact support"
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "TIMEOUT",
+  "message": "Request exceeded 30 second timeout",
+  "suggestion": "Try a more specific prompt or contact support",
+  "details": {
+    "timeout_seconds": 30
   }
 }
 ```
@@ -466,15 +434,13 @@ Data quality problem detected.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "DATA_QUALITY_ISSUE",
-    "message": "Signal size data is stale",
-    "details": {
-      "segment_id": "seg_12345",
-      "last_updated": "2024-12-01T00:00:00Z",
-      "max_age_days": 30
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "DATA_QUALITY_ISSUE",
+  "message": "Signal size data is stale",
+  "details": {
+    "segment_id": "seg_12345",
+    "last_updated": "2024-12-01T00:00:00Z",
+    "max_age_days": 30
   }
 }
 ```
@@ -487,16 +453,14 @@ Usage report failed validation.
 **Example**:
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "USAGE_REPORT_REJECTED",
-    "message": "Negative impression count not allowed",
-    "details": {
-      "segment_id": "seg_12345",
-      "field": "impressions",
-      "provided_value": -1000,
-      "validation_rule": "must be >= 0"
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/error.json",
+  "code": "USAGE_REPORT_REJECTED",
+  "message": "Negative impression count not allowed",
+  "field": "impressions",
+  "details": {
+    "segment_id": "seg_12345",
+    "provided_value": -1000,
+    "validation_rule": "must be >= 0"
   }
 }
 ```

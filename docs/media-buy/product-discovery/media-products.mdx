@@ -50,14 +50,12 @@ Publishers declare which pricing models they support for each product. Buyers se
 Each pricing option includes:
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/pricing-options/cpcv-option.json",
   "pricing_option_id": "cpcv_usd_guaranteed",
   "pricing_model": "cpcv",
   "rate": 0.15,
   "currency": "USD",
   "is_fixed": true,
-  "parameters": {
-    "view_threshold": 1.0
-  },
   "min_spend_per_package": 5000
 }
 ```
@@ -65,6 +63,7 @@ Each pricing option includes:
 For auction-based pricing (`is_fixed: false`), include `price_guidance`:
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/pricing-options/cpm-auction-option.json",
   "pricing_option_id": "cpm_usd_auction",
   "pricing_model": "cpm",
   "currency": "USD",
@@ -115,8 +114,9 @@ For products that include measurement (common in retail media):
 Defines creative requirements and restrictions:
 ```json
 {
-  "co_branding": "required",  // "required", "optional", or "none"
-  "landing_page": "retailer_site_only",  // "any", "retailer_site_only", "must_include_retailer"
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/creative-policy.json",
+  "co_branding": "required",
+  "landing_page": "retailer_site_only",
   "templates_available": true
 }
 ```
@@ -133,6 +133,7 @@ Products can optionally declare specific ad placements within their inventory. W
 
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/placement.json",
   "placement_id": "homepage_banner",
   "name": "Homepage Banner",
   "description": "Above-the-fold banner on the homepage",

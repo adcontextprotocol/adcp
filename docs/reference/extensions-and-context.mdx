@@ -97,14 +97,11 @@ Context provides opaque correlation data that is echoed unchanged in responses a
 
 ```json
 {
-  "buyer_ref": "buyer_123",
-  "packages": [...],
-  "context": {
-    "ui_session_id": "sess_abc123",     // UI state tracking
-    "trace_id": "trace_xyz789",          // Request correlation
-    "internal_campaign_id": "camp_456",  // Internal tracking
-    "buyer_org_id": "org_123"            // Organization context
-  }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/context.json",
+  "ui_session_id": "sess_abc123",
+  "trace_id": "trace_xyz789",
+  "internal_campaign_id": "camp_456",
+  "buyer_org_id": "org_123"
 }
 ```
 
@@ -153,10 +150,9 @@ Extensions MUST use vendor/platform namespacing to avoid naming collisions:
 ✅ **Correct - Namespaced:**
 ```json
 {
-  "ext": {
-    "gam": { "test_mode": true },
-    "roku": { "app_ids": ["123"] }
-  }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/ext.json",
+  "gam": { "test_mode": true },
+  "roku": { "app_ids": ["123"] }
 }
 ```
 
@@ -244,35 +240,32 @@ AdCP implementations MUST NOT:
 
 ```json
 {
-  "buyer_ref": "buyer_123",
-  "packages": [...],
-  "ext": {
-    "gam": {
-      "order_id": "1234567890",
-      "dashboard_url": "https://admanager.google.com/...",
-      "test_mode": true
-    },
-    "roku": {
-      "content_genres": ["comedy", "drama"],
-      "device_types": ["tv", "streaming_stick"],
-      "app_ids": ["123456", "789012"]
-    },
-    "ttd": {
-      "uid2_enabled": true,
-      "tracking_tag": "ttd_pixel_123"
-    },
-    "nielsen": {
-      "dar_enabled": true,
-      "campaign_id": "nielsen_camp_123"
-    },
-    "comscore": {
-      "census_enabled": false,
-      "client_id": "cs_client_789"
-    },
-    "com.mycompany.analytics": {
-      "custom_dimension_1": "value",
-      "experiment_id": "exp_456"
-    }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/ext.json",
+  "gam": {
+    "order_id": "1234567890",
+    "dashboard_url": "https://admanager.google.com/12345/orders",
+    "test_mode": true
+  },
+  "roku": {
+    "content_genres": ["comedy", "drama"],
+    "device_types": ["tv", "streaming_stick"],
+    "app_ids": ["123456", "789012"]
+  },
+  "ttd": {
+    "uid2_enabled": true,
+    "tracking_tag": "ttd_pixel_123"
+  },
+  "nielsen": {
+    "dar_enabled": true,
+    "campaign_id": "nielsen_camp_123"
+  },
+  "comscore": {
+    "census_enabled": false,
+    "client_id": "cs_client_789"
+  },
+  "com.mycompany.analytics": {
+    "custom_dimension_1": "value",
+    "experiment_id": "exp_456"
   }
 }
 ```

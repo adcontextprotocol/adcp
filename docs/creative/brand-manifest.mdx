@@ -75,6 +75,7 @@ The manifest at the URL must conform to the brand-manifest.json schema.
 **Minimal inline manifest:**
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
   "name": "ACME Corporation",
   "url": "https://acmecorp.com"
 }
@@ -83,6 +84,8 @@ The manifest at the URL must conform to the brand-manifest.json schema.
 **Or even simpler for brands with URLs:**
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
+  "name": "ACME Corporation",
   "url": "https://acmecorp.com"
 }
 ```
@@ -105,6 +108,8 @@ For small businesses or one-off campaigns needing creative generation, a minimal
 
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
+  "name": "Bob's Fun Burgers",
   "url": "https://bobsfunburgers.com"
 }
 ```
@@ -118,6 +123,7 @@ For established brands with defined guidelines, host the manifest on a CDN:
 **Hosted at `https://cdn.acmecorp.com/brand-manifest.json`:**
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
   "url": "https://acmecorp.com",
   "name": "ACME Corporation",
   "logos": [
@@ -169,6 +175,7 @@ Large retailers can provide product feeds and asset libraries:
 
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
   "url": "https://bigretail.com",
   "name": "BigRetail",
   "product_catalog": {
@@ -191,6 +198,7 @@ Some brands don't have dedicated URLs (white-label products, local businesses, B
 
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
   "name": "Great Value",
   "colors": {
     "primary": "#0071CE",
@@ -241,8 +249,8 @@ The structure of the brand manifest object itself (whether provided inline or ho
 | `fonts` | Fonts | Brand typography guidelines |
 | `tone` | string | Brand voice and messaging tone |
 | `tagline` | string | Brand tagline or slogan |
-| `product_feed` | string (uri) | URL to product catalog feed |
-| `asset_library` | AssetLibrary | References to brand asset libraries |
+| `assets` | Asset[] | Brand asset library with explicit assets and tags |
+| `product_catalog` | ProductCatalog | Product catalog information for e-commerce advertisers |
 | `disclaimers` | Disclaimer[] | Legal disclaimers for creatives |
 | `industry` | string | Industry or vertical |
 | `target_audience` | string | Primary target audience description |
@@ -294,13 +302,34 @@ The structure of the brand manifest object itself (whether provided inline or ho
 }
 ```
 
-### Asset Library Object
+### Asset Object
 
 ```typescript
 {
-  images?: string;       // URL to image asset library or API
-  videos?: string;       // URL to video asset library or API
-  templates?: string;    // URL to creative templates library
+  asset_id: string;                  // Unique identifier for this asset
+  asset_type: string;                // Type of asset (image, video, audio, text, etc.)
+  url: string;                       // URL to CDN-hosted asset file
+  tags?: string[];                   // Tags for asset discovery (e.g., "holiday", "lifestyle")
+  name?: string;                     // Human-readable asset name
+  description?: string;              // Asset description or usage notes
+  width?: number;                    // Image/video width in pixels
+  height?: number;                   // Image/video height in pixels
+  duration_seconds?: number;         // Video/audio duration in seconds
+  file_size_bytes?: number;          // File size in bytes
+  format?: string;                   // File format (e.g., "jpg", "mp4")
+  metadata?: Record<string, any>;    // Additional asset-specific metadata
+}
+```
+
+### ProductCatalog Object
+
+```typescript
+{
+  feed_url: string;                  // URL to product catalog feed
+  feed_format?: string;              // Format of the product feed (default: "google_merchant_center")
+  categories?: string[];             // Product categories available in the catalog
+  last_updated?: string;             // When the product catalog was last updated (ISO 8601)
+  update_frequency?: string;         // How frequently the catalog is updated
 }
 ```
 
@@ -422,8 +451,12 @@ Large retailers should provide product feeds:
 
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
+  "name": "Retailer Name",
   "url": "https://retailer.com",
-  "product_feed": "https://retailer.com/products.json"
+  "product_catalog": {
+    "feed_url": "https://retailer.com/products.json"
+  }
 }
 ```
 
@@ -431,14 +464,32 @@ Large retailers should provide product feeds:
 
 ### 5. Asset Libraries for Enterprise
 
-Enterprise brands with large asset libraries should provide API endpoints:
+Enterprise brands with large asset libraries should provide explicit assets:
 
 ```json
 {
-  "asset_library": {
-    "images": "https://assets.brand.com/api/images",
-    "videos": "https://assets.brand.com/api/videos"
-  }
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
+  "name": "Enterprise Brand",
+  "url": "https://brand.com",
+  "assets": [
+    {
+      "asset_id": "hero_lifestyle_1",
+      "asset_type": "image",
+      "url": "https://cdn.brand.com/hero-lifestyle-1.jpg",
+      "tags": ["lifestyle", "hero", "outdoor"],
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "asset_id": "product_video_30s",
+      "asset_type": "video",
+      "url": "https://cdn.brand.com/product-video-30s.mp4",
+      "tags": ["product", "demo", "30s"],
+      "duration_seconds": 30,
+      "width": 1920,
+      "height": 1080
+    }
+  ]
 }
 ```
 
@@ -448,6 +499,8 @@ Brand cards are versioned using the `metadata.version` field:
 
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json",
+  "name": "Brand Name",
   "url": "https://brand.com",
   "metadata": {
     "version": "2.1",
