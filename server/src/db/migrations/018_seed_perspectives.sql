@@ -1,6 +1,35 @@
 -- Migration: 018_seed_perspectives.sql
 -- Seeds initial perspectives data from existing static HTML content
 
+-- 0. Rajeev Goel Interview (External Link) - newest, first in display order
+INSERT INTO perspectives (
+  slug,
+  content_type,
+  title,
+  category,
+  excerpt,
+  external_url,
+  external_site_name,
+  author_name,
+  status,
+  published_at,
+  display_order,
+  tags
+) VALUES (
+  'rajeev-goel-agentic-advertising',
+  'link',
+  'Rajeev Goel on AgenticAdvertising.org',
+  'Interview',
+  'PubMatic CEO discusses why the industry needs shared standards for agentic AI. "AI is moving faster than any shift...it''s really important the industry aligns around shared standards early."',
+  'https://tipsheet.ai/governance/agentic-advertising-org',
+  'Tipsheet.ai',
+  'Rajeev Goel',
+  'published',
+  '2025-12-13 00:00:00+00',
+  0,
+  ARRAY['interview', 'standards', 'PubMatic']
+) ON CONFLICT (slug) DO NOTHING;
+
 -- 1. Understanding the Agentic Protocol Landscape (Article)
 INSERT INTO perspectives (
   slug,

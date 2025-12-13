@@ -23,7 +23,7 @@ import { MemberDatabase } from "./db/member-db.js";
 import { RegistryDatabase } from "./db/registry-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, optionalAuth } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -83,6 +83,24 @@ export class HTTPServer {
   }
 
   private setupMiddleware(): void {
+    // Request logging for /api/me/member-profile to help diagnose issues
+    this.app.use('/api/me/member-profile', (req, res, next) => {
+      const startTime = Date.now();
+      logger.debug({ method: req.method, path: req.path, query: req.query }, 'member-profile request received');
+
+      // Log when response finishes
+      res.on('finish', () => {
+        logger.debug({
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          durationMs: Date.now() - startTime
+        }, 'member-profile response sent');
+      });
+
+      next();
+    });
+
     // Use JSON parser for all routes EXCEPT Stripe webhooks (which need raw body)
     this.app.use((req, res, next) => {
       if (req.path === '/api/webhooks/stripe') {
@@ -2646,11 +2664,87 @@ export class HTTPServer {
           }
         }
 
+        // Sync subscription data to organizations for MRR calculation
+        // This populates subscription_amount, subscription_interval, subscription_current_period_end
+        let subscriptionsSynced = 0;
+        let subscriptionsFailed = 0;
+        if (stripe) {
+          for (const [customerId, workosOrgId] of customerOrgMap) {
+            try {
+              // Get customer with subscriptions and expanded price/product data in single API call
+              const customer = await stripe.customers.retrieve(customerId, {
+                expand: ['subscriptions.data.items.data.price.product'],
+              });
+
+              if ('deleted' in customer && customer.deleted) {
+                continue;
+              }
+
+              const subscriptions = (customer as Stripe.Customer).subscriptions;
+              if (!subscriptions || subscriptions.data.length === 0) {
+                continue;
+              }
+
+              // Get the first active subscription (already has expanded items)
+              const subscription = subscriptions.data[0];
+              if (!subscription || !['active', 'trialing', 'past_due'].includes(subscription.status)) {
+                continue;
+              }
+
+              // Get primary subscription item directly from expanded data
+              const primaryItem = subscription.items.data[0];
+              if (!primaryItem) {
+                continue;
+              }
+
+              const price = primaryItem.price;
+              const product = price?.product as Stripe.Product | undefined;
+              const amount = price?.unit_amount ?? 0;
+              const interval = price?.recurring?.interval ?? null;
+
+              // Update organization with subscription details
+              await pool.query(
+                `UPDATE organizations
+                 SET subscription_amount = $1,
+                     subscription_interval = $2,
+                     subscription_currency = $3,
+                     subscription_current_period_end = $4,
+                     subscription_canceled_at = $5,
+                     subscription_product_id = $6,
+                     subscription_product_name = $7,
+                     subscription_price_id = $8,
+                     updated_at = NOW()
+                 WHERE workos_organization_id = $9`,
+                [
+                  amount,
+                  interval,
+                  price?.currency || 'usd',
+                  subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+                  subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
+                  product?.id || null,
+                  product?.name || null,
+                  price?.id || null,
+                  workosOrgId,
+                ]
+              );
+
+              subscriptionsSynced++;
+              logger.debug({ workosOrgId, customerId, amount, interval }, 'Synced subscription data');
+            } catch (subError) {
+              subscriptionsFailed++;
+              logger.error({ err: subError, customerId, workosOrgId }, 'Failed to sync subscription for customer');
+              // Continue with other customers
+            }
+          }
+        }
+
         logger.info({
           invoices: invoices.length,
           refunds: refunds.length,
           imported,
           skipped,
+          subscriptionsSynced,
+          subscriptionsFailed,
         }, 'Revenue backfill completed');
 
         res.json({
@@ -2660,6 +2754,8 @@ export class HTTPServer {
           refunds_found: refunds.length,
           imported,
           skipped,
+          subscriptions_synced: subscriptionsSynced,
+          subscriptions_failed: subscriptionsFailed,
         });
       } catch (error) {
         logger.error({ err: error }, 'Error during revenue backfill');
@@ -3211,6 +3307,11 @@ export class HTTPServer {
     this.app.get('/auth/logout', async (req, res) => {
       try {
         const sessionCookie = req.cookies['wos-session'];
+
+        // Invalidate session cache first
+        if (sessionCookie) {
+          invalidateSessionCache(sessionCookie);
+        }
 
         // Revoke the session on WorkOS side if it exists
         if (sessionCookie && workos) {
@@ -5649,6 +5750,8 @@ export class HTTPServer {
     // GET /api/me/member-profile - Get current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.get('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id, org: req.query.org }, 'GET /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5659,6 +5762,7 @@ export class HTTPServer {
         });
 
         if (memberships.data.length === 0) {
+          logger.info({ userId: user.id, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: no organization');
           return res.status(404).json({
             error: 'No organization',
             message: 'User is not a member of any organization',
@@ -5671,6 +5775,7 @@ export class HTTPServer {
           // Verify user is a member of the requested org
           const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
           if (!isMember) {
+            logger.info({ userId: user.id, requestedOrgId, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: not authorized');
             return res.status(403).json({
               error: 'Not authorized',
               message: 'User is not a member of the requested organization',
@@ -5687,13 +5792,14 @@ export class HTTPServer {
         // Get org name from WorkOS
         const org = await workos!.organizations.getOrganization(targetOrgId);
 
+        logger.info({ userId: user.id, orgId: targetOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed');
         res.json({
           profile: profile || null,
           organization_id: targetOrgId,
           organization_name: org.name,
         });
       } catch (error) {
-        logger.error({ err: error }, 'Get my member profile error');
+        logger.error({ err: error, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile error');
         res.status(500).json({
           error: 'Failed to get member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -5704,6 +5810,8 @@ export class HTTPServer {
     // POST /api/me/member-profile - Create member profile for current user's organization
     // Supports ?org=org_id query parameter to specify which organization
     this.app.post('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id, org: req.query.org }, 'POST /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5829,11 +5937,11 @@ export class HTTPServer {
           show_in_carousel: show_in_carousel ?? false,
         });
 
-        logger.info({ profileId: profile.id, orgId: targetOrgId, slug }, 'Member profile created');
+        logger.info({ profileId: profile.id, orgId: targetOrgId, slug, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile completed');
 
         res.status(201).json({ profile });
       } catch (error) {
-        logger.error({ err: error }, 'Create member profile error');
+        logger.error({ err: error, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile error');
         res.status(500).json({
           error: 'Failed to create member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -5844,6 +5952,8 @@ export class HTTPServer {
     // PUT /api/me/member-profile - Update current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.put('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id }, 'PUT /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -5907,11 +6017,13 @@ export class HTTPServer {
 
         const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
 
-        logger.info({ profileId: profile?.id, orgId: targetOrgId }, 'Member profile updated');
+        const duration = Date.now() - startTime;
+        logger.info({ profileId: profile?.id, orgId: targetOrgId, durationMs: duration }, 'Member profile updated');
 
         res.json({ profile });
       } catch (error) {
-        logger.error({ err: error }, 'Update member profile error');
+        const duration = Date.now() - startTime;
+        logger.error({ err: error, durationMs: duration }, 'Update member profile error');
         res.status(500).json({
           error: 'Failed to update member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -6003,6 +6115,8 @@ export class HTTPServer {
     // DELETE /api/me/member-profile - Delete current user's organization's member profile
     // Supports ?org=org_id query parameter to specify which organization
     this.app.delete('/api/me/member-profile', requireAuth, async (req, res) => {
+      const startTime = Date.now();
+      logger.info({ userId: req.user?.id, org: req.query.org }, 'DELETE /api/me/member-profile started');
       try {
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
@@ -6045,11 +6159,11 @@ export class HTTPServer {
 
         await memberDb.deleteProfile(existingProfile.id);
 
-        logger.info({ profileId: existingProfile.id, orgId: targetOrgId }, 'Member profile deleted');
+        logger.info({ profileId: existingProfile.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile completed');
 
         res.json({ success: true });
       } catch (error) {
-        logger.error({ err: error }, 'Delete member profile error');
+        logger.error({ err: error, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile error');
         res.status(500).json({
           error: 'Failed to delete member profile',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -6301,7 +6415,7 @@ export class HTTPServer {
           contact_name,
           contact_email,
           contact_website,
-          approval_status: 'pending', // New agents need approval
+          approval_status: 'approved',
           workos_organization_id: targetOrgId,
         });
 
@@ -6313,7 +6427,7 @@ export class HTTPServer {
 
         res.status(201).json({
           agent: entry,
-          message: 'Agent created successfully. It will be visible in the registry once approved.',
+          message: 'Agent created successfully.',
         });
       } catch (error) {
         logger.error({ err: error }, 'Create agent error');
@@ -6412,11 +6526,6 @@ export class HTTPServer {
           allowedUpdates.metadata = metadata;
         }
 
-        // Updates reset approval status to pending (agent needs re-review)
-        if (Object.keys(allowedUpdates).length > 0) {
-          allowedUpdates.approval_status = 'pending';
-        }
-
         const updatedAgent = await registryDb.updateEntry(existingAgent.slug, allowedUpdates);
 
         logger.info({
@@ -6426,7 +6535,7 @@ export class HTTPServer {
 
         res.json({
           agent: updatedAgent,
-          message: 'Agent updated successfully. Changes will be visible once approved.',
+          message: 'Agent updated successfully.',
         });
       } catch (error) {
         logger.error({ err: error }, 'Update agent error');

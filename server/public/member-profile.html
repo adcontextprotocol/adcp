@@ -977,10 +977,24 @@
         }
 
         if (!response.ok) {
-          throw new Error('Failed to load profile');
+          // Try to get error message from JSON response
+          let errorMessage = 'Failed to load profile';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorMessage;
+          } catch {
+            // Response wasn't JSON (e.g., HTML error page from proxy)
+            errorMessage = `Server error (${response.status}). Please try again.`;
+          }
+          throw new Error(errorMessage);
         }
 
-        const data = await response.json();
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error('Invalid response from server. Please try again.');
+        }
 
         // Store org info
         currentOrgId = data.organization_id;
@@ -1531,11 +1545,21 @@
           credentials: 'include'
         });
 
-        const data = await response.json();
-
+        // Check response status before parsing JSON
         if (!response.ok) {
-          throw new Error(data.message || 'Failed to save profile');
+          // Try to get error message from JSON response, fallback to status text
+          let errorMessage = 'Failed to save profile';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorMessage;
+          } catch {
+            // Response wasn't JSON (e.g., HTML error page from proxy)
+            errorMessage = `Server error (${response.status}). Please try again.`;
+          }
+          throw new Error(errorMessage);
         }
+
+        const data = await response.json();
 
         currentProfile = data.profile;
         const wasNewProfile = isNewProfile;
@@ -1590,13 +1614,22 @@
         });
 
         if (!response.ok) {
-          throw new Error('Failed to delete profile');
+          // Try to get error message from JSON response
+          let errorMessage = 'Failed to delete profile';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorMessage;
+          } catch {
+            // Response wasn't JSON (e.g., HTML error page from proxy)
+            errorMessage = `Server error (${response.status}). Please try again.`;
+          }
+          throw new Error(errorMessage);
         }
 
         window.location.href = '/dashboard';
       } catch (error) {
         console.error('Delete error:', error);
-        showError('Failed to delete profile. Please try again.');
+        showError(error.message || 'Failed to delete profile. Please try again.');
       }
     }
 
