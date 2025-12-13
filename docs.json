@@ -18,11 +18,7 @@
       "url": "https://agenticadvertising.org"
     },
     {
-      "name": "Agent Registry",
-      "url": "https://adcontextprotocol.org/registry"
-    },
-    {
-      "name": "AdAgents Manager",
+      "name": "AdAgents.json Builder",
       "url": "https://adcontextprotocol.org/adagents"
     },
     {
@@ -73,6 +69,13 @@
             ]
           },
           {
+            "group": "adagents.json",
+            "pages": [
+              "docs/media-buy/capability-discovery/adagents",
+              "docs/media-buy/capability-discovery/authorized-properties"
+            ]
+          },
+          {
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
@@ -115,9 +118,7 @@
                 "group": "Capability Discovery",
                 "pages": [
                   "docs/media-buy/capability-discovery/index",
-                  "docs/media-buy/capability-discovery/implementing-standard-formats",
-                  "docs/media-buy/capability-discovery/authorized-properties",
-                  "docs/media-buy/capability-discovery/adagents"
+                  "docs/media-buy/capability-discovery/implementing-standard-formats"
                 ]
               },
               {
@@ -205,8 +206,25 @@
       }
     ]
   },
-  "footerSocials": {
-    "github": "https://github.com/adcontextprotocol/adcp"
+  "footer": {
+    "socials": {
+      "github": "https://github.com/adcontextprotocol/adcp"
+    },
+    "links": [
+      {
+        "header": "Legal",
+        "items": [
+          {
+            "label": "Privacy Policy",
+            "href": "https://agenticadvertising.org/api/agreement?type=privacy_policy"
+          },
+          {
+            "label": "Terms of Service",
+            "href": "https://agenticadvertising.org/api/agreement?type=terms_of_service"
+          }
+        ]
+      }
+    ]
   },
   "api": {
     "maintainOrder": true

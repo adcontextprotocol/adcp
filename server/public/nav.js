@@ -575,6 +575,134 @@
     </style>
   `;
 
+  // Build footer HTML
+  function buildFooterHTML() {
+    const currentYear = new Date().getFullYear();
+
+    return `
+      <footer class="aao-footer">
+        <div class="aao-footer__inner">
+          <div class="aao-footer__columns">
+            <div class="aao-footer__column">
+              <div class="aao-footer__title">AdCP</div>
+              <ul class="aao-footer__list">
+                <li><a href="https://docs.adcontextprotocol.org/docs/intro" target="_blank" rel="noopener noreferrer">Getting Started</a></li>
+                <li><a href="https://docs.adcontextprotocol.org/docs/signals/overview" target="_blank" rel="noopener noreferrer">Signals Protocol</a></li>
+              </ul>
+            </div>
+            <div class="aao-footer__column">
+              <div class="aao-footer__title">adagents.json</div>
+              <ul class="aao-footer__list">
+                <li><a href="/adagents">Builder</a></li>
+                <li><a href="https://docs.adcontextprotocol.org/docs/media-buy/capability-discovery/adagents" target="_blank" rel="noopener noreferrer">Specification</a></li>
+              </ul>
+            </div>
+            <div class="aao-footer__column">
+              <div class="aao-footer__title">Developers</div>
+              <ul class="aao-footer__list">
+                <li><a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                <li><a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA" target="_blank" rel="noopener noreferrer">Slack</a></li>
+              </ul>
+            </div>
+            <div class="aao-footer__column">
+              <div class="aao-footer__title">Legal</div>
+              <ul class="aao-footer__list">
+                <li><a href="/api/agreement?type=privacy_policy">Privacy Policy</a></li>
+                <li><a href="/api/agreement?type=terms_of_service">Terms of Service</a></li>
+              </ul>
+            </div>
+          </div>
+          <div class="aao-footer__bottom">
+            <div class="aao-footer__copyright">
+              © ${currentYear} Agentic Advertising Organization
+            </div>
+          </div>
+        </div>
+      </footer>
+    `;
+  }
+
+  // Footer CSS
+  const footerCSS = `
+    <style>
+      .aao-footer {
+        background: #1b1b1d;
+        color: #9ca3af;
+        padding: 2.5rem 1rem 1.5rem;
+        margin-top: auto;
+      }
+
+      .aao-footer__inner {
+        max-width: 1140px;
+        margin: 0 auto;
+      }
+
+      .aao-footer__columns {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 2rem;
+        margin-bottom: 2rem;
+      }
+
+      .aao-footer__column {
+        min-width: 0;
+      }
+
+      .aao-footer__title {
+        color: #fff;
+        font-size: 0.875rem;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+      }
+
+      .aao-footer__list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .aao-footer__list li {
+        margin-bottom: 0.5rem;
+      }
+
+      .aao-footer__list a {
+        color: #9ca3af;
+        text-decoration: none;
+        font-size: 0.875rem;
+        transition: color 0.2s;
+      }
+
+      .aao-footer__list a:hover {
+        color: #fff;
+      }
+
+      .aao-footer__bottom {
+        border-top: 1px solid #374151;
+        padding-top: 1.5rem;
+        text-align: center;
+      }
+
+      .aao-footer__copyright {
+        font-size: 0.75rem;
+        color: #6b7280;
+      }
+
+      @media (max-width: 768px) {
+        .aao-footer__columns {
+          grid-template-columns: repeat(2, 1fr);
+          gap: 1.5rem;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .aao-footer__columns {
+          grid-template-columns: 1fr;
+          gap: 1.5rem;
+        }
+      }
+    </style>
+  `;
+
   // Setup dropdown and mobile menu toggles after nav is inserted
   function setupDropdown() {
     const accountBtn = document.getElementById('accountMenuBtn');
@@ -625,10 +753,11 @@
     });
   }
 
-  // Insert CSS and navigation when DOM is ready
+  // Insert CSS, navigation, and footer when DOM is ready
   async function insertNav() {
     // Add CSS to head first
     document.head.insertAdjacentHTML('beforeend', navCSS);
+    document.head.insertAdjacentHTML('beforeend', footerCSS);
 
     // Fetch config to determine what to show
     let config = { membershipEnabled: true, authEnabled: false, user: null };
@@ -652,6 +781,19 @@
       placeholder.outerHTML = navHTML;
     } else {
       document.body.insertAdjacentHTML('afterbegin', navHTML);
+    }
+
+    // Insert footer at end of body (or replace placeholder if exists)
+    const footerPlaceholder = document.getElementById('adcp-footer');
+    if (footerPlaceholder) {
+      footerPlaceholder.outerHTML = buildFooterHTML();
+    } else {
+      // Only auto-insert footer if there's no existing footer element
+      // This prevents duplicate footers on pages like index.html that have their own
+      const existingFooter = document.querySelector('footer');
+      if (!existingFooter) {
+        document.body.insertAdjacentHTML('beforeend', buildFooterHTML());
+      }
     }
 
     // Setup dropdown toggle

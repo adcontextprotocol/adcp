@@ -4,9 +4,12 @@ description: Understanding property authorization in AdCP - preventing unauthori
 keywords: [authorized properties, adagents.json, unauthorized resale, ads.txt, sales agent authorization, property validation]
 ---
 
-# Authorized Properties
 
 One of the foundational challenges in digital advertising is **unauthorized resale** - ensuring that sales agents are actually authorized to represent the advertising properties they claim to sell. AdCP solves this problem through a comprehensive authorization system that builds on the lessons learned from ads.txt in programmatic advertising.
+
+<Tip>
+**New to AdCP authorization?** Read [AdCP Basics: Authorized Properties](https://bokonads.com/p/adcp-basics-authorized-properties) for an accessible introduction to how authorization works in agentic advertising.
+</Tip>
 
 ## The Problem: Unauthorized Resale
 
@@ -42,53 +45,50 @@ Publishers authorize sales agents by hosting an `adagents.json` file at `/.well-
 
 ```json
 {
-  "version": "1.0",
-  "publishers": [
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
+  "contact": {
+    "name": "Sports Network Media",
+    "email": "adops@sportsnetwork.com",
+    "domain": "sportsnetwork.com"
+  },
+  "properties": [
     {
-      "domain": "sportsnetwork.com",
-      "name": "Sports Network Media",
-      "contact": "sales@sportsnetwork.com"
+      "property_id": "sports_network_main",
+      "property_type": "website",
+      "name": "Sports Network",
+      "identifiers": [
+        {"type": "domain", "value": "sportsnetwork.com"}
+      ],
+      "tags": ["premium", "sports"]
     }
   ],
   "authorized_agents": [
     {
-      "agent_id": "sports-media-sales",
-      "name": "Sports Media Sales Team",
-      "contact": "team@sportsmediasales.com",
-      "authorization_scope": {
-        "properties": "*",
-        "start_date": "2024-01-01",
-        "end_date": "2024-12-31"
-      },
-      "verification": {
-        "method": "domain_verification",
-        "verified_date": "2024-01-01"
-      }
+      "url": "https://sports-media-sales.com",
+      "authorized_for": "All Sports Network properties",
+      "authorization_type": "property_tags",
+      "property_tags": ["sports"]
     },
     {
-      "agent_id": "premium-ad-network", 
-      "name": "Premium Ad Network",
-      "contact": "sales@premiumads.com",
-      "authorization_scope": {
-        "properties": ["sportsnetwork.com/premium/*"],
-        "product_categories": ["display", "video"],
-        "start_date": "2024-06-01"
-      }
+      "url": "https://premium-ad-network.com",
+      "authorized_for": "Premium inventory only",
+      "authorization_type": "property_tags",
+      "property_tags": ["premium"]
     }
-  ]
+  ],
+  "last_updated": "2025-01-10T12:00:00Z"
 }
 ```
 
 ### Key Fields
 
-- **publishers**: Identifies the publisher(s) for this domain
-- **authorized_agents**: List of sales agents authorized to represent this property
-- **agent_id**: Unique identifier for the sales agent (matches AdCP agent identity)
-- **authorization_scope**: Defines what the agent is authorized to sell
-  - **properties**: Which properties/paths they can represent ("*" = all)
-  - **product_categories**: Which types of ads they can sell
-  - **date ranges**: When the authorization is valid
-- **verification**: How the publisher verified the agent's identity
+- **contact**: Identifies the publisher/entity managing this file
+- **properties**: Defines the properties covered by this authorization file
+- **authorized_agents**: List of sales agents authorized to represent properties
+  - **url**: Agent's API endpoint URL
+  - **authorized_for**: Human-readable description of authorization scope
+  - **authorization_type**: How properties are selected (`property_ids`, `property_tags`, `inline_properties`, `publisher_properties`)
+- **last_updated**: ISO 8601 timestamp of last modification
 
 ## How Sales Agents Share Authorized Properties
 
