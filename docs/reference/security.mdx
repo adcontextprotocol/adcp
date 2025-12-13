@@ -622,35 +622,90 @@ describe('Principal Isolation', () => {
 
 All user-provided input MUST be validated before processing to prevent injection attacks, resource exhaustion, and data corruption.
 
-**Type Validation**:
-```typescript
-// Use JSON Schema or TypeScript validation libraries
-import { z } from 'zod';
+<Info>
+**Using official client libraries?** The [JavaScript SDK](https://www.npmjs.com/package/@adcp/client) and [Python SDK](https://pypi.org/project/adcp/) include built-in schema validation. The example below is for custom implementations in languages without official SDK support.
+</Info>
 
-const CreateMediaBuySchema = z.object({
-  product_id: z.string().uuid(),
-  targeting_brief: z.string().min(10).max(5000),
-  budget: z.object({
-    amount: z.number().positive().max(10000000), // $10M max
-    currency: z.enum(['USD', 'EUR', 'GBP', 'JPY']) // Allow-list currencies
-  }),
-  flight_dates: z.object({
-    start_date: z.string().datetime(),
-    end_date: z.string().datetime()
-  }),
-  creative_id: z.string().uuid().optional()
-});
+**Type Validation** (Go example for custom implementations):
+```go
+package adcp
 
-async function createMediaBuy(request: unknown): Promise<MediaBuy> {
-  // Validate and parse - throws if invalid
-  const validated = CreateMediaBuySchema.parse(request);
+import (
+    "encoding/json"
+    "errors"
+    "regexp"
+    "time"
+)
 
-  // Additional business logic validation
-  if (validated.flight_dates.end_date <= validated.flight_dates.start_date) {
-    throw new ValidationError("End date must be after start date");
-  }
+// CreateMediaBuyRequest models the validated request
+type CreateMediaBuyRequest struct {
+    ProductID      string      `json:"product_id"`
+    TargetingBrief string      `json:"targeting_brief"`
+    Budget         Budget      `json:"budget"`
+    FlightDates    FlightDates `json:"flight_dates"`
+    CreativeID     *string     `json:"creative_id,omitempty"`
+}
 
-  // Process validated request
+type Budget struct {
+    Amount   float64 `json:"amount"`
+    Currency string  `json:"currency"`
+}
+
+type FlightDates struct {
+    StartDate time.Time `json:"start_date"`
+    EndDate   time.Time `json:"end_date"`
+}
+
+var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var allowedCurrencies = map[string]bool{"USD": true, "EUR": true, "GBP": true, "JPY": true}
+
+// Validate performs schema and business logic validation per AdCP spec
+func (req *CreateMediaBuyRequest) Validate() error {
+    // Product ID must be valid UUID
+    if !uuidRegex.MatchString(req.ProductID) {
+        return errors.New("product_id must be valid UUID")
+    }
+
+    // Targeting brief length constraints
+    if len(req.TargetingBrief) < 10 || len(req.TargetingBrief) > 5000 {
+        return errors.New("targeting_brief must be 10-5000 characters")
+    }
+
+    // Budget validation - positive and under limit
+    if req.Budget.Amount <= 0 || req.Budget.Amount > 10000000 {
+        return errors.New("budget amount must be positive and under $10M")
+    }
+
+    // Currency must be in allowed list (not user input)
+    if !allowedCurrencies[req.Budget.Currency] {
+        return errors.New("invalid currency code")
+    }
+
+    // Flight dates validation
+    if !req.FlightDates.EndDate.After(req.FlightDates.StartDate) {
+        return errors.New("end_date must be after start_date")
+    }
+
+    return nil
+}
+
+// ParseAndValidate demonstrates full validation workflow
+func ParseAndValidate(jsonData []byte) (*CreateMediaBuyRequest, error) {
+    var req CreateMediaBuyRequest
+
+    // Step 1: Deserialize with strict parsing (reject unknown fields)
+    decoder := json.NewDecoder(bytes.NewReader(jsonData))
+    decoder.DisallowUnknownFields()
+    if err := decoder.Decode(&req); err != nil {
+        return nil, fmt.Errorf("invalid JSON structure: %w", err)
+    }
+
+    // Step 2: Business logic validation
+    if err := req.Validate(); err != nil {
+        return nil, fmt.Errorf("validation failed: %w", err)
+    }
+
+    return &req, nil
 }
 ```
 
@@ -817,7 +872,7 @@ function getRateLimitForPrincipal(principalId: string): number {
   }
 
   // New accounts get lower limits until reputation established
-  const accountAgeDay s = daysSince(principal.createdAt);
+  const accountAgeDays = daysSince(principal.createdAt);
   if (accountAgeDays < 7) {
     return baseLimit * 0.5;
   }
