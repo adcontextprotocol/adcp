@@ -3074,8 +3074,17 @@ export class HTTPServer {
           })
         );
 
+        // Deduplicate acceptances to only show the latest per agreement type
+        // (acceptances are already sorted by accepted_at DESC from the query)
+        const latestAcceptancesByType = new Map<string, typeof acceptances[0]>();
+        for (const acceptance of acceptances) {
+          if (!latestAcceptancesByType.has(acceptance.agreement_type)) {
+            latestAcceptancesByType.set(acceptance.agreement_type, acceptance);
+          }
+        }
+
         // Format for display and check if any are outdated
-        const formattedAcceptances = acceptances.map(acceptance => {
+        const formattedAcceptances = Array.from(latestAcceptancesByType.values()).map(acceptance => {
           const currentInfo = currentVersions.find(v => v.type === acceptance.agreement_type);
           const currentVersion = currentInfo?.current?.version;
           const isOutdated = currentVersion && currentVersion !== acceptance.agreement_version;
@@ -3086,13 +3095,11 @@ export class HTTPServer {
             accepted_at: acceptance.accepted_at,
             current_version: currentVersion,
             is_outdated: isOutdated,
-            // Optionally include IP/user-agent for audit purposes
-            // (consider privacy implications before exposing to UI)
           };
         });
 
         // Check for any agreements that haven't been accepted at all
-        const acceptedTypes = acceptances.map(a => a.agreement_type);
+        const acceptedTypes = Array.from(latestAcceptancesByType.keys());
         const missingAcceptances = currentVersions
           .filter(v => v.current && !acceptedTypes.includes(v.type))
           .map(v => ({
