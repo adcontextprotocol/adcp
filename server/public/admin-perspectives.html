@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/aao_logo.png" type="image/png">
+  <title>Admin - Perspectives - AdCP Registry</title>
+  <script src="/admin-nav.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo { font-size: 20px; font-weight: bold; }
+    .container {
+      max-width: 1400px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 25px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 { margin-bottom: 10px; color: #2d3748; }
+    h2 { margin-bottom: 15px; color: #2d3748; font-size: 20px; }
+    .perspectives-list {
+      display: grid;
+      gap: 15px;
+    }
+    .perspective-item {
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 15px;
+      transition: all 0.2s;
+    }
+    .perspective-item:hover {
+      border-color: #e0e0e0;
+    }
+    .perspective-item h3 {
+      font-size: 16px;
+      margin-bottom: 5px;
+      color: #2d3748;
+    }
+    .perspective-meta {
+      font-size: 14px;
+      color: #666;
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .perspective-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .perspective-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .badge-draft { background: #fef3c7; color: #92400e; }
+    .badge-published { background: #d1fae5; color: #065f46; }
+    .badge-archived { background: #e5e7eb; color: #374151; }
+    .badge-article { background: #dbeafe; color: #1e40af; }
+    .badge-link { background: #fce7f3; color: #9d174d; }
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+    .btn-secondary:hover {
+      background: #d0d0d0;
+    }
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+    }
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .modal {
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      max-width: 1400px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .form-row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group.full-width {
+      grid-column: 1 / -1;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+      color: #2d3748;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .form-group textarea {
+      min-height: 300px;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 13px;
+    }
+    .form-group textarea.short {
+      min-height: 100px;
+    }
+    .form-group small {
+      display: block;
+      margin-top: 5px;
+      color: #666;
+      font-size: 12px;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+    .editor-preview {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .preview-pane {
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 15px;
+      background: #f9f9f9;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .preview-pane h1 { font-size: 24px; margin-top: 30px; margin-bottom: 15px; }
+    .preview-pane h1:first-child { margin-top: 0; }
+    .preview-pane h2 { font-size: 20px; margin-top: 30px; margin-bottom: 15px; }
+    .preview-pane h3 { font-size: 18px; margin-top: 25px; margin-bottom: 10px; }
+    .preview-pane p { margin-bottom: 15px; }
+    .preview-pane ul, .preview-pane ol { margin-bottom: 15px; padding-left: 25px; }
+    .preview-pane li { margin-bottom: 8px; }
+    .preview-pane blockquote {
+      border-left: 4px solid #667eea;
+      margin: 1rem 0;
+      padding: 0.5rem 1rem;
+      background: #f5f5f5;
+    }
+    .type-toggle {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .type-toggle button {
+      padding: 10px 20px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .type-toggle button.active {
+      border-color: #667eea;
+      background: #f0f4ff;
+      color: #667eea;
+    }
+    .type-toggle button:hover:not(.active) {
+      border-color: #667eea;
+    }
+    .article-fields, .link-fields {
+      display: none;
+    }
+    .article-fields.active, .link-fields.active {
+      display: block;
+    }
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+    }
+    .filter-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .filter-bar select {
+      padding: 8px 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header injected by admin-nav.js -->
+
+  <div id="loading" style="text-align: center; padding: 50px; color: #666;">
+    Loading...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h1>Perspectives Management</h1>
+            <p class="subtitle">Manage articles, links, and insights content</p>
+          </div>
+          <button class="btn btn-primary" onclick="showCreateModal()">+ Add New Perspective</button>
+        </div>
+
+        <div class="filter-bar">
+          <select id="statusFilter" onchange="renderPerspectivesList()">
+            <option value="">All Statuses</option>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="archived">Archived</option>
+          </select>
+          <select id="typeFilter" onchange="renderPerspectivesList()">
+            <option value="">All Types</option>
+            <option value="article">Articles</option>
+            <option value="link">External Links</option>
+          </select>
+        </div>
+
+        <div id="perspectivesList" class="perspectives-list">
+          Loading perspectives...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit/Create Perspective Modal -->
+  <div id="perspectiveModal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="modalTitle">New Perspective</h2>
+
+      <div class="type-toggle">
+        <button type="button" id="typeArticle" class="active" onclick="setContentType('article')">
+          Article (Full Content)
+        </button>
+        <button type="button" id="typeLink" onclick="setContentType('link')">
+          External Link
+        </button>
+      </div>
+
+      <form id="perspectiveForm" onsubmit="savePerspective(event)">
+        <input type="hidden" id="perspectiveId">
+        <input type="hidden" id="contentType" value="article">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Title *</label>
+            <input type="text" id="title" required placeholder="Enter title">
+          </div>
+          <div class="form-group">
+            <label>Slug *</label>
+            <input type="text" id="slug" required placeholder="url-friendly-slug">
+            <small>Used in URLs: /insights/{slug}</small>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <input type="text" id="category" placeholder="e.g., Press Release, Op-Ed, Ecosystem">
+          </div>
+          <div class="form-group">
+            <label>Subtitle</label>
+            <input type="text" id="subtitle" placeholder="Optional subtitle">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Excerpt</label>
+          <textarea id="excerpt" class="short" placeholder="Short description for cards/listings"></textarea>
+        </div>
+
+        <!-- External Link Fields -->
+        <div id="linkFields" class="link-fields">
+          <div class="form-row">
+            <div class="form-group">
+              <label>External URL *</label>
+              <input type="url" id="externalUrl" placeholder="https://...">
+            </div>
+            <div class="form-group">
+              <label>Site Name</label>
+              <input type="text" id="externalSiteName" placeholder="e.g., Substack, Forbes">
+            </div>
+          </div>
+        </div>
+
+        <!-- Article Content Fields -->
+        <div id="articleFields" class="article-fields active">
+          <div class="form-group">
+            <label>Content (Markdown)</label>
+            <div class="editor-preview">
+              <div>
+                <textarea id="content" oninput="updatePreview()" placeholder="Write your article in Markdown..."></textarea>
+              </div>
+              <div>
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Preview</label>
+                <div id="contentPreview" class="preview-pane">
+                  Enter markdown text to see preview...
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Author Name</label>
+            <input type="text" id="authorName" placeholder="Author name">
+          </div>
+          <div class="form-group">
+            <label>Author Title</label>
+            <input type="text" id="authorTitle" placeholder="Author title/company">
+          </div>
+          <div class="form-group">
+            <label>Featured Image URL</label>
+            <input type="url" id="featuredImageUrl" placeholder="https://...">
+          </div>
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Status</label>
+            <select id="status">
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Published Date</label>
+            <input type="datetime-local" id="publishedAt">
+          </div>
+          <div class="form-group">
+            <label>Display Order</label>
+            <input type="number" id="displayOrder" value="0" min="0">
+            <small>Lower numbers appear first</small>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Tags</label>
+          <input type="text" id="tags" placeholder="tag1, tag2, tag3">
+          <small>Comma-separated list of tags</small>
+        </div>
+
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Perspective</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="deleteModal" class="modal-overlay">
+    <div class="modal" style="max-width: 500px;">
+      <h2>Delete Perspective</h2>
+      <p style="margin: 20px 0; color: #666;">
+        Are you sure you want to delete "<span id="deleteTitle"></span>"? This action cannot be undone.
+      </p>
+      <div class="modal-buttons">
+        <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+        <button type="button" class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let perspectives = [];
+    let editingPerspective = null;
+    let deletingPerspectiveId = null;
+
+    // Load all perspectives
+    async function loadPerspectives() {
+      try {
+        const response = await fetch('/api/admin/perspectives');
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load perspectives');
+        }
+
+        perspectives = await response.json();
+        renderPerspectivesList();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading perspectives:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: #c33;">Failed to load perspectives. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    // Render perspectives list
+    function renderPerspectivesList() {
+      const listDiv = document.getElementById('perspectivesList');
+      const statusFilter = document.getElementById('statusFilter').value;
+      const typeFilter = document.getElementById('typeFilter').value;
+
+      let filtered = perspectives;
+      if (statusFilter) {
+        filtered = filtered.filter(p => p.status === statusFilter);
+      }
+      if (typeFilter) {
+        filtered = filtered.filter(p => p.content_type === typeFilter);
+      }
+
+      if (filtered.length === 0) {
+        listDiv.innerHTML = '<div class="empty-state">No perspectives found.</div>';
+        return;
+      }
+
+      let html = '';
+      filtered.forEach(perspective => {
+        const statusBadge = `<span class="badge badge-${perspective.status}">${perspective.status}</span>`;
+        const typeBadge = `<span class="badge badge-${perspective.content_type}">${perspective.content_type}</span>`;
+        const publishedDate = perspective.published_at
+          ? new Date(perspective.published_at).toLocaleDateString()
+          : 'Not published';
+        const viewUrl = perspective.content_type === 'link'
+          ? perspective.external_url
+          : `/insights/${perspective.slug}`;
+        const viewTarget = perspective.content_type === 'link' ? '_blank' : '_self';
+
+        html += `
+          <div class="perspective-item">
+            <div class="perspective-header">
+              <div>
+                <h3>${escapeHtml(perspective.title)}</h3>
+                <div class="perspective-meta">
+                  ${statusBadge}
+                  ${typeBadge}
+                  ${perspective.category ? `<span>${escapeHtml(perspective.category)}</span>` : ''}
+                  <span>Order: ${perspective.display_order}</span>
+                  <span>${publishedDate}</span>
+                </div>
+              </div>
+              <div class="perspective-actions">
+                <button class="btn btn-secondary btn-small" onclick="event.stopPropagation(); window.open('${viewUrl}', '${viewTarget}')">View</button>
+                <button class="btn btn-primary btn-small" onclick="event.stopPropagation(); editPerspective('${perspective.id}')">Edit</button>
+                <button class="btn btn-danger btn-small" onclick="event.stopPropagation(); showDeleteModal('${perspective.id}', '${escapeHtml(perspective.title)}')">Delete</button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      listDiv.innerHTML = html;
+    }
+
+    // Set content type in form
+    function setContentType(type) {
+      document.getElementById('contentType').value = type;
+      document.getElementById('typeArticle').classList.toggle('active', type === 'article');
+      document.getElementById('typeLink').classList.toggle('active', type === 'link');
+      document.getElementById('articleFields').classList.toggle('active', type === 'article');
+      document.getElementById('linkFields').classList.toggle('active', type === 'link');
+
+      // Toggle required attribute on external URL
+      document.getElementById('externalUrl').required = (type === 'link');
+    }
+
+    // Show create modal
+    function showCreateModal() {
+      editingPerspective = null;
+      document.getElementById('modalTitle').textContent = 'New Perspective';
+      document.getElementById('perspectiveForm').reset();
+      document.getElementById('perspectiveId').value = '';
+      document.getElementById('displayOrder').value = '0';
+      setContentType('article');
+      document.getElementById('contentPreview').innerHTML = 'Enter markdown text to see preview...';
+      document.getElementById('perspectiveModal').style.display = 'flex';
+    }
+
+    // Edit perspective
+    function editPerspective(id) {
+      editingPerspective = perspectives.find(p => p.id === id);
+      if (!editingPerspective) return;
+
+      document.getElementById('modalTitle').textContent = 'Edit Perspective';
+      document.getElementById('perspectiveId').value = editingPerspective.id;
+      document.getElementById('title').value = editingPerspective.title || '';
+      document.getElementById('slug').value = editingPerspective.slug || '';
+      document.getElementById('category').value = editingPerspective.category || '';
+      document.getElementById('subtitle').value = editingPerspective.subtitle || '';
+      document.getElementById('excerpt').value = editingPerspective.excerpt || '';
+      document.getElementById('externalUrl').value = editingPerspective.external_url || '';
+      document.getElementById('externalSiteName').value = editingPerspective.external_site_name || '';
+      document.getElementById('content').value = editingPerspective.content || '';
+      document.getElementById('authorName').value = editingPerspective.author_name || '';
+      document.getElementById('authorTitle').value = editingPerspective.author_title || '';
+      document.getElementById('featuredImageUrl').value = editingPerspective.featured_image_url || '';
+      document.getElementById('status').value = editingPerspective.status || 'draft';
+      document.getElementById('displayOrder').value = editingPerspective.display_order || 0;
+      document.getElementById('tags').value = (editingPerspective.tags || []).join(', ');
+
+      // Handle published_at datetime
+      if (editingPerspective.published_at) {
+        const date = new Date(editingPerspective.published_at);
+        document.getElementById('publishedAt').value = date.toISOString().slice(0, 16);
+      } else {
+        document.getElementById('publishedAt').value = '';
+      }
+
+      setContentType(editingPerspective.content_type || 'article');
+      updatePreview();
+      document.getElementById('perspectiveModal').style.display = 'flex';
+    }
+
+    // Close modal
+    function closeModal() {
+      document.getElementById('perspectiveModal').style.display = 'none';
+      editingPerspective = null;
+    }
+
+    // Update preview
+    function updatePreview() {
+      const text = document.getElementById('content').value;
+      const preview = document.getElementById('contentPreview');
+
+      if (!text.trim()) {
+        preview.innerHTML = 'Enter markdown text to see preview...';
+        return;
+      }
+
+      const renderedHtml = marked.parse(text);
+      preview.innerHTML = renderedHtml;
+    }
+
+    // Auto-generate slug from title
+    document.getElementById('title').addEventListener('input', function() {
+      const slugField = document.getElementById('slug');
+      // Only auto-generate if slug is empty or matches previous auto-generated value
+      if (!editingPerspective && !slugField.dataset.manual) {
+        const slug = this.value
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .slice(0, 100);
+        slugField.value = slug;
+      }
+    });
+
+    // Mark slug as manually edited
+    document.getElementById('slug').addEventListener('input', function() {
+      this.dataset.manual = 'true';
+    });
+
+    // Save perspective
+    async function savePerspective(event) {
+      event.preventDefault();
+
+      const id = document.getElementById('perspectiveId').value;
+      const publishedAtValue = document.getElementById('publishedAt').value;
+      const tagsValue = document.getElementById('tags').value;
+
+      const data = {
+        slug: document.getElementById('slug').value.trim(),
+        content_type: document.getElementById('contentType').value,
+        title: document.getElementById('title').value.trim(),
+        subtitle: document.getElementById('subtitle').value.trim() || null,
+        category: document.getElementById('category').value.trim() || null,
+        excerpt: document.getElementById('excerpt').value.trim() || null,
+        content: document.getElementById('content').value || null,
+        external_url: document.getElementById('externalUrl').value.trim() || null,
+        external_site_name: document.getElementById('externalSiteName').value.trim() || null,
+        author_name: document.getElementById('authorName').value.trim() || null,
+        author_title: document.getElementById('authorTitle').value.trim() || null,
+        featured_image_url: document.getElementById('featuredImageUrl').value.trim() || null,
+        status: document.getElementById('status').value,
+        published_at: publishedAtValue ? new Date(publishedAtValue).toISOString() : null,
+        display_order: parseInt(document.getElementById('displayOrder').value) || 0,
+        tags: tagsValue ? tagsValue.split(',').map(t => t.trim()).filter(t => t) : [],
+        metadata: {},
+      };
+
+      try {
+        const url = id ? `/api/admin/perspectives/${id}` : '/api/admin/perspectives';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to save perspective');
+        }
+
+        alert('Perspective saved successfully!');
+        closeModal();
+        loadPerspectives();
+      } catch (error) {
+        console.error('Error saving perspective:', error);
+        alert('Failed to save perspective: ' + error.message);
+      }
+    }
+
+    // Show delete modal
+    function showDeleteModal(id, title) {
+      deletingPerspectiveId = id;
+      document.getElementById('deleteTitle').textContent = title;
+      document.getElementById('deleteModal').style.display = 'flex';
+    }
+
+    // Close delete modal
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').style.display = 'none';
+      deletingPerspectiveId = null;
+    }
+
+    // Confirm delete
+    async function confirmDelete() {
+      if (!deletingPerspectiveId) return;
+
+      try {
+        const response = await fetch(`/api/admin/perspectives/${deletingPerspectiveId}`, {
+          method: 'DELETE',
+          credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to delete perspective');
+        }
+
+        closeDeleteModal();
+        loadPerspectives();
+      } catch (error) {
+        console.error('Error deleting perspective:', error);
+        alert('Failed to delete perspective: ' + error.message);
+      }
+    }
+
+    // Escape HTML helper
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    loadPerspectives();
+  </script>
+</body>
+</html>
