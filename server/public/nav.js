@@ -108,9 +108,9 @@
       : '';
 
     // Build perspectives link (only on beta site)
-    const perspectivesUrl = isLocal ? '/insights' : 'https://agenticadvertising.org/insights';
+    const perspectivesUrl = isLocal ? '/perspectives' : 'https://agenticadvertising.org/perspectives';
     const perspectivesLink = membershipEnabled
-      ? `<a href="${perspectivesUrl}" class="navbar__link ${currentPath.startsWith('/insights') ? 'active' : ''}">Perspectives</a>`
+      ? `<a href="${perspectivesUrl}" class="navbar__link ${currentPath.startsWith('/perspectives') ? 'active' : ''}">Perspectives</a>`
       : '';
 
     // Always use AAO logo

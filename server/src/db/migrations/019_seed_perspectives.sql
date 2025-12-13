@@ -1,0 +1,252 @@
+-- Migration: 018_seed_perspectives.sql
+-- Seeds initial perspectives data from existing static HTML content
+
+-- 0. Rajeev Goel Interview (External Link) - newest, first in display order
+INSERT INTO perspectives (
+  slug,
+  content_type,
+  title,
+  category,
+  excerpt,
+  external_url,
+  external_site_name,
+  author_name,
+  status,
+  published_at,
+  display_order,
+  tags
+) VALUES (
+  'rajeev-goel-agentic-advertising',
+  'link',
+  'Rajeev Goel on AgenticAdvertising.org',
+  'Interview',
+  'PubMatic CEO discusses why the industry needs shared standards for agentic AI. "AI is moving faster than any shift...it''s really important the industry aligns around shared standards early."',
+  'https://tipsheet.ai/governance/agentic-advertising-org',
+  'Tipsheet.ai',
+  'Rajeev Goel',
+  'published',
+  '2025-12-13 00:00:00+00',
+  0,
+  ARRAY['interview', 'standards', 'PubMatic']
+) ON CONFLICT (slug) DO NOTHING;
+
+-- 1. Understanding the Agentic Protocol Landscape (Article)
+INSERT INTO perspectives (
+  slug,
+  content_type,
+  title,
+  subtitle,
+  category,
+  excerpt,
+  content,
+  status,
+  published_at,
+  display_order,
+  tags
+) VALUES (
+  'agentic-protocol-landscape',
+  'article',
+  'Understanding the Agentic Protocol Landscape',
+  'How horizontal middleware and vertical standards work together',
+  'Ecosystem',
+  'How horizontal middleware (AAIF) and vertical transaction protocols (AdCP, ACP) work together. A comprehensive guide to agentic AI standards and where to get involved.',
+  '## Overview
+
+As AI agents become more capable, they need standardized ways to communicate with each other and with business systems. The emerging **agentic protocol landscape** addresses this through two complementary approaches: horizontal middleware that provides foundational agent-to-agent communication, and vertical protocols that enable specific business transactions.
+
+### Why Standards Matter
+
+Without open standards, the AI agent ecosystem risks fragmenting into proprietary silos where agents from different vendors cannot interoperate. Open standards enable:
+
+- **Interoperability** - Agents from different vendors can work together
+- **Innovation** - Developers can build on shared infrastructure rather than reinventing basics
+- **Trust** - Open governance ensures standards evolve for the community''s benefit
+- **Choice** - Businesses aren''t locked into single vendor ecosystems
+
+### The Horizontal/Vertical Framework
+
+The agentic protocol landscape can be understood through two layers:
+
+**Horizontal Middleware** provides the foundational layer for agent-to-agent communication. It defines how agents discover each other, exchange messages, share context, and coordinate actions - regardless of what specific business domain they operate in.
+
+**Vertical Transaction Protocols** define how agents conduct specific types of business transactions. These protocols build on the foundational layer to enable domain-specific workflows.
+
+## Horizontal Middleware
+
+### Agentic AI Foundation (AAIF)
+
+The Agentic AI Foundation is a vendor-neutral home for open source agentic AI projects hosted by the Linux Foundation. AAIF provides open governance, funding for community programs, and coordination to ensure standards evolve for the community''s benefit rather than any single company''s interests.
+
+**Founding projects contributed to AAIF:**
+
+- **Model Context Protocol (MCP)** - Anthropic''s protocol for connecting AI assistants to external tools and data sources
+- **Agent2Agent (A2A)** - Google''s protocol for communication between AI agents
+- **Agents.md** - OpenAI''s specification for agent capability documentation, adopted by 60,000+ projects
+- **Goose** - Block''s open source, local-first AI agent framework
+
+**Members include:** Amazon Web Services, Anthropic, Block, Bloomberg, Cloudflare, Google, Microsoft, OpenAI, Shopify, Snowflake, and many others.
+
+AAIF aims to be "what the W3C is for the Web" - a set of standards and protocols that guarantee interoperability, open access, and freedom of choice.
+
+## Vertical Transaction Protocols
+
+### Ad Context Protocol (AdCP)
+
+AdCP is an open standard for AI-powered advertising workflows. It enables agents to express advertising intent, discover inventory, exchange signals, and execute media buys across publishers and platforms through a unified interface.
+
+**Key capabilities:**
+
+- Natural language inventory discovery and brief-based targeting
+- Signal activation for audiences, contexts, and locations
+- Media buy creation and optimization
+- Creative format discovery and asset management
+
+AdCP uses a task-first architecture where core advertising tasks can be accessed through multiple underlying protocols (MCP, A2A, or future protocols from AAIF).
+
+### Agentic Commerce Protocol (ACP)
+
+ACP is an open standard for AI-powered commerce. It enables buyer agents, merchant systems, and payment providers to coordinate checkout flows, share credentials, and complete purchases in a secure, auditable way.
+
+**Key capabilities:**
+
+- Product discovery and catalog navigation
+- Cart management and checkout coordination
+- Payment credential handling
+- Order fulfillment and tracking
+
+ACP is open source under Apache 2.0 license, allowing any business to implement the specification to transact with any AI agent or payment processor.
+
+## Traditional Standards
+
+Agentic protocols don''t replace existing industry infrastructure - they build on top of it. Traditional standards continue to provide essential capabilities that the agentic layer leverages.
+
+### IAB Tech Lab
+
+The Interactive Advertising Bureau (IAB) Tech Lab develops and maintains technical standards for the digital advertising industry. These standards form the underlying infrastructure that agentic advertising systems interact with.
+
+**Key standards:**
+
+- **OpenRTB** - Real-time bidding protocol for programmatic advertising
+- **VAST** - Video ad serving template for video advertising
+- **Open Measurement** - Viewability and verification measurement
+- **ads.txt / sellers.json** - Supply chain transparency
+
+When an AI agent executes a media buy through AdCP, the underlying transaction often flows through OpenRTB-compatible systems. Agentic protocols provide the AI-native interface; traditional protocols handle the execution.
+
+## Get Involved
+
+The agentic protocol landscape is being built in the open. Whether you''re interested in horizontal middleware, vertical protocols for advertising or commerce, or traditional ad tech standards, there are opportunities to participate and shape the future.
+
+- **[AgenticAdvertising.org](https://agenticadvertising.org/about)** - The independent industry organization advancing open standards for AI-powered advertising
+- **[Agentic AI Foundation](https://aaif.io/)** - The Linux Foundation project providing vendor-neutral governance for agentic AI standards
+- **[Agentic Commerce Protocol](https://www.agenticcommerce.dev/)** - Open standard for AI-powered commerce transactions
+- **[Model Context Protocol](https://modelcontextprotocol.io/)** - Protocol for connecting AI assistants to external tools and data sources
+- **[IAB Tech Lab](https://iabtechlab.com/)** - Develops technical standards for digital advertising
+- **[AdCP Slack Community](https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA)** - Join the conversation with developers building the agentic advertising ecosystem',
+  'published',
+  '2025-12-01 00:00:00+00',
+  1,
+  ARRAY['ecosystem', 'protocols', 'standards', 'AAIF', 'MCP', 'A2A']
+) ON CONFLICT (slug) DO NOTHING;
+
+-- 2. AgenticAdvertising.org Launches (Press Release)
+INSERT INTO perspectives (
+  slug,
+  content_type,
+  title,
+  subtitle,
+  category,
+  excerpt,
+  content,
+  status,
+  published_at,
+  display_order,
+  tags
+) VALUES (
+  'launch-announcement',
+  'article',
+  'AgenticAdvertising.org Launches to Help Brands, Publishers, Agencies, Ad Tech Adopt AI',
+  'New Nonprofit to Unify Marketing-Media Ecosystem Around Standards and Practices',
+  'Press Release',
+  'New nonprofit to unify marketing-media ecosystem around standards and practices. Industry veterans Randall Rothenberg and Matthew Egol brought in as interim leaders.',
+  '**12 December 2025 — NEW YORK**
+
+Building on the October launch of the first technical protocol for agentic advertising, an array of leading marketing services companies today announced the incorporation of AgenticAdvertising.org, an independent nonprofit organization dedicated to advancing standards and practices for agentic AI as shared infrastructure for the advertising ecosystem.
+
+The organization arrives as AI fundamentally reshapes how marketing organizations operate, breaking down the silos among creative, media, commerce, technology, and data that have constrained the industry for years. AgenticAdvertising.org will have balanced representation across brands, agencies, publishers, and ad tech to guide the mission, objectives, and principles of the organization.
+
+> "Brands are building agentic capabilities, agencies are reimagining workflows, and publishers are exploring new ways to connect with advertisers. Without shared standards and collaborative development, every integration becomes bespoke and the opportunity to rebuild advertising gets lost to another generation of fragmentation. With shared standards and practices, we can reunite creativity and media, and ignite a revolution in marketing effectiveness."
+>
+> — Benjamin Masse, Chief Product Officer at Triton Digital, part of iHeartMedia
+
+Industry veterans Matthew Egol and Randall Rothenberg have been brought in as interim leads to stand up the organization, establishing its mission, governance structure, and strategic direction.
+
+AgenticAdvertising.org will provide independent governance for AdCP and related standards, establishing the frameworks, education, and collaborative processes needed to ensure development benefits the entire ecosystem. Beyond standards governance, the organization will provide adoption support, leading practices, certifications, thought leadership, and other services to member organizations and individuals advancing agentic advertising and marketing.
+
+Egol is founder and CEO of JourneySpark Consulting, a former partner in the marketing and media practices at Booz & Co. and PwC, and a longtime advisor to brands, publishers, platforms, agencies, and trade bodies. Rothenberg is the former CEO of the IAB, former CMO of Booz & Co., advertising columnist for The New York Times and Advertising Age, and author of the best-selling book *Where the Suckers Moon: The Life and Death of an Advertising Campaign*.
+
+> "Marketing is entering a period of genuine transformation. When we look back at 2025, we''ll recognize this as the year the industry had a choice about how agentic capabilities would develop. You can have fragmentation, where every platform builds proprietary solutions and integration becomes the tax everyone pays. Or you can build toward a shared vision that lets brands, agencies, publishers and other agentic builders and implementers across the ecosystem focus resources on strategy and creativity rather than on plumbing."
+>
+> — Randall Rothenberg
+
+> "Agentic advertising will change the game for companies looking to strengthen a culture of experimentation. It lowers the cost of complexity to integrate across paid and owned media assets and optimize next best content for your customer personas."
+>
+> — Matthew Egol
+
+The formation of AgenticAdvertising.org follows the launch of AdCP, the first open standard enabling interoperable agent-to-agent communication across the advertising ecosystem, which has drawn thousands of participants and more than 1,200 engaged community members. As the broader agentic landscape evolves, AgenticAdvertising.org is committed to collaborating openly with other standards and practices bodies, ensuring advertising-specific standards can both flourish independently and complement wider agentic frameworks emerging across industries.
+
+> "As autonomous systems reshape how digital advertising is planned, executed, and measured, the industry needs shared foundations that ensure these capabilities scale responsibly. Agentic advertising will not be a black box. Open standards like AdCP are essential to delivering transparency, interoperability, and verifiable performance and the architectural principles that define the next era of our industry."
+>
+> — Rajeev Goel, Co-Founder and CEO of PubMatic
+
+Agentic advertising represents a fundamental shift from programmatic automation to intelligent agent collaboration. Unlike previous waves of ad tech innovation that created fragmented solutions and walled gardens, this movement has the opportunity to establish open standards, transparent practices, and interoperable systems from the outset.
+
+During their tenure as interim leaders, Egol and Rothenberg will engage brand CMOs, agency executives, and publishers to understand priorities across the ecosystem. The organization''s permanent governance structure and board leadership will be announced in early 2026, followed by a flagship industry event in April.
+
+---
+
+## About AgenticAdvertising.org and AdCP
+
+AgenticAdvertising.org is the independent industry body overseeing development, education, and rollout of standards and practices for agentic advertising deployment. The organization launched in December 2025 with interim leaders Randall Rothenberg and Matthew Egol guiding its formation, alongside founding leaders from across the ad ecosystem who are providing the funding and strategic direction to establish the organization''s governance and programs.
+
+### Founding Consortium Members
+
+AdCP was developed by founding consortium members including Yahoo, PubMatic, Optable, Swivel, Triton Digital, and Scope3, with wide-industry support from companies like Magnite, Kargo, Raptive, LG Ad Solutions, The Weather Company, AccuWeather, Butler/Till, Classify, and Samba TV.
+
+Built on Anthropic''s Model Context Protocol (MCP), AdCP establishes open standards for AI-driven advertising operations, enabling interoperable agent-to-agent communication across the ad ecosystem.',
+  'published',
+  '2025-12-12 00:00:00+00',
+  2,
+  ARRAY['press-release', 'launch', 'announcement']
+) ON CONFLICT (slug) DO NOTHING;
+
+-- 3. The Three Superpowers of Agentic Advertising (External Link)
+INSERT INTO perspectives (
+  slug,
+  content_type,
+  title,
+  subtitle,
+  category,
+  excerpt,
+  external_url,
+  external_site_name,
+  author_name,
+  status,
+  published_at,
+  display_order,
+  tags
+) VALUES (
+  'three-superpowers-agentic-advertising',
+  'link',
+  'The Three Superpowers of Agentic Advertising',
+  NULL,
+  'Op-Ed',
+  'The past month saw three of the most monumental events in the history of marketing. By Randall Rothenberg and Matthew Egol.',
+  'https://winningexperience.substack.com/p/the-three-superpowers-of-agentic',
+  'Substack',
+  'Randall Rothenberg and Matthew Egol',
+  'published',
+  '2025-12-10 00:00:00+00',
+  3,
+  ARRAY['op-ed', 'thought-leadership']
+) ON CONFLICT (slug) DO NOTHING;

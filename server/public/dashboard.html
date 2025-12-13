@@ -129,6 +129,20 @@
     .btn-secondary:hover {
       background: #d0d0d0;
     }
+    /* Admin Link */
+    .admin-link {
+      margin-left: auto;
+      padding: 8px 16px;
+      background: #667eea;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .admin-link:hover {
+      background: #5a6fd6;
+    }
     /* Org Switcher */
     .org-switcher {
       position: relative;
@@ -286,6 +300,7 @@
         </button>
         <div class="org-switcher-dropdown" id="orgDropdown"></div>
       </div>
+      <a href="/admin" id="adminLink" class="admin-link" style="display: none;">Admin</a>
     </div>
   </div>
 
@@ -1172,6 +1187,11 @@
         }
 
         const data = await response.json();
+
+        // Show admin link if user is admin
+        if (data.user?.isAdmin) {
+          document.getElementById('adminLink').style.display = 'block';
+        }
 
         if (data.organizations && data.organizations.length > 0) {
           // Load billing info for each organization

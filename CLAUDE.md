@@ -841,6 +841,59 @@ Brief explanation of what developers need to change.
 
 Automation can't write good explanations or migration guides - that requires human understanding of the changes and their impact on developers.
 
+## Local Development & Testing
+
+### Testing the Website Locally with Docker
+
+**PREFERRED METHOD**: Use Docker for local testing to avoid manual setup steps.
+
+```bash
+# Start postgres and the app with auto-migrations
+docker compose up --build
+
+# The app will be available at http://localhost:3000 (or your CONDUCTOR_PORT)
+# Migrations run automatically on startup
+```
+
+This will:
+1. Start a PostgreSQL container
+2. Build and start the app container
+3. Automatically run database migrations on startup
+4. Expose the app on your configured port
+
+**To reset the database:**
+```bash
+docker compose down -v  # -v removes the postgres volume
+docker compose up --build
+```
+
+**To view logs:**
+```bash
+docker compose logs -f app      # App logs
+docker compose logs -f postgres # Database logs
+```
+
+### Alternative: Local Development Without Docker
+
+If you need to run without Docker (e.g., for faster iteration):
+
+```bash
+# 1. Ensure PostgreSQL is running locally and DATABASE_URL is set in .env.local
+
+# 2. Run migrations manually
+npm run db:migrate
+
+# 3. Start the dev server
+npm run start
+```
+
+### Environment Variables
+
+Key environment variables for local development:
+- `CONDUCTOR_PORT` - Port to run the server (default: 3000)
+- `DATABASE_URL` - PostgreSQL connection string
+- `RUN_MIGRATIONS=true` - Auto-run migrations on startup (used by Docker)
+
 ## Code Standards
 
 ### TypeScript/JavaScript

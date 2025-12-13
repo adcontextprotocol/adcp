@@ -54,6 +54,8 @@ const workos = AUTH_ENABLED ? new WorkOS(process.env.WORKOS_API_KEY!, {
 const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID || '';
 const WORKOS_REDIRECT_URI = process.env.WORKOS_REDIRECT_URI || 'http://localhost:3000/auth/callback';
 const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD || '';
+// Allow insecure cookies for local Docker development
+const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
 
 export class HTTPServer {
   private app: express.Application;
@@ -1062,26 +1064,28 @@ export class HTTPServer {
       res.sendFile(aboutPath);
     });
 
-    // Insights section
+    // Perspectives section
+    this.app.get("/perspectives", (req, res) => {
+      const perspectivesPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/perspectives/index.html")
+        : path.join(__dirname, "../public/perspectives/index.html");
+      res.sendFile(perspectivesPath);
+    });
+
+    // Dynamic article route - serves article.html which loads content from API
+    this.app.get("/perspectives/:slug", (req, res) => {
+      const articlePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/perspectives/article.html")
+        : path.join(__dirname, "../public/perspectives/article.html");
+      res.sendFile(articlePath);
+    });
+
+    // Legacy redirect from /insights to /perspectives
     this.app.get("/insights", (req, res) => {
-      const insightsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/insights/index.html")
-        : path.join(__dirname, "../public/insights/index.html");
-      res.sendFile(insightsPath);
+      res.redirect(301, "/perspectives");
     });
-
-    this.app.get("/insights/agentic-protocol-landscape", (req, res) => {
-      const articlePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/insights/agentic-protocol-landscape.html")
-        : path.join(__dirname, "../public/insights/agentic-protocol-landscape.html");
-      res.sendFile(articlePath);
-    });
-
-    this.app.get("/insights/launch-announcement", (req, res) => {
-      const articlePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/insights/launch-announcement.html")
-        : path.join(__dirname, "../public/insights/launch-announcement.html");
-      res.sendFile(articlePath);
+    this.app.get("/insights/:slug", (req, res) => {
+      res.redirect(301, `/perspectives/${req.params.slug}`);
     });
 
     // AdAgents API Routes
@@ -2772,6 +2776,434 @@ export class HTTPServer {
       }
     });
 
+    // ========================================
+    // Perspectives Admin Routes
+    // ========================================
+
+    // GET /api/admin/perspectives - List all perspectives
+    this.app.get('/api/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT * FROM perspectives
+           ORDER BY display_order ASC, published_at DESC NULLS LAST, created_at DESC`
+        );
+
+        res.json(result.rows);
+      } catch (error) {
+        logger.error({ err: error }, 'Get all perspectives error:');
+        res.status(500).json({
+          error: 'Failed to get perspectives',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/perspectives/:id - Get single perspective
+    this.app.get('/api/admin/perspectives/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const pool = getPool();
+        const result = await pool.query(
+          'SELECT * FROM perspectives WHERE id = $1',
+          [id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Perspective not found',
+            message: `No perspective found with id ${id}`
+          });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Get perspective error:');
+        res.status(500).json({
+          error: 'Failed to get perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/perspectives/fetch-url - Fetch URL metadata for auto-fill
+    this.app.post('/api/admin/perspectives/fetch-url', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { url } = req.body;
+
+        if (!url) {
+          return res.status(400).json({
+            error: 'URL required',
+            message: 'Please provide a URL to fetch'
+          });
+        }
+
+        // Fetch the page
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+            'Accept': 'text/html,application/xhtml+xml'
+          },
+          redirect: 'follow'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch URL: ${response.status}`);
+        }
+
+        const html = await response.text();
+
+        // Extract metadata from HTML
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+        const ogDescMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
+        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+        const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
+
+        // Helper to decode HTML entities
+        const decodeHtmlEntities = (text: string): string => {
+          return text
+            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
+        };
+
+        // Determine title (prefer og:title, then <title>)
+        let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
+        title = decodeHtmlEntities(title.trim());
+
+        // Determine description (prefer og:description, then meta description)
+        let excerpt = ogDescMatch?.[1] || descMatch?.[1] || '';
+        excerpt = decodeHtmlEntities(excerpt.trim());
+
+        // Site name from og:site_name or parse from URL
+        let site_name = ogSiteMatch?.[1] || '';
+        if (!site_name) {
+          try {
+            const parsedUrl = new URL(url);
+            site_name = parsedUrl.hostname.replace('www.', '');
+            // Capitalize first letter
+            site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
+          } catch {
+            // ignore URL parse errors
+          }
+        }
+        site_name = decodeHtmlEntities(site_name);
+
+        res.json({
+          title,
+          excerpt,
+          site_name
+        });
+
+      } catch (error) {
+        logger.error({ err: error }, 'Fetch URL metadata error:');
+        res.status(500).json({
+          error: 'Failed to fetch URL',
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    });
+
+    // POST /api/admin/perspectives - Create new perspective
+    this.app.post('/api/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const {
+          slug,
+          content_type = 'article',
+          title,
+          subtitle,
+          category,
+          excerpt,
+          content,
+          external_url,
+          external_site_name,
+          author_name,
+          author_title,
+          featured_image_url,
+          status = 'draft',
+          published_at,
+          display_order = 0,
+          tags = [],
+          metadata = {},
+        } = req.body;
+
+        const validContentTypes = ['article', 'link'];
+        const validStatuses = ['draft', 'published', 'archived'];
+
+        if (!slug || !title) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'slug and title are required'
+          });
+        }
+
+        if (!validContentTypes.includes(content_type)) {
+          return res.status(400).json({
+            error: 'Invalid content_type',
+            message: 'content_type must be: article or link'
+          });
+        }
+
+        if (!validStatuses.includes(status)) {
+          return res.status(400).json({
+            error: 'Invalid status',
+            message: 'status must be: draft, published, or archived'
+          });
+        }
+
+        // Validate content_type requirements
+        if (content_type === 'link' && !external_url) {
+          return res.status(400).json({
+            error: 'Missing external_url',
+            message: 'external_url is required for link type perspectives'
+          });
+        }
+
+        const pool = getPool();
+        const result = await pool.query(
+          `INSERT INTO perspectives (
+            slug, content_type, title, subtitle, category, excerpt,
+            content, external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            status, published_at, display_order, tags, metadata
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          RETURNING *`,
+          [
+            slug, content_type, title, subtitle, category, excerpt,
+            content, external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            status, published_at || null, display_order, tags, metadata
+          ]
+        );
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Create perspective error:');
+        // Check for unique constraint violation
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(400).json({
+            error: 'Slug already exists',
+            message: 'A perspective with this slug already exists'
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to create perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/admin/perspectives/:id - Update perspective
+    this.app.put('/api/admin/perspectives/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const {
+          slug,
+          content_type,
+          title,
+          subtitle,
+          category,
+          excerpt,
+          content,
+          external_url,
+          external_site_name,
+          author_name,
+          author_title,
+          featured_image_url,
+          status,
+          published_at,
+          display_order,
+          tags,
+          metadata,
+        } = req.body;
+
+        const validContentTypes = ['article', 'link'];
+        const validStatuses = ['draft', 'published', 'archived'];
+
+        if (!slug || !title) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'slug and title are required'
+          });
+        }
+
+        if (content_type && !validContentTypes.includes(content_type)) {
+          return res.status(400).json({
+            error: 'Invalid content_type',
+            message: 'content_type must be: article or link'
+          });
+        }
+
+        if (status && !validStatuses.includes(status)) {
+          return res.status(400).json({
+            error: 'Invalid status',
+            message: 'status must be: draft, published, or archived'
+          });
+        }
+
+        // Validate content_type requirements
+        if (content_type === 'link' && !external_url) {
+          return res.status(400).json({
+            error: 'Missing external_url',
+            message: 'external_url is required for link type perspectives'
+          });
+        }
+
+        const pool = getPool();
+        const result = await pool.query(
+          `UPDATE perspectives SET
+            slug = $1,
+            content_type = $2,
+            title = $3,
+            subtitle = $4,
+            category = $5,
+            excerpt = $6,
+            content = $7,
+            external_url = $8,
+            external_site_name = $9,
+            author_name = $10,
+            author_title = $11,
+            featured_image_url = $12,
+            status = $13,
+            published_at = $14,
+            display_order = $15,
+            tags = $16,
+            metadata = $17
+          WHERE id = $18
+          RETURNING *`,
+          [
+            slug, content_type, title, subtitle, category, excerpt,
+            content, external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            status, published_at || null, display_order, tags, metadata,
+            id
+          ]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Perspective not found',
+            message: `No perspective found with id ${id}`
+          });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Update perspective error:');
+        // Check for unique constraint violation
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(400).json({
+            error: 'Slug already exists',
+            message: 'A perspective with this slug already exists'
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to update perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/admin/perspectives/:id - Delete perspective
+    this.app.delete('/api/admin/perspectives/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const pool = getPool();
+
+        const result = await pool.query(
+          'DELETE FROM perspectives WHERE id = $1 RETURNING id',
+          [id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Perspective not found',
+            message: `No perspective found with id ${id}`
+          });
+        }
+
+        res.json({ success: true, deleted: id });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete perspective error:');
+        res.status(500).json({
+          error: 'Failed to delete perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // ========================================
+    // Public Perspectives API Routes
+    // ========================================
+
+    // GET /api/perspectives - List published perspectives
+    this.app.get('/api/perspectives', async (req, res) => {
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT
+            id, slug, content_type, title, subtitle, category, excerpt,
+            external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            published_at, display_order, tags
+          FROM perspectives
+          WHERE status = 'published'
+          ORDER BY display_order ASC, published_at DESC NULLS LAST`
+        );
+
+        res.json(result.rows);
+      } catch (error) {
+        logger.error({ err: error }, 'Get published perspectives error:');
+        res.status(500).json({
+          error: 'Failed to get perspectives',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/perspectives/:slug - Get single published perspective by slug
+    this.app.get('/api/perspectives/:slug', async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT
+            id, slug, content_type, title, subtitle, category, excerpt,
+            content, external_url, external_site_name,
+            author_name, author_title, featured_image_url,
+            published_at, tags, metadata
+          FROM perspectives
+          WHERE slug = $1 AND status = 'published'`,
+          [slug]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Perspective not found',
+            message: `No published perspective found with slug ${slug}`
+          });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Get perspective by slug error:');
+        res.status(500).json({
+          error: 'Failed to get perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // Serve admin pages
     this.app.get('/admin/members', requireAuth, requireAdmin, (req, res) => {
       const membersPath = process.env.NODE_ENV === 'production'
@@ -2792,6 +3224,13 @@ export class HTTPServer {
         ? path.join(__dirname, '../server/public/admin-analytics.html')
         : path.join(__dirname, '../public/admin-analytics.html');
       res.sendFile(analyticsPath);
+    });
+
+    this.app.get('/admin/perspectives', requireAuth, requireAdmin, (req, res) => {
+      const perspectivesPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-perspectives.html')
+        : path.join(__dirname, '../public/admin-perspectives.html');
+      res.sendFile(perspectivesPath);
     });
 
   }
@@ -2918,7 +3357,7 @@ export class HTTPServer {
         // Set sealed session cookie
         res.cookie('wos-session', sealedSession!, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
           sameSite: 'lax',
           path: '/',
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -2994,7 +3433,7 @@ export class HTTPServer {
         // Clear the cookie - must match the options used when setting it
         res.clearCookie('wos-session', {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
           sameSite: 'lax',
           path: '/',
         });
@@ -3004,7 +3443,7 @@ export class HTTPServer {
         // Still clear the cookie and redirect even if revocation failed
         res.clearCookie('wos-session', {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
           sameSite: 'lax',
           path: '/',
         });
@@ -3041,12 +3480,17 @@ export class HTTPServer {
           })
         );
 
+        // Check if user is admin
+        const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+        const isAdmin = adminEmails.includes(user.email.toLowerCase());
+
         res.json({
           user: {
             id: user.id,
             email: user.email,
             first_name: user.firstName,
             last_name: user.lastName,
+            isAdmin,
           },
           organizations,
         });
