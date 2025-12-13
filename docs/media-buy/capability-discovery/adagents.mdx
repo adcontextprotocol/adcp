@@ -532,26 +532,60 @@ curl -X POST https://adcontextprotocol.org/api/adagents/validate \
 
 The validation API fetches `https://{domain}/.well-known/adagents.json`, validates its structure, follows URL references if present, and optionally checks agent card endpoints.
 
-### Manual Validation
+### Using AdCP Client Libraries
 
-For direct validation without the API:
+The AdCP client libraries provide built-in validation and authorization checking:
 
 <CodeGroup>
+
+```python Python
+import asyncio
+from adcp import fetch_adagents, verify_agent_authorization
+
+async def validate_authorization():
+    # Fetch and validate adagents.json from a publisher domain
+    adagents_data = await fetch_adagents('example-publisher.com')
+
+    # Check if a specific agent is authorized
+    is_authorized = verify_agent_authorization(
+        adagents_data=adagents_data,
+        agent_url='https://our-sales-agent.com',
+        property_type='website',
+        property_identifiers=[{'type': 'domain', 'value': 'example-publisher.com'}]
+    )
+
+    print(f"Agent authorized: {is_authorized}")
+    print(f"Total agents: {len(adagents_data.get('authorized_agents', []))}")
+
+asyncio.run(validate_authorization())
+```
+
+```javascript JavaScript
+// Using the @adcp/client PropertyCrawler for discovery
+import { PropertyCrawler } from '@adcp/client';
+
+const crawler = new PropertyCrawler({ logLevel: 'info' });
+
+// Crawl agents to discover their authorized properties
+const result = await crawler.crawlAgents([
+  { agent_url: 'https://our-sales-agent.com', protocol: 'a2a' }
+]);
+
+console.log(`Found ${result.totalProperties} properties across ${result.totalPublisherDomains} domains`);
+```
 
 ```bash CLI
 # Fetch and inspect authorization file
 curl https://example-publisher.com/.well-known/adagents.json | jq '.'
 
-# Validate against schema using ajv-cli
-curl https://example-publisher.com/.well-known/adagents.json > adagents.json
-npx ajv-cli validate -s https://adcontextprotocol.org/schemas/v2/adagents.json -d adagents.json
-
 # Check specific agent authorization
 curl https://example-publisher.com/.well-known/adagents.json | \
-  jq '.authorized_agents[] | select(.url == "https://test-agent.adcontextprotocol.org/mcp")'
+  jq '.authorized_agents[] | select(.url == "https://our-sales-agent.com")'
 ```
 
 </CodeGroup>
+
+The Python library handles validation automatically when fetching - if the adagents.json file is malformed or missing required fields, it raises `AdagentsValidationError`.
 
 ## Best Practices
 
