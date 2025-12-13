@@ -460,6 +460,114 @@ Different agents for different channels:
 
 ## Fetching and Validating
 
+### Using the Validation API
+
+AdCP provides a hosted validation API that performs comprehensive checks including structure validation, URL reference resolution, and agent card verification.
+
+<CodeGroup>
+
+```javascript JavaScript
+// Validate a domain's adagents.json file
+const response = await fetch('https://adcontextprotocol.org/api/adagents/validate', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ domain: 'example.com' })
+});
+
+const { success, data } = await response.json();
+
+if (success && data.found) {
+  console.log(`Valid: ${data.validation.valid}`);
+  console.log(`Agents: ${data.validation.raw_data?.authorized_agents?.length || 0}`);
+
+  // Check for any validation errors
+  if (data.validation.errors?.length > 0) {
+    console.log('Errors:', data.validation.errors.map(e => e.message));
+  }
+} else {
+  console.log('No adagents.json found at this domain');
+}
+```
+
+```python Python
+import httpx
+
+# Validate a domain's adagents.json file
+response = httpx.post(
+    'https://adcontextprotocol.org/api/adagents/validate',
+    json={'domain': 'example.com'}
+)
+
+result = response.json()
+
+if result['success'] and result['data']['found']:
+    validation = result['data']['validation']
+    print(f"Valid: {validation['valid']}")
+    print(f"Agents: {len(validation.get('raw_data', {}).get('authorized_agents', []))}")
+
+    # Check for any validation errors
+    if validation.get('errors'):
+        print('Errors:', [e['message'] for e in validation['errors']])
+else:
+    print('No adagents.json found at this domain')
+```
+
+```bash CLI
+# Validate a domain using the API
+curl -X POST https://adcontextprotocol.org/api/adagents/validate \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}' | jq '.data.validation'
+
+# Create and validate a new adagents.json structure
+curl -X POST https://adcontextprotocol.org/api/adagents/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "authorized_agents": [
+      {
+        "url": "https://my-agent.example.com",
+        "authorized_for": "All properties"
+      }
+    ],
+    "include_schema": true,
+    "include_timestamp": true
+  }' | jq '.'
+
+# Validate agent card endpoints
+curl -X POST https://adcontextprotocol.org/api/adagents/validate-cards \
+  -H "Content-Type: application/json" \
+  -d '{"agent_urls": ["https://test-agent.adcontextprotocol.org"]}' | jq '.'
+```
+
+</CodeGroup>
+
+### Validation Response
+
+The validation API returns detailed results including:
+
+```json
+{
+  "success": true,
+  "data": {
+    "domain": "example.com",
+    "found": true,
+    "validation": {
+      "valid": true,
+      "errors": [],
+      "warnings": [],
+      "domain": "example.com",
+      "url": "https://example.com/.well-known/adagents.json",
+      "status_code": 200,
+      "raw_data": { /* full adagents.json content */ }
+    }
+  },
+  "timestamp": "2025-01-10T12:00:00Z"
+}
+```
+
+### Manual Validation
+
+For direct validation without the API:
+
 <CodeGroup>
 
 ```bash CLI
@@ -517,6 +625,7 @@ After implementing adagents.json validation:
 
 ## Learn More
 
+- [AdCP Basics: Authorized Properties](https://bokonads.com/p/adcp-basics-authorized-properties) - Accessible introduction to AdCP authorization
 - [list_authorized_properties](/docs/media-buy/task-reference/list_authorized_properties) - Discover publisher domains an agent represents
 - [Property Schema](https://adcontextprotocol.org/schemas/v2/core/property.json) - Property definition structure
 - [AdAgents.json Builder](https://adcontextprotocol.org/adagents) - Web-based validator and creator
