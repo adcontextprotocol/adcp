@@ -296,38 +296,6 @@
       margin-bottom: 2rem;
     }
 
-    /* Footer */
-    .footer {
-      background: #1f2937;
-      color: #9ca3af;
-      padding: 3rem 2rem;
-    }
-    .footer-container {
-      max-width: 1100px;
-      margin: 0 auto;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 1.5rem;
-    }
-    .footer-links {
-      display: flex;
-      gap: 2rem;
-      flex-wrap: wrap;
-    }
-    .footer-links a {
-      color: #d1d5db;
-      text-decoration: none;
-      font-size: 0.95rem;
-      transition: color 0.2s;
-    }
-    .footer-links a:hover {
-      color: #a4c2f4;
-    }
-    .footer-copyright {
-      font-size: 0.875rem;
-    }
 
     @media (max-width: 768px) {
       .hero {
@@ -426,7 +394,7 @@
           <p>
             A standard discovery mechanism for advertising agents. Add an adagents.json file to your domain to make your agents discoverable by AI assistants and orchestrators.
           </p>
-          <a href="/adagents">Learn more &rarr;</a>
+          <a href="https://docs.adcontextprotocol.org/docs/media-buy/capability-discovery/adagents" target="_blank" rel="noopener noreferrer">Learn more &rarr;</a>
         </div>
 
         <div class="project-card">
@@ -511,21 +479,7 @@
     </div>
   </section>
 
-  <!-- Footer -->
-  <footer class="footer">
-    <div class="footer-container">
-      <div class="footer-links">
-        <a href="/">Home</a>
-        <a href="/about">About</a>
-        <a href="/members">Members</a>
-        <a href="https://docs.adcontextprotocol.org">AdCP Docs</a>
-        <a href="https://github.com/adcontextprotocol/adcp">GitHub</a>
-        <a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA">Slack</a>
-      </div>
-      <div class="footer-copyright">
-        &copy; 2025 AgenticAdvertising.org
-      </div>
-    </div>
-  </footer>
+  <!-- Shared Footer -->
+  <div id="adcp-footer"></div>
 </body>
 </html>

@@ -2962,7 +2962,17 @@ export class HTTPServer {
     this.app.get('/api/me/agreements', requireAuth, async (req, res) => {
       try {
         const user = req.user!;
-        const acceptances = await orgDb.getUserAgreementAcceptances(user.id);
+        const allAcceptances = await orgDb.getUserAgreementAcceptances(user.id);
+
+        // Deduplicate by agreement type, keeping only the most recent acceptance per type
+        // (acceptances are already ordered by accepted_at DESC)
+        const acceptancesByType = new Map<string, typeof allAcceptances[0]>();
+        for (const acceptance of allAcceptances) {
+          if (!acceptancesByType.has(acceptance.agreement_type)) {
+            acceptancesByType.set(acceptance.agreement_type, acceptance);
+          }
+        }
+        const acceptances = Array.from(acceptancesByType.values());
 
         // Get current versions of all agreement types
         const agreementTypes = ['terms_of_service', 'privacy_policy', 'membership'];

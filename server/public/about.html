@@ -325,31 +325,6 @@
       margin: 0;
     }
 
-    /* Footer */
-    .footer {
-      background: #1f2937;
-      color: #9ca3af;
-      padding: 3rem 2rem;
-      text-align: center;
-    }
-    .footer-links {
-      display: flex;
-      justify-content: center;
-      gap: 2rem;
-      margin-bottom: 1.5rem;
-      flex-wrap: wrap;
-    }
-    .footer-links a {
-      color: #d1d5db;
-      text-decoration: none;
-      transition: color 0.2s;
-    }
-    .footer-links a:hover {
-      color: var(--aao-accent);
-    }
-    .footer-copyright {
-      font-size: 0.875rem;
-    }
 
     @media (max-width: 768px) {
       .hero {
@@ -571,19 +546,8 @@
     </section>
   </div>
 
-  <!-- Footer -->
-  <footer class="footer">
-    <div class="footer-links">
-      <a href="/">Home</a>
-      <a href="https://docs.adcontextprotocol.org">AdCP Documentation</a>
-      <a href="/members">Members</a>
-      <a href="https://github.com/adcontextprotocol/adcp">GitHub</a>
-      <a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA">Slack Community</a>
-    </div>
-    <div class="footer-copyright">
-      &copy; 2025 AgenticAdvertising.org
-    </div>
-  </footer>
+  <!-- Shared Footer -->
+  <div id="adcp-footer"></div>
 
   <script>
     // Sub-nav active state on scroll
