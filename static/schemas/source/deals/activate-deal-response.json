@@ -17,9 +17,10 @@
           }
         },
         "context": {
-          "type": "object",
-          "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
         }
       },
       "required": ["deployments"],
@@ -41,9 +42,10 @@
           "minItems": 1
         },
         "context": {
-          "type": "object",
-          "description": "Initiator-provided context echoed inside the task payload. Opaque metadata such as UI/session hints, correlation tokens, or tracking identifiers.",
-          "additionalProperties": true
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
         }
       },
       "required": ["errors"],

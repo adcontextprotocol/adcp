@@ -2,12 +2,19 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/deals/get-deals-request.json",
   "title": "Get Deals Request",
-  "description": "Request parameters for discovering deal packages based on natural language description",
+  "description": "Request parameters for discovering deal packages",
   "type": "object",
   "properties": {
-    "deal_spec": {
+    "brief": {
       "type": "string",
       "description": "Natural language description of the desired deal package, including any filtering criteria (deal type, ad format, pricing constraints, dates, etc.)"
+    },
+    "brand_manifest": {
+      "$ref": "/schemas/core/brand-manifest-ref.json",
+      "description": "Brand information manifest providing brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest."
+    },
+    "filters": {
+      "$ref": "/schemas/core/deal-filters.json"
     },
     "max_results": {
       "type": "integer",
@@ -15,11 +22,12 @@
       "minimum": 1
     },
     "context": {
-      "type": "object",
-      "description": "Initiator-provided context included in the request payload. Agents must echo this value back unchanged in responses and webhooks. Use for UI/session hints, correlation tokens, or tracking metadata.",
-      "additionalProperties": true
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["deal_spec"],
+  "required": [],
   "additionalProperties": false
 }

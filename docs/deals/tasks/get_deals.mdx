@@ -18,9 +18,29 @@ The `get_deals` task returns available deal packages with pricing, targeting, an
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `deal_spec` | string | Yes | Natural language description of desired deal package, including filtering criteria (deal type, ad format, pricing, dates, etc.) |
+| `brief` | string | No | Natural language description of desired deal package, including filtering criteria (deal type, ad format, pricing, dates, etc.) |
+| `brand_manifest` | object or string (URI) | No | Brand information manifest providing brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest. |
+| `filters` | object | No | Structured filters for deal discovery (see Filters Object below) |
 | `max_results` | number | No | Maximum number of results to return |
 | `context` | object | No | Initiator-provided context for correlation tracking |
+| `ext` | object | No | Extension object for platform-specific or vendor-namespaced parameters |
+
+### Filters Object
+
+The `filters` parameter allows structured filtering of deals:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `deal_type` | string[] | Filter by deal types: "PMP", "Curated" |
+| `ad_type` | string[] | Filter by ad format types: "Banner", "Video", "Native" |
+| `platforms` | string[] | Filter by SSP platform identifiers |
+| `start_date` | string | Filter deals available on or after this date (YYYY-MM-DD) |
+| `end_date` | string | Filter deals available on or before this date (YYYY-MM-DD) |
+| `status` | string[] | Filter by deal status: "draft", "active", "inactive" |
+| `countries` | string[] | Filter by target countries (ISO 3166-1 alpha-2 codes, e.g., ["US", "CA", "GB"]) |
+| `devices` | string[] | Filter by device types: "Desktop", "Tablet", "Mobile", "CTV" |
+
+All filter fields are optional and can be used in combination.
 
 ## Response Structure
 
@@ -42,7 +62,8 @@ The `get_deals` task returns available deal packages with pricing, targeting, an
     }
   ],
   "errors": [],
-  "context": {}
+  "context": {},
+  "ext": {}
 }
 ```
 
@@ -90,10 +111,40 @@ All fields are optional. Omitting fields implies no restrictions for those dimen
 
 ## Example Request
 
+### Using Natural Language Brief
+
 ```json
 {
-  "deal_spec": "Premium video inventory for automotive brand in the US with viewability guarantee, maximum $25 CPM",
+  "brief": "Premium video inventory for automotive brand in the US with viewability guarantee, maximum $25 CPM",
   "max_results": 10
+}
+```
+
+### Using Structured Filters
+
+```json
+{
+  "brief": "Premium video inventory for automotive brand with viewability guarantee",
+  "filters": {
+    "ad_type": ["Video"],
+    "deal_type": ["Curated"],
+    "countries": ["US"],
+    "status": ["draft", "active"]
+  },
+  "max_results": 10
+}
+```
+
+### With Brand Manifest
+
+```json
+{
+  "brief": "Premium video deals matching our brand",
+  "brand_manifest": "https://example.com/brand-manifest.json",
+  "filters": {
+    "ad_type": ["Video"],
+    "countries": ["US"]
+  }
 }
 ```
 
@@ -149,7 +200,8 @@ All fields are optional. Omitting fields implies no restrictions for those dimen
   ],
   "context": {
     "request_id": "req_12345"
-  }
+  },
+  "ext": {}
 }
 ```
 
@@ -219,7 +271,7 @@ The `include_segments` and `exclude_segments` fields can reference signal IDs ob
 
 ```json
 {
-  "deal_spec": "High-impact display placements for luxury brand awareness in premium environments"
+  "brief": "High-impact display placements for luxury brand awareness in premium environments"
 }
 ```
 
@@ -227,19 +279,34 @@ The Deals Agent interprets the objectives and returns appropriate deals (likely 
 
 ### Discovery with Constraints
 
+You can use natural language in the `brief` field, structured `filters`, or both:
+
+**Natural language approach:**
 ```json
 {
-  "deal_spec": "Cost-efficient video scale for product launch, maximum $15 CPM, Q1 2026 availability"
+  "brief": "Cost-efficient video scale for product launch, maximum $15 CPM, Q1 2026 availability"
 }
 ```
 
-Natural language spec includes all filtering criteria - no separate filters object needed.
+**Structured filters approach:**
+```json
+{
+  "brief": "Cost-efficient video scale for product launch",
+  "filters": {
+    "ad_type": ["Video"],
+    "start_date": "2026-01-01",
+    "end_date": "2026-03-31"
+  }
+}
+```
+
+Both approaches are supported, and you can combine them for maximum flexibility.
 
 ### Discovery with Signal Integration
 
 ```json
 {
-  "deal_spec": "Premium video deals for automotive with luxury car intender audiences, US only"
+  "brief": "Premium video deals for automotive with luxury car intender audiences, US only"
 }
 ```
 

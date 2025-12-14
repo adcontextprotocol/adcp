@@ -21,6 +21,7 @@ The `activate_deal` task activates a discovered deal on one or more SSP platform
 | `deal_id` | string | Yes | The unique identifier for the deal to activate (from `get_deals` response) |
 | `destinations` | Destination[] | Yes | Target SSP platform(s) for activation (see Destination Object below) |
 | `context` | object | No | Initiator-provided context for correlation tracking |
+| `ext` | object | No | Extension object for platform-specific or vendor-namespaced parameters |
 
 ### Destination Object
 
@@ -55,7 +56,8 @@ The response uses an **atomic** pattern - it returns either success data OR erro
       "activated_at": "string"
     }
   ],
-  "context": {}
+  "context": {},
+  "ext": {}
 }
 ```
 
@@ -72,7 +74,8 @@ The response uses an **atomic** pattern - it returns either success data OR erro
       "details": {}
     }
   ],
-  "context": {}
+  "context": {},
+  "ext": {}
 }
 ```
 
@@ -131,7 +134,8 @@ The response uses an **atomic** pattern - it returns either success data OR erro
   ],
   "context": {
     "request_id": "req_12345"
-  }
+  },
+  "ext": {}
 }
 ```
 
@@ -154,7 +158,8 @@ The response uses an **atomic** pattern - it returns either success data OR erro
   ],
   "context": {
     "request_id": "req_12345"
-  }
+  },
+  "ext": {}
 }
 ```
 
@@ -283,7 +288,7 @@ Use the `operation_id` to poll for status or configure webhooks for updates:
 ```javascript
 // Step 1: Discover deals
 const dealsResponse = await get_deals({
-  deal_spec: "Premium video for automotive, US, max $25 CPM"
+  brief: "Premium video for automotive, US, max $25 CPM"
 });
 
 // Step 2: Select a deal
