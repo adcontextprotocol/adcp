@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/sync-creatives-async-response-input-required.json",
   "title": "Sync Creatives - Input Required",
-  "description": "Payload when sync_creatives task is paused waiting for user input or approval.",
+  "description": "Payload when sync_creatives task is paused waiting for buyer clarification or approval.",
   "type": "object",
   "properties": {
     "reason": {
@@ -12,7 +12,7 @@
         "ASSET_CONFIRMATION",
         "FORMAT_CLARIFICATION"
       ],
-      "description": "Reason code indicating why input is needed"
+      "description": "Reason code indicating why buyer input is needed"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -23,4 +23,3 @@
   },
   "additionalProperties": false
 }
-
