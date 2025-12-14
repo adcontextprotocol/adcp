@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
 import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
@@ -239,6 +239,135 @@ describe('Admin Endpoints Integration Tests', () => {
 
       // Clean up
       await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [fakeOrgId]);
+    });
+  });
+
+  describe('DELETE /api/admin/members/:orgId', () => {
+    const DELETE_TEST_ORG_ID = 'org_delete_test';
+    const DELETE_TEST_PAID_ORG_ID = 'org_delete_test_paid';
+
+    beforeEach(async () => {
+      // Create test organizations for delete tests
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, $2, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2`,
+        [DELETE_TEST_ORG_ID, 'Delete Test Org']
+      );
+
+      // Create a paid organization with revenue events
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, stripe_customer_id, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, stripe_customer_id = $3`,
+        [DELETE_TEST_PAID_ORG_ID, 'Paid Test Org', 'cus_paid_test']
+      );
+
+      // Add a revenue event for the paid org
+      await pool.query(
+        `INSERT INTO revenue_events (workos_organization_id, revenue_type, amount_paid, currency, paid_at)
+         VALUES ($1, $2, $3, $4, NOW())`,
+        [DELETE_TEST_PAID_ORG_ID, 'subscription_initial', 2999, 'usd']
+      );
+    });
+
+    afterEach(async () => {
+      // Clean up test data
+      await pool.query('DELETE FROM revenue_events WHERE workos_organization_id = $1', [DELETE_TEST_PAID_ORG_ID]);
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id IN ($1, $2)', [DELETE_TEST_ORG_ID, DELETE_TEST_PAID_ORG_ID]);
+    });
+
+    it('should return 404 for non-existent organization', async () => {
+      const response = await request(app)
+        .delete('/api/admin/members/org_nonexistent')
+        .send({ confirmation: 'Some Name' })
+        .expect(404);
+
+      expect(response.body.error).toBe('Organization not found');
+    });
+
+    it('should require confirmation to delete', async () => {
+      const response = await request(app)
+        .delete(`/api/admin/members/${DELETE_TEST_ORG_ID}`)
+        .send({})
+        .expect(400);
+
+      expect(response.body.error).toBe('Confirmation required');
+      expect(response.body.requires_confirmation).toBe(true);
+      expect(response.body.organization_name).toBe('Delete Test Org');
+    });
+
+    it('should reject wrong confirmation name', async () => {
+      const response = await request(app)
+        .delete(`/api/admin/members/${DELETE_TEST_ORG_ID}`)
+        .send({ confirmation: 'Wrong Name' })
+        .expect(400);
+
+      expect(response.body.error).toBe('Confirmation required');
+    });
+
+    it('should prevent deletion of organization with payment history', async () => {
+      const response = await request(app)
+        .delete(`/api/admin/members/${DELETE_TEST_PAID_ORG_ID}`)
+        .send({ confirmation: 'Paid Test Org' })
+        .expect(400);
+
+      expect(response.body.error).toBe('Cannot delete paid workspace');
+      expect(response.body.has_payments).toBe(true);
+
+      // Verify org still exists
+      const checkResult = await pool.query(
+        'SELECT 1 FROM organizations WHERE workos_organization_id = $1',
+        [DELETE_TEST_PAID_ORG_ID]
+      );
+      expect(checkResult.rows.length).toBe(1);
+    });
+
+    it('should successfully delete unpaid organization with correct confirmation', async () => {
+      const response = await request(app)
+        .delete(`/api/admin/members/${DELETE_TEST_ORG_ID}`)
+        .send({ confirmation: 'Delete Test Org' })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.deleted_org_id).toBe(DELETE_TEST_ORG_ID);
+
+      // Verify org is deleted
+      const checkResult = await pool.query(
+        'SELECT 1 FROM organizations WHERE workos_organization_id = $1',
+        [DELETE_TEST_ORG_ID]
+      );
+      expect(checkResult.rows.length).toBe(0);
+    });
+
+    it('should cascade delete related member profiles', async () => {
+      // Create a member profile for the test org
+      await pool.query(
+        `INSERT INTO member_profiles (workos_organization_id, display_name, slug, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT DO NOTHING`,
+        [DELETE_TEST_ORG_ID, 'Test Profile', 'test-profile']
+      );
+
+      // Verify profile exists
+      const beforeResult = await pool.query(
+        'SELECT 1 FROM member_profiles WHERE workos_organization_id = $1',
+        [DELETE_TEST_ORG_ID]
+      );
+      expect(beforeResult.rows.length).toBe(1);
+
+      // Delete the organization
+      await request(app)
+        .delete(`/api/admin/members/${DELETE_TEST_ORG_ID}`)
+        .send({ confirmation: 'Delete Test Org' })
+        .expect(200);
+
+      // Verify profile is cascaded deleted
+      const afterResult = await pool.query(
+        'SELECT 1 FROM member_profiles WHERE workos_organization_id = $1',
+        [DELETE_TEST_ORG_ID]
+      );
+      expect(afterResult.rows.length).toBe(0);
     });
   });
 });
