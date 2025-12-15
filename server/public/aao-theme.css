@@ -1,24 +1,12 @@
-/* AAO Theme - Blue Color Palette
- * Primary Blue: #1a36b4
- * Light Blue: #2d4fd6
- * Accent Blue: #a4c2f4
- * Off-White: #f6f5ec
- * Black: #1d1d1d
- * White: #ffffff
+/* AAO Theme
+ * Built on the AdCP Design System
+ *
+ * This file extends the design system with site-specific components.
+ * Import design-system.css first for the full token set.
  */
 
-:root {
-  --aao-primary: #1a36b4;
-  --aao-primary-light: #2d4fd6;
-  --aao-accent: #a4c2f4;
-  --aao-off-white: #f6f5ec;
-  --aao-black: #1d1d1d;
-  --aao-white: #ffffff;
-  --aao-gray: #6b7280;
-  --aao-gray-light: #9ca3af;
-  --aao-gray-dark: #374151;
-  --aao-border: #e5e7eb;
-}
+/* Import design system tokens (contains all CSS variables) */
+@import url('/design-system.css');
 
 /* Base Styles */
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -80,10 +68,11 @@ body {
 }
 
 .hero-subtitle {
-  font-size: 1.25rem;
-  opacity: 0.95;
-  margin-bottom: 2.5rem;
-  line-height: 1.6;
+  font-size: var(--text-xl);
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  margin-bottom: var(--space-10);
+  line-height: var(--leading-relaxed);
   max-width: 600px;
   margin-left: auto;
   margin-right: auto;
@@ -96,48 +85,115 @@ body {
   flex-wrap: wrap;
 }
 
-/* Buttons */
+/* =============================================================================
+   BUTTONS
+
+   The design system provides base button styles via .ds-btn classes.
+   These .btn classes are for backward compatibility with existing markup.
+
+   On dark backgrounds (hero, CTA): Use .btn-primary (white bg)
+   On light backgrounds (cards, forms): Use .btn-solid (blue bg)
+   ============================================================================= */
+
 .btn {
   display: inline-flex;
   align-items: center;
-  padding: 0.875rem 2rem;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 1rem;
+  gap: var(--space-2);
+  padding: var(--btn-padding-y) var(--btn-padding-x);
+  border-radius: var(--btn-radius);
+  font-weight: var(--font-semibold);
+  font-size: var(--text-base);
   text-decoration: none;
-  transition: all 0.2s;
+  border: none;
+  cursor: pointer;
+  transition: var(--transition-all);
 }
 
+/* Primary button - WHITE on dark backgrounds (hero, CTA sections) */
 .btn-primary {
   background: white;
-  color: var(--aao-primary);
+  color: var(--color-brand);
 }
 
 .btn-primary:hover {
-  background: var(--aao-off-white);
+  background: var(--color-off-white);
   transform: translateY(-1px);
 }
 
+/* Secondary button - outline on dark backgrounds */
 .btn-secondary {
   background: transparent;
   color: white;
-  border: 2px solid rgba(255,255,255,0.5);
+  border: var(--border-2) solid rgba(255, 255, 255, 0.5);
 }
 
 .btn-secondary:hover {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.1);
   border-color: white;
 }
 
+/* Solid button - BLUE bg for light backgrounds (cards, forms, dashboard) */
+.btn-solid {
+  background: var(--color-brand);
+  color: white;
+}
+
+.btn-solid:hover {
+  background: var(--color-brand-hover);
+  transform: translateY(-1px);
+}
+
+/* Outline button - blue outline on light backgrounds */
 .btn-outline {
   background: transparent;
-  color: var(--aao-primary);
-  border: 2px solid var(--aao-primary);
+  color: var(--color-brand);
+  border: var(--border-2) solid var(--color-brand);
 }
 
 .btn-outline:hover {
-  background: var(--aao-primary);
+  background: var(--color-brand);
   color: white;
+}
+
+/* Ghost button - minimal style */
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: var(--border-1) solid var(--color-border);
+}
+
+.btn-ghost:hover {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-strong);
+}
+
+/* Danger button */
+.btn-danger {
+  background: var(--color-error-500);
+  color: white;
+}
+
+.btn-danger:hover {
+  background: var(--color-error-600);
+}
+
+/* Button sizes */
+.btn-sm {
+  padding: var(--btn-padding-y-sm) var(--btn-padding-x-sm);
+  font-size: var(--btn-font-size-sm);
+}
+
+.btn-lg {
+  padding: var(--btn-padding-y-lg) var(--btn-padding-x-lg);
+  font-size: var(--btn-font-size-lg);
+}
+
+/* Disabled state */
+.btn:disabled,
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
 }
 
 /* Section Styles */

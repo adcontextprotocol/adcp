@@ -6,6 +6,7 @@
   <title>Perspectives | AgenticAdvertising.org</title>
   <meta name="description" content="Thought leadership on agentic AI, open standards, and the future of advertising. Educational resources from AgenticAdvertising.org.">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/aao-theme.css">
   <style>
     /* Page-specific: nav offset */
@@ -19,13 +20,13 @@
     .empty-state {
       text-align: center;
       padding: 60px 20px;
-      color: #6b7280;
+      color: var(--color-text-muted);
     }
     .loading-state {
       font-size: 1.1rem;
     }
     .empty-state h2 {
-      color: #374151;
+      color: var(--color-text-heading);
       margin-bottom: 0.5rem;
     }
   </style>
@@ -112,7 +113,7 @@
 
       } catch (error) {
         console.error('Error loading perspectives:', error);
-        loadingEl.innerHTML = '<p style="color: #dc2626;">Failed to load perspectives. Please refresh the page.</p>';
+        loadingEl.innerHTML = '<p style="color: var(--color-error-600);">Failed to load perspectives. Please refresh the page.</p>';
       }
     }
 

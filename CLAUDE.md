@@ -957,6 +957,90 @@ Key environment variables for local development:
 - Run tests with `npm test` before committing
 - Ensure new features have corresponding tests
 
+### Design System - CRITICAL RULE
+
+**🚨 ABSOLUTE REQUIREMENT: All HTML files in `server/public/` MUST use the design system. No hardcoded colors.**
+
+**Design System Location**: `/server/public/design-system.css`
+
+**Required Import** (add to `<head>` of every HTML file):
+```html
+<link rel="stylesheet" href="/design-system.css">
+```
+
+**Prohibited Patterns:**
+- ❌ **NEVER use hardcoded hex colors** (e.g., `color: #667eea;`, `background: #f5f5f5;`)
+- ❌ **NEVER use hardcoded RGB/RGBA colors** (e.g., `rgba(0, 0, 0, 0.5)`)
+- ❌ **NEVER define new color values** in inline styles or `<style>` blocks
+- ❌ **NEVER use color names** (e.g., `color: gray;`, `background: white;`)
+
+**Required Patterns:**
+- ✅ **ALWAYS use CSS custom properties** (e.g., `color: var(--color-brand);`)
+- ✅ **ALWAYS import design-system.css** before any custom styles
+- ✅ **ALWAYS use semantic variable names** that describe purpose, not appearance
+
+**Color Variable Categories:**
+
+| Category | Variables | Usage |
+|----------|-----------|-------|
+| Brand | `--color-brand`, `--color-brand-hover` | Primary brand colors, CTAs |
+| Primary Scale | `--color-primary-50` to `--color-primary-900` | Tints and shades of brand |
+| Gray Scale | `--color-gray-50` to `--color-gray-900` | Neutral backgrounds, borders |
+| Text | `--color-text-heading`, `--color-text-secondary`, `--color-text-muted` | Typography |
+| Background | `--color-bg-page`, `--color-bg-card`, `--color-bg-subtle` | Page and component backgrounds |
+| Border | `--color-border`, `--color-border-light` | Dividers and outlines |
+| Status | `--color-success-*`, `--color-warning-*`, `--color-error-*`, `--color-info-*` | Feedback colors |
+| Overlay | `--color-overlay` | Modal backdrops |
+
+**Common Replacements:**
+
+```css
+/* Brand/Primary colors */
+#667eea, #1a36b4, #764ba2  →  var(--color-brand)
+
+/* Text colors */
+#333, #374151, #1a1a1a    →  var(--color-text-heading)
+#666, #6b7280             →  var(--color-text-secondary)
+#999, #9ca3af             →  var(--color-text-muted)
+
+/* Background colors */
+#fff, #ffffff             →  var(--color-bg-card)
+#f5f5f5, #f9fafb          →  var(--color-bg-page) or var(--color-bg-subtle)
+
+/* Border colors */
+#e5e7eb, #e0e0e0, #ddd    →  var(--color-border)
+
+/* Status colors */
+#c33, #dc2626, #ef4444    →  var(--color-error-600) or var(--color-error-500)
+#10b981, #059669          →  var(--color-success-500) or var(--color-success-600)
+#f90, #f59e0b             →  var(--color-warning-500)
+#3b82f6                   →  var(--color-info-500)
+
+/* Overlays */
+rgba(0,0,0,0.5)           →  var(--color-overlay)
+```
+
+**AAO Theme Layer:**
+For AgenticAdvertising.org pages, also import `/aao-theme.css` which provides:
+- `--aao-primary`, `--aao-primary-hover` - AAO brand colors (aliases to design system)
+- Use these in AAO-specific pages for brand consistency
+
+**JavaScript Template Literals:**
+When generating HTML in JavaScript, use CSS variables the same way:
+```javascript
+// ✅ CORRECT
+const html = `<div style="color: var(--color-text-heading); background: var(--color-bg-card);">...</div>`;
+
+// ❌ WRONG
+const html = `<div style="color: #333; background: #fff;">...</div>`;
+```
+
+**Verification:**
+After editing any HTML file, run this grep to ensure no hardcoded colors remain:
+```bash
+grep -E '#[0-9a-fA-F]{3,6}' server/public/your-file.html
+```
+
 ### Format Field Naming Convention
 
 **CRITICAL**: Always use consistent naming for format-related fields to avoid developer confusion.

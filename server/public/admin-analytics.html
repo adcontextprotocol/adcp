@@ -6,6 +6,7 @@
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <title>Analytics - AdCP Admin</title>
   <script src="/admin-nav.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
   <style>
     * {
       margin: 0;
@@ -15,7 +16,7 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background-color: #f5f5f5;
+      background-color: var(--color-bg-page);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -30,7 +31,7 @@
     }
 
     h1 {
-      color: #333;
+      color: var(--color-text-heading);
       margin-bottom: 30px;
       font-size: 28px;
     }
@@ -43,20 +44,20 @@
     }
 
     .metric-card {
-      background: white;
+      background: var(--color-bg-card);
       border-radius: 12px;
       padding: 24px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      box-shadow: var(--shadow-md);
     }
 
     .metric-label {
-      color: #666;
+      color: var(--color-text-secondary);
       font-size: 14px;
       margin-bottom: 8px;
     }
 
     .metric-value {
-      color: #333;
+      color: var(--color-text-heading);
       font-size: 32px;
       font-weight: 700;
     }
@@ -67,23 +68,23 @@
     }
 
     .metric-change.positive {
-      color: #10b981;
+      color: var(--color-success-500);
     }
 
     .metric-change.negative {
-      color: #ef4444;
+      color: var(--color-error-500);
     }
 
     .section {
-      background: white;
+      background: var(--color-bg-card);
       border-radius: 12px;
       padding: 30px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      box-shadow: var(--shadow-md);
       margin-bottom: 30px;
     }
 
     .section h2 {
-      color: #333;
+      color: var(--color-text-heading);
       font-size: 20px;
       margin-bottom: 20px;
     }
@@ -96,20 +97,20 @@
     th {
       text-align: left;
       padding: 12px;
-      border-bottom: 2px solid #e5e7eb;
-      color: #666;
+      border-bottom: 2px solid var(--color-border);
+      color: var(--color-text-secondary);
       font-weight: 600;
       font-size: 14px;
     }
 
     td {
       padding: 12px;
-      border-bottom: 1px solid #e5e7eb;
-      color: #333;
+      border-bottom: 1px solid var(--color-border);
+      color: var(--color-text-heading);
     }
 
     tr:hover {
-      background-color: #f9fafb;
+      background-color: var(--color-bg-subtle);
     }
 
     .loading {
@@ -118,14 +119,14 @@
       align-items: center;
       justify-content: center;
       padding: 60px 20px;
-      color: #666;
+      color: var(--color-text-secondary);
     }
 
     .loading-spinner {
       width: 50px;
       height: 50px;
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #667eea;
+      border: 4px solid var(--color-gray-200);
+      border-top: 4px solid var(--color-brand);
       border-radius: 50%;
       animation: spin 1s linear infinite;
       margin-bottom: 20px;
@@ -137,8 +138,8 @@
     }
 
     .error {
-      background-color: #fee2e2;
-      color: #991b1b;
+      background-color: var(--color-error-50);
+      color: var(--color-error-800);
       padding: 16px;
       border-radius: 8px;
       margin-bottom: 20px;
@@ -147,7 +148,7 @@
     .empty-state {
       text-align: center;
       padding: 60px 20px;
-      color: #666;
+      color: var(--color-text-secondary);
     }
 
     .empty-state-icon {
@@ -174,22 +175,22 @@
     }
 
     .btn-primary {
-      background-color: #667eea;
+      background-color: var(--color-brand);
       color: white;
     }
 
     .btn-primary:hover {
-      background-color: #5a6fd6;
+      background-color: var(--color-brand-hover);
     }
 
     .btn-primary:disabled {
-      background-color: #a0a0a0;
+      background-color: var(--color-gray-400);
       cursor: not-allowed;
     }
 
     .success-message {
-      background-color: #d1fae5;
-      color: #065f46;
+      background-color: var(--color-success-100);
+      color: var(--color-success-800);
       padding: 12px 16px;
       border-radius: 8px;
       margin-bottom: 20px;
@@ -343,7 +344,7 @@
             </tr>
           `).join('');
         } else {
-          revenueTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #666;">No revenue data yet</td></tr>';
+          revenueTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary);">No revenue data yet</td></tr>';
         }
 
         // Populate customer health table
@@ -352,13 +353,13 @@
           customerTable.innerHTML = data.customer_health.slice(0, 20).map(row => `
             <tr>
               <td>${row.company_name || 'N/A'}</td>
-              <td><span style="color: ${row.subscription_status === 'active' ? '#10b981' : '#666'}">${row.subscription_status || 'N/A'}</span></td>
+              <td><span style="color: ${row.subscription_status === 'active' ? 'var(--color-success-500)' : 'var(--color-text-secondary)'}">${row.subscription_status || 'N/A'}</span></td>
               <td>${formatCurrency(row.mrr)}</td>
               <td>${formatDate(row.customer_since)}</td>
             </tr>
           `).join('');
         } else {
-          customerTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #666;">No customer data yet</td></tr>';
+          customerTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary);">No customer data yet</td></tr>';
         }
 
         // Populate product revenue table
@@ -373,7 +374,7 @@
             </tr>
           `).join('');
         } else {
-          productTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #666;">No product data yet</td></tr>';
+          productTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary);">No product data yet</td></tr>';
         }
 
         // Show content, hide loading
