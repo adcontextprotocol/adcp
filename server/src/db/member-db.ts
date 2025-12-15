@@ -9,6 +9,13 @@ import type {
 } from '../types.js';
 
 /**
+ * Escape LIKE pattern wildcards to prevent SQL injection
+ */
+function escapeLikePattern(str: string): string {
+  return str.replace(/[%_\\]/g, '\\$&');
+}
+
+/**
  * Database operations for member profiles
  */
 export class MemberDatabase {
@@ -245,7 +252,7 @@ export class MemberDatabase {
         headquarters ILIKE $${paramIndex} OR
         tags::text ILIKE $${paramIndex}
       )`);
-      params.push(`%${options.search}%`);
+      params.push(`%${escapeLikePattern(options.search)}%`);
       paramIndex++;
     }
 

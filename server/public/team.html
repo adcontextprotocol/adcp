@@ -75,47 +75,12 @@
       justify-content: space-between;
       align-items: center;
     }
-    .btn-primary {
-      padding: var(--space-2.5) var(--space-5);
-      background: var(--color-brand);
-      color: white;
-      border: none;
-      border-radius: var(--radius-md);
-      cursor: pointer;
-      font-size: var(--text-sm);
-      font-weight: var(--font-medium);
-    }
-    .btn-primary:hover {
-      background: var(--color-primary-700);
-    }
-    .btn-primary:disabled {
-      background: var(--color-gray-300);
-      cursor: not-allowed;
-    }
-    .btn-secondary {
-      padding: var(--space-2) var(--space-4);
-      background: var(--color-gray-100);
-      color: var(--color-text-heading);
-      border: var(--border-1) solid var(--color-gray-300);
-      border-radius: var(--radius-md);
-      cursor: pointer;
-      font-size: var(--text-sm);
-    }
-    .btn-secondary:hover {
-      background: var(--color-gray-200);
-    }
-    .btn-danger {
-      padding: var(--space-2) var(--space-4);
-      background: var(--color-error-50);
-      color: var(--color-error-600);
-      border: var(--border-1) solid var(--color-error-200);
-      border-radius: var(--radius-md);
-      cursor: pointer;
-      font-size: var(--text-sm);
-    }
-    .btn-danger:hover {
-      background: var(--color-error-100);
-    }
+    /* Buttons now use design-system.css classes:
+       .btn .btn-primary = blue background
+       .btn .btn-secondary = gray background
+       .btn .btn-danger = red background
+       .btn .btn-sm = smaller size for table actions
+    */
     .members-table {
       width: 100%;
       border-collapse: collapse;
@@ -335,8 +300,8 @@
           </select>
         </div>
         <div class="modal-buttons">
-          <button type="button" class="btn-secondary" onclick="closeInviteModal()">Cancel</button>
-          <button type="submit" class="btn-primary">Send Invitation</button>
+          <button type="button" class="btn btn-secondary" onclick="closeInviteModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Send Invitation</button>
         </div>
       </form>
     </div>
@@ -362,8 +327,8 @@
           </select>
         </div>
         <div class="modal-buttons">
-          <button type="button" class="btn-secondary" onclick="closeEditRoleModal()">Cancel</button>
-          <button type="submit" class="btn-primary">Update Role</button>
+          <button type="button" class="btn btn-secondary" onclick="closeEditRoleModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Update Role</button>
         </div>
       </form>
     </div>
@@ -377,8 +342,8 @@
       <p style="margin-bottom: var(--space-4);">Are you sure you want to remove <strong id="removeMemberEmail"></strong> from this organization?</p>
       <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-5);">This action cannot be undone. The member will lose access to the organization immediately.</p>
       <div class="modal-buttons">
-        <button type="button" class="btn-secondary" onclick="closeRemoveModal()">Cancel</button>
-        <button type="button" class="btn-danger" onclick="confirmRemoveMember()">Remove Member</button>
+        <button type="button" class="btn btn-secondary" onclick="closeRemoveModal()">Cancel</button>
+        <button type="button" class="btn btn-danger" onclick="confirmRemoveMember()">Remove Member</button>
       </div>
     </div>
   </div>
@@ -418,7 +383,7 @@
       <div class="card">
         <h2>
           <span>Team Members</span>
-          <button id="inviteBtn" class="btn-primary" onclick="openInviteModal()">+ Invite Member</button>
+          <button id="inviteBtn" class="btn btn-primary" onclick="openInviteModal()">+ Invite Member</button>
         </h2>
 
         <div id="membersLoading" class="loading">
@@ -467,7 +432,7 @@
         <div class="info-box">
           <p>Verify your organization's domain to enable automatic team member discovery. Members with verified email domains can join your organization automatically.</p>
         </div>
-        <button class="btn-secondary" onclick="openDomainVerification()">Manage Domain Verification</button>
+        <button class="btn btn-secondary" onclick="openDomainVerification()">Manage Domain Verification</button>
       </div>
     </div>
   </div>
@@ -623,10 +588,10 @@
         let actions = '';
         if (canManage && !isCurrentUser) {
           actions = `
-            <button class="btn-secondary" onclick="openEditRoleModal('${member.id}', '${member.email}', '${member.role}')">
+            <button class="btn btn-secondary" onclick="openEditRoleModal('${member.id}', '${member.email}', '${member.role}')">
               Change Role
             </button>
-            <button class="btn-danger" onclick="openRemoveModal('${member.id}', '${member.email}')">
+            <button class="btn btn-danger" onclick="openRemoveModal('${member.id}', '${member.email}')">
               Remove
             </button>
           `;
@@ -661,10 +626,10 @@
         let actions = '';
         if (canManage) {
           actions = `
-            <button class="btn-secondary" onclick="resendInvitation('${inv.id}')">
+            <button class="btn btn-secondary" onclick="resendInvitation('${inv.id}')">
               Resend
             </button>
-            <button class="btn-danger" onclick="revokeInvitation('${inv.id}')">
+            <button class="btn btn-danger" onclick="revokeInvitation('${inv.id}')">
               Revoke
             </button>
           `;

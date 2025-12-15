@@ -7,6 +7,7 @@
   <title>Admin - Agreements - AdCP Registry</title>
   <script src="/admin-nav.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -407,7 +408,7 @@
       }
 
       const renderedHtml = marked.parse(text);
-      preview.innerHTML = renderedHtml;
+      preview.innerHTML = DOMPurify.sanitize(renderedHtml);
     }
 
     // Save agreement

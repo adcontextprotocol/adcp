@@ -1020,11 +1020,6 @@ Key environment variables for local development:
 rgba(0,0,0,0.5)           →  var(--color-surface-overlay)
 ```
 
-**AAO Theme Layer:**
-For AgenticAdvertising.org pages, also import `/aao-theme.css` which provides:
-- `--aao-primary`, `--aao-primary-hover` - AAO brand colors (aliases to design system)
-- Use these in AAO-specific pages for brand consistency
-
 **JavaScript Template Literals:**
 When generating HTML in JavaScript, use CSS variables the same way:
 ```javascript

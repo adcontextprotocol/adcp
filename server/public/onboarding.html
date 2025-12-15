@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Get Started - AdCP Registry</title>
+  <title>Get Started - AgenticAdvertising.org</title>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     /* =============================================================================
@@ -429,7 +429,7 @@
     <div id="loading" class="loading">Loading...</div>
 
     <div id="mainContent" style="display: none;">
-      <h1>Welcome to AdCP Registry<span id="welcomeName"></span></h1>
+      <h1>Welcome to AgenticAdvertising.org<span id="welcomeName"></span></h1>
       <p class="subtitle">How would you like to get started?</p>
 
       <div id="error" class="error" style="display:none;"></div>
@@ -618,15 +618,15 @@
       const container = document.getElementById('invitationsList');
       container.innerHTML = pendingInvitations.map(inv => {
         const role = inv.role || 'member';
-        const roleClass = 'role-' + role;
+        const roleClass = 'role-' + escapeHtml(role);
         return '<div class="invitation-item">' +
           '<div>' +
             '<div class="invitation-org">' + escapeHtml(inv.organization_name || 'Organization') +
-              '<span class="invitation-role ' + roleClass + '">' + role + '</span>' +
+              '<span class="invitation-role ' + roleClass + '">' + escapeHtml(role) + '</span>' +
             '</div>' +
-            '<div class="invitation-email">Invited to join as ' + role + '</div>' +
+            '<div class="invitation-email">Invited to join as ' + escapeHtml(role) + '</div>' +
           '</div>' +
-          '<button class="btn-accept" onclick="acceptInvitation(\'' + inv.id + '\')">Accept</button>' +
+          '<button class="btn-accept" onclick="acceptInvitation(\'' + escapeHtml(inv.id) + '\')">Accept</button>' +
         '</div>';
       }).join('');
     }
@@ -677,15 +677,15 @@
           document.getElementById('joinInvitationsSection').style.display = 'block';
           document.getElementById('joinInvitationsList').innerHTML = pendingInvitations.map(inv => {
             const role = inv.role || 'member';
-            const roleClass = 'role-' + role;
+            const roleClass = 'role-' + escapeHtml(role);
             return '<div class="invitation-item">' +
               '<div>' +
                 '<div class="invitation-org">' + escapeHtml(inv.organization_name || 'Organization') +
-                  '<span class="invitation-role ' + roleClass + '">' + role + '</span>' +
+                  '<span class="invitation-role ' + roleClass + '">' + escapeHtml(role) + '</span>' +
                 '</div>' +
-                '<div class="invitation-email">Invited to join as ' + role + '</div>' +
+                '<div class="invitation-email">Invited to join as ' + escapeHtml(role) + '</div>' +
               '</div>' +
-              '<button class="btn-accept" onclick="acceptInvitation(\'' + inv.id + '\')">Accept Invitation</button>' +
+              '<button class="btn-accept" onclick="acceptInvitation(\'' + escapeHtml(inv.id) + '\')">Accept Invitation</button>' +
             '</div>';
           }).join('');
         } else {
@@ -735,14 +735,14 @@
 
         const buttonHtml = org.request_pending
           ? '<button class="btn-request btn-pending" disabled>Request Pending</button>'
-          : '<button class="btn-request" onclick="requestToJoin(\'' + org.organization_id + '\', this)">Request to Join</button>';
+          : '<button class="btn-request" onclick="requestToJoin(\'' + escapeHtml(org.organization_id) + '\', this)">Request to Join</button>';
 
-        return '<div class="org-card" data-org-id="' + org.organization_id + '">' +
+        return '<div class="org-card" data-org-id="' + escapeHtml(org.organization_id) + '">' +
           '<div class="org-logo">' + logoHtml + '</div>' +
           '<div class="org-info">' +
             '<div class="org-name">' + escapeHtml(org.name) + '</div>' +
             (org.tagline ? '<div class="org-tagline">' + escapeHtml(org.tagline) + '</div>' : '') +
-            '<span class="org-match ' + matchClass + '">' + matchLabel + '</span>' +
+            '<span class="org-match ' + matchClass + '">' + escapeHtml(matchLabel) + '</span>' +
           '</div>' +
           buttonHtml +
         '</div>';

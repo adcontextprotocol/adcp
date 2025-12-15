@@ -7,6 +7,7 @@
   <title>Admin - Perspectives - AdCP Registry</title>
   <script src="/admin-nav.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     /* =============================================================================
@@ -336,7 +337,7 @@
       color: var(--color-text-secondary);
       margin-bottom: var(--space-4);
     }
-    /* Card preview - matches aao-theme.css */
+    /* Card preview - matches design-system.css article cards */
     .card-preview-container {
       max-width: 400px;
     }
@@ -968,7 +969,7 @@
       }
 
       preview.classList.remove('empty');
-      preview.innerHTML = marked.parse(text);
+      preview.innerHTML = DOMPurify.sanitize(marked.parse(text));
     }
 
     // Generate slug from title

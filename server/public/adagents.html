@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AdAgents.json Manager - AdCP Testing Framework</title>
     <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/aao-theme.css">
     <link rel="stylesheet" href="/design-system.css">
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -829,8 +828,8 @@
           <!-- File Type Toggle -->
           <div
             style="
-              background: #f8fafc;
-              border: 2px solid #e2e8f0;
+              background: var(--color-bg-subtle);
+              border: 2px solid var(--color-border);
               border-radius: 8px;
               padding: 16px;
               margin-bottom: 20px;
@@ -894,7 +893,7 @@
           <!-- Inline Configuration Section (visible by default) -->
           <div id="inline-configuration">
             <!-- Tabs -->
-            <div style="border-bottom: 2px solid #e2e8f0; margin-bottom: 24px">
+            <div style="border-bottom: 2px solid var(--color-border); margin-bottom: 24px">
               <div style="display: flex; gap: 4px">
                 <button class="tab-btn active" onclick="switchTab('properties')" id="properties-tab">
                   🏢 Properties (<span id="properties-count">0</span>)
@@ -928,8 +927,8 @@
                 display: none;
                 margin-top: 20px;
                 padding: 16px;
-                background: #f8fafc;
-                border: 2px solid #e2e8f0;
+                background: var(--color-bg-subtle);
+                border: 2px solid var(--color-border);
                 border-radius: 12px;
               "
             >
@@ -942,12 +941,12 @@
               <div style="display: flex; gap: 8px; align-items: center">
                 <select
                   id="bulk-tag-select"
-                  style="flex: 1; padding: 8px; border: 1px solid #cbd5e0; border-radius: 6px"
+                  style="flex: 1; padding: 8px; border: 1px solid var(--color-gray-300); border-radius: 6px"
                 >
                   <option value="">Select a tag...</option>
                 </select>
                 <button class="btn" onclick="bulkAddTag()" style="padding: 8px 16px">➕ Add Tag</button>
-                <button class="btn" onclick="bulkRemoveTag()" style="padding: 8px 16px; background: #dc3545">
+                <button class="btn" onclick="bulkRemoveTag()" style="padding: 8px 16px; background: var(--color-error-500)">
                   ➖ Remove Tag
                 </button>
               </div>
@@ -965,7 +964,7 @@
                 type="text"
                 id="new-tag-input"
                 placeholder="Enter new tag name..."
-                style="flex: 1; padding: 10px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 14px"
+                style="flex: 1; padding: 10px; border: 1px solid var(--color-gray-300); border-radius: 8px; font-size: 14px"
               />
               <button class="btn" onclick="createTag()">➕ Create Tag</button>
               <button class="btn btn-secondary" onclick="enableBulkTagMode()">🏷️ Bulk Tag Properties</button>
@@ -975,10 +974,10 @@
               style="
                 margin-top: 20px;
                 padding: 12px;
-                background: #f8fafc;
+                background: var(--color-bg-subtle);
                 border-radius: 8px;
                 font-size: 13px;
-                color: #718096;
+                color: var(--color-text-muted);
               "
             >
               💡 <strong>Tip:</strong> Tags help organize your properties. Use bulk operations to quickly tag multiple
@@ -1004,7 +1003,7 @@
             style="
               margin-top: 24px;
               padding-top: 20px;
-              border-top: 2px solid #e2e8f0;
+              border-top: 2px solid var(--color-border);
               display: flex;
               justify-content: space-between;
               align-items: center;
@@ -1017,13 +1016,13 @@
           <!-- Expandable JSON Preview -->
           <div
             id="json-preview-panel"
-            style="display: none; margin-top: 16px; border: 2px solid #e2e8f0; border-radius: 12px; overflow: hidden"
+            style="display: none; margin-top: 16px; border: 2px solid var(--color-border); border-radius: 12px; overflow: hidden"
           >
             <div
               style="
-                background: #f8fafc;
+                background: var(--color-bg-subtle);
                 padding: 12px;
-                border-bottom: 1px solid #e2e8f0;
+                border-bottom: 1px solid var(--color-border);
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
@@ -1106,7 +1105,7 @@
                     max-height: 150px;
                     overflow-y: auto;
                     padding: 8px;
-                    border: 1px solid #cbd5e0;
+                    border: 1px solid var(--color-gray-300);
                     border-radius: 6px;
                   "
                 >
@@ -1117,7 +1116,7 @@
                     type="text"
                     id="quick-add-tag"
                     placeholder="Type to create new tag..."
-                    style="flex: 1; padding: 6px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 13px"
+                    style="flex: 1; padding: 6px; border: 1px solid var(--color-gray-300); border-radius: 4px; font-size: 13px"
                   />
                   <button class="btn" onclick="quickCreateTag()" style="padding: 6px 12px; font-size: 13px">
                     ➕ Add
@@ -1165,7 +1164,7 @@
                       display: block;
                       padding: 8px;
                       cursor: pointer;
-                      border: 2px solid #e2e8f0;
+                      border: 2px solid var(--color-border);
                       border-radius: 8px;
                       margin-bottom: 8px;
                     "
@@ -1189,7 +1188,7 @@
                       display: block;
                       padding: 8px;
                       cursor: pointer;
-                      border: 2px solid #e2e8f0;
+                      border: 2px solid var(--color-border);
                       border-radius: 8px;
                       margin-bottom: 8px;
                     "
@@ -1208,7 +1207,7 @@
                   </label>
 
                   <label
-                    style="display: block; padding: 8px; cursor: pointer; border: 2px solid #e2e8f0; border-radius: 8px"
+                    style="display: block; padding: 8px; cursor: pointer; border: 2px solid var(--color-border); border-radius: 8px"
                   >
                     <input
                       type="radio"
@@ -1230,7 +1229,7 @@
                   style="
                     display: none;
                     padding: 12px;
-                    background: #f8fafc;
+                    background: var(--color-bg-subtle);
                     border-radius: 8px;
                     max-height: 200px;
                     overflow-y: auto;
@@ -1247,7 +1246,7 @@
                   style="
                     display: none;
                     padding: 12px;
-                    background: #f8fafc;
+                    background: var(--color-bg-subtle);
                     border-radius: 8px;
                     max-height: 200px;
                     overflow-y: auto;
@@ -1295,7 +1294,7 @@
             specification:
           </p>
 
-          <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0">
+          <div style="background: var(--color-bg-subtle); padding: 20px; border-radius: 8px; border: 1px solid var(--color-border)">
             <h4>Required Structure (AdCP v2.2.0):</h4>
             <pre
               style="
@@ -1467,7 +1466,7 @@
           if (validation.errors.length > 0) {
             html += '<h5>❌ Errors:</h5><ul style="margin-bottom: 10px;">';
             validation.errors.forEach(error => {
-              html += `<li style="color: #dc2626;"><strong>${error.field}:</strong> ${error.message}</li>`;
+              html += `<li style="color: var(--color-error-600);"><strong>${error.field}:</strong> ${error.message}</li>`;
             });
             html += '</ul>';
           }
@@ -1489,7 +1488,7 @@
         // Agent cards validation
         if (agent_cards && agent_cards.length > 0) {
           html += '<h5>🔍 Agent Card Validation:</h5>';
-          html += '<div style="background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;">';
+          html += '<div style="background: var(--color-bg-subtle); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border);">';
 
           agent_cards.forEach(card => {
             const status = card.valid ? '✅' : '❌';
@@ -1525,7 +1524,7 @@
                             ${card.status_code ? `<br><em>HTTP ${card.status_code}</em>` : ''}
                             ${
                               card.errors.length > 0
-                                ? `<br><span style="color: #dc2626;">Errors: ${card.errors.join(', ')}</span>`
+                                ? `<br><span style="color: var(--color-error-600);">Errors: ${card.errors.join(', ')}</span>`
                                 : ''
                             }
                         </div>
@@ -1561,7 +1560,7 @@
                 <input type="url" placeholder="https://agent.example.com" style="flex: 2;" class="agent-url">
                 <input type="text" placeholder="Authorized for all products and services" style="flex: 3;" class="agent-auth">
                 <input type="text" placeholder="property_id1, property_id2 (optional)" style="flex: 2;" class="agent-property-ids" title="Comma-separated list of property IDs this agent can sell">
-                <button class="btn" onclick="removeAgentEntry(this)" style="background: #dc3545;">✖️</button>
+                <button class="btn" onclick="removeAgentEntry(this)" style="background: var(--color-error-500);">✖️</button>
             `;
 
         agentsList.appendChild(newEntry);
@@ -1603,7 +1602,7 @@
                     <input type="url" placeholder="https://agent.example.com" style="flex: 2;" class="agent-url" value="${example.url}">
                     <input type="text" placeholder="Authorized for all products and services" style="flex: 3;" class="agent-auth" value="${example.auth}">
                     <input type="text" placeholder="property_id1, property_id2 (optional)" style="flex: 2;" class="agent-property-ids" value="${example.propertyIds}" title="Comma-separated list of property IDs this agent can sell">
-                    <button class="btn" onclick="removeAgentEntry(this)" style="background: #dc3545;">✖️</button>
+                    <button class="btn" onclick="removeAgentEntry(this)" style="background: var(--color-error-500);">✖️</button>
                 `;
 
           agentsList.appendChild(newEntry);
@@ -1769,7 +1768,7 @@
                             <div class="dashboard-card-meta">
                                 ${formatPropertyType(prop.property_type)} • ${prop.name}
                             </div>
-                            <div class="dashboard-card-meta" style="font-size: 13px; color: #718096;">
+                            <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                                 ${identifierCount} identifier${identifierCount > 1 ? 's' : ''}
                                 ${prop.tags && prop.tags.length > 0 ? ` • Tags: ${prop.tags.join(', ')}` : ''}
                             </div>
@@ -1779,7 +1778,7 @@
                         </div>
                         <div class="dashboard-card-actions">
                             <button class="btn" onclick="editProperty(${index})">✏️ Edit</button>
-                            <button class="btn" onclick="removeProperty(${index})" style="background: #dc3545;">🗑️ Remove</button>
+                            <button class="btn" onclick="removeProperty(${index})" style="background: var(--color-error-500);">🗑️ Remove</button>
                         </div>
                     </div>
                 `;
@@ -1839,7 +1838,7 @@
                         </div>
                         <div class="dashboard-card-actions">
                             <button class="btn" onclick="editAgent(${index})">✏️ Edit</button>
-                            <button class="btn" onclick="removeAgent(${index})" style="background: #dc3545;">🗑️ Remove</button>
+                            <button class="btn" onclick="removeAgent(${index})" style="background: var(--color-error-500);">🗑️ Remove</button>
                         </div>
                     </div>
                 `;
@@ -1872,12 +1871,12 @@
                             <div class="dashboard-card-title">
                                 🏷️ ${tag}
                             </div>
-                            <div class="dashboard-card-meta" style="font-size: 13px; color: #718096;">
+                            <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                                 Used by ${propertyCount} ${propertyCount === 1 ? 'property' : 'properties'}
                             </div>
                         </div>
                         <div class="dashboard-card-actions">
-                            <button class="btn" onclick="removeTag(${index})" style="background: #dc3545; padding: 6px 12px; font-size: 13px;">🗑️ Delete</button>
+                            <button class="btn" onclick="removeTag(${index})" style="background: var(--color-error-500); padding: 6px 12px; font-size: 13px;">🗑️ Delete</button>
                         </div>
                     </div>
                 `;
@@ -2417,7 +2416,7 @@
 
             return `
                     <div class="dashboard-card" style="border: ${
-                      isSelected ? '2px solid #3b82f6' : '2px solid #e2e8f0'
+                      isSelected ? '2px solid #3b82f6' : '2px solid var(--color-border)'
                     };">
                         <div class="dashboard-card-content">
                             <label style="display: flex; align-items: center; cursor: pointer;">
@@ -2431,7 +2430,7 @@
                                     <div class="dashboard-card-meta">
                                         ${formatPropertyType(prop.property_type)} • ${prop.name}
                                     </div>
-                                    <div class="dashboard-card-meta" style="font-size: 13px; color: #718096;">
+                                    <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                                         ${identifierCount} identifier${identifierCount > 1 ? 's' : ''}
                                         ${prop.tags && prop.tags.length > 0 ? ` • Tags: ${prop.tags.join(', ')}` : ''}
                                     </div>
@@ -2819,19 +2818,19 @@
           return;
         }
 
-        let html = '<div style="background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;">';
+        let html = '<div style="background: var(--color-bg-subtle); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border);">';
 
         if (valid) {
           html += '<h4 style="color: #16a34a; margin: 0 0 12px 0;">✅ Valid File</h4>';
         } else {
-          html += '<h4 style="color: #dc2626; margin: 0 0 12px 0;">❌ Invalid File</h4>';
+          html += '<h4 style="color: var(--color-error-600); margin: 0 0 12px 0;">❌ Invalid File</h4>';
         }
 
         if (errors.length > 0) {
           html +=
             '<div style="margin-bottom: 12px;"><strong>Errors:</strong><ul style="margin: 4px 0; padding-left: 20px;">';
           errors.forEach(err => {
-            html += `<li style="color: #dc2626;">${err.message}</li>`;
+            html += `<li style="color: var(--color-error-600);">${err.message}</li>`;
           });
           html += '</ul></div>';
         }
@@ -2865,7 +2864,7 @@
                     </select>
                     <input type="text" placeholder="Property Name" class="property-name">
                     <input type="text" placeholder="Tags (comma-separated)" class="property-tags">
-                    <button class="btn" onclick="removePropertyEntry(this)" style="background: #dc3545;">✖️</button>
+                    <button class="btn" onclick="removePropertyEntry(this)" style="background: var(--color-error-500);">✖️</button>
                 </div>
                 <div class="property-identifiers">
                     <label style="font-weight: 600; margin-bottom: 8px; display: block; font-size: 14px;">Identifiers:</label>
@@ -2895,7 +2894,7 @@
                     ${IDENTIFIER_TYPES.map(type => `<option value="${type}">${type}</option>`).join('')}
                 </select>
                 <input type="text" placeholder="Identifier value" class="identifier-value">
-                <button class="btn" onclick="removeIdentifierEntry(this)" style="background: #dc3545; padding: 6px 10px;">✖️</button>
+                <button class="btn" onclick="removeIdentifierEntry(this)" style="background: var(--color-error-500); padding: 6px 10px;">✖️</button>
             `;
 
         identifiersList.appendChild(newIdentifier);
@@ -2954,7 +2953,7 @@
                         <input type="text" placeholder="Tags (comma-separated)" class="property-tags" value="${
                           example.tags?.join(', ') || ''
                         }">
-                        <button class="btn" onclick="removePropertyEntry(this)" style="background: #dc3545;">✖️</button>
+                        <button class="btn" onclick="removePropertyEntry(this)" style="background: var(--color-error-500);">✖️</button>
                     </div>
                     <div class="property-identifiers">
                         <label style="font-weight: 600; margin-bottom: 8px; display: block; font-size: 14px;">Identifiers:</label>
@@ -2974,7 +2973,7 @@
                                     <input type="text" placeholder="Identifier value" class="identifier-value" value="${
                                       id.value
                                     }">
-                                    <button class="btn" onclick="removeIdentifierEntry(this)" style="background: #dc3545; padding: 6px 10px;">✖️</button>
+                                    <button class="btn" onclick="removeIdentifierEntry(this)" style="background: var(--color-error-500); padding: 6px 10px;">✖️</button>
                                 </div>
                             `
                               )
@@ -3173,7 +3172,7 @@
         const resultsDiv = document.getElementById('agent-cards-results');
 
         let html = '<h4>Agent Cards Validation Results</h4>';
-        html += '<div style="background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;">';
+        html += '<div style="background: var(--color-bg-subtle); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border);">';
 
         agentCards.forEach(card => {
           const status = card.valid ? '✅' : '❌';
@@ -3190,7 +3189,7 @@
                         ${card.status_code ? `<br><em>HTTP ${card.status_code}</em>` : ''}
                         ${
                           card.errors.length > 0
-                            ? `<br><span style="color: #dc2626;">Issues: ${card.errors.join(', ')}</span>`
+                            ? `<br><span style="color: var(--color-error-600);">Issues: ${card.errors.join(', ')}</span>`
                             : ''
                         }
                         ${
@@ -3362,7 +3361,7 @@
                         <input type="url" placeholder="https://agent.example.com" style="flex: 2;" class="agent-url" value="${agent.url}">
                         <input type="text" placeholder="Authorized for all products and services" style="flex: 3;" class="agent-auth" value="${agent.authorized_for}">
                         <input type="text" placeholder="property_id1, property_id2 (optional)" style="flex: 2;" class="agent-property-ids" value="${propertyIds}" title="Comma-separated list of property IDs this agent can sell">
-                        <button class="btn" onclick="removeAgentEntry(this)" style="background: #dc3545;">✖️</button>
+                        <button class="btn" onclick="removeAgentEntry(this)" style="background: var(--color-error-500);">✖️</button>
                     `;
 
             agentsList.appendChild(newEntry);

@@ -6,7 +6,6 @@
   <title>AgenticAdvertising.org: About the Organization</title>
   <meta name="description" content="AgenticAdvertising.org is the independent industry body overseeing development, education, and rollout of standards and practices for agentic advertising deployment.">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/aao-theme.css">
   <link rel="stylesheet" href="/design-system.css">
   <style>
     /* =============================================================================
@@ -14,35 +13,16 @@
        Uses design system variables - see /design-system.css for tokens
        ============================================================================= */
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--aao-white);
-      min-height: 100vh;
-      color: var(--aao-black);
-      line-height: var(--leading-normal);
-    }
-
-    /* Hero Section */
-    .hero {
-      background: linear-gradient(135deg, var(--aao-primary) 0%, var(--aao-primary-light) 100%);
-      color: white;
+    /* Hero - use article variant (shorter) */
+    .hero--about {
       padding: var(--space-12) var(--space-5) var(--space-8);
-      text-align: center;
     }
-    .hero-container {
+    .hero--about .hero-container {
       max-width: var(--container-md);
-      margin: 0 auto;
     }
-    .hero h1 {
+    .hero--about h1 {
       font-size: var(--text-4xl);
-      font-weight: var(--font-bold);
       margin-bottom: var(--space-4);
-      line-height: var(--leading-tight);
-    }
-    .hero-subtitle {
-      font-size: var(--text-xl);
-      opacity: 0.95;
     }
 
     /* Sub-Navigation */
@@ -90,7 +70,8 @@
       padding: var(--space-8) var(--space-5);
     }
     .section {
-      margin-bottom: var(--space-12);
+      padding: 0;
+      margin-bottom: var(--space-6);
       scroll-margin-top: 140px;
     }
     .section:last-child {
@@ -123,11 +104,11 @@
     .section p:last-child {
       margin-bottom: 0;
     }
-    .section a:not(.cta-btn) {
+    .section a:not(.btn) {
       color: var(--aao-primary);
       font-weight: var(--font-medium);
     }
-    .section a:not(.cta-btn):hover {
+    .section a:not(.btn):hover {
       text-decoration: underline;
     }
     .section ul {
@@ -253,22 +234,6 @@
       color: var(--aao-gray-dark);
       margin-bottom: var(--space-6);
     }
-    .cta-btn {
-      display: inline-block;
-      background: var(--aao-primary);
-      color: white;
-      padding: var(--space-3) var(--space-6);
-      border-radius: var(--radius-md);
-      text-decoration: none;
-      font-weight: var(--font-semibold);
-      font-size: var(--text-base);
-      transition: var(--transition-bg);
-    }
-    .cta-btn:hover {
-      background: var(--aao-primary-light);
-      text-decoration: none;
-    }
-
     /* Leadership Section */
     .leaders-grid {
       display: grid;
@@ -286,7 +251,7 @@
       width: 120px;
       height: 120px;
       border-radius: 50%;
-      background: linear-gradient(135deg, var(--aao-primary), var(--aao-primary-light));
+      background: linear-gradient(135deg, var(--color-brand), var(--color-primary-500));
       margin: 0 auto var(--space-4);
       display: flex;
       align-items: center;
@@ -323,8 +288,8 @@
     .info-box {
       background: var(--color-bg-page);
       border-radius: var(--radius-lg);
-      padding: var(--space-6);
-      margin-top: var(--space-6);
+      padding: var(--space-4);
+      margin-top: var(--space-4);
     }
     .info-box p {
       font-size: var(--text-base);
@@ -358,7 +323,7 @@
   <script src="/nav.js"></script>
 
   <!-- Hero Section -->
-  <section class="hero">
+  <section class="hero hero--about">
     <div class="hero-container">
       <h1>AgenticAdvertising.org</h1>
       <p class="hero-subtitle">The independent industry organization advancing open standards for AI-powered advertising</p>
@@ -491,7 +456,7 @@
       <div class="cta-section">
         <h3>Become a Member</h3>
         <p>Join the organizations building the future of advertising.</p>
-        <a href="/members#join" class="cta-btn">Learn About Membership</a>
+        <a href="/members#join" class="btn btn-primary">Learn About Membership</a>
       </div>
     </section>
 

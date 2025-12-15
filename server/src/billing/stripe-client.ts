@@ -67,8 +67,26 @@ export async function getSubscriptionInfo(
 
     // In newer Stripe API versions, current_period_end may be on the latest invoice
     const latestInvoice = subscription.latest_invoice as Stripe.Invoice | string | null;
+
+    // Add explicit null checks for invoice structure
+    if (!latestInvoice) {
+      logger.warn({
+        subscriptionId: subscription.id,
+        customerId: stripeCustomerId,
+      }, 'No latest_invoice on subscription - period_end calculation may be inaccurate');
+    }
+
     let periodEnd = typeof latestInvoice === 'object' && latestInvoice ? latestInvoice.period_end : undefined;
     const periodStart = typeof latestInvoice === 'object' && latestInvoice ? latestInvoice.period_start : undefined;
+
+    // Warn if expected fields are missing
+    if (latestInvoice && typeof latestInvoice === 'object' && !periodEnd) {
+      logger.warn({
+        subscriptionId: subscription.id,
+        customerId: stripeCustomerId,
+        invoiceId: latestInvoice.id,
+      }, 'Latest invoice missing period_end field - renewal date will be unavailable');
+    }
 
     logger.debug({ period_start: periodStart, period_end: periodEnd }, 'Latest invoice period');
 
@@ -266,6 +284,8 @@ export async function fetchAllPaidInvoices(
   }
 
   const events: RevenueEvent[] = [];
+  // Cache product info to avoid N+1 API calls
+  const productCache = new Map<string, { id: string; name: string }>();
 
   try {
     // Fetch all paid invoices
@@ -303,16 +323,25 @@ export async function fetchAllPaidInvoices(
           const product = price.product;
           if (typeof product === 'string') {
             productId = product;
-            // Try to fetch product name
-            try {
-              const productObj = await stripe.products.retrieve(product);
-              productName = productObj.name;
-            } catch {
-              productName = primaryLine.description || null;
+            // Check cache first to avoid N+1 API calls
+            let cachedProduct = productCache.get(product);
+            if (!cachedProduct) {
+              // Try to fetch product name and cache it
+              try {
+                const productObj = await stripe.products.retrieve(product);
+                cachedProduct = { id: productObj.id, name: productObj.name };
+                productCache.set(product, cachedProduct);
+              } catch {
+                // Use description as fallback, don't cache failures
+                // Leave cachedProduct as undefined to use fallback below
+              }
             }
+            productName = cachedProduct?.name || primaryLine.description || null;
           } else if (product && typeof product === 'object' && 'name' in product) {
             productId = product.id;
             productName = product.name;
+            // Cache the expanded product object
+            productCache.set(product.id, { id: product.id, name: product.name });
           }
         }
       }

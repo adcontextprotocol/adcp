@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - AdCP Registry</title>
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/aao-theme.css">
-  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <link rel="stylesheet" href="/design-system.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <style>
     /* =============================================================================
        Dashboard-specific styles
@@ -122,43 +122,17 @@
 
     .modal-buttons {
       display: flex;
-      gap: var(--space-2.5);
+      gap: var(--space-4);
       margin-top: var(--space-5);
       justify-content: flex-end;
     }
 
-    /* Dashboard buttons - use .btn-solid for blue bg on light surfaces */
-    .btn-primary {
-      padding: var(--space-2.5) var(--space-5);
-      border: none;
-      border-radius: var(--radius-md);
-      cursor: pointer;
-      font-size: var(--text-sm);
-      font-weight: var(--font-medium);
-      background: var(--color-brand);
-      color: white;
-      transition: var(--transition-colors);
-    }
-
-    .btn-primary:hover {
-      background: var(--color-brand-hover);
-    }
-
-    .btn-secondary {
-      padding: var(--space-2.5) var(--space-5);
-      border: none;
-      border-radius: var(--radius-md);
-      cursor: pointer;
-      font-size: var(--text-sm);
-      font-weight: var(--font-medium);
-      background: var(--color-gray-200);
-      color: var(--color-text-heading);
-      transition: var(--transition-colors);
-    }
-
-    .btn-secondary:hover {
-      background: var(--color-gray-300);
-    }
+    /* Buttons now use design-system.css classes:
+       - .btn .btn-primary = blue background
+       - .btn .btn-secondary = gray background
+       - .btn .btn-danger = red background
+       - .btn .btn-sm = smaller size
+    */
 
     /* Admin Link - uses brand color */
     .admin-link {
@@ -294,8 +268,8 @@
         <div id="outdatedAgreementsList" style="margin: 20px 0;"></div>
       </div>
       <div id="outdatedAgreementButtons" class="modal-buttons">
-        <button class="btn-secondary" onclick="dismissAgreementModal()">Remind Me Later</button>
-        <button class="btn-primary" onclick="viewOutdatedAgreements()">Review</button>
+        <button class="btn btn-secondary" onclick="dismissAgreementModal()">Remind Me Later</button>
+        <button class="btn btn-primary" onclick="viewOutdatedAgreements()">Review</button>
       </div>
     </div>
   </div>
@@ -314,7 +288,7 @@
         Loading...
       </div>
       <div id="agreementViewerButtons" class="modal-buttons" style="margin-top: 15px; flex-shrink: 0;">
-        <button class="btn-primary" onclick="closeAgreementViewer()">Close</button>
+        <button class="btn btn-primary" onclick="closeAgreementViewer()">Close</button>
       </div>
     </div>
   </div>
@@ -329,8 +303,8 @@
         <p id="renameError" style="color: var(--color-error-600); font-size: 13px; margin: 8px 0 0 0; display: none;"></p>
       </div>
       <div class="modal-buttons">
-        <button class="btn-secondary" onclick="closeRenameModal()">Cancel</button>
-        <button class="btn-primary" id="confirmRenameBtn" onclick="confirmRenameOrg()">Rename</button>
+        <button class="btn btn-secondary" onclick="closeRenameModal()">Cancel</button>
+        <button class="btn btn-primary" id="confirmRenameBtn" onclick="confirmRenameOrg()">Rename</button>
       </div>
     </div>
   </div>
@@ -460,6 +434,14 @@
     let selectedOrgId = null;
     let allOrganizations = [];
     let membershipAgreement = null;
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
 
     // Helper to check if the CURRENT org (not any org) has active subscription
     function currentOrgHasActiveSubscription() {
@@ -635,7 +617,7 @@
         <div style="margin-top: 15px;">
           <button
             onclick="openBillingPortal('${org.id}')"
-            style="padding: 10px 20px; background: var(--color-brand); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%;"
+            class="btn btn-primary btn-block"
           >
             Manage Billing
           </button>
@@ -651,7 +633,7 @@
           </div>
           <button
             onclick="convertToTeam('${org.id}')"
-            style="padding: 10px 20px; background: var(--color-brand); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%;"
+            class="btn btn-primary btn-block"
             title="Convert to a team workspace to invite members"
           >
             Upgrade to Team
@@ -667,13 +649,15 @@
           <div style="display: flex; gap: 8px;">
             <a
               href="/team?org=${org.id}&action=invite"
-              style="flex: 1; display: block; text-align: center; padding: 8px 12px; background: var(--color-brand); color: white; border-radius: 6px; text-decoration: none; font-size: 13px;"
+              class="btn btn-primary btn-sm"
+              style="flex: 1;"
             >
               + Invite
             </a>
             <a
               href="/team?org=${org.id}"
-              style="flex: 1; display: block; text-align: center; padding: 8px 12px; background: var(--color-gray-100); color: var(--color-text-heading); border: 1px solid var(--color-border); border-radius: 6px; text-decoration: none; font-size: 13px;"
+              class="btn btn-ghost btn-sm"
+              style="flex: 1;"
             >
               Manage
             </a>
@@ -774,8 +758,8 @@
             const colors = ['var(--color-brand)', 'var(--color-primary-500)', 'var(--color-warning-500)', 'var(--color-error-500)', 'var(--color-primary-400)'];
             const bgColor = colors[i % colors.length];
             return `
-              <div style="width: 32px; height: 32px; border-radius: 50%; background: ${bgColor}; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 600; border: 2px solid white; margin-left: ${i === 0 ? '0' : '-8px'};" title="${m.email || 'Member'}">
-                ${initials.toUpperCase()}
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: ${bgColor}; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 600; border: 2px solid white; margin-left: ${i === 0 ? '0' : '-8px'};" title="${escapeHtml(m.email || 'Member')}">
+                ${escapeHtml(initials.toUpperCase())}
               </div>
             `;
           }).join('');
@@ -876,7 +860,7 @@
                   </span>
                   <button
                     onclick="toggleProfileVisibility('${orgId}', false)"
-                    style="padding: 4px 10px; background: transparent; color: var(--color-text-muted); border: 1px solid var(--color-border); border-radius: 4px; font-size: 12px; cursor: pointer;"
+                    class="btn btn-ghost btn-sm"
                   >
                     Unpublish
                   </button>
@@ -892,7 +876,7 @@
                   </span>
                   <button
                     onclick="toggleProfileVisibility('${orgId}', true)"
-                    style="padding: 4px 10px; background: var(--color-brand); color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;"
+                    class="btn btn-primary btn-sm"
                   >
                     Make Public
                   </button>
@@ -908,7 +892,7 @@
                   </span>
                   <button
                     onclick="scrollToMembership()"
-                    style="padding: 4px 10px; background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%); color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: 500;"
+                    class="btn btn-primary btn-sm"
                     title="Membership required to publish"
                   >
                     🔒 Publish
@@ -1049,7 +1033,7 @@
 
         // Render markdown to HTML using marked library
         const renderedHtml = marked.parse(membershipAgreement.text);
-        document.getElementById('membershipAgreementContent').innerHTML = renderedHtml;
+        document.getElementById('membershipAgreementContent').innerHTML = DOMPurify.sanitize(renderedHtml);
       } catch (error) {
         console.error('Error loading membership agreement:', error);
         document.getElementById('membershipAgreementContent').innerHTML =
@@ -1088,13 +1072,18 @@
           const isSigned = !!agreement.version;
           const isOutdated = agreement.is_outdated;
 
+          // Escape values that will be used in onclick handlers
+          const escapedType = escapeHtml(agreement.type).replace(/'/g, '\\\'');
+          const escapedCurrentVersion = escapeHtml(agreement.current_version || '').replace(/'/g, '\\\'');
+          const escapedVersion = escapeHtml(agreement.version || '').replace(/'/g, '\\\'');
+
           // Missing/unsigned = red, outdated = orange, current = green
           let statusDot, statusText, actionButton;
           if (!isSigned) {
             statusDot = '<span style="width: 6px; height: 6px; background: var(--color-error-500); border-radius: 50%; display: inline-block;"></span>';
             statusText = '<span style="color: var(--color-error-500); font-size: 10px; font-weight: 500;">Required</span>';
-            actionButton = `<button onclick="viewAgreementForAcceptance('${agreement.type}', '${agreement.current_version}')"
-                      style="padding: 4px 8px; background: var(--color-error-500); color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: 500;">
+            actionButton = `<button onclick="viewAgreementForAcceptance('${escapedType}', '${escapedCurrentVersion}')"
+                      class="btn btn-danger btn-sm">
                 Sign
               </button>`;
           } else if (isOutdated) {
@@ -1102,11 +1091,11 @@
             statusText = '';
             actionButton = `
               <div style="display: flex; gap: 4px;">
-                <button onclick="viewAgreement('${agreement.type}', '${agreement.version}')"
+                <button onclick="viewAgreement('${escapedType}', '${escapedVersion}')"
                         style="padding: 4px 8px; background: transparent; color: var(--color-brand); border: none; font-size: 12px; cursor: pointer; text-decoration: underline;">
                   View
                 </button>
-                <button onclick="copyAgreementLink('${agreement.type}')" title="Copy link to share"
+                <button onclick="copyAgreementLink('${escapedType}')" title="Copy link to share"
                         style="padding: 4px 6px; background: transparent; color: var(--color-text-muted); border: none; font-size: 12px; cursor: pointer;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -1119,11 +1108,11 @@
             statusText = '';
             actionButton = `
               <div style="display: flex; gap: 4px;">
-                <button onclick="viewAgreement('${agreement.type}', '${agreement.version}')"
+                <button onclick="viewAgreement('${escapedType}', '${escapedVersion}')"
                         style="padding: 4px 8px; background: transparent; color: var(--color-brand); border: none; font-size: 12px; cursor: pointer; text-decoration: underline;">
                   View
                 </button>
-                <button onclick="copyAgreementLink('${agreement.type}')" title="Copy link to share"
+                <button onclick="copyAgreementLink('${escapedType}')" title="Copy link to share"
                         style="padding: 4px 6px; background: transparent; color: var(--color-text-muted); border: none; font-size: 12px; cursor: pointer;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -1137,7 +1126,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-border);">
               <div style="display: flex; align-items: center; gap: 8px;">
                 ${statusDot}
-                <span style="color: var(--color-text-heading); font-size: 13px;">${formatAgreementType(agreement.type)}</span>
+                <span style="color: var(--color-text-heading); font-size: 13px;">${escapeHtml(formatAgreementType(agreement.type))}</span>
                 ${statusText}
               </div>
               ${actionButton}
@@ -1340,12 +1329,9 @@
           await checkOutdatedAgreements();
 
         } else {
-          // No organizations - show message in the org header
-          document.getElementById('orgName').textContent = 'No Organizations';
-          document.getElementById('orgBadge').innerHTML = '';
-          document.getElementById('orgRole').innerHTML = '<a href="/onboarding">Create your first organization</a>';
-          // Hide the cards grid for users without orgs
-          document.querySelector('[style*="display: grid"]').style.display = 'none';
+          // No organizations - redirect to onboarding
+          window.location.href = '/onboarding';
+          return;
         }
 
         document.getElementById('loading').style.display = 'none';
@@ -1484,7 +1470,7 @@
 
         // Reset buttons to Close-only for read-only view
         document.getElementById('agreementViewerButtons').innerHTML = `
-          <button class="btn-primary" onclick="closeAgreementViewer()">Close</button>
+          <button class="btn btn-primary" onclick="closeAgreementViewer()">Close</button>
         `;
 
         const response = await fetch(`/api/agreement?type=${type}&version=${version}&format=json`, {
@@ -1503,7 +1489,7 @@
 
         // Render markdown to HTML using marked library
         const renderedHtml = marked.parse(agreement.text);
-        document.getElementById('agreementViewerContent').innerHTML = renderedHtml;
+        document.getElementById('agreementViewerContent').innerHTML = DOMPurify.sanitize(renderedHtml);
       } catch (error) {
         console.error('Error loading agreement:', error);
         document.getElementById('agreementViewerContent').innerHTML =
@@ -1628,7 +1614,7 @@
 
         // Render markdown to HTML using marked library
         const renderedHtml = marked.parse(agreement.text);
-        document.getElementById('agreementViewerContent').innerHTML = renderedHtml;
+        document.getElementById('agreementViewerContent').innerHTML = DOMPurify.sanitize(renderedHtml);
 
         // Update buttons based on agreement type
         const buttonsDiv = document.getElementById('agreementViewerButtons');
@@ -1641,8 +1627,8 @@
               <span style="font-size: 13px;">I have read and agree to this ${formatAgreementType(type).toLowerCase()}</span>
             </label>
             <div style="display: flex; gap: 10px; width: 100%;">
-              <button class="btn-secondary" onclick="dismissAgreementForNow()">Later</button>
-              <button class="btn-primary" id="acceptButton" onclick="acceptAgreement('${type}', '${version}')" disabled style="opacity: 0.5;">Accept Agreement</button>
+              <button class="btn btn-secondary" onclick="dismissAgreementForNow()">Later</button>
+              <button class="btn btn-primary" id="acceptButton" onclick="acceptAgreement('${type}', '${version}')" disabled style="opacity: 0.5;">Accept Agreement</button>
             </div>
             <p style="font-size: 11px; color: var(--color-gray-400); margin-top: 10px; text-align: center;">This agreement is required. You'll be reminded to accept it next time.</p>
           `;
@@ -1662,7 +1648,7 @@
           // Terms of Service & Privacy Policy - just acknowledgment
           buttonsDiv.innerHTML = `
             <div style="display: flex; gap: 10px; width: 100%; justify-content: flex-end;">
-              <button class="btn-primary" onclick="acceptAgreement('${type}', '${version}')">I Understand</button>
+              <button class="btn btn-primary" onclick="acceptAgreement('${type}', '${version}')">I Understand</button>
             </div>
           `;
         }
@@ -1777,15 +1763,15 @@
             document.getElementById('outdatedAgreementModalMessage').textContent =
               'Your membership agreement requires acceptance to continue.';
             buttonsDiv.innerHTML = `
-              <button class="btn-secondary" onclick="dismissAgreementModal()">Remind Me Later</button>
-              <button class="btn-primary" onclick="viewOutdatedAgreements()">Review & Accept</button>
+              <button class="btn btn-secondary" onclick="dismissAgreementModal()">Remind Me Later</button>
+              <button class="btn btn-primary" onclick="viewOutdatedAgreements()">Review & Accept</button>
             `;
           } else {
             // Only TOS/Privacy updated - just informational
             document.getElementById('outdatedAgreementModalMessage').textContent =
               'The following agreements have been updated. Your continued use constitutes acceptance of the updated terms.';
             buttonsDiv.innerHTML = `
-              <button class="btn-primary" onclick="acknowledgeAgreementUpdates()">Got It</button>
+              <button class="btn btn-primary" onclick="acknowledgeAgreementUpdates()">Got It</button>
             `;
           }
 

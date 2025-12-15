@@ -1276,7 +1276,7 @@
       tags.forEach((tag, index) => {
         const tagEl = document.createElement('span');
         tagEl.className = 'tag';
-        tagEl.innerHTML = `${tag} <span class="tag-remove" onclick="removeTag(${index})">x</span>`;
+        tagEl.innerHTML = `${escapeHtml(tag)} <span class="tag-remove" onclick="removeTag(${index})">x</span>`;
         container.insertBefore(tagEl, input);
       });
 

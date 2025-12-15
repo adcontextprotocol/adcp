@@ -7,8 +7,8 @@
   <meta name="description" id="pageDescription" content="Loading...">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
-  <link rel="stylesheet" href="/aao-theme.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
@@ -216,7 +216,7 @@
         // Render markdown content
         if (article.content) {
           const renderedHtml = marked.parse(article.content);
-          document.getElementById('articleContent').innerHTML = renderedHtml;
+          document.getElementById('articleContent').innerHTML = DOMPurify.sanitize(renderedHtml);
         }
 
         // Show author info if available
