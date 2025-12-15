@@ -6,7 +6,7 @@
   <title>Perspectives | AgenticAdvertising.org</title>
   <meta name="description" content="Thought leadership on agentic AI, open standards, and the future of advertising. Educational resources from AgenticAdvertising.org.">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/aao-theme.css">
+  <link rel="stylesheet" href="/design-system.css">
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
@@ -19,14 +19,35 @@
     .empty-state {
       text-align: center;
       padding: 60px 20px;
-      color: #6b7280;
+      color: var(--color-text-muted);
     }
     .loading-state {
       font-size: 1.1rem;
     }
     .empty-state h2 {
-      color: #374151;
+      color: var(--color-text-heading);
       margin-bottom: 0.5rem;
+    }
+
+    /* Filter bar styling */
+    .filter-bar {
+      margin-bottom: var(--space-8);
+      padding: var(--space-4) 0;
+    }
+    .filter-bar select {
+      padding: var(--space-3) var(--space-4);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      cursor: pointer;
+      min-width: 180px;
+    }
+    .filter-bar select:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
     }
   </style>
 </head>
@@ -112,7 +133,7 @@
 
       } catch (error) {
         console.error('Error loading perspectives:', error);
-        loadingEl.innerHTML = '<p style="color: #dc2626;">Failed to load perspectives. Please refresh the page.</p>';
+        loadingEl.innerHTML = '<p style="color: var(--color-error-600);">Failed to load perspectives. Please refresh the page.</p>';
       }
     }
 

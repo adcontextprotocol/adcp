@@ -39,6 +39,17 @@ const __dirname = path.dirname(__filename);
 
 const logger = createLogger('http-server');
 
+/**
+ * Validate slug format and check against reserved keywords
+ */
+function isValidSlug(slug: string): boolean {
+  const reserved = ['admin', 'api', 'auth', 'dashboard', 'members', 'registry', 'onboarding'];
+  if (reserved.includes(slug.toLowerCase())) {
+    return false;
+  }
+  return /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(slug.toLowerCase());
+}
+
 // Check if authentication is configured
 const AUTH_ENABLED = !!(
   process.env.WORKOS_API_KEY &&
@@ -1321,6 +1332,15 @@ export class HTTPServer {
                 const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
                 const userEmail = customer.email || 'unknown@example.com';
 
+                // Warn if using fallback email - indicates missing customer data
+                if (!customer.email) {
+                  logger.warn({
+                    customerId,
+                    subscriptionId: subscription.id,
+                    orgId: org.workos_organization_id,
+                  }, 'Using fallback email for subscription - customer has no email address');
+                }
+
                 // Get WorkOS user ID from email
                 // Note: In production, we'd need a more robust way to link Stripe customer to WorkOS user
                 // For now, we'll use the email from the customer record
@@ -1330,14 +1350,27 @@ export class HTTPServer {
 
                   if (workosUser) {
                     // Record membership agreement acceptance
-                    await orgDb.recordUserAgreementAcceptance({
-                      workos_user_id: workosUser.id,
-                      email: userEmail,
-                      agreement_type: 'membership',
-                      agreement_version: agreementVersion,
-                      workos_organization_id: org.workos_organization_id,
-                      // Note: IP and user-agent not available in webhook context
-                    });
+                    try {
+                      await orgDb.recordUserAgreementAcceptance({
+                        workos_user_id: workosUser.id,
+                        email: userEmail,
+                        agreement_type: 'membership',
+                        agreement_version: agreementVersion,
+                        workos_organization_id: org.workos_organization_id,
+                        // Note: IP and user-agent not available in webhook context
+                      });
+                    } catch (agreementError) {
+                      // CRITICAL: Agreement recording failed but subscription already exists
+                      // This needs manual intervention to fix the inconsistent state
+                      logger.error({
+                        error: agreementError,
+                        orgId: org.workos_organization_id,
+                        subscriptionId: subscription.id,
+                        userEmail,
+                        agreementVersion,
+                      }, 'CRITICAL: Failed to record agreement acceptance - subscription exists but agreement not recorded. Manual intervention required.');
+                      throw agreementError; // Re-throw to prevent further operations
+                    }
 
                     // Update organization record
                     await orgDb.updateOrganization(org.workos_organization_id, {
@@ -1391,10 +1424,20 @@ export class HTTPServer {
                       interval,
                     }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
                   } else {
-                    logger.error({ userEmail }, 'Could not find WorkOS user for Stripe customer');
+                    logger.error({
+                      userEmail,
+                      customerId,
+                      subscriptionId: subscription.id,
+                      orgId: org.workos_organization_id,
+                    }, 'Could not find WorkOS user for Stripe customer - subscription exists but no user found');
                   }
                 } catch (userError) {
-                  logger.error({ error: userError }, 'Failed to record agreement acceptance in webhook');
+                  logger.error({
+                    error: userError,
+                    customerId,
+                    subscriptionId: subscription.id,
+                    orgId: org.workos_organization_id,
+                  }, 'Failed to record agreement acceptance in webhook');
                 }
               }
             }
@@ -3812,7 +3855,7 @@ export class HTTPServer {
 
     // GET /api/me/joinable-organizations - Get organizations the user can request to join
     // Shows: 1) Published orgs (public member profiles) 2) Orgs with admin matching user's company domain
-    this.app.get('/api/me/joinable-organizations', requireAuth, async (req, res) => {
+    this.app.get('/api/me/joinable-organizations', requireAuth, invitationRateLimiter, async (req, res) => {
       try {
         const user = req.user!;
         const memberDb = new MemberDatabase();
@@ -4090,6 +4133,14 @@ export class HTTPServer {
         const user = req.user!;
         const { orgId, requestId } = req.params;
         const { role = 'member' } = req.body;
+
+        // Validate role - only allow member or admin, not owner
+        if (role !== 'member' && role !== 'admin') {
+          return res.status(400).json({
+            error: 'Invalid role',
+            message: 'Role must be either "member" or "admin"',
+          });
+        }
 
         // Verify user is admin/owner of this organization
         const memberships = await workos!.userManagement.listOrganizationMemberships({
@@ -6186,11 +6237,11 @@ export class HTTPServer {
           });
         }
 
-        // Validate slug format
-        if (!/^[a-z0-9-]+$/.test(slug)) {
+        // Validate slug format and reserved words
+        if (!isValidSlug(slug)) {
           return res.status(400).json({
             error: 'Invalid slug',
-            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens, cannot start or end with a hyphen, and cannot be a reserved keyword (admin, api, auth, dashboard, members, registry, onboarding)',
           });
         }
 

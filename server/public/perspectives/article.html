@@ -6,8 +6,9 @@
   <title id="pageTitle">Loading... | AgenticAdvertising.org</title>
   <meta name="description" id="pageDescription" content="Loading...">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/aao-theme.css">
+  <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
@@ -19,7 +20,7 @@
     .loading-state {
       text-align: center;
       padding: 60px 20px;
-      color: #6b7280;
+      color: var(--color-text-muted);
       font-size: 1.1rem;
     }
 
@@ -27,26 +28,26 @@
     .article-content h2 {
       font-size: 1.5rem;
       font-weight: 700;
-      color: #1a1a1a;
+      color: var(--color-text-heading);
       margin-top: 2rem;
       margin-bottom: 1rem;
     }
     .article-content h3 {
       font-size: 1.25rem;
       font-weight: 600;
-      color: #1a1a1a;
+      color: var(--color-text-heading);
       margin-top: 1.5rem;
       margin-bottom: 0.75rem;
     }
     .article-content p {
       font-size: 1.1rem;
       line-height: 1.8;
-      color: #374151;
+      color: var(--color-text-heading);
       margin-bottom: 1rem;
     }
     .article-content ul, .article-content ol {
       margin: 1rem 0 1.5rem 1.5rem;
-      color: #374151;
+      color: var(--color-text-heading);
     }
     .article-content li {
       margin-bottom: 0.5rem;
@@ -55,7 +56,7 @@
     }
     .article-content strong {
       font-weight: 600;
-      color: #1a1a1a;
+      color: var(--color-text-heading);
     }
     .article-content a {
       color: var(--aao-primary);
@@ -68,29 +69,29 @@
       border-left: 4px solid var(--aao-primary);
       margin: 1.5rem 0;
       padding: 1rem 1.5rem;
-      background: #f8fafc;
+      background: var(--color-bg-subtle);
       border-radius: 0 8px 8px 0;
     }
     .article-content blockquote p {
       margin: 0;
       font-style: italic;
-      color: #374151;
+      color: var(--color-text-heading);
     }
     .article-content hr {
       border: none;
-      border-top: 1px solid #e5e7eb;
+      border-top: 1px solid var(--color-border);
       margin: 2rem 0;
     }
 
     .author-info {
       margin-top: 2rem;
       padding-top: 1.5rem;
-      border-top: 1px solid #e5e7eb;
-      color: #6b7280;
+      border-top: 1px solid var(--color-border);
+      color: var(--color-text-muted);
       font-size: 0.95rem;
     }
     .author-info strong {
-      color: #374151;
+      color: var(--color-text-heading);
     }
 
     .back-link {
@@ -151,7 +152,7 @@
   <!-- Error State -->
   <div id="errorState" class="container" style="display: none;">
     <div class="loading-state">
-      <h2 style="color: #dc2626; margin-bottom: 1rem;">Article Not Found</h2>
+      <h2 style="color: var(--color-error-600); margin-bottom: 1rem;">Article Not Found</h2>
       <p>The article you're looking for doesn't exist or has been removed.</p>
       <p><a href="/perspectives" style="color: var(--aao-primary);">Return to Perspectives</a></p>
     </div>
@@ -215,7 +216,7 @@
         // Render markdown content
         if (article.content) {
           const renderedHtml = marked.parse(article.content);
-          document.getElementById('articleContent').innerHTML = renderedHtml;
+          document.getElementById('articleContent').innerHTML = DOMPurify.sanitize(renderedHtml);
         }
 
         // Show author info if available
