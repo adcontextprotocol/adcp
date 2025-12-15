@@ -104,11 +104,12 @@ export class HTTPServer {
     });
 
     // Use JSON parser for all routes EXCEPT Stripe webhooks (which need raw body)
+    // Limit increased to 10MB to support base64-encoded logo uploads in member profiles
     this.app.use((req, res, next) => {
       if (req.path === '/api/webhooks/stripe') {
         next();
       } else {
-        express.json()(req, res, next);
+        express.json({ limit: '10mb' })(req, res, next);
       }
     });
     this.app.use(cookieParser());
