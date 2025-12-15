@@ -1,4 +1,4 @@
--- Migration: 020_perspective_likes.sql
+-- Migration: 021_perspective_likes.sql
 -- Likes/reactions for perspectives content
 
 -- Likes table for tracking article engagement

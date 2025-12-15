@@ -24,6 +24,7 @@
   <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
 
   <link rel="stylesheet" href="/design-system.css">
+  <script src="/perspectives/utils.js"></script>
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
@@ -499,6 +500,9 @@
   </footer>
 
   <script>
+    // Note: userFingerprint, loadUserLikesFromStorage, saveUserLikesToStorage, escapeHtml, formatDateShort
+    // are provided by /perspectives/utils.js
+
     let allPerspectives = [];
     let userLikes = new Set(); // Track which articles user has liked (from localStorage)
     let activeFilters = {
@@ -509,53 +513,14 @@
       search: ''
     };
 
-    // Generate browser fingerprint for anonymous likes
-    function generateFingerprint() {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      ctx.textBaseline = 'top';
-      ctx.font = '14px Arial';
-      ctx.fillText('fingerprint', 0, 0);
-      const canvasData = canvas.toDataURL();
-
-      const data = [
-        navigator.userAgent,
-        navigator.language,
-        screen.width + 'x' + screen.height,
-        new Date().getTimezoneOffset(),
-        canvasData.slice(0, 50)
-      ].join('|');
-
-      // Simple hash function
-      let hash = 0;
-      for (let i = 0; i < data.length; i++) {
-        const char = data.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
-      }
-      return Math.abs(hash).toString(16);
-    }
-
-    const userFingerprint = generateFingerprint();
-
-    // Load user's likes from localStorage
+    // Load user's likes from localStorage using shared utility
     function loadUserLikes() {
-      try {
-        const stored = localStorage.getItem('perspectiveLikes');
-        if (stored) {
-          userLikes = new Set(JSON.parse(stored));
-        }
-      } catch (e) {
-        console.error('Error loading likes from localStorage:', e);
-      }
+      userLikes = loadUserLikesFromStorage();
     }
 
+    // Save user's likes using shared utility
     function saveUserLikes() {
-      try {
-        localStorage.setItem('perspectiveLikes', JSON.stringify([...userLikes]));
-      } catch (e) {
-        console.error('Error saving likes to localStorage:', e);
-      }
+      saveUserLikesToStorage(userLikes);
     }
 
     async function loadPerspectives() {
@@ -1000,7 +965,7 @@
           : 'Read article';
 
         // Format date and check if new (within 60 days)
-        const dateInfo = formatDate(perspective.published_at);
+        const dateInfo = formatDateShort(perspective.published_at);
         const isNew = isWithin60Days(perspective.published_at);
 
         // Like status
@@ -1050,13 +1015,6 @@
       gridEl.innerHTML = html;
     }
 
-    function formatDate(dateStr) {
-      if (!dateStr) return null;
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return null;
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-
     function isWithin60Days(dateStr) {
       if (!dateStr) return false;
       const date = new Date(dateStr);
@@ -1065,13 +1023,6 @@
       const diffTime = now - date;
       const diffDays = diffTime / (1000 * 60 * 60 * 24);
       return diffDays <= 60 && diffDays >= 0;
-    }
-
-    function escapeHtml(text) {
-      if (!text) return '';
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
     }
 
     // Load perspectives when page loads

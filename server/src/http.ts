@@ -27,6 +27,7 @@ import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache } from 
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import {
   notifyNewSubscription,
   notifyPaymentSucceeded,
@@ -3450,7 +3451,6 @@ Disallow: /api/admin/
 
         // Get IP hash for rate limiting
         const ip = req.ip || req.socket.remoteAddress || '';
-        const crypto = await import('crypto');
         const ipHash = crypto.createHash('sha256').update(ip).digest('hex').substring(0, 64);
 
         // Check rate limit (max 50 likes per IP per hour)

@@ -27,6 +27,7 @@
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <script src="/perspectives/utils.js"></script>
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
@@ -391,65 +392,11 @@
   </footer>
 
   <script>
+    // Note: userFingerprint, checkUserLike, saveUserLike, escapeHtml, formatDate
+    // are provided by /perspectives/utils.js
+
     let currentArticle = null;
     let isLiked = false;
-
-    // Generate browser fingerprint for anonymous likes
-    function generateFingerprint() {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      ctx.textBaseline = 'top';
-      ctx.font = '14px Arial';
-      ctx.fillText('fingerprint', 0, 0);
-      const canvasData = canvas.toDataURL();
-
-      const data = [
-        navigator.userAgent,
-        navigator.language,
-        screen.width + 'x' + screen.height,
-        new Date().getTimezoneOffset(),
-        canvasData.slice(0, 50)
-      ].join('|');
-
-      let hash = 0;
-      for (let i = 0; i < data.length; i++) {
-        const char = data.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
-      }
-      return Math.abs(hash).toString(16);
-    }
-
-    const userFingerprint = generateFingerprint();
-
-    // Check if user has liked this article
-    function checkUserLike(articleId) {
-      try {
-        const stored = localStorage.getItem('perspectiveLikes');
-        if (stored) {
-          const likes = new Set(JSON.parse(stored));
-          return likes.has(articleId);
-        }
-      } catch (e) {
-        console.error('Error checking likes:', e);
-      }
-      return false;
-    }
-
-    function saveUserLike(articleId, liked) {
-      try {
-        const stored = localStorage.getItem('perspectiveLikes');
-        const likes = stored ? new Set(JSON.parse(stored)) : new Set();
-        if (liked) {
-          likes.add(articleId);
-        } else {
-          likes.delete(articleId);
-        }
-        localStorage.setItem('perspectiveLikes', JSON.stringify([...likes]));
-      } catch (e) {
-        console.error('Error saving like:', e);
-      }
-    }
 
     async function toggleLike() {
       if (!currentArticle) return;
@@ -578,13 +525,6 @@
       document.getElementById('articleJsonLd').textContent = JSON.stringify(jsonLd);
     }
 
-    function formatDate(dateStr) {
-      if (!dateStr) return '';
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return '';
-      return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    }
-
     async function loadArticle() {
       // Get slug from URL path
       const pathParts = window.location.pathname.split('/');
@@ -681,13 +621,6 @@
     function showError() {
       document.getElementById('loadingState').style.display = 'none';
       document.getElementById('errorState').style.display = 'block';
-    }
-
-    function escapeHtml(text) {
-      if (!text) return '';
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
     }
 
     // Load article when page loads
