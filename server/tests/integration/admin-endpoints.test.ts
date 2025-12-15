@@ -9,13 +9,22 @@ import type { Pool } from 'pg';
 vi.mock('../../src/middleware/auth.js', () => ({
   requireAuth: (req: any, res: any, next: any) => {
     req.user = {
-      workos_user_id: 'user_test_admin',
+      id: 'user_test_admin',
       email: 'admin@test.com',
       is_admin: true
     };
     next();
   },
   requireAdmin: (req: any, res: any, next: any) => next(),
+}));
+
+// Mock Stripe client to control subscription checks
+vi.mock('../../src/billing/stripe-client.js', () => ({
+  stripe: null,
+  getSubscriptionInfo: vi.fn().mockResolvedValue(null),
+  createStripeCustomer: vi.fn().mockResolvedValue(null),
+  createCustomerSession: vi.fn().mockResolvedValue(null),
+  createBillingPortalSession: vi.fn().mockResolvedValue(null),
 }));
 
 describe('Admin Endpoints Integration Tests', () => {
@@ -368,6 +377,46 @@ describe('Admin Endpoints Integration Tests', () => {
         [DELETE_TEST_ORG_ID]
       );
       expect(afterResult.rows.length).toBe(0);
+    });
+
+    it('should prevent deletion of organization with active subscription', async () => {
+      // Create org with active subscription
+      const SUB_ORG_ID = 'org_delete_test_sub';
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, stripe_customer_id, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, stripe_customer_id = $3`,
+        [SUB_ORG_ID, 'Subscribed Test Org', 'cus_sub_admin_test']
+      );
+
+      // Mock getSubscriptionInfo to return active subscription
+      const { getSubscriptionInfo } = await import('../../src/billing/stripe-client.js');
+      vi.mocked(getSubscriptionInfo).mockResolvedValueOnce({
+        status: 'active',
+        product_id: 'prod_test',
+        product_name: 'Test Product',
+        current_period_end: Math.floor(Date.now() / 1000) + 86400,
+        cancel_at_period_end: false,
+      });
+
+      const response = await request(app)
+        .delete(`/api/admin/members/${SUB_ORG_ID}`)
+        .send({ confirmation: 'Subscribed Test Org' })
+        .expect(400);
+
+      expect(response.body.error).toBe('Cannot delete workspace with active subscription');
+      expect(response.body.has_active_subscription).toBe(true);
+      expect(response.body.subscription_status).toBe('active');
+
+      // Verify org still exists
+      const checkResult = await pool.query(
+        'SELECT 1 FROM organizations WHERE workos_organization_id = $1',
+        [SUB_ORG_ID]
+      );
+      expect(checkResult.rows.length).toBe(1);
+
+      // Clean up
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [SUB_ORG_ID]);
     });
   });
 });

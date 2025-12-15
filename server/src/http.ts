@@ -2561,6 +2561,19 @@ export class HTTPServer {
           });
         }
 
+        // Check for active Stripe subscription
+        if (org.stripe_customer_id) {
+          const subscriptionInfo = await getSubscriptionInfo(org.stripe_customer_id);
+          if (subscriptionInfo && (subscriptionInfo.status === 'active' || subscriptionInfo.status === 'past_due')) {
+            return res.status(400).json({
+              error: 'Cannot delete workspace with active subscription',
+              message: 'This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.',
+              has_active_subscription: true,
+              subscription_status: subscriptionInfo.status,
+            });
+          }
+        }
+
         // Require confirmation by typing the organization name
         if (!confirmation || confirmation !== org.name) {
           return res.status(400).json({
@@ -2570,6 +2583,17 @@ export class HTTPServer {
             organization_name: org.name,
           });
         }
+
+        // Record audit log before deletion (while org still exists)
+        const orgDb = new OrganizationDatabase();
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: req.user!.id,
+          action: 'organization_deleted',
+          resource_type: 'organization',
+          resource_id: orgId,
+          details: { name: org.name, deleted_by: 'admin', admin_email: req.user!.email },
+        });
 
         // Delete from WorkOS if possible
         if (workos) {
@@ -4648,6 +4672,19 @@ export class HTTPServer {
           });
         }
 
+        // Check for active Stripe subscription
+        if (org.stripe_customer_id) {
+          const subscriptionInfo = await getSubscriptionInfo(org.stripe_customer_id);
+          if (subscriptionInfo && (subscriptionInfo.status === 'active' || subscriptionInfo.status === 'past_due')) {
+            return res.status(400).json({
+              error: 'Cannot delete workspace with active subscription',
+              message: 'This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.',
+              has_active_subscription: true,
+              subscription_status: subscriptionInfo.status,
+            });
+          }
+        }
+
         // Require confirmation by typing the organization name
         if (!confirmation || confirmation !== org.name) {
           return res.status(400).json({
@@ -4657,6 +4694,16 @@ export class HTTPServer {
             organization_name: org.name,
           });
         }
+
+        // Record audit log before deletion (while org still exists)
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'organization_deleted',
+          resource_type: 'organization',
+          resource_id: orgId,
+          details: { name: org.name, deleted_by: 'self_service', user_email: user.email },
+        });
 
         // Delete from WorkOS
         try {

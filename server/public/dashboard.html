@@ -1972,10 +1972,8 @@
         const data = await response.json();
 
         if (!response.ok) {
-          if (data.has_payments) {
-            throw new Error('Cannot delete workspace with payment history. Please contact support.');
-          }
-          throw new Error(data.error || data.message || 'Failed to delete workspace');
+          // Use the API's message which is more specific about the issue
+          throw new Error(data.message || data.error || 'Failed to delete workspace');
         }
 
         // Success - redirect to onboarding to show join/create options
