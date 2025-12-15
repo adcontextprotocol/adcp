@@ -465,7 +465,7 @@ const result = await testAgent.createMediaBuy({
     url: 'https://buyer.example.com/webhooks/reporting',
     authentication: {
       schemes: ['HMAC-SHA256'],
-      credentials: generateUniqueSecret('nike_q1_reporting')
+      credentials: 'shared_per_tool_call_secret_min_32_chars'
     },
     reporting_frequency: 'daily',
     requested_metrics: ['impressions', 'spend', 'video_completions']

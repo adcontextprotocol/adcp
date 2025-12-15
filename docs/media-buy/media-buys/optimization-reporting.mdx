@@ -99,7 +99,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
     "url": "https://buyer.example.com/webhooks/reporting",
     "authentication": {
       "schemes": ["HMAC-SHA256"],
-      "credentials": generateUniqueSecret('campaign_2024_reporting')
+      "credentials": "shared_per_tool_call_secret_min_32_chars"
     },
     "reporting_frequency": "daily"
   }

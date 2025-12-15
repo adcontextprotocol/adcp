@@ -585,14 +585,7 @@ Client provides secret, server signs payload.
 
 **1. Client generates unique secret:**
 ```javascript
-import crypto from 'crypto';
-
-function generateUniqueSecret(operationId) {
-  // Generate cryptographically secure random secret
-  return crypto.randomBytes(32).toString('base64url');
-}
-
-const secret = generateUniqueSecret('nike_q1_2025');
+const secret = 'shared_per_tool_call_secret_min_32_chars';
 ```
 
 **2. Client provides secret in push_notification_config:**
@@ -602,7 +595,7 @@ const secret = generateUniqueSecret('nike_q1_2025');
     "url": "https://buyer.com/webhooks/adcp/nike_q1_2025",
     "authentication": {
       "schemes": ["HMAC-SHA256"],
-      "credentials": "Xk7fB9mPq2vZwC8LtN3jR5sY1fKdHg6A4uW0eT9iOp"
+      "credentials": "shared_per_tool_call_secret_min_32_chars"
     }
   }
 }

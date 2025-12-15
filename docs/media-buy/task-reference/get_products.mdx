@@ -668,7 +668,7 @@ POST /api/mcp/call_tool
       "url": "https://buyer.com/webhooks/adcp/get_products",
       "authentication": {
         "schemes": ["HMAC-SHA256"],
-        "credentials": generateUniqueSecret('product_search_123')
+        "credentials": "shared_per_tool_call_secret_min_32_chars"
       }
     }
   }
