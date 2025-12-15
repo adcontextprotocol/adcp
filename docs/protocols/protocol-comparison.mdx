@@ -111,13 +111,13 @@ const updates = await session.call('tasks/get', {
   include_result: true 
 });
 
-// Optional: Configure webhook at protocol level (A2A-compatible structure)
+// Optional: Configure webhook (HMAC-SHA256 authentication)
 const response = await session.call('create_media_buy', params, {
   push_notification_config: {
     url: "https://buyer.com/webhooks",
     authentication: {
-      schemes: ["HMAC-SHA256"],  // or ["Bearer"]
-      credentials: "shared_secret_32_chars"
+      schemes: ["HMAC-SHA256"],
+      credentials: generateUniqueSecret(operationId) // Unique per operation
     }
   }
 });
@@ -140,14 +140,14 @@ events.onmessage = (event) => {
   console.log(`Status: ${update.status}, Message: ${update.message}`);
 };
 
-// Native webhook support
+// Native webhook support (HMAC-SHA256 authentication)
 await a2a.send({
   message: { /* skill invocation */ },
   push_notification_config: {
-    webhook_url: "https://buyer.com/webhooks",
+    url: "https://buyer.com/webhooks",
     authentication: {
-      schemes: ["Bearer"],
-      credentials: "secret_token_min_32_chars"
+      schemes: ["HMAC-SHA256"],
+      credentials: generateUniqueSecret(operationId) // Unique per operation
     }
   }
 });

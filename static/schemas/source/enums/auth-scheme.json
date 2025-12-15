@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/auth-scheme.json",
   "title": "Authentication Scheme",
-  "description": "Authentication schemes for push notification endpoints",
+  "description": "Authentication scheme for push notification endpoints. If authentication is provided, AdCP enforces HMAC-SHA256.",
   "type": "string",
-  "enum": ["Bearer", "HMAC-SHA256"]
+  "enum": ["HMAC-SHA256"]
 }

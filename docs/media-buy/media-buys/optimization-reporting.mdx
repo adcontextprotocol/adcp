@@ -81,36 +81,19 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
   "reporting_webhook": {
     "url": "https://buyer.example.com/webhooks/reporting",
     "authentication": {
-      "schemes": ["Bearer"],
-      "credentials": "secret_token_min_32_chars"
-    },
-    "reporting_frequency": "daily"
-  }
-}
-```
-
-**Or with HMAC signature (recommended for production):**
-```json
-{
-  "buyer_ref": "campaign_2024",
-  "packages": [...],
-  "reporting_webhook": {
-    "url": "https://buyer.example.com/webhooks/reporting",
-    "authentication": {
       "schemes": ["HMAC-SHA256"],
-      "credentials": "shared_secret_min_32_chars"
+      "credentials": generateUniqueSecret('campaign_2024_reporting')
     },
     "reporting_frequency": "daily"
   }
 }
 ```
 
-**Security is Required:**
-- `authentication` configuration is mandatory (minimum 32 characters)
-- **Bearer tokens**: Simple, good for development (Authorization header)
-- **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
-- Credentials exchanged out-of-band during publisher onboarding
-- See [Webhook Security](/docs/protocols/core-concepts.mdx#security) for implementation details
+**Authentication:**
+
+If provided, AdCP enforces HMAC-SHA256 signature-based authentication. Server signs payload with `X-ADCP-Signature` and `X-ADCP-Timestamp` headers.
+
+For complete implementation details, see [Core Concepts - Webhook Authentication](/docs/protocols/core-concepts#webhook-authentication).
 
 #### Supported Frequencies
 

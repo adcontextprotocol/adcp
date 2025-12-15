@@ -667,8 +667,8 @@ POST /api/mcp/call_tool
     "pushNotificationConfig": {
       "url": "https://buyer.com/webhooks/adcp/get_products",
       "authentication": {
-        "schemes": ["Bearer"],
-        "credentials": "secret_token_32_chars"
+        "schemes": ["HMAC-SHA256"],
+        "credentials": generateUniqueSecret('product_search_123')
       }
     }
   }

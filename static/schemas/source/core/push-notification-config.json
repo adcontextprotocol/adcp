@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/push-notification-config.json",
   "title": "Push Notification Config",
-  "description": "Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. Supports Bearer tokens (simple) or HMAC signatures (production-recommended).",
+  "description": "Webhook configuration for asynchronous task notifications. If authentication is provided, AdCP enforces HMAC-SHA256 signature-based authentication.",
   "type": "object",
   "properties": {
     "url": {
@@ -10,18 +10,13 @@
       "format": "uri",
       "description": "Webhook endpoint URL for task status notifications"
     },
-    "token": {
-      "type": "string",
-      "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
-      "minLength": 16
-    },
     "authentication": {
       "type": "object",
-      "description": "Authentication configuration for webhook delivery (A2A-compatible)",
+      "description": "HMAC-SHA256 authentication. Client generates a unique shared secret per webhook configuration. Server signs payload and includes signature in X-ADCP-Signature header.",
       "properties": {
         "schemes": {
           "type": "array",
-          "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+          "description": "Must be ['HMAC-SHA256'].",
           "items": {
             "$ref": "/schemas/enums/auth-scheme.json"
           },
@@ -30,7 +25,7 @@
         },
         "credentials": {
           "type": "string",
-          "description": "Credentials for authentication. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+          "description": "Client-generated shared secret. Must be unique per webhook configuration. Minimum 32 characters.",
           "minLength": 32
         }
       },
@@ -38,6 +33,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["url", "authentication"],
+  "required": ["url"],
   "additionalProperties": false
 }
