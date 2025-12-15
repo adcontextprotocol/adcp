@@ -3,197 +3,201 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Get Started - AdCP Registry</title>
+  <title>Get Started - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    /* =============================================================================
+       Onboarding styles
+       Uses design system variables - see /design-system.css for tokens
+       ============================================================================= */
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: var(--gradient-primary);
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 20px;
+      padding: var(--space-5);
     }
     .container {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      background: var(--color-bg-card);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-xl);
       max-width: 600px;
       width: 100%;
-      padding: 40px;
+      padding: var(--space-10);
     }
     h1 {
-      color: #333;
-      margin-bottom: 10px;
-      font-size: 28px;
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2.5);
+      font-size: var(--text-3xl);
     }
     .subtitle {
-      color: #666;
-      margin-bottom: 30px;
-      line-height: 1.6;
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-8);
+      line-height: var(--leading-relaxed);
     }
     .welcome-name {
-      color: #667eea;
-      font-weight: 600;
+      color: var(--color-brand);
+      font-weight: var(--font-semibold);
     }
     .options {
       display: flex;
       flex-direction: column;
-      gap: 15px;
-      margin-bottom: 30px;
+      gap: var(--space-4);
+      margin-bottom: var(--space-8);
     }
     .option-card {
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      padding: 20px;
+      border: var(--border-2) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-5);
       cursor: pointer;
-      transition: all 0.2s;
+      transition: var(--transition-all);
     }
     .option-card:hover {
-      border-color: #667eea;
-      background: #f8f9ff;
+      border-color: var(--color-brand);
+      background: var(--color-primary-50);
     }
     .option-card.selected {
-      border-color: #667eea;
-      background: #f0f3ff;
+      border-color: var(--color-brand);
+      background: var(--color-primary-100);
     }
     .option-card.disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
     .option-card.disabled:hover {
-      border-color: #e0e0e0;
-      background: white;
+      border-color: var(--color-gray-200);
+      background: var(--color-bg-card);
     }
     .option-header {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 8px;
+      gap: var(--space-3);
+      margin-bottom: var(--space-2);
     }
     .option-icon {
       width: 40px;
       height: 40px;
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 20px;
+      font-size: var(--text-xl);
     }
-    .option-icon.join { background: #e3f2fd; }
-    .option-icon.create { background: #e8f5e9; }
-    .option-icon.individual { background: #fff3e0; }
+    .option-icon.join { background: var(--color-info-100); }
+    .option-icon.create { background: var(--color-success-100); }
+    .option-icon.individual { background: var(--color-warning-100); }
     .option-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: #333;
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
     }
     .option-description {
-      color: #666;
-      font-size: 14px;
-      line-height: 1.5;
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      line-height: var(--leading-normal);
       margin-left: 52px;
     }
 
     /* Invitations section */
     .invitations-section {
-      background: #e3f2fd;
-      border: 1px solid #90caf9;
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 25px;
+      background: var(--color-info-50);
+      border: var(--border-1) solid var(--color-info-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-5);
+      margin-bottom: var(--space-6);
     }
     .invitations-section h3 {
-      color: #1976d2;
-      font-size: 16px;
-      margin-bottom: 15px;
+      color: var(--color-info-700);
+      font-size: var(--text-base);
+      margin-bottom: var(--space-4);
     }
     .invitation-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: white;
-      padding: 12px 15px;
-      border-radius: 6px;
-      margin-bottom: 10px;
+      background: var(--color-bg-card);
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-2.5);
     }
     .invitation-item:last-child {
       margin-bottom: 0;
     }
     .invitation-org {
-      font-weight: 600;
-      color: #333;
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
     }
     .invitation-email {
-      font-size: 13px;
-      color: #666;
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
     }
     .invitation-role {
       display: inline-block;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 11px;
-      margin-left: 8px;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      margin-left: var(--space-2);
       text-transform: capitalize;
     }
-    .role-owner { background: #e3f2fd; color: #1565c0; }
-    .role-admin { background: #f3e5f5; color: #7b1fa2; }
-    .role-member { background: #f5f5f5; color: #666; }
+    .role-owner { background: var(--color-info-100); color: var(--color-info-700); }
+    .role-admin { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .role-member { background: var(--color-gray-100); color: var(--color-text-secondary); }
     .btn-accept {
-      padding: 8px 16px;
-      background: #1976d2;
+      padding: var(--space-2) var(--space-4);
+      background: var(--color-info-600);
       color: white;
       border: none;
-      border-radius: 6px;
-      font-size: 14px;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
       cursor: pointer;
-      transition: background 0.2s;
+      transition: var(--transition-colors);
     }
     .btn-accept:hover {
-      background: #1565c0;
+      background: var(--color-info-700);
     }
 
     /* Form sections */
     .form-section {
       display: none;
-      margin-top: 20px;
+      margin-top: var(--space-5);
     }
     .form-section.active {
       display: block;
     }
     .form-group {
-      margin-bottom: 20px;
+      margin-bottom: var(--space-5);
     }
     label {
       display: block;
-      color: #333;
-      font-weight: 600;
-      margin-bottom: 8px;
+      color: var(--color-text-heading);
+      font-weight: var(--font-semibold);
+      margin-bottom: var(--space-2);
     }
     input {
       width: 100%;
-      padding: 12px;
-      border: 2px solid #e0e0e0;
-      border-radius: 6px;
-      font-size: 16px;
-      transition: border-color 0.3s;
+      padding: var(--space-3);
+      border: var(--border-2) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-base);
+      transition: var(--transition-colors);
     }
     input:focus {
       outline: none;
-      border-color: #667eea;
+      border-color: var(--color-brand);
     }
     .btn {
       width: 100%;
-      padding: 14px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: var(--space-3.5);
+      background: var(--gradient-primary);
       color: white;
       border: none;
-      border-radius: 6px;
-      font-size: 16px;
-      font-weight: 600;
+      border-radius: var(--radius-md);
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
       cursor: pointer;
-      transition: transform 0.2s;
+      transition: var(--transition-transform);
     }
     .btn:hover {
       transform: translateY(-2px);
@@ -204,39 +208,39 @@
       transform: none;
     }
     .btn-secondary {
-      background: #f5f5f5;
-      color: #333;
-      border: 1px solid #ddd;
+      background: var(--color-gray-100);
+      color: var(--color-text-heading);
+      border: var(--border-1) solid var(--color-gray-300);
     }
     .btn-secondary:hover {
-      background: #e0e0e0;
+      background: var(--color-gray-200);
     }
     .error {
-      background: #fee;
-      border: 1px solid #fcc;
-      color: #c33;
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 20px;
+      background: var(--color-error-50);
+      border: var(--border-1) solid var(--color-error-200);
+      color: var(--color-error-600);
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-5);
     }
     .info {
-      background: #e3f2fd;
-      border: 1px solid #90caf9;
-      color: #1976d2;
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 20px;
+      background: var(--color-info-50);
+      border: var(--border-1) solid var(--color-info-200);
+      color: var(--color-info-700);
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-5);
     }
     .agreements {
-      background: #f9f9f9;
-      border: 1px solid #e0e0e0;
-      border-radius: 6px;
-      padding: 15px;
-      margin-bottom: 20px;
-      font-size: 14px;
+      background: var(--color-gray-50);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      margin-bottom: var(--space-5);
+      font-size: var(--text-sm);
     }
     .agreements a {
-      color: #667eea;
+      color: var(--color-brand);
       text-decoration: none;
     }
     .agreements a:hover {
@@ -245,17 +249,17 @@
     .agreements-checkbox {
       display: flex;
       align-items: flex-start;
-      gap: 12px;
-      background: #f9f9f9;
-      border: 1px solid #e0e0e0;
-      border-radius: 6px;
-      padding: 15px;
-      margin-bottom: 20px;
-      font-size: 14px;
+      gap: var(--space-3);
+      background: var(--color-gray-50);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      margin-bottom: var(--space-5);
+      font-size: var(--text-sm);
       cursor: pointer;
     }
     .agreements-checkbox:hover {
-      background: #f5f5f5;
+      background: var(--color-gray-100);
     }
     .agreements-checkbox input[type="checkbox"] {
       width: 18px;
@@ -266,12 +270,12 @@
     }
     .agreements-checkbox label {
       cursor: pointer;
-      font-weight: normal;
+      font-weight: var(--font-normal);
       margin-bottom: 0;
-      line-height: 1.5;
+      line-height: var(--leading-normal);
     }
     .agreements-checkbox a {
-      color: #667eea;
+      color: var(--color-brand);
       text-decoration: none;
     }
     .agreements-checkbox a:hover {
@@ -279,72 +283,72 @@
     }
     .back-link {
       display: inline-block;
-      margin-bottom: 20px;
-      color: #667eea;
+      margin-bottom: var(--space-5);
+      color: var(--color-brand);
       text-decoration: none;
-      font-size: 14px;
+      font-size: var(--text-sm);
     }
     .back-link:hover {
       text-decoration: underline;
     }
     .no-invitations {
-      color: #666;
-      font-size: 14px;
-      padding: 15px;
-      background: #f5f5f5;
-      border-radius: 6px;
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      padding: var(--space-4);
+      background: var(--color-gray-100);
+      border-radius: var(--radius-md);
       text-align: center;
     }
     .loading {
       text-align: center;
-      padding: 40px;
-      color: #666;
+      padding: var(--space-10);
+      color: var(--color-text-secondary);
     }
 
     /* Joinable organizations */
     .joinable-section {
-      margin-top: 20px;
+      margin-top: var(--space-5);
     }
     .joinable-section h3 {
-      font-size: 16px;
-      color: #333;
-      margin-bottom: 15px;
+      font-size: var(--text-base);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-4);
     }
     .domain-hint {
-      font-size: 13px;
-      color: #666;
-      margin-bottom: 15px;
-      padding: 10px;
-      background: #f5f5f5;
-      border-radius: 6px;
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-4);
+      padding: var(--space-2.5);
+      background: var(--color-gray-100);
+      border-radius: var(--radius-md);
     }
     .domain-hint strong {
-      color: #667eea;
+      color: var(--color-brand);
     }
     .org-card {
       display: flex;
       align-items: center;
-      gap: 15px;
-      background: white;
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 12px;
-      transition: border-color 0.2s;
+      gap: var(--space-4);
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      margin-bottom: var(--space-3);
+      transition: var(--transition-colors);
     }
     .org-card:hover {
-      border-color: #667eea;
+      border-color: var(--color-brand);
     }
     .org-logo {
       width: 48px;
       height: 48px;
-      border-radius: 8px;
-      background: #f5f5f5;
+      border-radius: var(--radius-md);
+      background: var(--color-gray-100);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 24px;
-      color: #999;
+      font-size: var(--text-2xl);
+      color: var(--color-gray-400);
       flex-shrink: 0;
       overflow: hidden;
     }
@@ -358,64 +362,64 @@
       min-width: 0;
     }
     .org-name {
-      font-weight: 600;
-      color: #333;
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
       margin-bottom: 2px;
     }
     .org-tagline {
-      font-size: 13px;
-      color: #666;
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .org-match {
       display: inline-block;
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 10px;
-      margin-top: 4px;
+      font-size: var(--text-xs);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-full);
+      margin-top: var(--space-1);
     }
     .match-domain {
-      background: #e8f5e9;
-      color: #2e7d32;
+      background: var(--color-success-100);
+      color: var(--color-success-700);
     }
     .match-public {
-      background: #e3f2fd;
-      color: #1565c0;
+      background: var(--color-info-100);
+      color: var(--color-info-700);
     }
     .btn-request {
-      padding: 8px 16px;
-      background: #667eea;
+      padding: var(--space-2) var(--space-4);
+      background: var(--color-brand);
       color: white;
       border: none;
-      border-radius: 6px;
-      font-size: 14px;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
       cursor: pointer;
-      transition: background 0.2s;
+      transition: var(--transition-colors);
       white-space: nowrap;
     }
     .btn-request:hover {
-      background: #5a6fd6;
+      background: var(--color-primary-700);
     }
     .btn-request:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
     .btn-pending {
-      background: #f5f5f5;
-      color: #666;
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
       cursor: default;
     }
     .btn-pending:hover {
-      background: #f5f5f5;
+      background: var(--color-gray-100);
     }
     .no-orgs {
-      color: #666;
-      font-size: 14px;
-      padding: 20px;
-      background: #f5f5f5;
-      border-radius: 6px;
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      padding: var(--space-5);
+      background: var(--color-gray-100);
+      border-radius: var(--radius-md);
       text-align: center;
     }
   </style>
@@ -425,7 +429,7 @@
     <div id="loading" class="loading">Loading...</div>
 
     <div id="mainContent" style="display: none;">
-      <h1>Welcome to AdCP Registry<span id="welcomeName"></span></h1>
+      <h1>Welcome to AgenticAdvertising.org<span id="welcomeName"></span></h1>
       <p class="subtitle">How would you like to get started?</p>
 
       <div id="error" class="error" style="display:none;"></div>
@@ -472,11 +476,11 @@
       <!-- Join Form -->
       <div id="joinForm" class="form-section">
         <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
-        <h2 style="margin-bottom: 20px;">Join an Organization</h2>
+        <h2 style="margin-bottom: var(--space-5);">Join an Organization</h2>
 
         <!-- Pending invitations in join form -->
         <div id="joinInvitationsSection" style="display: none;">
-          <h3 style="font-size: 16px; color: #1976d2; margin-bottom: 15px;">Your Pending Invitations</h3>
+          <h3 style="font-size: var(--text-base); color: var(--color-info-700); margin-bottom: var(--space-4);">Your Pending Invitations</h3>
           <div id="joinInvitationsList"></div>
         </div>
 
@@ -489,17 +493,17 @@
 
         <!-- No options message -->
         <div class="no-invitations" id="noJoinOptionsMessage" style="display: none;">
-          <p style="margin-bottom: 15px;">No organizations found for your account.</p>
+          <p style="margin-bottom: var(--space-4);">No organizations found for your account.</p>
           <p>Ask an admin from your organization to send you an invite, or create a new organization.</p>
         </div>
 
-        <button class="btn btn-secondary" style="margin-top: 20px;" onclick="showOptions()">Back to Options</button>
+        <button class="btn btn-secondary" style="margin-top: var(--space-5);" onclick="showOptions()">Back to Options</button>
       </div>
 
       <!-- Create Org Form -->
       <div id="createForm" class="form-section">
         <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
-        <h2 style="margin-bottom: 20px;">Create Your Organization</h2>
+        <h2 style="margin-bottom: var(--space-5);">Create Your Organization</h2>
         <form id="createOrgForm">
           <div class="form-group">
             <label for="orgName">Organization Name *</label>
@@ -518,8 +522,8 @@
       <!-- Individual Form -->
       <div id="individualForm" class="form-section">
         <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
-        <h2 style="margin-bottom: 20px;">Personal Workspace</h2>
-        <p style="color: #666; margin-bottom: 20px; line-height: 1.6;">
+        <h2 style="margin-bottom: var(--space-5);">Personal Workspace</h2>
+        <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); line-height: var(--leading-relaxed);">
           We'll create a personal workspace for you. You can always create or join an organization later from your dashboard.
         </p>
         <div class="agreements-checkbox" onclick="document.getElementById('tosAgreeIndividual').click(); event.stopPropagation();">
@@ -614,15 +618,15 @@
       const container = document.getElementById('invitationsList');
       container.innerHTML = pendingInvitations.map(inv => {
         const role = inv.role || 'member';
-        const roleClass = 'role-' + role;
+        const roleClass = 'role-' + escapeHtml(role);
         return '<div class="invitation-item">' +
           '<div>' +
             '<div class="invitation-org">' + escapeHtml(inv.organization_name || 'Organization') +
-              '<span class="invitation-role ' + roleClass + '">' + role + '</span>' +
+              '<span class="invitation-role ' + roleClass + '">' + escapeHtml(role) + '</span>' +
             '</div>' +
-            '<div class="invitation-email">Invited to join as ' + role + '</div>' +
+            '<div class="invitation-email">Invited to join as ' + escapeHtml(role) + '</div>' +
           '</div>' +
-          '<button class="btn-accept" onclick="acceptInvitation(\'' + inv.id + '\')">Accept</button>' +
+          '<button class="btn-accept" onclick="acceptInvitation(\'' + escapeHtml(inv.id) + '\')">Accept</button>' +
         '</div>';
       }).join('');
     }
@@ -673,15 +677,15 @@
           document.getElementById('joinInvitationsSection').style.display = 'block';
           document.getElementById('joinInvitationsList').innerHTML = pendingInvitations.map(inv => {
             const role = inv.role || 'member';
-            const roleClass = 'role-' + role;
+            const roleClass = 'role-' + escapeHtml(role);
             return '<div class="invitation-item">' +
               '<div>' +
                 '<div class="invitation-org">' + escapeHtml(inv.organization_name || 'Organization') +
-                  '<span class="invitation-role ' + roleClass + '">' + role + '</span>' +
+                  '<span class="invitation-role ' + roleClass + '">' + escapeHtml(role) + '</span>' +
                 '</div>' +
-                '<div class="invitation-email">Invited to join as ' + role + '</div>' +
+                '<div class="invitation-email">Invited to join as ' + escapeHtml(role) + '</div>' +
               '</div>' +
-              '<button class="btn-accept" onclick="acceptInvitation(\'' + inv.id + '\')">Accept Invitation</button>' +
+              '<button class="btn-accept" onclick="acceptInvitation(\'' + escapeHtml(inv.id) + '\')">Accept Invitation</button>' +
             '</div>';
           }).join('');
         } else {
@@ -731,14 +735,14 @@
 
         const buttonHtml = org.request_pending
           ? '<button class="btn-request btn-pending" disabled>Request Pending</button>'
-          : '<button class="btn-request" onclick="requestToJoin(\'' + org.organization_id + '\', this)">Request to Join</button>';
+          : '<button class="btn-request" onclick="requestToJoin(\'' + escapeHtml(org.organization_id) + '\', this)">Request to Join</button>';
 
-        return '<div class="org-card" data-org-id="' + org.organization_id + '">' +
+        return '<div class="org-card" data-org-id="' + escapeHtml(org.organization_id) + '">' +
           '<div class="org-logo">' + logoHtml + '</div>' +
           '<div class="org-info">' +
             '<div class="org-name">' + escapeHtml(org.name) + '</div>' +
             (org.tagline ? '<div class="org-tagline">' + escapeHtml(org.tagline) + '</div>' : '') +
-            '<span class="org-match ' + matchClass + '">' + matchLabel + '</span>' +
+            '<span class="org-match ' + matchClass + '">' + escapeHtml(matchLabel) + '</span>' +
           '</div>' +
           buttonHtml +
         '</div>';

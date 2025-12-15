@@ -23,7 +23,7 @@
   <meta name="twitter:description" content="Thought leadership on agentic AI, open standards, and the future of advertising.">
   <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
 
-  <link rel="stylesheet" href="/aao-theme.css">
+  <link rel="stylesheet" href="/design-system.css">
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
@@ -56,10 +56,10 @@
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      color: var(--aao-gray);
+      color: var(--color-text-secondary);
       margin-bottom: 0.75rem;
       padding-bottom: 0.5rem;
-      border-bottom: 1px solid var(--aao-border);
+      border-bottom: 1px solid var(--color-border);
     }
 
     .sidebar-list {
@@ -80,7 +80,7 @@
       padding: 0.5rem 0.75rem;
       border-radius: 6px;
       font-size: 0.9rem;
-      color: var(--aao-gray-dark);
+      color: var(--color-text-heading);
       cursor: pointer;
       transition: all 0.15s;
       display: flex;
@@ -89,26 +89,26 @@
     }
 
     .sidebar-list button:hover {
-      background: #f3f4f6;
-      color: var(--aao-primary);
+      background: var(--color-gray-100);
+      color: var(--color-brand);
     }
 
     .sidebar-list button.active {
-      background: #dbe8fc;
-      color: var(--aao-primary);
+      background: var(--color-primary-100);
+      color: var(--color-brand);
       font-weight: 600;
     }
 
     .sidebar-count {
       font-size: 0.75rem;
-      background: #e5e7eb;
-      color: var(--aao-gray);
+      background: var(--color-gray-200);
+      color: var(--color-text-secondary);
       padding: 0.125rem 0.5rem;
       border-radius: 10px;
     }
 
     .sidebar-list button.active .sidebar-count {
-      background: var(--aao-primary);
+      background: var(--color-brand);
       color: white;
     }
 
@@ -125,21 +125,21 @@
     .search-input {
       width: 100%;
       padding: 0.75rem 1rem 0.75rem 2.5rem;
-      border: 1px solid var(--aao-border);
+      border: 1px solid var(--color-border);
       border-radius: 8px;
       font-size: 0.95rem;
-      background: var(--aao-white);
-      color: var(--aao-gray-dark);
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
       transition: border-color 0.15s;
     }
 
     .search-input:focus {
       outline: none;
-      border-color: var(--aao-primary);
+      border-color: var(--color-brand);
     }
 
     .search-input::placeholder {
-      color: var(--aao-gray-light);
+      color: var(--color-text-muted);
     }
 
     .search-wrapper {
@@ -151,7 +151,7 @@
       left: 0.75rem;
       top: 50%;
       transform: translateY(-50%);
-      color: var(--aao-gray-light);
+      color: var(--color-text-muted);
       pointer-events: none;
     }
 
@@ -162,14 +162,14 @@
       transform: translateY(-50%);
       background: none;
       border: none;
-      color: var(--aao-gray);
+      color: var(--color-text-secondary);
       cursor: pointer;
       padding: 0.25rem;
       display: none;
     }
 
     .search-clear:hover {
-      color: var(--aao-gray-dark);
+      color: var(--color-text-heading);
     }
 
     .search-clear.visible {
@@ -187,29 +187,29 @@
 
     .filter-bar select {
       padding: 0.5rem 1rem;
-      border: 1px solid var(--aao-border);
+      border: 1px solid var(--color-border);
       border-radius: 8px;
       font-size: 0.9rem;
-      background: var(--aao-white);
-      color: var(--aao-gray-dark);
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
       cursor: pointer;
     }
 
     .filter-bar select:focus {
       outline: none;
-      border-color: var(--aao-primary);
+      border-color: var(--color-brand);
     }
 
     .results-count {
       font-size: 0.9rem;
-      color: var(--aao-gray);
+      color: var(--color-text-secondary);
       margin-left: auto;
     }
 
     .clear-filters {
       background: none;
       border: none;
-      color: var(--aao-primary);
+      color: var(--color-brand);
       font-size: 0.9rem;
       cursor: pointer;
       padding: 0.5rem;
@@ -229,13 +229,13 @@
     .empty-state {
       text-align: center;
       padding: 60px 20px;
-      color: #6b7280;
+      color: var(--color-text-muted);
     }
     .loading-state {
       font-size: 1.1rem;
     }
     .empty-state h2 {
-      color: #374151;
+      color: var(--color-text-heading);
       margin-bottom: 0.5rem;
     }
 
@@ -258,8 +258,8 @@
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
-      background: #dbe8fc;
-      color: var(--aao-primary);
+      background: var(--color-primary-100);
+      color: var(--color-brand);
       padding: 0.25rem 0.75rem;
       border-radius: 20px;
       font-size: 0.8rem;
@@ -269,7 +269,7 @@
     .active-filter-tag button {
       background: none;
       border: none;
-      color: var(--aao-primary);
+      color: var(--color-brand);
       cursor: pointer;
       padding: 0;
       font-size: 1rem;
@@ -288,7 +288,7 @@
       gap: 0.375rem;
       background: none;
       border: none;
-      color: var(--aao-gray);
+      color: var(--color-text-secondary);
       cursor: pointer;
       padding: 0.25rem 0.5rem;
       border-radius: 4px;
@@ -297,16 +297,16 @@
     }
 
     .like-button:hover {
-      background: #f3f4f6;
-      color: var(--aao-primary);
+      background: var(--color-gray-100);
+      color: var(--color-brand);
     }
 
     .like-button.liked {
-      color: #ef4444;
+      color: var(--color-error-500);
     }
 
     .like-button.liked:hover {
-      background: #fef2f2;
+      background: var(--color-error-50);
     }
 
     .like-button svg {
@@ -328,7 +328,7 @@
         gap: 1rem;
         flex-wrap: wrap;
         padding-bottom: 1rem;
-        border-bottom: 1px solid var(--aao-border);
+        border-bottom: 1px solid var(--color-border);
         margin-bottom: 1rem;
       }
 
@@ -351,7 +351,7 @@
       .sidebar-list button {
         padding: 0.375rem 0.75rem;
         font-size: 0.85rem;
-        border: 1px solid var(--aao-border);
+        border: 1px solid var(--color-border);
       }
 
       .articles-grid {
@@ -596,7 +596,7 @@
 
       } catch (error) {
         console.error('Error loading perspectives:', error);
-        loadingEl.innerHTML = '<p style="color: #dc2626;">Failed to load perspectives. Please refresh the page.</p>';
+        loadingEl.innerHTML = '<p style="color: var(--color-error-600);">Failed to load perspectives. Please refresh the page.</p>';
       }
     }
 
@@ -637,7 +637,7 @@
       const sortedTags = Object.keys(tagCounts).sort();
 
       if (sortedTags.length === 0) {
-        list.innerHTML = '<li><span style="color: var(--aao-gray); font-size: 0.85rem; padding: 0.5rem;">No tags available</span></li>';
+        list.innerHTML = '<li><span style="color: var(--color-text-secondary); font-size: 0.85rem; padding: 0.5rem;">No tags available</span></li>';
         return;
       }
 
@@ -682,7 +682,7 @@
       const sortedPubs = Object.keys(pubCounts).sort();
 
       if (sortedPubs.length === 0 && internalCount === 0) {
-        list.innerHTML = '<li><span style="color: var(--aao-gray); font-size: 0.85rem; padding: 0.5rem;">No publications</span></li>';
+        list.innerHTML = '<li><span style="color: var(--color-text-secondary); font-size: 0.85rem; padding: 0.5rem;">No publications</span></li>';
         return;
       }
 
@@ -736,7 +736,7 @@
       const sortedCats = Object.keys(catCounts).sort();
 
       if (sortedCats.length === 0) {
-        list.innerHTML = '<li><span style="color: var(--aao-gray); font-size: 0.85rem; padding: 0.5rem;">No categories</span></li>';
+        list.innerHTML = '<li><span style="color: var(--color-text-secondary); font-size: 0.85rem; padding: 0.5rem;">No categories</span></li>';
         return;
       }
 
@@ -1011,9 +1011,9 @@
         const tagsHtml = perspective.tags && perspective.tags.length > 0
           ? `<div class="article-tags" style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
               ${perspective.tags.slice(0, 3).map(tag =>
-                `<span style="font-size: 0.7rem; background: #f3f4f6; color: var(--aao-gray); padding: 0.125rem 0.5rem; border-radius: 4px;">${escapeHtml(tag)}</span>`
+                `<span style="font-size: 0.7rem; background: var(--color-gray-100); color: var(--color-text-secondary); padding: 0.125rem 0.5rem; border-radius: 4px;">${escapeHtml(tag)}</span>`
               ).join('')}
-              ${perspective.tags.length > 3 ? `<span style="font-size: 0.7rem; color: var(--aao-gray);">+${perspective.tags.length - 3} more</span>` : ''}
+              ${perspective.tags.length > 3 ? `<span style="font-size: 0.7rem; color: var(--color-text-secondary);">+${perspective.tags.length - 3} more</span>` : ''}
             </div>`
           : '';
 

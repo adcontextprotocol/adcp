@@ -30,33 +30,57 @@ interface SlackBlock {
 }
 
 /**
- * Send a message to Slack via incoming webhook
+ * Send a message to Slack via incoming webhook with retry logic
  */
-export async function sendSlackMessage(message: SlackMessage): Promise<boolean> {
+async function sendWithRetry(payload: SlackMessage, maxRetries = 3): Promise<boolean> {
   if (!SLACK_WEBHOOK_URL) {
     logger.debug('Slack webhook not configured, skipping notification');
     return false;
   }
 
-  try {
-    const response = await fetch(SLACK_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(message),
-    });
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(SLACK_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    if (!response.ok) {
+      if (response.ok) {
+        logger.info({ attempt }, 'Slack notification sent successfully');
+        return true;
+      }
+
       const text = await response.text();
-      logger.error({ status: response.status, body: text }, 'Slack notification failed');
-      return false;
-    }
+      logger.warn(
+        { status: response.status, body: text, attempt, maxRetries },
+        'Slack notification failed, will retry'
+      );
 
-    logger.info('Slack notification sent successfully');
-    return true;
-  } catch (error) {
-    logger.error({ error }, 'Failed to send Slack notification');
-    return false;
+      if (attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    } catch (error) {
+      logger.error({ error, attempt, maxRetries }, 'Failed to send Slack notification');
+
+      if (attempt === maxRetries) {
+        return false;
+      }
+
+      const delay = Math.pow(2, attempt) * 1000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
+
+  return false;
+}
+
+/**
+ * Send a message to Slack via incoming webhook
+ */
+export async function sendSlackMessage(message: SlackMessage): Promise<boolean> {
+  return sendWithRetry(message);
 }
 
 /**
@@ -68,6 +92,17 @@ function formatAmount(cents: number, currency: string = 'usd'): string {
     style: 'currency',
     currency: currency.toUpperCase(),
   }).format(amount);
+}
+
+/**
+ * Mask email address to prevent PII exposure
+ * Example: john.doe@example.com → j***@example.com
+ */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return '***';
+  const masked = local.charAt(0) + '***';
+  return `${masked}@${domain}`;
 }
 
 /**
@@ -104,7 +139,7 @@ export async function notifyNewSubscription(data: {
           },
           {
             type: 'mrkdwn',
-            text: `*Email:*\n${data.customerEmail}`,
+            text: `*Email:*\n${maskEmail(data.customerEmail)}`,
           },
           {
             type: 'mrkdwn',
