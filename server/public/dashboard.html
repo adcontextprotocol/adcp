@@ -232,6 +232,59 @@
         grid-template-columns: 1fr !important;
       }
     }
+
+    /* Delete workspace styles */
+    .btn-danger {
+      background: #dc2626;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn-danger:hover {
+      background: #b91c1c;
+    }
+    .delete-warning {
+      background: #fef2f2;
+      border-left: 4px solid #ef4444;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+    }
+    .delete-warning p {
+      margin: 0 0 10px 0;
+      color: #991b1b;
+    }
+    .delete-warning ul {
+      margin: 0;
+      padding-left: 20px;
+      color: #991b1b;
+    }
+    .delete-error {
+      background: #fee;
+      border-left: 4px solid #c33;
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 15px;
+      color: #c33;
+    }
+    .confirm-input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      margin-top: 10px;
+    }
+    .workspace-name-highlight {
+      background: #fee;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -281,6 +334,31 @@
       <div class="modal-buttons">
         <button class="btn-secondary" onclick="closeRenameModal()">Cancel</button>
         <button class="btn-primary" id="confirmRenameBtn" onclick="confirmRenameOrg()">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Workspace Modal -->
+  <div id="deleteWorkspaceModal" class="modal-overlay">
+    <div class="modal" style="max-width: 450px;">
+      <h2 style="color: #dc2626;">⚠️ Delete Workspace</h2>
+      <div class="delete-warning">
+        <p><strong>This action cannot be undone.</strong></p>
+        <p>Deleting this workspace will permanently remove:</p>
+        <ul>
+          <li>All team members and their access</li>
+          <li>Your member profile</li>
+          <li>All workspace settings</li>
+        </ul>
+      </div>
+      <div id="deleteWorkspaceError" class="delete-error" style="display: none;"></div>
+      <div style="margin: 20px 0;">
+        <p>To confirm, type the workspace name: <span id="deleteWorkspaceName" class="workspace-name-highlight"></span></p>
+        <input type="text" id="deleteConfirmInput" class="confirm-input" placeholder="Type workspace name to confirm" oninput="checkDeleteWorkspaceConfirmation()">
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-secondary" onclick="closeDeleteWorkspaceModal()">Cancel</button>
+        <button class="btn-danger" id="confirmDeleteWorkspaceBtn" onclick="confirmDeleteWorkspace()" disabled style="opacity: 0.5;">Delete Workspace</button>
       </div>
     </div>
   </div>
@@ -367,6 +445,19 @@
             </h2>
             <div id="agreementsSection" style="font-size: 13px;">
               <p style="color: #666;">Loading...</p>
+            </div>
+          </div>
+
+          <!-- Danger Zone - only shown for owners -->
+          <div id="dangerZoneCard" class="card" style="background: #fef2f2; border: 1px solid #fecaca; display: none;">
+            <h2 style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #dc2626; margin-bottom: 10px;">
+              <span style="font-size: 16px;">⚠️</span> Danger Zone
+            </h2>
+            <div style="font-size: 13px;">
+              <p style="color: #991b1b; margin-bottom: 12px;">Permanently delete this workspace and all of its data.</p>
+              <button onclick="openDeleteWorkspaceModal()" class="btn-danger" style="width: 100%; font-size: 13px; padding: 8px 16px;">
+                Delete Workspace
+              </button>
             </div>
           </div>
         </div>
@@ -576,6 +667,14 @@
         editBtn.style.display = 'inline-flex';
       } else {
         editBtn.style.display = 'none';
+      }
+
+      // Show Danger Zone for owners only
+      const dangerZoneCard = document.getElementById('dangerZoneCard');
+      if (org.role === 'owner') {
+        dangerZoneCard.style.display = 'block';
+      } else {
+        dangerZoneCard.style.display = 'none';
       }
 
       // Render Billing Card
@@ -1817,6 +1916,89 @@
 
         // Recreate pricing table with current org's customer session
         updatePricingTable(currentOrg);
+      }
+    });
+
+    // Delete workspace modal functions
+    function openDeleteWorkspaceModal() {
+      if (!currentOrg) return;
+      document.getElementById('deleteWorkspaceName').textContent = currentOrg.name;
+      document.getElementById('deleteConfirmInput').value = '';
+      document.getElementById('deleteWorkspaceError').style.display = 'none';
+      document.getElementById('confirmDeleteWorkspaceBtn').disabled = true;
+      document.getElementById('confirmDeleteWorkspaceBtn').style.opacity = '0.5';
+      document.getElementById('deleteWorkspaceModal').classList.add('show');
+      document.getElementById('deleteConfirmInput').focus();
+    }
+
+    function closeDeleteWorkspaceModal() {
+      document.getElementById('deleteWorkspaceModal').classList.remove('show');
+      document.getElementById('deleteWorkspaceError').style.display = 'none';
+    }
+
+    function checkDeleteWorkspaceConfirmation() {
+      if (!currentOrg) return;
+      const input = document.getElementById('deleteConfirmInput').value;
+      const btn = document.getElementById('confirmDeleteWorkspaceBtn');
+      if (input === currentOrg.name) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+      }
+    }
+
+    async function confirmDeleteWorkspace() {
+      if (!currentOrg) return;
+
+      const confirmation = document.getElementById('deleteConfirmInput').value;
+      const errorEl = document.getElementById('deleteWorkspaceError');
+      const btn = document.getElementById('confirmDeleteWorkspaceBtn');
+
+      // Disable button during request
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+      errorEl.style.display = 'none';
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmation }),
+          credentials: 'same-origin',
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          if (data.has_payments) {
+            throw new Error('Cannot delete workspace with payment history. Please contact support.');
+          }
+          throw new Error(data.error || data.message || 'Failed to delete workspace');
+        }
+
+        // Success - redirect to onboarding to show join/create options
+        alert('Workspace deleted successfully.');
+        localStorage.removeItem('selectedOrgId');
+        window.location.href = '/onboarding';
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Delete Workspace';
+      }
+    }
+
+    // Handle Enter key in delete confirmation input
+    document.addEventListener('DOMContentLoaded', () => {
+      const deleteInput = document.getElementById('deleteConfirmInput');
+      if (deleteInput) {
+        deleteInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter' && !document.getElementById('confirmDeleteWorkspaceBtn').disabled) {
+            confirmDeleteWorkspace();
+          }
+        });
       }
     });
   </script>

@@ -4585,6 +4585,106 @@ export class HTTPServer {
       }
     });
 
+    // DELETE /api/organizations/:orgId - Delete own workspace (owner only)
+    // Cannot delete if workspace has any payment history
+    this.app.delete('/api/organizations/:orgId', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+        const { confirmation } = req.body;
+
+        // Verify user is owner of this organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        const membership = memberships.data[0];
+        if (!membership) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Only owners can delete
+        const roleSlug = (membership as any).role?.slug || (membership as any).roleSlug;
+        if (roleSlug !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only the organization owner can delete the workspace',
+          });
+        }
+
+        // Get organization from database
+        const pool = getPool();
+        const orgResult = await pool.query(
+          'SELECT workos_organization_id, name, stripe_customer_id FROM organizations WHERE workos_organization_id = $1',
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'The specified organization does not exist',
+          });
+        }
+
+        const org = orgResult.rows[0];
+
+        // Check if organization has any payment history
+        const revenueResult = await pool.query(
+          'SELECT COUNT(*) as count FROM revenue_events WHERE workos_organization_id = $1',
+          [orgId]
+        );
+
+        const hasPayments = parseInt(revenueResult.rows[0].count) > 0;
+
+        if (hasPayments) {
+          return res.status(400).json({
+            error: 'Cannot delete paid workspace',
+            message: 'This workspace has payment history and cannot be deleted. Please contact support if you need to remove this workspace.',
+            has_payments: true,
+          });
+        }
+
+        // Require confirmation by typing the organization name
+        if (!confirmation || confirmation !== org.name) {
+          return res.status(400).json({
+            error: 'Confirmation required',
+            message: `To delete this workspace, please provide the exact name "${org.name}" in the confirmation field.`,
+            requires_confirmation: true,
+            organization_name: org.name,
+          });
+        }
+
+        // Delete from WorkOS
+        try {
+          await workos!.organizations.deleteOrganization(orgId);
+          logger.info({ orgId, name: org.name, userId: user.id }, 'Deleted organization from WorkOS');
+        } catch (workosError) {
+          logger.warn({ err: workosError, orgId }, 'Failed to delete organization from WorkOS - continuing with local deletion');
+        }
+
+        // Delete from local database (cascades to related tables)
+        await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [orgId]);
+
+        logger.info({ orgId, name: org.name, userId: user.id, userEmail: user.email }, 'User deleted their own organization');
+
+        res.json({
+          success: true,
+          message: `Workspace "${org.name}" has been deleted`,
+          deleted_org_id: orgId,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete organization error');
+        res.status(500).json({
+          error: 'Failed to delete organization',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // Billing Routes
 
     // POST /api/organizations/:orgId/billing/portal - Create Customer Portal session

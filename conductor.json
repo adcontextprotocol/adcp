@@ -1,7 +1,7 @@
 {
   "copyFiles": [
     {
-      "from": "../../.env",
+      "from": "../../.env.local",
       "to": ".env.local",
       "append": true
     }
