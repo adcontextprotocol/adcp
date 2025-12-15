@@ -6,13 +6,223 @@
   <title>Perspectives | AgenticAdvertising.org</title>
   <meta name="description" content="Thought leadership on agentic AI, open standards, and the future of advertising. Educational resources from AgenticAdvertising.org.">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://agenticadvertising.org/perspectives">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agenticadvertising.org/perspectives">
+  <meta property="og:title" content="Perspectives | AgenticAdvertising.org">
+  <meta property="og:description" content="Thought leadership on agentic AI, open standards, and the future of advertising.">
+  <meta property="og:image" content="https://agenticadvertising.org/AAo-social.png">
+  <meta property="og:site_name" content="AgenticAdvertising.org">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://agenticadvertising.org/perspectives">
+  <meta name="twitter:title" content="Perspectives | AgenticAdvertising.org">
+  <meta name="twitter:description" content="Thought leadership on agentic AI, open standards, and the future of advertising.">
+  <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
+
   <link rel="stylesheet" href="/aao-theme.css">
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
 
-    /* Page-specific: narrower container for perspectives listing */
-    .container { max-width: 1000px; }
+    /* Two-column layout with sidebar */
+    .perspectives-layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      position: sticky;
+      top: 80px;
+      height: fit-content;
+      max-height: calc(100vh - 100px);
+      overflow-y: auto;
+    }
+
+    .sidebar-section {
+      margin-bottom: 2rem;
+    }
+
+    .sidebar-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--aao-gray);
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--aao-border);
+    }
+
+    .sidebar-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .sidebar-list li {
+      margin-bottom: 0.25rem;
+    }
+
+    .sidebar-list button {
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      color: var(--aao-gray-dark);
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .sidebar-list button:hover {
+      background: #f3f4f6;
+      color: var(--aao-primary);
+    }
+
+    .sidebar-list button.active {
+      background: #dbe8fc;
+      color: var(--aao-primary);
+      font-weight: 600;
+    }
+
+    .sidebar-count {
+      font-size: 0.75rem;
+      background: #e5e7eb;
+      color: var(--aao-gray);
+      padding: 0.125rem 0.5rem;
+      border-radius: 10px;
+    }
+
+    .sidebar-list button.active .sidebar-count {
+      background: var(--aao-primary);
+      color: white;
+    }
+
+    /* Main content area */
+    .main-content {
+      min-width: 0; /* Prevent grid blowout */
+    }
+
+    /* Search input */
+    .search-container {
+      margin-bottom: 1.5rem;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 0.75rem 1rem 0.75rem 2.5rem;
+      border: 1px solid var(--aao-border);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      background: var(--aao-white);
+      color: var(--aao-gray-dark);
+      transition: border-color 0.15s;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--aao-primary);
+    }
+
+    .search-input::placeholder {
+      color: var(--aao-gray-light);
+    }
+
+    .search-wrapper {
+      position: relative;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--aao-gray-light);
+      pointer-events: none;
+    }
+
+    .search-clear {
+      position: absolute;
+      right: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--aao-gray);
+      cursor: pointer;
+      padding: 0.25rem;
+      display: none;
+    }
+
+    .search-clear:hover {
+      color: var(--aao-gray-dark);
+    }
+
+    .search-clear.visible {
+      display: block;
+    }
+
+    /* Filter bar in main content */
+    .filter-bar {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .filter-bar select {
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--aao-border);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      background: var(--aao-white);
+      color: var(--aao-gray-dark);
+      cursor: pointer;
+    }
+
+    .filter-bar select:focus {
+      outline: none;
+      border-color: var(--aao-primary);
+    }
+
+    .results-count {
+      font-size: 0.9rem;
+      color: var(--aao-gray);
+      margin-left: auto;
+    }
+
+    .clear-filters {
+      background: none;
+      border: none;
+      color: var(--aao-primary);
+      font-size: 0.9rem;
+      cursor: pointer;
+      padding: 0.5rem;
+      display: none;
+    }
+
+    .clear-filters:hover {
+      text-decoration: underline;
+    }
+
+    .clear-filters.visible {
+      display: inline-block;
+    }
 
     /* Loading and empty states */
     .loading-state,
@@ -28,7 +238,151 @@
       color: #374151;
       margin-bottom: 0.5rem;
     }
+
+    /* Article grid */
+    .articles-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    /* Active filters display */
+    .active-filters {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    .active-filter-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #dbe8fc;
+      color: var(--aao-primary);
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .active-filter-tag button {
+      background: none;
+      border: none;
+      color: var(--aao-primary);
+      cursor: pointer;
+      padding: 0;
+      font-size: 1rem;
+      line-height: 1;
+      opacity: 0.7;
+    }
+
+    .active-filter-tag button:hover {
+      opacity: 1;
+    }
+
+    /* Like button on cards */
+    .like-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      background: none;
+      border: none;
+      color: var(--aao-gray);
+      cursor: pointer;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      transition: all 0.15s;
+    }
+
+    .like-button:hover {
+      background: #f3f4f6;
+      color: var(--aao-primary);
+    }
+
+    .like-button.liked {
+      color: #ef4444;
+    }
+
+    .like-button.liked:hover {
+      background: #fef2f2;
+    }
+
+    .like-button svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Responsive: collapse sidebar on mobile */
+    @media (max-width: 900px) {
+      .perspectives-layout {
+        grid-template-columns: 1fr;
+        padding: 1.5rem;
+      }
+
+      .sidebar {
+        position: static;
+        max-height: none;
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--aao-border);
+        margin-bottom: 1rem;
+      }
+
+      .sidebar-section {
+        margin-bottom: 0;
+        flex: 1;
+        min-width: 200px;
+      }
+
+      .sidebar-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      .sidebar-list li {
+        margin-bottom: 0;
+      }
+
+      .sidebar-list button {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.85rem;
+        border: 1px solid var(--aao-border);
+      }
+
+      .articles-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "name": "Perspectives",
+    "description": "Thought leadership on agentic AI, open standards, and the future of advertising.",
+    "url": "https://agenticadvertising.org/perspectives",
+    "publisher": {
+      "@type": "Organization",
+      "name": "AgenticAdvertising.org",
+      "url": "https://agenticadvertising.org",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://agenticadvertising.org/AAo.svg"
+      }
+    },
+    "mainEntity": {
+      "@type": "ItemList",
+      "itemListElement": []
+    }
+  }
+  </script>
 </head>
 <body>
   <!-- Navigation -->
@@ -43,24 +397,91 @@
     </div>
   </section>
 
-  <!-- Main Content -->
-  <div class="container">
-    <div id="perspectivesLoading" class="loading-state">
-      Loading perspectives...
-    </div>
-    <div id="perspectivesEmpty" class="empty-state" style="display: none;">
-      <h2>No perspectives yet</h2>
-      <p>Check back soon for thought leadership content.</p>
-    </div>
-    <div id="filterBar" class="filter-bar" style="display: none;">
-      <select id="categoryFilter" onchange="filterPerspectives()">
-        <option value="">All Categories</option>
-        <!-- Categories populated dynamically -->
-      </select>
-    </div>
-    <div id="articlesGrid" class="articles-grid" style="display: none;">
-      <!-- Perspectives will be loaded here dynamically -->
-    </div>
+  <!-- Main Content with Sidebar -->
+  <div class="perspectives-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <!-- Time Filter Section -->
+      <div class="sidebar-section">
+        <h3 class="sidebar-title">Time Period</h3>
+        <ul id="timeList" class="sidebar-list">
+          <li><button class="active" onclick="filterByTime('all', this)">All Time</button></li>
+          <li><button onclick="filterByTime('30', this)">Last 30 Days</button></li>
+          <li><button onclick="filterByTime('90', this)">Last 90 Days</button></li>
+          <li><button onclick="filterByTime('365', this)">This Year</button></li>
+        </ul>
+      </div>
+
+      <!-- Tags Section -->
+      <div class="sidebar-section">
+        <h3 class="sidebar-title">Tags</h3>
+        <ul id="tagsList" class="sidebar-list">
+          <!-- Tags populated dynamically -->
+        </ul>
+      </div>
+
+      <!-- Publications Section -->
+      <div class="sidebar-section">
+        <h3 class="sidebar-title">Publications</h3>
+        <ul id="publicationsList" class="sidebar-list">
+          <!-- Publications populated dynamically -->
+        </ul>
+      </div>
+
+      <!-- Categories Section -->
+      <div class="sidebar-section">
+        <h3 class="sidebar-title">Categories</h3>
+        <ul id="categoriesList" class="sidebar-list">
+          <!-- Categories populated dynamically -->
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div id="perspectivesLoading" class="loading-state">
+        Loading perspectives...
+      </div>
+      <div id="perspectivesEmpty" class="empty-state" style="display: none;">
+        <h2>No perspectives yet</h2>
+        <p>Check back soon for thought leadership content.</p>
+      </div>
+
+      <!-- Search -->
+      <div id="searchContainer" class="search-container" style="display: none;">
+        <div class="search-wrapper">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M7 12C9.76142 12 12 9.76142 12 7C12 4.23858 9.76142 2 7 2C4.23858 2 2 4.23858 2 7C2 9.76142 4.23858 12 7 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14 14L10.5 10.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <input type="text" id="searchInput" class="search-input" placeholder="Search perspectives..." oninput="handleSearch()">
+          <button id="searchClear" class="search-clear" onclick="clearSearch()">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Filters Display -->
+      <div id="activeFilters" class="active-filters" style="display: none;"></div>
+
+      <!-- Filter Bar -->
+      <div id="filterBar" class="filter-bar" style="display: none;">
+        <select id="sortOrder" onchange="applyFilters()">
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="popular">Most Liked</option>
+        </select>
+        <button id="clearFilters" class="clear-filters" onclick="clearAllFilters()">Clear all filters</button>
+        <span id="resultsCount" class="results-count"></span>
+      </div>
+
+      <!-- Articles Grid -->
+      <div id="articlesGrid" class="articles-grid" style="display: none;">
+        <!-- Perspectives will be loaded here dynamically -->
+      </div>
+    </main>
   </div>
 
   <!-- Footer -->
@@ -79,12 +500,72 @@
 
   <script>
     let allPerspectives = [];
+    let userLikes = new Set(); // Track which articles user has liked (from localStorage)
+    let activeFilters = {
+      tag: null,
+      publication: null,
+      category: null,
+      time: 'all',
+      search: ''
+    };
+
+    // Generate browser fingerprint for anonymous likes
+    function generateFingerprint() {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      ctx.textBaseline = 'top';
+      ctx.font = '14px Arial';
+      ctx.fillText('fingerprint', 0, 0);
+      const canvasData = canvas.toDataURL();
+
+      const data = [
+        navigator.userAgent,
+        navigator.language,
+        screen.width + 'x' + screen.height,
+        new Date().getTimezoneOffset(),
+        canvasData.slice(0, 50)
+      ].join('|');
+
+      // Simple hash function
+      let hash = 0;
+      for (let i = 0; i < data.length; i++) {
+        const char = data.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      return Math.abs(hash).toString(16);
+    }
+
+    const userFingerprint = generateFingerprint();
+
+    // Load user's likes from localStorage
+    function loadUserLikes() {
+      try {
+        const stored = localStorage.getItem('perspectiveLikes');
+        if (stored) {
+          userLikes = new Set(JSON.parse(stored));
+        }
+      } catch (e) {
+        console.error('Error loading likes from localStorage:', e);
+      }
+    }
+
+    function saveUserLikes() {
+      try {
+        localStorage.setItem('perspectiveLikes', JSON.stringify([...userLikes]));
+      } catch (e) {
+        console.error('Error saving likes to localStorage:', e);
+      }
+    }
 
     async function loadPerspectives() {
       const loadingEl = document.getElementById('perspectivesLoading');
       const emptyEl = document.getElementById('perspectivesEmpty');
       const gridEl = document.getElementById('articlesGrid');
       const filterBar = document.getElementById('filterBar');
+      const searchContainer = document.getElementById('searchContainer');
+
+      loadUserLikes();
 
       try {
         const response = await fetch('/api/perspectives');
@@ -100,13 +581,16 @@
           return;
         }
 
-        // Populate category filter
-        populateCategoryFilter(allPerspectives);
+        // Populate sidebar filters
+        populateTagsSidebar(allPerspectives);
+        populatePublicationsSidebar(allPerspectives);
+        populateCategoriesSidebar(allPerspectives);
 
-        // Render perspectives
-        renderPerspectives(allPerspectives);
+        // Apply initial filters and render
+        applyFilters();
 
         loadingEl.style.display = 'none';
+        searchContainer.style.display = 'block';
         filterBar.style.display = 'flex';
         gridEl.style.display = 'grid';
 
@@ -116,39 +600,393 @@
       }
     }
 
-    function populateCategoryFilter(perspectives) {
-      const select = document.getElementById('categoryFilter');
-      const categories = new Set();
-
-      perspectives.forEach(p => {
-        if (p.category) categories.add(p.category);
-      });
-
-      // Sort and add options
-      Array.from(categories).sort().forEach(cat => {
-        const option = document.createElement('option');
-        option.value = cat;
-        option.textContent = cat;
-        select.appendChild(option);
-      });
+    function handleSearch() {
+      const searchInput = document.getElementById('searchInput');
+      const clearBtn = document.getElementById('searchClear');
+      activeFilters.search = searchInput.value.trim().toLowerCase();
+      clearBtn.classList.toggle('visible', activeFilters.search.length > 0);
+      applyFilters();
     }
 
-    function filterPerspectives() {
-      const category = document.getElementById('categoryFilter').value;
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('searchClear').classList.remove('visible');
+      activeFilters.search = '';
+      applyFilters();
+    }
 
-      let filtered = allPerspectives;
-      if (category) {
-        filtered = allPerspectives.filter(p => p.category === category);
+    function filterByTime(days, buttonEl) {
+      activeFilters.time = days;
+      updateSidebarActiveState('timeList', buttonEl);
+      applyFilters();
+    }
+
+    function populateTagsSidebar(perspectives) {
+      const list = document.getElementById('tagsList');
+      const tagCounts = {};
+
+      perspectives.forEach(p => {
+        if (p.tags && Array.isArray(p.tags)) {
+          p.tags.forEach(tag => {
+            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+          });
+        }
+      });
+
+      // Sort tags alphabetically
+      const sortedTags = Object.keys(tagCounts).sort();
+
+      if (sortedTags.length === 0) {
+        list.innerHTML = '<li><span style="color: var(--aao-gray); font-size: 0.85rem; padding: 0.5rem;">No tags available</span></li>';
+        return;
       }
 
+      // Add "All" option
+      let html = `
+        <li>
+          <button class="active" onclick="filterByTag(null, this)">
+            All
+            <span class="sidebar-count">${perspectives.length}</span>
+          </button>
+        </li>
+      `;
+
+      sortedTags.forEach(tag => {
+        html += `
+          <li>
+            <button onclick="filterByTag('${escapeHtml(tag)}', this)">
+              ${escapeHtml(tag)}
+              <span class="sidebar-count">${tagCounts[tag]}</span>
+            </button>
+          </li>
+        `;
+      });
+
+      list.innerHTML = html;
+    }
+
+    function populatePublicationsSidebar(perspectives) {
+      const list = document.getElementById('publicationsList');
+      const pubCounts = {};
+      let internalCount = 0;
+
+      perspectives.forEach(p => {
+        if (p.content_type === 'link' && p.external_site_name) {
+          pubCounts[p.external_site_name] = (pubCounts[p.external_site_name] || 0) + 1;
+        } else if (p.content_type === 'article') {
+          internalCount++;
+        }
+      });
+
+      // Sort publications alphabetically
+      const sortedPubs = Object.keys(pubCounts).sort();
+
+      if (sortedPubs.length === 0 && internalCount === 0) {
+        list.innerHTML = '<li><span style="color: var(--aao-gray); font-size: 0.85rem; padding: 0.5rem;">No publications</span></li>';
+        return;
+      }
+
+      // Add "All" option
+      let html = `
+        <li>
+          <button class="active" onclick="filterByPublication(null, this)">
+            All
+            <span class="sidebar-count">${perspectives.length}</span>
+          </button>
+        </li>
+      `;
+
+      // Add internal articles option if there are any
+      if (internalCount > 0) {
+        html += `
+          <li>
+            <button onclick="filterByPublication('__internal__', this)">
+              AgenticAdvertising.org
+              <span class="sidebar-count">${internalCount}</span>
+            </button>
+          </li>
+        `;
+      }
+
+      sortedPubs.forEach(pub => {
+        html += `
+          <li>
+            <button onclick="filterByPublication('${escapeHtml(pub)}', this)">
+              ${escapeHtml(pub)}
+              <span class="sidebar-count">${pubCounts[pub]}</span>
+            </button>
+          </li>
+        `;
+      });
+
+      list.innerHTML = html;
+    }
+
+    function populateCategoriesSidebar(perspectives) {
+      const list = document.getElementById('categoriesList');
+      const catCounts = {};
+
+      perspectives.forEach(p => {
+        if (p.category) {
+          catCounts[p.category] = (catCounts[p.category] || 0) + 1;
+        }
+      });
+
+      // Sort categories alphabetically
+      const sortedCats = Object.keys(catCounts).sort();
+
+      if (sortedCats.length === 0) {
+        list.innerHTML = '<li><span style="color: var(--aao-gray); font-size: 0.85rem; padding: 0.5rem;">No categories</span></li>';
+        return;
+      }
+
+      // Add "All" option
+      let html = `
+        <li>
+          <button class="active" onclick="filterByCategory(null, this)">
+            All
+            <span class="sidebar-count">${perspectives.length}</span>
+          </button>
+        </li>
+      `;
+
+      sortedCats.forEach(cat => {
+        html += `
+          <li>
+            <button onclick="filterByCategory('${escapeHtml(cat)}', this)">
+              ${escapeHtml(cat)}
+              <span class="sidebar-count">${catCounts[cat]}</span>
+            </button>
+          </li>
+        `;
+      });
+
+      list.innerHTML = html;
+    }
+
+    function filterByTag(tag, buttonEl) {
+      activeFilters.tag = tag;
+      updateSidebarActiveState('tagsList', buttonEl);
+      applyFilters();
+    }
+
+    function filterByPublication(publication, buttonEl) {
+      activeFilters.publication = publication;
+      updateSidebarActiveState('publicationsList', buttonEl);
+      applyFilters();
+    }
+
+    function filterByCategory(category, buttonEl) {
+      activeFilters.category = category;
+      updateSidebarActiveState('categoriesList', buttonEl);
+      applyFilters();
+    }
+
+    function updateSidebarActiveState(listId, activeButton) {
+      const list = document.getElementById(listId);
+      list.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+      if (activeButton) {
+        activeButton.classList.add('active');
+      }
+    }
+
+    function applyFilters() {
+      let filtered = [...allPerspectives];
+
+      // Filter by search
+      if (activeFilters.search) {
+        const searchTerm = activeFilters.search;
+        filtered = filtered.filter(p => {
+          const title = (p.title || '').toLowerCase();
+          const excerpt = (p.excerpt || '').toLowerCase();
+          const subtitle = (p.subtitle || '').toLowerCase();
+          const tags = (p.tags || []).join(' ').toLowerCase();
+          return title.includes(searchTerm) ||
+                 excerpt.includes(searchTerm) ||
+                 subtitle.includes(searchTerm) ||
+                 tags.includes(searchTerm);
+        });
+      }
+
+      // Filter by time period
+      if (activeFilters.time !== 'all') {
+        const days = parseInt(activeFilters.time);
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        filtered = filtered.filter(p => {
+          if (!p.published_at) return false;
+          return new Date(p.published_at) >= cutoff;
+        });
+      }
+
+      // Filter by tag
+      if (activeFilters.tag) {
+        filtered = filtered.filter(p =>
+          p.tags && Array.isArray(p.tags) && p.tags.includes(activeFilters.tag)
+        );
+      }
+
+      // Filter by publication
+      if (activeFilters.publication) {
+        if (activeFilters.publication === '__internal__') {
+          filtered = filtered.filter(p => p.content_type === 'article');
+        } else {
+          filtered = filtered.filter(p => p.external_site_name === activeFilters.publication);
+        }
+      }
+
+      // Filter by category
+      if (activeFilters.category) {
+        filtered = filtered.filter(p => p.category === activeFilters.category);
+      }
+
+      // Sort
+      const sortOrder = document.getElementById('sortOrder').value;
+      filtered.sort((a, b) => {
+        if (sortOrder === 'popular') {
+          return (b.like_count || 0) - (a.like_count || 0);
+        }
+        const dateA = new Date(a.published_at || 0);
+        const dateB = new Date(b.published_at || 0);
+        return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+      });
+
+      // Update results count
+      const resultsCount = document.getElementById('resultsCount');
+      resultsCount.textContent = `${filtered.length} of ${allPerspectives.length} articles`;
+
+      // Update clear filters button visibility
+      const clearBtn = document.getElementById('clearFilters');
+      const hasActiveFilters = activeFilters.tag || activeFilters.publication ||
+                               activeFilters.category || activeFilters.time !== 'all' ||
+                               activeFilters.search;
+      clearBtn.classList.toggle('visible', hasActiveFilters);
+
+      // Update active filters display
+      updateActiveFiltersDisplay();
+
+      // Render
       renderPerspectives(filtered);
+    }
+
+    function updateActiveFiltersDisplay() {
+      const container = document.getElementById('activeFilters');
+      const filters = [];
+
+      if (activeFilters.search) {
+        filters.push({ type: 'search', label: `Search: "${activeFilters.search}"`, value: activeFilters.search });
+      }
+      if (activeFilters.time !== 'all') {
+        const timeLabels = { '30': 'Last 30 Days', '90': 'Last 90 Days', '365': 'This Year' };
+        filters.push({ type: 'time', label: timeLabels[activeFilters.time], value: activeFilters.time });
+      }
+      if (activeFilters.tag) {
+        filters.push({ type: 'tag', label: `Tag: ${activeFilters.tag}`, value: activeFilters.tag });
+      }
+      if (activeFilters.publication) {
+        const label = activeFilters.publication === '__internal__'
+          ? 'Publication: AgenticAdvertising.org'
+          : `Publication: ${activeFilters.publication}`;
+        filters.push({ type: 'publication', label, value: activeFilters.publication });
+      }
+      if (activeFilters.category) {
+        filters.push({ type: 'category', label: `Category: ${activeFilters.category}`, value: activeFilters.category });
+      }
+
+      if (filters.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = 'flex';
+      container.innerHTML = filters.map(f => `
+        <span class="active-filter-tag">
+          ${escapeHtml(f.label)}
+          <button onclick="removeFilter('${f.type}')" title="Remove filter">&times;</button>
+        </span>
+      `).join('');
+    }
+
+    function removeFilter(type) {
+      if (type === 'search') {
+        clearSearch();
+        return;
+      }
+      if (type === 'time') {
+        activeFilters.time = 'all';
+        const list = document.getElementById('timeList');
+        const allButton = list.querySelector('button');
+        updateSidebarActiveState('timeList', allButton);
+      } else {
+        activeFilters[type] = null;
+        const listId = type === 'tag' ? 'tagsList' :
+                       type === 'publication' ? 'publicationsList' : 'categoriesList';
+        const list = document.getElementById(listId);
+        const allButton = list.querySelector('button');
+        updateSidebarActiveState(listId, allButton);
+      }
+      applyFilters();
+    }
+
+    function clearAllFilters() {
+      activeFilters = { tag: null, publication: null, category: null, time: 'all', search: '' };
+      clearSearch();
+
+      // Reset all sidebars to "All"
+      ['timeList', 'tagsList', 'publicationsList', 'categoriesList'].forEach(listId => {
+        const list = document.getElementById(listId);
+        const allButton = list.querySelector('button');
+        updateSidebarActiveState(listId, allButton);
+      });
+
+      applyFilters();
+    }
+
+    async function toggleLike(perspectiveId, event) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const button = event.currentTarget;
+      const countSpan = button.querySelector('.like-count');
+      const isLiked = userLikes.has(perspectiveId);
+
+      try {
+        const response = await fetch(`/api/perspectives/${perspectiveId}/like`, {
+          method: isLiked ? 'DELETE' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fingerprint: userFingerprint })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+
+          if (isLiked) {
+            userLikes.delete(perspectiveId);
+            button.classList.remove('liked');
+          } else {
+            userLikes.add(perspectiveId);
+            button.classList.add('liked');
+          }
+
+          countSpan.textContent = data.like_count;
+          saveUserLikes();
+
+          // Update the perspective in our local array
+          const perspective = allPerspectives.find(p => p.id === perspectiveId);
+          if (perspective) {
+            perspective.like_count = data.like_count;
+          }
+        }
+      } catch (error) {
+        console.error('Error toggling like:', error);
+      }
     }
 
     function renderPerspectives(perspectives) {
       const gridEl = document.getElementById('articlesGrid');
 
       if (perspectives.length === 0) {
-        gridEl.innerHTML = '<div class="empty-state"><p>No perspectives match the selected filter.</p></div>';
+        gridEl.innerHTML = '<div class="empty-state"><p>No perspectives match the selected filters.</p></div>';
         return;
       }
 
@@ -161,9 +999,23 @@
           ? `Read on ${perspective.external_site_name || 'external site'}`
           : 'Read article';
 
-        // Format date and check if new (within 14 days)
+        // Format date and check if new (within 60 days)
         const dateInfo = formatDate(perspective.published_at);
-        const isNew = isWithin14Days(perspective.published_at);
+        const isNew = isWithin60Days(perspective.published_at);
+
+        // Like status
+        const isLiked = userLikes.has(perspective.id);
+        const likeCount = perspective.like_count || 0;
+
+        // Build tags display
+        const tagsHtml = perspective.tags && perspective.tags.length > 0
+          ? `<div class="article-tags" style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              ${perspective.tags.slice(0, 3).map(tag =>
+                `<span style="font-size: 0.7rem; background: #f3f4f6; color: var(--aao-gray); padding: 0.125rem 0.5rem; border-radius: 4px;">${escapeHtml(tag)}</span>`
+              ).join('')}
+              ${perspective.tags.length > 3 ? `<span style="font-size: 0.7rem; color: var(--aao-gray);">+${perspective.tags.length - 3} more</span>` : ''}
+            </div>`
+          : '';
 
         html += `
           <a href="${escapeHtml(href)}" class="article-card"${target}>
@@ -174,7 +1026,8 @@
               </div>
               <h2>${escapeHtml(perspective.title)}</h2>
               <p>${escapeHtml(perspective.excerpt || perspective.subtitle || '')}</p>
-              ${dateInfo ? `<span class="article-date">${dateInfo}</span>` : ''}
+              ${tagsHtml}
+              ${dateInfo ? `<span class="article-date" style="margin-top: auto; padding-top: 0.75rem;">${dateInfo}</span>` : ''}
             </div>
             <div class="article-card-footer">
               <span class="read-more">
@@ -183,6 +1036,12 @@
                   <path d="M6 12L10 8L6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </span>
+              <button class="like-button ${isLiked ? 'liked' : ''}" onclick="toggleLike('${perspective.id}', event)" title="${isLiked ? 'Unlike' : 'Like'} this article">
+                <svg viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                </svg>
+                <span class="like-count">${likeCount}</span>
+              </button>
             </div>
           </a>
         `;
@@ -198,14 +1057,14 @@
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
-    function isWithin14Days(dateStr) {
+    function isWithin60Days(dateStr) {
       if (!dateStr) return false;
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) return false;
       const now = new Date();
       const diffTime = now - date;
       const diffDays = diffTime / (1000 * 60 * 60 * 24);
-      return diffDays <= 14 && diffDays >= 0;
+      return diffDays <= 60 && diffDays >= 0;
     }
 
     function escapeHtml(text) {

@@ -1,0 +1,32 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a36b4"/>
+      <stop offset="100%" style="stop-color:#2d4fd6"/>
+    </linearGradient>
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#a4c2f4;stop-opacity:0.15"/>
+      <stop offset="100%" style="stop-color:#a4c2f4;stop-opacity:0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bgGradient)"/>
+
+  <!-- Decorative circles -->
+  <circle cx="200" cy="500" r="300" fill="url(#accentGradient)"/>
+  <circle cx="1000" cy="130" r="250" fill="url(#accentGradient)"/>
+
+  <!-- AAo Logo (scaled up) -->
+  <g transform="translate(480, 200) scale(8)">
+    <path d="M7.87209 8.53223H9.37879e-05L3.93609 0.000226259L7.87209 8.53223ZM0.696094 8.08823H7.17609L3.93609 1.05623L0.696094 8.08823ZM16.7549 8.53223H8.88291L12.8189 0.000226259L16.7549 8.53223ZM9.57891 8.08823H16.0589L12.8189 1.05623L9.57891 8.08823ZM21.7017 0.000226259C22.3257 0.000226259 22.9017 0.156226 23.4297 0.468226C23.9577 0.772226 24.3737 1.18823 24.6777 1.71623C24.9897 2.24423 25.1457 2.82023 25.1457 3.44423V5.26823C25.1457 5.89223 24.9897 6.46823 24.6777 6.99623C24.3737 7.52423 23.9577 7.94423 23.4297 8.25623C22.9017 8.56023 22.3257 8.71223 21.7017 8.71223C21.0777 8.71223 20.5017 8.56023 19.9737 8.25623C19.4457 7.94423 19.0257 7.52423 18.7137 6.99623C18.4097 6.46823 18.2577 5.89223 18.2577 5.26823V3.44423C18.2577 2.82023 18.4097 2.24423 18.7137 1.71623C19.0257 1.18823 19.4457 0.772226 19.9737 0.468226C20.5017 0.156226 21.0777 0.000226259 21.7017 0.000226259ZM18.7017 5.26823C18.7017 5.81223 18.8337 6.31623 19.0977 6.78023C19.3697 7.23623 19.7337 7.60023 20.1897 7.87223C20.6537 8.13623 21.1577 8.26823 21.7017 8.26823C22.2457 8.26823 22.7457 8.13623 23.2017 7.87223C23.6657 7.60023 24.0297 7.23623 24.2937 6.78023C24.5657 6.31623 24.7017 5.81223 24.7017 5.26823V3.44423C24.7017 2.90023 24.5657 2.40023 24.2937 1.94423C24.0297 1.48023 23.6657 1.11623 23.2017 0.852226C22.7457 0.580226 22.2457 0.444226 21.7017 0.444226C21.1577 0.444226 20.6537 0.580226 20.1897 0.852226C19.7337 1.11623 19.3697 1.48023 19.0977 1.94423C18.8337 2.40023 18.7017 2.90023 18.7017 3.44423V5.26823Z" fill="white"/>
+  </g>
+
+  <!-- Text -->
+  <text x="600" y="380" text-anchor="middle" fill="white" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="48" font-weight="700">AgenticAdvertising.org</text>
+  <text x="600" y="440" text-anchor="middle" fill="white" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="28" opacity="0.9">Thought leadership on agentic AI and advertising</text>
+
+  <!-- Subtle bottom border -->
+  <rect x="0" y="620" width="1200" height="10" fill="#a4c2f4" opacity="0.3"/>
+</svg>
