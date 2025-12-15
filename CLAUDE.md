@@ -986,11 +986,11 @@ Key environment variables for local development:
 | Brand | `--color-brand`, `--color-brand-hover` | Primary brand colors, CTAs |
 | Primary Scale | `--color-primary-50` to `--color-primary-900` | Tints and shades of brand |
 | Gray Scale | `--color-gray-50` to `--color-gray-900` | Neutral backgrounds, borders |
-| Text | `--color-text-heading`, `--color-text-secondary`, `--color-text-muted` | Typography |
+| Text | `--color-text`, `--color-text-heading`, `--color-text-secondary`, `--color-text-muted` | Typography |
 | Background | `--color-bg-page`, `--color-bg-card`, `--color-bg-subtle` | Page and component backgrounds |
-| Border | `--color-border`, `--color-border-light` | Dividers and outlines |
+| Border | `--color-border`, `--color-border-strong` | Dividers and outlines |
 | Status | `--color-success-*`, `--color-warning-*`, `--color-error-*`, `--color-info-*` | Feedback colors |
-| Overlay | `--color-overlay` | Modal backdrops |
+| Overlay | `--color-surface-overlay` | Modal backdrops |
 
 **Common Replacements:**
 
@@ -1017,7 +1017,7 @@ Key environment variables for local development:
 #3b82f6                   →  var(--color-info-500)
 
 /* Overlays */
-rgba(0,0,0,0.5)           →  var(--color-overlay)
+rgba(0,0,0,0.5)           →  var(--color-surface-overlay)
 ```
 
 **AAO Theme Layer:**
