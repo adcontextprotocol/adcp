@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/push-notification-config.json",
   "title": "Push Notification Config",
-  "description": "Webhook configuration for asynchronous task notifications. If authentication is provided, AdCP enforces HMAC-SHA256 signature-based authentication.",
+  "description": "Webhook configuration for asynchronous task notifications. Supports Bearer token (server echoes back) or HMAC-SHA256 signature authentication.",
   "type": "object",
   "properties": {
     "url": {
@@ -12,11 +12,11 @@
     },
     "authentication": {
       "type": "object",
-      "description": "HMAC-SHA256 authentication. Client generates a unique shared secret per webhook configuration. Server signs payload and includes signature in X-ADCP-Signature header.",
+      "description": "Authentication configuration. Bearer: client provides token, server echoes in Authorization header. HMAC-SHA256: client provides secret, server signs payload with X-ADCP-Signature header.",
       "properties": {
         "schemes": {
           "type": "array",
-          "description": "Must be ['HMAC-SHA256'].",
+          "description": "Authentication scheme: ['Bearer'] or ['HMAC-SHA256']",
           "items": {
             "$ref": "/schemas/enums/auth-scheme.json"
           },
@@ -25,7 +25,7 @@
         },
         "credentials": {
           "type": "string",
-          "description": "Client-generated shared secret. Must be unique per webhook configuration. Minimum 32 characters.",
+          "description": "For Bearer: client-provided token (JWT, random string, etc.). Server echoes in 'Authorization: Bearer <credentials>'. For HMAC-SHA256: client-generated shared secret. Must be unique per webhook configuration. Minimum 32 characters.",
           "minLength": 32
         }
       },

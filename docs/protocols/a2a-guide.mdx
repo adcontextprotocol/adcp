@@ -260,8 +260,8 @@ await a2a.send({
   pushNotificationConfig: {
     url: `https://buyer.com/webhooks/a2a/${taskType}/${operationId}`,
     authentication: {
-      schemes: ["HMAC-SHA256"],
-      credentials: generateUniqueSecret(operationId) // Unique secret per operation
+      schemes: ["Bearer"], // or ["HMAC-SHA256"]
+      credentials: "client-token-min-32-chars"
     }
   }
 });
@@ -269,7 +269,7 @@ await a2a.send({
 
 ### Webhook Authentication
 
-If authentication is provided, AdCP enforces HMAC-SHA256. Server signs payload with `X-ADCP-Signature` and `X-ADCP-Timestamp` headers.
+AdCP supports Bearer token (server echoes back in `Authorization` header) or HMAC-SHA256 (server signs payload with `X-ADCP-Signature` header).
 
 For complete implementation details, see [Core Concepts - Webhook Authentication](/docs/protocols/core-concepts#webhook-authentication).
 
