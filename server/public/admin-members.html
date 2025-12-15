@@ -230,6 +230,71 @@
     .payment-amount.negative {
       color: #c33;
     }
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+      border: 1px solid #dc3545;
+    }
+    .btn-danger:hover {
+      background: #c82333;
+      border-color: #bd2130;
+    }
+    .btn-danger:disabled {
+      background: #e4606d;
+      border-color: #e4606d;
+      cursor: not-allowed;
+    }
+    .delete-warning {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 6px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    .delete-warning h4 {
+      color: #856404;
+      margin-bottom: 10px;
+    }
+    .delete-warning p {
+      color: #856404;
+      margin-bottom: 0;
+    }
+    .delete-error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      border-radius: 6px;
+      padding: 15px;
+      margin-bottom: 20px;
+      color: #721c24;
+    }
+    .confirm-input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+    }
+    .confirm-input:focus {
+      outline: none;
+      border-color: #dc3545;
+    }
+    .workspace-name-highlight {
+      font-weight: bold;
+      background: #f8f9fa;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid #e0e0e0;
+    }
   </style>
 </head>
 <body>
@@ -324,6 +389,33 @@
       </div>
       <div id="paymentHistoryContent">
         <div class="loading">Loading payment history...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Workspace Modal -->
+  <div id="deleteModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2 id="deleteModalTitle">Delete Workspace</h2>
+        <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
+      </div>
+      <div id="deleteModalContent">
+        <div class="delete-warning">
+          <h4>This action cannot be undone</h4>
+          <p>Deleting this workspace will remove all associated data including member profiles, join requests, and audit logs.</p>
+        </div>
+
+        <div id="deleteError" class="delete-error" style="display: none;"></div>
+
+        <p>To confirm deletion, type the workspace name:</p>
+        <p><span id="deleteOrgName" class="workspace-name-highlight"></span></p>
+        <input type="text" id="deleteConfirmInput" class="confirm-input" placeholder="Type workspace name to confirm" oninput="checkDeleteConfirmation()">
+
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+          <button class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDelete()" disabled>Delete Workspace</button>
+        </div>
       </div>
     </div>
   </div>
@@ -464,11 +556,14 @@
             <td><strong>${amountText}</strong></td>
             <td class="${isExpiringSoon ? 'expiring-soon' : ''}">${periodEndText}</td>
             <td>${agreementText}</td>
-            <td style="display: flex; gap: 4px; align-items: flex-start;">
+            <td style="display: flex; gap: 4px; align-items: flex-start; flex-wrap: wrap;">
               ${stripeLink ? `<a href="${stripeLink}" target="_blank" class="btn-icon" title="View in Stripe">💳</a>` : ''}
               <button class="btn-icon" onclick="viewPayments('${member.company_id}')" title="Payment History">📊</button>
               <button class="btn-icon" onclick="syncMember('${member.company_id}')" id="sync-btn-${member.company_id}" title="Sync from Stripe">
                 🔄
+              </button>
+              <button class="btn-icon" onclick="openDeleteModal('${member.company_id}')" title="Delete Workspace" style="color: #dc3545;">
+                🗑️
               </button>
               <div id="sync-status-${member.company_id}" class="sync-status"></div>
             </td>
@@ -673,11 +768,105 @@
       document.getElementById('paymentModal').style.display = 'none';
     }
 
+    // Delete workspace functionality
+    let deleteTargetOrgId = null;
+    let deleteTargetOrgName = null;
+
+    function openDeleteModal(orgId) {
+      const member = allMembers.find(m => m.company_id === orgId);
+      if (!member) return;
+
+      deleteTargetOrgId = orgId;
+      deleteTargetOrgName = member.company_name || 'Unknown';
+
+      // Reset modal state
+      document.getElementById('deleteOrgName').textContent = deleteTargetOrgName;
+      document.getElementById('deleteConfirmInput').value = '';
+      document.getElementById('confirmDeleteBtn').disabled = true;
+      document.getElementById('deleteError').style.display = 'none';
+      document.getElementById('deleteModalTitle').textContent = `Delete Workspace`;
+
+      document.getElementById('deleteModal').style.display = 'block';
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').style.display = 'none';
+      deleteTargetOrgId = null;
+      deleteTargetOrgName = null;
+    }
+
+    function checkDeleteConfirmation() {
+      const input = document.getElementById('deleteConfirmInput').value;
+      const confirmBtn = document.getElementById('confirmDeleteBtn');
+      confirmBtn.disabled = input !== deleteTargetOrgName;
+    }
+
+    async function confirmDelete() {
+      if (!deleteTargetOrgId || !deleteTargetOrgName) return;
+
+      const confirmBtn = document.getElementById('confirmDeleteBtn');
+      const errorDiv = document.getElementById('deleteError');
+      const originalText = confirmBtn.textContent;
+
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Deleting...';
+      errorDiv.style.display = 'none';
+
+      try {
+        const response = await fetch(`/api/admin/members/${deleteTargetOrgId}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            confirmation: deleteTargetOrgName,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+
+          // Show error message
+          errorDiv.textContent = result.message || result.error || 'Failed to delete workspace';
+          errorDiv.style.display = 'block';
+
+          // Re-enable button if not a payment error
+          if (!result.has_payments) {
+            confirmBtn.disabled = false;
+          }
+          confirmBtn.textContent = originalText;
+          return;
+        }
+
+        // Success - close modal and refresh list
+        closeDeleteModal();
+        loadMembers();
+
+        // Show brief success notification
+        alert(`Workspace "${deleteTargetOrgName}" has been deleted.`);
+      } catch (error) {
+        console.error('Error deleting workspace:', error);
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.style.display = 'block';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
+      }
+    }
+
     // Close modal when clicking outside of it
     window.onclick = function(event) {
-      const modal = document.getElementById('paymentModal');
-      if (event.target === modal) {
+      const paymentModal = document.getElementById('paymentModal');
+      const deleteModal = document.getElementById('deleteModal');
+      if (event.target === paymentModal) {
         closePaymentModal();
+      }
+      if (event.target === deleteModal) {
+        closeDeleteModal();
       }
     }
 

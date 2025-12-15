@@ -26,6 +26,8 @@ services:
       - PORT=8080
       - DATABASE_URL=postgresql://adcp:localdev@postgres:5432/adcp_registry
       - RUN_MIGRATIONS=true
+      # WARNING: Only for local development - DO NOT use in production
+      - ALLOW_INSECURE_COOKIES=true
     depends_on:
       postgres:
         condition: service_healthy

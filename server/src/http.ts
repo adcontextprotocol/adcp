@@ -2521,6 +2521,110 @@ export class HTTPServer {
       }
     });
 
+    // DELETE /api/admin/members/:orgId - Delete a workspace (organization)
+    // Cannot delete if organization has any payment history (revenue events)
+    this.app.delete('/api/admin/members/:orgId', requireAuth, requireAdmin, async (req, res) => {
+      const { orgId } = req.params;
+      const { confirmation } = req.body;
+
+      try {
+        const pool = getPool();
+
+        // Get the organization
+        const orgResult = await pool.query(
+          'SELECT workos_organization_id, name, stripe_customer_id FROM organizations WHERE workos_organization_id = $1',
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'The specified organization does not exist',
+          });
+        }
+
+        const org = orgResult.rows[0];
+
+        // Check if organization has any payment history
+        const revenueResult = await pool.query(
+          'SELECT COUNT(*) as count FROM revenue_events WHERE workos_organization_id = $1',
+          [orgId]
+        );
+
+        const hasPayments = parseInt(revenueResult.rows[0].count) > 0;
+
+        if (hasPayments) {
+          return res.status(400).json({
+            error: 'Cannot delete paid workspace',
+            message: 'This workspace has payment history and cannot be deleted. Contact support if you need to remove this workspace.',
+            has_payments: true,
+          });
+        }
+
+        // Check for active Stripe subscription
+        if (org.stripe_customer_id) {
+          const subscriptionInfo = await getSubscriptionInfo(org.stripe_customer_id);
+          if (subscriptionInfo && (subscriptionInfo.status === 'active' || subscriptionInfo.status === 'past_due')) {
+            return res.status(400).json({
+              error: 'Cannot delete workspace with active subscription',
+              message: 'This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.',
+              has_active_subscription: true,
+              subscription_status: subscriptionInfo.status,
+            });
+          }
+        }
+
+        // Require confirmation by typing the organization name
+        if (!confirmation || confirmation !== org.name) {
+          return res.status(400).json({
+            error: 'Confirmation required',
+            message: `To delete this workspace, please provide the exact name "${org.name}" in the confirmation field.`,
+            requires_confirmation: true,
+            organization_name: org.name,
+          });
+        }
+
+        // Record audit log before deletion (while org still exists)
+        const orgDb = new OrganizationDatabase();
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: req.user!.id,
+          action: 'organization_deleted',
+          resource_type: 'organization',
+          resource_id: orgId,
+          details: { name: org.name, deleted_by: 'admin', admin_email: req.user!.email },
+        });
+
+        // Delete from WorkOS if possible
+        if (workos) {
+          try {
+            await workos.organizations.deleteOrganization(orgId);
+            logger.info({ orgId, name: org.name, adminEmail: req.user!.email }, 'Deleted organization from WorkOS');
+          } catch (workosError) {
+            // Log but don't fail - the org might not exist in WorkOS or could be a test org
+            logger.warn({ err: workosError, orgId }, 'Failed to delete organization from WorkOS - continuing with local deletion');
+          }
+        }
+
+        // Delete from local database (cascades to related tables)
+        await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [orgId]);
+
+        logger.info({ orgId, name: org.name, adminEmail: req.user!.email }, 'Admin deleted organization');
+
+        res.json({
+          success: true,
+          message: `Workspace "${org.name}" has been deleted`,
+          deleted_org_id: orgId,
+        });
+      } catch (error) {
+        logger.error({ err: error, orgId }, 'Error deleting organization');
+        res.status(500).json({
+          error: 'Internal server error',
+          message: 'Unable to delete organization',
+        });
+      }
+    });
+
     // GET /api/admin/analytics-data - Get simple analytics data from views
     this.app.get('/api/admin/analytics-data', requireAuth, requireAdmin, async (req, res) => {
       try {
@@ -4500,6 +4604,129 @@ export class HTTPServer {
         logger.error({ err: error }, 'Update organization error');
         res.status(500).json({
           error: 'Failed to update organization',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/organizations/:orgId - Delete own workspace (owner only)
+    // Cannot delete if workspace has any payment history
+    this.app.delete('/api/organizations/:orgId', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+        const { confirmation } = req.body;
+
+        // Verify user is owner of this organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        const membership = memberships.data[0];
+        if (!membership) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Only owners can delete
+        const roleSlug = (membership as any).role?.slug || (membership as any).roleSlug;
+        if (roleSlug !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only the organization owner can delete the workspace',
+          });
+        }
+
+        // Get organization from database
+        const pool = getPool();
+        const orgResult = await pool.query(
+          'SELECT workos_organization_id, name, stripe_customer_id FROM organizations WHERE workos_organization_id = $1',
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'The specified organization does not exist',
+          });
+        }
+
+        const org = orgResult.rows[0];
+
+        // Check if organization has any payment history
+        const revenueResult = await pool.query(
+          'SELECT COUNT(*) as count FROM revenue_events WHERE workos_organization_id = $1',
+          [orgId]
+        );
+
+        const hasPayments = parseInt(revenueResult.rows[0].count) > 0;
+
+        if (hasPayments) {
+          return res.status(400).json({
+            error: 'Cannot delete paid workspace',
+            message: 'This workspace has payment history and cannot be deleted. Please contact support if you need to remove this workspace.',
+            has_payments: true,
+          });
+        }
+
+        // Check for active Stripe subscription
+        if (org.stripe_customer_id) {
+          const subscriptionInfo = await getSubscriptionInfo(org.stripe_customer_id);
+          if (subscriptionInfo && (subscriptionInfo.status === 'active' || subscriptionInfo.status === 'past_due')) {
+            return res.status(400).json({
+              error: 'Cannot delete workspace with active subscription',
+              message: 'This workspace has an active subscription. Please cancel the subscription first before deleting the workspace.',
+              has_active_subscription: true,
+              subscription_status: subscriptionInfo.status,
+            });
+          }
+        }
+
+        // Require confirmation by typing the organization name
+        if (!confirmation || confirmation !== org.name) {
+          return res.status(400).json({
+            error: 'Confirmation required',
+            message: `To delete this workspace, please provide the exact name "${org.name}" in the confirmation field.`,
+            requires_confirmation: true,
+            organization_name: org.name,
+          });
+        }
+
+        // Record audit log before deletion (while org still exists)
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'organization_deleted',
+          resource_type: 'organization',
+          resource_id: orgId,
+          details: { name: org.name, deleted_by: 'self_service', user_email: user.email },
+        });
+
+        // Delete from WorkOS
+        try {
+          await workos!.organizations.deleteOrganization(orgId);
+          logger.info({ orgId, name: org.name, userId: user.id }, 'Deleted organization from WorkOS');
+        } catch (workosError) {
+          logger.warn({ err: workosError, orgId }, 'Failed to delete organization from WorkOS - continuing with local deletion');
+        }
+
+        // Delete from local database (cascades to related tables)
+        await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [orgId]);
+
+        logger.info({ orgId, name: org.name, userId: user.id, userEmail: user.email }, 'User deleted their own organization');
+
+        res.json({
+          success: true,
+          message: `Workspace "${org.name}" has been deleted`,
+          deleted_org_id: orgId,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete organization error');
+        res.status(500).json({
+          error: 'Failed to delete organization',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
