@@ -1,0 +1,14 @@
+{
+  "name": "Swivel Seller Agent",
+  "url": "https://adcp-mcp-server-286099387629.us-central1.run.app/mcp",
+  "type": "sales",
+  "protocol": "mcp",
+  "description": "Swivel AdCP media sales agent",
+  "mcp_endpoint": "https://adcp-mcp-server-286099387629.us-central1.run.app/mcp",
+  "contact": {
+    "name": "Swivel Team",
+    "email": "hello@swivel.ai",
+    "website": "https://swivel.ai/"
+  },
+  "added_date": "2025-12-15"
+}
