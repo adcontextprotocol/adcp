@@ -27,6 +27,7 @@ import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache } from 
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import {
   notifyNewSubscription,
   notifyPaymentSucceeded,
@@ -3291,6 +3292,87 @@ export class HTTPServer {
     });
 
     // ========================================
+    // SEO Routes (sitemap.xml, robots.txt)
+    // ========================================
+
+    // GET /sitemap.xml - Dynamic sitemap including all published perspectives
+    this.app.get('/sitemap.xml', async (req, res) => {
+      try {
+        const baseUrl = 'https://agenticadvertising.org';
+        const pool = getPool();
+
+        // Get all published perspectives
+        const perspectivesResult = await pool.query(
+          `SELECT slug, updated_at, published_at
+           FROM perspectives
+           WHERE status = 'published'
+           ORDER BY published_at DESC`
+        );
+
+        // Static pages with their priorities and change frequencies
+        const staticPages = [
+          { path: '/', priority: '1.0', changefreq: 'weekly' },
+          { path: '/perspectives', priority: '0.9', changefreq: 'daily' },
+          { path: '/members', priority: '0.8', changefreq: 'weekly' },
+          { path: '/join', priority: '0.7', changefreq: 'monthly' },
+        ];
+
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+`;
+
+        // Add static pages
+        for (const page of staticPages) {
+          xml += `  <url>
+    <loc>${baseUrl}${page.path}</loc>
+    <changefreq>${page.changefreq}</changefreq>
+    <priority>${page.priority}</priority>
+  </url>
+`;
+        }
+
+        // Add perspectives
+        for (const perspective of perspectivesResult.rows) {
+          const lastmod = perspective.updated_at || perspective.published_at;
+          xml += `  <url>
+    <loc>${baseUrl}/perspectives/${perspective.slug}</loc>
+    <lastmod>${new Date(lastmod).toISOString().split('T')[0]}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+`;
+        }
+
+        xml += `</urlset>`;
+
+        res.set('Content-Type', 'application/xml');
+        res.send(xml);
+      } catch (error) {
+        logger.error({ err: error }, 'Generate sitemap error:');
+        res.status(500).send('Error generating sitemap');
+      }
+    });
+
+    // GET /robots.txt - Robots file with sitemap reference
+    this.app.get('/robots.txt', (req, res) => {
+      const baseUrl = 'https://agenticadvertising.org';
+      const robotsTxt = `# AgenticAdvertising.org Robots.txt
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: ${baseUrl}/sitemap.xml
+
+# Disallow admin pages
+Disallow: /admin/
+Disallow: /auth/
+Disallow: /api/admin/
+`;
+      res.set('Content-Type', 'text/plain');
+      res.send(robotsTxt);
+    });
+
+    // ========================================
     // Public Perspectives API Routes
     // ========================================
 
@@ -3303,10 +3385,10 @@ export class HTTPServer {
             id, slug, content_type, title, subtitle, category, excerpt,
             external_url, external_site_name,
             author_name, author_title, featured_image_url,
-            published_at, display_order, tags
+            published_at, display_order, tags, like_count
           FROM perspectives
           WHERE status = 'published'
-          ORDER BY display_order ASC, published_at DESC NULLS LAST`
+          ORDER BY published_at DESC NULLS LAST`
         );
 
         res.json(result.rows);
@@ -3329,7 +3411,7 @@ export class HTTPServer {
             id, slug, content_type, title, subtitle, category, excerpt,
             content, external_url, external_site_name,
             author_name, author_title, featured_image_url,
-            published_at, tags, metadata
+            published_at, tags, metadata, like_count, updated_at
           FROM perspectives
           WHERE slug = $1 AND status = 'published'`,
           [slug]
@@ -3347,6 +3429,107 @@ export class HTTPServer {
         logger.error({ err: error }, 'Get perspective by slug error:');
         res.status(500).json({
           error: 'Failed to get perspective',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/perspectives/:id/like - Add a like to a perspective
+    this.app.post('/api/perspectives/:id/like', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { fingerprint } = req.body;
+
+        if (!fingerprint) {
+          return res.status(400).json({
+            error: 'Missing fingerprint',
+            message: 'A fingerprint is required to like a perspective'
+          });
+        }
+
+        const pool = getPool();
+
+        // Get IP hash for rate limiting
+        const ip = req.ip || req.socket.remoteAddress || '';
+        const ipHash = crypto.createHash('sha256').update(ip).digest('hex').substring(0, 64);
+
+        // Check rate limit (max 50 likes per IP per hour)
+        const rateLimitResult = await pool.query(
+          `SELECT COUNT(*) as count FROM perspective_likes
+           WHERE ip_hash = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
+          [ipHash]
+        );
+
+        if (parseInt(rateLimitResult.rows[0].count) >= 50) {
+          return res.status(429).json({
+            error: 'Rate limited',
+            message: 'Too many likes. Please try again later.'
+          });
+        }
+
+        // Insert the like (will fail if already exists due to unique constraint)
+        await pool.query(
+          `INSERT INTO perspective_likes (perspective_id, fingerprint, ip_hash)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (perspective_id, fingerprint) DO NOTHING`,
+          [id, fingerprint, ipHash]
+        );
+
+        // Get updated like count
+        const countResult = await pool.query(
+          `SELECT like_count FROM perspectives WHERE id = $1`,
+          [id]
+        );
+
+        res.json({
+          success: true,
+          like_count: countResult.rows[0]?.like_count || 0
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Add perspective like error:');
+        res.status(500).json({
+          error: 'Failed to add like',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/perspectives/:id/like - Remove a like from a perspective
+    this.app.delete('/api/perspectives/:id/like', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { fingerprint } = req.body;
+
+        if (!fingerprint) {
+          return res.status(400).json({
+            error: 'Missing fingerprint',
+            message: 'A fingerprint is required to unlike a perspective'
+          });
+        }
+
+        const pool = getPool();
+
+        // Delete the like
+        await pool.query(
+          `DELETE FROM perspective_likes
+           WHERE perspective_id = $1 AND fingerprint = $2`,
+          [id, fingerprint]
+        );
+
+        // Get updated like count
+        const countResult = await pool.query(
+          `SELECT like_count FROM perspectives WHERE id = $1`,
+          [id]
+        );
+
+        res.json({
+          success: true,
+          like_count: countResult.rows[0]?.like_count || 0
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Remove perspective like error:');
+        res.status(500).json({
+          error: 'Failed to remove like',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }

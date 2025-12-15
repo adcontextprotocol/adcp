@@ -6,9 +6,28 @@
   <title id="pageTitle">Loading... | AgenticAdvertising.org</title>
   <meta name="description" id="pageDescription" content="Loading...">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="canonical" id="canonicalUrl" href="">
+
+  <!-- Open Graph / Facebook (updated dynamically) -->
+  <meta property="og:type" content="article">
+  <meta property="og:url" id="ogUrl" content="">
+  <meta property="og:title" id="ogTitle" content="">
+  <meta property="og:description" id="ogDescription" content="">
+  <meta property="og:image" id="ogImage" content="https://agenticadvertising.org/AAo-social.png">
+  <meta property="og:site_name" content="AgenticAdvertising.org">
+  <meta property="article:publisher" content="https://agenticadvertising.org">
+
+  <!-- Twitter (updated dynamically) -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" id="twitterUrl" content="">
+  <meta name="twitter:title" id="twitterTitle" content="">
+  <meta name="twitter:description" id="twitterDescription" content="">
+  <meta name="twitter:image" id="twitterImage" content="https://agenticadvertising.org/AAo-social.png">
+
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <script src="/perspectives/utils.js"></script>
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
@@ -59,14 +78,14 @@
       color: var(--color-text-heading);
     }
     .article-content a {
-      color: var(--aao-primary);
+      color: var(--color-brand);
       text-decoration: none;
     }
     .article-content a:hover {
       text-decoration: underline;
     }
     .article-content blockquote {
-      border-left: 4px solid var(--aao-primary);
+      border-left: 4px solid var(--color-brand);
       margin: 1.5rem 0;
       padding: 1rem 1.5rem;
       background: var(--color-bg-subtle);
@@ -98,7 +117,7 @@
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
-      color: var(--aao-primary);
+      color: var(--color-brand);
       text-decoration: none;
       font-weight: 500;
       margin-bottom: 2rem;
@@ -106,7 +125,168 @@
     .back-link:hover {
       text-decoration: underline;
     }
+
+    /* Article actions bar */
+    .article-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem 0;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--color-border);
+      flex-wrap: wrap;
+    }
+
+    .article-date-published {
+      color: var(--color-text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .action-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--color-border);
+    }
+
+    /* Like button */
+    .like-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: none;
+      border: 1px solid var(--color-border);
+      color: var(--color-text-heading);
+      cursor: pointer;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      transition: all 0.15s;
+    }
+
+    .like-button:hover {
+      background: var(--color-gray-100);
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+
+    .like-button.liked {
+      background: var(--color-error-50);
+      border-color: var(--color-error-500);
+      color: var(--color-error-500);
+    }
+
+    .like-button svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* Share buttons */
+    .share-buttons {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-left: auto;
+    }
+
+    .share-label {
+      color: var(--color-text-secondary);
+      font-size: 0.85rem;
+      margin-right: 0.25rem;
+    }
+
+    .share-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--color-border);
+      background: white;
+      color: var(--color-text-heading);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+    }
+
+    .share-btn:hover {
+      background: var(--color-gray-100);
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+
+    .share-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* Copy link button */
+    .share-btn.copied {
+      background: var(--color-success-500);
+      border-color: var(--color-success-500);
+      color: white;
+    }
+
+    /* Tags display */
+    .article-tags {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+
+    .article-tag {
+      font-size: 0.8rem;
+      background: var(--color-gray-100);
+      color: var(--color-text-heading);
+      padding: 0.25rem 0.75rem;
+      border-radius: 4px;
+    }
+
+    @media (max-width: 600px) {
+      .article-actions {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .action-divider {
+        display: none;
+      }
+      .share-buttons {
+        margin-left: 0;
+        margin-top: 0.5rem;
+      }
+    }
   </style>
+
+  <!-- JSON-LD Structured Data (updated dynamically) -->
+  <script type="application/ld+json" id="articleJsonLd">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "",
+    "description": "",
+    "url": "",
+    "datePublished": "",
+    "dateModified": "",
+    "author": {
+      "@type": "Person",
+      "name": ""
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "AgenticAdvertising.org",
+      "url": "https://agenticadvertising.org",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://agenticadvertising.org/AAo.svg"
+      }
+    },
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": ""
+    }
+  }
+  </script>
 </head>
 <body>
   <!-- Navigation -->
@@ -138,6 +318,45 @@
       Back to Perspectives
     </a>
 
+    <!-- Tags -->
+    <div id="articleTags" class="article-tags" style="display: none;"></div>
+
+    <!-- Actions Bar -->
+    <div class="article-actions">
+      <span id="articleDate" class="article-date-published"></span>
+      <div class="action-divider"></div>
+      <button id="likeButton" class="like-button" onclick="toggleLike()">
+        <svg id="likeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+        </svg>
+        <span id="likeCount">0</span>
+      </button>
+      <div class="share-buttons">
+        <span class="share-label">Share:</span>
+        <a id="shareTwitter" class="share-btn" href="#" target="_blank" rel="noopener" title="Share on Twitter/X">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+        </a>
+        <a id="shareLinkedIn" class="share-btn" href="#" target="_blank" rel="noopener" title="Share on LinkedIn">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+          </svg>
+        </a>
+        <a id="shareFacebook" class="share-btn" href="#" target="_blank" rel="noopener" title="Share on Facebook">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+          </svg>
+        </a>
+        <button id="copyLink" class="share-btn" onclick="copyArticleLink()" title="Copy link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
     <section class="article-section">
       <div id="articleContent" class="article-content">
         <!-- Markdown content will be rendered here -->
@@ -154,7 +373,7 @@
     <div class="loading-state">
       <h2 style="color: var(--color-error-600); margin-bottom: 1rem;">Article Not Found</h2>
       <p>The article you're looking for doesn't exist or has been removed.</p>
-      <p><a href="/perspectives" style="color: var(--aao-primary);">Return to Perspectives</a></p>
+      <p><a href="/perspectives" style="color: var(--color-brand);">Return to Perspectives</a></p>
     </div>
   </div>
 
@@ -173,6 +392,139 @@
   </footer>
 
   <script>
+    // Note: userFingerprint, checkUserLike, saveUserLike, escapeHtml, formatDate
+    // are provided by /perspectives/utils.js
+
+    let currentArticle = null;
+    let isLiked = false;
+
+    async function toggleLike() {
+      if (!currentArticle) return;
+
+      const button = document.getElementById('likeButton');
+      const countSpan = document.getElementById('likeCount');
+      const icon = document.getElementById('likeIcon');
+
+      try {
+        const response = await fetch(`/api/perspectives/${currentArticle.id}/like`, {
+          method: isLiked ? 'DELETE' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fingerprint: userFingerprint })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          isLiked = !isLiked;
+
+          if (isLiked) {
+            button.classList.add('liked');
+            icon.setAttribute('fill', 'currentColor');
+          } else {
+            button.classList.remove('liked');
+            icon.setAttribute('fill', 'none');
+          }
+
+          countSpan.textContent = data.like_count;
+          saveUserLike(currentArticle.id, isLiked);
+        }
+      } catch (error) {
+        console.error('Error toggling like:', error);
+      }
+    }
+
+    function copyArticleLink() {
+      const url = window.location.href;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById('copyLink');
+        btn.classList.add('copied');
+        btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 6L9 17l-5-5"/>
+        </svg>`;
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>`;
+        }, 2000);
+      });
+    }
+
+    function updateSocialShareLinks(article) {
+      const url = encodeURIComponent(window.location.href);
+      const title = encodeURIComponent(article.title);
+      const description = encodeURIComponent(article.excerpt || article.subtitle || '');
+
+      document.getElementById('shareTwitter').href =
+        `https://twitter.com/intent/tweet?url=${url}&text=${title}`;
+
+      document.getElementById('shareLinkedIn').href =
+        `https://www.linkedin.com/sharing/share-offsite/?url=${url}`;
+
+      document.getElementById('shareFacebook').href =
+        `https://www.facebook.com/sharer/sharer.php?u=${url}`;
+    }
+
+    function updateMetaTags(article) {
+      const url = window.location.href;
+      const description = article.excerpt || article.subtitle || article.title;
+      const image = article.featured_image_url || 'https://agenticadvertising.org/AAo-social.png';
+
+      // Update page meta
+      document.getElementById('pageTitle').textContent = `${article.title} | AgenticAdvertising.org`;
+      document.getElementById('pageDescription').content = description;
+      document.getElementById('canonicalUrl').href = url;
+
+      // Update Open Graph
+      document.getElementById('ogUrl').content = url;
+      document.getElementById('ogTitle').content = article.title;
+      document.getElementById('ogDescription').content = description;
+      document.getElementById('ogImage').content = image;
+
+      // Update Twitter
+      document.getElementById('twitterUrl').content = url;
+      document.getElementById('twitterTitle').content = article.title;
+      document.getElementById('twitterDescription').content = description;
+      document.getElementById('twitterImage').content = image;
+
+      // Update JSON-LD
+      const jsonLd = {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": article.title,
+        "description": description,
+        "url": url,
+        "datePublished": article.published_at,
+        "dateModified": article.updated_at || article.published_at,
+        "author": article.author_name ? {
+          "@type": "Person",
+          "name": article.author_name
+        } : {
+          "@type": "Organization",
+          "name": "AgenticAdvertising.org"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "AgenticAdvertising.org",
+          "url": "https://agenticadvertising.org",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://agenticadvertising.org/AAo.svg"
+          }
+        },
+        "mainEntityOfPage": {
+          "@type": "WebPage",
+          "@id": url
+        }
+      };
+
+      if (image && image !== 'https://agenticadvertising.org/AAo-social.png') {
+        jsonLd.image = image;
+      }
+
+      document.getElementById('articleJsonLd').textContent = JSON.stringify(jsonLd);
+    }
+
     async function loadArticle() {
       // Get slug from URL path
       const pathParts = window.location.pathname.split('/');
@@ -192,6 +544,7 @@
         }
 
         const article = await response.json();
+        currentArticle = article;
 
         // If it's a link type, redirect to external URL
         if (article.content_type === 'link' && article.external_url) {
@@ -199,9 +552,11 @@
           return;
         }
 
-        // Update page title and meta
-        document.getElementById('pageTitle').textContent = `${article.title} | AgenticAdvertising.org`;
-        document.getElementById('pageDescription').content = article.excerpt || article.subtitle || article.title;
+        // Update meta tags for SEO
+        updateMetaTags(article);
+
+        // Update social share links
+        updateSocialShareLinks(article);
 
         // Update hero section
         document.getElementById('heroTitle').textContent = article.title;
@@ -212,6 +567,30 @@
         if (article.category) {
           document.getElementById('heroCategory').textContent = article.category;
         }
+
+        // Display tags
+        if (article.tags && article.tags.length > 0) {
+          const tagsContainer = document.getElementById('articleTags');
+          tagsContainer.innerHTML = article.tags.map(tag =>
+            `<span class="article-tag">${escapeHtml(tag)}</span>`
+          ).join('');
+          tagsContainer.style.display = 'flex';
+        }
+
+        // Display date
+        if (article.published_at) {
+          document.getElementById('articleDate').textContent = formatDate(article.published_at);
+        }
+
+        // Update like button
+        isLiked = checkUserLike(article.id);
+        const likeButton = document.getElementById('likeButton');
+        const likeIcon = document.getElementById('likeIcon');
+        if (isLiked) {
+          likeButton.classList.add('liked');
+          likeIcon.setAttribute('fill', 'currentColor');
+        }
+        document.getElementById('likeCount').textContent = article.like_count || 0;
 
         // Render markdown content
         if (article.content) {
