@@ -1077,6 +1077,14 @@ export class HTTPServer {
       res.sendFile(aboutPath);
     });
 
+    // Membership page - serve membership.html at /membership
+    this.app.get("/membership", (req, res) => {
+      const membershipPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/membership.html")
+        : path.join(__dirname, "../public/membership.html");
+      res.sendFile(membershipPath);
+    });
+
     // Perspectives section
     this.app.get("/perspectives", (req, res) => {
       const perspectivesPath = process.env.NODE_ENV === 'production'
@@ -5051,11 +5059,27 @@ Disallow: /api/admin/
         const { orgId } = req.params;
 
         // Get organization from database
-        const org = await orgDb.getOrganization(orgId);
+        let org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          // Organization not in local DB - try to sync from WorkOS on-demand
+          try {
+            const workosOrg = await workos!.organizations.getOrganization(orgId);
+            if (workosOrg) {
+              org = await orgDb.createOrganization({
+                workos_organization_id: workosOrg.id,
+                name: workosOrg.name,
+              });
+              logger.info({ orgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS');
+            }
+          } catch (syncError) {
+            logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS on-demand');
+          }
+        }
+
         if (!org) {
           return res.status(404).json({
             error: 'Organization not found',
-            message: 'The requested organization does not exist in database',
+            message: 'The requested organization does not exist',
           });
         }
 

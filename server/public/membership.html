@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Membership - AgenticAdvertising.org</title>
+  <meta name="description" content="Join AgenticAdvertising.org as a founding member. Transparent pricing for corporate and individual memberships, with special founding member benefits through Q1 2026.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    /* =============================================================================
+       Membership Page styles
+       Uses design system variables - see /design-system.css for tokens
+       ============================================================================= */
+
+    /* Hero - use article variant (shorter) */
+    .hero--membership {
+      padding: var(--space-12) var(--space-5) var(--space-8);
+    }
+    .hero--membership .hero-container {
+      max-width: var(--container-md);
+    }
+    .hero--membership h1 {
+      font-size: var(--text-4xl);
+      margin-bottom: var(--space-4);
+    }
+
+    /* Sub-Navigation */
+    .sub-nav {
+      background: var(--color-bg-page);
+      border-bottom: var(--border-1) solid var(--color-border);
+      position: sticky;
+      top: 60px;
+      z-index: 100;
+    }
+    .sub-nav-container {
+      max-width: var(--container-md);
+      margin: 0 auto;
+      padding: 0 var(--space-5);
+    }
+    .sub-nav-links {
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .sub-nav-links a {
+      padding: var(--space-4) var(--space-6);
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+      font-size: var(--text-sm);
+      white-space: nowrap;
+      border-bottom: var(--border-3) solid transparent;
+      transition: var(--transition-all);
+    }
+    .sub-nav-links a:hover {
+      color: var(--aao-primary);
+      background: var(--color-primary-50);
+    }
+    .sub-nav-links a.active {
+      color: var(--aao-primary);
+      border-bottom-color: var(--aao-primary);
+    }
+
+    /* Main Content */
+    .container {
+      max-width: var(--container-md);
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-5);
+    }
+    .section {
+      padding: 0;
+      margin-bottom: var(--space-6);
+      scroll-margin-top: 140px;
+    }
+    .section:last-child {
+      margin-bottom: 0;
+    }
+    .section h2 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--aao-primary);
+      margin-bottom: var(--space-6);
+      padding-bottom: var(--space-3);
+      border-bottom: var(--border-3) solid var(--aao-primary);
+    }
+    .section h3 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-semibold);
+      color: var(--aao-black);
+      margin-top: var(--space-6);
+      margin-bottom: var(--space-4);
+    }
+    .section h3:first-child {
+      margin-top: 0;
+    }
+    .section p {
+      font-size: var(--text-lg);
+      line-height: var(--leading-relaxed);
+      color: var(--aao-gray-dark);
+      margin-bottom: var(--space-4);
+    }
+    .section p:last-child {
+      margin-bottom: 0;
+    }
+    .section a:not(.btn) {
+      color: var(--aao-primary);
+      font-weight: var(--font-medium);
+    }
+    .section a:not(.btn):hover {
+      text-decoration: underline;
+    }
+    .section ul {
+      margin: var(--space-4) 0 var(--space-6) var(--space-6);
+      color: var(--aao-gray-dark);
+    }
+    .section ul li {
+      margin-bottom: var(--space-2);
+      font-size: var(--text-base);
+      line-height: var(--leading-relaxed);
+    }
+
+    /* Founding Member Banner */
+    .founding-banner {
+      background: linear-gradient(135deg, var(--color-warning-50) 0%, var(--color-warning-100) 100%);
+      border: var(--border-2) solid var(--color-warning-400);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+      margin-bottom: var(--space-6);
+    }
+    .founding-pill {
+      display: inline-block;
+      background: var(--color-warning-600);
+      color: white;
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-bold);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: var(--space-3);
+    }
+    .founding-banner h3 {
+      color: var(--color-warning-800);
+      font-size: var(--text-xl);
+      margin: 0 0 var(--space-3) 0;
+    }
+    .founding-banner p {
+      color: var(--color-warning-800);
+      font-size: var(--text-base);
+      line-height: var(--leading-normal);
+      margin: 0;
+    }
+
+    /* Pricing Tables */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: var(--space-6);
+      margin-top: var(--space-6);
+    }
+    .pricing-card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+      border: var(--border-2) solid var(--color-border);
+      transition: var(--transition-all);
+    }
+    .pricing-card:hover {
+      border-color: var(--aao-primary);
+      box-shadow: var(--shadow-lg);
+    }
+    .pricing-card.featured {
+      border-color: var(--aao-primary);
+      position: relative;
+    }
+    .pricing-card.featured::before {
+      content: 'Most Popular';
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--aao-primary);
+      color: white;
+      padding: var(--space-1) var(--space-4);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-bold);
+      text-transform: uppercase;
+    }
+    .pricing-header {
+      text-align: center;
+      padding-bottom: var(--space-4);
+      border-bottom: var(--border-1) solid var(--color-border);
+      margin-bottom: var(--space-4);
+    }
+    .pricing-title {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--aao-black);
+      margin-bottom: var(--space-2);
+    }
+    .pricing-subtitle {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .pricing-amount {
+      text-align: center;
+      margin-bottom: var(--space-4);
+    }
+    .pricing-price {
+      font-size: var(--text-4xl);
+      font-weight: var(--font-bold);
+      color: var(--aao-primary);
+    }
+    .pricing-price .currency {
+      font-size: var(--text-xl);
+      vertical-align: super;
+    }
+    .pricing-period {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+    .pricing-features {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 var(--space-6) 0;
+    }
+    .pricing-features li {
+      padding: var(--space-2) 0;
+      color: var(--aao-gray-dark);
+      font-size: var(--text-sm);
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-2);
+    }
+    .pricing-features li::before {
+      content: '✓';
+      color: var(--color-success-600);
+      font-weight: var(--font-bold);
+      flex-shrink: 0;
+    }
+    .pricing-cta {
+      text-align: center;
+    }
+    .pricing-cta .btn {
+      width: 100%;
+    }
+
+    /* Tier Table */
+    .tier-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: var(--space-4);
+      font-size: var(--text-sm);
+    }
+    .tier-table th,
+    .tier-table td {
+      padding: var(--space-3) var(--space-4);
+      text-align: left;
+      border-bottom: var(--border-1) solid var(--color-border);
+    }
+    .tier-table th {
+      background: var(--color-gray-50);
+      font-weight: var(--font-semibold);
+      color: var(--aao-black);
+    }
+    .tier-table td {
+      color: var(--aao-gray-dark);
+    }
+    .tier-table .price {
+      font-weight: var(--font-semibold);
+      color: var(--aao-primary);
+    }
+    .tier-table .founding-price {
+      color: var(--color-warning-700);
+      font-weight: var(--font-bold);
+    }
+    .tier-note {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      display: block;
+      margin-top: var(--space-1);
+    }
+
+    /* Timeline Box */
+    .timeline-box {
+      background: var(--color-bg-page);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+      margin-top: var(--space-6);
+    }
+    .timeline-item {
+      display: flex;
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+    }
+    .timeline-item:last-child {
+      margin-bottom: 0;
+    }
+    .timeline-marker {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-full);
+      background: var(--aao-primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: var(--font-bold);
+      font-size: var(--text-sm);
+      flex-shrink: 0;
+    }
+    .timeline-marker.future {
+      background: var(--color-gray-300);
+    }
+    .timeline-content h4 {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--aao-black);
+      margin-bottom: var(--space-1);
+    }
+    .timeline-content p {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin: 0;
+      line-height: var(--leading-normal);
+    }
+
+    /* CTA Section */
+    .cta-section {
+      background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-primary-100) 100%);
+      border: var(--border-2) solid var(--aao-accent);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      text-align: center;
+      margin-top: var(--space-6);
+    }
+    .cta-section h3 {
+      font-size: var(--text-2xl);
+      color: var(--aao-primary);
+      margin-bottom: var(--space-4);
+      margin-top: 0;
+    }
+    .cta-section p {
+      color: var(--aao-gray-dark);
+      margin-bottom: var(--space-6);
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* Info Box */
+    .info-box {
+      background: var(--color-bg-page);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+      margin-top: var(--space-4);
+    }
+    .info-box p {
+      font-size: var(--text-base);
+      margin: 0;
+    }
+
+    /* Comparison Table */
+    .comparison-table-wrapper {
+      overflow-x: auto;
+      margin: var(--space-6) 0;
+    }
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-sm);
+      min-width: 600px;
+    }
+    .comparison-table th,
+    .comparison-table td {
+      padding: var(--space-3) var(--space-4);
+      text-align: left;
+      border-bottom: var(--border-1) solid var(--color-border);
+      vertical-align: top;
+    }
+    .comparison-table th {
+      background: var(--aao-primary);
+      color: white;
+      font-weight: var(--font-semibold);
+      position: sticky;
+      top: 0;
+    }
+    .comparison-table th:first-child {
+      background: var(--color-gray-100);
+      color: var(--aao-black);
+    }
+    .comparison-table tbody tr:hover {
+      background: var(--color-gray-50);
+    }
+    .comparison-table .eligibility-row td {
+      background: var(--color-gray-50);
+      font-size: var(--text-xs);
+      line-height: var(--leading-relaxed);
+    }
+    .comparison-table .section-header td {
+      background: var(--color-gray-100);
+      font-weight: var(--font-bold);
+      color: var(--aao-black);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: var(--space-2) var(--space-4);
+    }
+    .comparison-table .check {
+      color: var(--color-success-600);
+      font-weight: var(--font-bold);
+      font-size: var(--text-lg);
+      text-align: center;
+    }
+    .comparison-table .dash {
+      color: var(--color-gray-400);
+      text-align: center;
+    }
+
+    /* Key Takeaways */
+    .key-takeaways {
+      background: var(--color-primary-50);
+      border-left: var(--border-4) solid var(--aao-primary);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
+      margin-top: var(--space-6);
+    }
+    .key-takeaways h3 {
+      color: var(--aao-primary);
+      margin-top: 0;
+      margin-bottom: var(--space-3);
+      font-size: var(--text-lg);
+    }
+    .key-takeaways ul {
+      margin: 0;
+      padding-left: var(--space-5);
+    }
+    .key-takeaways li {
+      margin-bottom: var(--space-2);
+      font-size: var(--text-base);
+      color: var(--aao-gray-dark);
+    }
+    .key-takeaways li:last-child {
+      margin-bottom: 0;
+    }
+
+    /* FAQ Accordion */
+    .faq-item {
+      border-bottom: var(--border-1) solid var(--color-border);
+    }
+    .faq-item:last-child {
+      border-bottom: none;
+    }
+    .faq-question {
+      font-weight: var(--font-semibold);
+      color: var(--aao-black);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-4) 0;
+      user-select: none;
+    }
+    .faq-question:hover {
+      color: var(--aao-primary);
+    }
+    .faq-question::after {
+      content: '+';
+      font-size: var(--text-xl);
+      font-weight: var(--font-normal);
+      color: var(--color-text-secondary);
+      transition: transform 0.2s ease;
+    }
+    .faq-item.open .faq-question::after {
+      content: '−';
+    }
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+      color: var(--aao-gray-dark);
+      font-size: var(--text-base);
+      line-height: var(--leading-relaxed);
+    }
+    .faq-item.open .faq-answer {
+      max-height: 500px;
+      padding-bottom: var(--space-4);
+    }
+
+    @media (max-width: 768px) {
+      .hero--membership {
+        padding: var(--space-8) var(--space-4) var(--space-6);
+      }
+      .hero--membership h1 {
+        font-size: var(--text-2xl);
+      }
+      .container {
+        padding: var(--space-6) var(--space-4);
+      }
+      .sub-nav-links a {
+        padding: var(--space-3) var(--space-4);
+        font-size: var(--text-sm);
+      }
+      .section {
+        scroll-margin-top: 120px;
+      }
+      .pricing-grid {
+        grid-template-columns: 1fr;
+      }
+      .tier-table {
+        font-size: var(--text-xs);
+      }
+      .tier-table th,
+      .tier-table td {
+        padding: var(--space-2);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
+  <!-- Hero Section -->
+  <section class="hero hero--membership">
+    <div class="hero-container">
+      <h1>Become a Member</h1>
+      <p class="hero-subtitle">Join the organizations building the future of AI-powered advertising</p>
+      <p style="color: var(--color-warning-600); font-weight: var(--font-semibold); margin-top: var(--space-2);">Founding member pricing available through March 31, 2026</p>
+    </div>
+  </section>
+
+  <!-- Pricing Hero - Two Clear Options -->
+  <section class="pricing-hero" style="background: var(--color-bg-page); padding: var(--space-10) var(--space-5);">
+    <div style="max-width: var(--container-lg); margin: 0 auto;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--space-8); max-width: 900px; margin: 0 auto;">
+
+        <!-- Company Membership -->
+        <div class="pricing-card" style="border-width: 3px;">
+          <div class="pricing-header" style="border-bottom: none; padding-bottom: 0;">
+            <div class="pricing-title" style="font-size: var(--text-2xl);">Company Membership</div>
+          </div>
+          <div class="pricing-amount" style="margin-bottom: var(--space-2);">
+            <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-1);">$5M+ annual revenue</div>
+            <div class="pricing-price"><span class="currency">$</span>10,000<span style="font-size: var(--text-base); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+          </div>
+          <div style="text-align: center; margin-bottom: var(--space-4); padding-bottom: var(--space-4); border-bottom: var(--border-1) solid var(--color-border);">
+            <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Under $5M annual revenue</div>
+            <div style="font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--aao-primary);">$2,500<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+          </div>
+
+          <div style="text-align: left; margin-bottom: var(--space-5);">
+            <div style="font-weight: var(--font-semibold); color: var(--aao-black); margin-bottom: var(--space-3);">Company Membership Benefits</div>
+            <ul class="pricing-features" style="margin-bottom: 0;">
+              <li>Eligibility to serve on Board</li>
+              <li>Right to vote for Board</li>
+              <li>Help build standards, practices, protocols, and policies</li>
+              <li>Right to vote on standards adoption</li>
+              <li>Serve on interim Advisory Council</li>
+              <li>Participate in working groups</li>
+              <li>All team members can participate in association activities</li>
+            </ul>
+          </div>
+
+          <div class="pricing-cta">
+            <a href="/auth/login?redirect=/dashboard" class="btn btn-primary" style="font-size: var(--text-lg); padding: var(--space-4);">Join as a Company</a>
+          </div>
+          <p style="font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; margin-top: var(--space-3); margin-bottom: 0;">Open to brands, publishers, agencies, and ad tech providers</p>
+        </div>
+
+        <!-- Individual Membership -->
+        <div class="pricing-card" style="border-width: 3px;">
+          <div class="pricing-header" style="border-bottom: none; padding-bottom: 0;">
+            <div class="pricing-title" style="font-size: var(--text-2xl);">Individual Membership</div>
+          </div>
+          <div class="pricing-amount" style="margin-bottom: var(--space-2);">
+            <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-1);">Industry professionals</div>
+            <div class="pricing-price"><span class="currency">$</span>250<span style="font-size: var(--text-base); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+          </div>
+          <div style="text-align: center; margin-bottom: var(--space-4); padding-bottom: var(--space-4); border-bottom: var(--border-1) solid var(--color-border);">
+            <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Students, academics & non-profits</div>
+            <div style="font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--aao-primary);">$50<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+          </div>
+
+          <div style="text-align: left; margin-bottom: var(--space-5);">
+            <div style="font-weight: var(--font-semibold); color: var(--aao-black); margin-bottom: var(--space-3);">Individual Membership Benefits</div>
+            <ul class="pricing-features" style="margin-bottom: 0;">
+              <li>Help build standards, practices, protocols, and policies</li>
+              <li>Eligible for professional development and certification courses</li>
+              <li>Personal listing in member directory</li>
+              <li>Working group participation</li>
+              <li>Community Slack access</li>
+              <li>Event discounts and early access</li>
+              <li>Newsletter and industry updates</li>
+            </ul>
+          </div>
+
+          <div class="pricing-cta">
+            <a href="/auth/login?redirect=/dashboard" class="btn btn-primary" style="font-size: var(--text-lg); padding: var(--space-4);">Join as an Individual</a>
+          </div>
+          <p style="font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; margin-top: var(--space-3); margin-bottom: 0;">For consultants, professionals, and enthusiasts</p>
+        </div>
+      </div>
+
+      <p style="text-align: center; margin-top: var(--space-6); color: var(--color-text-secondary); font-size: var(--text-sm);">
+        Questions? Contact us at <a href="mailto:membership@agenticadvertising.org" style="color: var(--aao-primary);">membership@agenticadvertising.org</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- Sub-Navigation -->
+  <nav class="sub-nav">
+    <div class="sub-nav-container">
+      <div class="sub-nav-links">
+        <a href="#overview" class="active">Overview</a>
+        <a href="#founding-member">Founding Membership</a>
+        <a href="#membership-classes">Membership Classes</a>
+        <a href="#governance">Governance & Board</a>
+        <a href="#faq">FAQ</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="container">
+
+    <!-- Overview Section -->
+    <section class="section" id="overview">
+      <h2>What Membership Means</h2>
+      <p>
+        Membership in AgenticAdvertising.org means joining a community of forward-thinking organizations and individuals who believe the future of advertising should be built on open standards, not proprietary platforms.
+      </p>
+      <p>
+        As a member, you're not just subscribing to a service. You're investing in shared infrastructure that benefits the entire advertising ecosystem. Your membership dues fund:
+      </p>
+      <ul>
+        <li><strong>Standards Development</strong> - Engineering resources to maintain and evolve AdCP and related protocols</li>
+        <li><strong>Education & Advocacy</strong> - Programs to help the industry understand and adopt agentic advertising</li>
+        <li><strong>Working Groups</strong> - Forums for members to collaborate on specific challenges and opportunities</li>
+        <li><strong>Community Building</strong> - Events, resources, and connections that bring the ecosystem together</li>
+      </ul>
+    </section>
+
+    <!-- Membership Classes Section -->
+    <section class="section" id="membership-classes">
+      <h2>Membership Classes</h2>
+      <p>
+        AgenticAdvertising.org offers three membership classes, each with different rights and benefits. Choose the class that best fits your role in the agentic advertising ecosystem.
+      </p>
+
+      <div class="comparison-table-wrapper">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Rights & Benefits</th>
+              <th>Voting Member</th>
+              <th>Individual Member</th>
+              <th>Associate Member</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="eligibility-row">
+              <td><strong>Eligibility</strong></td>
+              <td>Primary industry participants (Marketers, Publishers, Agencies, Tech Providers)</td>
+              <td>Individuals working in or interested in agentic advertising</td>
+              <td>Non-primary participants, adjacent organizations</td>
+            </tr>
+            <tr class="section-header">
+              <td colspan="4">Governance Rights</td>
+            </tr>
+            <tr>
+              <td>Vote on corporate matters</td>
+              <td class="check">&#10003;</td>
+              <td class="dash">&mdash;</td>
+              <td class="dash">&mdash;</td>
+            </tr>
+            <tr>
+              <td>Elect & remove Directors</td>
+              <td class="check">&#10003;</td>
+              <td class="dash">&mdash;</td>
+              <td class="dash">&mdash;</td>
+            </tr>
+            <tr>
+              <td>Amend bylaws & certificate</td>
+              <td class="check">&#10003;</td>
+              <td class="dash">&mdash;</td>
+              <td class="dash">&mdash;</td>
+            </tr>
+            <tr>
+              <td>Approve mergers, dissolution, asset sales</td>
+              <td class="check">&#10003;</td>
+              <td class="dash">&mdash;</td>
+              <td class="dash">&mdash;</td>
+            </tr>
+            <tr>
+              <td>Hold elected or appointed office</td>
+              <td class="check">&#10003;</td>
+              <td class="dash">&mdash;</td>
+              <td class="dash">&mdash;</td>
+            </tr>
+            <tr class="section-header">
+              <td colspan="4">Participation & Benefits</td>
+            </tr>
+            <tr>
+              <td>Participate in Corporation activities</td>
+              <td><strong>All activities</strong></td>
+              <td>Activities open to Individual Members</td>
+              <td><em>Subject to participant limits</em></td>
+            </tr>
+            <tr>
+              <td>Education, training & development programs</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+            </tr>
+            <tr>
+              <td>Seek professional certification</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+              <td class="dash">&mdash;</td>
+            </tr>
+            <tr>
+              <td>Participate in working groups & convenings</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+              <td class="check">&#10003;</td>
+            </tr>
+            <tr>
+              <td>Participate in category-specific Member Committees</td>
+              <td class="check">&#10003;</td>
+              <td class="dash">&mdash;</td>
+              <td class="dash">&mdash;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="key-takeaways">
+        <h3>Key Takeaways</h3>
+        <ul>
+          <li><strong>Voting Members</strong> control all governance and strategic decisions</li>
+          <li><strong>Individual Members</strong> access professional development without governance rights</li>
+          <li><strong>Associate Members</strong> have important participation rights</li>
+          <li>All membership classes require annual dues (amounts set by Board)</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Founding Member Section -->
+    <section class="section" id="founding-member">
+      <h2>Founding Membership</h2>
+      <p>
+        AgenticAdvertising.org is in its formation phase. We're offering special founding membership rates through Q1 2026 to organizations and individuals who want to help establish the organization and shape its direction.
+      </p>
+
+      <h3>What Founding Members Get</h3>
+      <ul>
+        <li><strong>Advisory Council membership</strong> - Join the Advisory Council that shapes early strategy and the member value proposition</li>
+        <li><strong>Board voting rights</strong> - Vote on the initial board of directors when elections are held</li>
+        <li><strong>Board eligibility</strong> - Founding members are eligible to serve on the board</li>
+        <li><strong>Launch event priority</strong> - Early founding members have priority access to the April 2026 launch event</li>
+        <li><strong>Recognition</strong> - Permanent recognition as a founding member of the organization</li>
+      </ul>
+
+      <div class="info-box">
+        <p>
+          <strong>Important:</strong> Founding membership rates are available through March 31, 2026. After this date, pricing will evolve to reflect the organization's growing programs and services. We expect rates to increase and introduce more tiered complexity as we move into 2026 and beyond.
+        </p>
+      </div>
+
+      <div class="timeline-box">
+        <h3 style="margin-top: 0;">Timeline</h3>
+        <div class="timeline-item">
+          <div class="timeline-marker">Q4</div>
+          <div class="timeline-content">
+            <h4>December 2025 - Launch</h4>
+            <p>Organization launches with founding member program. Founding members join the Advisory Council to help shape early direction.</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-marker">Q1</div>
+          <div class="timeline-content">
+            <h4>Q1 2026 - Board Formation</h4>
+            <p>Founding members participate in initial board selection process. Advisory Council shapes governance structures and member value proposition.</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-marker">Q2</div>
+          <div class="timeline-content">
+            <h4>April 2026 - Launch Event</h4>
+            <p>Official launch event with founding members. Board assumes formal governance.</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-marker future">H2</div>
+          <div class="timeline-content">
+            <h4>H2 2026 - Standard Operations</h4>
+            <p>New pricing structure takes effect for new members.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Governance Section -->
+    <section class="section" id="governance">
+      <h2>Governance & Board</h2>
+      <p>
+        AgenticAdvertising.org is committed to transparent, member-driven governance. The organization's direction will be set by a board elected from and by the membership.
+      </p>
+
+      <h3>Advisory Council</h3>
+      <p>
+        During the formation phase, founding members participate in the Advisory Council - a collaborative group that helps shape early strategy, governance structures, and the member value proposition. The Advisory Council provides input and feedback as we build the organization.
+      </p>
+
+      <h3>Initial Board Selection</h3>
+      <p>
+        The initial board will be selected in Q1 2026 from among the founding members. This is a unique opportunity to help establish the governance structures and strategic priorities that will guide the organization for years to come.
+      </p>
+      <ul>
+        <li><strong>Who can vote:</strong> All founding members (corporate and individual) who join before March 31, 2026</li>
+        <li><strong>Who is eligible to serve:</strong> Founding members in good standing</li>
+        <li><strong>Board composition:</strong> Will represent a balance of buyers (brands/agencies), sellers (publishers), and technology providers</li>
+        <li><strong>Selection process:</strong> Details will be announced in January 2026</li>
+      </ul>
+
+      <div class="info-box">
+        <p>
+          <strong>Recommendation:</strong> If you want to participate in the initial board selection process, we encourage you to join as a founding member in Q1 2026 so you can be part of shaping the organization's governance from the start.
+        </p>
+      </div>
+
+      <h3>Ongoing Governance</h3>
+      <p>
+        After the initial formation period, the board will establish regular governance processes including:
+      </p>
+      <ul>
+        <li>Annual board elections with member voting</li>
+        <li>Working group charters and oversight</li>
+        <li>Financial transparency and reporting</li>
+        <li>Standards development governance</li>
+      </ul>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="section" id="faq">
+      <h2>Frequently Asked Questions</h2>
+
+      <div class="faq-item">
+        <div class="faq-question">How do I choose which membership tier is right for me?</div>
+        <div class="faq-answer">
+          All membership tiers include identical benefits within their category (corporate or individual). Choose the tier that best reflects your organization's size and ability to contribute. We trust members to self-select honestly.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">Can I pay monthly instead of annually?</div>
+        <div class="faq-answer">
+          Currently, we only offer annual memberships. This helps us plan and invest in programs that benefit the community. Monthly billing may be available in the future.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">What if my organization is a non-profit?</div>
+        <div class="faq-answer">
+          Non-profit organizations typically qualify for lower-tier pricing regardless of budget size. Contact us to discuss your situation and we'll find the right fit.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">Do I need to be an AAO member to use AdCP?</div>
+        <div class="faq-answer">
+          No. AdCP is an open protocol that anyone can implement. Membership in AgenticAdvertising.org is about participating in the community that develops and governs these standards, not about access to the technology itself.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">How will rates change in 2026?</div>
+        <div class="faq-answer">
+          We expect rates to evolve as the organization grows its programs and services. We may also introduce additional tiers or membership types. Current founding member rates are available through Q1 2026.
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA Section -->
+    <div class="cta-section">
+      <h3>Ready to Join?</h3>
+      <p>
+        Become a founding member today and help shape the future of agentic advertising. Join before March 31, 2026 to participate in the initial board selection process.
+      </p>
+      <a href="#" onclick="window.scrollTo({top: 0, behavior: 'smooth'}); return false;" class="btn btn-primary btn-lg">View Membership Options</a>
+    </div>
+  </div>
+
+  <!-- Shared Footer -->
+  <div id="adcp-footer"></div>
+
+  <script>
+    // Sub-nav active state on scroll
+    const sections = document.querySelectorAll('.section[id]');
+    const navLinks = document.querySelectorAll('.sub-nav-links a');
+
+    function updateActiveNav() {
+      const scrollPos = window.scrollY + 160;
+
+      sections.forEach(section => {
+        const top = section.offsetTop;
+        const height = section.offsetHeight;
+        const id = section.getAttribute('id');
+
+        if (scrollPos >= top && scrollPos < top + height) {
+          navLinks.forEach(link => {
+            link.classList.remove('active');
+            if (link.getAttribute('href') === '#' + id) {
+              link.classList.add('active');
+            }
+          });
+        }
+      });
+    }
+
+    window.addEventListener('scroll', updateActiveNav);
+    updateActiveNav();
+
+    // Smooth scroll for sub-nav links
+    navLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetId = link.getAttribute('href').slice(1);
+        const target = document.getElementById(targetId);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    });
+
+    // FAQ Accordion
+    const faqItems = document.querySelectorAll('.faq-item');
+    faqItems.forEach(item => {
+      const question = item.querySelector('.faq-question');
+      question.addEventListener('click', () => {
+        // Close other open items
+        faqItems.forEach(other => {
+          if (other !== item && other.classList.contains('open')) {
+            other.classList.remove('open');
+          }
+        });
+        // Toggle current item
+        item.classList.toggle('open');
+      });
+    });
+  </script>
+</body>
+</html>

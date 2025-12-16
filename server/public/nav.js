@@ -96,15 +96,28 @@
     }
 
     // Build members link (only if membership is enabled on beta site)
+    // Use exact match to avoid highlighting on /membership page
     const membersLink = membershipEnabled
-      ? `<a href="${membersUrl}" class="navbar__link ${currentPath.startsWith('/members') ? 'active' : ''}">Members</a>`
+      ? `<a href="${membersUrl}" class="navbar__link ${currentPath === '/members' ? 'active' : ''}">Members</a>`
       : '';
 
-    // Build about link (only on beta site - links to trade association)
-    // Spell out full name to clarify this is about the org, not the protocol
+    // Build about dropdown (only on beta site - links to trade association)
+    // Includes About page and Membership page
     const aboutUrl = isLocal ? '/about' : 'https://agenticadvertising.org/about';
-    const aboutLink = membershipEnabled
-      ? `<a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About AgenticAdvertising.org</a>`
+    const membershipUrl = isLocal ? '/membership' : 'https://agenticadvertising.org/membership';
+    const aboutDropdown = membershipEnabled
+      ? `<div class="navbar__dropdown-wrapper">
+          <button class="navbar__link navbar__dropdown-trigger ${currentPath === '/about' || currentPath === '/membership' ? 'active' : ''}">
+            AgenticAdvertising.org
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            </svg>
+          </button>
+          <div class="navbar__dropdown navbar__dropdown--nav">
+            <a href="${aboutUrl}" class="navbar__dropdown-item ${currentPath === '/about' ? 'active' : ''}">About</a>
+            <a href="${membershipUrl}" class="navbar__dropdown-item ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
+          </div>
+        </div>`
       : '';
 
     // Build perspectives link (only on beta site)
@@ -135,7 +148,7 @@
               ${aboutAdcpLink}
               ${membersLink}
               ${perspectivesLink}
-              ${aboutLink}
+              ${aboutDropdown}
             </div>
           </div>
           <div class="navbar__items navbar__items--right">
@@ -155,7 +168,8 @@
           ${aboutAdcpLink}
           ${membersLink}
           ${perspectivesLink}
-          ${aboutLink}
+          <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
+          <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
           <a href="${docsUrl}" class="navbar__link">Docs</a>
           <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
         </div>
@@ -244,7 +258,7 @@
       }
 
       .navbar__link.active {
-        color: #1a36b4;
+        color: var(--aao-primary, #1a36b4);
         font-weight: 600;
       }
 
@@ -309,6 +323,39 @@
 
       .navbar__dropdown.open {
         display: block;
+      }
+
+      /* Nav dropdown wrapper for hover menus */
+      .navbar__dropdown-wrapper {
+        position: relative;
+      }
+
+      .navbar__dropdown-trigger {
+        display: flex;
+        align-items: center;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: inherit;
+        font-family: inherit;
+      }
+
+      .navbar__dropdown--nav {
+        display: none;
+        position: absolute;
+        top: calc(100% + 0.25rem);
+        left: 0;
+        min-width: 220px;
+      }
+
+      .navbar__dropdown-wrapper:hover .navbar__dropdown--nav,
+      .navbar__dropdown--nav:hover {
+        display: block;
+      }
+
+      .navbar__dropdown--nav .navbar__dropdown-item.active {
+        color: var(--aao-primary, #1a36b4);
+        font-weight: 600;
       }
 
       .navbar__dropdown-header {
@@ -400,6 +447,10 @@
           background: #7f1d1d;
         }
 
+        .navbar__dropdown--nav .navbar__dropdown-item.active {
+          color: var(--color-primary-400, #60a5fa);
+        }
+
         /* In dark mode, remove invert filter for AAO logo (it's already white) */
         .navbar__logo-img[data-invert="true"] {
           filter: none;
@@ -451,6 +502,10 @@
 
       [data-theme="dark"] .navbar__dropdown-item--danger:hover {
         background: #7f1d1d;
+      }
+
+      [data-theme="dark"] .navbar__dropdown--nav .navbar__dropdown-item.active {
+        color: var(--color-primary-400, #60a5fa);
       }
 
       /* In dark mode, remove invert filter for AAO logo */
@@ -520,6 +575,11 @@
 
       .navbar__mobile-menu .navbar__link:hover {
         background: #f3f4f6;
+      }
+
+      .navbar__mobile-menu .navbar__link--indent {
+        padding-left: 2rem;
+        font-size: 0.9rem;
       }
 
       /* Desktop-only links wrapper */
