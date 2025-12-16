@@ -201,6 +201,12 @@
               "docs/reference/authentication",
               "docs/reference/glossary"
             ]
+          },
+          {
+            "group": "Community",
+            "pages": [
+              "docs/community/working-group"
+            ]
           }
         ]
       }
