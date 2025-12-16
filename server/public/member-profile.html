@@ -1090,15 +1090,8 @@
         renderTags();
       }
 
-      // Set agents (with backward compatibility for agent_urls)
-      if (profile.agents && profile.agents.length > 0) {
-        agents = [...profile.agents];
-      } else if (profile.agent_urls && profile.agent_urls.length > 0) {
-        // Convert legacy agent_urls to agents format
-        agents = profile.agent_urls.map(url => ({ url, is_public: true }));
-      } else {
-          agents = [];
-      }
+      // Set agents
+      agents = profile.agents ? [...profile.agents] : [];
       renderAgents();
       // Discover info for each agent
       agents.forEach(agent => discoverAgentInfo(agent.url));

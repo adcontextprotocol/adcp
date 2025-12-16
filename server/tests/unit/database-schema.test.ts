@@ -79,7 +79,8 @@ const EXPECTED_COLUMNS = {
     'twitter_url',
     'offerings',
     'agents',
-    'agent_urls',
+    'headquarters',
+    'markets',
     'metadata',
     'tags',
     'is_public',
@@ -163,7 +164,7 @@ const CRITICAL_QUERIES = {
   // From member-db.ts
   memberProfileInsert: {
     table: 'member_profiles',
-    columns: ['workos_organization_id', 'display_name', 'slug', 'offerings', 'agent_urls', 'is_public', 'show_in_carousel'],
+    columns: ['workos_organization_id', 'display_name', 'slug', 'offerings', 'agents', 'is_public', 'show_in_carousel'],
     source: 'member-db.ts:createProfile',
   },
 

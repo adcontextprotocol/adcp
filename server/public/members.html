@@ -1482,13 +1482,13 @@
             </div>
           ` : ''}
 
-          ${member.agent_urls && member.agent_urls.length > 0 ? `
+          ${member.agents && member.agents.length > 0 ? `
             <div class="detail-section">
               <h2>Registered Agents</h2>
               <div class="agents-list" id="agents-list">
-                ${member.agent_urls.map((url, i) => `
-                  <div class="agent-item-wrapper" id="agent-${i}" data-url="${url}" onclick="openAgentModal('${url}')" style="cursor: pointer;">
-                    ${renderAgentCard(null, url, { showStatus: true })}
+                ${member.agents.map((agent, i) => `
+                  <div class="agent-item-wrapper" id="agent-${i}" data-url="${agent.url}" onclick="openAgentModal('${agent.url}')" style="cursor: pointer;">
+                    ${renderAgentCard(null, agent.url, { showStatus: true })}
                   </div>
                 `).join('')}
               </div>
@@ -1549,8 +1549,8 @@
       updateShareLinks(member);
 
       // Discover agent info for each registered agent
-      if (member.agent_urls && member.agent_urls.length > 0) {
-        discoverAgents(member.agent_urls);
+      if (member.agents && member.agents.length > 0) {
+        discoverAgents(member.agents.map(a => a.url));
       }
     }
 

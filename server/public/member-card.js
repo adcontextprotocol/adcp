@@ -46,7 +46,7 @@ function renderMemberCard(member, options = {}) {
   }
 
   // Agent count badge - show if member has registered agents
-  const agentCount = (member.agent_urls || []).length;
+  const agentCount = (member.agents || []).length;
   const agentBadge = agentCount > 0
     ? `<span class="agent-badge">${agentCount} Agent${agentCount > 1 ? 's' : ''}</span>`
     : '';

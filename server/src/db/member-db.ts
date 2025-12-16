@@ -23,10 +23,7 @@ export class MemberDatabase {
    * Create a new member profile
    */
   async createProfile(input: CreateMemberProfileInput): Promise<MemberProfile> {
-    // Convert legacy agent_urls to agents format if needed
-    const agents = this.normalizeAgents(input.agents, input.agent_urls);
-    // Also store flat list in agent_urls for backward compatibility
-    const agentUrls = agents.map(a => a.url);
+    const agents = input.agents || [];
 
     const result = await query<MemberProfile>(
       `INSERT INTO member_profiles (
@@ -34,9 +31,9 @@ export class MemberDatabase {
         logo_url, logo_light_url, logo_dark_url, brand_color,
         contact_email, contact_website, contact_phone,
         linkedin_url, twitter_url,
-        offerings, agents, agent_urls, headquarters, markets, metadata, tags,
+        offerings, agents, headquarters, markets, metadata, tags,
         is_public, show_in_carousel
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       RETURNING *`,
       [
         input.workos_organization_id,
@@ -55,7 +52,6 @@ export class MemberDatabase {
         input.twitter_url || null,
         input.offerings || [],
         JSON.stringify(agents),
-        agentUrls,
         input.headquarters || null,
         input.markets || [],
         JSON.stringify(input.metadata || {}),
@@ -111,15 +107,6 @@ export class MemberDatabase {
     id: string,
     updates: UpdateMemberProfileInput
   ): Promise<MemberProfile | null> {
-    // Normalize agents if provided (handles both agents and legacy agent_urls)
-    let normalizedUpdates = { ...updates };
-    if (updates.agents || updates.agent_urls) {
-      const agents = this.normalizeAgents(updates.agents, updates.agent_urls);
-      normalizedUpdates.agents = agents;
-      // Keep agent_urls in sync for backward compatibility
-      normalizedUpdates.agent_urls = agents.map(a => a.url);
-    }
-
     // Build SET clause dynamically using explicit column mapping
     const COLUMN_MAP: Record<keyof UpdateMemberProfileInput, string> = {
       display_name: 'display_name',
@@ -136,7 +123,6 @@ export class MemberDatabase {
       twitter_url: 'twitter_url',
       offerings: 'offerings',
       agents: 'agents',
-      agent_urls: 'agent_urls',
       headquarters: 'headquarters',
       markets: 'markets',
       metadata: 'metadata',
@@ -149,7 +135,7 @@ export class MemberDatabase {
     const params: unknown[] = [];
     let paramIndex = 1;
 
-    for (const [key, value] of Object.entries(normalizedUpdates)) {
+    for (const [key, value] of Object.entries(updates)) {
       const columnName = COLUMN_MAP[key as keyof UpdateMemberProfileInput];
       if (!columnName) {
         continue; // Skip unknown fields
@@ -336,19 +322,10 @@ export class MemberDatabase {
         ? JSON.parse(row.agents)
         : row.agents;
     }
-    // Fallback: if agents is empty but agent_urls exists, convert
-    if (agents.length === 0 && row.agent_urls && row.agent_urls.length > 0) {
-      agents = row.agent_urls.map((url: string) => ({
-        url,
-        is_public: true, // Default to public for existing agents
-      }));
-    }
 
     return {
       ...row,
       agents,
-      // Derive agent_urls from agents for backward compatibility
-      agent_urls: agents.map(a => a.url),
       markets: row.markets || [],
       metadata: typeof row.metadata === 'string'
         ? JSON.parse(row.metadata)
@@ -356,24 +333,4 @@ export class MemberDatabase {
     };
   }
 
-  /**
-   * Normalize agents input - handles both AgentConfig[] and legacy string[] formats
-   */
-  private normalizeAgents(
-    agents?: AgentConfig[],
-    legacyUrls?: string[]
-  ): AgentConfig[] {
-    // If agents array is provided, use it
-    if (agents && agents.length > 0) {
-      return agents;
-    }
-    // Convert legacy agent_urls to AgentConfig[]
-    if (legacyUrls && legacyUrls.length > 0) {
-      return legacyUrls.map(url => ({
-        url,
-        is_public: true, // Default to public
-      }));
-    }
-    return [];
-  }
 }
