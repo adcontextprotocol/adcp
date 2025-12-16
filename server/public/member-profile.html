@@ -941,7 +941,7 @@
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
-      loadProfile();
+      // Setup event listeners first
       setupOfferingsToggle();
       setupTagsInput();
       setupSlugCheck();
@@ -949,6 +949,8 @@
       setupMemberCardPreview();
       setupPhoneFormatting();
       setupMarketsAutoSelect();
+      // Load profile data after listeners are ready
+      loadProfile();
     });
 
     function setupMemberCardPreview() {
@@ -1057,7 +1059,12 @@
       document.getElementById('logo_light_url').value = profile.logo_light_url || '';
       document.getElementById('logo_dark_url').value = profile.logo_dark_url || '';
       document.getElementById('contact_email').value = profile.contact_email || '';
-      document.getElementById('contact_phone').value = profile.contact_phone || '';
+      // Set phone and trigger formatting
+      const phoneInput = document.getElementById('contact_phone');
+      phoneInput.value = profile.contact_phone || '';
+      if (phoneInput.value) {
+        phoneInput.dispatchEvent(new Event('input'));
+      }
       document.getElementById('contact_website').value = profile.contact_website || '';
       document.getElementById('linkedin_url').value = profile.linkedin_url || '';
       document.getElementById('twitter_url').value = profile.twitter_url || '';
@@ -1194,8 +1201,12 @@
             formatted = '+' + digits.slice(0, 1) + ' (' + digits.slice(1, 4) + ') ' + digits.slice(4, 7) + '-' + digits.slice(7, 11);
           }
         } else if (digits.length > 0) {
-          // US format: (555) 123-4567
-          if (digits.length <= 3) {
+          // Check if this looks like a US number with country code (11 digits starting with 1)
+          if (digits.length === 11 && digits.startsWith('1')) {
+            // Format as +1 (XXX) XXX-XXXX
+            formatted = '+1 (' + digits.slice(1, 4) + ') ' + digits.slice(4, 7) + '-' + digits.slice(7, 11);
+          } else if (digits.length <= 3) {
+            // US format: (555) 123-4567
             formatted = '(' + digits;
           } else if (digits.length <= 6) {
             formatted = '(' + digits.slice(0, 3) + ') ' + digits.slice(3);
