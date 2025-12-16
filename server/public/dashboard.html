@@ -309,9 +309,31 @@
       font-family: monospace;
       font-weight: bold;
     }
+
+    /* Toast notification */
+    .toast {
+      position: fixed;
+      top: var(--space-5);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--color-success-600);
+      color: white;
+      padding: var(--space-3) var(--space-6);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      z-index: var(--z-toast);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      font-weight: 500;
+    }
+    .toast.show {
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
+  <!-- Toast notification -->
+  <div id="toast" class="toast"></div>
   <!-- Outdated Agreement Modal -->
   <div id="outdatedAgreementModal" class="modal-overlay">
     <div class="modal">
@@ -2033,6 +2055,28 @@
             confirmDeleteWorkspace();
           }
         });
+      }
+    });
+
+    // Toast notification helper
+    function showToast(message, duration = 3000) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, duration);
+    }
+
+    // Check for success messages from redirects
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('profile_created') === 'true') {
+        showToast('Member profile created successfully!');
+        // Clean up the URL without triggering a reload
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.delete('profile_created');
+        window.history.replaceState({}, '', newUrl);
       }
     });
   </script>
