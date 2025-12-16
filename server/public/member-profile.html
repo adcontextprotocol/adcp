@@ -1573,26 +1573,20 @@
         const wasNewProfile = isNewProfile;
         isNewProfile = false;
 
-        // Show success message and stay on page
+        // If this was a new profile creation, redirect to dashboard with success message
+        if (wasNewProfile) {
+          const orgParam = currentOrgId ? `&org=${currentOrgId}` : '';
+          window.location.href = `/dashboard?profile_created=true${orgParam}`;
+          return;
+        }
+
+        // For updates, show success message and stay on page
         showSuccess('Profile saved successfully!');
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save Profile';
 
         // Update status badge with new profile data
         updateStatusBadge(data.profile);
-
-        // If this was a new profile, update the UI to reflect it's now in edit mode
-        if (wasNewProfile) {
-          document.getElementById('form-title').textContent = currentOrgName ? `Edit ${currentOrgName} Profile` : 'Edit Member Profile';
-          document.getElementById('delete-btn').style.display = 'block';
-          document.getElementById('slug-group').style.display = 'none';
-          // Show preview button
-          if (data.profile.slug) {
-            const previewBtn = document.getElementById('preview-btn');
-            previewBtn.href = `/members/${data.profile.slug}`;
-            previewBtn.style.display = 'inline-block';
-          }
-        }
       } catch (error) {
         console.error('Save error:', error);
         showError(error.message || 'Failed to save profile. Please try again.');
