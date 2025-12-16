@@ -1077,6 +1077,14 @@ export class HTTPServer {
       res.sendFile(aboutPath);
     });
 
+    // Membership page - serve membership.html at /membership
+    this.app.get("/membership", (req, res) => {
+      const membershipPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/membership.html")
+        : path.join(__dirname, "../public/membership.html");
+      res.sendFile(membershipPath);
+    });
+
     // Perspectives section
     this.app.get("/perspectives", (req, res) => {
       const perspectivesPath = process.env.NODE_ENV === 'production'
