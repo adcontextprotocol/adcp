@@ -234,6 +234,50 @@
       color: var(--aao-gray-dark);
       margin-bottom: var(--space-6);
     }
+
+    /* Founding Member Banner */
+    .founding-banner {
+      background: linear-gradient(135deg, var(--aao-primary) 0%, var(--color-primary-700) 100%);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+      margin-bottom: var(--space-6);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-6);
+      flex-wrap: wrap;
+    }
+    .founding-banner-content h3 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: white;
+      margin: 0 0 var(--space-2) 0;
+    }
+    .founding-banner-content p {
+      font-size: var(--text-base);
+      color: var(--color-primary-100);
+      margin: 0;
+    }
+    .founding-banner .btn {
+      background: white;
+      color: var(--aao-primary);
+      font-weight: var(--font-semibold);
+      white-space: nowrap;
+    }
+    .founding-banner .btn:hover {
+      background: var(--color-primary-50);
+    }
+    .founding-banner .urgency {
+      font-size: var(--text-sm);
+      color: var(--color-warning-300);
+      margin-top: var(--space-2);
+    }
+    @media (max-width: 640px) {
+      .founding-banner {
+        flex-direction: column;
+        text-align: center;
+      }
+    }
     /* Leadership Section */
     .leaders-grid {
       display: grid;

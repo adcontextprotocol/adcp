@@ -102,19 +102,19 @@
       : '';
 
     // Build about dropdown (only on beta site - links to trade association)
-    // Includes About AAO page and Membership page
+    // Includes About page and Membership page
     const aboutUrl = isLocal ? '/about' : 'https://agenticadvertising.org/about';
     const membershipUrl = isLocal ? '/membership' : 'https://agenticadvertising.org/membership';
     const aboutDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${currentPath === '/about' || currentPath === '/membership' ? 'active' : ''}">
-            About AAO
+            AgenticAdvertising.org
             <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
               <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
             </svg>
           </button>
           <div class="navbar__dropdown navbar__dropdown--nav">
-            <a href="${aboutUrl}" class="navbar__dropdown-item ${currentPath === '/about' ? 'active' : ''}">About AgenticAdvertising.org</a>
+            <a href="${aboutUrl}" class="navbar__dropdown-item ${currentPath === '/about' ? 'active' : ''}">About</a>
             <a href="${membershipUrl}" class="navbar__dropdown-item ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
           </div>
         </div>`
@@ -168,7 +168,7 @@
           ${aboutAdcpLink}
           ${membersLink}
           ${perspectivesLink}
-          <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About AAO</a>
+          <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
           <a href="${docsUrl}" class="navbar__link">Docs</a>
           <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
@@ -258,7 +258,7 @@
       }
 
       .navbar__link.active {
-        color: #1a36b4;
+        color: var(--aao-primary, #1a36b4);
         font-weight: 600;
       }
 
@@ -354,7 +354,7 @@
       }
 
       .navbar__dropdown--nav .navbar__dropdown-item.active {
-        color: #1a36b4;
+        color: var(--aao-primary, #1a36b4);
         font-weight: 600;
       }
 
@@ -448,7 +448,7 @@
         }
 
         .navbar__dropdown--nav .navbar__dropdown-item.active {
-          color: #60a5fa;
+          color: var(--color-primary-400, #60a5fa);
         }
 
         /* In dark mode, remove invert filter for AAO logo (it's already white) */
@@ -505,7 +505,7 @@
       }
 
       [data-theme="dark"] .navbar__dropdown--nav .navbar__dropdown-item.active {
-        color: #60a5fa;
+        color: var(--color-primary-400, #60a5fa);
       }
 
       /* In dark mode, remove invert filter for AAO logo */

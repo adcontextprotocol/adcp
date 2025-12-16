@@ -5059,11 +5059,27 @@ Disallow: /api/admin/
         const { orgId } = req.params;
 
         // Get organization from database
-        const org = await orgDb.getOrganization(orgId);
+        let org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          // Organization not in local DB - try to sync from WorkOS on-demand
+          try {
+            const workosOrg = await workos!.organizations.getOrganization(orgId);
+            if (workosOrg) {
+              org = await orgDb.createOrganization({
+                workos_organization_id: workosOrg.id,
+                name: workosOrg.name,
+              });
+              logger.info({ orgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS');
+            }
+          } catch (syncError) {
+            logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS on-demand');
+          }
+        }
+
         if (!org) {
           return res.status(404).json({
             error: 'Organization not found',
-            message: 'The requested organization does not exist in database',
+            message: 'The requested organization does not exist',
           });
         }
 

@@ -445,30 +445,30 @@
         <div class="option-card" data-option="join" id="optionJoin">
           <div class="option-header">
             <div class="option-icon join">&#128101;</div>
-            <div class="option-title">Join an existing organization</div>
+            <div class="option-title">My company is already a member</div>
           </div>
           <div class="option-description">
-            Request to join a team that's already using AdCP. You'll need an admin to invite you.
+            Join your company's existing membership. You may need an admin to approve your access.
           </div>
         </div>
 
         <div class="option-card" data-option="create" id="optionCreate">
           <div class="option-header">
             <div class="option-icon create">&#127970;</div>
-            <div class="option-title">Create a new organization</div>
+            <div class="option-title">Register my company as a new member</div>
           </div>
           <div class="option-description">
-            Start fresh with a new organization. You can invite team members later.
+            Start a new company membership. You'll be able to invite team members after setup.
           </div>
         </div>
 
         <div class="option-card" data-option="individual" id="optionIndividual">
           <div class="option-header">
             <div class="option-icon individual">&#128100;</div>
-            <div class="option-title">Continue as an individual</div>
+            <div class="option-title">Join as an individual professional</div>
           </div>
           <div class="option-description">
-            Get started quickly with a personal workspace. You can always create an organization later.
+            Join with an individual membership. Perfect for consultants, freelancers, or those exploring the space.
           </div>
         </div>
       </div>
@@ -476,7 +476,7 @@
       <!-- Join Form -->
       <div id="joinForm" class="form-section">
         <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
-        <h2 style="margin-bottom: var(--space-5);">Join an Organization</h2>
+        <h2 style="margin-bottom: var(--space-5);">Join Your Company's Membership</h2>
 
         <!-- Pending invitations in join form -->
         <div id="joinInvitationsSection" style="display: none;">
@@ -503,10 +503,10 @@
       <!-- Create Org Form -->
       <div id="createForm" class="form-section">
         <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
-        <h2 style="margin-bottom: var(--space-5);">Create Your Organization</h2>
+        <h2 style="margin-bottom: var(--space-5);">Register Your Company</h2>
         <form id="createOrgForm">
           <div class="form-group">
-            <label for="orgName">Organization Name *</label>
+            <label for="orgName">Company Name *</label>
             <input type="text" id="orgName" required placeholder="Acme Corporation">
           </div>
           <div class="agreements-checkbox" onclick="document.getElementById('tosAgree').click(); event.stopPropagation();">
@@ -515,16 +515,16 @@
               I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Service</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
             </label>
           </div>
-          <button type="submit" class="btn" id="createBtn">Create Organization</button>
+          <button type="submit" class="btn" id="createBtn">Register Company</button>
         </form>
       </div>
 
       <!-- Individual Form -->
       <div id="individualForm" class="form-section">
         <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
-        <h2 style="margin-bottom: var(--space-5);">Personal Workspace</h2>
+        <h2 style="margin-bottom: var(--space-5);">Individual Membership</h2>
         <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); line-height: var(--leading-relaxed);">
-          We'll create a personal workspace for you. You can always create or join an organization later from your dashboard.
+          Join as an individual professional. You can always upgrade to a company membership later from your dashboard.
         </p>
         <div class="agreements-checkbox" onclick="document.getElementById('tosAgreeIndividual').click(); event.stopPropagation();">
           <input type="checkbox" id="tosAgreeIndividual" onclick="event.stopPropagation();">
@@ -532,7 +532,7 @@
             I agree to the <a href="/api/agreement?type=terms_of_service" target="_blank" onclick="event.stopPropagation();">Terms of Service</a> and <a href="/api/agreement?type=privacy_policy" target="_blank" onclick="event.stopPropagation();">Privacy Policy</a>
           </label>
         </div>
-        <button class="btn" id="individualBtn" onclick="createIndividualWorkspace()">Create Personal Workspace</button>
+        <button class="btn" id="individualBtn" onclick="createIndividualWorkspace()">Join as Individual</button>
       </div>
     </div>
   </div>

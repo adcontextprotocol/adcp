@@ -450,7 +450,6 @@
     /* FAQ Accordion */
     .faq-item {
       border-bottom: var(--border-1) solid var(--color-border);
-      padding: var(--space-4) 0;
     }
     .faq-item:last-child {
       border-bottom: none;
@@ -462,15 +461,33 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      padding: var(--space-4) 0;
+      user-select: none;
     }
     .faq-question:hover {
       color: var(--aao-primary);
     }
+    .faq-question::after {
+      content: '+';
+      font-size: var(--text-xl);
+      font-weight: var(--font-normal);
+      color: var(--color-text-secondary);
+      transition: transform 0.2s ease;
+    }
+    .faq-item.open .faq-question::after {
+      content: '−';
+    }
     .faq-answer {
-      padding-top: var(--space-3);
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
       color: var(--aao-gray-dark);
       font-size: var(--text-base);
       line-height: var(--leading-relaxed);
+    }
+    .faq-item.open .faq-answer {
+      max-height: 500px;
+      padding-bottom: var(--space-4);
     }
 
     @media (max-width: 768px) {
@@ -511,8 +528,87 @@
   <!-- Hero Section -->
   <section class="hero hero--membership">
     <div class="hero-container">
-      <h1>Membership</h1>
+      <h1>Become a Member</h1>
       <p class="hero-subtitle">Join the organizations building the future of AI-powered advertising</p>
+      <p style="color: var(--color-warning-600); font-weight: var(--font-semibold); margin-top: var(--space-2);">Founding member pricing available through March 31, 2026</p>
+    </div>
+  </section>
+
+  <!-- Pricing Hero - Two Clear Options -->
+  <section class="pricing-hero" style="background: var(--color-bg-page); padding: var(--space-10) var(--space-5);">
+    <div style="max-width: var(--container-lg); margin: 0 auto;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--space-8); max-width: 900px; margin: 0 auto;">
+
+        <!-- Company Membership -->
+        <div class="pricing-card" style="border-width: 3px;">
+          <div class="pricing-header" style="border-bottom: none; padding-bottom: 0;">
+            <div class="pricing-title" style="font-size: var(--text-2xl);">Company Membership</div>
+          </div>
+          <div class="pricing-amount" style="margin-bottom: var(--space-2);">
+            <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-1);">$5M+ annual revenue</div>
+            <div class="pricing-price"><span class="currency">$</span>10,000<span style="font-size: var(--text-base); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+          </div>
+          <div style="text-align: center; margin-bottom: var(--space-4); padding-bottom: var(--space-4); border-bottom: var(--border-1) solid var(--color-border);">
+            <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Under $5M annual revenue</div>
+            <div style="font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--aao-primary);">$2,500<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+          </div>
+
+          <div style="text-align: left; margin-bottom: var(--space-5);">
+            <div style="font-weight: var(--font-semibold); color: var(--aao-black); margin-bottom: var(--space-3);">Company Membership Benefits</div>
+            <ul class="pricing-features" style="margin-bottom: 0;">
+              <li>Eligibility to serve on Board</li>
+              <li>Right to vote for Board</li>
+              <li>Help build standards, practices, protocols, and policies</li>
+              <li>Right to vote on standards adoption</li>
+              <li>Serve on interim Advisory Council</li>
+              <li>Participate in working groups</li>
+              <li>All team members can participate in association activities</li>
+            </ul>
+          </div>
+
+          <div class="pricing-cta">
+            <a href="/auth/login?redirect=/dashboard" class="btn btn-primary" style="font-size: var(--text-lg); padding: var(--space-4);">Join as a Company</a>
+          </div>
+          <p style="font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; margin-top: var(--space-3); margin-bottom: 0;">Open to brands, publishers, agencies, and ad tech providers</p>
+        </div>
+
+        <!-- Individual Membership -->
+        <div class="pricing-card" style="border-width: 3px;">
+          <div class="pricing-header" style="border-bottom: none; padding-bottom: 0;">
+            <div class="pricing-title" style="font-size: var(--text-2xl);">Individual Membership</div>
+          </div>
+          <div class="pricing-amount" style="margin-bottom: var(--space-2);">
+            <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-1);">Industry professionals</div>
+            <div class="pricing-price"><span class="currency">$</span>250<span style="font-size: var(--text-base); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+          </div>
+          <div style="text-align: center; margin-bottom: var(--space-4); padding-bottom: var(--space-4); border-bottom: var(--border-1) solid var(--color-border);">
+            <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Students, academics & non-profits</div>
+            <div style="font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--aao-primary);">$50<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+          </div>
+
+          <div style="text-align: left; margin-bottom: var(--space-5);">
+            <div style="font-weight: var(--font-semibold); color: var(--aao-black); margin-bottom: var(--space-3);">Individual Membership Benefits</div>
+            <ul class="pricing-features" style="margin-bottom: 0;">
+              <li>Help build standards, practices, protocols, and policies</li>
+              <li>Eligible for professional development and certification courses</li>
+              <li>Personal listing in member directory</li>
+              <li>Working group participation</li>
+              <li>Community Slack access</li>
+              <li>Event discounts and early access</li>
+              <li>Newsletter and industry updates</li>
+            </ul>
+          </div>
+
+          <div class="pricing-cta">
+            <a href="/auth/login?redirect=/dashboard" class="btn btn-primary" style="font-size: var(--text-lg); padding: var(--space-4);">Join as an Individual</a>
+          </div>
+          <p style="font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; margin-top: var(--space-3); margin-bottom: 0;">For consultants, professionals, and enthusiasts</p>
+        </div>
+      </div>
+
+      <p style="text-align: center; margin-top: var(--space-6); color: var(--color-text-secondary); font-size: var(--text-sm);">
+        Questions? Contact us at <a href="mailto:membership@agenticadvertising.org" style="color: var(--aao-primary);">membership@agenticadvertising.org</a>
+      </p>
     </div>
   </section>
 
@@ -521,10 +617,8 @@
     <div class="sub-nav-container">
       <div class="sub-nav-links">
         <a href="#overview" class="active">Overview</a>
-        <a href="#membership-classes">Membership Classes</a>
         <a href="#founding-member">Founding Membership</a>
-        <a href="#corporate-pricing">Corporate Pricing</a>
-        <a href="#individual-pricing">Individual Pricing</a>
+        <a href="#membership-classes">Membership Classes</a>
         <a href="#governance">Governance & Board</a>
         <a href="#faq">FAQ</a>
       </div>
@@ -533,15 +627,6 @@
 
   <!-- Main Content -->
   <div class="container">
-    <!-- Founding Member Banner -->
-    <div class="founding-banner">
-      <span class="founding-pill">Limited Time</span>
-      <h3>Founding Membership Program</h3>
-      <p>
-        Join before March 31, 2026 to vote on the initial board and be eligible to serve on the board yourself.
-        Founding members join the Advisory Council and help shape the early strategy and governance of the organization.
-      </p>
-    </div>
 
     <!-- Overview Section -->
     <section class="section" id="overview">
@@ -557,16 +642,6 @@
         <li><strong>Education & Advocacy</strong> - Programs to help the industry understand and adopt agentic advertising</li>
         <li><strong>Working Groups</strong> - Forums for members to collaborate on specific challenges and opportunities</li>
         <li><strong>Community Building</strong> - Events, resources, and connections that bring the ecosystem together</li>
-      </ul>
-
-      <h3>Member Benefits</h3>
-      <ul>
-        <li>Participate in working groups shaping protocol development</li>
-        <li>Early access to new standards, tools, and educational resources</li>
-        <li>Listing in the <a href="/members">member directory</a> with agent discovery capabilities</li>
-        <li>Connect with peers navigating the transition to agentic advertising</li>
-        <li>Influence the organization's strategic direction through governance participation</li>
-        <li>Access to members-only data, tools, and resources (coming soon)</li>
       </ul>
     </section>
 
@@ -730,63 +805,6 @@
       </div>
     </section>
 
-    <!-- Corporate Pricing Section -->
-    <section class="section" id="corporate-pricing">
-      <h2>Corporate Membership</h2>
-      <p>
-        Corporate membership is for organizations - companies, agencies, publishers, and technology providers - who want to participate in shaping the future of agentic advertising.
-      </p>
-
-      <h3>What's Included</h3>
-      <ul>
-        <li>Full organizational membership with directory listing</li>
-        <li>Unlimited team member access to member resources</li>
-        <li>Advisory Council participation</li>
-        <li>Board voting rights and eligibility</li>
-        <li>Working group participation</li>
-        <li>Logo recognition on website and materials</li>
-        <li>Early access to standards, tools, and research</li>
-        <li>Priority access to April 2026 launch event</li>
-      </ul>
-
-      <div class="cta-section" style="margin-top: var(--space-6);">
-        <h3>View Corporate Membership Options</h3>
-        <p>See current founding member rates and choose the tier that's right for your organization.</p>
-        <a href="/auth/login?redirect=/dashboard" class="btn btn-primary btn-lg">View Corporate Pricing</a>
-      </div>
-
-    </section>
-
-    <!-- Individual Pricing Section -->
-    <section class="section" id="individual-pricing">
-      <h2>Individual Membership</h2>
-      <p>
-        Individual membership is for professionals who want to stay connected to the agentic advertising movement - whether you're an independent consultant, between roles, or simply passionate about open standards in advertising.
-      </p>
-
-      <h3>What's Included</h3>
-      <ul>
-        <li>Personal listing in member directory</li>
-        <li>Access to member resources and tools</li>
-        <li>Working group participation</li>
-        <li>Event discounts and early access</li>
-        <li>Newsletter and industry updates</li>
-        <li>Community Slack access</li>
-      </ul>
-
-      <div class="cta-section" style="margin-top: var(--space-6);">
-        <h3>View Individual Membership Options</h3>
-        <p>See current founding member rates for individual professionals.</p>
-        <a href="/auth/login?redirect=/dashboard" class="btn btn-primary btn-lg">View Individual Pricing</a>
-      </div>
-
-      <div class="info-box" style="margin-top: var(--space-6);">
-        <p>
-          <strong>Note:</strong> If your organization is a member, you don't need an individual membership. Your corporate membership includes access for your entire team.
-        </p>
-      </div>
-    </section>
-
     <!-- Governance Section -->
     <section class="section" id="governance">
       <h2>Governance & Board</h2>
@@ -872,9 +890,9 @@
     <div class="cta-section">
       <h3>Ready to Join?</h3>
       <p>
-        Become a founding member today and help shape the future of agentic advertising. Join before Q1 2026 to participate in the initial board selection process.
+        Become a founding member today and help shape the future of agentic advertising. Join before March 31, 2026 to participate in the initial board selection process.
       </p>
-      <a href="/auth/login?redirect=/member-profile" class="btn btn-primary btn-lg">Become a Member</a>
+      <a href="#" onclick="window.scrollTo({top: 0, behavior: 'smooth'}); return false;" class="btn btn-primary btn-lg">View Membership Options</a>
     </div>
   </div>
 
@@ -917,6 +935,22 @@
         if (target) {
           target.scrollIntoView({ behavior: 'smooth' });
         }
+      });
+    });
+
+    // FAQ Accordion
+    const faqItems = document.querySelectorAll('.faq-item');
+    faqItems.forEach(item => {
+      const question = item.querySelector('.faq-question');
+      question.addEventListener('click', () => {
+        // Close other open items
+        faqItems.forEach(other => {
+          if (other !== item && other.classList.contains('open')) {
+            other.classList.remove('open');
+          }
+        });
+        // Toggle current item
+        item.classList.toggle('open');
       });
     });
   </script>
