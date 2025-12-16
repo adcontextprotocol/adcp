@@ -2,257 +2,28 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/pricing-option.json",
   "title": "Pricing Option",
-  "description": "A pricing model option offered by a publisher for a product. Discriminated by is_fixed: true uses rate field, is_fixed: false uses price_guidance field.",
+  "description": "A pricing model option offered by a publisher for a product. Each pricing model supports both fixed rate (is_fixed: true, rate field) and auction-based (is_fixed: false, price_guidance field) pricing.",
   "oneOf": [
     {
-      "title": "Fixed Rate Pricing",
-      "description": "Fixed rate pricing with guaranteed rate - common for direct/guaranteed deals",
-      "type": "object",
-      "properties": {
-        "pricing_option_id": {
-          "type": "string",
-          "description": "Unique identifier for this pricing option within the product"
-        },
-        "pricing_model": {
-          "$ref": "/schemas/enums/pricing-model.json"
-        },
-        "is_fixed": {
-          "type": "boolean",
-          "const": true,
-          "description": "Fixed rate pricing (true) - uses rate field"
-        },
-        "rate": {
-          "type": "number",
-          "description": "Fixed rate cost per unit (impressions, clicks, views, etc.)",
-          "minimum": 0
-        },
-        "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$",
-          "examples": ["USD", "EUR", "GBP", "JPY"]
-        },
-        "parameters": {
-          "type": "object",
-          "description": "Model-specific parameters (required for CPV, CPP; optional for flat_rate)",
-          "properties": {
-            "view_threshold": {
-              "oneOf": [
-                {
-                  "type": "number",
-                  "description": "Percentage completion threshold for CPV pricing (0.0 to 1.0)",
-                  "minimum": 0,
-                  "maximum": 1
-                },
-                {
-                  "type": "object",
-                  "description": "Time-based view threshold for CPV pricing",
-                  "properties": {
-                    "duration_seconds": {
-                      "type": "integer",
-                      "description": "Seconds of viewing required",
-                      "minimum": 1
-                    }
-                  },
-                  "required": ["duration_seconds"],
-                  "additionalProperties": false
-                }
-              ]
-            },
-            "demographic": {
-              "type": "string",
-              "pattern": "^[PMWAC][0-9]{2}(-[0-9]{2}|\\+)$",
-              "description": "Target demographic in Nielsen format for CPP (e.g., P18-49, M25-54, W35+)"
-            },
-            "min_points": {
-              "type": "number",
-              "description": "Minimum GRPs/TRPs required for CPP pricing",
-              "minimum": 0
-            },
-            "duration_hours": {
-              "type": "number",
-              "description": "Duration in hours for flat rate DOOH pricing",
-              "minimum": 0
-            },
-            "sov_percentage": {
-              "type": "number",
-              "description": "Guaranteed share of voice percentage for DOOH (0-100)",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "loop_duration_seconds": {
-              "type": "integer",
-              "description": "Duration of ad loop rotation in seconds for DOOH",
-              "minimum": 1
-            },
-            "min_plays_per_hour": {
-              "type": "integer",
-              "description": "Minimum ad plays per hour for DOOH frequency guarantee",
-              "minimum": 0
-            },
-            "venue_package": {
-              "type": "string",
-              "description": "Named venue package identifier for DOOH"
-            },
-            "estimated_impressions": {
-              "type": "integer",
-              "description": "Estimated impressions for flat rate option",
-              "minimum": 0
-            },
-            "daypart": {
-              "type": "string",
-              "description": "Specific daypart for time-based pricing"
-            }
-          },
-          "additionalProperties": false
-        },
-        "min_spend_per_package": {
-          "type": "number",
-          "description": "Minimum spend requirement per package using this pricing option",
-          "minimum": 0
-        }
-      },
-      "required": ["pricing_option_id", "pricing_model", "is_fixed", "rate", "currency"],
-      "additionalProperties": false
+      "$ref": "/schemas/pricing-options/cpm-option.json"
     },
     {
-      "title": "Auction-Based Pricing",
-      "description": "Auction-based pricing with price guidance - common for programmatic/non-guaranteed inventory",
-      "type": "object",
-      "properties": {
-        "pricing_option_id": {
-          "type": "string",
-          "description": "Unique identifier for this pricing option within the product"
-        },
-        "pricing_model": {
-          "$ref": "/schemas/enums/pricing-model.json"
-        },
-        "is_fixed": {
-          "type": "boolean",
-          "const": false,
-          "description": "Auction-based pricing (false) - uses price_guidance field"
-        },
-        "price_guidance": {
-          "type": "object",
-          "description": "Pricing guidance for auction bidding",
-          "properties": {
-            "floor": {
-              "type": "number",
-              "description": "Minimum bid price - publisher will reject bids under this value",
-              "minimum": 0
-            },
-            "p25": {
-              "type": "number",
-              "description": "25th percentile winning price",
-              "minimum": 0
-            },
-            "p50": {
-              "type": "number",
-              "description": "Median winning price",
-              "minimum": 0
-            },
-            "p75": {
-              "type": "number",
-              "description": "75th percentile winning price",
-              "minimum": 0
-            },
-            "p90": {
-              "type": "number",
-              "description": "90th percentile winning price",
-              "minimum": 0
-            }
-          },
-          "required": ["floor"],
-          "additionalProperties": false
-        },
-        "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$",
-          "examples": ["USD", "EUR", "GBP", "JPY"]
-        },
-        "parameters": {
-          "type": "object",
-          "description": "Model-specific parameters (required for CPV, CPP; optional for flat_rate)",
-          "properties": {
-            "view_threshold": {
-              "oneOf": [
-                {
-                  "type": "number",
-                  "description": "Percentage completion threshold for CPV pricing (0.0 to 1.0)",
-                  "minimum": 0,
-                  "maximum": 1
-                },
-                {
-                  "type": "object",
-                  "description": "Time-based view threshold for CPV pricing",
-                  "properties": {
-                    "duration_seconds": {
-                      "type": "integer",
-                      "description": "Seconds of viewing required",
-                      "minimum": 1
-                    }
-                  },
-                  "required": ["duration_seconds"],
-                  "additionalProperties": false
-                }
-              ]
-            },
-            "demographic": {
-              "type": "string",
-              "pattern": "^[PMWAC][0-9]{2}(-[0-9]{2}|\\+)$",
-              "description": "Target demographic in Nielsen format for CPP (e.g., P18-49, M25-54, W35+)"
-            },
-            "min_points": {
-              "type": "number",
-              "description": "Minimum GRPs/TRPs required for CPP pricing",
-              "minimum": 0
-            },
-            "duration_hours": {
-              "type": "number",
-              "description": "Duration in hours for flat rate DOOH pricing",
-              "minimum": 0
-            },
-            "sov_percentage": {
-              "type": "number",
-              "description": "Guaranteed share of voice percentage for DOOH (0-100)",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "loop_duration_seconds": {
-              "type": "integer",
-              "description": "Duration of ad loop rotation in seconds for DOOH",
-              "minimum": 1
-            },
-            "min_plays_per_hour": {
-              "type": "integer",
-              "description": "Minimum ad plays per hour for DOOH frequency guarantee",
-              "minimum": 0
-            },
-            "venue_package": {
-              "type": "string",
-              "description": "Named venue package identifier for DOOH"
-            },
-            "estimated_impressions": {
-              "type": "integer",
-              "description": "Estimated impressions for flat rate option",
-              "minimum": 0
-            },
-            "daypart": {
-              "type": "string",
-              "description": "Specific daypart for time-based pricing"
-            }
-          },
-          "additionalProperties": false
-        },
-        "min_spend_per_package": {
-          "type": "number",
-          "description": "Minimum spend requirement per package using this pricing option",
-          "minimum": 0
-        }
-      },
-      "required": ["pricing_option_id", "pricing_model", "is_fixed", "price_guidance", "currency"],
-      "additionalProperties": false
+      "$ref": "/schemas/pricing-options/vcpm-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/cpc-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/cpcv-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/cpv-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/cpp-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/flat-rate-option.json"
     }
   ]
 }

@@ -1,0 +1,196 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/pricing-options/flat-rate-option.json",
+  "title": "Flat Rate Pricing Option",
+  "description": "Flat rate pricing for DOOH and sponsorships - supports both fixed rate and auction-based pricing",
+  "oneOf": [
+    {
+      "title": "Flat Rate Fixed",
+      "description": "Fixed flat rate - common for DOOH and sponsorships",
+      "type": "object",
+      "properties": {
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Unique identifier for this pricing option within the product"
+        },
+        "pricing_model": {
+          "type": "string",
+          "const": "flat_rate",
+          "description": "Flat rate pricing"
+        },
+        "is_fixed": {
+          "type": "boolean",
+          "const": true,
+          "description": "Fixed rate pricing"
+        },
+        "rate": {
+          "type": "number",
+          "description": "Fixed flat rate",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$",
+          "examples": ["USD", "EUR", "GBP", "JPY"]
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Flat rate specific parameters (optional for DOOH)",
+          "properties": {
+            "duration_hours": {
+              "type": "number",
+              "description": "Duration in hours for DOOH pricing",
+              "minimum": 0
+            },
+            "sov_percentage": {
+              "type": "number",
+              "description": "Guaranteed share of voice percentage (0-100)",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "loop_duration_seconds": {
+              "type": "integer",
+              "description": "Duration of ad loop rotation in seconds",
+              "minimum": 1
+            },
+            "min_plays_per_hour": {
+              "type": "integer",
+              "description": "Minimum ad plays per hour for frequency guarantee",
+              "minimum": 0
+            },
+            "venue_package": {
+              "type": "string",
+              "description": "Named venue package identifier"
+            },
+            "estimated_impressions": {
+              "type": "integer",
+              "description": "Estimated impressions for the flat rate",
+              "minimum": 0
+            },
+            "daypart": {
+              "type": "string",
+              "description": "Specific daypart for time-based pricing"
+            }
+          },
+          "additionalProperties": false
+        },
+        "min_spend_per_package": {
+          "type": "number",
+          "description": "Minimum spend requirement per package using this pricing option",
+          "minimum": 0
+        }
+      },
+      "required": ["pricing_option_id", "pricing_model", "is_fixed", "rate", "currency"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Flat Rate Auction",
+      "description": "Auction-based flat rate - common for programmatic DOOH",
+      "type": "object",
+      "properties": {
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Unique identifier for this pricing option within the product"
+        },
+        "pricing_model": {
+          "type": "string",
+          "const": "flat_rate",
+          "description": "Flat rate pricing"
+        },
+        "is_fixed": {
+          "type": "boolean",
+          "const": false,
+          "description": "Auction-based pricing"
+        },
+        "price_guidance": {
+          "type": "object",
+          "description": "Pricing guidance for auction bidding",
+          "properties": {
+            "floor": {
+              "type": "number",
+              "description": "Minimum bid price - publisher will reject bids under this value",
+              "minimum": 0
+            },
+            "p25": {
+              "type": "number",
+              "description": "25th percentile winning price",
+              "minimum": 0
+            },
+            "p50": {
+              "type": "number",
+              "description": "Median winning price",
+              "minimum": 0
+            },
+            "p75": {
+              "type": "number",
+              "description": "75th percentile winning price",
+              "minimum": 0
+            },
+            "p90": {
+              "type": "number",
+              "description": "90th percentile winning price",
+              "minimum": 0
+            }
+          },
+          "required": ["floor"],
+          "additionalProperties": false
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$",
+          "examples": ["USD", "EUR", "GBP", "JPY"]
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Flat rate specific parameters (optional for DOOH)",
+          "properties": {
+            "duration_hours": {
+              "type": "number",
+              "description": "Duration in hours for DOOH pricing",
+              "minimum": 0
+            },
+            "sov_percentage": {
+              "type": "number",
+              "description": "Guaranteed share of voice percentage (0-100)",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "loop_duration_seconds": {
+              "type": "integer",
+              "description": "Duration of ad loop rotation in seconds",
+              "minimum": 1
+            },
+            "min_plays_per_hour": {
+              "type": "integer",
+              "description": "Minimum ad plays per hour for frequency guarantee",
+              "minimum": 0
+            },
+            "venue_package": {
+              "type": "string",
+              "description": "Named venue package identifier"
+            },
+            "estimated_impressions": {
+              "type": "integer",
+              "description": "Estimated impressions for the flat rate",
+              "minimum": 0
+            },
+            "daypart": {
+              "type": "string",
+              "description": "Specific daypart for time-based pricing"
+            }
+          },
+          "additionalProperties": false
+        },
+        "min_spend_per_package": {
+          "type": "number",
+          "description": "Minimum spend requirement per package using this pricing option",
+          "minimum": 0
+        }
+      },
+      "required": ["pricing_option_id", "pricing_model", "is_fixed", "price_guidance", "currency"],
+      "additionalProperties": false
+    }
+  ]
+}

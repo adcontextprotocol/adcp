@@ -1,0 +1,176 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/pricing-options/cpv-option.json",
+  "title": "CPV Pricing Option",
+  "description": "Cost Per View pricing with configurable view threshold - supports both fixed rate and auction-based pricing",
+  "oneOf": [
+    {
+      "title": "CPV Fixed Rate",
+      "description": "Fixed CPV rate with view threshold",
+      "type": "object",
+      "properties": {
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Unique identifier for this pricing option within the product"
+        },
+        "pricing_model": {
+          "type": "string",
+          "const": "cpv",
+          "description": "Cost per view with threshold"
+        },
+        "is_fixed": {
+          "type": "boolean",
+          "const": true,
+          "description": "Fixed rate pricing"
+        },
+        "rate": {
+          "type": "number",
+          "description": "Fixed CPV rate (cost per view)",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$",
+          "examples": ["USD", "EUR", "GBP", "JPY"]
+        },
+        "parameters": {
+          "type": "object",
+          "description": "CPV-specific parameters",
+          "properties": {
+            "view_threshold": {
+              "oneOf": [
+                {
+                  "type": "number",
+                  "description": "Percentage completion threshold (0.0 to 1.0)",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "object",
+                  "description": "Time-based view threshold",
+                  "properties": {
+                    "duration_seconds": {
+                      "type": "integer",
+                      "description": "Seconds of viewing required",
+                      "minimum": 1
+                    }
+                  },
+                  "required": ["duration_seconds"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": ["view_threshold"],
+          "additionalProperties": false
+        },
+        "min_spend_per_package": {
+          "type": "number",
+          "description": "Minimum spend requirement per package using this pricing option",
+          "minimum": 0
+        }
+      },
+      "required": ["pricing_option_id", "pricing_model", "is_fixed", "rate", "currency", "parameters"],
+      "additionalProperties": false
+    },
+    {
+      "title": "CPV Auction",
+      "description": "Auction-based CPV pricing with view threshold",
+      "type": "object",
+      "properties": {
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Unique identifier for this pricing option within the product"
+        },
+        "pricing_model": {
+          "type": "string",
+          "const": "cpv",
+          "description": "Cost per view with threshold"
+        },
+        "is_fixed": {
+          "type": "boolean",
+          "const": false,
+          "description": "Auction-based pricing"
+        },
+        "price_guidance": {
+          "type": "object",
+          "description": "Pricing guidance for auction bidding",
+          "properties": {
+            "floor": {
+              "type": "number",
+              "description": "Minimum bid price - publisher will reject bids under this value",
+              "minimum": 0
+            },
+            "p25": {
+              "type": "number",
+              "description": "25th percentile winning price",
+              "minimum": 0
+            },
+            "p50": {
+              "type": "number",
+              "description": "Median winning price",
+              "minimum": 0
+            },
+            "p75": {
+              "type": "number",
+              "description": "75th percentile winning price",
+              "minimum": 0
+            },
+            "p90": {
+              "type": "number",
+              "description": "90th percentile winning price",
+              "minimum": 0
+            }
+          },
+          "required": ["floor"],
+          "additionalProperties": false
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$",
+          "examples": ["USD", "EUR", "GBP", "JPY"]
+        },
+        "parameters": {
+          "type": "object",
+          "description": "CPV-specific parameters",
+          "properties": {
+            "view_threshold": {
+              "oneOf": [
+                {
+                  "type": "number",
+                  "description": "Percentage completion threshold (0.0 to 1.0)",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "object",
+                  "description": "Time-based view threshold",
+                  "properties": {
+                    "duration_seconds": {
+                      "type": "integer",
+                      "description": "Seconds of viewing required",
+                      "minimum": 1
+                    }
+                  },
+                  "required": ["duration_seconds"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": ["view_threshold"],
+          "additionalProperties": false
+        },
+        "min_spend_per_package": {
+          "type": "number",
+          "description": "Minimum spend requirement per package using this pricing option",
+          "minimum": 0
+        }
+      },
+      "required": ["pricing_option_id", "pricing_model", "is_fixed", "price_guidance", "currency", "parameters"],
+      "additionalProperties": false
+    }
+  ]
+}

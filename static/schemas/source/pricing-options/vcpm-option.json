@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/pricing-options/vcpm-option.json",
+  "title": "vCPM Pricing Option",
+  "description": "Viewable Cost Per Mille (cost per 1,000 viewable impressions) pricing - supports both fixed rate and auction-based pricing",
+  "oneOf": [
+    {
+      "title": "vCPM Fixed Rate",
+      "description": "Fixed vCPM rate - common for viewability-guaranteed deals",
+      "type": "object",
+      "properties": {
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Unique identifier for this pricing option within the product"
+        },
+        "pricing_model": {
+          "type": "string",
+          "const": "vcpm",
+          "description": "Cost per 1,000 viewable impressions"
+        },
+        "is_fixed": {
+          "type": "boolean",
+          "const": true,
+          "description": "Fixed rate pricing"
+        },
+        "rate": {
+          "type": "number",
+          "description": "Fixed vCPM rate (cost per 1,000 viewable impressions)",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$",
+          "examples": ["USD", "EUR", "GBP", "JPY"]
+        },
+        "min_spend_per_package": {
+          "type": "number",
+          "description": "Minimum spend requirement per package using this pricing option",
+          "minimum": 0
+        }
+      },
+      "required": ["pricing_option_id", "pricing_model", "is_fixed", "rate", "currency"],
+      "additionalProperties": false
+    },
+    {
+      "title": "vCPM Auction",
+      "description": "Auction-based vCPM pricing - common for programmatic inventory with viewability guarantee",
+      "type": "object",
+      "properties": {
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Unique identifier for this pricing option within the product"
+        },
+        "pricing_model": {
+          "type": "string",
+          "const": "vcpm",
+          "description": "Cost per 1,000 viewable impressions"
+        },
+        "is_fixed": {
+          "type": "boolean",
+          "const": false,
+          "description": "Auction-based pricing"
+        },
+        "price_guidance": {
+          "type": "object",
+          "description": "Pricing guidance for auction bidding",
+          "properties": {
+            "floor": {
+              "type": "number",
+              "description": "Minimum bid price - publisher will reject bids under this value",
+              "minimum": 0
+            },
+            "p25": {
+              "type": "number",
+              "description": "25th percentile winning price",
+              "minimum": 0
+            },
+            "p50": {
+              "type": "number",
+              "description": "Median winning price",
+              "minimum": 0
+            },
+            "p75": {
+              "type": "number",
+              "description": "75th percentile winning price",
+              "minimum": 0
+            },
+            "p90": {
+              "type": "number",
+              "description": "90th percentile winning price",
+              "minimum": 0
+            }
+          },
+          "required": ["floor"],
+          "additionalProperties": false
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$",
+          "examples": ["USD", "EUR", "GBP", "JPY"]
+        },
+        "min_spend_per_package": {
+          "type": "number",
+          "description": "Minimum spend requirement per package using this pricing option",
+          "minimum": 0
+        }
+      },
+      "required": ["pricing_option_id", "pricing_model", "is_fixed", "price_guidance", "currency"],
+      "additionalProperties": false
+    }
+  ]
+}

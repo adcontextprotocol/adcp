@@ -521,6 +521,39 @@
         }
       }
     },
+    "pricing-options": {
+      "description": "Individual pricing model schemas with model-specific validation. All pricing models support both fixed rate and auction-based pricing.",
+      "schemas": {
+        "cpm-option": {
+          "$ref": "/schemas/pricing-options/cpm-option.json",
+          "description": "Cost Per Mille (CPM) pricing - supports both fixed and auction-based pricing"
+        },
+        "vcpm-option": {
+          "$ref": "/schemas/pricing-options/vcpm-option.json",
+          "description": "Viewable Cost Per Mille (vCPM) pricing - supports both fixed and auction-based pricing"
+        },
+        "cpc-option": {
+          "$ref": "/schemas/pricing-options/cpc-option.json",
+          "description": "Cost Per Click (CPC) pricing - supports both fixed and auction-based pricing"
+        },
+        "cpcv-option": {
+          "$ref": "/schemas/pricing-options/cpcv-option.json",
+          "description": "Cost Per Completed View (CPCV) pricing - supports both fixed and auction-based pricing"
+        },
+        "cpv-option": {
+          "$ref": "/schemas/pricing-options/cpv-option.json",
+          "description": "Cost Per View (CPV) pricing with threshold - supports both fixed and auction-based pricing"
+        },
+        "cpp-option": {
+          "$ref": "/schemas/pricing-options/cpp-option.json",
+          "description": "Cost Per Point (CPP) pricing for TV/audio - supports both fixed and auction-based pricing"
+        },
+        "flat-rate-option": {
+          "$ref": "/schemas/pricing-options/flat-rate-option.json",
+          "description": "Flat rate pricing for DOOH and sponsorships - supports both fixed and auction-based pricing"
+        }
+      }
+    },
     "adagents": {
       "description": "Authorized sales agents file format specification",
       "$ref": "/schemas/adagents.json",
