@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/push-notification-config.json",
   "title": "Push Notification Config",
-  "description": "Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. Supports Bearer tokens (simple) or HMAC signatures (production-recommended).",
+  "description": "Webhook configuration for asynchronous task notifications. Supports Bearer token (server echoes back) or HMAC-SHA256 signature authentication.",
   "type": "object",
   "properties": {
     "url": {
@@ -10,18 +10,13 @@
       "format": "uri",
       "description": "Webhook endpoint URL for task status notifications"
     },
-    "token": {
-      "type": "string",
-      "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
-      "minLength": 16
-    },
     "authentication": {
       "type": "object",
-      "description": "Authentication configuration for webhook delivery (A2A-compatible)",
+      "description": "Authentication configuration. Bearer: client provides token, server echoes in Authorization header. HMAC-SHA256: client provides secret, server signs payload with X-ADCP-Signature header.",
       "properties": {
         "schemes": {
           "type": "array",
-          "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+          "description": "Authentication scheme: ['Bearer'] or ['HMAC-SHA256']",
           "items": {
             "$ref": "/schemas/enums/auth-scheme.json"
           },
@@ -30,7 +25,7 @@
         },
         "credentials": {
           "type": "string",
-          "description": "Credentials for authentication. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+          "description": "For Bearer: client-provided token (JWT, random string, etc.). Server echoes in 'Authorization: Bearer <credentials>'. For HMAC-SHA256: client-generated shared secret. Must be unique per webhook configuration. Minimum 32 characters.",
           "minLength": 32
         }
       },
@@ -38,6 +33,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["url", "authentication"],
+  "required": ["url"],
   "additionalProperties": false
 }

@@ -54,6 +54,7 @@
             "group": "Protocols",
             "pages": [
               "docs/protocols/getting-started",
+              "docs/protocols/core-concepts",
               {
                 "group": "Choose Your Protocol",
                 "pages": [
