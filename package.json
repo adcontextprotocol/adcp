@@ -30,7 +30,7 @@
     "precommit": "npm test",
     "prepare": "husky",
     "changeset": "changeset",
-    "version": "changeset version && npm run build:schemas",
+    "version": "changeset version && npm run build:schemas -- --release",
     "update-schema-versions": "echo 'Schema versioning is now handled by build:schemas script'",
     "release": "npm run version && npm test && npm run build && git add -A && git commit -m 'Version packages' && git push",
     "verify-version-sync": "node scripts/verify-version-sync.js"
