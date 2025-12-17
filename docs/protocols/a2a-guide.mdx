@@ -816,9 +816,10 @@ const response = await a2a.send({
   }
 });
 
-// Check for file validation issues
-if (response.status === 'failed' && response.data?.file_errors) {
-  console.log('File issues:', response.data.file_errors);
+// Check for file validation issues (extract from A2A artifact structure)
+const dataPart = response.artifacts?.[0]?.parts?.find(p => p.kind === 'data');
+if (response.status === 'failed' && dataPart?.data?.file_errors) {
+  console.log('File issues:', dataPart.data.file_errors);
 }
 ```
 

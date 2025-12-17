@@ -30,19 +30,17 @@ AdCP uses the same status values as the [A2A protocol's TaskState enum](https://
 
 ### Response Structure
 
-Every AdCP response has this structure:
+Every AdCP response uses a **flat structure** where task-specific fields are at the top level:
 
 ```json
 {
   "status": "completed",           // Always present: what state we're in
-  "message": "Found 5 products",  // Always present: human explanation
+  "message": "Found 5 products",   // Always present: human explanation
   "context_id": "ctx-123",         // Session continuity
-  "data": {                        // Task-specific structured data
-    "context": {                  // Application-level context echoed back
-      "ui": "buyer_dashboard"
-    },
-    "products": [...]
-  }
+  "context": {                     // Application-level context echoed back
+    "ui": "buyer_dashboard"
+  },
+  "products": [...]                // Task-specific fields at top level
 }
 ```
 
@@ -54,30 +52,30 @@ Every AdCP response has this structure:
 function handleAdcpResponse(response) {
   switch (response.status) {
     case 'completed':
-      // Success - process the data
+      // Success - process the data (task fields are at top level)
       showSuccess(response.message);
-      return processData(response.data);
-      
+      return processData(response);
+
     case 'input-required':
       // Need more info - prompt user
       const userInput = await promptUser(response.message);
       return sendFollowUp(response.context_id, userInput);
-      
+
     case 'working':
       // In progress - show progress and wait
       showProgress(response.message);
       return pollForUpdates(response.context_id);
-      
+
     case 'failed':
       // Error - show message and handle gracefully
       showError(response.message);
-      return handleError(response.data?.errors);
-      
+      return handleError(response.errors);
+
     case 'auth-required':
       // Authentication needed
       const credentials = await getAuth();
       return retryWithAuth(credentials);
-      
+
     default:
       // Unexpected status
       console.warn('Unknown status:', response.status);
@@ -96,10 +94,8 @@ When status is `input-required`, the message tells you what's needed:
   "status": "input-required",
   "message": "I need more information about your campaign. What's your budget and target audience?",
   "context_id": "ctx-123",
-  "data": {
-    "products": [],  // Empty until clarification provided
-    "suggestions": ["budget", "audience", "timing"]
-  }
+  "products": [],  // Empty until clarification provided
+  "suggestions": ["budget", "audience", "timing"]
 }
 ```
 
@@ -122,22 +118,20 @@ Human approval is a special case of `input-required`:
 
 ```json
 {
-  "status": "input-required", 
+  "status": "input-required",
   "message": "Media buy exceeds auto-approval limit ($100K). Please approve to proceed with campaign creation.",
   "context_id": "ctx-123",
-  "data": {
-    "approval_required": true,
-    "amount": 150000,
-    "reason": "exceeds_limit"
-  }
+  "approval_required": true,
+  "amount": 150000,
+  "reason": "exceeds_limit"
 }
 ```
 
 **Client handling:**
 ```javascript
-if (response.status === 'input-required' && response.data?.approval_required) {
+if (response.status === 'input-required' && response.approval_required) {
   // Show approval UI
-  const approved = await showApprovalDialog(response.message, response.data);
+  const approved = await showApprovalDialog(response.message, response);
   
   // Send approval decision
   const decision = approved ? "Approved" : "Rejected";
@@ -152,12 +146,10 @@ Async operations start with `working` and provide updates:
 {
   "status": "working",
   "message": "Creating media buy. Validating inventory availability...",
-  "context_id": "ctx-123", 
-  "data": {
-    "task_id": "task-456",
-    "progress": 25,
-    "step": "inventory_validation"
-  }
+  "context_id": "ctx-123",
+  "task_id": "task-456",
+  "progress": 25,
+  "step": "inventory_validation"
 }
 ```
 
@@ -1200,23 +1192,21 @@ See [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting
 
 ### Error Response Format
 
-Failed operations return status `failed` with details:
+Failed operations return status `failed` with error details at the top level:
 
 ```json
 {
   "status": "failed",
   "message": "Unable to create media buy: Insufficient inventory available for your targeting criteria",
   "context_id": "ctx-123",
-  "data": {
-    "error_code": "insufficient_inventory",
-    "requested_impressions": 10000000,
-    "available_impressions": 2500000,
-    "suggestions": [
-      "Expand geographic targeting",
-      "Increase CPM bid",
-      "Adjust date range"
-    ]
-  }
+  "error_code": "insufficient_inventory",
+  "requested_impressions": 10000000,
+  "available_impressions": 2500000,
+  "suggestions": [
+    "Expand geographic targeting",
+    "Increase CPM bid",
+    "Adjust date range"
+  ]
 }
 ```
 
@@ -1238,7 +1228,7 @@ async function handleApprovalWorkflow(response) {
     const approval = await showApprovalUI({
       title: "Campaign Approval Required",
       message: response.message,
-      details: response.data,
+      details: response,  // Task fields are at top level
       approver: getCurrentUser()
     });
     
@@ -1277,7 +1267,7 @@ async function discoverProducts(brief) {
   }
   
   if (response.status === 'completed') {
-    return response.data.products;
+    return response.products;  // Task fields are at top level
   } else if (response.status === 'failed') {
     throw new Error(response.message);
   }
@@ -1313,7 +1303,7 @@ async function createCampaign(packages, budget) {
   }
   
   if (response.status === 'completed') {
-    return response.data.media_buy_id;
+    return response.media_buy_id;  // Task fields are at top level
   } else {
     throw new Error(response.message);
   }
