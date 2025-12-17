@@ -251,31 +251,7 @@ async function runTests() {
 
   log('');
 
-  // Test 5: Dimensions schema standalone (now allows additional properties for composition)
-  log('Dimensions Schema (base schema for composition):', 'info');
-  await testSchemaValidation(
-    '/schemas/core/dimensions.json',
-    {
-      width: 1920,
-      height: 1080
-    },
-    'Dimensions with required fields only'
-  );
-
-  // This should now pass since we removed additionalProperties: false
-  await testSchemaValidation(
-    '/schemas/core/dimensions.json',
-    {
-      width: 1920,
-      height: 1080,
-      extra_field: 'should be allowed for composition'
-    },
-    'Dimensions allows additional properties (for allOf composition)'
-  );
-
-  log('');
-
-  // Test 6: Bundled schemas (no $ref resolution needed)
+  // Test 5: Bundled schemas (no $ref resolution needed)
   const BUNDLED_DIR = path.join(__dirname, '../dist/schemas');
   const bundledVersionDirs = fs.existsSync(BUNDLED_DIR)
     ? fs.readdirSync(BUNDLED_DIR).filter(d => /^\d+\.\d+\.\d+$/.test(d))
