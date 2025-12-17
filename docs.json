@@ -2,8 +2,9 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/logo/AAo-dark.svg",
+    "dark": "/logo/AAo.svg",
+    "href": "https://agenticadvertising.org"
   },
   "favicon": "/img/favicon.svg",
   "theme": "mint",
@@ -12,20 +13,30 @@
     "light": "#07C983",
     "dark": "#0D9373"
   },
-  "topbarLinks": [
-    {
-      "name": "Home",
-      "url": "https://agenticadvertising.org"
-    },
-    {
-      "name": "AdAgents.json Builder",
-      "url": "https://adcontextprotocol.org/adagents"
-    },
-    {
-      "name": "GitHub",
-      "url": "https://github.com/adcontextprotocol/adcp"
+  "navbar": {
+    "links": [
+      {
+        "label": "About AdCP",
+        "href": "https://adcontextprotocol.org"
+      },
+      {
+        "label": "Members",
+        "href": "https://agenticadvertising.org/members"
+      },
+      {
+        "label": "Perspectives",
+        "href": "https://agenticadvertising.org/perspectives"
+      },
+      {
+        "label": "AAO",
+        "href": "https://agenticadvertising.org"
+      }
+    ],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/adcontextprotocol/adcp"
     }
-  ],
+  },
   "anchors": [
     {
       "name": "GitHub Discussions",
@@ -247,6 +258,5 @@
   "modeToggle": {
     "default": "light",
     "isHidden": false
-  },
-  "css": ["/mintlify.css"]
+  }
 }
