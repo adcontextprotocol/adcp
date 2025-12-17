@@ -5,6 +5,7 @@
   "description": "Response containing preview links for one or more creatives. Format matches the request: single preview response for single requests, batch results for batch requests.",
   "oneOf": [
     {
+      "title": "PreviewCreativeSingleResponse",
       "type": "object",
       "description": "Single preview response - each preview URL returns an HTML page that can be embedded in an iframe",
       "properties": {
@@ -89,6 +90,7 @@
       "additionalProperties": false
     },
     {
+      "title": "PreviewCreativeBatchResponse",
       "type": "object",
       "description": "Batch preview response - contains results for multiple creative requests",
       "properties": {
@@ -199,6 +201,7 @@
             ],
             "oneOf": [
               {
+                "title": "PreviewBatchResultSuccess",
                 "properties": {
                   "success": {
                     "type": "boolean",
@@ -210,6 +213,7 @@
                 ]
               },
               {
+                "title": "PreviewBatchResultError",
                 "properties": {
                   "success": {
                     "type": "boolean",

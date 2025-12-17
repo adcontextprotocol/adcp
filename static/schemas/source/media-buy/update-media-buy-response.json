@@ -6,6 +6,7 @@
   "type": "object",
   "oneOf": [
     {
+      "title": "UpdateMediaBuySuccess",
       "description": "Success response - media buy updated successfully",
       "type": "object",
       "properties": {
@@ -51,6 +52,7 @@
       }
     },
     {
+      "title": "UpdateMediaBuyError",
       "description": "Error response - operation failed, no changes applied",
       "type": "object",
       "properties": {
