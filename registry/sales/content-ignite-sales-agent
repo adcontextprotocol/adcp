@@ -1,0 +1,14 @@
+{
+  "name": "Content Ignite Sales Agent",
+  "url": "https://ci.sales-agent.contentignite.com/,
+  "type": "sales",
+  "protocol": "mcp",
+  "description": "Content Ignites AdCP sales agent, opening up access to our exclusive inventory.",
+  "mcp_endpoint": "https://ci.sales-agent.contentignite.com/mcp",
+  "contact": {
+    "name": "Content Ignite Team",
+    "email": "hello@contentignite.com",
+    "website": "https://www.contentignite.com/"
+  },
+  "added_date": "2025-12-17"
+}
