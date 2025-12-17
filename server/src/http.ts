@@ -3,8 +3,10 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WorkOS } from "@workos-inc/node";
-import { Registry } from "./registry.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
+import { createMCPServer } from "./mcp-tools.js";
 import { HealthChecker } from "./health.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger } from "./logger.js";
@@ -20,7 +22,6 @@ import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPort
 import Stripe from "stripe";
 import { OrganizationDatabase } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
-import { RegistryDatabase } from "./db/registry-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache } from "./middleware/auth.js";
@@ -72,7 +73,7 @@ const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
-  private registry: Registry;
+  private agentService: AgentService;
   private validator: AgentValidator;
   private healthChecker: HealthChecker;
   private crawler: CrawlerService;
@@ -83,7 +84,7 @@ export class HTTPServer {
 
   constructor() {
     this.app = express();
-    this.registry = new Registry();
+    this.agentService = new AgentService();
     this.validator = new AgentValidator();
     this.adagentsManager = new AdAgentsManager();
     this.healthChecker = new HealthChecker();
@@ -139,6 +140,13 @@ export class HTTPServer {
       ? path.join(__dirname, "../static")
       : path.join(__dirname, "../../static");
     this.app.use(express.static(staticPath));
+
+    // Redirect .html URLs to clean URLs for pages that need template variable injection
+    // Must be BEFORE static middleware to intercept these requests
+    this.app.get('/dashboard.html', (req, res) => {
+      const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect('/dashboard' + queryString);
+    });
 
     // Serve homepage and public assets at root
     // In prod: __dirname is dist, public is at ../server/public
@@ -202,7 +210,11 @@ export class HTTPServer {
           .replace('{{STRIPE_PRICING_TABLE_ID}}', process.env.STRIPE_PRICING_TABLE_ID || '')
           .replace('{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}', process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
 
+        // Prevent caching to ensure template variables are always fresh
         res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
         res.send(html);
       } catch (error) {
         logger.error({ err: error }, 'Error serving dashboard');
@@ -244,7 +256,7 @@ export class HTTPServer {
       const withHealth = req.query.health === "true";
       const withCapabilities = req.query.capabilities === "true";
       const withProperties = req.query.properties === "true";
-      const agents = await this.registry.listAgents(type);
+      const agents = await this.agentService.listAgents(type);
 
       if (!withHealth && !withCapabilities && !withProperties) {
         return res.json(agents);
@@ -310,7 +322,7 @@ export class HTTPServer {
 
     this.app.get("/api/agents/:type/:name", async (req, res) => {
       const agentId = `${req.params.type}/${req.params.name}`;
-      const agent = await this.registry.getAgent(agentId);
+      const agent = await this.agentService.getAgent(agentId);
       if (!agent) {
         return res.status(404).json({ error: "Agent not found" });
       }
@@ -373,7 +385,7 @@ export class HTTPServer {
 
     this.app.get("/api/agents/:id/properties", async (req, res) => {
       const agentId = req.params.id;
-      const agent = await this.registry.getAgent(agentId);
+      const agent = await this.agentService.getAgent(agentId);
 
       if (!agent) {
         return res.status(404).json({ error: "Agent not found" });
@@ -403,7 +415,7 @@ export class HTTPServer {
 
     // Crawler endpoints
     this.app.post("/api/crawler/run", async (req, res) => {
-      const agents = await this.registry.listAgents("sales");
+      const agents = await this.agentService.listAgents("sales");
       const result = await this.crawler.crawlAllAgents(agents);
       res.json(result);
     });
@@ -413,7 +425,7 @@ export class HTTPServer {
     });
 
     this.app.get("/api/stats", async (req, res) => {
-      const agents = await this.registry.listAgents();
+      const agents = await this.agentService.listAgents();
       const byType = {
         creative: agents.filter((a) => a.type === "creative").length,
         signals: agents.filter((a) => a.type === "signals").length,
@@ -430,7 +442,7 @@ export class HTTPServer {
     // Capability endpoints
     this.app.get("/api/agents/:id/capabilities", async (req, res) => {
       const agentId = req.params.id;
-      const agent = await this.registry.getAgent(agentId);
+      const agent = await this.agentService.getAgent(agentId);
 
       if (!agent) {
         return res.status(404).json({ error: "Agent not found" });
@@ -447,7 +459,7 @@ export class HTTPServer {
     });
 
     this.app.post("/api/capabilities/discover-all", async (req, res) => {
-      const agents = await this.registry.listAgents();
+      const agents = await this.agentService.listAgents();
       try {
         const profiles = await this.capabilityDiscovery.discoverAll(agents);
         res.json({
@@ -463,7 +475,7 @@ export class HTTPServer {
 
     // Publisher endpoints
     this.app.get("/api/publishers", async (req, res) => {
-      const agents = await this.registry.listAgents("sales");
+      const agents = await this.agentService.listAgents("sales");
       try {
         const statuses = await this.publisherTracker.trackPublishers(agents);
         res.json({
@@ -480,7 +492,7 @@ export class HTTPServer {
 
     this.app.get("/api/publishers/:domain", async (req, res) => {
       const domain = req.params.domain;
-      const agents = await this.registry.listAgents("sales");
+      const agents = await this.agentService.listAgents("sales");
 
       // Find agents claiming this domain
       const expectedAgents = agents
@@ -506,7 +518,7 @@ export class HTTPServer {
 
     this.app.get("/api/publishers/:domain/validation", async (req, res) => {
       const domain = req.params.domain;
-      const agents = await this.registry.listAgents("sales");
+      const agents = await this.agentService.listAgents("sales");
 
       const expectedAgents = agents
         .filter((a) => {
@@ -546,7 +558,7 @@ export class HTTPServer {
     // Simple REST API endpoint - for web apps and quick integrations
     this.app.get("/agents", async (req, res) => {
       const type = req.query.type as AgentType | undefined;
-      const agents = await this.registry.listAgents(type);
+      const agents = await this.agentService.listAgents(type);
 
       res.json({
         agents,
@@ -560,429 +572,74 @@ export class HTTPServer {
     });
 
     // MCP endpoint - for AI agents to discover other agents
-    // This makes the registry itself an MCP server that can be queried by other agents
+    // Uses StreamableHTTPServerTransport from the MCP SDK for stateless HTTP transport
+    
+    // CORS preflight for MCP endpoint
     this.app.options("/mcp", (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
       res.status(204).end();
     });
 
+    // MCP POST handler - stateless mode (new server/transport per request)
     this.app.post("/mcp", async (req, res) => {
-      // Add CORS headers for browser-based MCP clients
+      // Add CORS headers
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-      const { method, params, id } = req.body;
+      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
 
       try {
-        // Handle MCP tools/list request
-        if (method === "tools/list") {
-          res.json({
-            jsonrpc: "2.0",
-            id,
-            result: {
-              tools: [
-                {
-                  name: "list_agents",
-                  description: "List all registered AdCP agents, optionally filtered by type",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      type: {
-                        type: "string",
-                        enum: ["creative", "signals", "sales"],
-                        description: "Optional: Filter by agent type",
-                      },
-                    },
-                  },
-                },
-                {
-                  name: "get_agent",
-                  description: "Get details for a specific agent by ID",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      id: {
-                        type: "string",
-                        description: "Agent identifier (e.g., 'creative/4dvertible-creative-agent')",
-                      },
-                    },
-                    required: ["id"],
-                  },
-                },
-                {
-                  name: "find_agents_for_property",
-                  description: "Find which agents can sell a specific property",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      property_type: {
-                        type: "string",
-                        description: "Property identifier type (e.g., 'domain', 'app_id')",
-                      },
-                      property_value: {
-                        type: "string",
-                        description: "Property identifier value (e.g., 'nytimes.com')",
-                      },
-                    },
-                    required: ["property_type", "property_value"],
-                  },
-                },
-                {
-                  name: "get_properties_for_agent",
-                  description: "Get all properties that a specific agent is authorized to sell by checking their publisher's adagents.json",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      agent_url: {
-                        type: "string",
-                        description: "Agent URL (e.g., 'https://sales.weather.com')",
-                      },
-                    },
-                    required: ["agent_url"],
-                  },
-                },
-                {
-                  name: "get_products_for_agent",
-                  description: "Query a sales agent for available products (proxy tool that calls get_products on the agent)",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      agent_url: {
-                        type: "string",
-                        description: "Agent URL to query",
-                      },
-                      params: {
-                        type: "object",
-                        description: "Parameters to pass to get_products (leave empty for public products)",
-                      },
-                    },
-                    required: ["agent_url"],
-                  },
-                },
-                {
-                  name: "list_creative_formats_for_agent",
-                  description: "Query an agent for supported creative formats (proxy tool that calls list_creative_formats on the agent)",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      agent_url: {
-                        type: "string",
-                        description: "Agent URL to query",
-                      },
-                      params: {
-                        type: "object",
-                        description: "Parameters to pass to list_creative_formats",
-                      },
-                    },
-                    required: ["agent_url"],
-                  },
-                },
-              ],
-            },
-          });
-          return;
-        }
+        // Create a new MCP server and transport for each request (stateless mode)
+        const server = createMCPServer();
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined, // Stateless mode - no sessions
+        });
 
-        // Handle MCP tools/call request
-        if (method === "tools/call") {
-          const { name, arguments: args } = params;
+        // Connect server to transport
+        await server.connect(transport);
 
-          if (name === "list_agents") {
-            const type = args?.type as AgentType | undefined;
-            const agents = await this.registry.listAgents(type);
-            res.json({
-              jsonrpc: "2.0",
-              id,
-              result: {
-                content: [
-                  {
-                    type: "resource",
-                    resource: {
-                      uri: `https://registry.adcontextprotocol.org/agents/${type || "all"}`,
-                      mimeType: "application/json",
-                      text: JSON.stringify({
-                        agents,
-                        count: agents.length,
-                        by_type: {
-                          creative: agents.filter(a => a.type === "creative").length,
-                          signals: agents.filter(a => a.type === "signals").length,
-                          sales: agents.filter(a => a.type === "sales").length,
-                        }
-                      }, null, 2),
-                    },
-                  },
-                ],
-              },
-            });
-            return;
-          }
+        // Handle the request
+        await transport.handleRequest(req, res, req.body);
 
-          if (name === "get_agent") {
-            const agentId = args?.id as string;
-            const agent = await this.registry.getAgent(agentId);
-            if (!agent) {
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: -32602,
-                  message: "Agent not found",
-                },
-              });
-              return;
-            }
-            res.json({
-              jsonrpc: "2.0",
-              id,
-              result: {
-                content: [
-                  {
-                    type: "resource",
-                    resource: {
-                      uri: `https://registry.adcontextprotocol.org/agents/${agentId}`,
-                      mimeType: "application/json",
-                      text: JSON.stringify(agent, null, 2),
-                    },
-                  },
-                ],
-              },
-            });
-            return;
-          }
-
-          if (name === "find_agents_for_property") {
-            const propertyType = args?.property_type as string;
-            const propertyValue = args?.property_value as string;
-            const index = getPropertyIndex();
-            const agents = index.findAgentsForProperty(propertyType as any, propertyValue);
-            res.json({
-              jsonrpc: "2.0",
-              id,
-              result: {
-                content: [
-                  {
-                    type: "resource",
-                    resource: {
-                      uri: `https://registry.adcontextprotocol.org/properties/${propertyType}/${propertyValue}`,
-                      mimeType: "application/json",
-                      text: JSON.stringify(
-                        { property_type: propertyType, property_value: propertyValue, agents, count: agents.length },
-                        null,
-                        2
-                      ),
-                    },
-                  },
-                ],
-              },
-            });
-            return;
-          }
-
-          if (name === "get_properties_for_agent") {
-            const agentUrl = args?.agent_url as string;
-            if (!agentUrl) {
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: -32602,
-                  message: "Missing agent_url parameter",
-                },
-              });
-              return;
-            }
-
-            try {
-              // Find the agent in our registry
-              const agents = Array.from((await this.registry.getAllAgents()).values());
-              const agent = agents.find((a) => a.url === agentUrl);
-
-              if (!agent) {
-                res.json({
-                  jsonrpc: "2.0",
-                  id,
-                  error: {
-                    code: -32602,
-                    message: `Agent not found: ${agentUrl}`,
-                  },
-                });
-                return;
-              }
-
-              // Use cached properties service
-              const profile = await this.propertiesService.getPropertiesForAgent(agent);
-
-              const url = new URL(agentUrl);
-              const domain = url.hostname;
-
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                result: {
-                  content: [
-                    {
-                      type: "resource",
-                      resource: {
-                        uri: `https://registry.adcontextprotocol.org/agent-properties/${domain}`,
-                        mimeType: "application/json",
-                        text: JSON.stringify(
-                          {
-                            agent_url: agentUrl,
-                            domain,
-                            protocol: profile.protocol,
-                            properties: profile.properties,
-                            count: profile.properties.length,
-                            error: profile.error,
-                            status: profile.error ? "error" : profile.properties.length > 0 ? "success" : "empty",
-                            last_fetched: profile.last_fetched,
-                          },
-                          null,
-                          2
-                        ),
-                      },
-                    },
-                  ],
-                },
-              });
-              return;
-            } catch (error: any) {
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: -32603,
-                  message: `Failed to get properties: ${error.message}`,
-                },
-              });
-              return;
-            }
-          }
-
-          if (name === "get_products_for_agent") {
-            const agentUrl = args?.agent_url as string;
-            const params = args?.params || {};
-
-            try {
-              const { AdCPClient } = await import("@adcp/client");
-              const multiClient = new AdCPClient([{
-                id: "registry",
-                name: "Registry Query",
-                agent_uri: agentUrl,
-                protocol: "mcp",
-              }]);
-              const client = multiClient.agent("registry");
-
-              const result = await client.executeTask("get_products", params);
-
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                result: {
-                  content: [
-                    {
-                      type: "resource",
-                      resource: {
-                        uri: `adcp://products/${agentUrl}`,
-                        mimeType: "application/json",
-                        text: JSON.stringify(result.success ? result.data : { error: result.error || "Failed to get products" }),
-                      },
-                    },
-                  ],
-                },
-              });
-              return;
-            } catch (error: any) {
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: -32603,
-                  message: `Failed to get products: ${error.message}`,
-                },
-              });
-              return;
-            }
-          }
-
-          if (name === "list_creative_formats_for_agent") {
-            const agentUrl = args?.agent_url as string;
-            const params = args?.params || {};
-
-            try {
-              const { AdCPClient } = await import("@adcp/client");
-              const multiClient = new AdCPClient([{
-                id: "registry",
-                name: "Registry Query",
-                agent_uri: agentUrl,
-                protocol: "mcp",
-              }]);
-              const client = multiClient.agent("registry");
-
-              const result = await client.executeTask("list_creative_formats", params);
-
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                result: {
-                  content: [
-                    {
-                      type: "resource",
-                      resource: {
-                        uri: `adcp://formats/${agentUrl}`,
-                        mimeType: "application/json",
-                        text: JSON.stringify(result.success ? result.data : { error: result.error || "Failed to list formats" }),
-                      },
-                    },
-                  ],
-                },
-              });
-              return;
-            } catch (error: any) {
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: -32603,
-                  message: `Failed to list formats: ${error.message}`,
-                },
-              });
-              return;
-            }
-          }
-
-          res.json({
-            jsonrpc: "2.0",
-            id,
-            error: {
-              code: -32601,
-              message: "Unknown tool",
-            },
-          });
-          return;
-        }
-
-        // Unknown method
-        res.json({
-          jsonrpc: "2.0",
-          id,
-          error: {
-            code: -32601,
-            message: "Method not found",
-          },
+        // Clean up after response is sent
+        res.on('close', () => {
+          transport.close();
+          server.close();
         });
       } catch (error: any) {
-        res.json({
-          jsonrpc: "2.0",
-          id,
-          error: {
-            code: -32603,
-            message: error?.message || "Internal error",
-          },
-        });
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: "2.0",
+            error: {
+              code: -32603,
+              message: error?.message || "Internal error",
+            },
+          });
+        }
       }
+    });
+
+    // MCP GET handler - not supported in stateless mode
+    this.app.get("/mcp", (req, res) => {
+      res.status(405).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32601,
+          message: "Method not allowed. Use POST for MCP requests.",
+        },
+      });
+    });
+
+    // MCP DELETE handler - not needed in stateless mode
+    this.app.delete("/mcp", (req, res) => {
+      res.status(405).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32601,
+          message: "Method not allowed. Session management not supported in stateless mode.",
+        },
+      });
     });
 
     // Health check
@@ -5164,6 +4821,30 @@ Disallow: /api/admin/
           });
         }
 
+        // Ensure organization exists in local DB (on-demand sync from WorkOS)
+        let org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          try {
+            const workosOrg = await workos.organizations.getOrganization(orgId);
+            if (workosOrg) {
+              org = await orgDb.createOrganization({
+                workos_organization_id: workosOrg.id,
+                name: workosOrg.name,
+              });
+              logger.info({ orgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS for pending agreement');
+            }
+          } catch (syncError) {
+            logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS');
+          }
+        }
+
+        if (!org) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'Could not find or sync organization',
+          });
+        }
+
         // Store pending agreement info in organization record
         // This will be used by webhook when subscription is created
         await orgDb.updateOrganization(orgId, {
@@ -6489,6 +6170,30 @@ Disallow: /api/admin/
           targetOrgId = memberships.data[0].organizationId;
         }
 
+        // Ensure organization exists in local DB (on-demand sync from WorkOS)
+        let org = await orgDb.getOrganization(targetOrgId);
+        if (!org) {
+          try {
+            const workosOrg = await workos!.organizations.getOrganization(targetOrgId);
+            if (workosOrg) {
+              org = await orgDb.createOrganization({
+                workos_organization_id: workosOrg.id,
+                name: workosOrg.name,
+              });
+              logger.info({ orgId: targetOrgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS for member profile');
+            }
+          } catch (syncError) {
+            logger.warn({ orgId: targetOrgId, err: syncError }, 'Failed to sync organization from WorkOS');
+          }
+        }
+
+        if (!org) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'Organization does not exist. Please contact support.',
+          });
+        }
+
         // Check if profile already exists for this org
         const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
         if (existingProfile) {
@@ -6859,372 +6564,9 @@ Disallow: /api/admin/
       }
     });
 
-    // ========================================
-    // Organization Agent Management Endpoints
-    // ========================================
-    const registryDb = new RegistryDatabase();
-
-    // GET /api/me/agents - List agents for the current user's organization
-    this.app.get('/api/me/agents', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const requestedOrgId = req.query.org as string | undefined;
-
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(404).json({
-            error: 'No organization',
-            message: 'User is not a member of any organization',
-          });
-        }
-
-        // Determine which org to use
-        let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
-        }
-
-        // Get agents for this organization
-        const agents = await registryDb.getEntriesByOrg(targetOrgId, 'agent');
-
-        // Get org info
-        const org = await workos!.organizations.getOrganization(targetOrgId);
-
-        res.json({
-          agents,
-          organization_id: targetOrgId,
-          organization_name: org.name,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Get org agents error');
-        res.status(500).json({
-          error: 'Failed to get agents',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/me/agents - Create a new agent for the current user's organization
-    this.app.post('/api/me/agents', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const requestedOrgId = req.query.org as string | undefined;
-        const {
-          name,
-          slug,
-          url,
-          agent_type, // sales, creative, signals
-          description,
-          contact_name,
-          contact_email,
-          contact_website,
-          tags,
-        } = req.body;
-
-        // Validate required fields
-        if (!name || !slug || !url || !agent_type) {
-          return res.status(400).json({
-            error: 'Missing required fields',
-            message: 'name, slug, url, and agent_type are required',
-          });
-        }
-
-        // Validate agent type
-        const validAgentTypes = ['sales', 'creative', 'signals'];
-        if (!validAgentTypes.includes(agent_type)) {
-          return res.status(400).json({
-            error: 'Invalid agent type',
-            message: `agent_type must be one of: ${validAgentTypes.join(', ')}`,
-          });
-        }
-
-        // Validate slug format
-        if (!/^[a-z0-9-]+$/.test(slug)) {
-          return res.status(400).json({
-            error: 'Invalid slug',
-            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
-          });
-        }
-
-        // Validate URL format
-        try {
-          new URL(url);
-        } catch {
-          return res.status(400).json({
-            error: 'Invalid URL',
-            message: 'Please provide a valid URL',
-          });
-        }
-
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(400).json({
-            error: 'No organization',
-            message: 'User must be a member of an organization to create an agent',
-          });
-        }
-
-        // Determine which org to use
-        let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
-        }
-
-        // Check slug availability
-        const slugAvailable = await registryDb.isSlugAvailable(slug);
-        if (!slugAvailable) {
-          return res.status(409).json({
-            error: 'Slug not available',
-            message: 'This slug is already taken. Please choose a different one.',
-          });
-        }
-
-        // Create the agent entry
-        const entry = await registryDb.createEntry({
-          entry_type: 'agent',
-          name,
-          slug,
-          url,
-          metadata: {
-            agent_type,
-            description: description || '',
-            mcp_endpoint: url,
-            protocol: 'mcp',
-          },
-          tags: tags || [agent_type],
-          contact_name,
-          contact_email,
-          contact_website,
-          approval_status: 'approved',
-          workos_organization_id: targetOrgId,
-        });
-
-        logger.info({
-          entryId: entry.id,
-          orgId: targetOrgId,
-          agentType: agent_type,
-        }, 'Agent created');
-
-        res.status(201).json({
-          agent: entry,
-          message: 'Agent created successfully.',
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Create agent error');
-        res.status(500).json({
-          error: 'Failed to create agent',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PUT /api/me/agents/:agentId - Update an agent
-    this.app.put('/api/me/agents/:agentId', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { agentId } = req.params;
-        const requestedOrgId = req.query.org as string | undefined;
-        const updates = req.body;
-
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Not authorized',
-            message: 'User is not a member of any organization',
-          });
-        }
-
-        // Determine which org to use
-        let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
-        }
-
-        // Get the agent to verify ownership
-        const existingAgent = await registryDb.getEntryById(agentId);
-        if (!existingAgent) {
-          return res.status(404).json({
-            error: 'Not found',
-            message: 'Agent not found',
-          });
-        }
-
-        // Verify this agent belongs to the user's organization
-        if (existingAgent.workos_organization_id !== targetOrgId) {
-          return res.status(403).json({
-            error: 'Not authorized',
-            message: 'You can only update agents owned by your organization',
-          });
-        }
-
-        // Build update object (only allow certain fields to be updated)
-        const allowedUpdates: any = {};
-        if (updates.name) allowedUpdates.name = updates.name;
-        if (updates.url) {
-          try {
-            new URL(updates.url);
-            allowedUpdates.url = updates.url;
-          } catch {
-            return res.status(400).json({
-              error: 'Invalid URL',
-              message: 'Please provide a valid URL',
-            });
-          }
-        }
-        if (updates.contact_name !== undefined) allowedUpdates.contact_name = updates.contact_name;
-        if (updates.contact_email !== undefined) allowedUpdates.contact_email = updates.contact_email;
-        if (updates.contact_website !== undefined) allowedUpdates.contact_website = updates.contact_website;
-        if (updates.tags) allowedUpdates.tags = updates.tags;
-
-        // Update metadata fields
-        if (updates.description !== undefined || updates.agent_type !== undefined) {
-          const metadata = { ...existingAgent.metadata };
-          if (updates.description !== undefined) metadata.description = updates.description;
-          if (updates.agent_type !== undefined) {
-            const validAgentTypes = ['sales', 'creative', 'signals'];
-            if (!validAgentTypes.includes(updates.agent_type)) {
-              return res.status(400).json({
-                error: 'Invalid agent type',
-                message: `agent_type must be one of: ${validAgentTypes.join(', ')}`,
-              });
-            }
-            metadata.agent_type = updates.agent_type;
-          }
-          allowedUpdates.metadata = metadata;
-        }
-
-        const updatedAgent = await registryDb.updateEntry(existingAgent.slug, allowedUpdates);
-
-        logger.info({
-          agentId,
-          orgId: targetOrgId,
-        }, 'Agent updated');
-
-        res.json({
-          agent: updatedAgent,
-          message: 'Agent updated successfully.',
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Update agent error');
-        res.status(500).json({
-          error: 'Failed to update agent',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/me/agents/:agentId - Delete an agent
-    this.app.delete('/api/me/agents/:agentId', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { agentId } = req.params;
-        const requestedOrgId = req.query.org as string | undefined;
-
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Not authorized',
-            message: 'User is not a member of any organization',
-          });
-        }
-
-        // Determine which org to use
-        let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
-        }
-
-        // Delete the agent (only if it belongs to this org)
-        const deleted = await registryDb.deleteEntryByIdForOrg(agentId, targetOrgId);
-
-        if (!deleted) {
-          return res.status(404).json({
-            error: 'Not found',
-            message: 'Agent not found or you do not have permission to delete it',
-          });
-        }
-
-        logger.info({
-          agentId,
-          orgId: targetOrgId,
-        }, 'Agent deleted');
-
-        res.json({ success: true });
-      } catch (error) {
-        logger.error({ err: error }, 'Delete agent error');
-        res.status(500).json({
-          error: 'Failed to delete agent',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/agents/check-slug/:slug - Check agent slug availability
-    this.app.get('/api/agents/check-slug/:slug', async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const available = await registryDb.isSlugAvailable(slug);
-        res.json({ available, slug });
-      } catch (error) {
-        logger.error({ err: error }, 'Check agent slug error');
-        res.status(500).json({
-          error: 'Failed to check slug availability',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
+    // NOTE: Agent management is now handled through member profiles.
+    // Agents are stored in the member_profiles.agents JSONB array.
+    // Use PUT /api/me/member-profile to update agents.
 
     // Utility: Check slug availability
     this.app.get('/api/members/check-slug/:slug', async (req, res) => {
@@ -7362,7 +6704,17 @@ Disallow: /api/admin/
   }
 
   async start(port: number = 3000): Promise<void> {
-    await this.registry.initialize();
+    // Initialize database
+    const { initializeDatabase } = await import("./db/client.js");
+    const { runMigrations } = await import("./db/migrate.js");
+    const { getDatabaseConfig } = await import("./config.js");
+
+    const dbConfig = getDatabaseConfig();
+    if (!dbConfig) {
+      throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
+    }
+    initializeDatabase(dbConfig);
+    await runMigrations();
 
     // Sync organizations from WorkOS and Stripe to local database (dev environment support)
     if (AUTH_ENABLED && workos) {
@@ -7390,7 +6742,7 @@ Disallow: /api/admin/
     }
 
     // Pre-warm caches for all agents in background
-    const allAgents = await this.registry.listAgents();
+    const allAgents = await this.agentService.listAgents();
     logger.info({ agentCount: allAgents.length }, 'Pre-warming caches');
 
     // Don't await - let this run in background
@@ -7401,7 +6753,7 @@ Disallow: /api/admin/
     });
 
     // Start periodic property crawler for sales agents
-    const salesAgents = await this.registry.listAgents("sales");
+    const salesAgents = await this.agentService.listAgents("sales");
     if (salesAgents.length > 0) {
       logger.info({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
       this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes

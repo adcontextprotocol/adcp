@@ -182,9 +182,6 @@ docker-compose up -d
 
 # Run migrations
 npm run db:migrate
-
-# Seed database from JSON files (one-time migration)
-npm run db:seed
 ```
 
 #### 4. Start Development
@@ -225,15 +222,6 @@ npm run start:stripe
 ```bash
 # Run migrations
 npm run db:migrate
-
-# Seed database (skip existing)
-npm run db:seed
-
-# Seed database (update existing)
-npm run db:seed -- --force
-
-# Seed database (clean and reseed)
-npm run db:seed -- --clean
 ```
 
 ### Other Commands

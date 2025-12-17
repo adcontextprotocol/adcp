@@ -235,21 +235,6 @@ export class OrganizationDatabase {
     );
   }
 
-  /**
-   * Get audit log for an organization
-   */
-  async getAuditLog(workos_organization_id: string, limit: number = 100): Promise<any[]> {
-    const pool = getPool();
-    const result = await pool.query(
-      `SELECT * FROM registry_audit_log
-       WHERE workos_organization_id = $1
-       ORDER BY timestamp DESC
-       LIMIT $2`,
-      [workos_organization_id, limit]
-    );
-    return result.rows;
-  }
-
   // Billing Methods
 
   /**
