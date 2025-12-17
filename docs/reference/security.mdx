@@ -21,6 +21,48 @@ AdCP operates in a high-stakes environment where:
 
 This document provides security requirements and best practices for AdCP implementations.
 
+## Risk Classification
+
+AdCP operations fall into three risk categories based on their potential impact:
+
+### High-Risk Operations (Financial)
+
+These operations commit real advertising budgets and require the strongest authentication:
+
+| Operation | Risk | Recommended Auth |
+|-----------|------|------------------|
+| `create_media_buy` | Creates financial commitments | OAuth 2.0 or mTLS |
+| `update_media_buy` | Modifies budgets and campaign parameters | OAuth 2.0 or mTLS |
+
+**Requirements for High-Risk Operations**:
+- Implementations SHOULD use OAuth 2.0 with proper token validation or mutual TLS
+- Bearer tokens alone provide weaker security guarantees (see [Bearer Token Risks](#bearer-token-risks))
+- Multi-factor authentication or approval workflows recommended for large budgets
+- All requests must be logged with full audit trail
+
+### Medium-Risk Operations (Data Access)
+
+These operations access sensitive business data:
+
+| Operation | Risk | Recommended Auth |
+|-----------|------|------------------|
+| `get_media_buy_delivery` | Exposes performance metrics and spend data | OAuth 2.0, API Key, or Bearer Token |
+| `list_creatives` | Access to creative assets | OAuth 2.0, API Key, or Bearer Token |
+| `sync_creatives` | Uploads potentially sensitive creative content | OAuth 2.0, API Key, or Bearer Token |
+| `provide_performance_feedback` | Submits optimization signals | OAuth 2.0, API Key, or Bearer Token |
+| `get_signals` | Access to audience data | OAuth 2.0, API Key, or Bearer Token |
+| `activate_signal` | Activates audience segments | OAuth 2.0, API Key, or Bearer Token |
+
+### Low-Risk Operations (Discovery)
+
+These operations are publicly accessible to enable discovery:
+
+| Operation | Risk | Auth Required |
+|-----------|------|---------------|
+| `get_products` | Public inventory discovery | Optional (limited results without auth) |
+| `list_creative_formats` | Public format catalog | None |
+| `list_authorized_properties` | Public property listing | None |
+
 ## Authentication & Authorization
 
 AdCP does not mandate a specific authentication mechanism, allowing implementers to choose appropriate protocols for their use case. However, production implementations MUST enforce strong authentication and authorization.
@@ -151,6 +193,54 @@ function verifyWebhookSignature(
 - Implement webhook authentication (bearer tokens or mTLS)
 - Use short-lived, cryptographically random task IDs and context IDs
 - Consider webhook payload encryption for sensitive data
+
+### Bearer Token Risks
+
+While bearer tokens (including JWT) are widely used across the industry, they carry specific risks that implementations should understand, particularly for [high-risk financial operations](#high-risk-operations-financial):
+
+**Token Interception Risks**:
+- **Domain Hijacking**: If a domain expires or is compromised, attackers could receive valid bearer tokens intended for legitimate endpoints. Unlike OAuth flows, there's no bilateral verification that the server is the intended recipient.
+- **Man-in-the-Middle**: Without certificate pinning, compromised certificate authorities could enable token interception even over HTTPS.
+- **Token Replay**: Stolen tokens can be replayed until expiration.
+
+**Mitigations for Bearer Token Usage**:
+
+| Risk | Mitigation |
+|------|------------|
+| Domain hijacking | Certificate pinning, domain monitoring, short token expiry |
+| Token interception | mTLS, OAuth 2.0 with PKCE, token binding |
+| Token replay | Short expiration (15 min), one-time-use tokens, request signing |
+| Credential theft | Hardware security modules, secure enclaves |
+
+**When to Use Stronger Authentication**:
+
+For high-risk operations (`create_media_buy`, `update_media_buy`), consider:
+- **OAuth 2.0 with PKCE**: Provides bilateral verification through the authorization flow
+- **Mutual TLS (mTLS)**: Cryptographically verifies both client and server identity
+- **Request Signing**: HMAC or asymmetric signatures on request payloads
+
+**Example: Request Signing for Financial Operations**:
+```typescript
+// Additional security layer for high-value transactions
+interface SignedRequest {
+  payload: string;
+  timestamp: number;
+  signature: string; // HMAC-SHA256 of payload + timestamp
+}
+
+function signRequest(payload: object, secret: string): SignedRequest {
+  const payloadStr = JSON.stringify(payload);
+  const timestamp = Date.now();
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(payloadStr + timestamp.toString());
+
+  return {
+    payload: payloadStr,
+    timestamp,
+    signature: hmac.digest('hex')
+  };
+}
+```
 
 ## Financial Transaction Safety
 
