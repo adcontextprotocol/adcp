@@ -9,7 +9,7 @@ on:
 # Explicitly configure permissions
 permissions:
   actions: write
-  contents: read
+  contents: write  # Required to update signatures/ipr-signatures.json
   pull-requests: write
   statuses: write
 
