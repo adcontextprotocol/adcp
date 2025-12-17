@@ -447,6 +447,26 @@
       margin-bottom: 0;
     }
 
+    /* Pricing Section - Full width */
+    .pricing-section {
+      background: var(--color-bg-card);
+      padding: var(--space-10) var(--space-5);
+      margin-top: var(--space-8);
+      scroll-margin-top: 140px;
+    }
+    .pricing-section-container {
+      max-width: var(--container-xl);
+      margin: 0 auto;
+    }
+    .pricing-section h2 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--aao-primary);
+      margin-bottom: var(--space-6);
+      padding-bottom: var(--space-3);
+      border-bottom: var(--border-3) solid var(--aao-primary);
+    }
+
     /* FAQ Accordion */
     .faq-item {
       border-bottom: var(--border-1) solid var(--color-border);
@@ -530,86 +550,16 @@
     <div class="hero-container">
       <h1>Become a Member</h1>
       <p class="hero-subtitle">Join the organizations building the future of AI-powered advertising</p>
-      <p style="color: var(--color-warning-600); font-weight: var(--font-semibold); margin-top: var(--space-2);">Founding member pricing available through March 31, 2026</p>
     </div>
   </section>
 
-  <!-- Pricing Hero - Two Clear Options -->
-  <section class="pricing-hero" style="background: var(--color-bg-page); padding: var(--space-10) var(--space-5);">
-    <div style="max-width: var(--container-lg); margin: 0 auto;">
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--space-8); max-width: 900px; margin: 0 auto;">
-
-        <!-- Company Membership -->
-        <div class="pricing-card" style="border-width: 3px;">
-          <div class="pricing-header" style="border-bottom: none; padding-bottom: 0;">
-            <div class="pricing-title" style="font-size: var(--text-2xl);">Company Membership</div>
-          </div>
-          <div class="pricing-amount" style="margin-bottom: var(--space-2);">
-            <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-1);">$5M+ annual revenue</div>
-            <div class="pricing-price"><span class="currency">$</span>10,000<span style="font-size: var(--text-base); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
-          </div>
-          <div style="text-align: center; margin-bottom: var(--space-4); padding-bottom: var(--space-4); border-bottom: var(--border-1) solid var(--color-border);">
-            <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Under $5M annual revenue</div>
-            <div style="font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--aao-primary);">$2,500<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
-          </div>
-
-          <div style="text-align: left; margin-bottom: var(--space-5);">
-            <div style="font-weight: var(--font-semibold); color: var(--aao-black); margin-bottom: var(--space-3);">Company Membership Benefits</div>
-            <ul class="pricing-features" style="margin-bottom: 0;">
-              <li>Eligibility to serve on Board</li>
-              <li>Right to vote for Board</li>
-              <li>Help build standards, practices, protocols, and policies</li>
-              <li>Right to vote on standards adoption</li>
-              <li>Serve on interim Advisory Council</li>
-              <li>Participate in working groups</li>
-              <li>All team members can participate in association activities</li>
-            </ul>
-          </div>
-
-          <div class="pricing-cta">
-            <a href="/auth/login?redirect=/dashboard" class="btn btn-primary" style="font-size: var(--text-lg); padding: var(--space-4);">Join as a Company</a>
-          </div>
-          <p style="font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; margin-top: var(--space-3); margin-bottom: 0;">Open to brands, publishers, agencies, and ad tech providers</p>
-        </div>
-
-        <!-- Individual Membership -->
-        <div class="pricing-card" style="border-width: 3px;">
-          <div class="pricing-header" style="border-bottom: none; padding-bottom: 0;">
-            <div class="pricing-title" style="font-size: var(--text-2xl);">Individual Membership</div>
-          </div>
-          <div class="pricing-amount" style="margin-bottom: var(--space-2);">
-            <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-1);">Industry professionals</div>
-            <div class="pricing-price"><span class="currency">$</span>250<span style="font-size: var(--text-base); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
-          </div>
-          <div style="text-align: center; margin-bottom: var(--space-4); padding-bottom: var(--space-4); border-bottom: var(--border-1) solid var(--color-border);">
-            <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Students, academics & non-profits</div>
-            <div style="font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--aao-primary);">$50<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
-          </div>
-
-          <div style="text-align: left; margin-bottom: var(--space-5);">
-            <div style="font-weight: var(--font-semibold); color: var(--aao-black); margin-bottom: var(--space-3);">Individual Membership Benefits</div>
-            <ul class="pricing-features" style="margin-bottom: 0;">
-              <li>Help build standards, practices, protocols, and policies</li>
-              <li>Eligible for professional development and certification courses</li>
-              <li>Personal listing in member directory</li>
-              <li>Working group participation</li>
-              <li>Community Slack access</li>
-              <li>Event discounts and early access</li>
-              <li>Newsletter and industry updates</li>
-            </ul>
-          </div>
-
-          <div class="pricing-cta">
-            <a href="/auth/login?redirect=/dashboard" class="btn btn-primary" style="font-size: var(--text-lg); padding: var(--space-4);">Join as an Individual</a>
-          </div>
-          <p style="font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; margin-top: var(--space-3); margin-bottom: 0;">For consultants, professionals, and enthusiasts</p>
-        </div>
-      </div>
-
-      <p style="text-align: center; margin-top: var(--space-6); color: var(--color-text-secondary); font-size: var(--text-sm);">
-        Questions? Contact us at <a href="mailto:membership@agenticadvertising.org" style="color: var(--aao-primary);">membership@agenticadvertising.org</a>
-      </p>
-    </div>
+  <!-- CTA Section - Ready to Join (moved to top) -->
+  <section class="cta-section" style="max-width: var(--container-md); margin: var(--space-8) auto 0; border-radius: var(--radius-lg);">
+    <h3>Ready to Join?</h3>
+    <p>
+      Become a founding member today and help shape the future of agentic advertising. Join before March 31, 2026 to participate in the initial board selection process.
+    </p>
+    <a href="#pricing" class="btn btn-primary btn-lg">View Membership Options</a>
   </section>
 
   <!-- Sub-Navigation -->
@@ -621,6 +571,7 @@
         <a href="#membership-classes">Membership Classes</a>
         <a href="#governance">Governance & Board</a>
         <a href="#faq">FAQ</a>
+        <a href="#pricing">Pricing</a>
       </div>
     </div>
   </nav>
@@ -886,20 +837,32 @@
       </div>
     </section>
 
-    <!-- CTA Section -->
-    <div class="cta-section">
-      <h3>Ready to Join?</h3>
-      <p>
-        Become a founding member today and help shape the future of agentic advertising. Join before March 31, 2026 to participate in the initial board selection process.
-      </p>
-      <a href="#" onclick="window.scrollTo({top: 0, behavior: 'smooth'}); return false;" class="btn btn-primary btn-lg">View Membership Options</a>
-    </div>
   </div>
+
+  <!-- Pricing Section - Full width like members page -->
+  <section class="pricing-section" id="pricing">
+    <div class="pricing-section-container">
+      <h2>Membership Pricing</h2>
+      <div id="join-cta-container"></div>
+    </div>
+  </section>
+
+  <!-- Load shared join CTA component -->
+  <script src="/join-cta.js"></script>
 
   <!-- Shared Footer -->
   <div id="adcp-footer"></div>
 
   <script>
+    // Initialize join CTA component
+    document.addEventListener('DOMContentLoaded', () => {
+      renderJoinCta({
+        containerId: 'join-cta-container',
+        showFoundingNote: true,
+        showContactLine: true
+      });
+    });
+
     // Sub-nav active state on scroll
     const sections = document.querySelectorAll('.section[id]');
     const navLinks = document.querySelectorAll('.sub-nav-links a');
