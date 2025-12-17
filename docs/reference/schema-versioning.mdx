@@ -54,11 +54,61 @@ All AdCP schemas are available at multiple paths:
 
 ### Legacy Compatibility (v1)
 ```
-/schemas/v2/core/product.json
+/schemas/v1/core/product.json
 ```
 - **Backward compatibility** - Alias to latest 2.x for existing clients
 - **Deprecated** - Use `/schemas/v2/` for new code
 - **Best for**: Maintaining existing integrations during migration
+
+## Bundled Schemas
+
+For tools that don't support `$ref` resolution (some API clients, code generators, or desktop applications), AdCP provides **bundled schemas** with all references resolved inline:
+
+```
+/schemas/2.5.0/bundled/media-buy/create-media-buy-request.json
+/schemas/2.5.0/bundled/media-buy/get-products-response.json
+```
+
+### What's Bundled
+
+Bundled schemas are generated for all request/response schemas (`*-request.json`, `*-response.json`). These are the "root" schemas that tools validate against. Core data models like `product.json` are already embedded inside response schemas when bundled, so they don't need separate bundled versions.
+
+### When to Use Bundled Schemas
+
+| Use Case | Bundled | Modular |
+|----------|---------|---------|
+| Postman/Insomnia collections | ✅ | ❌ May not resolve refs |
+| Code generators (quicktype, json-schema-to-typescript) | ✅ Recommended | ⚠️ Depends on tool |
+| IDE autocomplete (VS Code JSON validation) | ✅ | ⚠️ May need configuration |
+| AJV validation with custom resolver | ❌ | ✅ Smaller files |
+| Understanding schema structure | ❌ | ✅ Clear separation |
+
+### Example: Using Bundled Schemas
+
+```javascript
+// Bundled - self-contained, no ref resolution needed
+const schema = await fetch('https://adcp.org/schemas/2.5.0/bundled/media-buy/create-media-buy-request.json');
+const validate = ajv.compile(await schema.json());
+
+// Modular - requires $ref resolution
+const schema = await fetch('https://adcp.org/schemas/2.5.0/media-buy/create-media-buy-request.json');
+// This schema contains $ref to other schemas that must be resolved
+```
+
+### Bundled Schema Metadata
+
+Bundled schemas include a `_bundled` field with generation metadata:
+
+```json
+{
+  "$id": "/schemas/2.5.0/bundled/core/product.json",
+  "title": "Product",
+  "_bundled": {
+    "generatedAt": "2024-12-17T10:30:00.000Z",
+    "note": "This is a bundled schema with all $ref resolved inline..."
+  }
+}
+```
 
 ## Choosing the Right Path
 
@@ -249,6 +299,9 @@ Check the [Release Notes](/docs/reference/release-notes) or [GitHub Releases](ht
 1. The version exists (see release notes)
 2. The path is correct (check [schema registry](https://adcp.org/schemas/v2/index.json))
 3. You're using the correct domain (adcp.org or adcontextprotocol.org)
+
+### Q: My tool doesn't support $ref - what should I do?
+**A**: Use the bundled schemas at `/schemas/{version}/bundled/`. These have all `$ref` resolved inline and work with any JSON Schema tool. See [Bundled Schemas](#bundled-schemas) above.
 
 ## Related Resources
 

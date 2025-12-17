@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/dimensions.json",
   "title": "Dimensions",
-  "description": "Pixel dimensions for visual formats (width and height must be specified together)",
+  "description": "Pixel dimensions for visual formats (width and height must be specified together). This schema is designed for composition via allOf - consuming schemas should define their own additionalProperties constraints.",
   "type": "object",
   "properties": {
     "width": {
@@ -16,6 +16,5 @@
       "description": "Height in pixels"
     }
   },
-  "required": ["width", "height"],
-  "additionalProperties": false
+  "required": ["width", "height"]
 }
