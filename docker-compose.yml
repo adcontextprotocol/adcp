@@ -20,7 +20,8 @@ services:
     ports:
       - "${CONDUCTOR_PORT:-3000}:8080"
     env_file:
-      - .env.local
+      - path: .env.local
+        required: false
     environment:
       - NODE_ENV=production
       - PORT=8080
