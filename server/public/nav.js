@@ -341,18 +341,20 @@
         cursor: pointer;
         font-size: inherit;
         font-family: inherit;
+        padding: 0.5rem 0.75rem;
+        padding-bottom: 1rem;
+        margin-bottom: -0.5rem;
       }
 
       .navbar__dropdown--nav {
         display: none;
         position: absolute;
-        top: calc(100% + 0.25rem);
+        top: 100%;
         left: 0;
         min-width: 220px;
       }
 
-      .navbar__dropdown-wrapper:hover .navbar__dropdown--nav,
-      .navbar__dropdown--nav:hover {
+      .navbar__dropdown-wrapper:hover .navbar__dropdown--nav {
         display: block;
       }
 
