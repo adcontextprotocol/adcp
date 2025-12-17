@@ -199,6 +199,7 @@
               "docs/reference/error-codes",
               "docs/reference/data-models",
               "docs/reference/authentication",
+              "docs/reference/security",
               "docs/reference/glossary"
             ]
           },
