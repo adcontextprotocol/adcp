@@ -102,12 +102,13 @@
       : '';
 
     // Build about dropdown (only on beta site - links to trade association)
-    // Includes About page and Membership page
+    // Includes About page, Membership page, and Governance page
     const aboutUrl = isLocal ? '/about' : 'https://agenticadvertising.org/about';
     const membershipUrl = isLocal ? '/membership' : 'https://agenticadvertising.org/membership';
+    const governanceUrl = isLocal ? '/governance' : 'https://agenticadvertising.org/governance';
     const aboutDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
-          <button class="navbar__link navbar__dropdown-trigger ${currentPath === '/about' || currentPath === '/membership' ? 'active' : ''}">
+          <button class="navbar__link navbar__dropdown-trigger ${currentPath === '/about' || currentPath === '/membership' || currentPath === '/governance' ? 'active' : ''}">
             AgenticAdvertising.org
             <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
               <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
@@ -116,6 +117,7 @@
           <div class="navbar__dropdown navbar__dropdown--nav">
             <a href="${aboutUrl}" class="navbar__dropdown-item ${currentPath === '/about' ? 'active' : ''}">About</a>
             <a href="${membershipUrl}" class="navbar__dropdown-item ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
+            <a href="${governanceUrl}" class="navbar__dropdown-item ${currentPath === '/governance' ? 'active' : ''}">Governance</a>
           </div>
         </div>`
       : '';
@@ -170,6 +172,7 @@
           ${perspectivesLink}
           <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
+          <a href="${governanceUrl}" class="navbar__link navbar__link--indent ${currentPath === '/governance' ? 'active' : ''}">Governance</a>
           <a href="${docsUrl}" class="navbar__link">Docs</a>
           <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
         </div>
@@ -665,10 +668,20 @@
               </ul>
             </div>
             <div class="aao-footer__column">
+              <div class="aao-footer__title">Organization</div>
+              <ul class="aao-footer__list">
+                <li><a href="/about">About</a></li>
+                <li><a href="/governance">Governance</a></li>
+                <li><a href="/members">Members</a></li>
+              </ul>
+            </div>
+            <div class="aao-footer__column">
               <div class="aao-footer__title">Legal</div>
               <ul class="aao-footer__list">
                 <li><a href="/api/agreement?type=privacy_policy">Privacy Policy</a></li>
                 <li><a href="/api/agreement?type=terms_of_service">Terms of Service</a></li>
+                <li><a href="/api/agreement?type=bylaws">Bylaws</a></li>
+                <li><a href="/api/agreement?type=ip_policy">IP Policy</a></li>
               </ul>
             </div>
           </div>
@@ -699,7 +712,7 @@
 
       .aao-footer__columns {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(5, 1fr);
         gap: 2rem;
         margin-bottom: 2rem;
       }

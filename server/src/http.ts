@@ -1077,12 +1077,20 @@ export class HTTPServer {
       res.sendFile(aboutPath);
     });
 
-    // Membership page - serve membership.html at /membership
+// Membership page - serve membership.html at /membership
     this.app.get("/membership", (req, res) => {
       const membershipPath = process.env.NODE_ENV === 'production'
         ? path.join(__dirname, "../server/public/membership.html")
         : path.join(__dirname, "../public/membership.html");
       res.sendFile(membershipPath);
+    });
+
+    // Governance page - serve governance.html at /governance
+    this.app.get("/governance", (req, res) => {
+      const governancePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/governance.html")
+        : path.join(__dirname, "../public/governance.html");
+      res.sendFile(governancePath);
     });
 
     // Perspectives section
@@ -2065,7 +2073,7 @@ export class HTTPServer {
     this.app.post('/api/admin/agreements', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { agreement_type, version, effective_date, text } = req.body;
-        const validTypes = ['terms_of_service', 'privacy_policy', 'membership'];
+        const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
 
         if (!agreement_type || !version || !effective_date || !text) {
           return res.status(400).json({
@@ -2077,7 +2085,7 @@ export class HTTPServer {
         if (!validTypes.includes(agreement_type)) {
           return res.status(400).json({
             error: 'Invalid agreement type',
-            message: 'Type must be: terms_of_service, privacy_policy, or membership'
+            message: 'Type must be: terms_of_service, privacy_policy, membership, bylaws, or ip_policy'
           });
         }
 
@@ -2104,7 +2112,7 @@ export class HTTPServer {
       try {
         const { id } = req.params;
         const { agreement_type, version, effective_date, text } = req.body;
-        const validTypes = ['terms_of_service', 'privacy_policy', 'membership'];
+        const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
 
         if (!agreement_type || !version || !effective_date || !text) {
           return res.status(400).json({
@@ -2116,7 +2124,7 @@ export class HTTPServer {
         if (!validTypes.includes(agreement_type)) {
           return res.status(400).json({
             error: 'Invalid agreement type',
-            message: 'Type must be: terms_of_service, privacy_policy, or membership'
+            message: 'Type must be: terms_of_service, privacy_policy, membership, bylaws, or ip_policy'
           });
         }
 
@@ -2481,11 +2489,11 @@ export class HTTPServer {
         });
       }
 
-      const validTypes = ['terms_of_service', 'privacy_policy', 'membership'];
+      const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
       if (!validTypes.includes(agreement_type)) {
         return res.status(400).json({
           error: 'Invalid agreement type',
-          message: 'Type must be: terms_of_service, privacy_policy, or membership',
+          message: 'Type must be: terms_of_service, privacy_policy, membership, bylaws, or ip_policy',
         });
       }
 
@@ -3922,11 +3930,11 @@ Disallow: /api/admin/
           });
         }
 
-        const validTypes = ['terms_of_service', 'privacy_policy', 'membership'];
+        const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
         if (!validTypes.includes(agreement_type)) {
           return res.status(400).json({
             error: 'Invalid agreement type',
-            message: 'Type must be: terms_of_service, privacy_policy, or membership',
+            message: 'Type must be: terms_of_service, privacy_policy, membership, bylaws, or ip_policy',
           });
         }
 
@@ -4494,12 +4502,12 @@ Disallow: /api/admin/
     this.app.get('/api/agreement/current', async (req, res) => {
       try {
         const type = (req.query.type as string) || 'membership';
-        const validTypes = ['terms_of_service', 'privacy_policy', 'membership'];
+        const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
 
         if (!validTypes.includes(type)) {
           return res.status(400).json({
             error: 'Invalid agreement type',
-            message: 'Type must be: terms_of_service, privacy_policy, or membership'
+            message: 'Type must be: terms_of_service, privacy_policy, membership, bylaws, or ip_policy'
           });
         }
 
@@ -4533,7 +4541,7 @@ Disallow: /api/admin/
         const type = req.query.type as string;
         const version = req.query.version as string;
         const format = req.query.format as string; // 'json' or 'html' (default: html)
-        const validTypes = ['terms_of_service', 'privacy_policy', 'membership'];
+        const validTypes = ['terms_of_service', 'privacy_policy', 'membership', 'bylaws', 'ip_policy'];
 
         if (!type) {
           return res.status(400).json({
@@ -4545,7 +4553,7 @@ Disallow: /api/admin/
         if (!validTypes.includes(type)) {
           return res.status(400).json({
             error: 'Invalid agreement type',
-            message: 'Type must be: terms_of_service, privacy_policy, or membership'
+            message: 'Type must be: terms_of_service, privacy_policy, membership, bylaws, or ip_policy'
           });
         }
 
