@@ -59,7 +59,7 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
     } else if (entry.name.endsWith('.json')) {
       let content = fs.readFileSync(sourcePath, 'utf8');
 
-      // Update $id and $ref fields to include version
+      // Update $id, $ref, and $schema fields to include version
       content = content.replace(
         /"\$id":\s*"\/schemas\//g,
         `"$id": "/schemas/${version}/`
@@ -67,6 +67,10 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
       content = content.replace(
         /"\$ref":\s*"\/schemas\//g,
         `"$ref": "/schemas/${version}/`
+      );
+      content = content.replace(
+        /"\$schema":\s*"\/schemas\//g,
+        `"$schema": "/schemas/${version}/`
       );
 
       // Update baseUrl and metadata in registry
