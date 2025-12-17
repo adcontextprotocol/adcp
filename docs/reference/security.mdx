@@ -65,11 +65,13 @@ AdCP implementations should implement fine-grained authorization:
 
 | Scope | Description | Example Operations |
 |-------|-------------|-------------------|
-| `read:products` | Discover available inventory | `get_products`, `list_creative_formats` |
+| `read:products` | Discover available inventory | `get_products`, `list_creative_formats`, `list_authorized_properties` |
 | `read:campaigns` | View campaign details | `list_creatives`, `get_media_buy_delivery` |
 | `write:campaigns` | Create and modify campaigns | `create_media_buy`, `update_media_buy` |
-| `write:creatives` | Upload and manage creatives | `sync_creatives` |
+| `read:creatives` | Preview and inspect creatives | `preview_creative` |
+| `write:creatives` | Upload and manage creatives | `sync_creatives`, `build_creative` |
 | `read:signals` | Access audience signals | `get_signals` (if signals module implemented) |
+| `write:signals` | Activate signals for targeting | `activate_signal` (if signals module implemented) |
 | `admin:*` | Full administrative access | All operations |
 
 **Principal Isolation**:
@@ -1403,7 +1405,7 @@ Consider running a bug bounty program to incentivize responsible vulnerability d
 
 ## Vulnerability Disclosure
 
-For vulnerability disclosure policy and reporting procedures, see [SECURITY.md](https://github.com/adcontextprotocol/adcp/blob/main/SECURITY.mdx) in the AdCP repository.
+For vulnerability disclosure policy and reporting procedures, see [SECURITY.md](https://github.com/adcontextprotocol/adcp/blob/main/SECURITY.md) in the AdCP repository.
 
 **Quick Reference**:
 - **Report vulnerabilities to**: security@adcontextprotocol.org
