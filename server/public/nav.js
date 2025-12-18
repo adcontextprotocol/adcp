@@ -11,8 +11,17 @@
 (function() {
   'use strict';
 
+  // Skip on Mintlify docs site - it has its own navigation
+  // This prevents the nav from appearing when Mintlify accidentally bundles this script
+  const hostname = window.location.hostname;
+  if (hostname === 'docs.adcontextprotocol.org' ||
+      hostname.includes('mintlify') ||
+      document.querySelector('meta[name="generator"][content="Mintlify"]')) {
+    return;
+  }
+
   // Determine if running locally
-  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
 
   // All sites use identical AAO-branded navigation
   // AAO content (members, insights, about) always lives on agenticadvertising.org
