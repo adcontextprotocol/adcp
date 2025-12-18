@@ -276,8 +276,12 @@ export class MCPToolHandler {
         return {
           content: [
             {
-              type: "text",
-              text: JSON.stringify(simplified, null, 2),
+              type: "resource",
+              resource: {
+                uri: "members://directory",
+                mimeType: "application/json",
+                text: JSON.stringify({ members: simplified, count: simplified.length }, null, 2),
+              },
             },
           ],
         };
@@ -291,8 +295,12 @@ export class MCPToolHandler {
           return {
             content: [
               {
-                type: "text",
-                text: JSON.stringify({ error: "Member not found" }),
+                type: "resource",
+                resource: {
+                  uri: `member://${encodeURIComponent(slug)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify({ error: "Member not found" }),
+                },
               },
             ],
             isError: true,
@@ -330,8 +338,12 @@ export class MCPToolHandler {
         return {
           content: [
             {
-              type: "text",
-              text: JSON.stringify(result, null, 2),
+              type: "resource",
+              resource: {
+                uri: `member://${encodeURIComponent(slug)}`,
+                mimeType: "application/json",
+                text: JSON.stringify(result, null, 2),
+              },
             },
           ],
         };
@@ -344,8 +356,12 @@ export class MCPToolHandler {
         return {
           content: [
             {
-              type: "text",
-              text: JSON.stringify(agents, null, 2),
+              type: "resource",
+              resource: {
+                uri: type ? `agents://${type}` : "agents://all",
+                mimeType: "application/json",
+                text: JSON.stringify({ agents, count: agents.length }, null, 2),
+              },
             },
           ],
         };
@@ -358,8 +374,12 @@ export class MCPToolHandler {
           return {
             content: [
               {
-                type: "text",
-                text: JSON.stringify({ error: "Agent not found" }),
+                type: "resource",
+                resource: {
+                  uri: `agent://${encodeURIComponent(agentUrl)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify({ error: "Agent not found" }),
+                },
               },
             ],
             isError: true,
@@ -368,8 +388,12 @@ export class MCPToolHandler {
         return {
           content: [
             {
-              type: "text",
-              text: JSON.stringify(agent, null, 2),
+              type: "resource",
+              resource: {
+                uri: `agent://${encodeURIComponent(agentUrl)}`,
+                mimeType: "application/json",
+                text: JSON.stringify(agent, null, 2),
+              },
             },
           ],
         };
@@ -382,8 +406,12 @@ export class MCPToolHandler {
         return {
           content: [
             {
-              type: "text",
-              text: JSON.stringify(result, null, 2),
+              type: "resource",
+              resource: {
+                uri: `validation://${encodeURIComponent(domain)}/${encodeURIComponent(agentUrl)}`,
+                mimeType: "application/json",
+                text: JSON.stringify(result, null, 2),
+              },
             },
           ],
         };
@@ -412,12 +440,16 @@ export class MCPToolHandler {
         return {
           content: [
             {
-              type: "text",
-              text: JSON.stringify({
-                property: { type: propertyType, value: propertyValue },
-                agents: matchingAgents,
-                count: matchingAgents.length,
-              }, null, 2),
+              type: "resource",
+              resource: {
+                uri: `agents://property/${propertyType}/${encodeURIComponent(propertyValue)}`,
+                mimeType: "application/json",
+                text: JSON.stringify({
+                  property: { type: propertyType, value: propertyValue },
+                  agents: matchingAgents,
+                  count: matchingAgents.length,
+                }, null, 2),
+              },
             },
           ],
         };
