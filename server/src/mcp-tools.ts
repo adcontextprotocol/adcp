@@ -358,7 +358,7 @@ export class MCPToolHandler {
             {
               type: "resource",
               resource: {
-                uri: type ? `agents://${type}` : "agents://all",
+                uri: type ? `agents://${encodeURIComponent(type)}` : "agents://all",
                 mimeType: "application/json",
                 text: JSON.stringify({ agents, count: agents.length }, null, 2),
               },
