@@ -33,7 +33,6 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server/public ./server/public
 COPY --from=builder /app/server/src/db/migrations ./dist/db/migrations
 COPY --from=builder /app/static ./static
-COPY --from=builder /app/registry ./registry
 
 # Set environment variables
 ENV NODE_ENV=production
