@@ -6,7 +6,7 @@
     "dark": "/logo/AAo.svg",
     "href": "https://agenticadvertising.org"
   },
-  "favicon": "/img/favicon.svg",
+  "favicon": "/logo/AAo.svg",
   "theme": "mint",
   "colors": {
     "primary": "#0D9373",
@@ -16,7 +16,7 @@
   "navbar": {
     "links": [
       {
-        "label": "About AdCP",
+        "label": "AdCP Home",
         "href": "https://adcontextprotocol.org"
       },
       {
@@ -28,7 +28,7 @@
         "href": "https://agenticadvertising.org/perspectives"
       },
       {
-        "label": "AAO",
+        "label": "Join AAO",
         "href": "https://agenticadvertising.org"
       }
     ],
