@@ -25,7 +25,7 @@ jobs:
         with:
           path-to-signatures: 'signatures/ipr-signatures.json'
           path-to-document: 'https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md'
-          branch: 'main'
+          branch: 'ipr-signatures'
           allowlist: 'bot*,dependabot*,renovate*,github-actions*'
 
           custom-notsigned-prcomment: |
