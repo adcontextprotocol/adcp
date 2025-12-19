@@ -81,14 +81,13 @@ Both protocols support all features - they just express them differently:
   }
 }
 
-// Response  
+// Response (flat structure - task fields at top level)
 {
+  "status": "completed",
   "message": "Found 5 CTV products",
   "context_id": "ctx-123",
-  "data": {
-    "products": [...],
-    "clarification_needed": false
-  }
+  "products": [...],
+  "clarification_needed": false
 }
 ```
 

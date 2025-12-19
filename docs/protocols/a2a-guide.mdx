@@ -804,23 +804,11 @@ try {
 }
 ```
 
-### File Upload Validation
-```javascript
-// A2A validates file types automatically
-const response = await a2a.send({
-  message: {
-    parts: [
-      { kind: "text", text: "Upload creative asset" },
-      { kind: "file", uri: "https://example.com/video.mp4", name: "hero.mp4" }
-    ]
-  }
-});
+### Creative Upload Error Handling
 
-// Check for file validation issues
-if (response.status === 'failed' && response.data?.file_errors) {
-  console.log('File issues:', response.data.file_errors);
-}
-```
+For uploading creative assets and handling validation errors, use the `sync_creatives` task. See [sync_creatives Task Reference](/docs/media-buy/task-reference/sync_creatives) for complete testable examples.
+
+The `@adcp/client` library handles A2A artifact extraction automatically, so you don't need to manually parse the response structure.
 
 ## Best Practices
 

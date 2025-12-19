@@ -55,13 +55,11 @@ Same status and data, different packaging:
 ### MCP Response Format
 ```json
 {
-  "message": "I need your budget and target audience",
   "status": "input-required",
+  "message": "I need your budget and target audience",
   "context_id": "ctx-123",
-  "data": {
-    "products": [],
-    "suggestions": ["budget", "audience"]
-  }
+  "products": [],
+  "suggestions": ["budget", "audience"]
 }
 ```
 
@@ -236,7 +234,7 @@ function handleResponse(response) {
   }
   
   if (response.status === 'completed') {
-    return processResults(response.data);
+    return processResults(response);  // Task fields at top level
   }
 }
 ```
@@ -253,14 +251,14 @@ function handleResponse(response) {
 }
 ```
 
-**User Follow-up:** "Budget is $50K, targeting pet owners"  
+**User Follow-up:** "Budget is $50K, targeting pet owners"
 **AdCP Response:**
 ```json
 {
-  "status": "completed", 
+  "status": "completed",
   "message": "Found 8 video products perfect for pet owners",
   "context_id": "ctx-123",
-  "data": { "products": [...] }
+  "products": [...]
 }
 ```
 
@@ -273,17 +271,15 @@ Both protocols handle approvals using `status: "input-required"`:
   "status": "input-required",
   "message": "Media buy exceeds auto-approval limit ($100K). Please approve to proceed.",
   "context_id": "ctx-123",
-  "data": {
-    "approval_required": true,
-    "amount": 150000,
-    "reason": "exceeds_limit"
-  }
+  "approval_required": true,
+  "amount": 150000,
+  "reason": "exceeds_limit"
 }
 ```
 
 Client handling is identical:
 ```javascript
-if (response.status === 'input-required' && response.data?.approval_required) {
+if (response.status === 'input-required' && response.approval_required) {
   const decision = await getApproval(response.message);
   return sendApproval(response.context_id, decision);
 }
@@ -329,7 +325,7 @@ const response = await mcp.call('get_products', {
 });
 
 if (response.status === 'completed') {
-  console.log(response.data.products);
+  console.log(response.products);  // Task fields at top level
 }
 ```
 
@@ -364,10 +360,8 @@ Both use `status: "failed"` with same error structure:
   "status": "failed",
   "message": "Insufficient inventory for your targeting criteria",
   "context_id": "ctx-123",
-  "data": {
-    "error_code": "insufficient_inventory",
-    "suggestions": ["Expand targeting", "Increase CPM"]
-  }
+  "error_code": "insufficient_inventory",
+  "suggestions": ["Expand targeting", "Increase CPM"]
 }
 ```
 
@@ -403,20 +397,28 @@ The unified status system makes it easy to switch protocols:
 // Abstract client that works with both
 class UnifiedAdcpClient {
   constructor(protocol, config) {
-    this.client = protocol === 'mcp' 
+    this.client = protocol === 'mcp'
       ? new McpClient(config)
       : new A2aClient(config);
+    this.protocol = protocol;
   }
-  
+
   async send(request) {
     const response = await this.client.send(request);
-    
-    // Normalize response format
+
+    // MCP: task fields already at top level
+    // A2A: extract from artifacts
+    if (this.protocol === 'mcp') {
+      return response;
+    }
+
+    // Normalize A2A response to flat structure
+    const dataPart = response.artifacts?.[0]?.parts?.find(p => p.kind === 'data');
     return {
       status: response.status,
-      message: response.message || response.artifacts?.[0]?.parts?.[0]?.text,
-      contextId: response.context_id || response.contextId,
-      data: response.data || response.artifacts?.[0]?.parts?.[1]?.data
+      message: response.artifacts?.[0]?.parts?.[0]?.text,
+      contextId: response.contextId,
+      ...dataPart?.data  // Spread task-specific fields to top level
     };
   }
 }
