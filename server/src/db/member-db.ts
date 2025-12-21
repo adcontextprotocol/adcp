@@ -6,6 +6,7 @@ import type {
   ListMemberProfilesOptions,
   MemberOffering,
   AgentConfig,
+  PublisherConfig,
 } from '../types.js';
 
 /**
@@ -24,6 +25,7 @@ export class MemberDatabase {
    */
   async createProfile(input: CreateMemberProfileInput): Promise<MemberProfile> {
     const agents = input.agents || [];
+    const publishers = input.publishers || [];
 
     const result = await query<MemberProfile>(
       `INSERT INTO member_profiles (
@@ -31,9 +33,9 @@ export class MemberDatabase {
         logo_url, logo_light_url, logo_dark_url, brand_color,
         contact_email, contact_website, contact_phone,
         linkedin_url, twitter_url,
-        offerings, agents, headquarters, markets, metadata, tags,
+        offerings, agents, publishers, headquarters, markets, metadata, tags,
         is_public, show_in_carousel
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
       RETURNING *`,
       [
         input.workos_organization_id,
@@ -52,6 +54,7 @@ export class MemberDatabase {
         input.twitter_url || null,
         input.offerings || [],
         JSON.stringify(agents),
+        JSON.stringify(publishers),
         input.headquarters || null,
         input.markets || [],
         JSON.stringify(input.metadata || {}),
@@ -123,6 +126,7 @@ export class MemberDatabase {
       twitter_url: 'twitter_url',
       offerings: 'offerings',
       agents: 'agents',
+      publishers: 'publishers',
       headquarters: 'headquarters',
       markets: 'markets',
       metadata: 'metadata',
@@ -142,7 +146,7 @@ export class MemberDatabase {
       }
 
       setClauses.push(`${columnName} = $${paramIndex++}`);
-      if (key === 'metadata' || key === 'agents') {
+      if (key === 'metadata' || key === 'agents' || key === 'publishers') {
         params.push(JSON.stringify(value));
       } else {
         params.push(value);
@@ -323,9 +327,18 @@ export class MemberDatabase {
         : row.agents;
     }
 
+    // Parse publishers JSONB
+    let publishers: PublisherConfig[] = [];
+    if (row.publishers) {
+      publishers = typeof row.publishers === 'string'
+        ? JSON.parse(row.publishers)
+        : row.publishers;
+    }
+
     return {
       ...row,
       agents,
+      publishers,
       markets: row.markets || [],
       metadata: typeof row.metadata === 'string'
         ? JSON.parse(row.metadata)
