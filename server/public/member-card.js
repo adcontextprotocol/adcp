@@ -51,6 +51,12 @@ function renderMemberCard(member, options = {}) {
     ? `<span class="agent-badge">${agentCount} Agent${agentCount > 1 ? 's' : ''}</span>`
     : '';
 
+  // Publisher count badge - show if member has registered publishers
+  const publisherCount = (member.publishers || []).length;
+  const publisherBadge = publisherCount > 0
+    ? `<span class="publisher-badge">${publisherCount} Publisher${publisherCount > 1 ? 's' : ''}</span>`
+    : '';
+
   // Markets display - show regions served if available
   const markets = member.markets || [];
   const marketsHtml = markets.length > 0
@@ -68,6 +74,7 @@ function renderMemberCard(member, options = {}) {
           <div class="member-name-row">
             <div class="member-name">${member.display_name}</div>
             ${agentBadge}
+            ${publisherBadge}
             ${visibilityBadge}
           </div>
           ${marketsHtml}
@@ -252,6 +259,17 @@ function getMemberCardStyles() {
       padding: 2px 8px;
       background: #fef3c7;
       color: #92400e;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .publisher-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
       border-radius: 4px;
       font-size: 11px;
       font-weight: 500;
@@ -625,4 +643,396 @@ function escapeHtmlSafe(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// ============================================
+// Publisher Card Rendering - Shared Component
+// ============================================
+
+/**
+ * Render a publisher card/row with validation details
+ * @param {Object} publisherInfo - Validated publisher info from /api/validate-publisher
+ * @param {string} publisherDomain - The publisher domain
+ * @param {Object} options - Rendering options
+ * @param {boolean} options.showVisibilityToggle - Show public/private toggle (for edit profile)
+ * @param {boolean} options.isPublic - Current visibility state
+ * @param {number} options.index - Index for toggle callback
+ * @param {boolean} options.showRemoveButton - Show remove button
+ * @param {boolean} options.showStatus - Show Valid/Error status badge
+ * @param {boolean} options.compact - Use compact layout (for member cards)
+ * @returns {string} HTML string
+ */
+function renderPublisherCard(publisherInfo, publisherDomain, options = {}) {
+  const {
+    showVisibilityToggle = false,
+    isPublic = true,
+    index = 0,
+    showRemoveButton = false,
+    showStatus = true,
+    compact = false
+  } = options;
+
+  // Handle error state
+  if (publisherInfo?.error) {
+    const errorMessage = typeof publisherInfo.error === 'string'
+      ? publisherInfo.error
+      : (publisherInfo.errors && publisherInfo.errors.length > 0
+          ? publisherInfo.errors[0].message
+          : 'Validation failed');
+
+    return `
+      <div class="publisher-card error">
+        <div class="publisher-card-main">
+          <div class="publisher-card-info">
+            <div class="publisher-card-domain">${escapeHtmlSafe(publisherDomain)}</div>
+            <div class="publisher-card-error">${escapeHtmlSafe(errorMessage)}</div>
+          </div>
+          ${showStatus ? '<div class="publisher-card-status error"><span>✗</span> Error</div>' : ''}
+        </div>
+        ${showRemoveButton ? `<button type="button" class="publisher-card-remove" onclick="removePublisher(${index})">Remove</button>` : ''}
+      </div>
+    `;
+  }
+
+  // Handle loading state
+  if (!publisherInfo) {
+    return `
+      <div class="publisher-card loading">
+        <div class="publisher-card-main">
+          <div class="publisher-card-info">
+            <div class="publisher-card-domain">${escapeHtmlSafe(publisherDomain)}</div>
+            <div class="publisher-card-meta">Checking adagents.json...</div>
+          </div>
+          <div class="publisher-card-status loading">
+            <div class="publisher-card-spinner"></div>
+            <span>Checking</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Handle invalid response (has errors array)
+  if (!publisherInfo.valid && publisherInfo.errors && publisherInfo.errors.length > 0) {
+    const errorMessage = publisherInfo.errors[0].message;
+    return `
+      <div class="publisher-card error">
+        <div class="publisher-card-main">
+          <div class="publisher-card-info">
+            <div class="publisher-card-domain">${escapeHtmlSafe(publisherDomain)}</div>
+            <div class="publisher-card-error">${escapeHtmlSafe(errorMessage)}</div>
+          </div>
+          ${showStatus ? '<div class="publisher-card-status error"><span>✗</span> Invalid</div>' : ''}
+        </div>
+        ${showRemoveButton ? `<button type="button" class="publisher-card-remove" onclick="removePublisher(${index})">Remove</button>` : ''}
+      </div>
+    `;
+  }
+
+  // Build stats display
+  const agentCount = publisherInfo.agent_count || 0;
+  const propertyCount = publisherInfo.property_count || 0;
+  const tagCount = publisherInfo.tag_count || 0;
+  const propertyTypeCounts = publisherInfo.property_type_counts || {};
+
+  // Human-readable property type labels
+  const propertyTypeLabels = {
+    website: 'web',
+    mobile_app: 'app',
+    ctv: 'CTV',
+    dooh: 'DOOH',
+    podcast: 'podcast',
+    radio: 'radio',
+    newsletter: 'newsletter',
+    unknown: 'other'
+  };
+
+  // Build stats parts - show property types breakdown if available
+  const statsParts = [];
+  const typeEntries = Object.entries(propertyTypeCounts);
+  if (typeEntries.length > 0) {
+    // Show total properties with type breakdown: "8 properties (3 web, 2 CTV)"
+    const typeParts = typeEntries.map(([type, count]) => {
+      const label = propertyTypeLabels[type] || type;
+      return `${count} ${label}`;
+    });
+    const totalProps = propertyCount || typeEntries.reduce((sum, [, c]) => sum + c, 0);
+    statsParts.push(`${totalProps} propert${totalProps !== 1 ? 'ies' : 'y'} (${typeParts.join(', ')})`);
+  } else if (propertyCount > 0) {
+    // Fallback to total count if no type breakdown
+    statsParts.push(`${propertyCount} propert${propertyCount !== 1 ? 'ies' : 'y'}`);
+  }
+  if (tagCount > 0) {
+    statsParts.push(`${tagCount} tag${tagCount !== 1 ? 's' : ''}`);
+  }
+  statsParts.push(`${agentCount} agent${agentCount !== 1 ? 's' : ''}`);
+  const statsLabel = statsParts.join(', ');
+
+  // Visibility badge (for list views)
+  const visibilityBadge = showVisibilityToggle
+    ? (isPublic
+        ? '<span class="publisher-visibility-badge public">Public</span>'
+        : '<span class="publisher-visibility-badge private">Private</span>')
+    : '';
+
+  // Visibility toggle (for edit mode)
+  const visibilityToggle = showVisibilityToggle ? `
+    <div class="publisher-card-visibility">
+      <label>
+        <input type="checkbox" ${isPublic ? 'checked' : ''} onchange="togglePublisherVisibility(${index}, this.checked)">
+        <span class="toggle"></span>
+        Show in member directory
+      </label>
+    </div>
+  ` : '';
+
+  // Status badge
+  const statusHtml = showStatus ? `
+    <div class="publisher-card-status valid">
+      <span class="status-dot"></span>
+      <span>Valid</span>
+    </div>
+  ` : '';
+
+  // Remove button
+  const removeBtn = showRemoveButton
+    ? `<button type="button" class="publisher-card-remove" onclick="removePublisher(${index})">Remove</button>`
+    : '';
+
+  // Link to adagents.json builder
+  const detailsLink = `/adagents?domain=${encodeURIComponent(publisherDomain)}`;
+
+  if (compact) {
+    // Compact layout for member cards - clickable
+    return `
+      <a href="${detailsLink}" class="publisher-card-compact publisher-card-link">
+        <span class="publisher-domain-badge">${escapeHtmlSafe(publisherDomain)}</span>
+        <span class="publisher-stat">${statsLabel}</span>
+      </a>
+    `;
+  }
+
+  // Full layout - wrap in link if not showing remove button (i.e., view mode)
+  const cardContent = `
+    <div class="publisher-card-main">
+      <div class="publisher-card-info">
+        <div class="publisher-card-header">
+          <span class="publisher-type-badge">Publisher</span>
+          ${visibilityBadge}
+        </div>
+        <div class="publisher-card-domain">${escapeHtmlSafe(publisherDomain)}</div>
+        <div class="publisher-card-meta">
+          <span class="publisher-stat">${statsLabel}</span>
+        </div>
+        ${visibilityToggle}
+      </div>
+      ${statusHtml}
+    </div>
+    ${removeBtn}
+  `;
+
+  // If in edit mode (has remove button), use div; otherwise make it a link
+  if (showRemoveButton) {
+    return `<div class="publisher-card success">${cardContent}</div>`;
+  }
+
+  return `<a href="${detailsLink}" class="publisher-card success publisher-card-link">${cardContent}</a>`;
+}
+
+/**
+ * Get CSS styles for publisher cards
+ * @returns {string} CSS styles
+ */
+function getPublisherCardStyles() {
+  return `
+    .publisher-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+    }
+    .publisher-card.success {
+      background: var(--color-success-50);
+      border-color: var(--color-success-500);
+    }
+    .publisher-card.error {
+      background: var(--color-error-50);
+      border-color: var(--color-error-100);
+    }
+    .publisher-card.loading {
+      background: var(--color-warning-50);
+      border-color: var(--color-warning-100);
+    }
+    .publisher-card-main {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    .publisher-card-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .publisher-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .publisher-card-domain {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      word-break: break-all;
+      margin-bottom: 6px;
+    }
+    .publisher-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      color: var(--color-gray-700);
+    }
+    .publisher-card-error {
+      font-size: 13px;
+      color: var(--color-error-600);
+    }
+    .publisher-type-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+    }
+    .publisher-domain-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--color-gray-100);
+      color: var(--color-gray-700);
+    }
+    .publisher-stat {
+      color: var(--color-gray-700);
+    }
+    .publisher-visibility-badge {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .publisher-visibility-badge.public {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .publisher-visibility-badge.private {
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+    }
+    .publisher-card-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      white-space: nowrap;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+    .publisher-card-status.valid {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .publisher-card-status.error {
+      color: var(--color-error-600);
+    }
+    .publisher-card-status.loading {
+      color: var(--color-warning-600);
+    }
+    .publisher-card-status .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--color-success-500);
+    }
+    .publisher-card-spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--color-warning-500);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: publisher-spin 1s linear infinite;
+    }
+    @keyframes publisher-spin {
+      to { transform: rotate(360deg); }
+    }
+    .publisher-card-visibility {
+      margin-top: 8px;
+      font-size: 13px;
+    }
+    .publisher-card-visibility label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .publisher-card-remove {
+      padding: 6px 12px;
+      background: var(--color-error-100);
+      color: var(--color-error-600);
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .publisher-card-remove:hover {
+      background: var(--color-error-100);
+      filter: brightness(0.95);
+    }
+    /* Compact layout for member cards */
+    .publisher-card-compact {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 6px 0;
+    }
+    /* Clickable publisher card link */
+    a.publisher-card-link {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    a.publisher-card-link:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg, 0 4px 12px rgba(0, 0, 0, 0.1));
+    }
+    a.publisher-card-compact.publisher-card-link {
+      display: inline-flex;
+      padding: 8px 12px;
+      background: var(--color-bg-subtle);
+      border-radius: 8px;
+      border: 1px solid var(--color-border);
+    }
+    a.publisher-card-compact.publisher-card-link:hover {
+      background: var(--color-success-50);
+      border-color: var(--color-success-500);
+    }
+  `;
+}
+
+/**
+ * Inject publisher card styles into the page
+ */
+function injectPublisherCardStyles() {
+  if (document.getElementById('publisher-card-styles')) return;
+
+  const style = document.createElement('style');
+  style.id = 'publisher-card-styles';
+  style.textContent = getPublisherCardStyles();
+  document.head.appendChild(style);
 }

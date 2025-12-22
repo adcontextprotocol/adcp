@@ -161,6 +161,7 @@ export type MemberOffering =
   | 'sales_agent'
   | 'creative_agent'
   | 'signals_agent'
+  | 'publisher'
   | 'consulting'
   | 'other';
 
@@ -174,6 +175,18 @@ export interface AgentConfig {
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
   type?: 'sales' | 'creative' | 'signals' | 'buyer' | 'unknown';
+}
+
+/**
+ * Publisher configuration stored in member profiles
+ * Each publisher has a domain/URL where adagents.json is hosted
+ */
+export interface PublisherConfig {
+  domain: string;
+  is_public: boolean;
+  // Cached info from validation (optional, refreshed periodically)
+  agent_count?: number;
+  last_validated?: string;
 }
 
 export interface MemberProfile {
@@ -194,6 +207,7 @@ export interface MemberProfile {
   twitter_url?: string;
   offerings: MemberOffering[];
   agents: AgentConfig[];
+  publishers: PublisherConfig[]; // Publishers with adagents.json
   headquarters?: string; // City, Country (e.g., "Singapore", "New York, USA")
   markets: string[]; // Regions/markets served (e.g., ["APAC", "North America"])
   metadata: Record<string, unknown>;
@@ -222,6 +236,7 @@ export interface CreateMemberProfileInput {
   twitter_url?: string;
   offerings?: MemberOffering[];
   agents?: AgentConfig[];
+  publishers?: PublisherConfig[];
   headquarters?: string;
   markets?: string[];
   metadata?: Record<string, unknown>;
@@ -245,6 +260,7 @@ export interface UpdateMemberProfileInput {
   twitter_url?: string;
   offerings?: MemberOffering[];
   agents?: AgentConfig[];
+  publishers?: PublisherConfig[];
   headquarters?: string;
   markets?: string[];
   metadata?: Record<string, unknown>;

@@ -104,10 +104,32 @@
       }
     }
 
-    // Build members link (only if membership is enabled on beta site)
-    // Use exact match to avoid highlighting on /membership page
-    const membersLink = membershipEnabled
-      ? `<a href="${membersUrl}" class="navbar__link ${currentPath === '/members' ? 'active' : ''}">Members</a>`
+    // Build Registry dropdown with submenu (Members, Agents, Publishers, Properties)
+    const agentsUrl = isLocal ? '/registry' : `${aaoBaseUrl}/registry`;
+    const publishersUrl = isLocal ? '/publishers' : `${aaoBaseUrl}/publishers`;
+    const propertiesUrl = isLocal ? '/properties' : `${aaoBaseUrl}/properties`;
+    const isRegistryActive = currentPath === '/members' || currentPath.startsWith('/members/') ||
+                              currentPath === '/registry' || currentPath === '/publishers' || currentPath === '/properties';
+    const registryDropdown = membershipEnabled
+      ? `<div class="navbar__dropdown-wrapper">
+          <button class="navbar__link navbar__dropdown-trigger ${isRegistryActive ? 'active' : ''}">
+            Registry
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            </svg>
+          </button>
+          <div class="navbar__dropdown navbar__dropdown--nav">
+            <a href="${membersUrl}" class="navbar__dropdown-item ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
+            <a href="${agentsUrl}" class="navbar__dropdown-item ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
+            <a href="${publishersUrl}" class="navbar__dropdown-item ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
+            <a href="${propertiesUrl}" class="navbar__dropdown-item ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
+            <div class="navbar__dropdown-divider"></div>
+            <div class="navbar__dropdown-mcp">
+              <span class="navbar__mcp-badge">MCP</span>
+              <span class="navbar__mcp-text">All data available via MCP</span>
+            </div>
+          </div>
+        </div>`
       : '';
 
     // Build about dropdown (only on beta site - links to trade association)
@@ -157,7 +179,7 @@
             </a>
             <div class="navbar__links-desktop">
               ${aboutAdcpLink}
-              ${membersLink}
+              ${registryDropdown}
               ${perspectivesLink}
               ${aboutDropdown}
             </div>
@@ -177,7 +199,11 @@
         </div>
         <div class="navbar__mobile-menu" id="mobileMenu">
           ${aboutAdcpLink}
-          ${membersLink}
+          <span class="navbar__link navbar__link--header">Registry</span>
+          <a href="${membersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
+          <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
+          <a href="${publishersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
+          <a href="${propertiesUrl}" class="navbar__link navbar__link--indent ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
           ${perspectivesLink}
           <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
@@ -370,6 +396,36 @@
       .navbar__dropdown--nav .navbar__dropdown-item.active {
         color: var(--aao-primary, #1a36b4);
         font-weight: 600;
+      }
+
+      .navbar__dropdown-divider {
+        height: 1px;
+        background: #e5e7eb;
+        margin: 0.5rem 0;
+      }
+
+      .navbar__dropdown-mcp {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        font-size: 0.75rem;
+        color: #6b7280;
+      }
+
+      .navbar__mcp-badge {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.125rem 0.375rem;
+        border-radius: 0.25rem;
+        font-size: 0.625rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .navbar__mcp-text {
+        color: #9ca3af;
       }
 
       .navbar__dropdown-header {
@@ -596,6 +652,16 @@
         font-size: 0.9rem;
       }
 
+      .navbar__mobile-menu .navbar__link--header {
+        padding: 0.75rem 1rem;
+        color: #6b7280;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        cursor: default;
+      }
+
       /* Desktop-only links wrapper */
       .navbar__links-desktop {
         display: flex;
@@ -679,11 +745,20 @@
               </ul>
             </div>
             <div class="aao-footer__column">
+              <div class="aao-footer__title">Registry</div>
+              <ul class="aao-footer__list">
+                <li><a href="/members">Members</a></li>
+                <li><a href="/registry">Agents</a></li>
+                <li><a href="/publishers">Publishers</a></li>
+                <li><a href="/properties">Properties</a></li>
+              </ul>
+            </div>
+            <div class="aao-footer__column">
               <div class="aao-footer__title">Organization</div>
               <ul class="aao-footer__list">
                 <li><a href="/about">About</a></li>
                 <li><a href="/governance">Governance</a></li>
-                <li><a href="/members">Members</a></li>
+                <li><a href="/membership">Membership</a></li>
               </ul>
             </div>
             <div class="aao-footer__column">
@@ -723,7 +798,7 @@
 
       .aao-footer__columns {
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(6, 1fr);
         gap: 2rem;
         margin-bottom: 2rem;
       }

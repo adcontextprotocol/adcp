@@ -212,11 +212,12 @@ describe('organization-db', () => {
       });
     });
 
-    test('handles Stripe API errors gracefully', async () => {
+    test('handles Stripe API errors gracefully by falling back to local DB', async () => {
       mockPool.query.mockResolvedValueOnce({
         rows: [{
           workos_organization_id: 'org_123',
           stripe_customer_id: 'cus_123',
+          subscription_status: null, // No local status
         }],
       });
 
@@ -227,7 +228,36 @@ describe('organization-db', () => {
 
       const result = await orgDb.getSubscriptionInfo('org_123');
 
-      expect(result).toBeNull();
+      // Falls back to 'none' when Stripe fails and no local status
+      expect(result).toEqual({ status: 'none' });
+    });
+
+    test('uses local DB subscription_status when Stripe fails', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{
+          workos_organization_id: 'org_123',
+          stripe_customer_id: 'cus_123',
+          subscription_status: 'active',
+          subscription_product_name: 'Member',
+          subscription_current_period_end: new Date('2025-12-31'),
+          subscription_canceled_at: null,
+        }],
+      });
+
+      mockGetSubscriptionInfo.mockResolvedValueOnce(null);
+
+      const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
+      const orgDb = new OrganizationDatabase();
+
+      const result = await orgDb.getSubscriptionInfo('org_123');
+
+      // Falls back to local DB fields
+      expect(result).toEqual({
+        status: 'active',
+        product_name: 'Member',
+        current_period_end: Math.floor(new Date('2025-12-31').getTime() / 1000),
+        cancel_at_period_end: false,
+      });
     });
   });
 });

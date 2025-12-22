@@ -527,6 +527,14 @@
       flex-direction: column;
       gap: var(--space-4);
     }
+
+    /* Publishers List */
+    .publishers-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
     .agent-item {
       display: flex;
       align-items: center;
@@ -1276,6 +1284,7 @@
       // Inject shared styles
       injectMemberCardStyles();
       injectAgentCardStyles();
+      injectPublisherCardStyles();
 
       // Initialize join CTA component
       renderJoinCta({
@@ -1452,6 +1461,19 @@
             </div>
           ` : ''}
 
+          ${member.publishers && member.publishers.length > 0 ? `
+            <div class="detail-section">
+              <h2>Publishers</h2>
+              <div class="publishers-list" id="publishers-list">
+                ${member.publishers.map((pub, i) => `
+                  <div class="publisher-item-wrapper" id="publisher-${i}" data-domain="${pub.domain}">
+                    ${renderPublisherCard(null, pub.domain, { showStatus: true, compact: false })}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+
           <div class="detail-section">
             <h2>Contact Information</h2>
             <div class="detail-contact-grid">
@@ -1509,6 +1531,32 @@
       if (member.agents && member.agents.length > 0) {
         discoverAgents(member.agents.map(a => a.url));
       }
+
+      // Validate publishers
+      if (member.publishers && member.publishers.length > 0) {
+        validatePublishers(member.publishers.map(p => p.domain));
+      }
+    }
+
+    async function validatePublishers(publisherDomains) {
+      for (let i = 0; i < publisherDomains.length; i++) {
+        const domain = publisherDomains[i];
+        const publisherEl = document.getElementById(`publisher-${i}`);
+        if (!publisherEl) continue;
+
+        try {
+          const response = await fetch(`/api/public/validate-publisher?domain=${encodeURIComponent(domain)}`);
+          const data = await response.json();
+          updatePublisherDisplay(publisherEl, data, domain);
+        } catch (error) {
+          console.error(`Failed to validate publisher ${domain}:`, error);
+          updatePublisherDisplay(publisherEl, { error: 'Validation failed' }, domain);
+        }
+      }
+    }
+
+    function updatePublisherDisplay(publisherEl, data, domain) {
+      publisherEl.innerHTML = renderPublisherCard(data, domain, { showStatus: true, compact: false });
     }
 
     async function discoverAgents(agentUrls) {

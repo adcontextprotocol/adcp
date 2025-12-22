@@ -27,7 +27,7 @@ export const TOOL_DEFINITIONS = [
           type: "array",
           items: {
             type: "string",
-            enum: ["buyer_agent", "sales_agent", "creative_agent", "signals_agent", "consulting", "other"],
+            enum: ["buyer_agent", "sales_agent", "creative_agent", "signals_agent", "publisher", "consulting", "other"],
           },
           description: "Filter by member offerings (what services they provide)",
         },
@@ -181,6 +181,21 @@ export const TOOL_DEFINITIONS = [
       required: ["property_type", "property_value"],
     },
   },
+  // Publisher tools
+  {
+    name: "list_publishers",
+    description:
+      "List all public publishers (domains hosting /.well-known/adagents.json) from member organizations",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        member_slug: {
+          type: "string",
+          description: "Optional: Filter to publishers from a specific member by slug",
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -216,6 +231,12 @@ export const RESOURCE_DEFINITIONS = [
     name: "All Agents",
     mimeType: "application/json",
     description: "All public agents across all types",
+  },
+  {
+    uri: "publishers://all",
+    name: "All Publishers",
+    mimeType: "application/json",
+    description: "All public publisher domains hosting adagents.json",
   },
 ];
 
@@ -455,6 +476,47 @@ export class MCPToolHandler {
         };
       }
 
+      // Publisher tools
+      case "list_publishers": {
+        const memberSlug = args?.member_slug as string | undefined;
+
+        let members;
+        if (memberSlug) {
+          const member = await this.memberDb.getProfileBySlug(memberSlug);
+          members = member && member.is_public ? [member] : [];
+        } else {
+          members = await this.memberDb.getPublicProfiles({});
+        }
+
+        // Collect all public publishers from members
+        const publishers = members.flatMap((m) =>
+          (m.publishers || [])
+            .filter((p) => p.is_public)
+            .map((p) => ({
+              domain: p.domain,
+              agent_count: p.agent_count,
+              last_validated: p.last_validated,
+              member: {
+                slug: m.slug,
+                display_name: m.display_name,
+              },
+            }))
+        );
+
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: memberSlug ? `publishers://member/${encodeURIComponent(memberSlug)}` : "publishers://all",
+                mimeType: "application/json",
+                text: JSON.stringify({ publishers, count: publishers.length }, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
       case "get_products_for_agent": {
         const agentUrl = args?.agent_url as string;
         const params = args?.params || {};
@@ -663,6 +725,7 @@ export class MCPToolHandler {
         offerings: m.offerings,
         headquarters: m.headquarters,
         agents_count: m.agents.filter((a) => a.is_public).length,
+        publishers_count: (m.publishers || []).filter((p) => p.is_public).length,
       }));
 
       return {
@@ -671,6 +734,34 @@ export class MCPToolHandler {
             uri,
             mimeType: "application/json",
             text: JSON.stringify(simplified, null, 2),
+          },
+        ],
+      };
+    }
+
+    // Handle publishers resource
+    if (uri === "publishers://all") {
+      const members = await this.memberDb.getPublicProfiles({});
+      const publishers = members.flatMap((m) =>
+        (m.publishers || [])
+          .filter((p) => p.is_public)
+          .map((p) => ({
+            domain: p.domain,
+            agent_count: p.agent_count,
+            last_validated: p.last_validated,
+            member: {
+              slug: m.slug,
+              display_name: m.display_name,
+            },
+          }))
+      );
+
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(publishers, null, 2),
           },
         ],
       };

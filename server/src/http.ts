@@ -52,6 +52,31 @@ function isValidSlug(slug: string): boolean {
   return /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(slug.toLowerCase());
 }
 
+/**
+ * Extract publisher validation stats from adagents.json validation result
+ */
+function extractPublisherStats(result: { valid: boolean; raw_data?: any }) {
+  let agentCount = 0;
+  let propertyCount = 0;
+  let tagCount = 0;
+  let propertyTypeCounts: Record<string, number> = {};
+
+  if (result.valid && result.raw_data) {
+    agentCount = result.raw_data.authorized_agents?.length || 0;
+    propertyCount = result.raw_data.properties?.length || 0;
+    tagCount = Object.keys(result.raw_data.tags || {}).length;
+
+    // Count properties by type
+    const properties = result.raw_data.properties || [];
+    for (const prop of properties) {
+      const propType = prop.property_type || 'unknown';
+      propertyTypeCounts[propType] = (propertyTypeCounts[propType] || 0) + 1;
+    }
+  }
+
+  return { agentCount, propertyCount, tagCount, propertyTypeCounts };
+}
+
 // Check if authentication is configured
 const AUTH_ENABLED = !!(
   process.env.WORKOS_API_KEY &&
@@ -724,6 +749,22 @@ export class HTTPServer {
         ? path.join(__dirname, "../server/public/members.html")
         : path.join(__dirname, "../public/members.html");
       res.sendFile(membersPath);
+    });
+
+    // Publishers registry page
+    this.app.get("/publishers", (req, res) => {
+      const publishersPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/publishers.html")
+        : path.join(__dirname, "../public/publishers.html");
+      res.sendFile(publishersPath);
+    });
+
+    // Properties registry page
+    this.app.get("/properties", (req, res) => {
+      const propertiesPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/properties.html")
+        : path.join(__dirname, "../public/properties.html");
+      res.sendFile(propertiesPath);
     });
 
     // About AAO page - serve about.html at /about
@@ -6697,6 +6738,107 @@ Disallow: /api/admin/
 
         return res.status(500).json({
           error: 'Agent discovery failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Publisher Validation: Validate a publisher's adagents.json (public version for members directory)
+    this.app.get('/api/public/validate-publisher', async (req, res) => {
+      const { domain } = req.query;
+
+      if (!domain || typeof domain !== 'string') {
+        return res.status(400).json({ error: 'Domain is required' });
+      }
+
+      try {
+        const result = await this.adagentsManager.validateDomain(domain);
+        const stats = extractPublisherStats(result);
+
+        return res.json({
+          valid: result.valid,
+          domain: result.domain,
+          url: result.url,
+          agent_count: stats.agentCount,
+          property_count: stats.propertyCount,
+          property_type_counts: stats.propertyTypeCounts,
+          tag_count: stats.tagCount,
+          errors: result.errors,
+          warnings: result.warnings,
+        });
+      } catch (error) {
+        logger.error({ err: error, domain }, 'Public publisher validation error');
+
+        return res.status(500).json({
+          error: 'Publisher validation failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // List all public publishers from member organizations (public endpoint for publishers registry)
+    this.app.get('/api/public/publishers', async (req, res) => {
+      try {
+        const memberDb = new MemberDatabase();
+        const members = await memberDb.getPublicProfiles({});
+
+        // Collect all public publishers from members
+        const publishers = members.flatMap((m) =>
+          (m.publishers || [])
+            .filter((p) => p.is_public)
+            .map((p) => ({
+              domain: p.domain,
+              agent_count: p.agent_count,
+              last_validated: p.last_validated,
+              member: {
+                slug: m.slug,
+                display_name: m.display_name,
+              },
+            }))
+        );
+
+        return res.json({
+          publishers,
+          count: publishers.length,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to list public publishers');
+        return res.status(500).json({
+          error: 'Failed to list publishers',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Publisher Validation: Validate a publisher's adagents.json (authenticated version with full details)
+    this.app.get('/api/validate-publisher', requireAuth, async (req, res) => {
+      const { domain } = req.query;
+
+      if (!domain || typeof domain !== 'string') {
+        return res.status(400).json({ error: 'Domain is required' });
+      }
+
+      try {
+        const result = await this.adagentsManager.validateDomain(domain);
+        const stats = extractPublisherStats(result);
+
+        return res.json({
+          valid: result.valid,
+          domain: result.domain,
+          url: result.url,
+          agent_count: stats.agentCount,
+          property_count: stats.propertyCount,
+          property_type_counts: stats.propertyTypeCounts,
+          tag_count: stats.tagCount,
+          errors: result.errors,
+          warnings: result.warnings,
+          authorized_agents: result.raw_data?.authorized_agents || [],
+        });
+      } catch (error) {
+        logger.error({ err: error, domain }, 'Publisher validation error');
+
+        return res.status(500).json({
+          error: 'Publisher validation failed',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
