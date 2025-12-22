@@ -4815,15 +4815,37 @@ Disallow: /api/admin/
           });
         }
 
-        // Create customer session for pricing table (if customer exists)
+        // Ensure Stripe customer exists before showing pricing table
+        // This is critical: if we don't create the customer first, Stripe Pricing Table
+        // will create one without workos_organization_id metadata, breaking the linkage
+        let stripeCustomerId = org.stripe_customer_id;
+        if (!stripeCustomerId) {
+          logger.info({ orgId, userName: user.email }, 'Creating Stripe customer for pricing table');
+          stripeCustomerId = await createStripeCustomer({
+            email: user.email,
+            name: org.name,
+            metadata: {
+              workos_organization_id: orgId,
+            },
+          });
+
+          if (stripeCustomerId) {
+            await orgDb.setStripeCustomerId(orgId, stripeCustomerId);
+            logger.info({ orgId, stripeCustomerId }, 'Stripe customer created and linked to organization');
+          } else {
+            logger.error({ orgId }, 'Failed to create Stripe customer for pricing table');
+          }
+        }
+
+        // Create customer session for pricing table
         let customerSessionSecret = null;
-        if (org.stripe_customer_id) {
-          customerSessionSecret = await createCustomerSession(org.stripe_customer_id);
+        if (stripeCustomerId) {
+          customerSessionSecret = await createCustomerSession(stripeCustomerId);
         }
 
         res.json({
           subscription: subscriptionInfo,
-          stripe_customer_id: org.stripe_customer_id || null,
+          stripe_customer_id: stripeCustomerId || null,
           customer_session_secret: customerSessionSecret,
         });
       } catch (error) {
