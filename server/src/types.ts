@@ -279,3 +279,68 @@ export interface ListMemberProfilesOptions {
   limit?: number;
   offset?: number;
 }
+
+// Federated Discovery Types
+
+/**
+ * An agent in the federated view (registered or discovered)
+ */
+export interface FederatedAgent {
+  url: string;
+  name?: string;
+  type?: AgentType | 'buyer' | 'unknown';
+  protocol?: 'mcp' | 'a2a';
+  source: 'registered' | 'discovered';
+  // For registered agents
+  member?: {
+    slug: string;
+    display_name: string;
+  };
+  // For discovered agents
+  discovered_from?: {
+    publisher_domain: string;
+    authorized_for?: string;
+  };
+  discovered_at?: string;
+}
+
+/**
+ * A publisher in the federated view (registered or discovered)
+ */
+export interface FederatedPublisher {
+  domain: string;
+  source: 'registered' | 'discovered';
+  // For registered publishers
+  member?: {
+    slug: string;
+    display_name: string;
+  };
+  agent_count?: number;
+  last_validated?: string;
+  // For discovered publishers
+  discovered_from?: {
+    agent_url: string;
+  };
+  has_valid_adagents?: boolean;
+  discovered_at?: string;
+}
+
+/**
+ * Result of a domain lookup showing all agents authorized for that domain
+ */
+export interface DomainLookupResult {
+  domain: string;
+  // Agents authorized via adagents.json (verified)
+  authorized_agents: Array<{
+    url: string;
+    authorized_for?: string;
+    source: 'registered' | 'discovered';
+    member?: { slug: string; display_name: string };
+  }>;
+  // Sales agents that claim to sell this domain (may not be verified)
+  sales_agents_claiming: Array<{
+    url: string;
+    source: 'registered' | 'discovered';
+    member?: { slug: string; display_name: string };
+  }>;
+}
