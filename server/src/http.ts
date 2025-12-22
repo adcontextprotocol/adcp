@@ -1207,13 +1207,15 @@ export class HTTPServer {
             break;
           }
 
-          case 'invoice.payment_succeeded': {
+          case 'invoice.payment_succeeded':
+          case 'invoice.paid': {
             const invoice = event.data.object as Stripe.Invoice;
             logger.info({
               customer: invoice.customer,
               invoiceId: invoice.id,
               amount: invoice.amount_paid,
-            }, 'Invoice payment succeeded');
+              eventType: event.type,
+            }, 'Invoice paid');
 
             // Get organization from customer ID
             const customerId = invoice.customer as string;
