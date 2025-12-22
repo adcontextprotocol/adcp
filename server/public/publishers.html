@@ -240,6 +240,7 @@
                     pub.property_count = validation.property_count || 0;
                     pub.property_type_counts = validation.property_type_counts || {};
                     pub.tag_count = validation.tag_count || 0;
+                    pub.agent_count = validation.agent_count || 0;
                 } catch (error) {
                     pub.validation = { error: error.message };
                     pub.valid = false;
@@ -305,18 +306,23 @@
             };
 
             grid.innerHTML = filtered.map(pub => {
-                // Build stats label
-                let statsLabel = '';
+                // Build property stats with type breakdown
+                let propertyStats = '';
                 const typeCounts = pub.property_type_counts || {};
                 const typeEntries = Object.entries(typeCounts);
                 if (typeEntries.length > 0) {
-                    statsLabel = typeEntries.map(([type, count]) => {
+                    const typeBreakdown = typeEntries.map(([type, count]) => {
                         const label = propertyTypeLabels[type] || type;
                         return `${count} ${label}`;
                     }).join(', ');
+                    const totalProps = pub.property_count || typeEntries.reduce((sum, [, c]) => sum + c, 0);
+                    propertyStats = `<span class="stat-value">${totalProps}</span> propert${totalProps !== 1 ? 'ies' : 'y'} <span style="opacity: 0.7">(${typeBreakdown})</span>`;
                 } else if (pub.property_count > 0) {
-                    statsLabel = `${pub.property_count} propert${pub.property_count !== 1 ? 'ies' : 'y'}`;
+                    propertyStats = `<span class="stat-value">${pub.property_count}</span> propert${pub.property_count !== 1 ? 'ies' : 'y'}`;
                 }
+
+                const agentCount = pub.agent_count || 0;
+                const tagCount = pub.tag_count || 0;
 
                 return `
                     <div class="publisher-card" onclick="window.location.href='/adagents?domain=${encodeURIComponent(pub.domain)}'">
@@ -330,9 +336,9 @@
                             </span>
                         </div>
                         <div class="publisher-stats">
-                            ${statsLabel ? `<div class="stat-item"><span class="stat-value">${statsLabel}</span></div>` : ''}
-                            ${pub.tag_count > 0 ? `<div class="stat-item"><span class="stat-value">${pub.tag_count}</span> tag${pub.tag_count !== 1 ? 's' : ''}</div>` : ''}
-                            <div class="stat-item"><span class="stat-value">${pub.agent_count || 0}</span> agent${(pub.agent_count || 0) !== 1 ? 's' : ''}</div>
+                            ${propertyStats ? `<div class="stat-item">${propertyStats}</div>` : ''}
+                            ${tagCount > 0 ? `<div class="stat-item"><span class="stat-value">${tagCount}</span> tag${tagCount !== 1 ? 's' : ''}</div>` : ''}
+                            <div class="stat-item"><span class="stat-value">${agentCount}</span> agent${agentCount !== 1 ? 's' : ''}</div>
                         </div>
                     </div>
                 `;

@@ -268,8 +268,8 @@ function getMemberCardStyles() {
       align-items: center;
       gap: 4px;
       padding: 2px 8px;
-      background: #e0e7ff;
-      color: #3730a3;
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
       border-radius: 4px;
       font-size: 11px;
       font-weight: 500;
@@ -751,12 +751,13 @@ function renderPublisherCard(publisherInfo, publisherDomain, options = {}) {
   const statsParts = [];
   const typeEntries = Object.entries(propertyTypeCounts);
   if (typeEntries.length > 0) {
-    // Show property type breakdown: "3 web, 2 CTV"
+    // Show total properties with type breakdown: "8 properties (3 web, 2 CTV)"
     const typeParts = typeEntries.map(([type, count]) => {
       const label = propertyTypeLabels[type] || type;
       return `${count} ${label}`;
     });
-    statsParts.push(typeParts.join(', '));
+    const totalProps = propertyCount || typeEntries.reduce((sum, [, c]) => sum + c, 0);
+    statsParts.push(`${totalProps} propert${totalProps !== 1 ? 'ies' : 'y'} (${typeParts.join(', ')})`);
   } else if (propertyCount > 0) {
     // Fallback to total count if no type breakdown
     statsParts.push(`${propertyCount} propert${propertyCount !== 1 ? 'ies' : 'y'}`);
@@ -845,23 +846,23 @@ function renderPublisherCard(publisherInfo, publisherDomain, options = {}) {
 function getPublisherCardStyles() {
   return `
     .publisher-card {
-      background: white;
-      border: 1px solid #e5e7eb;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
       border-radius: 8px;
       padding: 12px 16px;
       margin-bottom: 8px;
     }
     .publisher-card.success {
-      background: #f0fdf4;
-      border-color: #86efac;
+      background: var(--color-success-50);
+      border-color: var(--color-success-500);
     }
     .publisher-card.error {
-      background: #fef2f2;
-      border-color: #fecaca;
+      background: var(--color-error-50);
+      border-color: var(--color-error-100);
     }
     .publisher-card.loading {
-      background: #fffbeb;
-      border-color: #fde68a;
+      background: var(--color-warning-50);
+      border-color: var(--color-warning-100);
     }
     .publisher-card-main {
       display: flex;
@@ -881,7 +882,7 @@ function getPublisherCardStyles() {
     }
     .publisher-card-domain {
       font-size: 13px;
-      color: #6b7280;
+      color: var(--color-text-secondary);
       word-break: break-all;
       margin-bottom: 6px;
     }
@@ -891,11 +892,11 @@ function getPublisherCardStyles() {
       gap: 8px;
       flex-wrap: wrap;
       font-size: 13px;
-      color: #374151;
+      color: var(--color-gray-700);
     }
     .publisher-card-error {
       font-size: 13px;
-      color: #dc2626;
+      color: var(--color-error-600);
     }
     .publisher-type-badge {
       display: inline-block;
@@ -903,8 +904,8 @@ function getPublisherCardStyles() {
       border-radius: 12px;
       font-size: 12px;
       font-weight: 600;
-      background: #e0e7ff;
-      color: #3730a3;
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
     }
     .publisher-domain-badge {
       display: inline-block;
@@ -912,11 +913,11 @@ function getPublisherCardStyles() {
       border-radius: 12px;
       font-size: 12px;
       font-weight: 500;
-      background: #f3f4f6;
-      color: #374151;
+      background: var(--color-gray-100);
+      color: var(--color-gray-700);
     }
     .publisher-stat {
-      color: #374151;
+      color: var(--color-gray-700);
     }
     .publisher-visibility-badge {
       font-size: 11px;
@@ -924,12 +925,12 @@ function getPublisherCardStyles() {
       border-radius: 4px;
     }
     .publisher-visibility-badge.public {
-      background: #d1fae5;
-      color: #065f46;
+      background: var(--color-success-100);
+      color: var(--color-success-700);
     }
     .publisher-visibility-badge.private {
-      background: #f3f4f6;
-      color: #6b7280;
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
     }
     .publisher-card-status {
       display: flex;
@@ -941,25 +942,25 @@ function getPublisherCardStyles() {
       border-radius: 12px;
     }
     .publisher-card-status.valid {
-      background: #d1fae5;
-      color: #065f46;
+      background: var(--color-success-100);
+      color: var(--color-success-700);
     }
     .publisher-card-status.error {
-      color: #dc2626;
+      color: var(--color-error-600);
     }
     .publisher-card-status.loading {
-      color: #d97706;
+      color: var(--color-warning-600);
     }
     .publisher-card-status .status-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #10b981;
+      background: var(--color-success-500);
     }
     .publisher-card-spinner {
       width: 14px;
       height: 14px;
-      border: 2px solid #fbbf24;
+      border: 2px solid var(--color-warning-500);
       border-top-color: transparent;
       border-radius: 50%;
       animation: publisher-spin 1s linear infinite;
@@ -979,8 +980,8 @@ function getPublisherCardStyles() {
     }
     .publisher-card-remove {
       padding: 6px 12px;
-      background: #fee2e2;
-      color: #dc2626;
+      background: var(--color-error-100);
+      color: var(--color-error-600);
       border: none;
       border-radius: 6px;
       font-size: 12px;
@@ -988,7 +989,8 @@ function getPublisherCardStyles() {
       margin-top: 8px;
     }
     .publisher-card-remove:hover {
-      background: #fecaca;
+      background: var(--color-error-100);
+      filter: brightness(0.95);
     }
     /* Compact layout for member cards */
     .publisher-card-compact {
@@ -1007,18 +1009,18 @@ function getPublisherCardStyles() {
     }
     a.publisher-card-link:hover {
       transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      box-shadow: var(--shadow-lg, 0 4px 12px rgba(0, 0, 0, 0.1));
     }
     a.publisher-card-compact.publisher-card-link {
       display: inline-flex;
       padding: 8px 12px;
-      background: #f9fafb;
+      background: var(--color-bg-subtle);
       border-radius: 8px;
-      border: 1px solid #e5e7eb;
+      border: 1px solid var(--color-border);
     }
     a.publisher-card-compact.publisher-card-link:hover {
-      background: #f0fdf4;
-      border-color: #86efac;
+      background: var(--color-success-50);
+      border-color: var(--color-success-500);
     }
   `;
 }
