@@ -3280,6 +3280,98 @@ Disallow: /api/admin/
       res.sendFile(perspectivesPath);
     });
 
+    // Federated discovery endpoints
+    this.setupFederatedDiscoveryRoutes();
+  }
+
+  /**
+   * Setup federated discovery endpoints for merged registered + discovered data
+   */
+  private setupFederatedDiscoveryRoutes(): void {
+    const federatedIndex = this.crawler.getFederatedIndex();
+
+    // List all agents (registered + discovered)
+    this.app.get("/api/federated/agents", async (req, res) => {
+      try {
+        const type = req.query.type as AgentType | undefined;
+        const agents = await federatedIndex.listAllAgents(type);
+        const bySource = {
+          registered: agents.filter(a => a.source === 'registered').length,
+          discovered: agents.filter(a => a.source === 'discovered').length,
+        };
+        res.json({
+          agents,
+          count: agents.length,
+          sources: bySource,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Failed to list federated agents",
+        });
+      }
+    });
+
+    // List all publishers (registered + discovered)
+    this.app.get("/api/federated/publishers", async (req, res) => {
+      try {
+        const publishers = await federatedIndex.listAllPublishers();
+        const bySource = {
+          registered: publishers.filter(p => p.source === 'registered').length,
+          discovered: publishers.filter(p => p.source === 'discovered').length,
+        };
+        res.json({
+          publishers,
+          count: publishers.length,
+          sources: bySource,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Failed to list federated publishers",
+        });
+      }
+    });
+
+    // Lookup domain - find all agents authorized for a domain
+    this.app.get("/api/lookup/domain/:domain", async (req, res) => {
+      try {
+        const domain = req.params.domain;
+        const result = await federatedIndex.lookupDomain(domain);
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Domain lookup failed",
+        });
+      }
+    });
+
+    // Get domains for a specific agent
+    this.app.get("/api/lookup/agent/:agentUrl/domains", async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.agentUrl);
+        const domains = await federatedIndex.getDomainsForAgent(agentUrl);
+        res.json({
+          agent_url: agentUrl,
+          domains,
+          count: domains.length,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Agent domain lookup failed",
+        });
+      }
+    });
+
+    // Get federated index stats
+    this.app.get("/api/federated/stats", async (req, res) => {
+      try {
+        const stats = await federatedIndex.getStats();
+        res.json(stats);
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Failed to get federated stats",
+        });
+      }
+    });
   }
 
   private setupAuthRoutes(): void {
