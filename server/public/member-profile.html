@@ -650,6 +650,20 @@
     .add-agent-row input {
       flex: 1;
     }
+    /* Publisher section styles */
+    .publisher-urls-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+    .add-publisher-row {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+    .add-publisher-row input {
+      flex: 1;
+    }
     /* Member card styles are now loaded from member-card.js */
   </style>
 </head>
@@ -731,6 +745,10 @@
               <label class="checkbox-item" data-value="signals_agent">
                 <input type="checkbox" name="offerings" value="signals_agent">
                 <span>Signals Agent</span>
+              </label>
+              <label class="checkbox-item" data-value="publisher">
+                <input type="checkbox" name="offerings" value="publisher">
+                <span>Publisher</span>
               </label>
               <label class="checkbox-item" data-value="consulting">
                 <input type="checkbox" name="offerings" value="consulting">
@@ -893,6 +911,20 @@
             <div class="hint">Enter your agent's base URL. We'll automatically detect the protocol and fetch agent info.</div>
           </div>
 
+          <!-- Publisher Domains -->
+          <h2>Your Publishers</h2>
+          <div class="form-group">
+            <label>Register publisher domains where you host adagents.json:</label>
+            <div id="publisher-urls-container" class="publisher-urls-list">
+              <!-- Publisher URLs will be rendered here -->
+            </div>
+            <div class="add-publisher-row">
+              <input type="text" id="new-publisher-domain" placeholder="example.com" onkeydown="if(event.key === 'Enter') { event.preventDefault(); addPublisherDomain(); }">
+              <button type="button" class="btn btn-secondary" onclick="addPublisherDomain()">Add Publisher</button>
+            </div>
+            <div class="hint">Enter a domain name. We'll check for a valid /.well-known/adagents.json file.</div>
+          </div>
+
           <!-- Tags -->
           <h2>Tags</h2>
           <div class="form-group">
@@ -922,6 +954,8 @@
     let tags = [];
     let agents = []; // Array of {url: string, is_public: boolean}
     let agentInfo = {}; // Cache of discovered agent info by URL
+    let publishers = []; // Array of {domain: string, is_public: boolean}
+    let publisherInfo = {}; // Cache of validated publisher info by domain
     let slugCheckTimeout = null;
     let currentOrgId = null;
     let currentOrgName = null;
@@ -1104,6 +1138,12 @@
       renderAgents();
       // Discover info for each agent
       agents.forEach(agent => discoverAgentInfo(agent.url));
+
+      // Set publishers
+      publishers = profile.publishers ? [...profile.publishers] : [];
+      renderPublishers();
+      // Validate info for each publisher
+      publishers.forEach(pub => validatePublisherDomain(pub.domain));
 
       // Update filename displays for logos
       updateFilenameDisplay('logo_light_url', 'logo_light_filename');
@@ -1537,6 +1577,7 @@
         markets: Array.from(document.querySelectorAll('input[name="markets"]:checked')).map(cb => cb.value),
         offerings: Array.from(document.querySelectorAll('input[name="offerings"]:checked')).map(cb => cb.value),
         agents: agents,
+        publishers: publishers,
         tags: tags,
         // Note: is_public and show_in_carousel are managed from the dashboard, not here
       };
@@ -1750,6 +1791,98 @@
       }
 
       renderAgents();
+    }
+
+    // Publisher management
+    function addPublisherDomain() {
+      const input = document.getElementById('new-publisher-domain');
+      let domain = input.value.trim();
+
+      if (!domain) return;
+
+      // Normalize domain - remove protocol and trailing slash
+      domain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+      // Remove any path components - just keep the domain
+      domain = domain.split('/')[0];
+
+      // Check if already added
+      if (publishers.some(p => p.domain === domain)) {
+        alert('This publisher domain is already added.');
+        return;
+      }
+
+      // Basic domain validation
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$/.test(domain) && !/^[a-zA-Z0-9][a-zA-Z0-9-.]*\.[a-zA-Z]{2,}$/.test(domain)) {
+        alert('Please enter a valid domain name (e.g., example.com).');
+        return;
+      }
+
+      // Add publisher with default public visibility
+      publishers.push({ domain, is_public: true });
+      input.value = '';
+      renderPublishers();
+      validatePublisherDomain(domain);
+    }
+
+    function removePublisher(index) {
+      const publisher = publishers[index];
+      if (publisher) {
+        delete publisherInfo[publisher.domain];
+        publishers.splice(index, 1);
+        renderPublishers();
+      }
+    }
+
+    function renderPublishers() {
+      const container = document.getElementById('publisher-urls-container');
+
+      // Inject shared publisher card styles
+      injectPublisherCardStyles();
+
+      if (publishers.length === 0) {
+        container.innerHTML = '<div style="color: var(--color-text-secondary); font-size: var(--text-sm); padding: var(--space-2.5);">No publishers registered yet.</div>';
+        return;
+      }
+
+      // Use shared renderPublisherCard from member-card.js
+      container.innerHTML = publishers.map((publisher, index) => {
+        const info = publisherInfo[publisher.domain];
+        return renderPublisherCard(info, publisher.domain, {
+          showVisibilityToggle: true,
+          isPublic: publisher.is_public,
+          index: index,
+          showRemoveButton: true,
+          showStatus: true
+        });
+      }).join('');
+    }
+
+    function togglePublisherVisibility(index, isPublic) {
+      if (publishers[index]) {
+        publishers[index].is_public = isPublic;
+        renderPublishers();
+      }
+    }
+
+    async function validatePublisherDomain(domain) {
+      try {
+        const response = await fetch(`/api/validate-publisher?domain=${encodeURIComponent(domain)}`, {
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          publisherInfo[domain] = { error: data.message || 'Validation failed' };
+        } else {
+          const data = await response.json();
+          publisherInfo[domain] = data;
+        }
+      } catch (error) {
+        publisherInfo[domain] = { error: 'Failed to validate publisher' };
+      }
+
+      renderPublishers();
     }
 
     function escapeHtml(str) {

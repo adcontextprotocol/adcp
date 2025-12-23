@@ -94,9 +94,12 @@ export class AdAgentsManager {
 
       // Check HTTP status
       if (response.status !== 200) {
+        const statusMessage = response.status === 404
+          ? `File not found at ${url}`
+          : `HTTP ${response.status} error fetching ${url}`;
         result.errors.push({
           field: 'http_status',
-          message: `HTTP ${response.status}: adagents.json must return 200 status code`,
+          message: statusMessage,
           severity: 'error'
         });
         // Don't include raw HTML error pages - they're not useful for validation
@@ -215,9 +218,12 @@ export class AdAgentsManager {
       });
 
       if (response.status !== 200) {
+        const statusMessage = response.status === 404
+          ? `File not found at ${url}`
+          : `HTTP ${response.status} error fetching ${url}`;
         result.errors.push({
           field: 'authoritative_location',
-          message: `Failed to fetch authoritative file: HTTP ${response.status}`,
+          message: statusMessage,
           severity: 'error'
         });
         return null;

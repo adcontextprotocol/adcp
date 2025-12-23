@@ -161,6 +161,7 @@ export type MemberOffering =
   | 'sales_agent'
   | 'creative_agent'
   | 'signals_agent'
+  | 'publisher'
   | 'consulting'
   | 'other';
 
@@ -174,6 +175,18 @@ export interface AgentConfig {
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
   type?: 'sales' | 'creative' | 'signals' | 'buyer' | 'unknown';
+}
+
+/**
+ * Publisher configuration stored in member profiles
+ * Each publisher has a domain/URL where adagents.json is hosted
+ */
+export interface PublisherConfig {
+  domain: string;
+  is_public: boolean;
+  // Cached info from validation (optional, refreshed periodically)
+  agent_count?: number;
+  last_validated?: string;
 }
 
 export interface MemberProfile {
@@ -194,6 +207,7 @@ export interface MemberProfile {
   twitter_url?: string;
   offerings: MemberOffering[];
   agents: AgentConfig[];
+  publishers: PublisherConfig[]; // Publishers with adagents.json
   headquarters?: string; // City, Country (e.g., "Singapore", "New York, USA")
   markets: string[]; // Regions/markets served (e.g., ["APAC", "North America"])
   metadata: Record<string, unknown>;
@@ -222,6 +236,7 @@ export interface CreateMemberProfileInput {
   twitter_url?: string;
   offerings?: MemberOffering[];
   agents?: AgentConfig[];
+  publishers?: PublisherConfig[];
   headquarters?: string;
   markets?: string[];
   metadata?: Record<string, unknown>;
@@ -245,6 +260,7 @@ export interface UpdateMemberProfileInput {
   twitter_url?: string;
   offerings?: MemberOffering[];
   agents?: AgentConfig[];
+  publishers?: PublisherConfig[];
   headquarters?: string;
   markets?: string[];
   metadata?: Record<string, unknown>;
@@ -356,4 +372,69 @@ export interface AddWorkingGroupMemberInput {
   user_org_name?: string;
   workos_organization_id?: string;
   added_by_user_id?: string;
+}
+
+// Federated Discovery Types
+
+/**
+ * An agent in the federated view (registered or discovered)
+ */
+export interface FederatedAgent {
+  url: string;
+  name?: string;
+  type?: AgentType | 'buyer' | 'unknown';
+  protocol?: 'mcp' | 'a2a';
+  source: 'registered' | 'discovered';
+  // For registered agents
+  member?: {
+    slug: string;
+    display_name: string;
+  };
+  // For discovered agents
+  discovered_from?: {
+    publisher_domain: string;
+    authorized_for?: string;
+  };
+  discovered_at?: string;
+}
+
+/**
+ * A publisher in the federated view (registered or discovered)
+ */
+export interface FederatedPublisher {
+  domain: string;
+  source: 'registered' | 'discovered';
+  // For registered publishers
+  member?: {
+    slug: string;
+    display_name: string;
+  };
+  agent_count?: number;
+  last_validated?: string;
+  // For discovered publishers
+  discovered_from?: {
+    agent_url: string;
+  };
+  has_valid_adagents?: boolean;
+  discovered_at?: string;
+}
+
+/**
+ * Result of a domain lookup showing all agents authorized for that domain
+ */
+export interface DomainLookupResult {
+  domain: string;
+  // Agents authorized via adagents.json (verified)
+  authorized_agents: Array<{
+    url: string;
+    authorized_for?: string;
+    source: 'registered' | 'discovered';
+    member?: { slug: string; display_name: string };
+  }>;
+  // Sales agents that claim to sell this domain (may not be verified)
+  sales_agents_claiming: Array<{
+    url: string;
+    source: 'registered' | 'discovered';
+    member?: { slug: string; display_name: string };
+  }>;
 }

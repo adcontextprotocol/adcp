@@ -8,6 +8,7 @@ import {
 import { AgentService } from "./agent-service.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { AgentValidator } from "./validator.js";
+import { FederatedIndexService } from "./federated-index.js";
 import type { AgentType, MemberOffering } from "./types.js";
 
 /**
@@ -27,7 +28,7 @@ export const TOOL_DEFINITIONS = [
           type: "array",
           items: {
             type: "string",
-            enum: ["buyer_agent", "sales_agent", "creative_agent", "signals_agent", "consulting", "other"],
+            enum: ["buyer_agent", "sales_agent", "creative_agent", "signals_agent", "publisher", "consulting", "other"],
           },
           description: "Filter by member offerings (what services they provide)",
         },
@@ -181,6 +182,76 @@ export const TOOL_DEFINITIONS = [
       required: ["property_type", "property_value"],
     },
   },
+  // Publisher tools
+  {
+    name: "list_publishers",
+    description:
+      "List all public publishers (domains hosting /.well-known/adagents.json) from member organizations",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        member_slug: {
+          type: "string",
+          description: "Optional: Filter to publishers from a specific member by slug",
+        },
+      },
+    },
+  },
+  // Federated discovery tools
+  {
+    name: "list_federated_agents",
+    description:
+      "List all agents including both registered (from member profiles) and discovered (from publisher adagents.json files)",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        type: {
+          type: "string",
+          enum: ["creative", "signals", "sales"],
+          description: "Optional: Filter by agent type",
+        },
+      },
+    },
+  },
+  {
+    name: "list_federated_publishers",
+    description:
+      "List all publishers including both registered (from member profiles) and discovered (from sales agent responses)",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+    },
+  },
+  {
+    name: "lookup_domain",
+    description:
+      "Find all agents authorized for a specific publisher domain, showing both verified (from adagents.json) and claimed (from sales agents)",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        domain: {
+          type: "string",
+          description: "Publisher domain to look up (e.g., 'nytimes.com')",
+        },
+      },
+      required: ["domain"],
+    },
+  },
+  {
+    name: "get_agent_domains",
+    description:
+      "Get all publisher domains that an agent is authorized to sell for",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_url: {
+          type: "string",
+          description: "Agent URL to look up (e.g., 'https://sales.example.com')",
+        },
+      },
+      required: ["agent_url"],
+    },
+  },
 ];
 
 /**
@@ -217,6 +288,12 @@ export const RESOURCE_DEFINITIONS = [
     mimeType: "application/json",
     description: "All public agents across all types",
   },
+  {
+    uri: "publishers://all",
+    name: "All Publishers",
+    mimeType: "application/json",
+    description: "All public publisher domains hosting adagents.json",
+  },
 ];
 
 /**
@@ -227,11 +304,13 @@ export class MCPToolHandler {
   private agentService: AgentService;
   private memberDb: MemberDatabase;
   private validator: AgentValidator;
+  private federatedIndex: FederatedIndexService;
 
   constructor() {
     this.agentService = new AgentService();
     this.memberDb = new MemberDatabase();
     this.validator = new AgentValidator();
+    this.federatedIndex = new FederatedIndexService();
   }
 
   /**
@@ -455,6 +534,47 @@ export class MCPToolHandler {
         };
       }
 
+      // Publisher tools
+      case "list_publishers": {
+        const memberSlug = args?.member_slug as string | undefined;
+
+        let members;
+        if (memberSlug) {
+          const member = await this.memberDb.getProfileBySlug(memberSlug);
+          members = member && member.is_public ? [member] : [];
+        } else {
+          members = await this.memberDb.getPublicProfiles({});
+        }
+
+        // Collect all public publishers from members
+        const publishers = members.flatMap((m) =>
+          (m.publishers || [])
+            .filter((p) => p.is_public)
+            .map((p) => ({
+              domain: p.domain,
+              agent_count: p.agent_count,
+              last_validated: p.last_validated,
+              member: {
+                slug: m.slug,
+                display_name: m.display_name,
+              },
+            }))
+        );
+
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: memberSlug ? `publishers://member/${encodeURIComponent(memberSlug)}` : "publishers://all",
+                mimeType: "application/json",
+                text: JSON.stringify({ publishers, count: publishers.length }, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
       case "get_products_for_agent": {
         const agentUrl = args?.agent_url as string;
         const params = args?.params || {};
@@ -634,6 +754,104 @@ export class MCPToolHandler {
         }
       }
 
+      // Federated discovery tools
+      case "list_federated_agents": {
+        const type = args?.type as AgentType | undefined;
+        const agents = await this.federatedIndex.listAllAgents(type);
+        const bySource = {
+          registered: agents.filter(a => a.source === 'registered').length,
+          discovered: agents.filter(a => a.source === 'discovered').length,
+        };
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: type ? `federated://agents/${encodeURIComponent(type)}` : "federated://agents",
+                mimeType: "application/json",
+                text: JSON.stringify({ agents, count: agents.length, sources: bySource }, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
+      case "list_federated_publishers": {
+        const publishers = await this.federatedIndex.listAllPublishers();
+        const bySource = {
+          registered: publishers.filter(p => p.source === 'registered').length,
+          discovered: publishers.filter(p => p.source === 'discovered').length,
+        };
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: "federated://publishers",
+                mimeType: "application/json",
+                text: JSON.stringify({ publishers, count: publishers.length, sources: bySource }, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
+      case "lookup_domain": {
+        const domain = args?.domain as string;
+        if (!domain) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ error: "Missing required parameter: domain" }),
+              },
+            ],
+            isError: true,
+          };
+        }
+        const result = await this.federatedIndex.lookupDomain(domain);
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: `federated://domain/${encodeURIComponent(domain)}`,
+                mimeType: "application/json",
+                text: JSON.stringify(result, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
+      case "get_agent_domains": {
+        const agentUrl = args?.agent_url as string;
+        if (!agentUrl) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ error: "Missing required parameter: agent_url" }),
+              },
+            ],
+            isError: true,
+          };
+        }
+        const domains = await this.federatedIndex.getDomainsForAgent(agentUrl);
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: `federated://agent/${encodeURIComponent(agentUrl)}/domains`,
+                mimeType: "application/json",
+                text: JSON.stringify({ agent_url: agentUrl, domains, count: domains.length }, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
       default:
         return {
           content: [
@@ -663,6 +881,7 @@ export class MCPToolHandler {
         offerings: m.offerings,
         headquarters: m.headquarters,
         agents_count: m.agents.filter((a) => a.is_public).length,
+        publishers_count: (m.publishers || []).filter((p) => p.is_public).length,
       }));
 
       return {
@@ -671,6 +890,34 @@ export class MCPToolHandler {
             uri,
             mimeType: "application/json",
             text: JSON.stringify(simplified, null, 2),
+          },
+        ],
+      };
+    }
+
+    // Handle publishers resource
+    if (uri === "publishers://all") {
+      const members = await this.memberDb.getPublicProfiles({});
+      const publishers = members.flatMap((m) =>
+        (m.publishers || [])
+          .filter((p) => p.is_public)
+          .map((p) => ({
+            domain: p.domain,
+            agent_count: p.agent_count,
+            last_validated: p.last_validated,
+            member: {
+              slug: m.slug,
+              display_name: m.display_name,
+            },
+          }))
+      );
+
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(publishers, null, 2),
           },
         ],
       };

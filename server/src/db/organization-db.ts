@@ -10,10 +10,12 @@ export interface Organization {
   name: string;
   is_personal: boolean;
   stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
   agreement_signed_at: Date | null;
   agreement_version: string | null;
   pending_agreement_version: string | null;
   pending_agreement_accepted_at: Date | null;
+  subscription_status: string | null;
   subscription_current_period_end: Date | null;
   subscription_product_id: string | null;
   subscription_product_name: string | null;
@@ -252,17 +254,39 @@ export class OrganizationDatabase {
   }
 
   /**
-   * Get subscription info from Stripe for an organization
-   * Returns null if organization has no Stripe customer or Stripe is not configured
+   * Get subscription info for an organization
+   * Tries Stripe first if customer ID is available, falls back to local DB fields
+   * This allows local development without Stripe webhooks
    */
   async getSubscriptionInfo(workos_organization_id: string): Promise<SubscriptionInfo | null> {
     const org = await this.getOrganization(workos_organization_id);
 
-    if (!org || !org.stripe_customer_id) {
+    if (!org) {
       return { status: 'none' };
     }
 
-    return getSubscriptionInfo(org.stripe_customer_id);
+    // If we have a Stripe customer ID, try to get info from Stripe
+    if (org.stripe_customer_id) {
+      const stripeInfo = await getSubscriptionInfo(org.stripe_customer_id);
+      if (stripeInfo) {
+        return stripeInfo;
+      }
+    }
+
+    // Fall back to local database fields (useful for local dev without Stripe)
+    if (org.subscription_status) {
+      return {
+        status: org.subscription_status as SubscriptionInfo['status'],
+        product_name: org.subscription_product_name || undefined,
+        product_id: org.subscription_product_id || undefined,
+        current_period_end: org.subscription_current_period_end
+          ? Math.floor(org.subscription_current_period_end.getTime() / 1000)
+          : undefined,
+        cancel_at_period_end: org.subscription_canceled_at !== null,
+      };
+    }
+
+    return { status: 'none' };
   }
 
   // Agreement Methods

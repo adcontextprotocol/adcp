@@ -54,6 +54,31 @@ function isValidSlug(slug: string): boolean {
   return /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(slug.toLowerCase());
 }
 
+/**
+ * Extract publisher validation stats from adagents.json validation result
+ */
+function extractPublisherStats(result: { valid: boolean; raw_data?: any }) {
+  let agentCount = 0;
+  let propertyCount = 0;
+  let tagCount = 0;
+  let propertyTypeCounts: Record<string, number> = {};
+
+  if (result.valid && result.raw_data) {
+    agentCount = result.raw_data.authorized_agents?.length || 0;
+    propertyCount = result.raw_data.properties?.length || 0;
+    tagCount = Object.keys(result.raw_data.tags || {}).length;
+
+    // Count properties by type
+    const properties = result.raw_data.properties || [];
+    for (const prop of properties) {
+      const propType = prop.property_type || 'unknown';
+      propertyTypeCounts[propType] = (propertyTypeCounts[propType] || 0) + 1;
+    }
+  }
+
+  return { agentCount, propertyCount, tagCount, propertyTypeCounts };
+}
+
 // Check if authentication is configured
 const AUTH_ENABLED = !!(
   process.env.WORKOS_API_KEY &&
@@ -728,6 +753,22 @@ export class HTTPServer {
       res.sendFile(membersPath);
     });
 
+    // Publishers registry page
+    this.app.get("/publishers", (req, res) => {
+      const publishersPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/publishers.html")
+        : path.join(__dirname, "../public/publishers.html");
+      res.sendFile(publishersPath);
+    });
+
+    // Properties registry page
+    this.app.get("/properties", (req, res) => {
+      const propertiesPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/properties.html")
+        : path.join(__dirname, "../public/properties.html");
+      res.sendFile(propertiesPath);
+    });
+
     // About AAO page - serve about.html at /about
     this.app.get("/about", (req, res) => {
       const aboutPath = process.env.NODE_ENV === 'production'
@@ -1191,13 +1232,15 @@ export class HTTPServer {
             break;
           }
 
-          case 'invoice.payment_succeeded': {
+          case 'invoice.payment_succeeded':
+          case 'invoice.paid': {
             const invoice = event.data.object as Stripe.Invoice;
             logger.info({
               customer: invoice.customer,
               invoiceId: invoice.id,
               amount: invoice.amount_paid,
-            }, 'Invoice payment succeeded');
+              eventType: event.type,
+            }, 'Invoice paid');
 
             // Get organization from customer ID
             const customerId = invoice.customer as string;
@@ -3604,6 +3647,98 @@ Disallow: /api/admin/
       res.sendFile(usersPath);
     });
 
+    // Federated discovery endpoints
+    this.setupFederatedDiscoveryRoutes();
+  }
+
+  /**
+   * Setup federated discovery endpoints for merged registered + discovered data
+   */
+  private setupFederatedDiscoveryRoutes(): void {
+    const federatedIndex = this.crawler.getFederatedIndex();
+
+    // List all agents (registered + discovered)
+    this.app.get("/api/federated/agents", async (req, res) => {
+      try {
+        const type = req.query.type as AgentType | undefined;
+        const agents = await federatedIndex.listAllAgents(type);
+        const bySource = {
+          registered: agents.filter(a => a.source === 'registered').length,
+          discovered: agents.filter(a => a.source === 'discovered').length,
+        };
+        res.json({
+          agents,
+          count: agents.length,
+          sources: bySource,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Failed to list federated agents",
+        });
+      }
+    });
+
+    // List all publishers (registered + discovered)
+    this.app.get("/api/federated/publishers", async (req, res) => {
+      try {
+        const publishers = await federatedIndex.listAllPublishers();
+        const bySource = {
+          registered: publishers.filter(p => p.source === 'registered').length,
+          discovered: publishers.filter(p => p.source === 'discovered').length,
+        };
+        res.json({
+          publishers,
+          count: publishers.length,
+          sources: bySource,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Failed to list federated publishers",
+        });
+      }
+    });
+
+    // Lookup domain - find all agents authorized for a domain
+    this.app.get("/api/lookup/domain/:domain", async (req, res) => {
+      try {
+        const domain = req.params.domain;
+        const result = await federatedIndex.lookupDomain(domain);
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Domain lookup failed",
+        });
+      }
+    });
+
+    // Get domains for a specific agent
+    this.app.get("/api/lookup/agent/:agentUrl/domains", async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.agentUrl);
+        const domains = await federatedIndex.getDomainsForAgent(agentUrl);
+        res.json({
+          agent_url: agentUrl,
+          domains,
+          count: domains.length,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Agent domain lookup failed",
+        });
+      }
+    });
+
+    // Get federated index stats
+    this.app.get("/api/federated/stats", async (req, res) => {
+      try {
+        const stats = await federatedIndex.getStats();
+        res.json(stats);
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Failed to get federated stats",
+        });
+      }
+    });
   }
 
   private setupAuthRoutes(): void {
@@ -5139,15 +5274,37 @@ Disallow: /api/admin/
           });
         }
 
-        // Create customer session for pricing table (if customer exists)
+        // Ensure Stripe customer exists before showing pricing table
+        // This is critical: if we don't create the customer first, Stripe Pricing Table
+        // will create one without workos_organization_id metadata, breaking the linkage
+        let stripeCustomerId = org.stripe_customer_id;
+        if (!stripeCustomerId) {
+          logger.info({ orgId, userName: user.email }, 'Creating Stripe customer for pricing table');
+          stripeCustomerId = await createStripeCustomer({
+            email: user.email,
+            name: org.name,
+            metadata: {
+              workos_organization_id: orgId,
+            },
+          });
+
+          if (stripeCustomerId) {
+            await orgDb.setStripeCustomerId(orgId, stripeCustomerId);
+            logger.info({ orgId, stripeCustomerId }, 'Stripe customer created and linked to organization');
+          } else {
+            logger.error({ orgId }, 'Failed to create Stripe customer for pricing table');
+          }
+        }
+
+        // Create customer session for pricing table
         let customerSessionSecret = null;
-        if (org.stripe_customer_id) {
-          customerSessionSecret = await createCustomerSession(org.stripe_customer_id);
+        if (stripeCustomerId) {
+          customerSessionSecret = await createCustomerSession(stripeCustomerId);
         }
 
         res.json({
           subscription: subscriptionInfo,
-          stripe_customer_id: org.stripe_customer_id || null,
+          stripe_customer_id: stripeCustomerId || null,
           customer_session_secret: customerSessionSecret,
         });
       } catch (error) {
@@ -8330,6 +8487,107 @@ Disallow: /api/admin/
 
         return res.status(500).json({
           error: 'Agent discovery failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Publisher Validation: Validate a publisher's adagents.json (public version for members directory)
+    this.app.get('/api/public/validate-publisher', async (req, res) => {
+      const { domain } = req.query;
+
+      if (!domain || typeof domain !== 'string') {
+        return res.status(400).json({ error: 'Domain is required' });
+      }
+
+      try {
+        const result = await this.adagentsManager.validateDomain(domain);
+        const stats = extractPublisherStats(result);
+
+        return res.json({
+          valid: result.valid,
+          domain: result.domain,
+          url: result.url,
+          agent_count: stats.agentCount,
+          property_count: stats.propertyCount,
+          property_type_counts: stats.propertyTypeCounts,
+          tag_count: stats.tagCount,
+          errors: result.errors,
+          warnings: result.warnings,
+        });
+      } catch (error) {
+        logger.error({ err: error, domain }, 'Public publisher validation error');
+
+        return res.status(500).json({
+          error: 'Publisher validation failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // List all public publishers from member organizations (public endpoint for publishers registry)
+    this.app.get('/api/public/publishers', async (req, res) => {
+      try {
+        const memberDb = new MemberDatabase();
+        const members = await memberDb.getPublicProfiles({});
+
+        // Collect all public publishers from members
+        const publishers = members.flatMap((m) =>
+          (m.publishers || [])
+            .filter((p) => p.is_public)
+            .map((p) => ({
+              domain: p.domain,
+              agent_count: p.agent_count,
+              last_validated: p.last_validated,
+              member: {
+                slug: m.slug,
+                display_name: m.display_name,
+              },
+            }))
+        );
+
+        return res.json({
+          publishers,
+          count: publishers.length,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to list public publishers');
+        return res.status(500).json({
+          error: 'Failed to list publishers',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Publisher Validation: Validate a publisher's adagents.json (authenticated version with full details)
+    this.app.get('/api/validate-publisher', requireAuth, async (req, res) => {
+      const { domain } = req.query;
+
+      if (!domain || typeof domain !== 'string') {
+        return res.status(400).json({ error: 'Domain is required' });
+      }
+
+      try {
+        const result = await this.adagentsManager.validateDomain(domain);
+        const stats = extractPublisherStats(result);
+
+        return res.json({
+          valid: result.valid,
+          domain: result.domain,
+          url: result.url,
+          agent_count: stats.agentCount,
+          property_count: stats.propertyCount,
+          property_type_counts: stats.propertyTypeCounts,
+          tag_count: stats.tagCount,
+          errors: result.errors,
+          warnings: result.warnings,
+          authorized_agents: result.raw_data?.authorized_agents || [],
+        });
+      } catch (error) {
+        logger.error({ err: error, domain }, 'Publisher validation error');
+
+        return res.status(500).json({
+          error: 'Publisher validation failed',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
