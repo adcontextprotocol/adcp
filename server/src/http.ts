@@ -23,8 +23,9 @@ import Stripe from "stripe";
 import { OrganizationDatabase } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
+import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, createRequireWorkingGroupLeader } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -34,6 +35,7 @@ import {
   notifyPaymentSucceeded,
   notifyPaymentFailed,
   notifySubscriptionCancelled,
+  notifyWorkingGroupPost,
 } from "./notifications/slack.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -813,6 +815,29 @@ export class HTTPServer {
     });
     this.app.get("/insights/:slug", (req, res) => {
       res.redirect(301, `/perspectives/${req.params.slug}`);
+    });
+
+    // Working Groups pages - public list, detail pages handled by single HTML
+    this.app.get("/working-groups", (req, res) => {
+      const workingGroupsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/working-groups.html")
+        : path.join(__dirname, "../public/working-groups.html");
+      res.sendFile(workingGroupsPath);
+    });
+
+    this.app.get("/working-groups/:slug", (req, res) => {
+      const workingGroupDetailPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/working-groups/detail.html")
+        : path.join(__dirname, "../public/working-groups/detail.html");
+      res.sendFile(workingGroupDetailPath);
+    });
+
+    // Working group management page (leaders only - auth check happens client-side via API)
+    this.app.get("/working-groups/:slug/manage", (req, res) => {
+      const managePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/working-groups/manage.html")
+        : path.join(__dirname, "../public/working-groups/manage.html");
+      res.sendFile(managePath);
     });
 
     // AdAgents API Routes
@@ -3008,6 +3033,333 @@ export class HTTPServer {
     });
 
     // ========================================
+    // Admin Working Groups API Routes
+    // ========================================
+
+    const workingGroupDb = new WorkingGroupDatabase();
+
+    // GET /api/admin/working-groups - List all working groups
+    this.app.get('/api/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const groups = await workingGroupDb.listWorkingGroups({ includePrivate: true });
+        res.json(groups);
+      } catch (error) {
+        logger.error({ err: error }, 'List working groups error:');
+        res.status(500).json({
+          error: 'Failed to list working groups',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/working-groups/search-users - Search users for leadership selection
+    // IMPORTANT: This route must come BEFORE parameterized routes like /:id
+    this.app.get('/api/admin/working-groups/search-users', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { q } = req.query;
+        if (!q || typeof q !== 'string' || q.length < 2) {
+          return res.json([]);
+        }
+
+        if (!workos) {
+          return res.status(503).json({ error: 'Authentication not configured' });
+        }
+
+        // Search for users by iterating through member organizations
+        const searchTerm = q.toLowerCase();
+        const matchingUsers: Array<{
+          user_id: string;
+          email: string;
+          name: string;
+          org_id: string;
+          org_name: string;
+        }> = [];
+        const seenUserIds = new Set<string>();
+
+        // Get all member organizations from our database
+        const orgDatabase = new OrganizationDatabase();
+        const orgs = await orgDatabase.listOrganizations();
+
+        // For each org, get their memberships from WorkOS and filter
+        for (const org of orgs) {
+          if (matchingUsers.length >= 20) break;
+
+          try {
+            const memberships = await workos.userManagement.listOrganizationMemberships({
+              organizationId: org.workos_organization_id,
+            });
+
+            for (const membership of memberships.data) {
+              if (matchingUsers.length >= 20) break;
+              if (seenUserIds.has(membership.userId)) continue;
+
+              // Get user details
+              try {
+                const user = await workos.userManagement.getUser(membership.userId);
+                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+
+                // Check if user matches search term
+                if (
+                  user.email.toLowerCase().includes(searchTerm) ||
+                  fullName.toLowerCase().includes(searchTerm) ||
+                  org.name.toLowerCase().includes(searchTerm)
+                ) {
+                  seenUserIds.add(user.id);
+                  matchingUsers.push({
+                    user_id: user.id,
+                    email: user.email,
+                    name: fullName,
+                    org_id: org.workos_organization_id,
+                    org_name: org.name,
+                  });
+                }
+              } catch (userErr) {
+                // Skip users we can't fetch
+                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
+              }
+            }
+          } catch (orgErr) {
+            // Skip orgs we can't fetch memberships for
+            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
+          }
+        }
+
+        res.json(matchingUsers);
+      } catch (error) {
+        logger.error({ err: error }, 'Search users error:');
+        res.status(500).json({
+          error: 'Failed to search users',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/working-groups/:id - Get single working group with details
+    this.app.get('/api/admin/working-groups/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const group = await workingGroupDb.getWorkingGroupWithDetails(id);
+
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with id ${id}`
+          });
+        }
+
+        res.json(group);
+      } catch (error) {
+        logger.error({ err: error }, 'Get working group error:');
+        res.status(500).json({
+          error: 'Failed to get working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/working-groups - Create working group
+    this.app.post('/api/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { name, slug, description, slack_channel_url, is_private, status, display_order,
+                chair_user_id, chair_name, chair_title, chair_org_name,
+                vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name } = req.body;
+
+        if (!name || !slug) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'Name and slug are required'
+          });
+        }
+
+        // Validate slug format
+        const slugPattern = /^[a-z0-9-]+$/;
+        if (!slugPattern.test(slug)) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens'
+          });
+        }
+
+        // Check slug availability
+        const slugAvailable = await workingGroupDb.isSlugAvailable(slug);
+        if (!slugAvailable) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: `A working group with slug '${slug}' already exists`
+          });
+        }
+
+        const group = await workingGroupDb.createWorkingGroup({
+          name, slug, description, slack_channel_url, is_private, status, display_order,
+          chair_user_id, chair_name, chair_title, chair_org_name,
+          vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name
+        });
+
+        // Ensure chair/vice-chair are members
+        await workingGroupDb.ensureLeadershipAreMembers(group.id);
+
+        res.status(201).json(group);
+      } catch (error) {
+        logger.error({ err: error }, 'Create working group error:');
+        res.status(500).json({
+          error: 'Failed to create working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/admin/working-groups/:id - Update working group
+    this.app.put('/api/admin/working-groups/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        const group = await workingGroupDb.updateWorkingGroup(id, updates);
+
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with id ${id}`
+          });
+        }
+
+        // Ensure chair/vice-chair are members if leadership was updated
+        if (updates.chair_user_id || updates.vice_chair_user_id) {
+          await workingGroupDb.ensureLeadershipAreMembers(group.id);
+        }
+
+        res.json(group);
+      } catch (error) {
+        logger.error({ err: error }, 'Update working group error:');
+        res.status(500).json({
+          error: 'Failed to update working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/admin/working-groups/:id - Delete working group
+    this.app.delete('/api/admin/working-groups/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const deleted = await workingGroupDb.deleteWorkingGroup(id);
+
+        if (!deleted) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with id ${id}`
+          });
+        }
+
+        res.json({ success: true, deleted: id });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete working group error:');
+        res.status(500).json({
+          error: 'Failed to delete working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/working-groups/:id/members - List working group members
+    this.app.get('/api/admin/working-groups/:id/members', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const members = await workingGroupDb.getMembershipsByWorkingGroup(id);
+        res.json(members);
+      } catch (error) {
+        logger.error({ err: error }, 'List working group members error:');
+        res.status(500).json({
+          error: 'Failed to list members',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/working-groups/:id/members - Add member to working group
+    this.app.post('/api/admin/working-groups/:id/members', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { workos_user_id, user_email, user_name, user_org_name, workos_organization_id } = req.body;
+        const user = req.user!;
+
+        if (!workos_user_id) {
+          return res.status(400).json({
+            error: 'Missing required field',
+            message: 'workos_user_id is required'
+          });
+        }
+
+        const membership = await workingGroupDb.addMembership({
+          working_group_id: id,
+          workos_user_id,
+          user_email,
+          user_name,
+          user_org_name,
+          workos_organization_id,
+          added_by_user_id: user.id,
+        });
+
+        res.status(201).json(membership);
+      } catch (error) {
+        logger.error({ err: error }, 'Add working group member error:');
+        res.status(500).json({
+          error: 'Failed to add member',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/admin/working-groups/:id/members/:userId - Remove member from working group
+    this.app.delete('/api/admin/working-groups/:id/members/:userId', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id, userId } = req.params;
+        const deleted = await workingGroupDb.deleteMembership(id, userId);
+
+        if (!deleted) {
+          return res.status(404).json({
+            error: 'Membership not found',
+            message: 'User is not a member of this working group'
+          });
+        }
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Remove working group member error:');
+        res.status(500).json({
+          error: 'Failed to remove member',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/working-groups/:id/posts - List all posts for a working group
+    this.app.get('/api/admin/working-groups/:id/posts', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const pool = getPool();
+
+        const result = await pool.query(
+          `SELECT id, slug, content_type, title, subtitle, category, excerpt,
+            external_url, external_site_name, author_name, author_title,
+            author_user_id, featured_image_url, status, published_at, display_order, tags
+          FROM perspectives
+          WHERE working_group_id = $1
+          ORDER BY published_at DESC NULLS LAST, created_at DESC`,
+          [id]
+        );
+
+        res.json(result.rows);
+      } catch (error) {
+        logger.error({ err: error }, 'List working group posts error:');
+        res.status(500).json({
+          error: 'Failed to list posts',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // ========================================
     // SEO Routes (sitemap.xml, robots.txt)
     // ========================================
 
@@ -3029,6 +3381,7 @@ export class HTTPServer {
         const staticPages = [
           { path: '/', priority: '1.0', changefreq: 'weekly' },
           { path: '/perspectives', priority: '0.9', changefreq: 'daily' },
+          { path: '/working-groups', priority: '0.8', changefreq: 'weekly' },
           { path: '/members', priority: '0.8', changefreq: 'weekly' },
           { path: '/join', priority: '0.7', changefreq: 'monthly' },
         ];
@@ -3092,7 +3445,7 @@ Disallow: /api/admin/
     // Public Perspectives API Routes
     // ========================================
 
-    // GET /api/perspectives - List published perspectives
+    // GET /api/perspectives - List published perspectives (excludes working group posts)
     this.app.get('/api/perspectives', async (req, res) => {
       try {
         const pool = getPool();
@@ -3103,7 +3456,7 @@ Disallow: /api/admin/
             author_name, author_title, featured_image_url,
             published_at, display_order, tags, like_count
           FROM perspectives
-          WHERE status = 'published'
+          WHERE status = 'published' AND working_group_id IS NULL
           ORDER BY published_at DESC NULLS LAST`
         );
 
@@ -3278,6 +3631,20 @@ Disallow: /api/admin/
         ? path.join(__dirname, '../server/public/admin-perspectives.html')
         : path.join(__dirname, '../public/admin-perspectives.html');
       res.sendFile(perspectivesPath);
+    });
+
+    this.app.get('/admin/working-groups', requireAuth, requireAdmin, (req, res) => {
+      const workingGroupsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-working-groups.html')
+        : path.join(__dirname, '../public/admin-working-groups.html');
+      res.sendFile(workingGroupsPath);
+    });
+
+    this.app.get('/admin/users', requireAuth, requireAdmin, (req, res) => {
+      const usersPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-users.html')
+        : path.join(__dirname, '../public/admin-users.html');
+      res.sendFile(usersPath);
     });
 
     // Federated discovery endpoints
@@ -5910,6 +6277,1272 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get member error');
         res.status(500).json({
           error: 'Failed to get member',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // ========================================
+    // Admin Users API Routes
+    // ========================================
+
+    // GET /api/admin/users - List all users with their working groups
+    this.app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        if (!workos) {
+          return res.status(503).json({ error: 'Authentication not configured' });
+        }
+
+        const wgDb = new WorkingGroupDatabase();
+        const orgDatabase = new OrganizationDatabase();
+        const { search, group, noGroups } = req.query;
+        const searchTerm = typeof search === 'string' ? search.toLowerCase() : '';
+        const filterByGroup = typeof group === 'string' ? group : undefined;
+        const filterNoGroups = noGroups === 'true';
+
+        // Get all working group memberships from our database
+        const allWgMemberships = await wgDb.getAllMemberships();
+
+        // Create a map of user_id -> working groups
+        const userWorkingGroups = new Map<string, Array<{
+          id: string;
+          name: string;
+          slug: string;
+          is_private: boolean;
+        }>>();
+
+        for (const m of allWgMemberships) {
+          const groups = userWorkingGroups.get(m.user_id) || [];
+          groups.push({
+            id: m.working_group_id,
+            name: m.working_group_name,
+            slug: m.working_group_slug || '',
+            is_private: m.is_private || false,
+          });
+          userWorkingGroups.set(m.user_id, groups);
+        }
+
+        // Get all users from WorkOS via org memberships
+        const orgs = await orgDatabase.listOrganizations();
+        const allUsers: Array<{
+          user_id: string;
+          email: string;
+          name: string;
+          org_id: string;
+          org_name: string;
+          working_groups: Array<{
+            id: string;
+            name: string;
+            slug: string;
+            is_private: boolean;
+          }>;
+        }> = [];
+        const seenUserIds = new Set<string>();
+
+        for (const org of orgs) {
+          try {
+            const memberships = await workos.userManagement.listOrganizationMemberships({
+              organizationId: org.workos_organization_id,
+            });
+
+            for (const membership of memberships.data) {
+              if (seenUserIds.has(membership.userId)) continue;
+
+              try {
+                const user = await workos.userManagement.getUser(membership.userId);
+                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+                const workingGroups = userWorkingGroups.get(user.id) || [];
+
+                // Apply filters
+                if (searchTerm) {
+                  const matches = user.email.toLowerCase().includes(searchTerm) ||
+                                  fullName.toLowerCase().includes(searchTerm) ||
+                                  org.name.toLowerCase().includes(searchTerm);
+                  if (!matches) continue;
+                }
+
+                if (filterByGroup) {
+                  const hasGroup = workingGroups.some(g => g.id === filterByGroup);
+                  if (!hasGroup) continue;
+                }
+
+                if (filterNoGroups && workingGroups.length > 0) {
+                  continue;
+                }
+
+                seenUserIds.add(user.id);
+                allUsers.push({
+                  user_id: user.id,
+                  email: user.email,
+                  name: fullName,
+                  org_id: org.workos_organization_id,
+                  org_name: org.name,
+                  working_groups: workingGroups,
+                });
+              } catch (userErr) {
+                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
+              }
+            }
+          } catch (orgErr) {
+            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
+          }
+        }
+
+        // Sort by name
+        allUsers.sort((a, b) => a.name.localeCompare(b.name));
+
+        res.json({ users: allUsers });
+      } catch (error) {
+        logger.error({ err: error }, 'Get admin users error');
+        res.status(500).json({
+          error: 'Failed to get users',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/users/memberships - Get all working group memberships (for export)
+    this.app.get('/api/admin/users/memberships', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const wgDb = new WorkingGroupDatabase();
+        const memberships = await wgDb.getAllMemberships();
+
+        // Check if CSV export is requested
+        const format = req.query.format;
+        if (format === 'csv') {
+          const csv = [
+            'User Name,Email,Organization,Working Group,Joined At',
+            ...memberships.map(m =>
+              `"${m.user_name || ''}","${m.user_email || ''}","${m.user_org_name || ''}","${m.working_group_name}","${m.joined_at ? new Date(m.joined_at).toISOString().split('T')[0] : ''}"`
+            ),
+          ].join('\n');
+
+          res.setHeader('Content-Type', 'text/csv');
+          res.setHeader('Content-Disposition', 'attachment; filename="working-group-memberships.csv"');
+          return res.send(csv);
+        }
+
+        res.json({ memberships });
+      } catch (error) {
+        logger.error({ err: error }, 'Get memberships export error');
+        res.status(500).json({
+          error: 'Failed to get memberships',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // ========================================
+    // Public Working Groups API Routes
+    // ========================================
+
+    // GET /api/working-groups - List active working groups (public groups for everyone, private for members)
+    this.app.get('/api/working-groups', optionalAuth, async (req, res) => {
+      try {
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user; // May be undefined for anonymous users
+
+        let groups;
+        if (user?.id) {
+          // Authenticated user - show public + private groups they're a member of
+          groups = await wgDb.listWorkingGroupsForUser(user.id);
+        } else {
+          // Anonymous user - show only public active groups
+          groups = await wgDb.listWorkingGroups({ status: 'active', includePrivate: false });
+        }
+
+        res.json({ working_groups: groups });
+      } catch (error) {
+        logger.error({ err: error }, 'List working groups error');
+        res.status(500).json({
+          error: 'Failed to list working groups',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/working-groups/:slug - Get working group details
+    this.app.get('/api/working-groups/:slug', optionalAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user; // May be undefined for anonymous users
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check access for private groups
+        if (group.is_private) {
+          if (!user?.id) {
+            return res.status(404).json({
+              error: 'Working group not found',
+              message: `No working group found with slug: ${slug}`,
+            });
+          }
+
+          const isMember = await wgDb.isMember(group.id, user.id);
+          if (!isMember) {
+            return res.status(404).json({
+              error: 'Working group not found',
+              message: `No working group found with slug: ${slug}`,
+            });
+          }
+        }
+
+        // Get memberships for display
+        const memberships = await wgDb.getMembershipsByWorkingGroup(group.id);
+
+        // Check if current user is a member
+        let isMember = false;
+        if (user?.id) {
+          isMember = await wgDb.isMember(group.id, user.id);
+        }
+
+        res.json({
+          working_group: {
+            ...group,
+            member_count: memberships.length,
+            memberships,
+          },
+          is_member: isMember,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Get working group error');
+        res.status(500).json({
+          error: 'Failed to get working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/working-groups/:slug/posts - Get published posts for a working group
+    this.app.get('/api/working-groups/:slug/posts', optionalAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+        const pool = getPool();
+        const user = req.user; // May be undefined for anonymous users
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check access for private groups and determine membership
+        let isMember = false;
+        if (user?.id) {
+          isMember = await wgDb.isMember(group.id, user.id);
+        }
+
+        if (group.is_private) {
+          if (!user?.id || !isMember) {
+            return res.status(404).json({
+              error: 'Working group not found',
+              message: `No working group found with slug: ${slug}`,
+            });
+          }
+        }
+
+        // If user is a member, show all posts; otherwise filter out members-only posts
+        const result = await pool.query(
+          `SELECT id, slug, content_type, title, subtitle, category, excerpt,
+            external_url, external_site_name, author_name, author_title,
+            featured_image_url, published_at, tags, is_members_only
+          FROM perspectives
+          WHERE working_group_id = $1 AND status = 'published'
+            AND (is_members_only = false OR $2 = true)
+          ORDER BY published_at DESC NULLS LAST`,
+          [group.id, isMember]
+        );
+
+        res.json({ posts: result.rows });
+      } catch (error) {
+        logger.error({ err: error }, 'Get working group posts error');
+        res.status(500).json({
+          error: 'Failed to get posts',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/working-groups/:slug/join - Join a public working group
+    this.app.post('/api/working-groups/:slug/join', requireAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        if (group.is_private) {
+          return res.status(403).json({
+            error: 'Private group',
+            message: 'This working group is private and requires an invitation to join',
+          });
+        }
+
+        // Check if already a member
+        const existingMembership = await wgDb.getMembership(group.id, user.id);
+        if (existingMembership && existingMembership.status === 'active') {
+          return res.status(409).json({
+            error: 'Already a member',
+            message: 'You are already a member of this working group',
+          });
+        }
+
+        // Get user's organization info for the membership record
+        let orgId: string | undefined;
+        let orgName: string | undefined;
+        if (workos) {
+          try {
+            const memberships = await workos.userManagement.listOrganizationMemberships({
+              userId: user.id,
+            });
+            if (memberships.data.length > 0) {
+              const org = await workos.organizations.getOrganization(memberships.data[0].organizationId);
+              orgId = org.id;
+              orgName = org.name;
+            }
+          } catch {
+            // Ignore org fetch errors
+          }
+        }
+
+        const membership = await wgDb.addMembership({
+          working_group_id: group.id,
+          workos_user_id: user.id,
+          user_email: user.email,
+          user_name: user.firstName && user.lastName
+            ? `${user.firstName} ${user.lastName}`
+            : user.email,
+          workos_organization_id: orgId,
+          user_org_name: orgName,
+          added_by_user_id: user.id, // Self-join
+        });
+
+        res.status(201).json({ success: true, membership });
+      } catch (error) {
+        logger.error({ err: error }, 'Join working group error');
+        res.status(500).json({
+          error: 'Failed to join working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/working-groups/:slug/leave - Leave a working group
+    this.app.delete('/api/working-groups/:slug/leave', requireAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check if user is chair or vice-chair - they can't leave without being replaced
+        if (group.chair_user_id === user.id || group.vice_chair_user_id === user.id) {
+          return res.status(403).json({
+            error: 'Cannot leave',
+            message: 'As chair or vice-chair, you must be replaced before leaving the group',
+          });
+        }
+
+        const removed = await wgDb.removeMembership(group.id, user.id);
+
+        if (!removed) {
+          return res.status(404).json({
+            error: 'Not a member',
+            message: 'You are not a member of this working group',
+          });
+        }
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Leave working group error');
+        res.status(500).json({
+          error: 'Failed to leave working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/me/working-groups - Get current user's working group memberships
+    this.app.get('/api/me/working-groups', requireAuth, async (req, res) => {
+      try {
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user!;
+
+        const groups = await wgDb.getWorkingGroupsForUser(user.id);
+        res.json({ working_groups: groups });
+      } catch (error) {
+        logger.error({ err: error }, 'Get user working groups error');
+        res.status(500).json({
+          error: 'Failed to get working groups',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/working-groups/:slug/posts - Create a post in a working group (members)
+    // Members can only create members-only posts; leaders can create public posts
+    this.app.post('/api/working-groups/:slug/posts', requireAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const { title, content, content_type, category, excerpt, external_url, external_site_name, post_slug, is_members_only } = req.body;
+        const wgDb = new WorkingGroupDatabase();
+        const pool = getPool();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check if user is a member
+        const isMember = await wgDb.isMember(group.id, user.id);
+        if (!isMember) {
+          return res.status(403).json({
+            error: 'Not a member',
+            message: 'You must be a member of this working group to post',
+          });
+        }
+
+        // Check if user is a leader (chair or vice-chair)
+        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+
+        // Non-leaders can only create members-only posts
+        const finalMembersOnly = isLeader ? (is_members_only ?? true) : true;
+
+        if (!title || !post_slug) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'Title and slug are required',
+          });
+        }
+
+        // Validate slug format
+        const slugPattern = /^[a-z0-9-]+$/;
+        if (!slugPattern.test(post_slug)) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+          });
+        }
+
+        // Create the post (perspective with working_group_id)
+        const authorName = user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.email;
+
+        const result = await pool.query(
+          `INSERT INTO perspectives (
+            working_group_id, slug, content_type, title, content, category, excerpt,
+            external_url, external_site_name, author_name, author_user_id,
+            status, published_at, is_members_only
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'published', NOW(), $12)
+          RETURNING *`,
+          [
+            group.id,
+            post_slug,
+            content_type || 'article',
+            title,
+            content || null,
+            category || null,
+            excerpt || null,
+            external_url || null,
+            external_site_name || null,
+            authorName,
+            user.id,
+            finalMembersOnly,
+          ]
+        );
+
+        // Send Slack notification for public posts
+        if (!finalMembersOnly) {
+          notifyWorkingGroupPost({
+            workingGroupName: group.name,
+            workingGroupSlug: slug,
+            postTitle: title,
+            postSlug: post_slug,
+            authorName,
+            contentType: content_type || 'article',
+            category: category || undefined,
+          }).catch(err => {
+            logger.warn({ err }, 'Failed to send Slack notification for working group post');
+          });
+        }
+
+        res.status(201).json({ post: result.rows[0] });
+      } catch (error) {
+        logger.error({ err: error }, 'Create working group post error');
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: 'A post with this slug already exists in this working group',
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to create post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/working-groups/:slug/posts/:postId - Update own post (members)
+    this.app.put('/api/working-groups/:slug/posts/:postId', requireAuth, async (req, res) => {
+      try {
+        const { slug, postId } = req.params;
+        const { title, content, content_type, category, excerpt, external_url, external_site_name, post_slug, is_members_only } = req.body;
+        const wgDb = new WorkingGroupDatabase();
+        const pool = getPool();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check if user is a member
+        const isMember = await wgDb.isMember(group.id, user.id);
+        if (!isMember) {
+          return res.status(403).json({
+            error: 'Not a member',
+            message: 'You must be a member of this working group',
+          });
+        }
+
+        // Get existing post
+        const existing = await pool.query(
+          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
+          [postId, group.id]
+        );
+
+        if (existing.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Post not found',
+            message: 'Post not found in this working group',
+          });
+        }
+
+        const post = existing.rows[0];
+        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+        const isAuthor = post.author_user_id === user.id;
+
+        // Only authors or leaders can edit posts
+        if (!isAuthor && !isLeader) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'You can only edit your own posts',
+          });
+        }
+
+        // Non-leaders cannot make posts public
+        const finalMembersOnly = isLeader ? (is_members_only ?? post.is_members_only) : true;
+
+        // Validate slug if changing
+        if (post_slug && post_slug !== post.slug) {
+          const slugPattern = /^[a-z0-9-]+$/;
+          if (!slugPattern.test(post_slug)) {
+            return res.status(400).json({
+              error: 'Invalid slug',
+              message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+            });
+          }
+        }
+
+        const result = await pool.query(
+          `UPDATE perspectives SET
+            slug = COALESCE($1, slug),
+            content_type = COALESCE($2, content_type),
+            title = COALESCE($3, title),
+            content = $4,
+            category = $5,
+            excerpt = $6,
+            external_url = $7,
+            external_site_name = $8,
+            is_members_only = $9,
+            updated_at = NOW()
+          WHERE id = $10 AND working_group_id = $11
+          RETURNING *`,
+          [
+            post_slug || null,
+            content_type || null,
+            title || null,
+            content ?? post.content,
+            category ?? post.category,
+            excerpt ?? post.excerpt,
+            external_url ?? post.external_url,
+            external_site_name ?? post.external_site_name,
+            finalMembersOnly,
+            postId,
+            group.id,
+          ]
+        );
+
+        res.json({ post: result.rows[0] });
+      } catch (error) {
+        logger.error({ err: error }, 'Update working group post error');
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: 'A post with this slug already exists',
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to update post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/working-groups/:slug/posts/:postId - Delete own post (members)
+    this.app.delete('/api/working-groups/:slug/posts/:postId', requireAuth, async (req, res) => {
+      try {
+        const { slug, postId } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+        const pool = getPool();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check if user is a member
+        const isMember = await wgDb.isMember(group.id, user.id);
+        if (!isMember) {
+          return res.status(403).json({
+            error: 'Not a member',
+            message: 'You must be a member of this working group',
+          });
+        }
+
+        // Get existing post
+        const existing = await pool.query(
+          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
+          [postId, group.id]
+        );
+
+        if (existing.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Post not found',
+            message: 'Post not found in this working group',
+          });
+        }
+
+        const post = existing.rows[0];
+        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+        const isAuthor = post.author_user_id === user.id;
+
+        // Only authors or leaders can delete posts
+        if (!isAuthor && !isLeader) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'You can only delete your own posts',
+          });
+        }
+
+        await pool.query(
+          `DELETE FROM perspectives WHERE id = $1 AND working_group_id = $2`,
+          [postId, group.id]
+        );
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete working group post error');
+        res.status(500).json({
+          error: 'Failed to delete post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/working-groups/:slug/fetch-url - Fetch URL metadata (for link posts) - members only
+    this.app.post('/api/working-groups/:slug/fetch-url', requireAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const { url } = req.body;
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check if user is a member
+        const isMember = await wgDb.isMember(group.id, user.id);
+        if (!isMember) {
+          return res.status(403).json({
+            error: 'Not a member',
+            message: 'You must be a member of this working group',
+          });
+        }
+
+        if (!url) {
+          return res.status(400).json({
+            error: 'URL required',
+            message: 'Please provide a URL to fetch',
+          });
+        }
+
+        // Fetch the page
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+            'Accept': 'text/html,application/xhtml+xml',
+          },
+          redirect: 'follow',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch URL: ${response.status}`);
+        }
+
+        const html = await response.text();
+
+        // Extract metadata from HTML
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+        const ogDescMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
+        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+        const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
+
+        // Helper to decode HTML entities
+        const decodeHtmlEntities = (text: string): string => {
+          return text
+            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
+        };
+
+        let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
+        title = decodeHtmlEntities(title.trim());
+
+        let excerpt = ogDescMatch?.[1] || descMatch?.[1] || '';
+        excerpt = decodeHtmlEntities(excerpt.trim());
+        // Truncate excerpt to 160 chars max
+        if (excerpt.length > 160) {
+          excerpt = excerpt.substring(0, 157) + '...';
+        }
+
+        let site_name = ogSiteMatch?.[1] || '';
+        if (!site_name) {
+          try {
+            const parsedUrl = new URL(url);
+            site_name = parsedUrl.hostname.replace('www.', '');
+            site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
+          } catch {
+            // ignore URL parse errors
+          }
+        }
+        site_name = decodeHtmlEntities(site_name);
+
+        res.json({ title, excerpt, site_name });
+      } catch (error) {
+        logger.error({ err: error }, 'Fetch URL metadata error (member)');
+        res.status(500).json({
+          error: 'Failed to fetch URL',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // ========================================
+    // Working Group Leader API Routes (Chair/Vice-Chair only)
+    // ========================================
+
+    const wgDbForLeader = new WorkingGroupDatabase();
+    const requireWorkingGroupLeader = createRequireWorkingGroupLeader(wgDbForLeader);
+
+    // GET /api/working-groups/:slug/manage/posts - List all posts (including drafts) for leaders
+    this.app.get('/api/working-groups/:slug/manage/posts', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const pool = getPool();
+
+        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        const result = await pool.query(
+          `SELECT id, slug, content_type, title, subtitle, category, excerpt, content,
+            external_url, external_site_name, author_name, author_title,
+            author_user_id, featured_image_url, status, published_at, display_order, tags,
+            created_at, updated_at
+          FROM perspectives
+          WHERE working_group_id = $1
+          ORDER BY display_order ASC, published_at DESC NULLS LAST, created_at DESC`,
+          [group.id]
+        );
+
+        res.json({ posts: result.rows });
+      } catch (error) {
+        logger.error({ err: error }, 'List working group leader posts error');
+        res.status(500).json({
+          error: 'Failed to list posts',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/working-groups/:slug/manage/posts/:postId - Get single post for editing
+    this.app.get('/api/working-groups/:slug/manage/posts/:postId', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { slug, postId } = req.params;
+        const pool = getPool();
+
+        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        const result = await pool.query(
+          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
+          [postId, group.id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Post not found',
+            message: 'Post not found in this working group',
+          });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Get working group post error');
+        res.status(500).json({
+          error: 'Failed to get post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/working-groups/:slug/manage/posts - Create post as leader (with draft support)
+    this.app.post('/api/working-groups/:slug/manage/posts', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const {
+          post_slug, content_type, title, subtitle, category, excerpt, content,
+          external_url, external_site_name, author_name, author_title,
+          featured_image_url, status, display_order, tags, is_members_only
+        } = req.body;
+        const pool = getPool();
+        const user = req.user!;
+
+        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        if (!title || !post_slug) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'Title and slug are required',
+          });
+        }
+
+        // Validate slug format
+        const slugPattern = /^[a-z0-9-]+$/;
+        if (!slugPattern.test(post_slug)) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+          });
+        }
+
+        // Validate content type for links
+        if (content_type === 'link' && !external_url) {
+          return res.status(400).json({
+            error: 'Missing external URL',
+            message: 'External URL is required for link type posts',
+          });
+        }
+
+        const authorNameFinal = author_name || (user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.email);
+
+        const result = await pool.query(
+          `INSERT INTO perspectives (
+            working_group_id, slug, content_type, title, subtitle, category, excerpt, content,
+            external_url, external_site_name, author_name, author_title, author_user_id,
+            featured_image_url, status, display_order, tags, published_at, is_members_only
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+          RETURNING *`,
+          [
+            group.id,
+            post_slug,
+            content_type || 'article',
+            title,
+            subtitle || null,
+            category || null,
+            excerpt || null,
+            content || null,
+            external_url || null,
+            external_site_name || null,
+            authorNameFinal,
+            author_title || null,
+            user.id,
+            featured_image_url || null,
+            status || 'draft',
+            display_order || 0,
+            tags || null,
+            status === 'published' ? new Date() : null,
+            is_members_only || false,
+          ]
+        );
+
+        const createdPost = result.rows[0];
+
+        // Send Slack notification if post is published
+        if (status === 'published') {
+          notifyWorkingGroupPost({
+            workingGroupName: group.name,
+            workingGroupSlug: slug,
+            postTitle: title,
+            postSlug: post_slug,
+            authorName: authorNameFinal,
+            contentType: content_type || 'article',
+            category: category || undefined,
+          }).catch(err => {
+            logger.warn({ err }, 'Failed to send Slack notification for working group post');
+          });
+        }
+
+        res.status(201).json(createdPost);
+      } catch (error) {
+        logger.error({ err: error }, 'Create working group leader post error');
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: 'A post with this slug already exists',
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to create post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/working-groups/:slug/manage/posts/:postId - Update post as leader
+    this.app.put('/api/working-groups/:slug/manage/posts/:postId', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { slug, postId } = req.params;
+        const {
+          post_slug, content_type, title, subtitle, category, excerpt, content,
+          external_url, external_site_name, author_name, author_title,
+          featured_image_url, status, display_order, tags, is_members_only
+        } = req.body;
+        const pool = getPool();
+
+        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check post belongs to this working group
+        const existing = await pool.query(
+          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
+          [postId, group.id]
+        );
+
+        if (existing.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Post not found',
+            message: 'Post not found in this working group',
+          });
+        }
+
+        // Validate slug if provided
+        if (post_slug) {
+          const slugPattern = /^[a-z0-9-]+$/;
+          if (!slugPattern.test(post_slug)) {
+            return res.status(400).json({
+              error: 'Invalid slug',
+              message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+            });
+          }
+        }
+
+        // If status is changing to published, set published_at
+        const wasPublished = existing.rows[0].status === 'published';
+        const willBePublished = status === 'published';
+        const publishedAt = willBePublished && !wasPublished
+          ? new Date()
+          : existing.rows[0].published_at;
+
+        const result = await pool.query(
+          `UPDATE perspectives SET
+            slug = COALESCE($1, slug),
+            content_type = COALESCE($2, content_type),
+            title = COALESCE($3, title),
+            subtitle = $4,
+            category = $5,
+            excerpt = $6,
+            content = $7,
+            external_url = $8,
+            external_site_name = $9,
+            author_name = COALESCE($10, author_name),
+            author_title = $11,
+            featured_image_url = $12,
+            status = COALESCE($13, status),
+            display_order = COALESCE($14, display_order),
+            tags = $15,
+            published_at = $16,
+            is_members_only = $17,
+            updated_at = NOW()
+          WHERE id = $18 AND working_group_id = $19
+          RETURNING *`,
+          [
+            post_slug || null,
+            content_type || null,
+            title || null,
+            subtitle || null,
+            category || null,
+            excerpt || null,
+            content || null,
+            external_url || null,
+            external_site_name || null,
+            author_name || null,
+            author_title || null,
+            featured_image_url || null,
+            status || null,
+            display_order ?? null,
+            tags || null,
+            publishedAt,
+            is_members_only ?? false,
+            postId,
+            group.id,
+          ]
+        );
+
+        const updatedPost = result.rows[0];
+
+        // Send Slack notification if post was just published (status changed to published)
+        if (willBePublished && !wasPublished) {
+          notifyWorkingGroupPost({
+            workingGroupName: group.name,
+            workingGroupSlug: slug,
+            postTitle: updatedPost.title,
+            postSlug: updatedPost.slug,
+            authorName: updatedPost.author_name || 'Unknown',
+            contentType: updatedPost.content_type || 'article',
+            category: updatedPost.category || undefined,
+          }).catch(err => {
+            logger.warn({ err }, 'Failed to send Slack notification for working group post');
+          });
+        }
+
+        res.json(updatedPost);
+      } catch (error) {
+        logger.error({ err: error }, 'Update working group post error');
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: 'A post with this slug already exists',
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to update post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/working-groups/:slug/manage/posts/:postId - Delete post as leader
+    this.app.delete('/api/working-groups/:slug/manage/posts/:postId', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { slug, postId } = req.params;
+        const pool = getPool();
+
+        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        const result = await pool.query(
+          `DELETE FROM perspectives WHERE id = $1 AND working_group_id = $2 RETURNING id`,
+          [postId, group.id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Post not found',
+            message: 'Post not found in this working group',
+          });
+        }
+
+        res.json({ success: true, deleted: postId });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete working group post error');
+        res.status(500).json({
+          error: 'Failed to delete post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/working-groups/:slug/manage/fetch-url - Fetch URL metadata (for link posts)
+    this.app.post('/api/working-groups/:slug/manage/fetch-url', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { url } = req.body;
+
+        if (!url) {
+          return res.status(400).json({
+            error: 'URL required',
+            message: 'Please provide a URL to fetch',
+          });
+        }
+
+        // Fetch the page
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+            'Accept': 'text/html,application/xhtml+xml',
+          },
+          redirect: 'follow',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch URL: ${response.status}`);
+        }
+
+        const html = await response.text();
+
+        // Extract metadata from HTML
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+        const ogDescMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
+        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+        const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
+
+        // Helper to decode HTML entities
+        const decodeHtmlEntities = (text: string): string => {
+          return text
+            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
+        };
+
+        let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
+        title = decodeHtmlEntities(title.trim());
+
+        let excerpt = ogDescMatch?.[1] || descMatch?.[1] || '';
+        excerpt = decodeHtmlEntities(excerpt.trim());
+        // Truncate excerpt to 160 chars max
+        if (excerpt.length > 160) {
+          excerpt = excerpt.substring(0, 157) + '...';
+        }
+
+        let site_name = ogSiteMatch?.[1] || '';
+        if (!site_name) {
+          try {
+            const parsedUrl = new URL(url);
+            site_name = parsedUrl.hostname.replace('www.', '');
+            site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
+          } catch {
+            // ignore URL parse errors
+          }
+        }
+        site_name = decodeHtmlEntities(site_name);
+
+        res.json({ title, excerpt, site_name });
+      } catch (error) {
+        logger.error({ err: error }, 'Fetch URL metadata error (working group)');
+        res.status(500).json({
+          error: 'Failed to fetch URL',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/working-groups/for-organization/:orgId - Get working groups that users from an org belong to
+    this.app.get('/api/working-groups/for-organization/:orgId', async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+
+        const groups = await wgDb.getWorkingGroupsForOrganization(orgId);
+        res.json({ working_groups: groups });
+      } catch (error) {
+        logger.error({ err: error }, 'Get org working groups error');
+        res.status(500).json({
+          error: 'Failed to get working groups',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }

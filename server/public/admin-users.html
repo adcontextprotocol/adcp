@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Users - AdCP Registry</title>
+  <script src="/admin-nav.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-xl);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
+    .subtitle {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-5);
+      flex-wrap: wrap;
+      gap: var(--space-4);
+    }
+    .filter-bar {
+      display: flex;
+      gap: var(--space-2.5);
+      margin-bottom: var(--space-5);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-bar input,
+    .filter-bar select {
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .filter-bar input {
+      min-width: 200px;
+    }
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .btn-small { padding: var(--space-1.5) var(--space-3); font-size: var(--text-xs); }
+    .btn-primary { background: var(--color-brand); color: white; }
+    .btn-primary:hover { background: var(--color-primary-700); }
+    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-outline {
+      background: transparent;
+      color: var(--color-brand);
+      border: var(--border-1) solid var(--color-brand);
+    }
+    .btn-outline:hover {
+      background: var(--color-primary-50);
+    }
+
+    /* Stats Cards */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-6);
+    }
+    .stat-card {
+      background: var(--color-gray-50);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      text-align: center;
+    }
+    .stat-value {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-brand);
+    }
+    .stat-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    /* Users Table */
+    .users-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .users-table th,
+    .users-table td {
+      padding: var(--space-3);
+      text-align: left;
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+    }
+    .users-table th {
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      background: var(--color-gray-50);
+      font-size: var(--text-sm);
+    }
+    .users-table tr:hover {
+      background: var(--color-gray-50);
+    }
+    .user-name {
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+    .user-email {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .user-org {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+    .group-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1);
+    }
+    .group-badge {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      background: var(--color-primary-100);
+      color: var(--color-brand);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      text-decoration: none;
+      transition: var(--transition-colors);
+    }
+    .group-badge:hover {
+      background: var(--color-primary-200);
+    }
+    .group-badge.private {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .no-groups {
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+      font-style: italic;
+    }
+    .empty-state {
+      text-align: center;
+      padding: var(--space-10);
+      color: var(--color-text-secondary);
+    }
+
+    /* Responsive table */
+    @media (max-width: 768px) {
+      .users-table thead { display: none; }
+      .users-table tr {
+        display: block;
+        margin-bottom: var(--space-4);
+        border: var(--border-1) solid var(--color-gray-200);
+        border-radius: var(--radius-md);
+      }
+      .users-table td {
+        display: block;
+        border: none;
+        padding: var(--space-2) var(--space-3);
+      }
+      .users-table td:first-child {
+        padding-top: var(--space-3);
+      }
+      .users-table td:last-child {
+        padding-bottom: var(--space-3);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading" style="text-align: center; padding: var(--space-12); color: var(--color-text-secondary);">
+    Loading...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h1>Users</h1>
+            <p class="subtitle">View all AAO member users and their working group memberships</p>
+          </div>
+          <div style="display: flex; gap: var(--space-2);">
+            <a href="/api/admin/users/memberships?format=csv" class="btn btn-outline" download>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export CSV
+            </a>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <div id="totalUsers" class="stat-value">-</div>
+            <div class="stat-label">Total Users</div>
+          </div>
+          <div class="stat-card">
+            <div id="usersWithGroups" class="stat-value">-</div>
+            <div class="stat-label">In Working Groups</div>
+          </div>
+          <div class="stat-card">
+            <div id="usersNoGroups" class="stat-value">-</div>
+            <div class="stat-label">No Working Groups</div>
+          </div>
+          <div class="stat-card">
+            <div id="totalGroups" class="stat-value">-</div>
+            <div class="stat-label">Active Groups</div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-bar">
+          <input type="text" id="searchInput" placeholder="Search users, orgs..." oninput="debounceSearch()">
+          <select id="groupFilter" onchange="loadUsers()">
+            <option value="">All Working Groups</option>
+          </select>
+          <label style="display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); cursor: pointer;">
+            <input type="checkbox" id="noGroupsFilter" onchange="loadUsers()">
+            Show only users without groups
+          </label>
+          <button class="btn btn-secondary btn-small" onclick="clearFilters()">Clear Filters</button>
+        </div>
+
+        <!-- Users Table -->
+        <div id="usersTableContainer">
+          <table class="users-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Organization</th>
+                <th>Working Groups</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <div id="emptyState" class="empty-state" style="display: none;">
+          No users found matching your filters.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allUsers = [];
+    let allGroups = [];
+    let searchTimeout = null;
+
+    async function init() {
+      try {
+        // Load working groups for filter dropdown
+        const groupsResponse = await fetch('/api/admin/working-groups');
+        if (!groupsResponse.ok) {
+          if (groupsResponse.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load working groups');
+        }
+        allGroups = await groupsResponse.json();
+        populateGroupFilter();
+
+        // Load users
+        await loadUsers();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error initializing:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load users. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    function populateGroupFilter() {
+      const select = document.getElementById('groupFilter');
+      select.innerHTML = '<option value="">All Working Groups</option>';
+
+      allGroups.forEach(g => {
+        const option = document.createElement('option');
+        option.value = g.id;
+        option.textContent = g.name + (g.is_private ? ' (Private)' : '');
+        select.appendChild(option);
+      });
+    }
+
+    async function loadUsers() {
+      const search = document.getElementById('searchInput').value.trim();
+      const groupFilter = document.getElementById('groupFilter').value;
+      const noGroupsFilter = document.getElementById('noGroupsFilter').checked;
+
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (groupFilter) params.append('group', groupFilter);
+      if (noGroupsFilter) params.append('noGroups', 'true');
+
+      try {
+        const response = await fetch(`/api/admin/users?${params}`);
+        if (!response.ok) throw new Error('Failed to load users');
+
+        const data = await response.json();
+        allUsers = data.users || [];
+
+        renderUsers();
+        updateStats();
+      } catch (error) {
+        console.error('Error loading users:', error);
+      }
+    }
+
+    function renderUsers() {
+      const tbody = document.getElementById('usersTableBody');
+      const emptyState = document.getElementById('emptyState');
+
+      if (allUsers.length === 0) {
+        tbody.innerHTML = '';
+        emptyState.style.display = 'block';
+        return;
+      }
+
+      emptyState.style.display = 'none';
+
+      tbody.innerHTML = allUsers.map(user => {
+        const groupBadges = user.working_groups.length > 0
+          ? user.working_groups.map(g =>
+              `<a href="/admin/working-groups" class="group-badge ${g.is_private ? 'private' : ''}" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</a>`
+            ).join('')
+          : '<span class="no-groups">No groups</span>';
+
+        return `
+          <tr>
+            <td>
+              <div class="user-name">${escapeHtml(user.name)}</div>
+              <div class="user-email">${escapeHtml(user.email)}</div>
+            </td>
+            <td>
+              <span class="user-org">${escapeHtml(user.org_name || 'No org')}</span>
+            </td>
+            <td>
+              <div class="group-badges">${groupBadges}</div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function updateStats() {
+      const totalUsers = allUsers.length;
+      const usersWithGroups = allUsers.filter(u => u.working_groups.length > 0).length;
+      const usersNoGroups = totalUsers - usersWithGroups;
+
+      document.getElementById('totalUsers').textContent = totalUsers;
+      document.getElementById('usersWithGroups').textContent = usersWithGroups;
+      document.getElementById('usersNoGroups').textContent = usersNoGroups;
+      document.getElementById('totalGroups').textContent = allGroups.length;
+    }
+
+    function debounceSearch() {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(loadUsers, 300);
+    }
+
+    function clearFilters() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('groupFilter').value = '';
+      document.getElementById('noGroupsFilter').checked = false;
+      loadUsers();
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    init();
+  </script>
+</body>
+</html>

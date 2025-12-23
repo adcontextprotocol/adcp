@@ -328,3 +328,56 @@ export async function notifyNewMemberProfile(data: {
     ],
   });
 }
+
+/**
+ * Notify when a new working group post is published
+ */
+export async function notifyWorkingGroupPost(data: {
+  workingGroupName: string;
+  workingGroupSlug: string;
+  postTitle: string;
+  postSlug: string;
+  authorName: string;
+  contentType: 'article' | 'link';
+  category?: string;
+}): Promise<boolean> {
+  const emoji = data.contentType === 'link' ? '🔗' : '📝';
+  const typeLabel = data.contentType === 'link' ? 'Link' : 'Article';
+  const postUrl = `https://agenticadvertising.org/perspectives/${data.postSlug}`;
+  const groupUrl = `https://agenticadvertising.org/working-groups/${data.workingGroupSlug}`;
+
+  return sendSlackMessage({
+    text: `${emoji} New ${typeLabel} in ${data.workingGroupName}: ${data.postTitle}`,
+    blocks: [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: `${emoji} New Working Group Post`,
+          emoji: true,
+        },
+      },
+      {
+        type: 'section',
+        fields: [
+          {
+            type: 'mrkdwn',
+            text: `*Title:*\n<${postUrl}|${data.postTitle}>`,
+          },
+          {
+            type: 'mrkdwn',
+            text: `*Working Group:*\n<${groupUrl}|${data.workingGroupName}>`,
+          },
+          {
+            type: 'mrkdwn',
+            text: `*Author:*\n${data.authorName}`,
+          },
+          {
+            type: 'mrkdwn',
+            text: `*Type:*\n${typeLabel}${data.category ? ` (${data.category})` : ''}`,
+          },
+        ],
+      },
+    ],
+  });
+}

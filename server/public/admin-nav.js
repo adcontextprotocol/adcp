@@ -9,6 +9,8 @@
     logo: 'AdCP Admin',
     links: [
       { href: '/admin/members', label: 'Members' },
+      { href: '/admin/users', label: 'Users' },
+      { href: '/admin/working-groups', label: 'Working Groups' },
       { href: '/admin/agreements', label: 'Agreements' },
       { href: '/admin/perspectives', label: 'Perspectives' },
       { href: '/admin/analytics', label: 'Analytics' }
@@ -19,10 +21,10 @@
   // Shared header styles
   const HEADER_STYLES = `
     .admin-header {
-      background-color: #667eea;
+      background-color: var(--color-brand, #667eea);
       color: white;
       padding: 20px 40px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.1));
     }
     .admin-header-content {
       max-width: 1400px;
@@ -35,7 +37,13 @@
       font-size: 28px;
       font-weight: 600;
       margin: 0;
+    }
+    .admin-header h1 a {
       color: white;
+      text-decoration: none;
+    }
+    .admin-header h1 a:hover {
+      opacity: 0.9;
     }
     .admin-header nav {
       display: flex;
@@ -85,7 +93,7 @@
     return `
       <header class="admin-header">
         <div class="admin-header-content">
-          <h1>${NAV_CONFIG.logo}</h1>
+          <h1><a href="/admin">${NAV_CONFIG.logo}</a></h1>
           <nav>
             ${navLinks}
           </nav>
