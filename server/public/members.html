@@ -1116,6 +1116,60 @@
       font-weight: var(--font-medium);
     }
 
+    /* Working Groups Banner */
+    .working-groups-banner {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-4) var(--space-6);
+      background: var(--color-primary-50);
+      border-top: var(--border-1) solid var(--color-primary-200);
+    }
+    .working-groups-banner-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--color-brand);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: white;
+    }
+    .working-groups-banner-content {
+      flex: 1;
+    }
+    .working-groups-banner-label {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-brand);
+      margin-bottom: var(--space-1);
+    }
+    .working-groups-banner-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+    .working-group-link {
+      display: inline-flex;
+      align-items: center;
+      padding: var(--space-1) var(--space-3);
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-primary-300);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      color: var(--color-brand);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+      transition: var(--transition-all);
+    }
+    .working-group-link:hover {
+      background: var(--color-primary-100);
+      border-color: var(--color-brand);
+    }
+
     @media (max-width: 768px) {
       .members-grid {
         grid-template-columns: 1fr;
@@ -1126,6 +1180,10 @@
       }
       .search-bar {
         flex-direction: column;
+      }
+      .working-groups-banner {
+        flex-direction: column;
+        text-align: center;
       }
     }
   </style>
@@ -1422,6 +1480,8 @@
           </div>
         ` : ''}
 
+        <div id="working-groups-banner" class="working-groups-banner" style="display: none;"></div>
+
         <div class="detail-body">
           ${member.description ? `
             <div class="detail-section">
@@ -1508,6 +1568,49 @@
       // Discover agent info for each registered agent
       if (member.agents && member.agents.length > 0) {
         discoverAgents(member.agents.map(a => a.url));
+      }
+
+      // Load working groups for this organization
+      if (member.workos_organization_id) {
+        loadWorkingGroupsForOrg(member.workos_organization_id);
+      }
+    }
+
+    async function loadWorkingGroupsForOrg(orgId) {
+      try {
+        const response = await fetch(`/api/working-groups/for-organization/${encodeURIComponent(orgId)}`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const workingGroups = data.working_groups || [];
+
+        if (workingGroups.length === 0) return;
+
+        // Filter to only show non-private groups (or if user is member)
+        const publicGroups = workingGroups.filter(g => !g.is_private);
+
+        if (publicGroups.length === 0) return;
+
+        const banner = document.getElementById('working-groups-banner');
+        banner.innerHTML = `
+          <div class="working-groups-banner-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+          </div>
+          <div class="working-groups-banner-content">
+            <div class="working-groups-banner-label">Active in Working Groups</div>
+            <div class="working-groups-banner-list">
+              ${publicGroups.map(g => `<a href="/working-groups/${escapeHtml(g.slug)}" class="working-group-link">${escapeHtml(g.name)}</a>`).join('')}
+            </div>
+          </div>
+        `;
+        banner.style.display = 'flex';
+      } catch (error) {
+        console.debug('Failed to load working groups:', error);
       }
     }
 

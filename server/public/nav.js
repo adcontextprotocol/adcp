@@ -137,6 +137,12 @@
       ? `<a href="${perspectivesUrl}" class="navbar__link ${currentPath.startsWith('/perspectives') ? 'active' : ''}">Perspectives</a>`
       : '';
 
+    // Build working groups link (only on beta site)
+    const workingGroupsUrl = isLocal ? '/working-groups' : 'https://agenticadvertising.org/working-groups';
+    const workingGroupsLink = membershipEnabled
+      ? `<a href="${workingGroupsUrl}" class="navbar__link ${currentPath.startsWith('/working-groups') ? 'active' : ''}">Working Groups</a>`
+      : '';
+
     // Always use AAO logo
     const logoSrc = '/AAo.svg';
     const logoAlt = 'Agentic Advertising';
@@ -159,6 +165,7 @@
               ${aboutAdcpLink}
               ${membersLink}
               ${perspectivesLink}
+              ${workingGroupsLink}
               ${aboutDropdown}
             </div>
           </div>
@@ -179,6 +186,7 @@
           ${aboutAdcpLink}
           ${membersLink}
           ${perspectivesLink}
+          ${workingGroupsLink}
           <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
           <a href="${governanceUrl}" class="navbar__link navbar__link--indent ${currentPath === '/governance' ? 'active' : ''}">Governance</a>

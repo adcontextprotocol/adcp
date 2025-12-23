@@ -263,3 +263,97 @@ export interface ListMemberProfilesOptions {
   limit?: number;
   offset?: number;
 }
+
+// Working Group Types
+
+export type WorkingGroupStatus = 'active' | 'inactive' | 'archived';
+export type WorkingGroupMembershipStatus = 'active' | 'inactive';
+
+export interface WorkingGroup {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  slack_channel_url?: string;
+  chair_user_id?: string;
+  chair_name?: string;
+  chair_title?: string;
+  chair_org_name?: string;
+  vice_chair_user_id?: string;
+  vice_chair_name?: string;
+  vice_chair_title?: string;
+  vice_chair_org_name?: string;
+  is_private: boolean;
+  status: WorkingGroupStatus;
+  display_order: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface WorkingGroupMembership {
+  id: string;
+  working_group_id: string;
+  workos_user_id: string;
+  user_email?: string;
+  user_name?: string;
+  user_org_name?: string;
+  workos_organization_id?: string;
+  status: WorkingGroupMembershipStatus;
+  added_by_user_id?: string;
+  joined_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateWorkingGroupInput {
+  name: string;
+  slug: string;
+  description?: string;
+  slack_channel_url?: string;
+  chair_user_id?: string;
+  chair_name?: string;
+  chair_title?: string;
+  chair_org_name?: string;
+  vice_chair_user_id?: string;
+  vice_chair_name?: string;
+  vice_chair_title?: string;
+  vice_chair_org_name?: string;
+  is_private?: boolean;
+  status?: WorkingGroupStatus;
+  display_order?: number;
+}
+
+export interface UpdateWorkingGroupInput {
+  name?: string;
+  description?: string;
+  slack_channel_url?: string;
+  chair_user_id?: string;
+  chair_name?: string;
+  chair_title?: string;
+  chair_org_name?: string;
+  vice_chair_user_id?: string;
+  vice_chair_name?: string;
+  vice_chair_title?: string;
+  vice_chair_org_name?: string;
+  is_private?: boolean;
+  status?: WorkingGroupStatus;
+  display_order?: number;
+}
+
+export interface WorkingGroupWithMemberCount extends WorkingGroup {
+  member_count: number;
+}
+
+export interface WorkingGroupWithDetails extends WorkingGroup {
+  member_count: number;
+  memberships?: WorkingGroupMembership[];
+}
+
+export interface AddWorkingGroupMemberInput {
+  working_group_id: string;
+  workos_user_id: string;
+  user_email?: string;
+  user_name?: string;
+  user_org_name?: string;
+  workos_organization_id?: string;
+  added_by_user_id?: string;
+}
