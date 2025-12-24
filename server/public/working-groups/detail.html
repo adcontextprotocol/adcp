@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="pageTitle">Loading... | AgenticAdvertising.org</title>
+  <meta name="description" id="pageDescription" content="Loading...">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="canonical" id="canonicalUrl" href="">
+
+  <!-- Open Graph / Facebook (updated dynamically) -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" id="ogUrl" content="">
+  <meta property="og:title" id="ogTitle" content="">
+  <meta property="og:description" id="ogDescription" content="">
+  <meta property="og:image" content="https://agenticadvertising.org/AAo-social.png">
+  <meta property="og:site_name" content="AgenticAdvertising.org">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" id="twitterUrl" content="">
+  <meta name="twitter:title" id="twitterTitle" content="">
+  <meta name="twitter:description" id="twitterDescription" content="">
+  <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
+
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <style>
+    body {
+      background: var(--color-bg-page);
+      padding-top: var(--nav-height);
+    }
+
+    .container {
+      max-width: var(--container-lg);
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    /* Loading & Error States */
+    .loading-state,
+    .error-state {
+      text-align: center;
+      padding: var(--space-16);
+      color: var(--color-text-muted);
+    }
+
+    .error-state h2 {
+      color: var(--color-error-600);
+      margin-bottom: var(--space-4);
+    }
+
+    /* Back Link */
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--color-brand);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+      margin-bottom: var(--space-6);
+      transition: var(--transition-colors);
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Group Header Card */
+    .group-header {
+      background: var(--color-bg-card);
+      border-radius: var(--card-radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      margin-bottom: var(--space-8);
+    }
+
+    .group-header-top {
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
+      padding: var(--space-8);
+      color: white;
+    }
+
+    .group-title {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      margin-bottom: var(--space-2);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    .private-badge {
+      font-size: var(--text-sm);
+      padding: var(--space-1) var(--space-3);
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius-md);
+      font-weight: var(--font-medium);
+    }
+
+    .group-tagline {
+      font-size: var(--text-lg);
+      opacity: 0.9;
+    }
+
+    .group-header-body {
+      padding: var(--space-6);
+    }
+
+    .group-actions {
+      display: flex;
+      gap: var(--space-4);
+      flex-wrap: wrap;
+      margin-bottom: var(--space-6);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-3) var(--space-6);
+      border-radius: var(--radius-lg);
+      font-weight: var(--font-semibold);
+      text-decoration: none;
+      cursor: pointer;
+      transition: var(--transition-all);
+      border: none;
+      font-size: var(--text-base);
+    }
+
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .btn-primary:disabled {
+      background: var(--color-gray-400);
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      border: var(--border-2) solid var(--color-border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+
+    .btn-danger {
+      background: var(--color-error-50);
+      color: var(--color-error-600);
+      border: var(--border-2) solid var(--color-error-200);
+    }
+
+    .btn-danger:hover {
+      background: var(--color-error-100);
+      border-color: var(--color-error-400);
+    }
+
+    /* Leadership Section */
+    .leadership-section {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: var(--space-6);
+    }
+
+    .leader-card {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-4);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-lg);
+    }
+
+    .leader-avatar {
+      width: 56px;
+      height: 56px;
+      background: linear-gradient(135deg, var(--color-brand), var(--color-brand-hover));
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: var(--font-bold);
+      font-size: var(--text-xl);
+      flex-shrink: 0;
+    }
+
+    .leader-info h4 {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+
+    .leader-role {
+      font-size: var(--text-sm);
+      color: var(--color-brand);
+      font-weight: var(--font-medium);
+      margin-bottom: var(--space-0.5);
+    }
+
+    .leader-org {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
+    /* Content Sections */
+    .content-section {
+      background: var(--color-bg-card);
+      border-radius: var(--card-radius);
+      padding: var(--space-6);
+      margin-bottom: var(--space-6);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-4);
+      padding-bottom: var(--space-3);
+      border-bottom: var(--border-2) solid var(--color-brand);
+    }
+
+    .section-title {
+      font-size: var(--text-xl);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+
+    /* Description Content (Markdown) */
+    .description-content h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-top: var(--space-6);
+      margin-bottom: var(--space-3);
+    }
+
+    .description-content h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-top: var(--space-4);
+      margin-bottom: var(--space-2);
+    }
+
+    .description-content p {
+      color: var(--color-text-body);
+      line-height: var(--leading-relaxed);
+      margin-bottom: var(--space-4);
+    }
+
+    .description-content ul, .description-content ol {
+      margin: var(--space-4) 0;
+      padding-left: var(--space-6);
+      color: var(--color-text-body);
+    }
+
+    .description-content li {
+      margin-bottom: var(--space-2);
+      line-height: var(--leading-relaxed);
+    }
+
+    .description-content a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .description-content a:hover {
+      text-decoration: underline;
+    }
+
+    /* Members List */
+    .members-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: var(--space-3);
+    }
+
+    .member-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-lg);
+      transition: var(--transition-colors);
+    }
+
+    .member-item:hover {
+      background: var(--color-primary-50);
+    }
+
+    .member-avatar {
+      width: 36px;
+      height: 36px;
+      background: var(--color-gray-300);
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: var(--font-semibold);
+      font-size: var(--text-sm);
+      flex-shrink: 0;
+    }
+
+    .member-info {
+      min-width: 0;
+    }
+
+    .member-name {
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .member-org {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Posts Section */
+    .posts-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .post-card {
+      padding: var(--space-4);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-lg);
+      border: var(--border-1) solid var(--color-border);
+      text-decoration: none;
+      color: inherit;
+      transition: var(--transition-all);
+      display: block;
+    }
+
+    .post-card:hover {
+      border-color: var(--color-brand);
+      background: var(--color-primary-50);
+    }
+
+    .post-title {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    .post-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+
+    .post-excerpt {
+      font-size: var(--text-sm);
+      color: var(--color-text-body);
+      margin-top: var(--space-2);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .empty-posts {
+      text-align: center;
+      padding: var(--space-8);
+      color: var(--color-text-muted);
+    }
+
+    .badge-members-only {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+
+    /* Slack Button */
+    .slack-btn {
+      background: #4A154B;
+      color: white;
+    }
+
+    .slack-btn:hover {
+      background: #611f69;
+    }
+
+    /* Membership Status */
+    .membership-status {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-4);
+      background: var(--color-success-50);
+      color: var(--color-success-700);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+    }
+
+    .membership-status svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Login Prompt */
+    .login-prompt {
+      background: var(--color-primary-50);
+      border: var(--border-1) solid var(--color-primary-200);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+      text-align: center;
+      margin-bottom: var(--space-4);
+    }
+
+    .login-prompt p {
+      margin-bottom: var(--space-3);
+      color: var(--color-text-body);
+    }
+
+    .login-prompt a {
+      color: var(--color-brand);
+      font-weight: var(--font-medium);
+    }
+
+    @media (max-width: 768px) {
+      .group-title {
+        font-size: var(--text-2xl);
+      }
+
+      .leadership-section {
+        grid-template-columns: 1fr;
+      }
+
+      .members-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Post Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--color-surface-overlay);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: var(--space-5);
+    }
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-8);
+      max-width: 700px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      margin-bottom: var(--space-5);
+      color: var(--color-text-heading);
+    }
+    .form-group {
+      margin-bottom: var(--space-4);
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      font-size: var(--text-sm);
+    }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%;
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      transition: var(--transition-all);
+    }
+    .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+    .form-group small {
+      display: block;
+      margin-top: var(--space-1);
+      color: var(--color-text-muted);
+      font-size: var(--text-xs);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+    }
+    .modal-buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--space-3);
+      margin-top: var(--space-6);
+    }
+    .type-toggle {
+      display: flex;
+      gap: var(--space-2);
+      margin-bottom: var(--space-5);
+    }
+    .type-toggle button {
+      padding: var(--space-2) var(--space-4);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      cursor: pointer;
+      font-size: var(--text-sm);
+      transition: var(--transition-all);
+    }
+    .type-toggle button.active {
+      background: var(--color-brand);
+      color: white;
+      border-color: var(--color-brand);
+    }
+    .link-fields { display: none; }
+    .link-fields.show { display: block; }
+    .article-fields.hide { display: none; }
+    .url-input-group {
+      display: flex;
+      gap: var(--space-2);
+    }
+    .url-input-group input { flex: 1; }
+    .char-count {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      text-align: right;
+      margin-top: var(--space-1);
+    }
+    .char-count.warning { color: var(--color-warning-600); }
+    .char-count.over { color: var(--color-error-600); }
+    .visibility-note {
+      background: var(--color-info-50);
+      border: var(--border-1) solid var(--color-info-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      margin-bottom: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-info-700);
+    }
+    @media (max-width: 768px) {
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
+  <!-- Loading State -->
+  <div id="loadingState" class="container">
+    <div class="loading-state">Loading working group...</div>
+  </div>
+
+  <!-- Error State -->
+  <div id="errorState" class="container" style="display: none;">
+    <div class="error-state">
+      <h2>Working Group Not Found</h2>
+      <p>The working group you're looking for doesn't exist or you don't have access to it.</p>
+      <p><a href="/working-groups" style="color: var(--color-brand);">Return to Working Groups</a></p>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div id="mainContent" class="container" style="display: none;">
+    <a href="/working-groups" class="back-link">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M10 12L6 8L10 4"/>
+      </svg>
+      Back to Working Groups
+    </a>
+
+    <!-- Group Header -->
+    <div class="group-header">
+      <div class="group-header-top">
+        <h1 class="group-title">
+          <span id="groupName">Working Group</span>
+          <span id="privateBadge" class="private-badge" style="display: none;">Private</span>
+        </h1>
+        <p id="groupTagline" class="group-tagline" style="display: none;"></p>
+      </div>
+
+      <div class="group-header-body">
+        <!-- Actions -->
+        <div class="group-actions">
+          <div id="membershipStatus" style="display: none;">
+            <span class="membership-status">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 6L9 17l-5-5"/>
+              </svg>
+              <span id="membershipLabel">You're a member</span>
+            </span>
+          </div>
+          <button id="joinBtn" class="btn btn-primary" style="display: none;" onclick="joinGroup()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="8.5" cy="7" r="4"/>
+              <line x1="20" y1="8" x2="20" y2="14"/>
+              <line x1="23" y1="11" x2="17" y2="11"/>
+            </svg>
+            Join Working Group
+          </button>
+          <button id="leaveBtn" class="btn btn-danger" style="display: none;" onclick="leaveGroup()">
+            Leave Group
+          </button>
+          <a id="slackBtn" class="btn slack-btn" href="#" target="_blank" style="display: none;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+            </svg>
+            Join Slack Channel
+          </a>
+          <a id="manageBtn" class="btn btn-secondary" href="#" style="display: none;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Manage Posts
+          </a>
+          <div id="loginPromptInline" style="display: none;">
+            <a href="/auth/login" class="btn btn-secondary">Log in to join</a>
+          </div>
+        </div>
+
+        <!-- Leadership -->
+        <div id="leadershipSection" class="leadership-section" style="display: none;"></div>
+      </div>
+    </div>
+
+    <!-- Description Section -->
+    <div id="descriptionSection" class="content-section" style="display: none;">
+      <div class="section-header">
+        <h2 class="section-title">About This Group</h2>
+      </div>
+      <div id="descriptionContent" class="description-content"></div>
+    </div>
+
+    <!-- Members Section -->
+    <div id="membersSection" class="content-section" style="display: none;">
+      <div class="section-header">
+        <h2 class="section-title">Members (<span id="memberCount">0</span>)</h2>
+      </div>
+      <div id="membersList" class="members-grid"></div>
+    </div>
+
+    <!-- Posts Section -->
+    <div id="postsSection" class="content-section" style="display: none;">
+      <div class="section-header">
+        <h2 class="section-title">Posts & Updates</h2>
+        <button id="newPostBtn" class="btn btn-primary" style="display: none;" onclick="createPost()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          New Post
+        </button>
+      </div>
+      <div id="postsList" class="posts-list"></div>
+    </div>
+  </div>
+
+  <!-- Post Modal -->
+  <div id="postModal" class="modal-overlay">
+    <div class="modal">
+      <h2 id="modalTitle">New Post</h2>
+
+      <div id="visibilityNote" class="visibility-note">
+        This post will be visible to working group members only.
+      </div>
+
+      <div class="type-toggle">
+        <button type="button" class="active" onclick="setContentType('article')">Article</button>
+        <button type="button" onclick="setContentType('link')">External Link</button>
+      </div>
+
+      <form id="postForm" onsubmit="savePost(event)">
+        <input type="hidden" id="postId">
+        <input type="hidden" id="contentType" value="article">
+
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="postTitle" required placeholder="Enter post title">
+        </div>
+
+        <!-- Link-specific fields -->
+        <div class="link-fields" id="linkFields">
+          <div class="form-group">
+            <label>External URL</label>
+            <div class="url-input-group">
+              <input type="url" id="externalUrl" placeholder="https://...">
+              <button type="button" class="btn btn-secondary" onclick="fetchUrlInfo()">Fetch Info</button>
+            </div>
+            <small>Enter the URL and click "Fetch Info" to auto-fill title and excerpt</small>
+          </div>
+
+          <div class="form-group">
+            <label>Site Name</label>
+            <input type="text" id="externalSiteName" placeholder="e.g., Forbes, TechCrunch">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Excerpt</label>
+          <textarea id="postExcerpt" placeholder="Brief description (recommended: under 160 characters)" rows="3" oninput="updateExcerptCount()"></textarea>
+          <div id="excerptCount" class="char-count">0 / 160</div>
+        </div>
+
+        <!-- Article-specific fields -->
+        <div class="article-fields" id="articleFields">
+          <div class="form-group">
+            <label>Content (Markdown)</label>
+            <textarea id="postContent" placeholder="Write your post in Markdown..." rows="8"></textarea>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Slug</label>
+            <input type="text" id="postSlug" required placeholder="url-friendly-slug" pattern="[a-z0-9-]+">
+            <small>URL path: /perspectives/{slug}</small>
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select id="postCategory">
+              <option value="">None</option>
+              <option value="Meeting Notes">Meeting Notes</option>
+              <option value="Proposal">Proposal</option>
+              <option value="Specification">Specification</option>
+              <option value="Announcement">Announcement</option>
+              <option value="Discussion">Discussion</option>
+              <option value="Resource">Resource</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="visibilityRow" class="form-group" style="display: none;">
+          <label style="display: flex; align-items: center; gap: var(--space-2); cursor: pointer;">
+            <input type="checkbox" id="isMembersOnly" checked style="width: auto;">
+            <span>Members only</span>
+          </label>
+          <small>Uncheck to make this post visible to the public</small>
+        </div>
+
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closePostModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="savePostBtn">Post</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer footer--centered">
+    <div class="footer-links">
+      <a href="/">Home</a>
+      <a href="/working-groups">Working Groups</a>
+      <a href="https://docs.adcontextprotocol.org">AdCP Documentation</a>
+      <a href="/members">Members</a>
+    </div>
+    <div class="footer-copyright">
+      &copy; 2025 AgenticAdvertising.org
+    </div>
+  </footer>
+
+  <script>
+    let currentUser = null;
+    let currentGroup = null;
+    let isMember = false;
+    let isLeader = false;
+    let currentSlug = '';
+
+    async function init() {
+      // Get slug from URL
+      const pathParts = window.location.pathname.split('/');
+      currentSlug = pathParts[pathParts.length - 1];
+
+      if (!currentSlug || currentSlug === 'detail.html') {
+        showError();
+        return;
+      }
+
+      // Check auth status
+      await checkAuth();
+
+      // Load working group data
+      await loadWorkingGroup();
+    }
+
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/config', { credentials: 'include' });
+        if (response.ok) {
+          const config = await response.json();
+          currentUser = config.user || null;
+        }
+      } catch (err) {
+        console.debug('Auth check failed:', err);
+      }
+    }
+
+    async function loadWorkingGroup() {
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}`, {
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          if (response.status === 404 || response.status === 403) {
+            showError();
+            return;
+          }
+          throw new Error('Failed to load working group');
+        }
+
+        const data = await response.json();
+        currentGroup = data.working_group;
+        isMember = data.is_member || false;
+
+        // Check if current user is a leader (chair or vice-chair)
+        if (currentUser && currentGroup) {
+          isLeader = currentGroup.chair_user_id === currentUser.id ||
+                     currentGroup.vice_chair_user_id === currentUser.id;
+        }
+
+        renderWorkingGroup();
+        loadPosts();
+
+      } catch (error) {
+        console.error('Error loading working group:', error);
+        showError();
+      }
+    }
+
+    function renderWorkingGroup() {
+      // Update meta tags
+      updateMetaTags();
+
+      // Header
+      document.getElementById('groupName').textContent = currentGroup.name;
+
+      if (currentGroup.is_private) {
+        document.getElementById('privateBadge').style.display = 'inline';
+      }
+
+      // Actions
+      if (currentUser) {
+        if (isMember) {
+          document.getElementById('membershipStatus').style.display = 'block';
+          // Show appropriate role label
+          const isChair = currentGroup.chair_user_id === currentUser.id;
+          const isViceChair = currentGroup.vice_chair_user_id === currentUser.id;
+          const label = isChair ? "You're the Chair" : isViceChair ? "You're the Vice Chair" : "You're a member";
+          document.getElementById('membershipLabel').textContent = label;
+          document.getElementById('leaveBtn').style.display = 'inline-flex';
+        } else if (!currentGroup.is_private) {
+          document.getElementById('joinBtn').style.display = 'inline-flex';
+        }
+      } else {
+        if (!currentGroup.is_private) {
+          document.getElementById('loginPromptInline').style.display = 'block';
+        }
+      }
+
+      // Slack button
+      if (currentGroup.slack_channel_url) {
+        const slackBtn = document.getElementById('slackBtn');
+        slackBtn.href = currentGroup.slack_channel_url;
+        slackBtn.style.display = 'inline-flex';
+      }
+
+      // Manage button (for leaders)
+      if (isLeader) {
+        const manageBtn = document.getElementById('manageBtn');
+        manageBtn.href = `/working-groups/${currentSlug}/manage`;
+        manageBtn.style.display = 'inline-flex';
+      }
+
+      // Leadership
+      const hasLeadership = currentGroup.chair_name || currentGroup.vice_chair_name;
+      if (hasLeadership) {
+        const leadershipSection = document.getElementById('leadershipSection');
+        let html = '';
+
+        if (currentGroup.chair_name) {
+          html += `
+            <div class="leader-card">
+              <div class="leader-avatar">${getInitials(currentGroup.chair_name)}</div>
+              <div class="leader-info">
+                <div class="leader-role">Chair</div>
+                <h4>${escapeHtml(currentGroup.chair_name)}</h4>
+                ${currentGroup.chair_title ? `<div class="leader-org">${escapeHtml(currentGroup.chair_title)}</div>` : ''}
+                ${currentGroup.chair_org_name ? `<div class="leader-org">${escapeHtml(currentGroup.chair_org_name)}</div>` : ''}
+              </div>
+            </div>
+          `;
+        }
+
+        if (currentGroup.vice_chair_name) {
+          html += `
+            <div class="leader-card">
+              <div class="leader-avatar">${getInitials(currentGroup.vice_chair_name)}</div>
+              <div class="leader-info">
+                <div class="leader-role">Vice Chair</div>
+                <h4>${escapeHtml(currentGroup.vice_chair_name)}</h4>
+                ${currentGroup.vice_chair_title ? `<div class="leader-org">${escapeHtml(currentGroup.vice_chair_title)}</div>` : ''}
+                ${currentGroup.vice_chair_org_name ? `<div class="leader-org">${escapeHtml(currentGroup.vice_chair_org_name)}</div>` : ''}
+              </div>
+            </div>
+          `;
+        }
+
+        leadershipSection.innerHTML = html;
+        leadershipSection.style.display = 'grid';
+      }
+
+      // Description
+      if (currentGroup.description) {
+        const descSection = document.getElementById('descriptionSection');
+        const descContent = document.getElementById('descriptionContent');
+        const renderedHtml = marked.parse(currentGroup.description);
+        descContent.innerHTML = DOMPurify.sanitize(renderedHtml);
+        descSection.style.display = 'block';
+      }
+
+      // Members
+      if (currentGroup.memberships && currentGroup.memberships.length > 0) {
+        const membersSection = document.getElementById('membersSection');
+        const membersList = document.getElementById('membersList');
+        const memberCount = document.getElementById('memberCount');
+
+        memberCount.textContent = currentGroup.memberships.length;
+
+        membersList.innerHTML = currentGroup.memberships.map(member => `
+          <div class="member-item">
+            <div class="member-avatar">${getInitials(member.user_name || member.user_email)}</div>
+            <div class="member-info">
+              <div class="member-name">${escapeHtml(member.user_name || member.user_email || 'Unknown')}</div>
+              ${member.user_org_name ? `<div class="member-org">${escapeHtml(member.user_org_name)}</div>` : ''}
+            </div>
+          </div>
+        `).join('');
+
+        membersSection.style.display = 'block';
+      }
+
+      // Show main content
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+    }
+
+    async function loadPosts() {
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/posts`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const posts = data.posts || [];
+
+        const postsSection = document.getElementById('postsSection');
+        const postsList = document.getElementById('postsList');
+        const newPostBtn = document.getElementById('newPostBtn');
+
+        postsSection.style.display = 'block';
+
+        // Show new post button if user is a member
+        if (isMember) {
+          newPostBtn.style.display = 'inline-flex';
+        }
+
+        if (posts.length === 0) {
+          postsList.innerHTML = `
+            <div class="empty-posts">
+              <p>No posts yet.</p>
+              ${isMember ? '<p>Be the first to share an update!</p>' : ''}
+            </div>
+          `;
+          return;
+        }
+
+        postsList.innerHTML = posts.map(post => `
+          <a href="/perspectives/${escapeHtml(post.slug)}" class="post-card">
+            <div class="post-title">${escapeHtml(post.title)}</div>
+            <div class="post-meta">
+              <span>${formatDate(post.published_at)}</span>
+              ${post.category ? `<span>${escapeHtml(post.category)}</span>` : ''}
+              ${post.is_members_only ? `<span class="badge-members-only">members only</span>` : ''}
+            </div>
+            ${post.excerpt ? `<div class="post-excerpt">${escapeHtml(post.excerpt)}</div>` : ''}
+          </a>
+        `).join('');
+
+      } catch (error) {
+        console.error('Error loading posts:', error);
+      }
+    }
+
+    async function joinGroup() {
+      if (!currentUser) {
+        window.location.href = `/auth/login?return_to=${encodeURIComponent(window.location.pathname)}`;
+        return;
+      }
+
+      const joinBtn = document.getElementById('joinBtn');
+      joinBtn.disabled = true;
+      joinBtn.textContent = 'Joining...';
+
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/join`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          isMember = true;
+          joinBtn.style.display = 'none';
+          document.getElementById('membershipStatus').style.display = 'block';
+          document.getElementById('leaveBtn').style.display = 'inline-flex';
+          document.getElementById('newPostBtn').style.display = 'inline-flex';
+
+          // Reload to get updated members list
+          await loadWorkingGroup();
+        } else {
+          const data = await response.json();
+          alert(data.error || 'Failed to join group');
+          joinBtn.disabled = false;
+          joinBtn.innerHTML = `
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="8.5" cy="7" r="4"/>
+              <line x1="20" y1="8" x2="20" y2="14"/>
+              <line x1="23" y1="11" x2="17" y2="11"/>
+            </svg>
+            Join Working Group
+          `;
+        }
+      } catch (error) {
+        console.error('Error joining group:', error);
+        alert('Failed to join group');
+        joinBtn.disabled = false;
+      }
+    }
+
+    async function leaveGroup() {
+      if (!confirm('Are you sure you want to leave this working group?')) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/leave`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          isMember = false;
+          document.getElementById('leaveBtn').style.display = 'none';
+          document.getElementById('membershipStatus').style.display = 'none';
+          document.getElementById('newPostBtn').style.display = 'none';
+
+          if (!currentGroup.is_private) {
+            document.getElementById('joinBtn').style.display = 'inline-flex';
+          }
+
+          // Reload to get updated members list
+          await loadWorkingGroup();
+        } else {
+          const data = await response.json();
+          alert(data.error || 'Failed to leave group');
+        }
+      } catch (error) {
+        console.error('Error leaving group:', error);
+        alert('Failed to leave group');
+      }
+    }
+
+    function createPost() {
+      // Open post modal
+      document.getElementById('modalTitle').textContent = 'New Post';
+      document.getElementById('postForm').reset();
+      document.getElementById('postId').value = '';
+      document.getElementById('contentType').value = 'article';
+      setContentType('article');
+      updateExcerptCount();
+
+      // Show visibility toggle for leaders, hide for regular members
+      if (isLeader) {
+        document.getElementById('visibilityNote').style.display = 'none';
+        document.getElementById('visibilityRow').style.display = 'block';
+        document.getElementById('isMembersOnly').checked = true;
+      } else {
+        document.getElementById('visibilityNote').style.display = 'block';
+        document.getElementById('visibilityRow').style.display = 'none';
+      }
+
+      document.getElementById('postModal').style.display = 'flex';
+    }
+
+    function closePostModal() {
+      document.getElementById('postModal').style.display = 'none';
+    }
+
+    function setContentType(type) {
+      document.getElementById('contentType').value = type;
+      const linkFields = document.getElementById('linkFields');
+      const articleFields = document.getElementById('articleFields');
+      const buttons = document.querySelectorAll('.type-toggle button');
+
+      buttons.forEach(btn => btn.classList.remove('active'));
+
+      if (type === 'link') {
+        buttons[1].classList.add('active');
+        linkFields.classList.add('show');
+        articleFields.classList.add('hide');
+        document.getElementById('externalUrl').required = true;
+      } else {
+        buttons[0].classList.add('active');
+        linkFields.classList.remove('show');
+        articleFields.classList.remove('hide');
+        document.getElementById('externalUrl').required = false;
+      }
+    }
+
+    function updateExcerptCount() {
+      const excerpt = document.getElementById('postExcerpt').value;
+      const countDiv = document.getElementById('excerptCount');
+      const len = excerpt.length;
+      countDiv.textContent = `${len} / 160`;
+      countDiv.className = 'char-count' + (len > 160 ? ' over' : len > 140 ? ' warning' : '');
+    }
+
+    function generateSlug(title) {
+      return title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .substring(0, 60);
+    }
+
+    async function fetchUrlInfo() {
+      const url = document.getElementById('externalUrl').value.trim();
+      if (!url) {
+        alert('Please enter a URL first');
+        return;
+      }
+
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Fetching...';
+
+      try {
+        const response = await fetch(`/api/working-groups/${currentSlug}/fetch-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ url })
+        });
+
+        if (!response.ok) throw new Error('Failed to fetch URL');
+
+        const data = await response.json();
+
+        if (data.title && !document.getElementById('postTitle').value) {
+          document.getElementById('postTitle').value = data.title;
+        }
+        if (data.excerpt && !document.getElementById('postExcerpt').value) {
+          document.getElementById('postExcerpt').value = data.excerpt;
+          updateExcerptCount();
+        }
+        if (data.site_name && !document.getElementById('externalSiteName').value) {
+          document.getElementById('externalSiteName').value = data.site_name;
+        }
+
+        // Auto-generate slug from title (or site name as fallback) if empty
+        if (!document.getElementById('postSlug').value) {
+          const slugSource = data.title || data.site_name || '';
+          if (slugSource) {
+            document.getElementById('postSlug').value = generateSlug(slugSource);
+          }
+        }
+      } catch (error) {
+        console.error('Fetch error:', error);
+        alert('Failed to fetch URL info. Please fill in the fields manually.');
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Fetch Info';
+    }
+
+    async function savePost(event) {
+      event.preventDefault();
+
+      const postId = document.getElementById('postId').value;
+      const data = {
+        post_slug: document.getElementById('postSlug').value.trim(),
+        content_type: document.getElementById('contentType').value,
+        title: document.getElementById('postTitle').value.trim(),
+        excerpt: document.getElementById('postExcerpt').value.trim() || null,
+        content: document.getElementById('postContent').value.trim() || null,
+        category: document.getElementById('postCategory').value || null,
+        external_url: document.getElementById('externalUrl').value.trim() || null,
+        external_site_name: document.getElementById('externalSiteName').value.trim() || null,
+        is_members_only: isLeader ? document.getElementById('isMembersOnly').checked : true,
+      };
+
+      const saveBtn = document.getElementById('savePostBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Posting...';
+
+      try {
+        const url = postId
+          ? `/api/working-groups/${currentSlug}/posts/${postId}`
+          : `/api/working-groups/${currentSlug}/posts`;
+        const method = postId ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+          closePostModal();
+          await loadPosts();
+        } else {
+          const result = await response.json();
+          alert(result.message || result.error || 'Failed to save post');
+        }
+      } catch (error) {
+        console.error('Save error:', error);
+        alert('Failed to save post');
+      }
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Post';
+    }
+
+    function updateMetaTags() {
+      const url = window.location.href;
+      const description = currentGroup.description
+        ? currentGroup.description.substring(0, 160)
+        : `${currentGroup.name} working group at AgenticAdvertising.org`;
+
+      document.getElementById('pageTitle').textContent = `${currentGroup.name} | Working Groups | AgenticAdvertising.org`;
+      document.getElementById('pageDescription').content = description;
+      document.getElementById('canonicalUrl').href = url;
+      document.getElementById('ogUrl').content = url;
+      document.getElementById('ogTitle').content = currentGroup.name;
+      document.getElementById('ogDescription').content = description;
+      document.getElementById('twitterUrl').content = url;
+      document.getElementById('twitterTitle').content = currentGroup.name;
+      document.getElementById('twitterDescription').content = description;
+    }
+
+    function showError() {
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('errorState').style.display = 'block';
+    }
+
+    function getInitials(name) {
+      if (!name) return '?';
+      return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    init();
+  </script>
+</body>
+</html>

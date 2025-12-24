@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { HTTPServer } from '../../src/http.js';
-import { Registry } from '../../src/registry.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -23,43 +22,49 @@ vi.mock('../../src/db/client.js', () => ({
   initializeDatabase: vi.fn(),
   isDatabaseInitialized: vi.fn().mockReturnValue(true),
   closeDatabase: vi.fn(),
+  query: vi.fn().mockResolvedValue({ rows: [] }),
 }));
 
 vi.mock('../../src/db/migrate.js', () => ({
   runMigrations: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../src/db/registry-db.js', () => ({
-  RegistryDatabase: vi.fn().mockImplementation(() => ({
-    listAgents: vi.fn().mockResolvedValue([
-      {
-        name: "Test Creative Agent",
-        type: "creative",
-        url: "https://creative.test",
-        protocol: "mcp",
-        description: "Test agent",
-        mcp_endpoint: "https://creative.test/mcp",
-        contact: { name: "", email: "", website: "" },
-        added_date: "2024-01-01",
-      }
-    ]),
-    getAgent: vi.fn().mockImplementation(async (name: string) => {
-      // Return agent only for specific names, undefined for others
-      if (name === "nonexistent/agent" || name.includes("nonexistent")) {
-        return undefined;
-      }
-      return {
-        name: "Test Creative Agent",
-        type: "creative",
-        url: "https://creative.test",
-        protocol: "mcp",
-        description: "Test agent",
-        mcp_endpoint: "https://creative.test/mcp",
-        contact: { name: "", email: "", website: "" },
-        added_date: "2024-01-01",
-      };
-    }),
-  })),
+// Mock member database to return test agents
+const mockMemberData = {
+  id: 'test-member-1',
+  slug: 'test-member',
+  display_name: 'Test Member',
+  is_public: true,
+  agents: [
+    {
+      url: 'https://creative.test',
+      is_public: true,
+      name: 'Test Creative Agent',
+      type: 'creative',
+    }
+  ],
+  contact_email: 'test@example.com',
+  contact_website: 'https://example.com',
+  created_at: new Date('2024-01-01'),
+  description: 'Test description',
+};
+
+vi.mock('../../src/db/member-db.js', () => {
+  return {
+    MemberDatabase: class MockMemberDatabase {
+      listProfiles = vi.fn().mockResolvedValue([mockMemberData]);
+      getPublicProfiles = vi.fn().mockResolvedValue([mockMemberData]);
+      getProfileBySlug = vi.fn().mockResolvedValue(null);
+    }
+  };
+});
+
+// Mock rate limiter to disable validation in tests
+vi.mock('../../src/middleware/rate-limit.js', () => ({
+  apiRateLimiter: (req: any, res: any, next: any) => next(),
+  authRateLimiter: (req: any, res: any, next: any) => next(),
+  webhookRateLimiter: (req: any, res: any, next: any) => next(),
+  invitationRateLimiter: (req: any, res: any, next: any) => next(),
 }));
 
 describe('MCP Protocol Compliance', () => {
@@ -67,10 +72,7 @@ describe('MCP Protocol Compliance', () => {
   let app: any;
 
   beforeAll(async () => {
-    // Use real registry for integration tests
     server = new HTTPServer();
-    // Initialize registry manually for testing (normally done in start())
-    await server['registry'].initialize();
     app = server['app']; // Access private app property for testing
   });
 
@@ -78,6 +80,8 @@ describe('MCP Protocol Compliance', () => {
     it('returns valid JSON-RPC 2.0 response structure', async () => {
       const response = await request(app)
         .post('/mcp')
+        .set('Content-Type', 'application/json')
+        .set('Accept', 'application/json, text/event-stream')
         .send({
           jsonrpc: '2.0',
           id: 1,
@@ -103,7 +107,7 @@ describe('MCP Protocol Compliance', () => {
       expect(response.body.id).toBe('test-id-123');
     });
 
-    it('returns result.tools array with 6 tools', async () => {
+    it('returns result.tools array with 10 tools', async () => {
       const response = await request(app)
         .post('/mcp')
         .send({
@@ -113,7 +117,7 @@ describe('MCP Protocol Compliance', () => {
         });
 
       expect(response.body.result.tools).toBeInstanceOf(Array);
-      expect(response.body.result.tools).toHaveLength(6);
+      expect(response.body.result.tools).toHaveLength(10);
     });
 
     it('each tool has name, description, inputSchema', async () => {
@@ -252,7 +256,7 @@ describe('MCP Protocol Compliance', () => {
 
   describe('POST /mcp - tools/call: get_agent', () => {
     it('returns agent details in resource.text', async () => {
-      // First get a valid agent ID
+      // First get a valid agent URL
       const listResponse = await request(app).post('/mcp').send({
         jsonrpc: '2.0',
         id: 1,
@@ -266,7 +270,7 @@ describe('MCP Protocol Compliance', () => {
         return;
       }
 
-      const agentId = `${agents[0].type}/${agents[0].name.toLowerCase().replace(/\s+/g, '-')}`;
+      const agentUrl = agents[0].url;
 
       const response = await request(app)
         .post('/mcp')
@@ -276,7 +280,7 @@ describe('MCP Protocol Compliance', () => {
           method: 'tools/call',
           params: {
             name: 'get_agent',
-            arguments: { id: agentId }
+            arguments: { url: agentUrl }
           }
         });
 
@@ -300,7 +304,7 @@ describe('MCP Protocol Compliance', () => {
           method: 'tools/call',
           params: {
             name: 'get_agent',
-            arguments: { id: 'nonexistent/agent' }
+            arguments: { url: 'https://nonexistent.example.com' }
           }
         });
 
@@ -318,7 +322,7 @@ describe('MCP Protocol Compliance', () => {
           method: 'tools/call',
           params: {
             name: 'get_agent',
-            arguments: { id: 'nonexistent/agent' }
+            arguments: { url: 'https://nonexistent.example.com' }
           }
         });
 

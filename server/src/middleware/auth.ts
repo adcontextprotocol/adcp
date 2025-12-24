@@ -424,6 +424,71 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
 }
 
 /**
+ * Factory function to create middleware that requires working group leader access
+ * Must be used after requireAuth
+ * Checks if user is chair/vice-chair of the specified working group OR a site admin
+ *
+ * @param getSlugFromRequest - Function to extract the working group slug from the request
+ * @param workingGroupDb - Database instance for looking up working group details
+ */
+export function createRequireWorkingGroupLeader(
+  workingGroupDb: { getWorkingGroupBySlug: (slug: string) => Promise<{ id: string; chair_user_id?: string; vice_chair_user_id?: string } | null> }
+) {
+  return async function requireWorkingGroupLeader(req: Request, res: Response, next: NextFunction) {
+    if (!req.user) {
+      return res.status(401).json({
+        error: 'Authentication required',
+        message: 'Please log in to access this resource',
+      });
+    }
+
+    const slug = req.params.slug;
+    if (!slug) {
+      return res.status(400).json({
+        error: 'Missing working group slug',
+        message: 'Working group slug is required',
+      });
+    }
+
+    // Check if user is a site admin first (admins can manage all groups)
+    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+    const isAdmin = adminEmails.includes(req.user.email.toLowerCase());
+
+    if (isAdmin) {
+      logger.debug({ userId: req.user.id, slug }, 'Admin access granted to working group');
+      return next();
+    }
+
+    // Look up the working group
+    const workingGroup = await workingGroupDb.getWorkingGroupBySlug(slug);
+    if (!workingGroup) {
+      return res.status(404).json({
+        error: 'Working group not found',
+        message: `No working group found with slug '${slug}'`,
+      });
+    }
+
+    // Check if user is chair or vice-chair
+    const isLeader = workingGroup.chair_user_id === req.user.id ||
+                     workingGroup.vice_chair_user_id === req.user.id;
+
+    if (!isLeader) {
+      logger.warn({ userId: req.user.id, slug }, 'Non-leader user attempted to access working group admin endpoint');
+      return res.status(403).json({
+        error: 'Working group leader access required',
+        message: 'This resource is only accessible to the chair or vice-chair of this working group',
+      });
+    }
+
+    // Attach working group to request for use in route handlers
+    (req as Request & { workingGroup: typeof workingGroup }).workingGroup = workingGroup;
+
+    logger.debug({ userId: req.user.id, slug }, 'Working group leader access granted');
+    next();
+  };
+}
+
+/**
  * Optional auth middleware - loads user if authenticated, but doesn't require it
  * Uses in-memory cache to reduce WorkOS API calls for session refresh
  * Automatically refreshes expired access tokens using the refresh token

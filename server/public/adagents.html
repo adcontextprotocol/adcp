@@ -3404,9 +3404,19 @@
         console.log('Reset adagents.json creator to domain entry step');
       }
 
-      // Initialize with one example agent entry
+      // Initialize on page load
       document.addEventListener('DOMContentLoaded', function () {
         console.log('AdAgents.json Manager initialized');
+
+        // Check for domain URL parameter and auto-load if present
+        const urlParams = new URLSearchParams(window.location.search);
+        const domainParam = urlParams.get('domain');
+        if (domainParam) {
+          const domainInput = document.getElementById('domain-input');
+          domainInput.value = domainParam;
+          // Auto-start managing this domain
+          startManaging();
+        }
       });
     </script>
   </body>

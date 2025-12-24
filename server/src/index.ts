@@ -1,5 +1,4 @@
 import 'dotenv/config';
-import { MCPServer } from "./mcp.js";
 import { HTTPServer } from "./http.js";
 import { validateEnvironment } from "./env-validation.js";
 import { runMigrations } from "./db/migrate.js";
@@ -24,17 +23,9 @@ async function main() {
     }
   }
 
-  // Check if running as MCP server (stdio) or HTTP server
-  const mode = process.env.MODE || "http";
-
-  if (mode === "mcp") {
-    const mcpServer = new MCPServer();
-    await mcpServer.start();
-  } else {
-    const httpServer = new HTTPServer();
-    const port = parseInt(process.env.PORT || process.env.CONDUCTOR_PORT || "3000", 10);
-    await httpServer.start(port);
-  }
+  const httpServer = new HTTPServer();
+  const port = parseInt(process.env.PORT || process.env.CONDUCTOR_PORT || "3000", 10);
+  await httpServer.start(port);
 }
 
 main().catch((error) => {

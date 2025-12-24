@@ -515,6 +515,16 @@
             <div id="teamDetails"></div>
           </div>
 
+          <!-- Working Groups Card -->
+          <div class="card">
+            <h2 style="display: flex; align-items: center; gap: 8px; font-size: 16px;">
+              <span style="font-size: 18px;">🏛️</span> Working Groups
+            </h2>
+            <div id="workingGroupsDetails">
+              <p style="color: var(--color-text-secondary); font-size: 13px;">Loading...</p>
+            </div>
+          </div>
+
           <!-- Agreements (compact) - only shown for subscribers -->
           <div id="agreementsCard" class="card" style="background: var(--color-bg-subtle); display: none;">
             <h2 style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--color-text-secondary); margin-bottom: 10px;">
@@ -806,6 +816,9 @@
         <div id="memberProfileActions" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--color-border);"></div>
       `;
 
+      // Load working groups for the user
+      loadWorkingGroups();
+
       // Show/hide membership section based on this org's subscription status
       const membershipSection = document.getElementById('membershipSection');
 
@@ -909,6 +922,75 @@
         if (previewEl) {
           previewEl.innerHTML = `<p style="color: var(--color-gray-400); font-size: 13px;">Unable to load team</p>`;
         }
+      }
+    }
+
+    // Load working groups for the current user
+    async function loadWorkingGroups() {
+      const detailsEl = document.getElementById('workingGroupsDetails');
+      if (!detailsEl) return;
+
+      try {
+        const response = await fetch('/api/me/working-groups', { credentials: 'include' });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            detailsEl.innerHTML = `
+              <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">
+                Log in to see your working groups.
+              </p>
+              <a href="/working-groups" class="btn btn-ghost btn-sm" style="width: 100%;">
+                Browse Groups
+              </a>
+            `;
+            return;
+          }
+          throw new Error('Failed to load working groups');
+        }
+
+        const data = await response.json();
+        const groups = data.working_groups || [];
+
+        if (groups.length === 0) {
+          detailsEl.innerHTML = `
+            <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">
+              You haven't joined any working groups yet.
+            </p>
+            <a href="/working-groups" class="btn btn-primary btn-sm" style="width: 100%;">
+              Browse Working Groups
+            </a>
+          `;
+          return;
+        }
+
+        // Show the user's groups as badges/links
+        const groupBadges = groups.map(g => `
+          <a href="/working-groups/${escapeHtml(g.slug)}"
+             style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: ${g.is_private ? 'var(--color-warning-100)' : 'var(--color-primary-100)'}; color: ${g.is_private ? 'var(--color-warning-700)' : 'var(--color-brand)'}; border-radius: var(--radius-md); font-size: 12px; font-weight: 500; text-decoration: none; transition: opacity 0.2s;"
+             onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+            ${escapeHtml(g.name)}
+            ${g.is_private ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' : ''}
+          </a>
+        `).join('');
+
+        detailsEl.innerHTML = `
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">
+            ${groupBadges}
+          </div>
+          <a href="/working-groups" class="btn btn-ghost btn-sm" style="width: 100%;">
+            Browse All Groups
+          </a>
+        `;
+      } catch (error) {
+        console.error('Error loading working groups:', error);
+        detailsEl.innerHTML = `
+          <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">
+            Unable to load working groups.
+          </p>
+          <a href="/working-groups" class="btn btn-ghost btn-sm" style="width: 100%;">
+            Browse Groups
+          </a>
+        `;
       }
     }
 

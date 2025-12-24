@@ -1,4 +1,16 @@
-export type AgentType = "creative" | "signals" | "sales";
+export type AgentType = "creative" | "signals" | "sales" | "unknown";
+
+/**
+ * Valid agent type values for runtime validation
+ */
+export const VALID_AGENT_TYPES: readonly AgentType[] = ["creative", "signals", "sales", "unknown"] as const;
+
+/**
+ * Type guard to check if a string is a valid AgentType
+ */
+export function isValidAgentType(value: string | undefined | null): value is AgentType {
+  return typeof value === 'string' && VALID_AGENT_TYPES.includes(value as AgentType);
+}
 
 export interface FormatInfo {
   name: string;
@@ -70,12 +82,25 @@ export interface AgentCapabilities {
   };
 }
 
+/**
+ * Summary of an agent's property inventory (counts, not full list)
+ * Full property list available via /api/registry/agents/:id/properties
+ */
+export interface PropertySummary {
+  total_count: number;
+  count_by_type: Record<string, number>; // e.g., { "website": 50, "mobile_app": 20 }
+  tags: string[]; // All unique tags across properties
+  publisher_count: number;
+}
+
 export interface AgentWithStats extends Agent {
   health?: AgentHealth;
   stats?: AgentStats;
   capabilities?: AgentCapabilities;
-  properties?: any[];
   propertiesError?: string;
+  // Property summary (counts, not full list to avoid millions of records)
+  publisher_domains?: string[];
+  property_summary?: PropertySummary;
 }
 
 export interface AdAgentsJson {
@@ -161,6 +186,7 @@ export type MemberOffering =
   | 'sales_agent'
   | 'creative_agent'
   | 'signals_agent'
+  | 'publisher'
   | 'consulting'
   | 'other';
 
@@ -174,6 +200,18 @@ export interface AgentConfig {
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
   type?: 'sales' | 'creative' | 'signals' | 'buyer' | 'unknown';
+}
+
+/**
+ * Publisher configuration stored in member profiles
+ * Each publisher has a domain/URL where adagents.json is hosted
+ */
+export interface PublisherConfig {
+  domain: string;
+  is_public: boolean;
+  // Cached info from validation (optional, refreshed periodically)
+  agent_count?: number;
+  last_validated?: string;
 }
 
 export interface MemberProfile {
@@ -194,6 +232,7 @@ export interface MemberProfile {
   twitter_url?: string;
   offerings: MemberOffering[];
   agents: AgentConfig[];
+  publishers: PublisherConfig[]; // Publishers with adagents.json
   headquarters?: string; // City, Country (e.g., "Singapore", "New York, USA")
   markets: string[]; // Regions/markets served (e.g., ["APAC", "North America"])
   metadata: Record<string, unknown>;
@@ -222,6 +261,7 @@ export interface CreateMemberProfileInput {
   twitter_url?: string;
   offerings?: MemberOffering[];
   agents?: AgentConfig[];
+  publishers?: PublisherConfig[];
   headquarters?: string;
   markets?: string[];
   metadata?: Record<string, unknown>;
@@ -245,6 +285,7 @@ export interface UpdateMemberProfileInput {
   twitter_url?: string;
   offerings?: MemberOffering[];
   agents?: AgentConfig[];
+  publishers?: PublisherConfig[];
   headquarters?: string;
   markets?: string[];
   metadata?: Record<string, unknown>;
@@ -262,4 +303,163 @@ export interface ListMemberProfilesOptions {
   search?: string;
   limit?: number;
   offset?: number;
+}
+
+// Working Group Types
+
+export type WorkingGroupStatus = 'active' | 'inactive' | 'archived';
+export type WorkingGroupMembershipStatus = 'active' | 'inactive';
+
+export interface WorkingGroup {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  slack_channel_url?: string;
+  chair_user_id?: string;
+  chair_name?: string;
+  chair_title?: string;
+  chair_org_name?: string;
+  vice_chair_user_id?: string;
+  vice_chair_name?: string;
+  vice_chair_title?: string;
+  vice_chair_org_name?: string;
+  is_private: boolean;
+  status: WorkingGroupStatus;
+  display_order: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface WorkingGroupMembership {
+  id: string;
+  working_group_id: string;
+  workos_user_id: string;
+  user_email?: string;
+  user_name?: string;
+  user_org_name?: string;
+  workos_organization_id?: string;
+  status: WorkingGroupMembershipStatus;
+  added_by_user_id?: string;
+  joined_at: Date;
+  updated_at: Date;
+}
+
+export interface CreateWorkingGroupInput {
+  name: string;
+  slug: string;
+  description?: string;
+  slack_channel_url?: string;
+  chair_user_id?: string;
+  chair_name?: string;
+  chair_title?: string;
+  chair_org_name?: string;
+  vice_chair_user_id?: string;
+  vice_chair_name?: string;
+  vice_chair_title?: string;
+  vice_chair_org_name?: string;
+  is_private?: boolean;
+  status?: WorkingGroupStatus;
+  display_order?: number;
+}
+
+export interface UpdateWorkingGroupInput {
+  name?: string;
+  description?: string;
+  slack_channel_url?: string;
+  chair_user_id?: string;
+  chair_name?: string;
+  chair_title?: string;
+  chair_org_name?: string;
+  vice_chair_user_id?: string;
+  vice_chair_name?: string;
+  vice_chair_title?: string;
+  vice_chair_org_name?: string;
+  is_private?: boolean;
+  status?: WorkingGroupStatus;
+  display_order?: number;
+}
+
+export interface WorkingGroupWithMemberCount extends WorkingGroup {
+  member_count: number;
+}
+
+export interface WorkingGroupWithDetails extends WorkingGroup {
+  member_count: number;
+  memberships?: WorkingGroupMembership[];
+}
+
+export interface AddWorkingGroupMemberInput {
+  working_group_id: string;
+  workos_user_id: string;
+  user_email?: string;
+  user_name?: string;
+  user_org_name?: string;
+  workos_organization_id?: string;
+  added_by_user_id?: string;
+}
+
+// Federated Discovery Types
+
+/**
+ * An agent in the federated view (registered or discovered)
+ */
+export interface FederatedAgent {
+  url: string;
+  name?: string;
+  type?: AgentType | 'buyer' | 'unknown';
+  protocol?: 'mcp' | 'a2a';
+  source: 'registered' | 'discovered';
+  // For registered agents
+  member?: {
+    slug: string;
+    display_name: string;
+  };
+  // For discovered agents
+  discovered_from?: {
+    publisher_domain: string;
+    authorized_for?: string;
+  };
+  discovered_at?: string;
+}
+
+/**
+ * A publisher in the federated view (registered or discovered)
+ */
+export interface FederatedPublisher {
+  domain: string;
+  source: 'registered' | 'discovered';
+  // For registered publishers
+  member?: {
+    slug: string;
+    display_name: string;
+  };
+  agent_count?: number;
+  last_validated?: string;
+  // For discovered publishers
+  discovered_from?: {
+    agent_url: string;
+  };
+  has_valid_adagents?: boolean;
+  discovered_at?: string;
+}
+
+/**
+ * Result of a domain lookup showing all agents authorized for that domain
+ */
+export interface DomainLookupResult {
+  domain: string;
+  // Agents authorized via adagents.json (verified)
+  authorized_agents: Array<{
+    url: string;
+    authorized_for?: string;
+    source: 'registered' | 'discovered';
+    member?: { slug: string; display_name: string };
+  }>;
+  // Sales agents that claim to sell this domain (may not be verified)
+  sales_agents_claiming: Array<{
+    url: string;
+    source: 'registered' | 'discovered';
+    member?: { slug: string; display_name: string };
+  }>;
 }

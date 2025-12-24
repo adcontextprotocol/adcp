@@ -3,8 +3,10 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WorkOS } from "@workos-inc/node";
-import { Registry } from "./registry.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
+import { createMCPServer } from "./mcp-tools.js";
 import { HealthChecker } from "./health.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger } from "./logger.js";
@@ -13,17 +15,18 @@ import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { closeDatabase, getPool } from "./db/client.js";
-import { getPropertyIndex, CreativeAgentClient, SingleAgentClient } from "@adcp/client";
-import type { AgentType, AgentWithStats, Company } from "./types.js";
+import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
+import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
+import { isValidAgentType } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, type RevenueEvent } from "./billing/stripe-client.js";
 import Stripe from "stripe";
 import { OrganizationDatabase } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
-import { RegistryDatabase } from "./db/registry-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
+import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, createRequireWorkingGroupLeader } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -33,6 +36,7 @@ import {
   notifyPaymentSucceeded,
   notifyPaymentFailed,
   notifySubscriptionCancelled,
+  notifyWorkingGroupPost,
 } from "./notifications/slack.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -49,6 +53,31 @@ function isValidSlug(slug: string): boolean {
     return false;
   }
   return /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(slug.toLowerCase());
+}
+
+/**
+ * Extract publisher validation stats from adagents.json validation result
+ */
+function extractPublisherStats(result: { valid: boolean; raw_data?: any }) {
+  let agentCount = 0;
+  let propertyCount = 0;
+  let tagCount = 0;
+  let propertyTypeCounts: Record<string, number> = {};
+
+  if (result.valid && result.raw_data) {
+    agentCount = result.raw_data.authorized_agents?.length || 0;
+    propertyCount = result.raw_data.properties?.length || 0;
+    tagCount = Object.keys(result.raw_data.tags || {}).length;
+
+    // Count properties by type
+    const properties = result.raw_data.properties || [];
+    for (const prop of properties) {
+      const propType = prop.property_type || 'unknown';
+      propertyTypeCounts[propType] = (propertyTypeCounts[propType] || 0) + 1;
+    }
+  }
+
+  return { agentCount, propertyCount, tagCount, propertyTypeCounts };
 }
 
 // Check if authentication is configured
@@ -72,7 +101,7 @@ const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
-  private registry: Registry;
+  private agentService: AgentService;
   private validator: AgentValidator;
   private healthChecker: HealthChecker;
   private crawler: CrawlerService;
@@ -83,7 +112,7 @@ export class HTTPServer {
 
   constructor() {
     this.app = express();
-    this.registry = new Registry();
+    this.agentService = new AgentService();
     this.validator = new AgentValidator();
     this.adagentsManager = new AdAgentsManager();
     this.healthChecker = new HealthChecker();
@@ -139,6 +168,13 @@ export class HTTPServer {
       ? path.join(__dirname, "../static")
       : path.join(__dirname, "../../static");
     this.app.use(express.static(staticPath));
+
+    // Redirect .html URLs to clean URLs for pages that need template variable injection
+    // Must be BEFORE static middleware to intercept these requests
+    this.app.get('/dashboard.html', (req, res) => {
+      const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect('/dashboard' + queryString);
+    });
 
     // Serve homepage and public assets at root
     // In prod: __dirname is dist, public is at ../server/public
@@ -202,7 +238,11 @@ export class HTTPServer {
           .replace('{{STRIPE_PRICING_TABLE_ID}}', process.env.STRIPE_PRICING_TABLE_ID || '')
           .replace('{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}', process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
 
+        // Prevent caching to ensure template variables are always fresh
         res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
         res.send(html);
       } catch (error) {
         logger.error({ err: error }, 'Error serving dashboard');
@@ -239,78 +279,9 @@ export class HTTPServer {
       });
     });
 
-    this.app.get("/api/agents", async (req, res) => {
-      const type = req.query.type as AgentType | undefined;
-      const withHealth = req.query.health === "true";
-      const withCapabilities = req.query.capabilities === "true";
-      const withProperties = req.query.properties === "true";
-      const agents = await this.registry.listAgents(type);
-
-      if (!withHealth && !withCapabilities && !withProperties) {
-        return res.json(agents);
-      }
-
-      // Enrich with health, stats, capabilities, and/or properties
-      const enriched = await Promise.all(
-        agents.map(async (agent): Promise<AgentWithStats> => {
-          const promises = [];
-
-          if (withHealth) {
-            promises.push(
-              this.healthChecker.checkHealth(agent),
-              this.healthChecker.getStats(agent)
-            );
-          }
-
-          if (withCapabilities) {
-            promises.push(
-              this.capabilityDiscovery.discoverCapabilities(agent)
-            );
-          }
-
-          if (withProperties && agent.type === "sales") {
-            promises.push(
-              this.propertiesService.getPropertiesForAgent(agent)
-            );
-          }
-
-          const results = await Promise.all(promises);
-
-          const enrichedAgent: AgentWithStats = { ...agent };
-          let resultIndex = 0;
-
-          if (withHealth) {
-            enrichedAgent.health = results[resultIndex++] as any;
-            enrichedAgent.stats = results[resultIndex++] as any;
-          }
-
-          if (withCapabilities) {
-            const capProfile = results[resultIndex++] as any;
-            enrichedAgent.capabilities = {
-              tools_count: capProfile.discovered_tools.length,
-              tools: capProfile.discovered_tools,
-              standard_operations: capProfile.standard_operations,
-              creative_capabilities: capProfile.creative_capabilities,
-              signals_capabilities: capProfile.signals_capabilities,
-            };
-          }
-
-          if (withProperties && agent.type === "sales") {
-            const propsProfile = results[resultIndex++] as any;
-            enrichedAgent.properties = propsProfile.properties;
-            enrichedAgent.propertiesError = propsProfile.error;
-          }
-
-          return enrichedAgent;
-        })
-      );
-
-      res.json(enriched);
-    });
-
     this.app.get("/api/agents/:type/:name", async (req, res) => {
       const agentId = `${req.params.type}/${req.params.name}`;
-      const agent = await this.registry.getAgent(agentId);
+      const agent = await this.agentService.getAgent(agentId);
       if (!agent) {
         return res.status(404).json({ error: "Agent not found" });
       }
@@ -347,63 +318,34 @@ export class HTTPServer {
       }
     });
 
-    // Property lookup endpoints
-    this.app.get("/api/lookup/property", (req, res) => {
-      const { type, value } = req.query;
-
-      if (!type || !value) {
-        return res.status(400).json({
-          error: "Missing required query params: type and value",
-        });
-      }
-
-      const index = getPropertyIndex();
-      const agents = index.findAgentsForProperty(
-        type as any, // PropertyIdentifierType
-        value as string
-      );
-
-      res.json({
-        type,
-        value,
-        agents,
-        count: agents.length,
-      });
-    });
 
     this.app.get("/api/agents/:id/properties", async (req, res) => {
       const agentId = req.params.id;
-      const agent = await this.registry.getAgent(agentId);
+      const agent = await this.agentService.getAgent(agentId);
 
       if (!agent) {
         return res.status(404).json({ error: "Agent not found" });
       }
 
-      const index = getPropertyIndex();
-      const auth = index.getAgentAuthorizations(agent.url);
-
-      if (!auth) {
-        return res.json({
-          agent_id: agentId,
-          agent_url: agent.url,
-          properties: [],
-          publisher_domains: [],
-          count: 0,
-        });
-      }
+      // Get properties and publisher domains from database (populated by crawler)
+      const federatedIndex = this.crawler.getFederatedIndex();
+      const [properties, publisherDomains] = await Promise.all([
+        federatedIndex.getPropertiesForAgent(agent.url),
+        federatedIndex.getPublisherDomainsForAgent(agent.url),
+      ]);
 
       res.json({
         agent_id: agentId,
-        agent_url: auth.agent_url,
-        properties: auth.properties,
-        publisher_domains: auth.publisher_domains,
-        count: auth.properties.length,
+        agent_url: agent.url,
+        properties,
+        publisher_domains: publisherDomains,
+        count: properties.length,
       });
     });
 
     // Crawler endpoints
     this.app.post("/api/crawler/run", async (req, res) => {
-      const agents = await this.registry.listAgents("sales");
+      const agents = await this.agentService.listAgents("sales");
       const result = await this.crawler.crawlAllAgents(agents);
       res.json(result);
     });
@@ -413,7 +355,7 @@ export class HTTPServer {
     });
 
     this.app.get("/api/stats", async (req, res) => {
-      const agents = await this.registry.listAgents();
+      const agents = await this.agentService.listAgents();
       const byType = {
         creative: agents.filter((a) => a.type === "creative").length,
         signals: agents.filter((a) => a.type === "signals").length,
@@ -430,7 +372,7 @@ export class HTTPServer {
     // Capability endpoints
     this.app.get("/api/agents/:id/capabilities", async (req, res) => {
       const agentId = req.params.id;
-      const agent = await this.registry.getAgent(agentId);
+      const agent = await this.agentService.getAgent(agentId);
 
       if (!agent) {
         return res.status(404).json({ error: "Agent not found" });
@@ -447,7 +389,7 @@ export class HTTPServer {
     });
 
     this.app.post("/api/capabilities/discover-all", async (req, res) => {
-      const agents = await this.registry.listAgents();
+      const agents = await this.agentService.listAgents();
       try {
         const profiles = await this.capabilityDiscovery.discoverAll(agents);
         res.json({
@@ -461,83 +403,8 @@ export class HTTPServer {
       }
     });
 
-    // Publisher endpoints
-    this.app.get("/api/publishers", async (req, res) => {
-      const agents = await this.registry.listAgents("sales");
-      try {
-        const statuses = await this.publisherTracker.trackPublishers(agents);
-        res.json({
-          total: statuses.size,
-          publishers: Array.from(statuses.values()),
-          stats: this.publisherTracker.getDeploymentStats(),
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Publisher tracking failed",
-        });
-      }
-    });
-
-    this.app.get("/api/publishers/:domain", async (req, res) => {
-      const domain = req.params.domain;
-      const agents = await this.registry.listAgents("sales");
-
-      // Find agents claiming this domain
-      const expectedAgents = agents
-        .filter((a) => {
-          try {
-            const url = new URL(a.url);
-            return url.hostname === domain;
-          } catch {
-            return false;
-          }
-        })
-        .map((a) => a.url);
-
-      try {
-        const status = await this.publisherTracker.checkPublisher(domain, expectedAgents);
-        res.json(status);
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Publisher check failed",
-        });
-      }
-    });
-
-    this.app.get("/api/publishers/:domain/validation", async (req, res) => {
-      const domain = req.params.domain;
-      const agents = await this.registry.listAgents("sales");
-
-      const expectedAgents = agents
-        .filter((a) => {
-          try {
-            const url = new URL(a.url);
-            return url.hostname === domain;
-          } catch {
-            return false;
-          }
-        })
-        .map((a) => a.url);
-
-      try {
-        const status = await this.publisherTracker.checkPublisher(domain, expectedAgents);
-        res.json({
-          domain: status.domain,
-          deployment_status: status.deployment_status,
-          issues: status.issues,
-          coverage_percentage: status.coverage_percentage,
-          recommended_actions: status.issues.map((issue) => ({
-            issue: issue.message,
-            fix: issue.fix,
-            severity: issue.severity,
-          })),
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Validation failed",
-        });
-      }
-    });
+    // Legacy publisher endpoints removed - use /api/registry/publishers instead
+    // The old /api/publishers was for adagents.json validation but was unused
 
 
 
@@ -546,7 +413,7 @@ export class HTTPServer {
     // Simple REST API endpoint - for web apps and quick integrations
     this.app.get("/agents", async (req, res) => {
       const type = req.query.type as AgentType | undefined;
-      const agents = await this.registry.listAgents(type);
+      const agents = await this.agentService.listAgents(type);
 
       res.json({
         agents,
@@ -560,429 +427,74 @@ export class HTTPServer {
     });
 
     // MCP endpoint - for AI agents to discover other agents
-    // This makes the registry itself an MCP server that can be queried by other agents
+    // Uses StreamableHTTPServerTransport from the MCP SDK for stateless HTTP transport
+    
+    // CORS preflight for MCP endpoint
     this.app.options("/mcp", (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
       res.status(204).end();
     });
 
+    // MCP POST handler - stateless mode (new server/transport per request)
     this.app.post("/mcp", async (req, res) => {
-      // Add CORS headers for browser-based MCP clients
+      // Add CORS headers
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-      const { method, params, id } = req.body;
+      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
 
       try {
-        // Handle MCP tools/list request
-        if (method === "tools/list") {
-          res.json({
-            jsonrpc: "2.0",
-            id,
-            result: {
-              tools: [
-                {
-                  name: "list_agents",
-                  description: "List all registered AdCP agents, optionally filtered by type",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      type: {
-                        type: "string",
-                        enum: ["creative", "signals", "sales"],
-                        description: "Optional: Filter by agent type",
-                      },
-                    },
-                  },
-                },
-                {
-                  name: "get_agent",
-                  description: "Get details for a specific agent by ID",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      id: {
-                        type: "string",
-                        description: "Agent identifier (e.g., 'creative/4dvertible-creative-agent')",
-                      },
-                    },
-                    required: ["id"],
-                  },
-                },
-                {
-                  name: "find_agents_for_property",
-                  description: "Find which agents can sell a specific property",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      property_type: {
-                        type: "string",
-                        description: "Property identifier type (e.g., 'domain', 'app_id')",
-                      },
-                      property_value: {
-                        type: "string",
-                        description: "Property identifier value (e.g., 'nytimes.com')",
-                      },
-                    },
-                    required: ["property_type", "property_value"],
-                  },
-                },
-                {
-                  name: "get_properties_for_agent",
-                  description: "Get all properties that a specific agent is authorized to sell by checking their publisher's adagents.json",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      agent_url: {
-                        type: "string",
-                        description: "Agent URL (e.g., 'https://sales.weather.com')",
-                      },
-                    },
-                    required: ["agent_url"],
-                  },
-                },
-                {
-                  name: "get_products_for_agent",
-                  description: "Query a sales agent for available products (proxy tool that calls get_products on the agent)",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      agent_url: {
-                        type: "string",
-                        description: "Agent URL to query",
-                      },
-                      params: {
-                        type: "object",
-                        description: "Parameters to pass to get_products (leave empty for public products)",
-                      },
-                    },
-                    required: ["agent_url"],
-                  },
-                },
-                {
-                  name: "list_creative_formats_for_agent",
-                  description: "Query an agent for supported creative formats (proxy tool that calls list_creative_formats on the agent)",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      agent_url: {
-                        type: "string",
-                        description: "Agent URL to query",
-                      },
-                      params: {
-                        type: "object",
-                        description: "Parameters to pass to list_creative_formats",
-                      },
-                    },
-                    required: ["agent_url"],
-                  },
-                },
-              ],
-            },
-          });
-          return;
-        }
+        // Create a new MCP server and transport for each request (stateless mode)
+        const server = createMCPServer();
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined, // Stateless mode - no sessions
+        });
 
-        // Handle MCP tools/call request
-        if (method === "tools/call") {
-          const { name, arguments: args } = params;
+        // Connect server to transport
+        await server.connect(transport);
 
-          if (name === "list_agents") {
-            const type = args?.type as AgentType | undefined;
-            const agents = await this.registry.listAgents(type);
-            res.json({
-              jsonrpc: "2.0",
-              id,
-              result: {
-                content: [
-                  {
-                    type: "resource",
-                    resource: {
-                      uri: `https://registry.adcontextprotocol.org/agents/${type || "all"}`,
-                      mimeType: "application/json",
-                      text: JSON.stringify({
-                        agents,
-                        count: agents.length,
-                        by_type: {
-                          creative: agents.filter(a => a.type === "creative").length,
-                          signals: agents.filter(a => a.type === "signals").length,
-                          sales: agents.filter(a => a.type === "sales").length,
-                        }
-                      }, null, 2),
-                    },
-                  },
-                ],
-              },
-            });
-            return;
-          }
+        // Handle the request
+        await transport.handleRequest(req, res, req.body);
 
-          if (name === "get_agent") {
-            const agentId = args?.id as string;
-            const agent = await this.registry.getAgent(agentId);
-            if (!agent) {
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: -32602,
-                  message: "Agent not found",
-                },
-              });
-              return;
-            }
-            res.json({
-              jsonrpc: "2.0",
-              id,
-              result: {
-                content: [
-                  {
-                    type: "resource",
-                    resource: {
-                      uri: `https://registry.adcontextprotocol.org/agents/${agentId}`,
-                      mimeType: "application/json",
-                      text: JSON.stringify(agent, null, 2),
-                    },
-                  },
-                ],
-              },
-            });
-            return;
-          }
-
-          if (name === "find_agents_for_property") {
-            const propertyType = args?.property_type as string;
-            const propertyValue = args?.property_value as string;
-            const index = getPropertyIndex();
-            const agents = index.findAgentsForProperty(propertyType as any, propertyValue);
-            res.json({
-              jsonrpc: "2.0",
-              id,
-              result: {
-                content: [
-                  {
-                    type: "resource",
-                    resource: {
-                      uri: `https://registry.adcontextprotocol.org/properties/${propertyType}/${propertyValue}`,
-                      mimeType: "application/json",
-                      text: JSON.stringify(
-                        { property_type: propertyType, property_value: propertyValue, agents, count: agents.length },
-                        null,
-                        2
-                      ),
-                    },
-                  },
-                ],
-              },
-            });
-            return;
-          }
-
-          if (name === "get_properties_for_agent") {
-            const agentUrl = args?.agent_url as string;
-            if (!agentUrl) {
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: -32602,
-                  message: "Missing agent_url parameter",
-                },
-              });
-              return;
-            }
-
-            try {
-              // Find the agent in our registry
-              const agents = Array.from((await this.registry.getAllAgents()).values());
-              const agent = agents.find((a) => a.url === agentUrl);
-
-              if (!agent) {
-                res.json({
-                  jsonrpc: "2.0",
-                  id,
-                  error: {
-                    code: -32602,
-                    message: `Agent not found: ${agentUrl}`,
-                  },
-                });
-                return;
-              }
-
-              // Use cached properties service
-              const profile = await this.propertiesService.getPropertiesForAgent(agent);
-
-              const url = new URL(agentUrl);
-              const domain = url.hostname;
-
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                result: {
-                  content: [
-                    {
-                      type: "resource",
-                      resource: {
-                        uri: `https://registry.adcontextprotocol.org/agent-properties/${domain}`,
-                        mimeType: "application/json",
-                        text: JSON.stringify(
-                          {
-                            agent_url: agentUrl,
-                            domain,
-                            protocol: profile.protocol,
-                            properties: profile.properties,
-                            count: profile.properties.length,
-                            error: profile.error,
-                            status: profile.error ? "error" : profile.properties.length > 0 ? "success" : "empty",
-                            last_fetched: profile.last_fetched,
-                          },
-                          null,
-                          2
-                        ),
-                      },
-                    },
-                  ],
-                },
-              });
-              return;
-            } catch (error: any) {
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: -32603,
-                  message: `Failed to get properties: ${error.message}`,
-                },
-              });
-              return;
-            }
-          }
-
-          if (name === "get_products_for_agent") {
-            const agentUrl = args?.agent_url as string;
-            const params = args?.params || {};
-
-            try {
-              const { AdCPClient } = await import("@adcp/client");
-              const multiClient = new AdCPClient([{
-                id: "registry",
-                name: "Registry Query",
-                agent_uri: agentUrl,
-                protocol: "mcp",
-              }]);
-              const client = multiClient.agent("registry");
-
-              const result = await client.executeTask("get_products", params);
-
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                result: {
-                  content: [
-                    {
-                      type: "resource",
-                      resource: {
-                        uri: `adcp://products/${agentUrl}`,
-                        mimeType: "application/json",
-                        text: JSON.stringify(result.success ? result.data : { error: result.error || "Failed to get products" }),
-                      },
-                    },
-                  ],
-                },
-              });
-              return;
-            } catch (error: any) {
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: -32603,
-                  message: `Failed to get products: ${error.message}`,
-                },
-              });
-              return;
-            }
-          }
-
-          if (name === "list_creative_formats_for_agent") {
-            const agentUrl = args?.agent_url as string;
-            const params = args?.params || {};
-
-            try {
-              const { AdCPClient } = await import("@adcp/client");
-              const multiClient = new AdCPClient([{
-                id: "registry",
-                name: "Registry Query",
-                agent_uri: agentUrl,
-                protocol: "mcp",
-              }]);
-              const client = multiClient.agent("registry");
-
-              const result = await client.executeTask("list_creative_formats", params);
-
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                result: {
-                  content: [
-                    {
-                      type: "resource",
-                      resource: {
-                        uri: `adcp://formats/${agentUrl}`,
-                        mimeType: "application/json",
-                        text: JSON.stringify(result.success ? result.data : { error: result.error || "Failed to list formats" }),
-                      },
-                    },
-                  ],
-                },
-              });
-              return;
-            } catch (error: any) {
-              res.json({
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: -32603,
-                  message: `Failed to list formats: ${error.message}`,
-                },
-              });
-              return;
-            }
-          }
-
-          res.json({
-            jsonrpc: "2.0",
-            id,
-            error: {
-              code: -32601,
-              message: "Unknown tool",
-            },
-          });
-          return;
-        }
-
-        // Unknown method
-        res.json({
-          jsonrpc: "2.0",
-          id,
-          error: {
-            code: -32601,
-            message: "Method not found",
-          },
+        // Clean up after response is sent
+        res.on('close', () => {
+          transport.close();
+          server.close();
         });
       } catch (error: any) {
-        res.json({
-          jsonrpc: "2.0",
-          id,
-          error: {
-            code: -32603,
-            message: error?.message || "Internal error",
-          },
-        });
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: "2.0",
+            error: {
+              code: -32603,
+              message: error?.message || "Internal error",
+            },
+          });
+        }
       }
+    });
+
+    // MCP GET handler - not supported in stateless mode
+    this.app.get("/mcp", (req, res) => {
+      res.status(405).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32601,
+          message: "Method not allowed. Use POST for MCP requests.",
+        },
+      });
+    });
+
+    // MCP DELETE handler - not needed in stateless mode
+    this.app.delete("/mcp", (req, res) => {
+      res.status(405).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32601,
+          message: "Method not allowed. Session management not supported in stateless mode.",
+        },
+      });
     });
 
     // Health check
@@ -1069,6 +581,22 @@ export class HTTPServer {
       res.sendFile(membersPath);
     });
 
+    // Publishers registry page
+    this.app.get("/publishers", (req, res) => {
+      const publishersPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/publishers.html")
+        : path.join(__dirname, "../public/publishers.html");
+      res.sendFile(publishersPath);
+    });
+
+    // Properties registry page
+    this.app.get("/properties", (req, res) => {
+      const propertiesPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/properties.html")
+        : path.join(__dirname, "../public/properties.html");
+      res.sendFile(propertiesPath);
+    });
+
     // About AAO page - serve about.html at /about
     this.app.get("/about", (req, res) => {
       const aboutPath = process.env.NODE_ENV === 'production'
@@ -1115,6 +643,29 @@ export class HTTPServer {
     });
     this.app.get("/insights/:slug", (req, res) => {
       res.redirect(301, `/perspectives/${req.params.slug}`);
+    });
+
+    // Working Groups pages - public list, detail pages handled by single HTML
+    this.app.get("/working-groups", (req, res) => {
+      const workingGroupsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/working-groups.html")
+        : path.join(__dirname, "../public/working-groups.html");
+      res.sendFile(workingGroupsPath);
+    });
+
+    this.app.get("/working-groups/:slug", (req, res) => {
+      const workingGroupDetailPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/working-groups/detail.html")
+        : path.join(__dirname, "../public/working-groups/detail.html");
+      res.sendFile(workingGroupDetailPath);
+    });
+
+    // Working group management page (leaders only - auth check happens client-side via API)
+    this.app.get("/working-groups/:slug/manage", (req, res) => {
+      const managePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, "../server/public/working-groups/manage.html")
+        : path.join(__dirname, "../public/working-groups/manage.html");
+      res.sendFile(managePath);
     });
 
     // AdAgents API Routes
@@ -1509,13 +1060,15 @@ export class HTTPServer {
             break;
           }
 
-          case 'invoice.payment_succeeded': {
+          case 'invoice.payment_succeeded':
+          case 'invoice.paid': {
             const invoice = event.data.object as Stripe.Invoice;
             logger.info({
               customer: invoice.customer,
               invoiceId: invoice.id,
               amount: invoice.amount_paid,
-            }, 'Invoice payment succeeded');
+              eventType: event.type,
+            }, 'Invoice paid');
 
             // Get organization from customer ID
             const customerId = invoice.customer as string;
@@ -3308,6 +2861,333 @@ export class HTTPServer {
     });
 
     // ========================================
+    // Admin Working Groups API Routes
+    // ========================================
+
+    const workingGroupDb = new WorkingGroupDatabase();
+
+    // GET /api/admin/working-groups - List all working groups
+    this.app.get('/api/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const groups = await workingGroupDb.listWorkingGroups({ includePrivate: true });
+        res.json(groups);
+      } catch (error) {
+        logger.error({ err: error }, 'List working groups error:');
+        res.status(500).json({
+          error: 'Failed to list working groups',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/working-groups/search-users - Search users for leadership selection
+    // IMPORTANT: This route must come BEFORE parameterized routes like /:id
+    this.app.get('/api/admin/working-groups/search-users', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { q } = req.query;
+        if (!q || typeof q !== 'string' || q.length < 2) {
+          return res.json([]);
+        }
+
+        if (!workos) {
+          return res.status(503).json({ error: 'Authentication not configured' });
+        }
+
+        // Search for users by iterating through member organizations
+        const searchTerm = q.toLowerCase();
+        const matchingUsers: Array<{
+          user_id: string;
+          email: string;
+          name: string;
+          org_id: string;
+          org_name: string;
+        }> = [];
+        const seenUserIds = new Set<string>();
+
+        // Get all member organizations from our database
+        const orgDatabase = new OrganizationDatabase();
+        const orgs = await orgDatabase.listOrganizations();
+
+        // For each org, get their memberships from WorkOS and filter
+        for (const org of orgs) {
+          if (matchingUsers.length >= 20) break;
+
+          try {
+            const memberships = await workos.userManagement.listOrganizationMemberships({
+              organizationId: org.workos_organization_id,
+            });
+
+            for (const membership of memberships.data) {
+              if (matchingUsers.length >= 20) break;
+              if (seenUserIds.has(membership.userId)) continue;
+
+              // Get user details
+              try {
+                const user = await workos.userManagement.getUser(membership.userId);
+                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+
+                // Check if user matches search term
+                if (
+                  user.email.toLowerCase().includes(searchTerm) ||
+                  fullName.toLowerCase().includes(searchTerm) ||
+                  org.name.toLowerCase().includes(searchTerm)
+                ) {
+                  seenUserIds.add(user.id);
+                  matchingUsers.push({
+                    user_id: user.id,
+                    email: user.email,
+                    name: fullName,
+                    org_id: org.workos_organization_id,
+                    org_name: org.name,
+                  });
+                }
+              } catch (userErr) {
+                // Skip users we can't fetch
+                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
+              }
+            }
+          } catch (orgErr) {
+            // Skip orgs we can't fetch memberships for
+            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
+          }
+        }
+
+        res.json(matchingUsers);
+      } catch (error) {
+        logger.error({ err: error }, 'Search users error:');
+        res.status(500).json({
+          error: 'Failed to search users',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/working-groups/:id - Get single working group with details
+    this.app.get('/api/admin/working-groups/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const group = await workingGroupDb.getWorkingGroupWithDetails(id);
+
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with id ${id}`
+          });
+        }
+
+        res.json(group);
+      } catch (error) {
+        logger.error({ err: error }, 'Get working group error:');
+        res.status(500).json({
+          error: 'Failed to get working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/working-groups - Create working group
+    this.app.post('/api/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { name, slug, description, slack_channel_url, is_private, status, display_order,
+                chair_user_id, chair_name, chair_title, chair_org_name,
+                vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name } = req.body;
+
+        if (!name || !slug) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'Name and slug are required'
+          });
+        }
+
+        // Validate slug format
+        const slugPattern = /^[a-z0-9-]+$/;
+        if (!slugPattern.test(slug)) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens'
+          });
+        }
+
+        // Check slug availability
+        const slugAvailable = await workingGroupDb.isSlugAvailable(slug);
+        if (!slugAvailable) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: `A working group with slug '${slug}' already exists`
+          });
+        }
+
+        const group = await workingGroupDb.createWorkingGroup({
+          name, slug, description, slack_channel_url, is_private, status, display_order,
+          chair_user_id, chair_name, chair_title, chair_org_name,
+          vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name
+        });
+
+        // Ensure chair/vice-chair are members
+        await workingGroupDb.ensureLeadershipAreMembers(group.id);
+
+        res.status(201).json(group);
+      } catch (error) {
+        logger.error({ err: error }, 'Create working group error:');
+        res.status(500).json({
+          error: 'Failed to create working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/admin/working-groups/:id - Update working group
+    this.app.put('/api/admin/working-groups/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        const group = await workingGroupDb.updateWorkingGroup(id, updates);
+
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with id ${id}`
+          });
+        }
+
+        // Ensure chair/vice-chair are members if leadership was updated
+        if (updates.chair_user_id || updates.vice_chair_user_id) {
+          await workingGroupDb.ensureLeadershipAreMembers(group.id);
+        }
+
+        res.json(group);
+      } catch (error) {
+        logger.error({ err: error }, 'Update working group error:');
+        res.status(500).json({
+          error: 'Failed to update working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/admin/working-groups/:id - Delete working group
+    this.app.delete('/api/admin/working-groups/:id', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const deleted = await workingGroupDb.deleteWorkingGroup(id);
+
+        if (!deleted) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with id ${id}`
+          });
+        }
+
+        res.json({ success: true, deleted: id });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete working group error:');
+        res.status(500).json({
+          error: 'Failed to delete working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/working-groups/:id/members - List working group members
+    this.app.get('/api/admin/working-groups/:id/members', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const members = await workingGroupDb.getMembershipsByWorkingGroup(id);
+        res.json(members);
+      } catch (error) {
+        logger.error({ err: error }, 'List working group members error:');
+        res.status(500).json({
+          error: 'Failed to list members',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/working-groups/:id/members - Add member to working group
+    this.app.post('/api/admin/working-groups/:id/members', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { workos_user_id, user_email, user_name, user_org_name, workos_organization_id } = req.body;
+        const user = req.user!;
+
+        if (!workos_user_id) {
+          return res.status(400).json({
+            error: 'Missing required field',
+            message: 'workos_user_id is required'
+          });
+        }
+
+        const membership = await workingGroupDb.addMembership({
+          working_group_id: id,
+          workos_user_id,
+          user_email,
+          user_name,
+          user_org_name,
+          workos_organization_id,
+          added_by_user_id: user.id,
+        });
+
+        res.status(201).json(membership);
+      } catch (error) {
+        logger.error({ err: error }, 'Add working group member error:');
+        res.status(500).json({
+          error: 'Failed to add member',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/admin/working-groups/:id/members/:userId - Remove member from working group
+    this.app.delete('/api/admin/working-groups/:id/members/:userId', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id, userId } = req.params;
+        const deleted = await workingGroupDb.deleteMembership(id, userId);
+
+        if (!deleted) {
+          return res.status(404).json({
+            error: 'Membership not found',
+            message: 'User is not a member of this working group'
+          });
+        }
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Remove working group member error:');
+        res.status(500).json({
+          error: 'Failed to remove member',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/working-groups/:id/posts - List all posts for a working group
+    this.app.get('/api/admin/working-groups/:id/posts', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const pool = getPool();
+
+        const result = await pool.query(
+          `SELECT id, slug, content_type, title, subtitle, category, excerpt,
+            external_url, external_site_name, author_name, author_title,
+            author_user_id, featured_image_url, status, published_at, display_order, tags
+          FROM perspectives
+          WHERE working_group_id = $1
+          ORDER BY published_at DESC NULLS LAST, created_at DESC`,
+          [id]
+        );
+
+        res.json(result.rows);
+      } catch (error) {
+        logger.error({ err: error }, 'List working group posts error:');
+        res.status(500).json({
+          error: 'Failed to list posts',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // ========================================
     // SEO Routes (sitemap.xml, robots.txt)
     // ========================================
 
@@ -3329,6 +3209,7 @@ export class HTTPServer {
         const staticPages = [
           { path: '/', priority: '1.0', changefreq: 'weekly' },
           { path: '/perspectives', priority: '0.9', changefreq: 'daily' },
+          { path: '/working-groups', priority: '0.8', changefreq: 'weekly' },
           { path: '/members', priority: '0.8', changefreq: 'weekly' },
           { path: '/join', priority: '0.7', changefreq: 'monthly' },
         ];
@@ -3392,7 +3273,7 @@ Disallow: /api/admin/
     // Public Perspectives API Routes
     // ========================================
 
-    // GET /api/perspectives - List published perspectives
+    // GET /api/perspectives - List published perspectives (excludes working group posts)
     this.app.get('/api/perspectives', async (req, res) => {
       try {
         const pool = getPool();
@@ -3403,7 +3284,7 @@ Disallow: /api/admin/
             author_name, author_title, featured_image_url,
             published_at, display_order, tags, like_count
           FROM perspectives
-          WHERE status = 'published'
+          WHERE status = 'published' AND working_group_id IS NULL
           ORDER BY published_at DESC NULLS LAST`
         );
 
@@ -3578,6 +3459,406 @@ Disallow: /api/admin/
         ? path.join(__dirname, '../server/public/admin-perspectives.html')
         : path.join(__dirname, '../public/admin-perspectives.html');
       res.sendFile(perspectivesPath);
+    });
+
+    this.app.get('/admin/working-groups', requireAuth, requireAdmin, (req, res) => {
+      const workingGroupsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-working-groups.html')
+        : path.join(__dirname, '../public/admin-working-groups.html');
+      res.sendFile(workingGroupsPath);
+    });
+
+    this.app.get('/admin/users', requireAuth, requireAdmin, (req, res) => {
+      const usersPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-users.html')
+        : path.join(__dirname, '../public/admin-users.html');
+      res.sendFile(usersPath);
+    });
+
+    // Registry API endpoints (consolidated agents, publishers, lookups)
+    this.setupRegistryRoutes();
+  }
+
+  /**
+   * Setup registry API endpoints
+   * Consolidated endpoints for agents, publishers, and lookups
+   * These are the canonical endpoints - old /api/federated/* routes redirect here
+   */
+  private setupRegistryRoutes(): void {
+    const federatedIndex = this.crawler.getFederatedIndex();
+
+    // ========================================
+    // Registry Agents API
+    // ========================================
+
+    // GET /api/registry/agents - List all agents (registered + discovered)
+    // Supports enrichment via query params: health, capabilities, properties
+    this.app.get("/api/registry/agents", async (req, res) => {
+      try {
+        const type = req.query.type as AgentType | undefined;
+        const withHealth = req.query.health === "true";
+        const withCapabilities = req.query.capabilities === "true";
+        const withProperties = req.query.properties === "true";
+
+        // Get agents from federated index (includes both registered and discovered)
+        const federatedAgents = await federatedIndex.listAllAgents(type);
+
+        // Convert FederatedAgent to Agent format for enrichment
+        const agents = federatedAgents.map(fa => ({
+          name: fa.name || fa.url,
+          url: fa.url,
+          type: isValidAgentType(fa.type) ? fa.type : 'unknown',
+          protocol: fa.protocol || 'mcp',
+          description: fa.member?.display_name || fa.discovered_from?.publisher_domain || '',
+          mcp_endpoint: fa.url,
+          contact: {
+            name: fa.member?.display_name || '',
+            email: '',
+            website: '',
+          },
+          added_date: fa.discovered_at || new Date().toISOString().split('T')[0],
+          // Preserve federated metadata
+          source: fa.source,
+          member: fa.member,
+          discovered_from: fa.discovered_from,
+        }));
+
+        const bySource = {
+          registered: federatedAgents.filter(a => a.source === 'registered').length,
+          discovered: federatedAgents.filter(a => a.source === 'discovered').length,
+        };
+
+        // If no enrichment requested, return basic list
+        if (!withHealth && !withCapabilities && !withProperties) {
+          return res.json({
+            agents,
+            count: agents.length,
+            sources: bySource,
+          });
+        }
+
+        // Enrich with health, capabilities, and/or properties
+        const enriched = await Promise.all(
+          agents.map(async (agent): Promise<AgentWithStats> => {
+            const promises = [];
+
+            if (withHealth) {
+              promises.push(
+                this.healthChecker.checkHealth(agent as Agent),
+                this.healthChecker.getStats(agent as Agent)
+              );
+            }
+
+            if (withCapabilities) {
+              promises.push(
+                this.capabilityDiscovery.discoverCapabilities(agent as Agent)
+              );
+            }
+
+            // For properties, query from database (populated by crawler)
+            if (withProperties && agent.type === "sales") {
+              promises.push(
+                federatedIndex.getPropertiesForAgent(agent.url),
+                federatedIndex.getPublisherDomainsForAgent(agent.url)
+              );
+            }
+
+            const results = await Promise.all(promises);
+
+            const enrichedAgent: AgentWithStats = { ...agent } as AgentWithStats;
+            let resultIndex = 0;
+
+            if (withHealth) {
+              enrichedAgent.health = results[resultIndex++] as any;
+              enrichedAgent.stats = results[resultIndex++] as any;
+            }
+
+            if (withCapabilities) {
+              const capProfile = results[resultIndex++] as any;
+              if (capProfile) {
+                enrichedAgent.capabilities = {
+                  tools_count: capProfile.discovered_tools?.length || 0,
+                  tools: capProfile.discovered_tools || [],
+                  standard_operations: capProfile.standard_operations,
+                  creative_capabilities: capProfile.creative_capabilities,
+                  signals_capabilities: capProfile.signals_capabilities,
+                };
+              }
+            }
+
+            if (withProperties && agent.type === "sales") {
+              const properties = results[resultIndex++] as any[];
+              const publisherDomains = results[resultIndex++] as string[];
+
+              if (properties && properties.length > 0) {
+                // Return summary counts instead of full property list (can be millions)
+                // Full property details available via /api/registry/agents/:id/properties
+                enrichedAgent.publisher_domains = publisherDomains;
+
+                // Count properties by type (channel)
+                const countByType: Record<string, number> = {};
+                for (const prop of properties) {
+                  const type = prop.property_type || 'unknown';
+                  countByType[type] = (countByType[type] || 0) + 1;
+                }
+
+                // Collect all unique tags across properties
+                const allTags = new Set<string>();
+                for (const prop of properties) {
+                  for (const tag of prop.tags || []) {
+                    allTags.add(tag);
+                  }
+                }
+
+                // Property summary instead of full list
+                enrichedAgent.property_summary = {
+                  total_count: properties.length,
+                  count_by_type: countByType,
+                  tags: Array.from(allTags),
+                  publisher_count: publisherDomains.length,
+                };
+              }
+            }
+
+            return enrichedAgent;
+          })
+        );
+
+        res.json({
+          agents: enriched,
+          count: enriched.length,
+          sources: bySource,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Failed to list agents",
+        });
+      }
+    });
+
+    // ========================================
+    // Registry Publishers API
+    // ========================================
+
+    // GET /api/registry/publishers - List all publishers (registered + discovered)
+    this.app.get("/api/registry/publishers", async (req, res) => {
+      try {
+        const publishers = await federatedIndex.listAllPublishers();
+        const bySource = {
+          registered: publishers.filter(p => p.source === 'registered').length,
+          discovered: publishers.filter(p => p.source === 'discovered').length,
+        };
+        res.json({
+          publishers,
+          count: publishers.length,
+          sources: bySource,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Failed to list publishers",
+        });
+      }
+    });
+
+    // ========================================
+    // Registry Lookup API
+    // ========================================
+
+    // GET /api/registry/lookup/property - Find agents for a property
+    this.app.get("/api/registry/lookup/property", async (req, res) => {
+      const { type, value } = req.query;
+
+      if (!type || !value) {
+        return res.status(400).json({
+          error: "Missing required query params: type and value",
+        });
+      }
+
+      try {
+        // Query database for agents with matching property identifier
+        const results = await federatedIndex.findAgentsForPropertyIdentifier(
+          type as string,
+          value as string
+        );
+
+        res.json({
+          type,
+          value,
+          agents: results,
+          count: results.length,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Property lookup failed",
+        });
+      }
+    });
+
+    // GET /api/registry/lookup/domain/:domain - Find agents authorized for a domain
+    this.app.get("/api/registry/lookup/domain/:domain", async (req, res) => {
+      try {
+        const domain = req.params.domain;
+        const result = await federatedIndex.lookupDomain(domain);
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Domain lookup failed",
+        });
+      }
+    });
+
+    // GET /api/registry/lookup/agent/:agentUrl/domains - Get domains for an agent
+    this.app.get("/api/registry/lookup/agent/:agentUrl/domains", async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.agentUrl);
+        const domains = await federatedIndex.getDomainsForAgent(agentUrl);
+        res.json({
+          agent_url: agentUrl,
+          domains,
+          count: domains.length,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Agent domain lookup failed",
+        });
+      }
+    });
+
+    // ========================================
+    // Registry Validation API
+    // ========================================
+
+    // POST /api/registry/validate/product-authorization
+    // Validate agent authorization against a product's publisher_properties
+    // Accepts same format as Product.publisher_properties from get_products
+    // Use case: "Does agent X have rights to sell this product?"
+    this.app.post("/api/registry/validate/product-authorization", async (req, res) => {
+      try {
+        const { agent_url, publisher_properties } = req.body;
+
+        if (!agent_url) {
+          return res.status(400).json({
+            error: "Missing required field: agent_url",
+          });
+        }
+
+        if (!publisher_properties || !Array.isArray(publisher_properties)) {
+          return res.status(400).json({
+            error: "Missing required field: publisher_properties (array of selectors)",
+          });
+        }
+
+        const result = await federatedIndex.validateAgentForProduct(agent_url, publisher_properties);
+
+        res.json({
+          agent_url,
+          ...result,
+          checked_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Product authorization validation failed",
+        });
+      }
+    });
+
+    // POST /api/registry/expand/product-identifiers
+    // Expand publisher_properties selectors to concrete property identifiers
+    // Use case: Real-time system needs to cache all valid identifiers for a product
+    this.app.post("/api/registry/expand/product-identifiers", async (req, res) => {
+      try {
+        const { agent_url, publisher_properties } = req.body;
+
+        if (!agent_url) {
+          return res.status(400).json({
+            error: "Missing required field: agent_url",
+          });
+        }
+
+        if (!publisher_properties || !Array.isArray(publisher_properties)) {
+          return res.status(400).json({
+            error: "Missing required field: publisher_properties (array of selectors)",
+          });
+        }
+
+        const properties = await federatedIndex.expandPublisherPropertiesToIdentifiers(agent_url, publisher_properties);
+
+        // Flatten all identifiers for easy caching
+        const allIdentifiers: Array<{ type: string; value: string; property_id: string; publisher_domain: string }> = [];
+        for (const prop of properties) {
+          for (const identifier of prop.identifiers) {
+            allIdentifiers.push({
+              type: identifier.type,
+              value: identifier.value,
+              property_id: prop.property_id,
+              publisher_domain: prop.publisher_domain,
+            });
+          }
+        }
+
+        res.json({
+          agent_url,
+          properties,
+          identifiers: allIdentifiers,
+          property_count: properties.length,
+          identifier_count: allIdentifiers.length,
+          generated_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Property expansion failed",
+        });
+      }
+    });
+
+    // GET /api/registry/validate/property-authorization
+    // Quick check if a property identifier is authorized for an agent
+    // Optimized for real-time ad request validation
+    // Use case: "Is www.mytimes.com authorized for this agent?"
+    this.app.get("/api/registry/validate/property-authorization", async (req, res) => {
+      try {
+        const { agent_url, identifier_type, identifier_value } = req.query;
+
+        if (!agent_url || !identifier_type || !identifier_value) {
+          return res.status(400).json({
+            error: "Missing required query params: agent_url, identifier_type, identifier_value",
+          });
+        }
+
+        const result = await federatedIndex.isPropertyAuthorizedForAgent(
+          agent_url as string,
+          identifier_type as string,
+          identifier_value as string
+        );
+
+        res.json({
+          agent_url,
+          identifier_type,
+          identifier_value,
+          ...result,
+          checked_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Property authorization check failed",
+        });
+      }
+    });
+
+    // ========================================
+    // Registry Stats API
+    // ========================================
+
+    // GET /api/registry/stats - Get registry statistics
+    this.app.get("/api/registry/stats", async (req, res) => {
+      try {
+        const stats = await federatedIndex.getStats();
+        res.json(stats);
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Failed to get registry stats",
+        });
+      }
     });
 
   }
@@ -5115,15 +5396,37 @@ Disallow: /api/admin/
           });
         }
 
-        // Create customer session for pricing table (if customer exists)
+        // Ensure Stripe customer exists before showing pricing table
+        // This is critical: if we don't create the customer first, Stripe Pricing Table
+        // will create one without workos_organization_id metadata, breaking the linkage
+        let stripeCustomerId = org.stripe_customer_id;
+        if (!stripeCustomerId) {
+          logger.info({ orgId, userName: user.email }, 'Creating Stripe customer for pricing table');
+          stripeCustomerId = await createStripeCustomer({
+            email: user.email,
+            name: org.name,
+            metadata: {
+              workos_organization_id: orgId,
+            },
+          });
+
+          if (stripeCustomerId) {
+            await orgDb.setStripeCustomerId(orgId, stripeCustomerId);
+            logger.info({ orgId, stripeCustomerId }, 'Stripe customer created and linked to organization');
+          } else {
+            logger.error({ orgId }, 'Failed to create Stripe customer for pricing table');
+          }
+        }
+
+        // Create customer session for pricing table
         let customerSessionSecret = null;
-        if (org.stripe_customer_id) {
-          customerSessionSecret = await createCustomerSession(org.stripe_customer_id);
+        if (stripeCustomerId) {
+          customerSessionSecret = await createCustomerSession(stripeCustomerId);
         }
 
         res.json({
           subscription: subscriptionInfo,
-          stripe_customer_id: org.stripe_customer_id || null,
+          stripe_customer_id: stripeCustomerId || null,
           customer_session_secret: customerSessionSecret,
         });
       } catch (error) {
@@ -5161,6 +5464,30 @@ Disallow: /api/admin/
           return res.status(403).json({
             error: 'Access denied',
             message: 'You are not a member of this organization',
+          });
+        }
+
+        // Ensure organization exists in local DB (on-demand sync from WorkOS)
+        let org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          try {
+            const workosOrg = await workos.organizations.getOrganization(orgId);
+            if (workosOrg) {
+              org = await orgDb.createOrganization({
+                workos_organization_id: workosOrg.id,
+                name: workosOrg.name,
+              });
+              logger.info({ orgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS for pending agreement');
+            }
+          } catch (syncError) {
+            logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS');
+          }
+        }
+
+        if (!org) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'Could not find or sync organization',
           });
         }
 
@@ -6077,6 +6404,1272 @@ Disallow: /api/admin/
       }
     });
 
+    // ========================================
+    // Admin Users API Routes
+    // ========================================
+
+    // GET /api/admin/users - List all users with their working groups
+    this.app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        if (!workos) {
+          return res.status(503).json({ error: 'Authentication not configured' });
+        }
+
+        const wgDb = new WorkingGroupDatabase();
+        const orgDatabase = new OrganizationDatabase();
+        const { search, group, noGroups } = req.query;
+        const searchTerm = typeof search === 'string' ? search.toLowerCase() : '';
+        const filterByGroup = typeof group === 'string' ? group : undefined;
+        const filterNoGroups = noGroups === 'true';
+
+        // Get all working group memberships from our database
+        const allWgMemberships = await wgDb.getAllMemberships();
+
+        // Create a map of user_id -> working groups
+        const userWorkingGroups = new Map<string, Array<{
+          id: string;
+          name: string;
+          slug: string;
+          is_private: boolean;
+        }>>();
+
+        for (const m of allWgMemberships) {
+          const groups = userWorkingGroups.get(m.user_id) || [];
+          groups.push({
+            id: m.working_group_id,
+            name: m.working_group_name,
+            slug: m.working_group_slug || '',
+            is_private: m.is_private || false,
+          });
+          userWorkingGroups.set(m.user_id, groups);
+        }
+
+        // Get all users from WorkOS via org memberships
+        const orgs = await orgDatabase.listOrganizations();
+        const allUsers: Array<{
+          user_id: string;
+          email: string;
+          name: string;
+          org_id: string;
+          org_name: string;
+          working_groups: Array<{
+            id: string;
+            name: string;
+            slug: string;
+            is_private: boolean;
+          }>;
+        }> = [];
+        const seenUserIds = new Set<string>();
+
+        for (const org of orgs) {
+          try {
+            const memberships = await workos.userManagement.listOrganizationMemberships({
+              organizationId: org.workos_organization_id,
+            });
+
+            for (const membership of memberships.data) {
+              if (seenUserIds.has(membership.userId)) continue;
+
+              try {
+                const user = await workos.userManagement.getUser(membership.userId);
+                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+                const workingGroups = userWorkingGroups.get(user.id) || [];
+
+                // Apply filters
+                if (searchTerm) {
+                  const matches = user.email.toLowerCase().includes(searchTerm) ||
+                                  fullName.toLowerCase().includes(searchTerm) ||
+                                  org.name.toLowerCase().includes(searchTerm);
+                  if (!matches) continue;
+                }
+
+                if (filterByGroup) {
+                  const hasGroup = workingGroups.some(g => g.id === filterByGroup);
+                  if (!hasGroup) continue;
+                }
+
+                if (filterNoGroups && workingGroups.length > 0) {
+                  continue;
+                }
+
+                seenUserIds.add(user.id);
+                allUsers.push({
+                  user_id: user.id,
+                  email: user.email,
+                  name: fullName,
+                  org_id: org.workos_organization_id,
+                  org_name: org.name,
+                  working_groups: workingGroups,
+                });
+              } catch (userErr) {
+                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
+              }
+            }
+          } catch (orgErr) {
+            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
+          }
+        }
+
+        // Sort by name
+        allUsers.sort((a, b) => a.name.localeCompare(b.name));
+
+        res.json({ users: allUsers });
+      } catch (error) {
+        logger.error({ err: error }, 'Get admin users error');
+        res.status(500).json({
+          error: 'Failed to get users',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/admin/users/memberships - Get all working group memberships (for export)
+    this.app.get('/api/admin/users/memberships', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const wgDb = new WorkingGroupDatabase();
+        const memberships = await wgDb.getAllMemberships();
+
+        // Check if CSV export is requested
+        const format = req.query.format;
+        if (format === 'csv') {
+          const csv = [
+            'User Name,Email,Organization,Working Group,Joined At',
+            ...memberships.map(m =>
+              `"${m.user_name || ''}","${m.user_email || ''}","${m.user_org_name || ''}","${m.working_group_name}","${m.joined_at ? new Date(m.joined_at).toISOString().split('T')[0] : ''}"`
+            ),
+          ].join('\n');
+
+          res.setHeader('Content-Type', 'text/csv');
+          res.setHeader('Content-Disposition', 'attachment; filename="working-group-memberships.csv"');
+          return res.send(csv);
+        }
+
+        res.json({ memberships });
+      } catch (error) {
+        logger.error({ err: error }, 'Get memberships export error');
+        res.status(500).json({
+          error: 'Failed to get memberships',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // ========================================
+    // Public Working Groups API Routes
+    // ========================================
+
+    // GET /api/working-groups - List active working groups (public groups for everyone, private for members)
+    this.app.get('/api/working-groups', optionalAuth, async (req, res) => {
+      try {
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user; // May be undefined for anonymous users
+
+        let groups;
+        if (user?.id) {
+          // Authenticated user - show public + private groups they're a member of
+          groups = await wgDb.listWorkingGroupsForUser(user.id);
+        } else {
+          // Anonymous user - show only public active groups
+          groups = await wgDb.listWorkingGroups({ status: 'active', includePrivate: false });
+        }
+
+        res.json({ working_groups: groups });
+      } catch (error) {
+        logger.error({ err: error }, 'List working groups error');
+        res.status(500).json({
+          error: 'Failed to list working groups',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/working-groups/:slug - Get working group details
+    this.app.get('/api/working-groups/:slug', optionalAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user; // May be undefined for anonymous users
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check access for private groups
+        if (group.is_private) {
+          if (!user?.id) {
+            return res.status(404).json({
+              error: 'Working group not found',
+              message: `No working group found with slug: ${slug}`,
+            });
+          }
+
+          const isMember = await wgDb.isMember(group.id, user.id);
+          if (!isMember) {
+            return res.status(404).json({
+              error: 'Working group not found',
+              message: `No working group found with slug: ${slug}`,
+            });
+          }
+        }
+
+        // Get memberships for display
+        const memberships = await wgDb.getMembershipsByWorkingGroup(group.id);
+
+        // Check if current user is a member
+        let isMember = false;
+        if (user?.id) {
+          isMember = await wgDb.isMember(group.id, user.id);
+        }
+
+        res.json({
+          working_group: {
+            ...group,
+            member_count: memberships.length,
+            memberships,
+          },
+          is_member: isMember,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Get working group error');
+        res.status(500).json({
+          error: 'Failed to get working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/working-groups/:slug/posts - Get published posts for a working group
+    this.app.get('/api/working-groups/:slug/posts', optionalAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+        const pool = getPool();
+        const user = req.user; // May be undefined for anonymous users
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check access for private groups and determine membership
+        let isMember = false;
+        if (user?.id) {
+          isMember = await wgDb.isMember(group.id, user.id);
+        }
+
+        if (group.is_private) {
+          if (!user?.id || !isMember) {
+            return res.status(404).json({
+              error: 'Working group not found',
+              message: `No working group found with slug: ${slug}`,
+            });
+          }
+        }
+
+        // If user is a member, show all posts; otherwise filter out members-only posts
+        const result = await pool.query(
+          `SELECT id, slug, content_type, title, subtitle, category, excerpt,
+            external_url, external_site_name, author_name, author_title,
+            featured_image_url, published_at, tags, is_members_only
+          FROM perspectives
+          WHERE working_group_id = $1 AND status = 'published'
+            AND (is_members_only = false OR $2 = true)
+          ORDER BY published_at DESC NULLS LAST`,
+          [group.id, isMember]
+        );
+
+        res.json({ posts: result.rows });
+      } catch (error) {
+        logger.error({ err: error }, 'Get working group posts error');
+        res.status(500).json({
+          error: 'Failed to get posts',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/working-groups/:slug/join - Join a public working group
+    this.app.post('/api/working-groups/:slug/join', requireAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        if (group.is_private) {
+          return res.status(403).json({
+            error: 'Private group',
+            message: 'This working group is private and requires an invitation to join',
+          });
+        }
+
+        // Check if already a member
+        const existingMembership = await wgDb.getMembership(group.id, user.id);
+        if (existingMembership && existingMembership.status === 'active') {
+          return res.status(409).json({
+            error: 'Already a member',
+            message: 'You are already a member of this working group',
+          });
+        }
+
+        // Get user's organization info for the membership record
+        let orgId: string | undefined;
+        let orgName: string | undefined;
+        if (workos) {
+          try {
+            const memberships = await workos.userManagement.listOrganizationMemberships({
+              userId: user.id,
+            });
+            if (memberships.data.length > 0) {
+              const org = await workos.organizations.getOrganization(memberships.data[0].organizationId);
+              orgId = org.id;
+              orgName = org.name;
+            }
+          } catch {
+            // Ignore org fetch errors
+          }
+        }
+
+        const membership = await wgDb.addMembership({
+          working_group_id: group.id,
+          workos_user_id: user.id,
+          user_email: user.email,
+          user_name: user.firstName && user.lastName
+            ? `${user.firstName} ${user.lastName}`
+            : user.email,
+          workos_organization_id: orgId,
+          user_org_name: orgName,
+          added_by_user_id: user.id, // Self-join
+        });
+
+        res.status(201).json({ success: true, membership });
+      } catch (error) {
+        logger.error({ err: error }, 'Join working group error');
+        res.status(500).json({
+          error: 'Failed to join working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/working-groups/:slug/leave - Leave a working group
+    this.app.delete('/api/working-groups/:slug/leave', requireAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check if user is chair or vice-chair - they can't leave without being replaced
+        if (group.chair_user_id === user.id || group.vice_chair_user_id === user.id) {
+          return res.status(403).json({
+            error: 'Cannot leave',
+            message: 'As chair or vice-chair, you must be replaced before leaving the group',
+          });
+        }
+
+        const removed = await wgDb.removeMembership(group.id, user.id);
+
+        if (!removed) {
+          return res.status(404).json({
+            error: 'Not a member',
+            message: 'You are not a member of this working group',
+          });
+        }
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Leave working group error');
+        res.status(500).json({
+          error: 'Failed to leave working group',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/me/working-groups - Get current user's working group memberships
+    this.app.get('/api/me/working-groups', requireAuth, async (req, res) => {
+      try {
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user!;
+
+        const groups = await wgDb.getWorkingGroupsForUser(user.id);
+        res.json({ working_groups: groups });
+      } catch (error) {
+        logger.error({ err: error }, 'Get user working groups error');
+        res.status(500).json({
+          error: 'Failed to get working groups',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/working-groups/:slug/posts - Create a post in a working group (members)
+    // Members can only create members-only posts; leaders can create public posts
+    this.app.post('/api/working-groups/:slug/posts', requireAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const { title, content, content_type, category, excerpt, external_url, external_site_name, post_slug, is_members_only } = req.body;
+        const wgDb = new WorkingGroupDatabase();
+        const pool = getPool();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check if user is a member
+        const isMember = await wgDb.isMember(group.id, user.id);
+        if (!isMember) {
+          return res.status(403).json({
+            error: 'Not a member',
+            message: 'You must be a member of this working group to post',
+          });
+        }
+
+        // Check if user is a leader (chair or vice-chair)
+        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+
+        // Non-leaders can only create members-only posts
+        const finalMembersOnly = isLeader ? (is_members_only ?? true) : true;
+
+        if (!title || !post_slug) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'Title and slug are required',
+          });
+        }
+
+        // Validate slug format
+        const slugPattern = /^[a-z0-9-]+$/;
+        if (!slugPattern.test(post_slug)) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+          });
+        }
+
+        // Create the post (perspective with working_group_id)
+        const authorName = user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.email;
+
+        const result = await pool.query(
+          `INSERT INTO perspectives (
+            working_group_id, slug, content_type, title, content, category, excerpt,
+            external_url, external_site_name, author_name, author_user_id,
+            status, published_at, is_members_only
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'published', NOW(), $12)
+          RETURNING *`,
+          [
+            group.id,
+            post_slug,
+            content_type || 'article',
+            title,
+            content || null,
+            category || null,
+            excerpt || null,
+            external_url || null,
+            external_site_name || null,
+            authorName,
+            user.id,
+            finalMembersOnly,
+          ]
+        );
+
+        // Send Slack notification for public posts
+        if (!finalMembersOnly) {
+          notifyWorkingGroupPost({
+            workingGroupName: group.name,
+            workingGroupSlug: slug,
+            postTitle: title,
+            postSlug: post_slug,
+            authorName,
+            contentType: content_type || 'article',
+            category: category || undefined,
+          }).catch(err => {
+            logger.warn({ err }, 'Failed to send Slack notification for working group post');
+          });
+        }
+
+        res.status(201).json({ post: result.rows[0] });
+      } catch (error) {
+        logger.error({ err: error }, 'Create working group post error');
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: 'A post with this slug already exists in this working group',
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to create post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/working-groups/:slug/posts/:postId - Update own post (members)
+    this.app.put('/api/working-groups/:slug/posts/:postId', requireAuth, async (req, res) => {
+      try {
+        const { slug, postId } = req.params;
+        const { title, content, content_type, category, excerpt, external_url, external_site_name, post_slug, is_members_only } = req.body;
+        const wgDb = new WorkingGroupDatabase();
+        const pool = getPool();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check if user is a member
+        const isMember = await wgDb.isMember(group.id, user.id);
+        if (!isMember) {
+          return res.status(403).json({
+            error: 'Not a member',
+            message: 'You must be a member of this working group',
+          });
+        }
+
+        // Get existing post
+        const existing = await pool.query(
+          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
+          [postId, group.id]
+        );
+
+        if (existing.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Post not found',
+            message: 'Post not found in this working group',
+          });
+        }
+
+        const post = existing.rows[0];
+        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+        const isAuthor = post.author_user_id === user.id;
+
+        // Only authors or leaders can edit posts
+        if (!isAuthor && !isLeader) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'You can only edit your own posts',
+          });
+        }
+
+        // Non-leaders cannot make posts public
+        const finalMembersOnly = isLeader ? (is_members_only ?? post.is_members_only) : true;
+
+        // Validate slug if changing
+        if (post_slug && post_slug !== post.slug) {
+          const slugPattern = /^[a-z0-9-]+$/;
+          if (!slugPattern.test(post_slug)) {
+            return res.status(400).json({
+              error: 'Invalid slug',
+              message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+            });
+          }
+        }
+
+        const result = await pool.query(
+          `UPDATE perspectives SET
+            slug = COALESCE($1, slug),
+            content_type = COALESCE($2, content_type),
+            title = COALESCE($3, title),
+            content = $4,
+            category = $5,
+            excerpt = $6,
+            external_url = $7,
+            external_site_name = $8,
+            is_members_only = $9,
+            updated_at = NOW()
+          WHERE id = $10 AND working_group_id = $11
+          RETURNING *`,
+          [
+            post_slug || null,
+            content_type || null,
+            title || null,
+            content ?? post.content,
+            category ?? post.category,
+            excerpt ?? post.excerpt,
+            external_url ?? post.external_url,
+            external_site_name ?? post.external_site_name,
+            finalMembersOnly,
+            postId,
+            group.id,
+          ]
+        );
+
+        res.json({ post: result.rows[0] });
+      } catch (error) {
+        logger.error({ err: error }, 'Update working group post error');
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: 'A post with this slug already exists',
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to update post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/working-groups/:slug/posts/:postId - Delete own post (members)
+    this.app.delete('/api/working-groups/:slug/posts/:postId', requireAuth, async (req, res) => {
+      try {
+        const { slug, postId } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+        const pool = getPool();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check if user is a member
+        const isMember = await wgDb.isMember(group.id, user.id);
+        if (!isMember) {
+          return res.status(403).json({
+            error: 'Not a member',
+            message: 'You must be a member of this working group',
+          });
+        }
+
+        // Get existing post
+        const existing = await pool.query(
+          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
+          [postId, group.id]
+        );
+
+        if (existing.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Post not found',
+            message: 'Post not found in this working group',
+          });
+        }
+
+        const post = existing.rows[0];
+        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+        const isAuthor = post.author_user_id === user.id;
+
+        // Only authors or leaders can delete posts
+        if (!isAuthor && !isLeader) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'You can only delete your own posts',
+          });
+        }
+
+        await pool.query(
+          `DELETE FROM perspectives WHERE id = $1 AND working_group_id = $2`,
+          [postId, group.id]
+        );
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete working group post error');
+        res.status(500).json({
+          error: 'Failed to delete post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/working-groups/:slug/fetch-url - Fetch URL metadata (for link posts) - members only
+    this.app.post('/api/working-groups/:slug/fetch-url', requireAuth, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const { url } = req.body;
+        const wgDb = new WorkingGroupDatabase();
+        const user = req.user!;
+
+        const group = await wgDb.getWorkingGroupBySlug(slug);
+
+        if (!group || group.status !== 'active') {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check if user is a member
+        const isMember = await wgDb.isMember(group.id, user.id);
+        if (!isMember) {
+          return res.status(403).json({
+            error: 'Not a member',
+            message: 'You must be a member of this working group',
+          });
+        }
+
+        if (!url) {
+          return res.status(400).json({
+            error: 'URL required',
+            message: 'Please provide a URL to fetch',
+          });
+        }
+
+        // Fetch the page
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+            'Accept': 'text/html,application/xhtml+xml',
+          },
+          redirect: 'follow',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch URL: ${response.status}`);
+        }
+
+        const html = await response.text();
+
+        // Extract metadata from HTML
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+        const ogDescMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
+        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+        const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
+
+        // Helper to decode HTML entities
+        const decodeHtmlEntities = (text: string): string => {
+          return text
+            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
+        };
+
+        let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
+        title = decodeHtmlEntities(title.trim());
+
+        let excerpt = ogDescMatch?.[1] || descMatch?.[1] || '';
+        excerpt = decodeHtmlEntities(excerpt.trim());
+        // Truncate excerpt to 160 chars max
+        if (excerpt.length > 160) {
+          excerpt = excerpt.substring(0, 157) + '...';
+        }
+
+        let site_name = ogSiteMatch?.[1] || '';
+        if (!site_name) {
+          try {
+            const parsedUrl = new URL(url);
+            site_name = parsedUrl.hostname.replace('www.', '');
+            site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
+          } catch {
+            // ignore URL parse errors
+          }
+        }
+        site_name = decodeHtmlEntities(site_name);
+
+        res.json({ title, excerpt, site_name });
+      } catch (error) {
+        logger.error({ err: error }, 'Fetch URL metadata error (member)');
+        res.status(500).json({
+          error: 'Failed to fetch URL',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // ========================================
+    // Working Group Leader API Routes (Chair/Vice-Chair only)
+    // ========================================
+
+    const wgDbForLeader = new WorkingGroupDatabase();
+    const requireWorkingGroupLeader = createRequireWorkingGroupLeader(wgDbForLeader);
+
+    // GET /api/working-groups/:slug/manage/posts - List all posts (including drafts) for leaders
+    this.app.get('/api/working-groups/:slug/manage/posts', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const pool = getPool();
+
+        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        const result = await pool.query(
+          `SELECT id, slug, content_type, title, subtitle, category, excerpt, content,
+            external_url, external_site_name, author_name, author_title,
+            author_user_id, featured_image_url, status, published_at, display_order, tags,
+            created_at, updated_at
+          FROM perspectives
+          WHERE working_group_id = $1
+          ORDER BY display_order ASC, published_at DESC NULLS LAST, created_at DESC`,
+          [group.id]
+        );
+
+        res.json({ posts: result.rows });
+      } catch (error) {
+        logger.error({ err: error }, 'List working group leader posts error');
+        res.status(500).json({
+          error: 'Failed to list posts',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/working-groups/:slug/manage/posts/:postId - Get single post for editing
+    this.app.get('/api/working-groups/:slug/manage/posts/:postId', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { slug, postId } = req.params;
+        const pool = getPool();
+
+        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        const result = await pool.query(
+          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
+          [postId, group.id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Post not found',
+            message: 'Post not found in this working group',
+          });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, 'Get working group post error');
+        res.status(500).json({
+          error: 'Failed to get post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/working-groups/:slug/manage/posts - Create post as leader (with draft support)
+    this.app.post('/api/working-groups/:slug/manage/posts', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { slug } = req.params;
+        const {
+          post_slug, content_type, title, subtitle, category, excerpt, content,
+          external_url, external_site_name, author_name, author_title,
+          featured_image_url, status, display_order, tags, is_members_only
+        } = req.body;
+        const pool = getPool();
+        const user = req.user!;
+
+        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        if (!title || !post_slug) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'Title and slug are required',
+          });
+        }
+
+        // Validate slug format
+        const slugPattern = /^[a-z0-9-]+$/;
+        if (!slugPattern.test(post_slug)) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+          });
+        }
+
+        // Validate content type for links
+        if (content_type === 'link' && !external_url) {
+          return res.status(400).json({
+            error: 'Missing external URL',
+            message: 'External URL is required for link type posts',
+          });
+        }
+
+        const authorNameFinal = author_name || (user.firstName && user.lastName
+          ? `${user.firstName} ${user.lastName}`
+          : user.email);
+
+        const result = await pool.query(
+          `INSERT INTO perspectives (
+            working_group_id, slug, content_type, title, subtitle, category, excerpt, content,
+            external_url, external_site_name, author_name, author_title, author_user_id,
+            featured_image_url, status, display_order, tags, published_at, is_members_only
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+          RETURNING *`,
+          [
+            group.id,
+            post_slug,
+            content_type || 'article',
+            title,
+            subtitle || null,
+            category || null,
+            excerpt || null,
+            content || null,
+            external_url || null,
+            external_site_name || null,
+            authorNameFinal,
+            author_title || null,
+            user.id,
+            featured_image_url || null,
+            status || 'draft',
+            display_order || 0,
+            tags || null,
+            status === 'published' ? new Date() : null,
+            is_members_only || false,
+          ]
+        );
+
+        const createdPost = result.rows[0];
+
+        // Send Slack notification if post is published
+        if (status === 'published') {
+          notifyWorkingGroupPost({
+            workingGroupName: group.name,
+            workingGroupSlug: slug,
+            postTitle: title,
+            postSlug: post_slug,
+            authorName: authorNameFinal,
+            contentType: content_type || 'article',
+            category: category || undefined,
+          }).catch(err => {
+            logger.warn({ err }, 'Failed to send Slack notification for working group post');
+          });
+        }
+
+        res.status(201).json(createdPost);
+      } catch (error) {
+        logger.error({ err: error }, 'Create working group leader post error');
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: 'A post with this slug already exists',
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to create post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/working-groups/:slug/manage/posts/:postId - Update post as leader
+    this.app.put('/api/working-groups/:slug/manage/posts/:postId', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { slug, postId } = req.params;
+        const {
+          post_slug, content_type, title, subtitle, category, excerpt, content,
+          external_url, external_site_name, author_name, author_title,
+          featured_image_url, status, display_order, tags, is_members_only
+        } = req.body;
+        const pool = getPool();
+
+        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        // Check post belongs to this working group
+        const existing = await pool.query(
+          `SELECT * FROM perspectives WHERE id = $1 AND working_group_id = $2`,
+          [postId, group.id]
+        );
+
+        if (existing.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Post not found',
+            message: 'Post not found in this working group',
+          });
+        }
+
+        // Validate slug if provided
+        if (post_slug) {
+          const slugPattern = /^[a-z0-9-]+$/;
+          if (!slugPattern.test(post_slug)) {
+            return res.status(400).json({
+              error: 'Invalid slug',
+              message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+            });
+          }
+        }
+
+        // If status is changing to published, set published_at
+        const wasPublished = existing.rows[0].status === 'published';
+        const willBePublished = status === 'published';
+        const publishedAt = willBePublished && !wasPublished
+          ? new Date()
+          : existing.rows[0].published_at;
+
+        const result = await pool.query(
+          `UPDATE perspectives SET
+            slug = COALESCE($1, slug),
+            content_type = COALESCE($2, content_type),
+            title = COALESCE($3, title),
+            subtitle = $4,
+            category = $5,
+            excerpt = $6,
+            content = $7,
+            external_url = $8,
+            external_site_name = $9,
+            author_name = COALESCE($10, author_name),
+            author_title = $11,
+            featured_image_url = $12,
+            status = COALESCE($13, status),
+            display_order = COALESCE($14, display_order),
+            tags = $15,
+            published_at = $16,
+            is_members_only = $17,
+            updated_at = NOW()
+          WHERE id = $18 AND working_group_id = $19
+          RETURNING *`,
+          [
+            post_slug || null,
+            content_type || null,
+            title || null,
+            subtitle || null,
+            category || null,
+            excerpt || null,
+            content || null,
+            external_url || null,
+            external_site_name || null,
+            author_name || null,
+            author_title || null,
+            featured_image_url || null,
+            status || null,
+            display_order ?? null,
+            tags || null,
+            publishedAt,
+            is_members_only ?? false,
+            postId,
+            group.id,
+          ]
+        );
+
+        const updatedPost = result.rows[0];
+
+        // Send Slack notification if post was just published (status changed to published)
+        if (willBePublished && !wasPublished) {
+          notifyWorkingGroupPost({
+            workingGroupName: group.name,
+            workingGroupSlug: slug,
+            postTitle: updatedPost.title,
+            postSlug: updatedPost.slug,
+            authorName: updatedPost.author_name || 'Unknown',
+            contentType: updatedPost.content_type || 'article',
+            category: updatedPost.category || undefined,
+          }).catch(err => {
+            logger.warn({ err }, 'Failed to send Slack notification for working group post');
+          });
+        }
+
+        res.json(updatedPost);
+      } catch (error) {
+        logger.error({ err: error }, 'Update working group post error');
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: 'A post with this slug already exists',
+          });
+        }
+        res.status(500).json({
+          error: 'Failed to update post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // DELETE /api/working-groups/:slug/manage/posts/:postId - Delete post as leader
+    this.app.delete('/api/working-groups/:slug/manage/posts/:postId', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { slug, postId } = req.params;
+        const pool = getPool();
+
+        const group = await wgDbForLeader.getWorkingGroupBySlug(slug);
+        if (!group) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${slug}`,
+          });
+        }
+
+        const result = await pool.query(
+          `DELETE FROM perspectives WHERE id = $1 AND working_group_id = $2 RETURNING id`,
+          [postId, group.id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Post not found',
+            message: 'Post not found in this working group',
+          });
+        }
+
+        res.json({ success: true, deleted: postId });
+      } catch (error) {
+        logger.error({ err: error }, 'Delete working group post error');
+        res.status(500).json({
+          error: 'Failed to delete post',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/working-groups/:slug/manage/fetch-url - Fetch URL metadata (for link posts)
+    this.app.post('/api/working-groups/:slug/manage/fetch-url', requireAuth, requireWorkingGroupLeader, async (req, res) => {
+      try {
+        const { url } = req.body;
+
+        if (!url) {
+          return res.status(400).json({
+            error: 'URL required',
+            message: 'Please provide a URL to fetch',
+          });
+        }
+
+        // Fetch the page
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; AgenticAdvertising/1.0)',
+            'Accept': 'text/html,application/xhtml+xml',
+          },
+          redirect: 'follow',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch URL: ${response.status}`);
+        }
+
+        const html = await response.text();
+
+        // Extract metadata from HTML
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+        const ogDescMatch = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i);
+        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+        const ogSiteMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
+
+        // Helper to decode HTML entities
+        const decodeHtmlEntities = (text: string): string => {
+          return text
+            .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+            .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
+        };
+
+        let title = ogTitleMatch?.[1] || titleMatch?.[1] || '';
+        title = decodeHtmlEntities(title.trim());
+
+        let excerpt = ogDescMatch?.[1] || descMatch?.[1] || '';
+        excerpt = decodeHtmlEntities(excerpt.trim());
+        // Truncate excerpt to 160 chars max
+        if (excerpt.length > 160) {
+          excerpt = excerpt.substring(0, 157) + '...';
+        }
+
+        let site_name = ogSiteMatch?.[1] || '';
+        if (!site_name) {
+          try {
+            const parsedUrl = new URL(url);
+            site_name = parsedUrl.hostname.replace('www.', '');
+            site_name = site_name.charAt(0).toUpperCase() + site_name.slice(1);
+          } catch {
+            // ignore URL parse errors
+          }
+        }
+        site_name = decodeHtmlEntities(site_name);
+
+        res.json({ title, excerpt, site_name });
+      } catch (error) {
+        logger.error({ err: error }, 'Fetch URL metadata error (working group)');
+        res.status(500).json({
+          error: 'Failed to fetch URL',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/working-groups/for-organization/:orgId - Get working groups that users from an org belong to
+    this.app.get('/api/working-groups/for-organization/:orgId', async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const wgDb = new WorkingGroupDatabase();
+
+        const groups = await wgDb.getWorkingGroupsForOrganization(orgId);
+        res.json({ working_groups: groups });
+      } catch (error) {
+        logger.error({ err: error }, 'Get org working groups error');
+        res.status(500).json({
+          error: 'Failed to get working groups',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // GET /api/public/discover-agent - Public endpoint to discover agent info (for members directory)
     this.app.get('/api/public/discover-agent', async (req, res) => {
       const { url } = req.query;
@@ -6489,6 +8082,30 @@ Disallow: /api/admin/
           targetOrgId = memberships.data[0].organizationId;
         }
 
+        // Ensure organization exists in local DB (on-demand sync from WorkOS)
+        let org = await orgDb.getOrganization(targetOrgId);
+        if (!org) {
+          try {
+            const workosOrg = await workos!.organizations.getOrganization(targetOrgId);
+            if (workosOrg) {
+              org = await orgDb.createOrganization({
+                workos_organization_id: workosOrg.id,
+                name: workosOrg.name,
+              });
+              logger.info({ orgId: targetOrgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS for member profile');
+            }
+          } catch (syncError) {
+            logger.warn({ orgId: targetOrgId, err: syncError }, 'Failed to sync organization from WorkOS');
+          }
+        }
+
+        if (!org) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'Organization does not exist. Please contact support.',
+          });
+        }
+
         // Check if profile already exists for this org
         const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
         if (existingProfile) {
@@ -6859,372 +8476,9 @@ Disallow: /api/admin/
       }
     });
 
-    // ========================================
-    // Organization Agent Management Endpoints
-    // ========================================
-    const registryDb = new RegistryDatabase();
-
-    // GET /api/me/agents - List agents for the current user's organization
-    this.app.get('/api/me/agents', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const requestedOrgId = req.query.org as string | undefined;
-
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(404).json({
-            error: 'No organization',
-            message: 'User is not a member of any organization',
-          });
-        }
-
-        // Determine which org to use
-        let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
-        }
-
-        // Get agents for this organization
-        const agents = await registryDb.getEntriesByOrg(targetOrgId, 'agent');
-
-        // Get org info
-        const org = await workos!.organizations.getOrganization(targetOrgId);
-
-        res.json({
-          agents,
-          organization_id: targetOrgId,
-          organization_name: org.name,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Get org agents error');
-        res.status(500).json({
-          error: 'Failed to get agents',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // POST /api/me/agents - Create a new agent for the current user's organization
-    this.app.post('/api/me/agents', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const requestedOrgId = req.query.org as string | undefined;
-        const {
-          name,
-          slug,
-          url,
-          agent_type, // sales, creative, signals
-          description,
-          contact_name,
-          contact_email,
-          contact_website,
-          tags,
-        } = req.body;
-
-        // Validate required fields
-        if (!name || !slug || !url || !agent_type) {
-          return res.status(400).json({
-            error: 'Missing required fields',
-            message: 'name, slug, url, and agent_type are required',
-          });
-        }
-
-        // Validate agent type
-        const validAgentTypes = ['sales', 'creative', 'signals'];
-        if (!validAgentTypes.includes(agent_type)) {
-          return res.status(400).json({
-            error: 'Invalid agent type',
-            message: `agent_type must be one of: ${validAgentTypes.join(', ')}`,
-          });
-        }
-
-        // Validate slug format
-        if (!/^[a-z0-9-]+$/.test(slug)) {
-          return res.status(400).json({
-            error: 'Invalid slug',
-            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
-          });
-        }
-
-        // Validate URL format
-        try {
-          new URL(url);
-        } catch {
-          return res.status(400).json({
-            error: 'Invalid URL',
-            message: 'Please provide a valid URL',
-          });
-        }
-
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(400).json({
-            error: 'No organization',
-            message: 'User must be a member of an organization to create an agent',
-          });
-        }
-
-        // Determine which org to use
-        let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
-        }
-
-        // Check slug availability
-        const slugAvailable = await registryDb.isSlugAvailable(slug);
-        if (!slugAvailable) {
-          return res.status(409).json({
-            error: 'Slug not available',
-            message: 'This slug is already taken. Please choose a different one.',
-          });
-        }
-
-        // Create the agent entry
-        const entry = await registryDb.createEntry({
-          entry_type: 'agent',
-          name,
-          slug,
-          url,
-          metadata: {
-            agent_type,
-            description: description || '',
-            mcp_endpoint: url,
-            protocol: 'mcp',
-          },
-          tags: tags || [agent_type],
-          contact_name,
-          contact_email,
-          contact_website,
-          approval_status: 'approved',
-          workos_organization_id: targetOrgId,
-        });
-
-        logger.info({
-          entryId: entry.id,
-          orgId: targetOrgId,
-          agentType: agent_type,
-        }, 'Agent created');
-
-        res.status(201).json({
-          agent: entry,
-          message: 'Agent created successfully.',
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Create agent error');
-        res.status(500).json({
-          error: 'Failed to create agent',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // PUT /api/me/agents/:agentId - Update an agent
-    this.app.put('/api/me/agents/:agentId', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { agentId } = req.params;
-        const requestedOrgId = req.query.org as string | undefined;
-        const updates = req.body;
-
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Not authorized',
-            message: 'User is not a member of any organization',
-          });
-        }
-
-        // Determine which org to use
-        let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
-        }
-
-        // Get the agent to verify ownership
-        const existingAgent = await registryDb.getEntryById(agentId);
-        if (!existingAgent) {
-          return res.status(404).json({
-            error: 'Not found',
-            message: 'Agent not found',
-          });
-        }
-
-        // Verify this agent belongs to the user's organization
-        if (existingAgent.workos_organization_id !== targetOrgId) {
-          return res.status(403).json({
-            error: 'Not authorized',
-            message: 'You can only update agents owned by your organization',
-          });
-        }
-
-        // Build update object (only allow certain fields to be updated)
-        const allowedUpdates: any = {};
-        if (updates.name) allowedUpdates.name = updates.name;
-        if (updates.url) {
-          try {
-            new URL(updates.url);
-            allowedUpdates.url = updates.url;
-          } catch {
-            return res.status(400).json({
-              error: 'Invalid URL',
-              message: 'Please provide a valid URL',
-            });
-          }
-        }
-        if (updates.contact_name !== undefined) allowedUpdates.contact_name = updates.contact_name;
-        if (updates.contact_email !== undefined) allowedUpdates.contact_email = updates.contact_email;
-        if (updates.contact_website !== undefined) allowedUpdates.contact_website = updates.contact_website;
-        if (updates.tags) allowedUpdates.tags = updates.tags;
-
-        // Update metadata fields
-        if (updates.description !== undefined || updates.agent_type !== undefined) {
-          const metadata = { ...existingAgent.metadata };
-          if (updates.description !== undefined) metadata.description = updates.description;
-          if (updates.agent_type !== undefined) {
-            const validAgentTypes = ['sales', 'creative', 'signals'];
-            if (!validAgentTypes.includes(updates.agent_type)) {
-              return res.status(400).json({
-                error: 'Invalid agent type',
-                message: `agent_type must be one of: ${validAgentTypes.join(', ')}`,
-              });
-            }
-            metadata.agent_type = updates.agent_type;
-          }
-          allowedUpdates.metadata = metadata;
-        }
-
-        const updatedAgent = await registryDb.updateEntry(existingAgent.slug, allowedUpdates);
-
-        logger.info({
-          agentId,
-          orgId: targetOrgId,
-        }, 'Agent updated');
-
-        res.json({
-          agent: updatedAgent,
-          message: 'Agent updated successfully.',
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Update agent error');
-        res.status(500).json({
-          error: 'Failed to update agent',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // DELETE /api/me/agents/:agentId - Delete an agent
-    this.app.delete('/api/me/agents/:agentId', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { agentId } = req.params;
-        const requestedOrgId = req.query.org as string | undefined;
-
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Not authorized',
-            message: 'User is not a member of any organization',
-          });
-        }
-
-        // Determine which org to use
-        let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
-        }
-
-        // Delete the agent (only if it belongs to this org)
-        const deleted = await registryDb.deleteEntryByIdForOrg(agentId, targetOrgId);
-
-        if (!deleted) {
-          return res.status(404).json({
-            error: 'Not found',
-            message: 'Agent not found or you do not have permission to delete it',
-          });
-        }
-
-        logger.info({
-          agentId,
-          orgId: targetOrgId,
-        }, 'Agent deleted');
-
-        res.json({ success: true });
-      } catch (error) {
-        logger.error({ err: error }, 'Delete agent error');
-        res.status(500).json({
-          error: 'Failed to delete agent',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/agents/check-slug/:slug - Check agent slug availability
-    this.app.get('/api/agents/check-slug/:slug', async (req, res) => {
-      try {
-        const { slug } = req.params;
-        const available = await registryDb.isSlugAvailable(slug);
-        res.json({ available, slug });
-      } catch (error) {
-        logger.error({ err: error }, 'Check agent slug error');
-        res.status(500).json({
-          error: 'Failed to check slug availability',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
+    // NOTE: Agent management is now handled through member profiles.
+    // Agents are stored in the member_profiles.agents JSONB array.
+    // Use PUT /api/me/member-profile to update agents.
 
     // Utility: Check slug availability
     this.app.get('/api/members/check-slug/:slug', async (req, res) => {
@@ -7359,10 +8613,121 @@ Disallow: /api/admin/
         });
       }
     });
+
+    // Publisher Validation: Validate a publisher's adagents.json (public version for members directory)
+    this.app.get('/api/public/validate-publisher', async (req, res) => {
+      const { domain } = req.query;
+
+      if (!domain || typeof domain !== 'string') {
+        return res.status(400).json({ error: 'Domain is required' });
+      }
+
+      try {
+        const result = await this.adagentsManager.validateDomain(domain);
+        const stats = extractPublisherStats(result);
+
+        return res.json({
+          valid: result.valid,
+          domain: result.domain,
+          url: result.url,
+          agent_count: stats.agentCount,
+          property_count: stats.propertyCount,
+          property_type_counts: stats.propertyTypeCounts,
+          tag_count: stats.tagCount,
+          errors: result.errors,
+          warnings: result.warnings,
+        });
+      } catch (error) {
+        logger.error({ err: error, domain }, 'Public publisher validation error');
+
+        return res.status(500).json({
+          error: 'Publisher validation failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // List all public publishers from member organizations (public endpoint for publishers registry)
+    this.app.get('/api/public/publishers', async (req, res) => {
+      try {
+        const memberDb = new MemberDatabase();
+        const members = await memberDb.getPublicProfiles({});
+
+        // Collect all public publishers from members
+        const publishers = members.flatMap((m) =>
+          (m.publishers || [])
+            .filter((p) => p.is_public)
+            .map((p) => ({
+              domain: p.domain,
+              agent_count: p.agent_count,
+              last_validated: p.last_validated,
+              member: {
+                slug: m.slug,
+                display_name: m.display_name,
+              },
+            }))
+        );
+
+        return res.json({
+          publishers,
+          count: publishers.length,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to list public publishers');
+        return res.status(500).json({
+          error: 'Failed to list publishers',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // Publisher Validation: Validate a publisher's adagents.json (authenticated version with full details)
+    this.app.get('/api/validate-publisher', requireAuth, async (req, res) => {
+      const { domain } = req.query;
+
+      if (!domain || typeof domain !== 'string') {
+        return res.status(400).json({ error: 'Domain is required' });
+      }
+
+      try {
+        const result = await this.adagentsManager.validateDomain(domain);
+        const stats = extractPublisherStats(result);
+
+        return res.json({
+          valid: result.valid,
+          domain: result.domain,
+          url: result.url,
+          agent_count: stats.agentCount,
+          property_count: stats.propertyCount,
+          property_type_counts: stats.propertyTypeCounts,
+          tag_count: stats.tagCount,
+          errors: result.errors,
+          warnings: result.warnings,
+          authorized_agents: result.raw_data?.authorized_agents || [],
+        });
+      } catch (error) {
+        logger.error({ err: error, domain }, 'Publisher validation error');
+
+        return res.status(500).json({
+          error: 'Publisher validation failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
   }
 
   async start(port: number = 3000): Promise<void> {
-    await this.registry.initialize();
+    // Initialize database
+    const { initializeDatabase } = await import("./db/client.js");
+    const { runMigrations } = await import("./db/migrate.js");
+    const { getDatabaseConfig } = await import("./config.js");
+
+    const dbConfig = getDatabaseConfig();
+    if (!dbConfig) {
+      throw new Error("DATABASE_URL or DATABASE_PRIVATE_URL environment variable is required");
+    }
+    initializeDatabase(dbConfig);
+    await runMigrations();
 
     // Sync organizations from WorkOS and Stripe to local database (dev environment support)
     if (AUTH_ENABLED && workos) {
@@ -7390,7 +8755,7 @@ Disallow: /api/admin/
     }
 
     // Pre-warm caches for all agents in background
-    const allAgents = await this.registry.listAgents();
+    const allAgents = await this.agentService.listAgents();
     logger.info({ agentCount: allAgents.length }, 'Pre-warming caches');
 
     // Don't await - let this run in background
@@ -7401,7 +8766,7 @@ Disallow: /api/admin/
     });
 
     // Start periodic property crawler for sales agents
-    const salesAgents = await this.registry.listAgents("sales");
+    const salesAgents = await this.agentService.listAgents("sales");
     if (salesAgents.length > 0) {
       logger.info({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
       this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes

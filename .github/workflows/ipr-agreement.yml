@@ -1,0 +1,55 @@
+name: IPR Agreement
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+# Explicitly configure permissions
+permissions:
+  actions: write
+  contents: write  # Required to update signatures/ipr-signatures.json
+  pull-requests: write
+  statuses: write
+
+jobs:
+  ipr-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: CLA Assistant
+        if: (github.event.comment.body == 'I have read the IPR Policy' || github.event_name == 'pull_request_target')
+        uses: contributor-assistant/github-action@v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-signatures: 'signatures/ipr-signatures.json'
+          path-to-document: 'https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md'
+          branch: 'ipr-signatures'
+          allowlist: 'bot*,dependabot*,renovate*,github-actions*'
+
+          custom-notsigned-prcomment: |
+            ## IPR Policy Agreement Required
+
+            Thank you for your contribution! Before we can accept your pull request, you must agree to our [Intellectual Property Rights Policy](https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md).
+
+            By making a Contribution, you agree that:
+            - You grant the Foundation a perpetual, irrevocable, worldwide, non-exclusive, royalty-free copyright license to your Contribution
+            - You grant a patent license under any Necessary Claims
+            - You represent that you own or have sufficient rights to grant these licenses
+
+            **To agree, please comment below with the exact phrase:**
+
+            ```
+            I have read the IPR Policy
+            ```
+
+            You can read the full [IPR Policy here](https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md).
+
+          custom-pr-sign-comment: 'I have read the IPR Policy'
+
+          custom-allsigned-prcomment: |
+            All contributors have agreed to the [IPR Policy](https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md). Thank you!
+
+          lock-pullrequest-aftermerge: false
+          use-dco-flag: false

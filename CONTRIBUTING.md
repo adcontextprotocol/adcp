@@ -4,7 +4,9 @@ commit your changes, and [open a pull request](https://help.github.com/articles/
 main branch.
 
 ## Intellectual Property Rights
-Before contributing to the AdCP project, ensure that you have read and agree with our [Intellectual Property Rights Policy](https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md).
+Before contributing to the AdCP project, you must agree to our [Intellectual Property Rights Policy](https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md).
+
+When you open a pull request, an automated check will ask you to confirm your agreement by commenting `I have read the IPR Policy` on your PR. This is a one-time requirement per contributor.
 
 ## Contributing
 Before contributing please see:

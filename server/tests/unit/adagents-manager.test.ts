@@ -97,7 +97,7 @@ describe('AdAgentsManager', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].message).toContain('HTTP 404');
+      expect(result.errors[0].message).toContain('File not found');
       expect(result.raw_data).toBeUndefined(); // Don't include HTML error pages
     });
 
@@ -667,7 +667,7 @@ describe('AdAgentsManager', () => {
       const result = await manager.validateDomain('example.com');
 
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.field === 'authoritative_location' && e.message.includes('HTTP 404'))).toBe(true);
+      expect(result.errors.some(e => e.field === 'authoritative_location' && e.message.includes('File not found'))).toBe(true);
     });
 
     it('prevents nested URL references (infinite loop protection)', async () => {
