@@ -556,7 +556,6 @@
           <p style="color: var(--color-text-secondary); font-size: var(--text-sm);">Ask an admin from your organization to send you an invite, or <a href="#" onclick="showCompanyOptions(); document.getElementById('optionCreate').click(); return false;">register your company as a new member</a>.</p>
         </div>
 
-        <button class="btn btn-secondary" style="margin-top: var(--space-5);" onclick="showOptions()">Back to Options</button>
       </div>
 
       <!-- Create Org Form -->
@@ -950,16 +949,16 @@
         return;
       }
 
-      container.innerHTML = results.map(org => renderOrgCard(org, 'search')).join('');
+      container.innerHTML = results.map(org => renderOrgCard(org)).join('');
       section.style.display = 'block';
     }
 
     function renderDomainSuggestions(orgs) {
       const container = document.getElementById('domainSuggestionsList');
-      container.innerHTML = orgs.map(org => renderOrgCard(org, 'domain')).join('');
+      container.innerHTML = orgs.map(org => renderOrgCard(org)).join('');
     }
 
-    function renderOrgCard(org, source) {
+    function renderOrgCard(org) {
       const logoHtml = org.logo_url
         ? '<img src="' + escapeHtml(org.logo_url) + '" alt="" style="width: 40px; height: 40px; border-radius: var(--radius-md); object-fit: cover;">'
         : '<div style="width: 40px; height: 40px; background: var(--color-gray-100); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 20px;">&#127970;</div>';
@@ -1011,7 +1010,7 @@
     function renderJoinableOrgs(orgs) {
       const orgsToRender = orgs || joinableOrgs;
       const container = document.getElementById('joinableOrgsList');
-      container.innerHTML = orgsToRender.map(org => renderOrgCard(org, 'joinable')).join('');
+      container.innerHTML = orgsToRender.map(org => renderOrgCard(org)).join('');
     }
 
     async function requestToJoin(orgId, button) {

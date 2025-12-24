@@ -4045,25 +4045,25 @@ Disallow: /api/admin/
 
         // Parse return_to from state
         let returnTo = '/dashboard';
-        logger.info({ state, hasState: !!state }, 'Parsing state for return_to');
+        logger.debug({ state, hasState: !!state }, 'Parsing state for return_to');
         if (state) {
           try {
             const parsedState = JSON.parse(state);
             returnTo = parsedState.return_to || returnTo;
-            logger.info({ parsedState, returnTo }, 'Parsed state successfully');
+            logger.debug({ parsedState, returnTo }, 'Parsed state successfully');
           } catch (e) {
             // Invalid state, use default
-            logger.info({ state, error: String(e) }, 'Failed to parse state');
+            logger.debug({ state, error: String(e) }, 'Failed to parse state');
           }
         }
 
         // Redirect to dashboard or onboarding
-        logger.info({ returnTo, membershipCount: memberships.data.length }, 'Final redirect decision');
+        logger.debug({ returnTo, membershipCount: memberships.data.length }, 'Final redirect decision');
         if (memberships.data.length === 0) {
-          logger.info('No organizations found, redirecting to onboarding');
+          logger.debug('No organizations found, redirecting to onboarding');
           res.redirect('/onboarding.html');
         } else {
-          logger.info({ returnTo }, 'Redirecting authenticated user');
+          logger.debug({ returnTo }, 'Redirecting authenticated user');
           res.redirect(returnTo);
         }
       } catch (error) {
@@ -5145,7 +5145,7 @@ Disallow: /api/admin/
         }
 
         // Validate company_type if provided
-        const validCompanyTypes = ['brand', 'publisher', 'agency', 'adtech'];
+        const validCompanyTypes = ['brand', 'publisher', 'agency', 'adtech', 'other'];
         if (company_type && !validCompanyTypes.includes(company_type)) {
           return res.status(400).json({
             error: 'Invalid company type',
@@ -5379,7 +5379,7 @@ Disallow: /api/admin/
         }
 
         // Validate company_type if provided
-        const validCompanyTypes = ['brand', 'publisher', 'agency', 'adtech'];
+        const validCompanyTypes = ['brand', 'publisher', 'agency', 'adtech', 'other'];
         if (company_type !== undefined && company_type !== null && !validCompanyTypes.includes(company_type)) {
           return res.status(400).json({
             error: 'Invalid company type',

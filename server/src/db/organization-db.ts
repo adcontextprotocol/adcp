@@ -5,7 +5,7 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('organization-db');
 
-export type CompanyType = 'brand' | 'publisher' | 'agency' | 'adtech';
+export type CompanyType = 'brand' | 'publisher' | 'agency' | 'adtech' | 'other';
 export type RevenueTier = 'under_1m' | '1m_5m' | '5m_50m' | '50m_250m' | '250m_1b' | '1b_plus';
 
 export interface Organization {
