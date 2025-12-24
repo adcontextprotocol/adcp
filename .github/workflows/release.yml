@@ -31,6 +31,7 @@ jobs:
         uses: changesets/action@v1
         with:
           version: npm run version
+          publish: echo "Published"
           commit: 'Version Packages'
           title: 'Version Packages'
           createGithubReleases: true
