@@ -1,6 +1,7 @@
 import { MemberDatabase } from "./db/member-db.js";
 import { FederatedIndexDatabase, type DiscoveredAgent } from "./db/federated-index-db.js";
 import type { Agent, AgentType, AgentConfig, MemberProfile } from "./types.js";
+import { isValidAgentType } from "./types.js";
 
 /**
  * Service for accessing agents from member profiles and discovered agents
@@ -41,7 +42,7 @@ export class AgentService {
     for (const discovered of discoveredAgents) {
       if (agentsByUrl.has(discovered.agent_url)) continue; // Skip if already registered
 
-      const agentType = discovered.agent_type as AgentType || "unknown";
+      const agentType = isValidAgentType(discovered.agent_type) ? discovered.agent_type : "unknown";
       if (type && agentType !== type) continue;
 
       agentsByUrl.set(discovered.agent_url, this.discoveredToAgent(discovered));
@@ -143,7 +144,7 @@ export class AgentService {
     return {
       name: discovered.name || new URL(discovered.agent_url).hostname,
       url: discovered.agent_url,
-      type: (discovered.agent_type as AgentType) || "sales",
+      type: isValidAgentType(discovered.agent_type) ? discovered.agent_type : "unknown",
       protocol: (discovered.protocol as "mcp" | "a2a") || "mcp",
       description: `Discovered from ${discovered.source_domain}`,
       mcp_endpoint: discovered.agent_url,

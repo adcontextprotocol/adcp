@@ -17,6 +17,7 @@ import { AdAgentsManager } from "./adagents-manager.js";
 import { closeDatabase, getPool } from "./db/client.js";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
+import { isValidAgentType } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, type RevenueEvent } from "./billing/stripe-client.js";
 import Stripe from "stripe";
@@ -3506,7 +3507,7 @@ Disallow: /api/admin/
         const agents = federatedAgents.map(fa => ({
           name: fa.name || fa.url,
           url: fa.url,
-          type: (fa.type || 'unknown') as AgentType,
+          type: isValidAgentType(fa.type) ? fa.type : 'unknown',
           protocol: fa.protocol || 'mcp',
           description: fa.member?.display_name || fa.discovered_from?.publisher_domain || '',
           mcp_endpoint: fa.url,

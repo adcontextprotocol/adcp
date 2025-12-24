@@ -22,10 +22,17 @@ CREATE TABLE discovered_properties (
   last_validated TIMESTAMPTZ,
   expires_at TIMESTAMPTZ,
 
-  -- Unique constraint: one property per (publisher_domain, property_id or name+type combo)
-  UNIQUE(publisher_domain, property_id),
+  -- Unique constraint: one property per (publisher_domain, name, property_type) combo
+  -- This is the primary deduplication key
   UNIQUE(publisher_domain, name, property_type)
 );
+
+-- Partial unique index for properties with property_id
+-- This ensures property_id is unique within a publisher domain when present
+-- NULLs are excluded (properties without property_id dedupe via name+type above)
+CREATE UNIQUE INDEX idx_properties_unique_property_id
+  ON discovered_properties(publisher_domain, property_id)
+  WHERE property_id IS NOT NULL;
 
 -- Many-to-many: which agents can sell which properties
 -- This links discovered_properties to agents (both registered and discovered)

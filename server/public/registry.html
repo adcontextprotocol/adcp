@@ -1025,13 +1025,27 @@
                 // Fetch all agents with enrichment and find the specific one
                 const capsResp = await fetch('/api/registry/agents?health=true&capabilities=true&properties=true');
                 const capsData = await capsResp.json();
-                const allAgents = capsData.agents || capsData;
+                const allAgents = capsData.agents || [];
 
-                // Find the specific agent by type/name pattern
-                const agentWithCaps = allAgents.find(a => {
-                    const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
-                    return a.type === type && slugName === name;
-                }) || allAgents.find(a => a.url?.includes(name));
+                // Find the specific agent using multiple matching strategies (most to least specific)
+                const agentWithCaps =
+                    // 1. Exact type + slug match
+                    allAgents.find(a => {
+                        const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
+                        return a.type === type && slugName === name;
+                    }) ||
+                    // 2. Type match + URL hostname contains the name (more specific than includes)
+                    allAgents.find(a => {
+                        try {
+                            const hostname = new URL(a.url).hostname.toLowerCase();
+                            return a.type === type && hostname.includes(name.toLowerCase());
+                        } catch { return false; }
+                    }) ||
+                    // 3. Any agent with exact slug match (fallback for type mismatch)
+                    allAgents.find(a => {
+                        const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
+                        return slugName === name;
+                    });
 
                 const agent = agentWithCaps || { name: name, url: '', type: type };
 

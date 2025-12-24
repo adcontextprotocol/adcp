@@ -1,4 +1,16 @@
-export type AgentType = "creative" | "signals" | "sales";
+export type AgentType = "creative" | "signals" | "sales" | "unknown";
+
+/**
+ * Valid agent type values for runtime validation
+ */
+export const VALID_AGENT_TYPES: readonly AgentType[] = ["creative", "signals", "sales", "unknown"] as const;
+
+/**
+ * Type guard to check if a string is a valid AgentType
+ */
+export function isValidAgentType(value: string | undefined | null): value is AgentType {
+  return typeof value === 'string' && VALID_AGENT_TYPES.includes(value as AgentType);
+}
 
 export interface FormatInfo {
   name: string;

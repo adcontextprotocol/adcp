@@ -622,22 +622,18 @@ export class FederatedIndexDatabase {
     );
     const authorizedCount = parseInt(authorizedResult.rows[0]?.count || '0', 10);
 
-    // Find which tags have no coverage
-    const unauthorizedTags: string[] = [];
-    for (const tag of propertyTags) {
-      const tagResult = await query<{ count: string }>(
-        `SELECT COUNT(*) as count
-         FROM discovered_properties p
-         JOIN agent_property_authorizations apa ON apa.property_id = p.id
-         WHERE p.publisher_domain = $1
-           AND apa.agent_url = $2
-           AND $3 = ANY(p.tags)`,
-        [publisherDomain, agentUrl, tag]
-      );
-      if (parseInt(tagResult.rows[0]?.count || '0', 10) === 0) {
-        unauthorizedTags.push(tag);
-      }
-    }
+    // Find which tags have coverage (single query instead of N+1)
+    const coveredTagsResult = await query<{ tag: string }>(
+      `SELECT DISTINCT unnest(p.tags) as tag
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE p.publisher_domain = $1
+         AND apa.agent_url = $2
+         AND p.tags && $3`,
+      [publisherDomain, agentUrl, propertyTags]
+    );
+    const coveredTags = new Set(coveredTagsResult.rows.map(r => r.tag));
+    const unauthorizedTags = propertyTags.filter(tag => !coveredTags.has(tag));
 
     const source = await this.getAuthorizationSource(agentUrl, publisherDomain);
 
