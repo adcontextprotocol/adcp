@@ -98,6 +98,52 @@ const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD || '';
 // Allow insecure cookies for local Docker development
 const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
 
+// System user ID for audit logs from webhook/automated contexts
+const SYSTEM_USER_ID = 'system';
+
+// In-memory cache for WorkOS organization and user lookups
+// Used to reduce API calls when enriching audit logs
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+
+const workosOrgCache = new Map<string, CacheEntry<{ name: string }>>();
+const workosUserCache = new Map<string, CacheEntry<{ displayName: string }>>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCachedOrg(orgId: string): { name: string } | null {
+  const entry = workosOrgCache.get(orgId);
+  if (entry && entry.expiresAt > Date.now()) {
+    return entry.value;
+  }
+  workosOrgCache.delete(orgId);
+  return null;
+}
+
+function setCachedOrg(orgId: string, name: string): void {
+  workosOrgCache.set(orgId, {
+    value: { name },
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+}
+
+function getCachedUser(userId: string): { displayName: string } | null {
+  const entry = workosUserCache.get(userId);
+  if (entry && entry.expiresAt > Date.now()) {
+    return entry.value;
+  }
+  workosUserCache.delete(userId);
+  return null;
+}
+
+function setCachedUser(userId: string, displayName: string): void {
+  workosUserCache.set(userId, {
+    value: { displayName },
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+}
+
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
@@ -1065,7 +1111,7 @@ export class HTTPServer {
                   // Record audit log for subscription cancellation (use system user since webhook context)
                   await orgDb.recordAuditLog({
                     workos_organization_id: org.workos_organization_id,
-                    workos_user_id: 'system',
+                    workos_user_id: SYSTEM_USER_ID,
                     action: 'subscription_cancelled',
                     resource_type: 'subscription',
                     resource_id: subscription.id,
@@ -1650,25 +1696,40 @@ export class HTTPServer {
           offset: parseInt(offset as string, 10),
         });
 
-        // Enrich with organization and user names
+        // Enrich with organization and user names (with caching to reduce API calls)
         const enrichedEntries = await Promise.all(
           result.entries.map(async (entry) => {
             let organizationName = 'Unknown';
             let userName = 'Unknown';
 
-            try {
-              const org = await workos!.organizations.getOrganization(entry.workos_organization_id);
-              organizationName = org.name;
-            } catch {
-              // Org may have been deleted
+            // Check cache first for organization
+            const cachedOrg = getCachedOrg(entry.workos_organization_id);
+            if (cachedOrg) {
+              organizationName = cachedOrg.name;
+            } else {
+              try {
+                const org = await workos!.organizations.getOrganization(entry.workos_organization_id);
+                organizationName = org.name;
+                setCachedOrg(entry.workos_organization_id, org.name);
+              } catch (err) {
+                logger.warn({ err, orgId: entry.workos_organization_id }, 'Failed to fetch organization name for audit log');
+              }
             }
 
-            if (entry.workos_user_id !== 'system') {
-              try {
-                const user = await workos!.userManagement.getUser(entry.workos_user_id);
-                userName = user.email || `${user.firstName} ${user.lastName}`.trim() || 'Unknown';
-              } catch {
-                // User may have been deleted
+            if (entry.workos_user_id !== SYSTEM_USER_ID) {
+              // Check cache first for user
+              const cachedUser = getCachedUser(entry.workos_user_id);
+              if (cachedUser) {
+                userName = cachedUser.displayName;
+              } else {
+                try {
+                  const user = await workos!.userManagement.getUser(entry.workos_user_id);
+                  const displayName = user.email || `${user.firstName} ${user.lastName}`.trim() || 'Unknown';
+                  userName = displayName;
+                  setCachedUser(entry.workos_user_id, displayName);
+                } catch (err) {
+                  logger.warn({ err, userId: entry.workos_user_id }, 'Failed to fetch user name for audit log');
+                }
               }
             } else {
               userName = 'System';
