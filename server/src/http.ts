@@ -21,7 +21,7 @@ import { isValidAgentType } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, type RevenueEvent } from "./billing/stripe-client.js";
 import Stripe from "stripe";
-import { OrganizationDatabase } from "./db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
@@ -1717,6 +1717,9 @@ export class HTTPServer {
           SELECT
             workos_organization_id,
             name,
+            company_type,
+            revenue_tier,
+            is_personal,
             stripe_customer_id,
             created_at,
             subscription_amount,
@@ -1791,6 +1794,9 @@ export class HTTPServer {
             return {
               company_id: row.workos_organization_id, // Keep company_id name for backwards compatibility
               company_name: row.name, // Keep company_name for backwards compatibility
+              company_type: row.company_type,
+              revenue_tier: row.revenue_tier,
+              is_personal: row.is_personal,
               stripe_customer_id: row.stripe_customer_id,
               created_at: row.created_at,
               subscription_status: subscriptionStatus,
@@ -3909,6 +3915,43 @@ Disallow: /api/admin/
       }
     });
 
+    // GET /auth/signup - Redirect to WorkOS with sign-up screen hint
+    this.app.get('/auth/signup', (req, res) => {
+      try {
+        // If on AdCP domain, redirect to AAO for signup (keeps cookies on single domain)
+        if (this.isAdcpDomain(req)) {
+          const returnTo = req.query.return_to as string;
+          let aaoReturnTo = returnTo;
+          if (returnTo && returnTo.startsWith('/')) {
+            aaoReturnTo = `https://agenticadvertising.org${returnTo}`;
+          }
+          const redirectUrl = aaoReturnTo
+            ? `https://agenticadvertising.org/auth/signup?return_to=${encodeURIComponent(aaoReturnTo)}`
+            : 'https://agenticadvertising.org/auth/signup';
+          return res.redirect(redirectUrl);
+        }
+
+        const returnTo = req.query.return_to as string;
+        const state = returnTo ? JSON.stringify({ return_to: returnTo }) : undefined;
+
+        const authUrl = workos!.userManagement.getAuthorizationUrl({
+          provider: 'authkit',
+          clientId: WORKOS_CLIENT_ID,
+          redirectUri: WORKOS_REDIRECT_URI,
+          state,
+          screenHint: 'sign-up',
+        });
+
+        res.redirect(authUrl);
+      } catch (error) {
+        logger.error({ err: error }, 'Signup redirect error:');
+        res.status(500).json({
+          error: 'Failed to initiate signup',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // GET /auth/callback - Handle OAuth callback from WorkOS
     this.app.get('/auth/callback', async (req, res) => {
       const code = req.query.code as string;
@@ -4002,21 +4045,25 @@ Disallow: /api/admin/
 
         // Parse return_to from state
         let returnTo = '/dashboard';
+        logger.info({ state, hasState: !!state }, 'Parsing state for return_to');
         if (state) {
           try {
             const parsedState = JSON.parse(state);
             returnTo = parsedState.return_to || returnTo;
+            logger.info({ parsedState, returnTo }, 'Parsed state successfully');
           } catch (e) {
             // Invalid state, use default
+            logger.info({ state, error: String(e) }, 'Failed to parse state');
           }
         }
 
         // Redirect to dashboard or onboarding
+        logger.info({ returnTo, membershipCount: memberships.data.length }, 'Final redirect decision');
         if (memberships.data.length === 0) {
-          logger.debug('No organizations found, redirecting to onboarding');
+          logger.info('No organizations found, redirecting to onboarding');
           res.redirect('/onboarding.html');
         } else {
-          logger.debug({ returnTo }, 'Redirecting authenticated user');
+          logger.info({ returnTo }, 'Redirecting authenticated user');
           res.redirect(returnTo);
         }
       } catch (error) {
@@ -4442,6 +4489,130 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get joinable organizations error:');
         res.status(500).json({
           error: 'Failed to get joinable organizations',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/organizations/search - Search for organizations by name
+    // Used in the "find your company" feature during onboarding
+    this.app.get('/api/organizations/search', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const query = (req.query.q as string) || '';
+
+        if (!query || query.trim().length < 2) {
+          return res.json({ organizations: [], user_domain: getCompanyDomain(user.email) });
+        }
+
+        const joinRequestDb = new JoinRequestDatabase();
+
+        // Get user's current org memberships to exclude
+        const userMemberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+        });
+        const userOrgIds = userMemberships.data.map(m => m.organizationId);
+
+        // Get user's pending join requests
+        const pendingRequests = await joinRequestDb.getUserPendingRequests(user.id);
+        const pendingOrgIds = new Set(pendingRequests.map(r => r.workos_organization_id));
+
+        // Search organizations
+        const results = await orgDb.searchOrganizations({
+          query: query.trim(),
+          excludeOrgIds: userOrgIds,
+          limit: 10,
+        });
+
+        // Get admin contact info for each org (masked)
+        const orgsWithAdmins = await Promise.all(
+          results.map(async (org) => {
+            let adminContact: string | null = null;
+            try {
+              const memberships = await workos!.userManagement.listOrganizationMemberships({
+                organizationId: org.workos_organization_id,
+              });
+
+              // Find an admin or owner
+              const adminMembership = memberships.data.find(m => {
+                const role = m.role?.slug || 'member';
+                return role === 'admin' || role === 'owner';
+              });
+
+              if (adminMembership) {
+                const adminUser = await workos!.userManagement.getUser(adminMembership.userId);
+                // Mask the email: "j***@company.com"
+                const email = adminUser.email;
+                const [local, domain] = email.split('@');
+                adminContact = `${local[0]}***@${domain}`;
+              }
+            } catch (error) {
+              logger.debug({ orgId: org.workos_organization_id, err: error }, 'Could not get admin contact');
+            }
+
+            return {
+              organization_id: org.workos_organization_id,
+              name: org.name,
+              company_type: org.company_type,
+              logo_url: org.logo_url,
+              tagline: org.tagline,
+              admin_contact: adminContact,
+              request_pending: pendingOrgIds.has(org.workos_organization_id),
+            };
+          })
+        );
+
+        res.json({
+          organizations: orgsWithAdmins,
+          user_domain: getCompanyDomain(user.email),
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Organization search error:');
+        res.status(500).json({
+          error: 'Failed to search organizations',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/organizations/:orgId/admins - Get admin contact info for an organization
+    // Used to show who to contact when requesting to join
+    this.app.get('/api/organizations/:orgId/admins', requireAuth, async (req, res) => {
+      try {
+        const { orgId } = req.params;
+
+        // Get org memberships
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          organizationId: orgId,
+        });
+
+        // Find admins and owners
+        const adminMemberships = memberships.data.filter(m => {
+          const role = m.role?.slug || 'member';
+          return role === 'admin' || role === 'owner';
+        });
+
+        // Get user details and mask emails
+        const admins = await Promise.all(
+          adminMemberships.map(async (m) => {
+            const adminUser = await workos!.userManagement.getUser(m.userId);
+            const email = adminUser.email;
+            const [local, domain] = email.split('@');
+            const maskedEmail = `${local[0]}***@${domain}`;
+
+            return {
+              first_name: adminUser.firstName || null,
+              masked_email: maskedEmail,
+              role: m.role?.slug || 'admin',
+            };
+          })
+        );
+
+        res.json({ admins });
+      } catch (error) {
+        logger.error({ err: error, orgId: req.params.orgId }, 'Get org admins error:');
+        res.status(500).json({
+          error: 'Failed to get organization admins',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -4954,7 +5125,7 @@ Disallow: /api/admin/
     this.app.post('/api/organizations', requireAuth, orgCreationRateLimiter, async (req, res) => {
       try {
         const user = req.user!;
-        const { organization_name, is_personal } = req.body;
+        const { organization_name, is_personal, company_type, revenue_tier } = req.body;
 
         // Validate required fields
         if (!organization_name) {
@@ -4973,10 +5144,28 @@ Disallow: /api/admin/
           });
         }
 
+        // Validate company_type if provided
+        const validCompanyTypes = ['brand', 'publisher', 'agency', 'adtech'];
+        if (company_type && !validCompanyTypes.includes(company_type)) {
+          return res.status(400).json({
+            error: 'Invalid company type',
+            message: `company_type must be one of: ${validCompanyTypes.join(', ')}`,
+          });
+        }
+
+        // Validate revenue_tier if provided
+        const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
+        if (revenue_tier && !validRevenueTiers.includes(revenue_tier)) {
+          return res.status(400).json({
+            error: 'Invalid revenue tier',
+            message: `revenue_tier must be one of: ${validRevenueTiers.join(', ')}`,
+          });
+        }
+
         // Use trimmed name for consistency
         const trimmedName = organization_name.trim();
 
-        logger.info({ organization_name: trimmedName, is_personal }, 'Creating WorkOS organization');
+        logger.info({ organization_name: trimmedName, is_personal, company_type, revenue_tier }, 'Creating WorkOS organization');
 
         // Create WorkOS Organization
         const workosOrg = await workos!.organizations.createOrganization({
@@ -4999,6 +5188,8 @@ Disallow: /api/admin/
           workos_organization_id: workosOrg.id,
           name: trimmedName,
           is_personal: is_personal || false,
+          company_type: company_type || undefined,
+          revenue_tier: revenue_tier || undefined,
         });
 
         logger.info({ orgId: workosOrg.id }, 'Organization record created in database');
@@ -5136,6 +5327,118 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Update organization error');
         res.status(500).json({
           error: 'Failed to update organization',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PATCH /api/organizations/:orgId/settings - Update organization settings (company_type, revenue_tier)
+    this.app.patch('/api/organizations/:orgId/settings', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+        const { company_type, revenue_tier } = req.body;
+
+        // Verify user is member of this organization with owner or admin role
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        const membership = memberships.data[0];
+        if (!membership) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Only owners and admins can update settings
+        const roleSlug = (membership as any).role?.slug || (membership as any).roleSlug;
+        if (roleSlug !== 'owner' && roleSlug !== 'admin') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only organization owners and admins can update settings',
+          });
+        }
+
+        // Check if organization is personal (cannot have company type/revenue tier)
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'The requested organization does not exist',
+          });
+        }
+
+        if (org.is_personal) {
+          return res.status(400).json({
+            error: 'Invalid operation',
+            message: 'Personal workspaces cannot have company type or revenue tier',
+          });
+        }
+
+        // Validate company_type if provided
+        const validCompanyTypes = ['brand', 'publisher', 'agency', 'adtech'];
+        if (company_type !== undefined && company_type !== null && !validCompanyTypes.includes(company_type)) {
+          return res.status(400).json({
+            error: 'Invalid company type',
+            message: `company_type must be one of: ${validCompanyTypes.join(', ')}`,
+          });
+        }
+
+        // Validate revenue_tier if provided
+        const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
+        if (revenue_tier !== undefined && revenue_tier !== null && !validRevenueTiers.includes(revenue_tier)) {
+          return res.status(400).json({
+            error: 'Invalid revenue tier',
+            message: `revenue_tier must be one of: ${validRevenueTiers.join(', ')}`,
+          });
+        }
+
+        // Build updates object with properly typed values
+        const updates: {
+          company_type?: CompanyType | null;
+          revenue_tier?: RevenueTier | null;
+        } = {};
+        if (company_type !== undefined) {
+          updates.company_type = company_type as CompanyType | null;
+        }
+        if (revenue_tier !== undefined) {
+          updates.revenue_tier = revenue_tier as RevenueTier | null;
+        }
+
+        if (Object.keys(updates).length === 0) {
+          return res.status(400).json({
+            error: 'No updates provided',
+            message: 'Provide company_type or revenue_tier to update',
+          });
+        }
+
+        // Update in our database
+        await orgDb.updateOrganization(orgId, updates);
+
+        // Record audit log
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'organization_settings_updated',
+          resource_type: 'organization',
+          resource_id: orgId,
+          details: updates,
+        });
+
+        logger.info({ orgId, updates, userId: user.id }, 'Organization settings updated');
+
+        res.json({
+          success: true,
+          company_type: company_type !== undefined ? company_type : org.company_type,
+          revenue_tier: revenue_tier !== undefined ? revenue_tier : org.revenue_tier,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Update organization settings error');
+        res.status(500).json({
+          error: 'Failed to update organization settings',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -5428,6 +5731,9 @@ Disallow: /api/admin/
           subscription: subscriptionInfo,
           stripe_customer_id: stripeCustomerId || null,
           customer_session_secret: customerSessionSecret,
+          company_type: org.company_type || null,
+          revenue_tier: org.revenue_tier || null,
+          is_personal: org.is_personal || false,
         });
       } catch (error) {
         logger.error({ err: error }, 'Get billing info error:');

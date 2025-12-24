@@ -368,16 +368,17 @@
           <thead>
             <tr>
               <th>Company</th>
+              <th>Type</th>
+              <th>Revenue</th>
               <th>Owner Email</th>
               <th>Subscription</th>
               <th>Amount</th>
               <th>Renewal Date</th>
-              <th>Agreement</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="membersTableBody">
-            <tr><td colspan="7" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No members found</td></tr>
+            <tr><td colspan="8" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No members found</td></tr>
           </tbody>
         </table>
       </div>
@@ -511,13 +512,38 @@
       countDiv.textContent = `Showing ${filteredMembers.length} of ${allMembers.length} members`;
 
       if (filteredMembers.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No members found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No members found</td></tr>';
         return;
       }
 
       tbody.innerHTML = filteredMembers.map(member => {
         const statusClass = `status-${member.subscription_status || 'none'}`.replace('_', '');
         const statusText = member.subscription_status || 'none';
+
+        // Format company type
+        const companyTypeLabels = {
+          brand: 'Brand',
+          publisher: 'Publisher',
+          agency: 'Agency',
+          adtech: 'Ad Tech',
+          other: 'Other'
+        };
+        const companyTypeText = member.is_personal
+          ? '<span style="color: var(--color-text-muted);">Individual</span>'
+          : (companyTypeLabels[member.company_type] || '<span style="color: var(--color-text-muted);">-</span>');
+
+        // Format revenue tier
+        const revenueTierLabels = {
+          under_1m: '< $1M',
+          '1m_5m': '$1-5M',
+          '5m_50m': '$5-50M',
+          '50m_250m': '$50-250M',
+          '250m_1b': '$250M-1B',
+          '1b_plus': '$1B+'
+        };
+        const revenueTierText = member.is_personal
+          ? '<span style="color: var(--color-text-muted);">-</span>'
+          : (revenueTierLabels[member.revenue_tier] || '<span style="color: var(--color-text-muted);">-</span>');
 
         // Format subscription amount
         let amountText = '-';
@@ -543,10 +569,6 @@
           }
         }
 
-        const agreementText = member.agreement_signed_at
-          ? new Date(member.agreement_signed_at).toLocaleDateString()
-          : 'Not signed';
-
         // Stripe customer link
         const stripeLink = member.stripe_customer_id
           ? `https://dashboard.stripe.com/test/customers/${member.stripe_customer_id}`
@@ -555,11 +577,12 @@
         return `
           <tr id="row-${member.company_id}">
             <td><strong>${member.company_name || 'Unknown'}</strong></td>
+            <td>${companyTypeText}</td>
+            <td>${revenueTierText}</td>
             <td>${member.owner_email || 'No email'}</td>
             <td><span class="status-badge ${statusClass}">${statusText}</span></td>
             <td><strong>${amountText}</strong></td>
             <td class="${isExpiringSoon ? 'expiring-soon' : ''}">${periodEndText}</td>
-            <td>${agreementText}</td>
             <td style="display: flex; gap: 4px; align-items: flex-start; flex-wrap: wrap;">
               ${stripeLink ? `<a href="${stripeLink}" target="_blank" class="btn-icon" title="View in Stripe">💳</a>` : ''}
               <button class="btn-icon" onclick="viewPayments('${member.company_id}')" title="Payment History">📊</button>
@@ -577,22 +600,47 @@
     }
 
     function exportToCSV() {
-      const headers = ['Company Name', 'Owner Email', 'Subscription Status', 'Current Period End', 'Agreement Signed', 'Created'];
+      const headers = ['Company Name', 'Company Type', 'Revenue Tier', 'Owner Email', 'Subscription Status', 'Amount', 'Current Period End', 'Created'];
       const rows = filteredMembers.map(member => {
         const periodEnd = member.subscription_current_period_end
           ? new Date(member.subscription_current_period_end * 1000).toLocaleDateString()
           : '';
-        const agreementSigned = member.agreement_signed_at
-          ? new Date(member.agreement_signed_at).toLocaleDateString()
-          : '';
         const created = new Date(member.created_at).toLocaleDateString();
+
+        // Format company type
+        const companyTypeLabels = {
+          brand: 'Brand',
+          publisher: 'Publisher',
+          agency: 'Agency',
+          adtech: 'Ad Tech',
+          other: 'Other'
+        };
+        const companyType = member.is_personal ? 'Individual' : (companyTypeLabels[member.company_type] || '');
+
+        // Format revenue tier
+        const revenueTierLabels = {
+          under_1m: '< $1M',
+          '1m_5m': '$1-5M',
+          '5m_50m': '$5-50M',
+          '50m_250m': '$50-250M',
+          '250m_1b': '$250M-1B',
+          '1b_plus': '$1B+'
+        };
+        const revenueTier = member.is_personal ? '' : (revenueTierLabels[member.revenue_tier] || '');
+
+        // Format amount
+        const amount = member.subscription_amount
+          ? `$${(member.subscription_amount / 100).toFixed(2)}/${member.subscription_interval || ''}`
+          : '';
 
         return [
           member.company_name,
+          companyType,
+          revenueTier,
           member.owner_email,
           member.subscription_status || 'none',
+          amount,
           periodEnd,
-          agreementSigned,
           created
         ];
       });

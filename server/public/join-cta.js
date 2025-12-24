@@ -243,7 +243,7 @@ function renderJoinCta(options = {}) {
         </ul>
 
         <div class="join-cta-button-wrapper">
-          <a href="/auth/login?redirect=/dashboard" class="btn btn-primary">Join as a Company</a>
+          <a href="/auth/signup?return_to=/onboarding?signup=true" class="btn btn-primary">Join as a Company</a>
         </div>
         <p class="join-cta-card-footer">Open to brands, publishers, agencies, and ad tech providers</p>
       </div>
@@ -268,7 +268,7 @@ function renderJoinCta(options = {}) {
         </ul>
 
         <div class="join-cta-button-wrapper">
-          <a href="/auth/login?redirect=/dashboard" class="btn btn-primary">Join as an Individual</a>
+          <a href="/auth/signup?return_to=/onboarding?signup=true" class="btn btn-primary">Join as an Individual</a>
         </div>
         <p class="join-cta-card-footer">For consultants, professionals, and enthusiasts</p>
       </div>

@@ -525,6 +525,16 @@
             </div>
           </div>
 
+          <!-- Organization Settings Card - only shown for non-personal workspaces -->
+          <div id="orgSettingsCard" class="card" style="display: none;">
+            <h2 style="display: flex; align-items: center; gap: 8px; font-size: 16px;">
+              <span style="font-size: 18px;">⚙️</span> Organization Settings
+            </h2>
+            <div id="orgSettingsDetails" style="font-size: 13px;">
+              <p style="color: var(--color-text-secondary);">Loading...</p>
+            </div>
+          </div>
+
           <!-- Agreements (compact) - only shown for subscribers -->
           <div id="agreementsCard" class="card" style="background: var(--color-bg-subtle); display: none;">
             <h2 style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--color-text-secondary); margin-bottom: 10px;">
@@ -818,6 +828,15 @@
 
       // Load working groups for the user
       loadWorkingGroups();
+
+      // Render Organization Settings Card for non-personal workspaces (owners/admins only)
+      const orgSettingsCard = document.getElementById('orgSettingsCard');
+      if (!isPersonal && (org.role === 'owner' || org.role === 'admin')) {
+        orgSettingsCard.style.display = 'block';
+        renderOrgSettings(org);
+      } else {
+        orgSettingsCard.style.display = 'none';
+      }
 
       // Show/hide membership section based on this org's subscription status
       const membershipSection = document.getElementById('membershipSection');
@@ -2047,6 +2066,110 @@
         console.error('Error loading agreement history:', error);
         document.getElementById('agreementHistory').innerHTML =
           '<p style="color: var(--color-error-600);">Failed to load agreement history.</p>';
+      }
+    }
+
+    // Organization settings helper labels
+    const companyTypeLabels = {
+      'brand': 'Brand / Marketer',
+      'publisher': 'Publisher',
+      'agency': 'Agency',
+      'adtech': 'Ad Tech Provider',
+      'other': 'Other'
+    };
+
+    const revenueTierLabels = {
+      'under_1m': '< $1M',
+      '1m_5m': '$1-5M',
+      '5m_50m': '$5-50M',
+      '50m_250m': '$50-250M',
+      '250m_1b': '$250M-1B',
+      '1b_plus': '$1B+'
+    };
+
+    // Render organization settings form
+    function renderOrgSettings(org) {
+      const container = document.getElementById('orgSettingsDetails');
+      if (!container) return;
+
+      // Get current values from billing data (which includes company_type, revenue_tier)
+      const companyType = org.billing?.company_type || null;
+      const revenueTier = org.billing?.revenue_tier || null;
+
+      container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div>
+            <label style="display: block; font-weight: 500; margin-bottom: 6px; color: var(--color-text-heading);">Company Type</label>
+            <select id="orgSettingsCompanyType" style="width: 100%; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px; background: var(--color-bg-card);">
+              <option value="">Not specified</option>
+              ${Object.entries(companyTypeLabels).map(([value, label]) =>
+                `<option value="${value}" ${companyType === value ? 'selected' : ''}>${label}</option>`
+              ).join('')}
+            </select>
+          </div>
+
+          <div>
+            <label style="display: block; font-weight: 500; margin-bottom: 6px; color: var(--color-text-heading);">Annual Revenue</label>
+            <select id="orgSettingsRevenueTier" style="width: 100%; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px; background: var(--color-bg-card);">
+              <option value="">Not specified</option>
+              ${Object.entries(revenueTierLabels).map(([value, label]) =>
+                `<option value="${value}" ${revenueTier === value ? 'selected' : ''}>${label}</option>`
+              ).join('')}
+            </select>
+          </div>
+
+          <div id="orgSettingsMessage" style="display: none; padding: 8px; border-radius: 4px; font-size: 12px;"></div>
+
+          <button onclick="saveOrgSettings('${org.id}')" class="btn btn-primary btn-sm" style="align-self: flex-start;">
+            Save Settings
+          </button>
+        </div>
+      `;
+    }
+
+    // Save organization settings
+    async function saveOrgSettings(orgId) {
+      const companyType = document.getElementById('orgSettingsCompanyType').value || null;
+      const revenueTier = document.getElementById('orgSettingsRevenueTier').value || null;
+      const messageEl = document.getElementById('orgSettingsMessage');
+
+      try {
+        const response = await fetch(`/api/organizations/${orgId}/settings`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            company_type: companyType,
+            revenue_tier: revenueTier
+          }),
+          credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to save settings');
+        }
+
+        // Update the local org data
+        if (currentOrg && currentOrg.billing) {
+          currentOrg.billing.company_type = companyType;
+          currentOrg.billing.revenue_tier = revenueTier;
+        }
+
+        // Show success message
+        messageEl.style.display = 'block';
+        messageEl.style.background = 'var(--color-success-50)';
+        messageEl.style.color = 'var(--color-success-700)';
+        messageEl.textContent = 'Settings saved successfully';
+
+        setTimeout(() => {
+          messageEl.style.display = 'none';
+        }, 3000);
+      } catch (error) {
+        console.error('Error saving org settings:', error);
+        messageEl.style.display = 'block';
+        messageEl.style.background = 'var(--color-error-50)';
+        messageEl.style.color = 'var(--color-error-700)';
+        messageEl.textContent = error.message;
       }
     }
 
