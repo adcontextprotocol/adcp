@@ -422,6 +422,16 @@
       border-radius: var(--radius-md);
       text-align: center;
     }
+
+    /* Radio option hover styles */
+    .radio-option:hover {
+      border-color: var(--color-brand);
+      background: var(--color-primary-50);
+    }
+    .radio-option:has(input:checked) {
+      border-color: var(--color-brand);
+      background: var(--color-primary-100);
+    }
   </style>
 </head>
 <body>
@@ -440,75 +450,207 @@
         <div id="invitationsList"></div>
       </div>
 
-      <!-- Options Selection -->
-      <div id="optionsSection" class="options">
-        <div class="option-card" data-option="join" id="optionJoin">
-          <div class="option-header">
-            <div class="option-icon join">&#128101;</div>
-            <div class="option-title">My company is already a member</div>
-          </div>
-          <div class="option-description">
-            Join your company's existing membership. You may need an admin to approve your access.
-          </div>
-        </div>
-
-        <div class="option-card" data-option="create" id="optionCreate">
-          <div class="option-header">
-            <div class="option-icon create">&#127970;</div>
-            <div class="option-title">Register my company as a new member</div>
-          </div>
-          <div class="option-description">
-            Start a new company membership. You'll be able to invite team members after setup.
-          </div>
-        </div>
+      <!-- Step 1: Individual vs Company Selection -->
+      <div id="step1Section" class="options">
+        <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4); font-size: var(--text-sm);">Are you joining as an individual or on behalf of a company?</p>
 
         <div class="option-card" data-option="individual" id="optionIndividual">
           <div class="option-header">
             <div class="option-icon individual">&#128100;</div>
-            <div class="option-title">Join as an individual professional</div>
+            <div class="option-title">I'm joining as an individual</div>
           </div>
           <div class="option-description">
-            Join with an individual membership. Perfect for consultants, freelancers, or those exploring the space.
+            Perfect for consultants, freelancers, academics, or those exploring the space.
+          </div>
+        </div>
+
+        <div class="option-card" data-option="company" id="optionCompany">
+          <div class="option-header">
+            <div class="option-icon create">&#127970;</div>
+            <div class="option-title">I'm joining on behalf of a company</div>
+          </div>
+          <div class="option-description">
+            For brands, publishers, agencies, and ad tech providers.
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Company - Join or Create -->
+      <div id="companyOptionsSection" class="form-section">
+        <a href="#" class="back-link" onclick="showStep1(); return false;">&larr; Back</a>
+        <h2 style="margin-bottom: var(--space-2);">Company Membership</h2>
+        <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); font-size: var(--text-sm);">Is your company already a member?</p>
+
+        <div class="options">
+          <div class="option-card" data-option="join" id="optionJoin">
+            <div class="option-header">
+              <div class="option-icon join">&#128101;</div>
+              <div class="option-title">Yes, my company is already a member</div>
+            </div>
+            <div class="option-description">
+              Join your company's existing membership. You may need an admin to approve your access.
+            </div>
+          </div>
+
+          <div class="option-card" data-option="create" id="optionCreate">
+            <div class="option-header">
+              <div class="option-icon create">&#10133;</div>
+              <div class="option-title">No, register my company as a new member</div>
+            </div>
+            <div class="option-description">
+              Start a new company membership. You'll be able to invite team members after setup.
+            </div>
           </div>
         </div>
       </div>
 
       <!-- Join Form -->
       <div id="joinForm" class="form-section">
-        <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
-        <h2 style="margin-bottom: var(--space-5);">Join Your Company's Membership</h2>
+        <a href="#" class="back-link" onclick="showCompanyOptions(); return false;">&larr; Back</a>
+        <h2 style="margin-bottom: var(--space-2);">Find Your Company</h2>
+        <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); font-size: var(--text-sm);">
+          Search for your company or check if we found a match based on your email.
+        </p>
+
+        <!-- Company Search -->
+        <div class="form-group" style="margin-bottom: var(--space-5);">
+          <label for="companySearch" style="font-weight: var(--font-medium); margin-bottom: var(--space-2); display: block;">Search by company name</label>
+          <div style="position: relative;">
+            <input type="text" id="companySearch" placeholder="Enter your company name..."
+                   style="width: 100%; padding: var(--space-3) var(--space-4); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-base);"
+                   oninput="handleCompanySearch(this.value)">
+            <div id="searchSpinner" style="display: none; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted);">
+              Searching...
+            </div>
+          </div>
+        </div>
+
+        <!-- Search Results -->
+        <div id="searchResultsSection" style="display: none; margin-bottom: var(--space-5);">
+          <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Search Results</h3>
+          <div id="searchResultsList"></div>
+        </div>
+
+        <!-- Domain-based suggestions (shown automatically) -->
+        <div id="domainSuggestionsSection" style="display: none; margin-bottom: var(--space-5);">
+          <div id="domainHint" class="domain-hint" style="background: var(--color-success-50); color: var(--color-success-800); padding: var(--space-3); border-radius: var(--radius-md); margin-bottom: var(--space-3); font-size: var(--text-sm);">
+          </div>
+          <div id="domainSuggestionsList"></div>
+        </div>
 
         <!-- Pending invitations in join form -->
-        <div id="joinInvitationsSection" style="display: none;">
+        <div id="joinInvitationsSection" style="display: none; margin-bottom: var(--space-5);">
           <h3 style="font-size: var(--text-base); color: var(--color-info-700); margin-bottom: var(--space-4);">Your Pending Invitations</h3>
           <div id="joinInvitationsList"></div>
         </div>
 
-        <!-- Joinable organizations -->
+        <!-- Joinable organizations (public profiles) -->
         <div id="joinableSection" class="joinable-section" style="display: none;">
-          <h3>Organizations You Can Request to Join</h3>
-          <div id="domainHint" class="domain-hint" style="display: none;"></div>
+          <h3 style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-3);">Other Organizations You Can Join</h3>
           <div id="joinableOrgsList"></div>
         </div>
 
         <!-- No options message -->
         <div class="no-invitations" id="noJoinOptionsMessage" style="display: none;">
-          <p style="margin-bottom: var(--space-4);">No organizations found for your account.</p>
-          <p>Ask an admin from your organization to send you an invite, or create a new organization.</p>
+          <p style="margin-bottom: var(--space-4);">Can't find your company?</p>
+          <p style="color: var(--color-text-secondary); font-size: var(--text-sm);">Ask an admin from your organization to send you an invite, or <a href="#" onclick="showCompanyOptions(); document.getElementById('optionCreate').click(); return false;">register your company as a new member</a>.</p>
         </div>
 
-        <button class="btn btn-secondary" style="margin-top: var(--space-5);" onclick="showOptions()">Back to Options</button>
       </div>
 
       <!-- Create Org Form -->
       <div id="createForm" class="form-section">
-        <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
+        <a href="#" class="back-link" onclick="showCompanyOptions(); return false;">&larr; Back</a>
         <h2 style="margin-bottom: var(--space-5);">Register Your Company</h2>
         <form id="createOrgForm">
           <div class="form-group">
             <label for="orgName">Company Name *</label>
             <input type="text" id="orgName" required placeholder="Acme Corporation">
           </div>
+
+          <div class="form-group">
+            <label>What type of company are you? *</label>
+            <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2.5);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="companyType" value="brand" required style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Brand / Marketer</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Companies that advertise products or services</div>
+                </div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="companyType" value="publisher" style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Publisher</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Media owners that sell advertising inventory</div>
+                </div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="companyType" value="agency" style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Agency</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Advertising, media, or creative agencies</div>
+                </div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="companyType" value="adtech" style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Ad Tech Provider</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Technology platforms and service providers</div>
+                </div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="companyType" value="other" style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Other</div>
+                  <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Other industry participants</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Annual Revenue *</label>
+            <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2.5);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="revenueTier" value="under_1m" required style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Under $1M</div>
+                </div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="revenueTier" value="1m_5m" style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">$1M - $5M</div>
+                </div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="revenueTier" value="5m_50m" style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">$5M - $50M</div>
+                </div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="revenueTier" value="50m_250m" style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">$50M - $250M</div>
+                </div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="revenueTier" value="250m_1b" style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">$250M - $1B</div>
+                </div>
+              </label>
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+                <input type="radio" name="revenueTier" value="1b_plus" style="width: 18px; height: 18px; flex-shrink: 0;">
+                <div>
+                  <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">$1B+</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
           <div class="agreements-checkbox" onclick="document.getElementById('tosAgree').click(); event.stopPropagation();">
             <input type="checkbox" id="tosAgree" required onclick="event.stopPropagation();">
             <label for="tosAgree" onclick="event.stopPropagation();">
@@ -521,11 +663,16 @@
 
       <!-- Individual Form -->
       <div id="individualForm" class="form-section">
-        <a href="#" class="back-link" onclick="showOptions(); return false;">&larr; Back to options</a>
+        <a href="#" class="back-link" onclick="showStep1(); return false;">&larr; Back</a>
         <h2 style="margin-bottom: var(--space-5);">Individual Membership</h2>
         <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); line-height: var(--leading-relaxed);">
-          Join as an individual professional. You can always upgrade to a company membership later from your dashboard.
+          Join as an individual professional. Perfect for consultants, freelancers, academics, and those exploring the space. You can always upgrade to a company membership later from your dashboard.
         </p>
+        <div style="background: var(--color-gray-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-5);">
+          <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Membership fee</div>
+          <div style="font-size: var(--text-xl); font-weight: var(--font-bold); color: var(--color-brand);">$250<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
+          <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Students, academics & non-profits: $50/year</div>
+        </div>
         <div class="agreements-checkbox" onclick="document.getElementById('tosAgreeIndividual').click(); event.stopPropagation();">
           <input type="checkbox" id="tosAgreeIndividual" onclick="event.stopPropagation();">
           <label for="tosAgreeIndividual" onclick="event.stopPropagation();">
@@ -558,7 +705,10 @@
         currentUser = data.user;
 
         // If user already has organizations, redirect to dashboard
-        if (data.organizations && data.organizations.length > 0) {
+        // Skip this check if user explicitly navigated to onboarding (e.g., from signup flow)
+        const urlParams = new URLSearchParams(window.location.search);
+        const fromSignup = urlParams.has('signup');
+        if (!fromSignup && data.organizations && data.organizations.length > 0) {
           window.location.href = '/dashboard';
           return;
         }
@@ -655,22 +805,55 @@
       }
     }
 
-    // Option selection
-    document.querySelectorAll('.option-card').forEach(function(card) {
-      card.addEventListener('click', function() {
-        var option = card.dataset.option;
-        selectOption(option);
-      });
+    // Step 1: Individual vs Company option selection
+    document.getElementById('optionIndividual').addEventListener('click', function() {
+      selectStep1Option('individual');
+    });
+    document.getElementById('optionCompany').addEventListener('click', function() {
+      selectStep1Option('company');
     });
 
-    function selectOption(option) {
-      // Hide options section
-      document.getElementById('optionsSection').style.display = 'none';
+    function selectStep1Option(option) {
+      // Hide step 1
+      document.getElementById('step1Section').style.display = 'none';
       document.getElementById('invitationsSection').style.display = 'none';
 
-      // Show appropriate form
+      if (option === 'individual') {
+        document.getElementById('individualForm').classList.add('active');
+      } else if (option === 'company') {
+        document.getElementById('companyOptionsSection').classList.add('active');
+      }
+    }
+
+    // Step 2: Company - Join or Create
+    document.getElementById('optionJoin').addEventListener('click', function() {
+      selectCompanyOption('join');
+    });
+    document.getElementById('optionCreate').addEventListener('click', function() {
+      selectCompanyOption('create');
+    });
+
+    function selectCompanyOption(option) {
+      // Hide company options section
+      document.getElementById('companyOptionsSection').classList.remove('active');
+
       if (option === 'join') {
         document.getElementById('joinForm').classList.add('active');
+
+        // Clear search field
+        document.getElementById('companySearch').value = '';
+        document.getElementById('searchResultsSection').style.display = 'none';
+
+        // Show domain-based suggestions if user has company domain
+        const domainOrgs = joinableOrgs.filter(org => org.match_reason === 'domain');
+        if (userDomain && domainOrgs.length > 0) {
+          document.getElementById('domainSuggestionsSection').style.display = 'block';
+          document.getElementById('domainHint').innerHTML =
+            'Based on your email (<strong>' + escapeHtml(userDomain) + '</strong>), you might work at:';
+          renderDomainSuggestions(domainOrgs);
+        } else {
+          document.getElementById('domainSuggestionsSection').style.display = 'none';
+        }
 
         // Show invitations if any
         if (pendingInvitations.length > 0) {
@@ -692,61 +875,142 @@
           document.getElementById('joinInvitationsSection').style.display = 'none';
         }
 
-        // Show joinable organizations if any
-        if (joinableOrgs.length > 0) {
+        // Show public joinable organizations (not domain-based)
+        const publicOrgs = joinableOrgs.filter(org => org.match_reason === 'public');
+        if (publicOrgs.length > 0) {
           document.getElementById('joinableSection').style.display = 'block';
-
-          // Show domain hint if user has a company domain
-          if (userDomain) {
-            document.getElementById('domainHint').style.display = 'block';
-            document.getElementById('domainHint').innerHTML =
-              'Showing organizations matching your email domain: <strong>' + escapeHtml(userDomain) + '</strong>';
-          } else {
-            document.getElementById('domainHint').style.display = 'none';
-          }
-
-          renderJoinableOrgs();
+          renderJoinableOrgs(publicOrgs);
         } else {
           document.getElementById('joinableSection').style.display = 'none';
         }
 
-        // Show no options message if nothing available
-        if (pendingInvitations.length === 0 && joinableOrgs.length === 0) {
-          document.getElementById('noJoinOptionsMessage').style.display = 'block';
-        } else {
-          document.getElementById('noJoinOptionsMessage').style.display = 'none';
-        }
+        // Always show the "can't find" message as helpful hint
+        document.getElementById('noJoinOptionsMessage').style.display = 'block';
 
       } else if (option === 'create') {
         document.getElementById('createForm').classList.add('active');
-      } else if (option === 'individual') {
-        document.getElementById('individualForm').classList.add('active');
       }
     }
 
-    function renderJoinableOrgs() {
+    // Company search functionality
+    let searchTimeout = null;
+    let searchAbortController = null;
+
+    function handleCompanySearch(query) {
+      // Clear previous timeout
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+
+      // Cancel previous request
+      if (searchAbortController) {
+        searchAbortController.abort();
+      }
+
+      const resultsSection = document.getElementById('searchResultsSection');
+      const spinner = document.getElementById('searchSpinner');
+
+      if (!query || query.trim().length < 2) {
+        resultsSection.style.display = 'none';
+        return;
+      }
+
+      // Debounce the search
+      searchTimeout = setTimeout(async () => {
+        spinner.style.display = 'block';
+        searchAbortController = new AbortController();
+
+        try {
+          const response = await fetch('/api/organizations/search?q=' + encodeURIComponent(query), {
+            signal: searchAbortController.signal
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            renderSearchResults(data.organizations);
+          }
+        } catch (error) {
+          if (error.name !== 'AbortError') {
+            console.error('Search error:', error);
+          }
+        } finally {
+          spinner.style.display = 'none';
+        }
+      }, 300);
+    }
+
+    function renderSearchResults(results) {
+      const section = document.getElementById('searchResultsSection');
+      const container = document.getElementById('searchResultsList');
+
+      if (results.length === 0) {
+        container.innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm); padding: var(--space-3);">No organizations found matching your search.</p>';
+        section.style.display = 'block';
+        return;
+      }
+
+      container.innerHTML = results.map(org => renderOrgCard(org)).join('');
+      section.style.display = 'block';
+    }
+
+    function renderDomainSuggestions(orgs) {
+      const container = document.getElementById('domainSuggestionsList');
+      container.innerHTML = orgs.map(org => renderOrgCard(org)).join('');
+    }
+
+    function renderOrgCard(org) {
+      const logoHtml = org.logo_url
+        ? '<img src="' + escapeHtml(org.logo_url) + '" alt="" style="width: 40px; height: 40px; border-radius: var(--radius-md); object-fit: cover;">'
+        : '<div style="width: 40px; height: 40px; background: var(--color-gray-100); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 20px;">&#127970;</div>';
+
+      const adminContactHtml = org.admin_contact
+        ? '<div style="font-size: var(--text-xs); color: var(--color-text-muted);">Contact: ' + escapeHtml(org.admin_contact) + '</div>'
+        : '';
+
+      const buttonHtml = org.request_pending
+        ? '<button class="btn btn-sm" disabled style="background: var(--color-gray-200); cursor: not-allowed;">Request Pending</button>'
+        : '<button class="btn btn-primary btn-sm" onclick="requestToJoin(\'' + escapeHtml(org.organization_id) + '\', this)">Request to Join</button>';
+
+      return '<div class="org-card" style="display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); margin-bottom: var(--space-2);" data-org-id="' + escapeHtml(org.organization_id) + '">' +
+        logoHtml +
+        '<div style="flex: 1; min-width: 150px;">' +
+          '<div style="font-weight: var(--font-medium); color: var(--color-text-heading);">' + escapeHtml(org.name) + '</div>' +
+          (org.tagline ? '<div style="font-size: var(--text-sm); color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">' + escapeHtml(org.tagline) + '</div>' : '') +
+          adminContactHtml +
+        '</div>' +
+        '<div style="flex-shrink: 0;">' + buttonHtml + '</div>' +
+      '</div>';
+    }
+
+    function showStep1() {
+      // Hide all forms
+      document.querySelectorAll('.form-section').forEach(function(form) {
+        form.classList.remove('active');
+      });
+      // Show step 1
+      document.getElementById('step1Section').style.display = 'flex';
+      if (pendingInvitations.length > 0) {
+        document.getElementById('invitationsSection').style.display = 'block';
+      }
+      // Clear any errors
+      document.getElementById('error').style.display = 'none';
+    }
+
+    function showCompanyOptions() {
+      // Hide all forms
+      document.querySelectorAll('.form-section').forEach(function(form) {
+        form.classList.remove('active');
+      });
+      // Show company options
+      document.getElementById('companyOptionsSection').classList.add('active');
+      // Clear any errors
+      document.getElementById('error').style.display = 'none';
+    }
+
+    function renderJoinableOrgs(orgs) {
+      const orgsToRender = orgs || joinableOrgs;
       const container = document.getElementById('joinableOrgsList');
-      container.innerHTML = joinableOrgs.map(org => {
-        const matchLabel = org.match_reason === 'domain' ? 'Same domain' : 'Public member';
-        const matchClass = org.match_reason === 'domain' ? 'match-domain' : 'match-public';
-        const logoHtml = org.logo_url
-          ? '<img src="' + escapeHtml(org.logo_url) + '" alt="">'
-          : '&#127970;';
-
-        const buttonHtml = org.request_pending
-          ? '<button class="btn-request btn-pending" disabled>Request Pending</button>'
-          : '<button class="btn-request" onclick="requestToJoin(\'' + escapeHtml(org.organization_id) + '\', this)">Request to Join</button>';
-
-        return '<div class="org-card" data-org-id="' + escapeHtml(org.organization_id) + '">' +
-          '<div class="org-logo">' + logoHtml + '</div>' +
-          '<div class="org-info">' +
-            '<div class="org-name">' + escapeHtml(org.name) + '</div>' +
-            (org.tagline ? '<div class="org-tagline">' + escapeHtml(org.tagline) + '</div>' : '') +
-            '<span class="org-match ' + matchClass + '">' + escapeHtml(matchLabel) + '</span>' +
-          '</div>' +
-          buttonHtml +
-        '</div>';
-      }).join('');
+      container.innerHTML = orgsToRender.map(org => renderOrgCard(org)).join('');
     }
 
     async function requestToJoin(orgId, button) {
@@ -797,18 +1061,9 @@
       }, 5000);
     }
 
+    // Keep for backwards compatibility with the join form "Back to Options" button
     function showOptions() {
-      // Hide all forms
-      document.querySelectorAll('.form-section').forEach(function(form) {
-        form.classList.remove('active');
-      });
-      // Show options
-      document.getElementById('optionsSection').style.display = 'flex';
-      if (pendingInvitations.length > 0) {
-        document.getElementById('invitationsSection').style.display = 'block';
-      }
-      // Clear any errors
-      document.getElementById('error').style.display = 'none';
+      showCompanyOptions();
     }
 
     function showError(message) {
@@ -822,11 +1077,23 @@
       e.preventDefault();
 
       var orgName = document.getElementById('orgName').value.trim();
+      var companyType = document.querySelector('input[name="companyType"]:checked');
+      var revenueTier = document.querySelector('input[name="revenueTier"]:checked');
       var tosAgree = document.getElementById('tosAgree').checked;
       var createBtn = document.getElementById('createBtn');
 
       if (!orgName) {
-        showError('Please enter an organization name');
+        showError('Please enter a company name');
+        return;
+      }
+
+      if (!companyType) {
+        showError('Please select what type of company you are');
+        return;
+      }
+
+      if (!revenueTier) {
+        showError('Please select your annual revenue tier');
         return;
       }
 
@@ -836,26 +1103,30 @@
       }
 
       createBtn.disabled = true;
-      createBtn.textContent = 'Creating...';
+      createBtn.textContent = 'Registering...';
 
       try {
         var response = await fetch('/api/organizations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ organization_name: orgName }),
+          body: JSON.stringify({
+            organization_name: orgName,
+            company_type: companyType.value,
+            revenue_tier: revenueTier.value
+          }),
         });
 
         var data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.message || 'Failed to create organization');
+          throw new Error(data.message || 'Failed to register company');
         }
 
         window.location.href = '/dashboard';
       } catch (error) {
         showError(error.message);
         createBtn.disabled = false;
-        createBtn.textContent = 'Create Organization';
+        createBtn.textContent = 'Register Company';
       }
     });
 

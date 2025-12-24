@@ -27,6 +27,9 @@ const EXPECTED_COLUMNS = {
     'name',
     'created_at',
     'updated_at',
+    // Company classification
+    'company_type',
+    'revenue_tier',
     // Stripe integration
     'stripe_customer_id',
     'stripe_subscription_id',

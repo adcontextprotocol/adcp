@@ -5,10 +5,15 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('organization-db');
 
+export type CompanyType = 'brand' | 'publisher' | 'agency' | 'adtech' | 'other';
+export type RevenueTier = 'under_1m' | '1m_5m' | '5m_50m' | '50m_250m' | '250m_1b' | '1b_plus';
+
 export interface Organization {
   workos_organization_id: string;
   name: string;
   is_personal: boolean;
+  company_type: CompanyType | null;
+  revenue_tier: RevenueTier | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   agreement_signed_at: Date | null;
@@ -64,13 +69,21 @@ export class OrganizationDatabase {
     workos_organization_id: string;
     name: string;
     is_personal?: boolean;
+    company_type?: CompanyType;
+    revenue_tier?: RevenueTier;
   }): Promise<Organization> {
     const pool = getPool();
     const result = await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name, is_personal)
-       VALUES ($1, $2, $3)
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, company_type, revenue_tier)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [data.workos_organization_id, data.name, data.is_personal || false]
+      [
+        data.workos_organization_id,
+        data.name,
+        data.is_personal || false,
+        data.company_type || null,
+        data.revenue_tier || null,
+      ]
     );
     return result.rows[0];
   }
@@ -99,6 +112,8 @@ export class OrganizationDatabase {
     const COLUMN_MAP: Record<string, string> = {
       name: 'name',
       is_personal: 'is_personal',
+      company_type: 'company_type',
+      revenue_tier: 'revenue_tier',
       stripe_customer_id: 'stripe_customer_id',
       agreement_signed_at: 'agreement_signed_at',
       agreement_version: 'agreement_version',
@@ -156,6 +171,64 @@ export class OrganizationDatabase {
     const result = await pool.query(
       'SELECT * FROM organizations ORDER BY created_at DESC'
     );
+    return result.rows;
+  }
+
+  /**
+   * Search organizations by name
+   * Used for the "find your company" feature in onboarding
+   * Returns non-personal organizations matching the search query
+   */
+  async searchOrganizations(options: {
+    query?: string;
+    excludeOrgIds?: string[];
+    limit?: number;
+  }): Promise<Array<{
+    workos_organization_id: string;
+    name: string;
+    company_type: CompanyType | null;
+    logo_url: string | null;
+    tagline: string | null;
+  }>> {
+    const pool = getPool();
+    const conditions: string[] = ['o.is_personal = false'];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    // Text search on organization name
+    if (options.query && options.query.trim()) {
+      // Escape special LIKE characters
+      const escapedQuery = options.query.trim().replace(/[%_\\]/g, '\\$&');
+      conditions.push(`o.name ILIKE $${paramIndex}`);
+      params.push(`%${escapedQuery}%`);
+      paramIndex++;
+    }
+
+    // Exclude specific orgs (e.g., orgs user is already a member of)
+    if (options.excludeOrgIds && options.excludeOrgIds.length > 0) {
+      conditions.push(`o.workos_organization_id != ALL($${paramIndex})`);
+      params.push(options.excludeOrgIds);
+      paramIndex++;
+    }
+
+    const limit = options.limit || 10;
+    params.push(limit);
+
+    const result = await pool.query(
+      `SELECT
+        o.workos_organization_id,
+        o.name,
+        o.company_type,
+        mp.logo_url,
+        mp.tagline
+       FROM organizations o
+       LEFT JOIN member_profiles mp ON mp.workos_organization_id = o.workos_organization_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY o.name ASC
+       LIMIT $${paramIndex}`,
+      params
+    );
+
     return result.rows;
   }
 

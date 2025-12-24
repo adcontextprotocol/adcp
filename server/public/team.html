@@ -427,6 +427,24 @@
         </table>
       </div>
 
+      <div id="joinRequestsCard" class="card" style="display: none;">
+        <h2>Join Requests</h2>
+        <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">
+          People who have requested to join your organization.
+        </p>
+        <table class="members-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Requested</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="joinRequestsTableBody">
+          </tbody>
+        </table>
+      </div>
+
       <div class="card">
         <h2>Domain Verification</h2>
         <div class="info-box">
@@ -561,11 +579,126 @@
         } else {
           document.getElementById('invitationsCard').style.display = 'none';
         }
+
+        // Load join requests (only for admins/owners)
+        if (canManage) {
+          await loadJoinRequests(orgId);
+        } else {
+          document.getElementById('joinRequestsCard').style.display = 'none';
+        }
       } catch (error) {
         console.error('Error loading team members:', error);
         document.getElementById('membersLoading').innerHTML = `
           <p style="color: var(--color-error-600);">Failed to load team members. Please try again.</p>
         `;
+      }
+    }
+
+    async function loadJoinRequests(orgId) {
+      try {
+        const response = await fetch(`/api/organizations/${orgId}/join-requests`);
+        if (!response.ok) {
+          throw new Error('Failed to load join requests');
+        }
+
+        const data = await response.json();
+
+        if (data.requests && data.requests.length > 0) {
+          document.getElementById('joinRequestsCard').style.display = 'block';
+          renderJoinRequests(data.requests);
+        } else {
+          document.getElementById('joinRequestsCard').style.display = 'none';
+        }
+      } catch (error) {
+        console.error('Error loading join requests:', error);
+        document.getElementById('joinRequestsCard').style.display = 'none';
+      }
+    }
+
+    function renderJoinRequests(requests) {
+      const tbody = document.getElementById('joinRequestsTableBody');
+      tbody.innerHTML = requests.map(req => {
+        const requestedDate = new Date(req.created_at).toLocaleDateString();
+
+        return `
+          <tr id="join-request-${req.id}">
+            <td><div class="member-email">${req.user_email}</div></td>
+            <td>${requestedDate}</td>
+            <td>
+              <div class="action-buttons">
+                <button class="btn btn-primary btn-sm" onclick="approveJoinRequest('${req.id}')">
+                  Approve
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="rejectJoinRequest('${req.id}')">
+                  Reject
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function approveJoinRequest(requestId) {
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/join-requests/${requestId}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'member' }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to approve request');
+        }
+
+        // Remove the row from the table
+        const row = document.getElementById(`join-request-${requestId}`);
+        if (row) {
+          row.remove();
+        }
+
+        // Check if table is now empty
+        const tbody = document.getElementById('joinRequestsTableBody');
+        if (tbody.children.length === 0) {
+          document.getElementById('joinRequestsCard').style.display = 'none';
+        }
+
+        // Show success message
+        alert('Join request approved! An invitation has been sent to the user.');
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function rejectJoinRequest(requestId) {
+      const reason = prompt('Optional: Enter a reason for rejection (or leave blank):');
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg}/join-requests/${requestId}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: reason || undefined }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to reject request');
+        }
+
+        // Remove the row from the table
+        const row = document.getElementById(`join-request-${requestId}`);
+        if (row) {
+          row.remove();
+        }
+
+        // Check if table is now empty
+        const tbody = document.getElementById('joinRequestsTableBody');
+        if (tbody.children.length === 0) {
+          document.getElementById('joinRequestsCard').style.display = 'none';
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
       }
     }
 

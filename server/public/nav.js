@@ -99,7 +99,7 @@
         // Not logged in - show login/signup (links to AAO)
         authSection = `
           <a href="${authBaseUrl}/auth/login" class="navbar__link">Log in</a>
-          <a href="${authBaseUrl}/auth/login" class="navbar__btn navbar__btn--primary">Sign up</a>
+          <a href="${authBaseUrl}/auth/signup?return_to=/onboarding?signup=true" class="navbar__btn navbar__btn--primary">Sign up</a>
         `;
       }
     }
