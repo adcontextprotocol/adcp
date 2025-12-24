@@ -216,8 +216,9 @@ Formats are JSON objects with the following key fields:
   },
   "name": "30-Second Hosted Video",
   "type": "video",
-  "assets_required": [
+  "assets": [
     {
+      "item_type": "individual",
       "asset_id": "video_file",
       "asset_type": "video",
       "asset_role": "hero_video",
@@ -226,6 +227,39 @@ Formats are JSON objects with the following key fields:
         "duration": "30s",
         "format": ["MP4"],
         "resolution": ["1920x1080", "1280x720"]
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "end_card_image",
+      "asset_type": "image",
+      "asset_role": "end_card",
+      "required": false,
+      "requirements": {
+        "dimensions": "1920x1080",
+        "format": ["PNG", "JPG"]
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "companion_banner",
+      "asset_type": "image",
+      "asset_role": "companion",
+      "required": false,
+      "requirements": {
+        "dimensions": "300x250",
+        "format": ["PNG", "JPG", "GIF"]
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "impression_tracker",
+      "asset_type": "tracking_pixel",
+      "asset_role": "third_party_tracking",
+      "required": false,
+      "requirements": {
+        "format": ["url"],
+        "description": "Third-party impression tracking pixel URL"
       }
     }
   ]
@@ -236,9 +270,22 @@ Formats are JSON objects with the following key fields:
 - **format_id**: Unique identifier (may be namespaced with `domain:id`)
 - **agent_url**: The creative agent authoritative for this format
 - **type**: Category (video, display, audio, native, dooh, rich_media)
-- **assets_required**: Array of asset specifications
+- **assets**: Array of all asset specifications with `required` boolean indicating mandatory vs optional
 - **asset_role**: Identifies asset purpose (hero_image, logo, cta_button, etc.)
 - **renders**: Array of rendered outputs with dimensions - see below
+
+### Asset Discovery
+
+The `assets` array enables comprehensive asset discovery. Each asset has a `required` boolean:
+
+- **`required: true`** - Asset MUST be provided for a valid creative
+- **`required: false`** - Asset is optional, enhances the creative when provided (e.g., companion banners, third-party tracking pixels)
+
+This unified approach helps creative tools and AI agents understand the full capabilities of a format, enabling richer creative experiences when optional assets are available while clearly indicating minimum requirements.
+
+<Note>
+**Backward Compatibility**: The deprecated `assets_required` field is still supported for existing implementations. New implementations should use `assets` with the `required` boolean on each asset.
+</Note>
 
 ### Rendered Outputs and Dimensions
 

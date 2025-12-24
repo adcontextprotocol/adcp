@@ -338,7 +338,9 @@ The keys in the assets object correspond to the `asset_id` values defined in the
 
 ## Usage in Creative Formats
 
-Creative formats specify their required assets using `assets_required` (an array):
+Creative formats specify their assets using the `assets` array. Each asset has a `required` boolean:
+- **`required: true`** - Asset MUST be provided for a valid creative
+- **`required: false`** - Asset is optional, enhances the creative (e.g., companion banners, third-party tracking pixels)
 
 ```json
 {
@@ -346,7 +348,7 @@ Creative formats specify their required assets using `assets_required` (an array
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_15s_hosted"
   },
-  "assets_required": [
+  "assets": [
     {
       "item_type": "individual",
       "asset_id": "video_file",
@@ -359,10 +361,24 @@ Creative formats specify their required assets using `assets_required` (an array
         "acceptable_resolutions": ["1920x1080", "1280x720"],
         "max_file_size_mb": 30
       }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "impression_tracker",
+      "asset_type": "tracking_pixel",
+      "required": false,
+      "requirements": {
+        "format": ["url"],
+        "description": "Third-party impression tracking pixel URL"
+      }
     }
   ]
 }
 ```
+
+<Note>
+**Backward Compatibility**: The deprecated `assets_required` field is still supported. New implementations should use `assets`.
+</Note>
 
 ## Repeatable Asset Groups
 

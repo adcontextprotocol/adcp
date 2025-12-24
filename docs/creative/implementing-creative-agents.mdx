@@ -100,7 +100,7 @@ Creative agents must implement these two tasks:
 Return all formats your agent defines. This is how buyers discover what creative formats you support.
 
 **Key responsibilities:**
-- Return complete format definitions with all `assets_required`
+- Return complete format definitions with all `assets` (both required and optional)
 - Include your `agent_url` in each format
 - Use proper namespacing for `format_id` values
 
@@ -169,7 +169,7 @@ When validating manifests:
 
 When updating format definitions:
 
-- **Additive changes** (new optional assets) are safe
+- **Additive changes** (new optional assets in `assets_optional`) are safe
 - **Breaking changes** (removing assets, changing requirements) require new format_id
 - Consider versioning: `youragency.com:format_name_v2`
 - Maintain backward compatibility when possible
