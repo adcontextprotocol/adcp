@@ -1489,7 +1489,12 @@
                   const billingData = await billingResponse.json();
                   return {
                     ...org,
-                    billing: billingData.subscription,
+                    billing: {
+                      ...billingData.subscription,
+                      company_type: billingData.company_type,
+                      revenue_tier: billingData.revenue_tier,
+                      is_personal: billingData.is_personal,
+                    },
                     stripeCustomerId: billingData.stripe_customer_id,
                     customerSessionSecret: billingData.customer_session_secret,
                     billingError: null
