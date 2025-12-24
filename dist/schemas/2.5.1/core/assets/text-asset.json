@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.1/core/assets/text-asset.json",
+  "title": "Text Asset",
+  "description": "Text content asset",
+  "type": "object",
+  "properties": {
+    "content": {
+      "type": "string",
+      "description": "Text content"
+    },
+    "language": {
+      "type": "string",
+      "description": "Language code (e.g., 'en', 'es', 'fr')"
+    }
+  },
+  "required": ["content"],
+  "additionalProperties": false
+}
