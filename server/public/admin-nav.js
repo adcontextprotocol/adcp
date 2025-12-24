@@ -13,7 +13,8 @@
       { href: '/admin/working-groups', label: 'Working Groups' },
       { href: '/admin/agreements', label: 'Agreements' },
       { href: '/admin/perspectives', label: 'Perspectives' },
-      { href: '/admin/analytics', label: 'Analytics' }
+      { href: '/admin/analytics', label: 'Analytics' },
+      { href: '/admin/audit', label: 'Audit Log' }
     ],
     backLink: { href: '/dashboard', label: '← Back to Dashboard' }
   };

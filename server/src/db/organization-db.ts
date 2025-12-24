@@ -310,6 +310,78 @@ export class OrganizationDatabase {
     );
   }
 
+  /**
+   * Get audit log entries with filtering and pagination
+   */
+  async getAuditLogs(options: {
+    workos_organization_id?: string;
+    action?: string;
+    resource_type?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    entries: Array<{
+      id: string;
+      workos_organization_id: string;
+      workos_user_id: string;
+      action: string;
+      resource_type: string;
+      resource_id: string | null;
+      details: Record<string, unknown>;
+      created_at: Date;
+    }>;
+    total: number;
+  }> {
+    const pool = getPool();
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    if (options.workos_organization_id) {
+      conditions.push(`workos_organization_id = $${paramIndex}`);
+      params.push(options.workos_organization_id);
+      paramIndex++;
+    }
+
+    if (options.action) {
+      conditions.push(`action = $${paramIndex}`);
+      params.push(options.action);
+      paramIndex++;
+    }
+
+    if (options.resource_type) {
+      conditions.push(`resource_type = $${paramIndex}`);
+      params.push(options.resource_type);
+      paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = options.limit || 50;
+    const offset = options.offset || 0;
+
+    // Get total count
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as count FROM registry_audit_log ${whereClause}`,
+      params
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    // Get entries
+    const result = await pool.query(
+      `SELECT id, workos_organization_id, workos_user_id, action, resource_type, resource_id, details, created_at
+       FROM registry_audit_log
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, limit, offset]
+    );
+
+    return {
+      entries: result.rows,
+      total,
+    };
+  }
+
   // Billing Methods
 
   /**
