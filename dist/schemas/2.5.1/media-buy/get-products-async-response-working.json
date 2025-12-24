@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.1/media-buy/get-products-async-response-working.json",
+  "title": "Get Products - Working",
+  "description": "Progress payload for active get_products task.",
+  "type": "object",
+  "properties": {
+    "percentage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Progress percentage of the search operation"
+    },
+    "current_step": {
+      "type": "string",
+      "description": "Current step in the search process (e.g., 'searching_inventory', 'validating_availability')"
+    },
+    "total_steps": {
+      "type": "integer",
+      "description": "Total number of steps in the search process"
+    },
+    "step_number": {
+      "type": "integer",
+      "description": "Current step number (1-indexed)"
+    },
+    "context": {
+      "$ref": "/schemas/2.5.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/2.5.1/core/ext.json"
+    }
+  },
+  "additionalProperties": false
+}
+

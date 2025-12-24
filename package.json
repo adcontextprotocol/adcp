@@ -1,6 +1,6 @@
 {
   "name": "adcontextprotocol",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "private": true,
   "scripts": {
     "start": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && DOTENV_CONFIG_PATH=.env.local PORT=${CONDUCTOR_PORT:-3000} tsx watch server/src/index.ts'",
@@ -8,7 +8,7 @@
     "start:stripe": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && PORT=${CONDUCTOR_PORT:-3000} && stripe listen --forward-to localhost:$PORT/api/webhooks/stripe'",
     "dev": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && DOTENV_CONFIG_PATH=.env.local concurrently --names \"HTTP,DOCS,STRIPE\" -c \"bgBlue.bold,bgGreen.bold,bgMagenta.bold\" \"npm run start\" \"npm run start:mintlify\" \"npm run start:stripe\"'",
     "db:migrate": "DOTENV_CONFIG_PATH=.env.local tsx --import dotenv/config server/src/db/migrate.ts",
-    "build": "tsc --project server/tsconfig.json && npm run build:schemas -- --release",
+    "build": "tsc --project server/tsconfig.json && npm run build:schemas",
     "build:schemas": "node scripts/build-schemas.js",
     "build:mintlify": "cd mintlify-docs && mintlify build",
     "deploy:mintlify": "mintlify deploy",

@@ -25,6 +25,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
@@ -349,6 +350,16 @@ async function main() {
     const v1Link = path.join(DIST_DIR, 'v1');
     console.log(`🔗 Creating symlink: v1 → latest (backward compatibility)`);
     createSymlink(latestDir, v1Link);
+
+    // Stage the new versioned directory for git commit
+    // This is needed for the changesets workflow to include it in the version commit
+    console.log(`📝 Staging dist/schemas/${version}/ for git commit`);
+    try {
+      execSync(`git add dist/schemas/${version}/`, { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
+    } catch (error) {
+      // Not in a git repo or git add failed - that's okay for non-CI builds
+      console.log(`   (git add skipped - not in git context or git not available)`);
+    }
 
     console.log('');
     console.log('✅ Release build complete!');

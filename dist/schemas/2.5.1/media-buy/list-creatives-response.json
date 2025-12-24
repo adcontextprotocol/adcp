@@ -1,0 +1,437 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.1/media-buy/list-creatives-response.json",
+  "title": "List Creatives Response",
+  "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
+  "type": "object",
+  "properties": {
+    "query_summary": {
+      "type": "object",
+      "description": "Summary of the query that was executed",
+      "properties": {
+        "total_matching": {
+          "type": "integer",
+          "description": "Total number of creatives matching filters (across all pages)",
+          "minimum": 0
+        },
+        "returned": {
+          "type": "integer",
+          "description": "Number of creatives returned in this response",
+          "minimum": 0
+        },
+        "filters_applied": {
+          "type": "array",
+          "description": "List of filters that were applied to the query",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sort_applied": {
+          "type": "object",
+          "description": "Sort order that was applied",
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "direction": {
+              "$ref": "/schemas/2.5.1/enums/sort-direction.json"
+            }
+          }
+        }
+      },
+      "required": [
+        "total_matching",
+        "returned"
+      ],
+      "additionalProperties": false
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination information for navigating results",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of results requested",
+          "minimum": 1
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Number of results skipped",
+          "minimum": 0
+        },
+        "has_more": {
+          "type": "boolean",
+          "description": "Whether more results are available"
+        },
+        "total_pages": {
+          "type": "integer",
+          "description": "Total number of pages available",
+          "minimum": 0
+        },
+        "current_page": {
+          "type": "integer",
+          "description": "Current page number (1-based)",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "limit",
+        "offset",
+        "has_more"
+      ],
+      "additionalProperties": false
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Array of creative assets matching the query",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Unique identifier for the creative"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable creative name"
+          },
+          "format_id": {
+            "$ref": "/schemas/2.5.1/core/format-id.json",
+            "description": "Format identifier specifying which format this creative conforms to"
+          },
+          "status": {
+            "$ref": "/schemas/2.5.1/enums/creative-status.json",
+            "description": "Current approval status of the creative"
+          },
+          "created_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the creative was uploaded to the library"
+          },
+          "updated_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the creative was last modified"
+          },
+          "assets": {
+            "type": "object",
+            "description": "Assets for this creative, keyed by asset_role",
+            "patternProperties": {
+              "^[a-zA-Z0-9_-]+$": {
+                "oneOf": [
+                  {
+                    "$ref": "/schemas/2.5.1/core/assets/image-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/2.5.1/core/assets/video-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/2.5.1/core/assets/audio-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/2.5.1/core/assets/text-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/2.5.1/core/assets/html-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/2.5.1/core/assets/css-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/2.5.1/core/assets/javascript-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/2.5.1/core/assets/vast-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/2.5.1/core/assets/daast-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/2.5.1/core/promoted-offerings.json"
+                  },
+                  {
+                    "$ref": "/schemas/2.5.1/core/assets/url-asset.json"
+                  }
+                ]
+              }
+            }
+          },
+          "tags": {
+            "type": "array",
+            "description": "User-defined tags for organization and searchability",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assignments": {
+            "type": "object",
+            "description": "Current package assignments (included when include_assignments=true)",
+            "properties": {
+              "assignment_count": {
+                "type": "integer",
+                "description": "Total number of active package assignments",
+                "minimum": 0
+              },
+              "assigned_packages": {
+                "type": "array",
+                "description": "List of packages this creative is assigned to",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "description": "Package identifier"
+                    },
+                    "package_name": {
+                      "type": "string",
+                      "description": "Human-readable package name"
+                    },
+                    "assigned_date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this assignment was created"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "paused",
+                        "ended"
+                      ],
+                      "description": "Status of this specific assignment"
+                    }
+                  },
+                  "required": [
+                    "package_id",
+                    "assigned_date",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "assignment_count"
+            ],
+            "additionalProperties": false
+          },
+          "performance": {
+            "type": "object",
+            "description": "Aggregated performance metrics (included when include_performance=true)",
+            "properties": {
+              "impressions": {
+                "type": "integer",
+                "description": "Total impressions across all assignments",
+                "minimum": 0
+              },
+              "clicks": {
+                "type": "integer",
+                "description": "Total clicks across all assignments",
+                "minimum": 0
+              },
+              "ctr": {
+                "type": "number",
+                "description": "Click-through rate (clicks/impressions)",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "conversion_rate": {
+                "type": "number",
+                "description": "Conversion rate across all assignments",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "performance_score": {
+                "type": "number",
+                "description": "Aggregated performance score (0-100)",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "last_updated": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When performance data was last updated"
+              }
+            },
+            "required": [
+              "last_updated"
+            ],
+            "additionalProperties": false
+          },
+          "sub_assets": {
+            "type": "array",
+            "description": "Sub-assets for multi-asset formats (included when include_sub_assets=true)",
+            "items": {
+              "$ref": "/schemas/2.5.1/core/sub-asset.json"
+            }
+          }
+        },
+        "required": [
+          "creative_id",
+          "name",
+          "format_id",
+          "status",
+          "created_date",
+          "updated_date"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "format_summary": {
+      "type": "object",
+      "description": "Breakdown of creatives by format type",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "integer",
+          "description": "Number of creatives with this format",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "status_summary": {
+      "type": "object",
+      "description": "Breakdown of creatives by status",
+      "properties": {
+        "approved": {
+          "type": "integer",
+          "description": "Number of approved creatives",
+          "minimum": 0
+        },
+        "pending_review": {
+          "type": "integer",
+          "description": "Number of creatives pending review",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "description": "Number of rejected creatives",
+          "minimum": 0
+        },
+        "archived": {
+          "type": "integer",
+          "description": "Number of archived creatives",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "$ref": "/schemas/2.5.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/2.5.1/core/ext.json"
+    }
+  },
+  "required": [
+    "query_summary",
+    "pagination",
+    "creatives"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Successful library query with results",
+      "data": {
+        "query_summary": {
+          "total_matching": 3,
+          "returned": 3,
+          "filters_applied": [
+            "format=video",
+            "status=approved"
+          ],
+          "sort_applied": {
+            "field": "created_date",
+            "direction": "desc"
+          }
+        },
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "has_more": false,
+          "total_pages": 1,
+          "current_page": 1
+        },
+        "creatives": [
+          {
+            "creative_id": "hero_video_30s",
+            "name": "Brand Hero Video 30s",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_30s_vast"
+            },
+            "status": "approved",
+            "created_date": "2024-01-15T10:30:00Z",
+            "updated_date": "2024-01-15T14:20:00Z",
+            "assets": {
+              "vast": {
+                "url": "https://vast.example.com/video/123",
+                "vast_version": "4.1"
+              }
+            },
+            "tags": [
+              "q1_2024",
+              "video",
+              "brand_awareness"
+            ]
+          }
+        ],
+        "format_summary": {
+          "video_30s_vast": 2,
+          "display_300x250": 1
+        },
+        "status_summary": {
+          "approved": 3,
+          "pending_review": 0,
+          "rejected": 0,
+          "archived": 0
+        }
+      }
+    },
+    {
+      "description": "Query with assignments and performance data",
+      "data": {
+        "query_summary": {
+          "total_matching": 1,
+          "returned": 1
+        },
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "has_more": false
+        },
+        "creatives": [
+          {
+            "creative_id": "hero_video_30s",
+            "name": "Brand Hero Video 30s",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_30s_vast"
+            },
+            "status": "approved",
+            "created_date": "2024-01-15T10:30:00Z",
+            "updated_date": "2024-01-15T14:20:00Z",
+            "assignments": {
+              "assignment_count": 2,
+              "assigned_packages": [
+                {
+                  "package_id": "pkg_ctv_001",
+                  "package_name": "CTV Prime Time",
+                  "assigned_date": "2024-01-16T09:00:00Z",
+                  "status": "active"
+                }
+              ]
+            },
+            "performance": {
+              "impressions": 150000,
+              "clicks": 1200,
+              "ctr": 0.008,
+              "performance_score": 85.2,
+              "last_updated": "2024-01-20T12:00:00Z"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

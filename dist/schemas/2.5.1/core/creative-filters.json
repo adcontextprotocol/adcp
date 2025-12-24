@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.1/core/creative-filters.json",
+  "title": "Creative Filters",
+  "description": "Filter criteria for querying creative assets from the centralized library",
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "description": "Filter by creative format type (e.g., video, audio, display)"
+    },
+    "formats": {
+      "type": "array",
+      "description": "Filter by multiple creative format types",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "$ref": "/schemas/2.5.1/enums/creative-status.json",
+      "description": "Filter by creative approval status"
+    },
+    "statuses": {
+      "type": "array",
+      "description": "Filter by multiple creative statuses",
+      "items": {
+        "$ref": "/schemas/2.5.1/enums/creative-status.json"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "description": "Filter by creative tags (all tags must match)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tags_any": {
+      "type": "array",
+      "description": "Filter by creative tags (any tag must match)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "name_contains": {
+      "type": "string",
+      "description": "Filter by creative names containing this text (case-insensitive)"
+    },
+    "creative_ids": {
+      "type": "array",
+      "description": "Filter by specific creative IDs",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 100
+    },
+    "created_after": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter creatives created after this date (ISO 8601)"
+    },
+    "created_before": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter creatives created before this date (ISO 8601)"
+    },
+    "updated_after": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter creatives last updated after this date (ISO 8601)"
+    },
+    "updated_before": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter creatives last updated before this date (ISO 8601)"
+    },
+    "assigned_to_package": {
+      "type": "string",
+      "description": "Filter creatives assigned to this specific package"
+    },
+    "assigned_to_packages": {
+      "type": "array",
+      "description": "Filter creatives assigned to any of these packages",
+      "items": {
+        "type": "string"
+      }
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "description": "Filter creatives assigned to any of these media buys",
+      "items": {
+        "type": "string"
+      }
+    },
+    "buyer_refs": {
+      "type": "array",
+      "description": "Filter creatives assigned to media buys with any of these buyer references",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unassigned": {
+      "type": "boolean",
+      "description": "Filter for unassigned creatives when true, assigned creatives when false"
+    },
+    "has_performance_data": {
+      "type": "boolean",
+      "description": "Filter creatives that have performance data when true"
+    }
+  },
+  "additionalProperties": false
+}
