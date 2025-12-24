@@ -70,12 +70,25 @@ export interface AgentCapabilities {
   };
 }
 
+/**
+ * Summary of an agent's property inventory (counts, not full list)
+ * Full property list available via /api/registry/agents/:id/properties
+ */
+export interface PropertySummary {
+  total_count: number;
+  count_by_type: Record<string, number>; // e.g., { "website": 50, "mobile_app": 20 }
+  tags: string[]; // All unique tags across properties
+  publisher_count: number;
+}
+
 export interface AgentWithStats extends Agent {
   health?: AgentHealth;
   stats?: AgentStats;
   capabilities?: AgentCapabilities;
-  properties?: any[];
   propertiesError?: string;
+  // Property summary (counts, not full list to avoid millions of records)
+  publisher_domains?: string[];
+  property_summary?: PropertySummary;
 }
 
 export interface AdAgentsJson {

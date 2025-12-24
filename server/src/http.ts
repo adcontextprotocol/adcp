@@ -15,8 +15,8 @@ import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { closeDatabase, getPool } from "./db/client.js";
-import { getPropertyIndex, CreativeAgentClient, SingleAgentClient } from "@adcp/client";
-import type { AgentType, AgentWithStats, Company } from "./types.js";
+import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
+import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import type { Server } from "http";
 import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, type RevenueEvent } from "./billing/stripe-client.js";
 import Stripe from "stripe";
@@ -278,75 +278,6 @@ export class HTTPServer {
       });
     });
 
-    this.app.get("/api/agents", async (req, res) => {
-      const type = req.query.type as AgentType | undefined;
-      const withHealth = req.query.health === "true";
-      const withCapabilities = req.query.capabilities === "true";
-      const withProperties = req.query.properties === "true";
-      const agents = await this.agentService.listAgents(type);
-
-      if (!withHealth && !withCapabilities && !withProperties) {
-        return res.json(agents);
-      }
-
-      // Enrich with health, stats, capabilities, and/or properties
-      const enriched = await Promise.all(
-        agents.map(async (agent): Promise<AgentWithStats> => {
-          const promises = [];
-
-          if (withHealth) {
-            promises.push(
-              this.healthChecker.checkHealth(agent),
-              this.healthChecker.getStats(agent)
-            );
-          }
-
-          if (withCapabilities) {
-            promises.push(
-              this.capabilityDiscovery.discoverCapabilities(agent)
-            );
-          }
-
-          if (withProperties && agent.type === "sales") {
-            promises.push(
-              this.propertiesService.getPropertiesForAgent(agent)
-            );
-          }
-
-          const results = await Promise.all(promises);
-
-          const enrichedAgent: AgentWithStats = { ...agent };
-          let resultIndex = 0;
-
-          if (withHealth) {
-            enrichedAgent.health = results[resultIndex++] as any;
-            enrichedAgent.stats = results[resultIndex++] as any;
-          }
-
-          if (withCapabilities) {
-            const capProfile = results[resultIndex++] as any;
-            enrichedAgent.capabilities = {
-              tools_count: capProfile.discovered_tools.length,
-              tools: capProfile.discovered_tools,
-              standard_operations: capProfile.standard_operations,
-              creative_capabilities: capProfile.creative_capabilities,
-              signals_capabilities: capProfile.signals_capabilities,
-            };
-          }
-
-          if (withProperties && agent.type === "sales") {
-            const propsProfile = results[resultIndex++] as any;
-            enrichedAgent.properties = propsProfile.properties;
-            enrichedAgent.propertiesError = propsProfile.error;
-          }
-
-          return enrichedAgent;
-        })
-      );
-
-      res.json(enriched);
-    });
-
     this.app.get("/api/agents/:type/:name", async (req, res) => {
       const agentId = `${req.params.type}/${req.params.name}`;
       const agent = await this.agentService.getAgent(agentId);
@@ -386,29 +317,6 @@ export class HTTPServer {
       }
     });
 
-    // Property lookup endpoints
-    this.app.get("/api/lookup/property", (req, res) => {
-      const { type, value } = req.query;
-
-      if (!type || !value) {
-        return res.status(400).json({
-          error: "Missing required query params: type and value",
-        });
-      }
-
-      const index = getPropertyIndex();
-      const agents = index.findAgentsForProperty(
-        type as any, // PropertyIdentifierType
-        value as string
-      );
-
-      res.json({
-        type,
-        value,
-        agents,
-        count: agents.length,
-      });
-    });
 
     this.app.get("/api/agents/:id/properties", async (req, res) => {
       const agentId = req.params.id;
@@ -418,25 +326,19 @@ export class HTTPServer {
         return res.status(404).json({ error: "Agent not found" });
       }
 
-      const index = getPropertyIndex();
-      const auth = index.getAgentAuthorizations(agent.url);
-
-      if (!auth) {
-        return res.json({
-          agent_id: agentId,
-          agent_url: agent.url,
-          properties: [],
-          publisher_domains: [],
-          count: 0,
-        });
-      }
+      // Get properties and publisher domains from database (populated by crawler)
+      const federatedIndex = this.crawler.getFederatedIndex();
+      const [properties, publisherDomains] = await Promise.all([
+        federatedIndex.getPropertiesForAgent(agent.url),
+        federatedIndex.getPublisherDomainsForAgent(agent.url),
+      ]);
 
       res.json({
         agent_id: agentId,
-        agent_url: auth.agent_url,
-        properties: auth.properties,
-        publisher_domains: auth.publisher_domains,
-        count: auth.properties.length,
+        agent_url: agent.url,
+        properties,
+        publisher_domains: publisherDomains,
+        count: properties.length,
       });
     });
 
@@ -500,83 +402,8 @@ export class HTTPServer {
       }
     });
 
-    // Publisher endpoints
-    this.app.get("/api/publishers", async (req, res) => {
-      const agents = await this.agentService.listAgents("sales");
-      try {
-        const statuses = await this.publisherTracker.trackPublishers(agents);
-        res.json({
-          total: statuses.size,
-          publishers: Array.from(statuses.values()),
-          stats: this.publisherTracker.getDeploymentStats(),
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Publisher tracking failed",
-        });
-      }
-    });
-
-    this.app.get("/api/publishers/:domain", async (req, res) => {
-      const domain = req.params.domain;
-      const agents = await this.agentService.listAgents("sales");
-
-      // Find agents claiming this domain
-      const expectedAgents = agents
-        .filter((a) => {
-          try {
-            const url = new URL(a.url);
-            return url.hostname === domain;
-          } catch {
-            return false;
-          }
-        })
-        .map((a) => a.url);
-
-      try {
-        const status = await this.publisherTracker.checkPublisher(domain, expectedAgents);
-        res.json(status);
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Publisher check failed",
-        });
-      }
-    });
-
-    this.app.get("/api/publishers/:domain/validation", async (req, res) => {
-      const domain = req.params.domain;
-      const agents = await this.agentService.listAgents("sales");
-
-      const expectedAgents = agents
-        .filter((a) => {
-          try {
-            const url = new URL(a.url);
-            return url.hostname === domain;
-          } catch {
-            return false;
-          }
-        })
-        .map((a) => a.url);
-
-      try {
-        const status = await this.publisherTracker.checkPublisher(domain, expectedAgents);
-        res.json({
-          domain: status.domain,
-          deployment_status: status.deployment_status,
-          issues: status.issues,
-          coverage_percentage: status.coverage_percentage,
-          recommended_actions: status.issues.map((issue) => ({
-            issue: issue.message,
-            fix: issue.fix,
-            severity: issue.severity,
-          })),
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Validation failed",
-        });
-      }
-    });
+    // Legacy publisher endpoints removed - use /api/registry/publishers instead
+    // The old /api/publishers was for adagents.json validation but was unused
 
 
 
@@ -3647,39 +3474,173 @@ Disallow: /api/admin/
       res.sendFile(usersPath);
     });
 
-    // Federated discovery endpoints
-    this.setupFederatedDiscoveryRoutes();
+    // Registry API endpoints (consolidated agents, publishers, lookups)
+    this.setupRegistryRoutes();
   }
 
   /**
-   * Setup federated discovery endpoints for merged registered + discovered data
+   * Setup registry API endpoints
+   * Consolidated endpoints for agents, publishers, and lookups
+   * These are the canonical endpoints - old /api/federated/* routes redirect here
    */
-  private setupFederatedDiscoveryRoutes(): void {
+  private setupRegistryRoutes(): void {
     const federatedIndex = this.crawler.getFederatedIndex();
 
-    // List all agents (registered + discovered)
-    this.app.get("/api/federated/agents", async (req, res) => {
+    // ========================================
+    // Registry Agents API
+    // ========================================
+
+    // GET /api/registry/agents - List all agents (registered + discovered)
+    // Supports enrichment via query params: health, capabilities, properties
+    this.app.get("/api/registry/agents", async (req, res) => {
       try {
         const type = req.query.type as AgentType | undefined;
-        const agents = await federatedIndex.listAllAgents(type);
+        const withHealth = req.query.health === "true";
+        const withCapabilities = req.query.capabilities === "true";
+        const withProperties = req.query.properties === "true";
+
+        // Get agents from federated index (includes both registered and discovered)
+        const federatedAgents = await federatedIndex.listAllAgents(type);
+
+        // Convert FederatedAgent to Agent format for enrichment
+        const agents = federatedAgents.map(fa => ({
+          name: fa.name || fa.url,
+          url: fa.url,
+          type: (fa.type || 'unknown') as AgentType,
+          protocol: fa.protocol || 'mcp',
+          description: fa.member?.display_name || fa.discovered_from?.publisher_domain || '',
+          mcp_endpoint: fa.url,
+          contact: {
+            name: fa.member?.display_name || '',
+            email: '',
+            website: '',
+          },
+          added_date: fa.discovered_at || new Date().toISOString().split('T')[0],
+          // Preserve federated metadata
+          source: fa.source,
+          member: fa.member,
+          discovered_from: fa.discovered_from,
+        }));
+
         const bySource = {
-          registered: agents.filter(a => a.source === 'registered').length,
-          discovered: agents.filter(a => a.source === 'discovered').length,
+          registered: federatedAgents.filter(a => a.source === 'registered').length,
+          discovered: federatedAgents.filter(a => a.source === 'discovered').length,
         };
+
+        // If no enrichment requested, return basic list
+        if (!withHealth && !withCapabilities && !withProperties) {
+          return res.json({
+            agents,
+            count: agents.length,
+            sources: bySource,
+          });
+        }
+
+        // Enrich with health, capabilities, and/or properties
+        const enriched = await Promise.all(
+          agents.map(async (agent): Promise<AgentWithStats> => {
+            const promises = [];
+
+            if (withHealth) {
+              promises.push(
+                this.healthChecker.checkHealth(agent as Agent),
+                this.healthChecker.getStats(agent as Agent)
+              );
+            }
+
+            if (withCapabilities) {
+              promises.push(
+                this.capabilityDiscovery.discoverCapabilities(agent as Agent)
+              );
+            }
+
+            // For properties, query from database (populated by crawler)
+            if (withProperties && agent.type === "sales") {
+              promises.push(
+                federatedIndex.getPropertiesForAgent(agent.url),
+                federatedIndex.getPublisherDomainsForAgent(agent.url)
+              );
+            }
+
+            const results = await Promise.all(promises);
+
+            const enrichedAgent: AgentWithStats = { ...agent } as AgentWithStats;
+            let resultIndex = 0;
+
+            if (withHealth) {
+              enrichedAgent.health = results[resultIndex++] as any;
+              enrichedAgent.stats = results[resultIndex++] as any;
+            }
+
+            if (withCapabilities) {
+              const capProfile = results[resultIndex++] as any;
+              if (capProfile) {
+                enrichedAgent.capabilities = {
+                  tools_count: capProfile.discovered_tools?.length || 0,
+                  tools: capProfile.discovered_tools || [],
+                  standard_operations: capProfile.standard_operations,
+                  creative_capabilities: capProfile.creative_capabilities,
+                  signals_capabilities: capProfile.signals_capabilities,
+                };
+              }
+            }
+
+            if (withProperties && agent.type === "sales") {
+              const properties = results[resultIndex++] as any[];
+              const publisherDomains = results[resultIndex++] as string[];
+
+              if (properties && properties.length > 0) {
+                // Return summary counts instead of full property list (can be millions)
+                // Full property details available via /api/registry/agents/:id/properties
+                enrichedAgent.publisher_domains = publisherDomains;
+
+                // Count properties by type (channel)
+                const countByType: Record<string, number> = {};
+                for (const prop of properties) {
+                  const type = prop.property_type || 'unknown';
+                  countByType[type] = (countByType[type] || 0) + 1;
+                }
+
+                // Collect all unique tags across properties
+                const allTags = new Set<string>();
+                for (const prop of properties) {
+                  for (const tag of prop.tags || []) {
+                    allTags.add(tag);
+                  }
+                }
+
+                // Property summary instead of full list
+                enrichedAgent.property_summary = {
+                  total_count: properties.length,
+                  count_by_type: countByType,
+                  tags: Array.from(allTags),
+                  publisher_count: publisherDomains.length,
+                };
+              }
+            }
+
+            return enrichedAgent;
+          })
+        );
+
         res.json({
-          agents,
-          count: agents.length,
+          agents: enriched,
+          count: enriched.length,
           sources: bySource,
         });
       } catch (error) {
         res.status(500).json({
-          error: error instanceof Error ? error.message : "Failed to list federated agents",
+          error: error instanceof Error ? error.message : "Failed to list agents",
         });
       }
     });
 
-    // List all publishers (registered + discovered)
-    this.app.get("/api/federated/publishers", async (req, res) => {
+    // ========================================
+    // Registry Publishers API
+    // ========================================
+
+    // GET /api/registry/publishers - List all publishers (registered + discovered)
+    this.app.get("/api/registry/publishers", async (req, res) => {
       try {
         const publishers = await federatedIndex.listAllPublishers();
         const bySource = {
@@ -3693,13 +3654,47 @@ Disallow: /api/admin/
         });
       } catch (error) {
         res.status(500).json({
-          error: error instanceof Error ? error.message : "Failed to list federated publishers",
+          error: error instanceof Error ? error.message : "Failed to list publishers",
         });
       }
     });
 
-    // Lookup domain - find all agents authorized for a domain
-    this.app.get("/api/lookup/domain/:domain", async (req, res) => {
+    // ========================================
+    // Registry Lookup API
+    // ========================================
+
+    // GET /api/registry/lookup/property - Find agents for a property
+    this.app.get("/api/registry/lookup/property", async (req, res) => {
+      const { type, value } = req.query;
+
+      if (!type || !value) {
+        return res.status(400).json({
+          error: "Missing required query params: type and value",
+        });
+      }
+
+      try {
+        // Query database for agents with matching property identifier
+        const results = await federatedIndex.findAgentsForPropertyIdentifier(
+          type as string,
+          value as string
+        );
+
+        res.json({
+          type,
+          value,
+          agents: results,
+          count: results.length,
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Property lookup failed",
+        });
+      }
+    });
+
+    // GET /api/registry/lookup/domain/:domain - Find agents authorized for a domain
+    this.app.get("/api/registry/lookup/domain/:domain", async (req, res) => {
       try {
         const domain = req.params.domain;
         const result = await federatedIndex.lookupDomain(domain);
@@ -3711,8 +3706,8 @@ Disallow: /api/admin/
       }
     });
 
-    // Get domains for a specific agent
-    this.app.get("/api/lookup/agent/:agentUrl/domains", async (req, res) => {
+    // GET /api/registry/lookup/agent/:agentUrl/domains - Get domains for an agent
+    this.app.get("/api/registry/lookup/agent/:agentUrl/domains", async (req, res) => {
       try {
         const agentUrl = decodeURIComponent(req.params.agentUrl);
         const domains = await federatedIndex.getDomainsForAgent(agentUrl);
@@ -3728,17 +3723,143 @@ Disallow: /api/admin/
       }
     });
 
-    // Get federated index stats
-    this.app.get("/api/federated/stats", async (req, res) => {
+    // ========================================
+    // Registry Validation API
+    // ========================================
+
+    // POST /api/registry/validate/product-authorization
+    // Validate agent authorization against a product's publisher_properties
+    // Accepts same format as Product.publisher_properties from get_products
+    // Use case: "Does agent X have rights to sell this product?"
+    this.app.post("/api/registry/validate/product-authorization", async (req, res) => {
+      try {
+        const { agent_url, publisher_properties } = req.body;
+
+        if (!agent_url) {
+          return res.status(400).json({
+            error: "Missing required field: agent_url",
+          });
+        }
+
+        if (!publisher_properties || !Array.isArray(publisher_properties)) {
+          return res.status(400).json({
+            error: "Missing required field: publisher_properties (array of selectors)",
+          });
+        }
+
+        const result = await federatedIndex.validateAgentForProduct(agent_url, publisher_properties);
+
+        res.json({
+          agent_url,
+          ...result,
+          checked_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Product authorization validation failed",
+        });
+      }
+    });
+
+    // POST /api/registry/expand/product-identifiers
+    // Expand publisher_properties selectors to concrete property identifiers
+    // Use case: Real-time system needs to cache all valid identifiers for a product
+    this.app.post("/api/registry/expand/product-identifiers", async (req, res) => {
+      try {
+        const { agent_url, publisher_properties } = req.body;
+
+        if (!agent_url) {
+          return res.status(400).json({
+            error: "Missing required field: agent_url",
+          });
+        }
+
+        if (!publisher_properties || !Array.isArray(publisher_properties)) {
+          return res.status(400).json({
+            error: "Missing required field: publisher_properties (array of selectors)",
+          });
+        }
+
+        const properties = await federatedIndex.expandPublisherPropertiesToIdentifiers(agent_url, publisher_properties);
+
+        // Flatten all identifiers for easy caching
+        const allIdentifiers: Array<{ type: string; value: string; property_id: string; publisher_domain: string }> = [];
+        for (const prop of properties) {
+          for (const identifier of prop.identifiers) {
+            allIdentifiers.push({
+              type: identifier.type,
+              value: identifier.value,
+              property_id: prop.property_id,
+              publisher_domain: prop.publisher_domain,
+            });
+          }
+        }
+
+        res.json({
+          agent_url,
+          properties,
+          identifiers: allIdentifiers,
+          property_count: properties.length,
+          identifier_count: allIdentifiers.length,
+          generated_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Property expansion failed",
+        });
+      }
+    });
+
+    // GET /api/registry/validate/property-authorization
+    // Quick check if a property identifier is authorized for an agent
+    // Optimized for real-time ad request validation
+    // Use case: "Is www.mytimes.com authorized for this agent?"
+    this.app.get("/api/registry/validate/property-authorization", async (req, res) => {
+      try {
+        const { agent_url, identifier_type, identifier_value } = req.query;
+
+        if (!agent_url || !identifier_type || !identifier_value) {
+          return res.status(400).json({
+            error: "Missing required query params: agent_url, identifier_type, identifier_value",
+          });
+        }
+
+        const result = await federatedIndex.isPropertyAuthorizedForAgent(
+          agent_url as string,
+          identifier_type as string,
+          identifier_value as string
+        );
+
+        res.json({
+          agent_url,
+          identifier_type,
+          identifier_value,
+          ...result,
+          checked_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : "Property authorization check failed",
+        });
+      }
+    });
+
+    // ========================================
+    // Registry Stats API
+    // ========================================
+
+    // GET /api/registry/stats - Get registry statistics
+    this.app.get("/api/registry/stats", async (req, res) => {
       try {
         const stats = await federatedIndex.getStats();
         res.json(stats);
       } catch (error) {
         res.status(500).json({
-          error: error instanceof Error ? error.message : "Failed to get federated stats",
+          error: error instanceof Error ? error.message : "Failed to get registry stats",
         });
       }
     });
+
   }
 
   private setupAuthRoutes(): void {

@@ -1,4 +1,4 @@
-import { FederatedIndexDatabase, type DiscoveredAgent, type DiscoveredPublisher, type AgentPublisherAuthorization } from './db/federated-index-db.js';
+import { FederatedIndexDatabase, type DiscoveredAgent, type DiscoveredPublisher, type AgentPublisherAuthorization, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
 import { MemberDatabase } from './db/member-db.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
 
@@ -274,6 +274,157 @@ export class FederatedIndexService {
   }
 
   // ============================================
+  // Property Recording (for crawler)
+  // ============================================
+
+  /**
+   * Record a property discovered from adagents.json and link it to authorized agents.
+   */
+  async recordProperty(
+    property: {
+      property_id?: string;
+      publisher_domain: string;
+      property_type: string;
+      name: string;
+      identifiers: PropertyIdentifier[];
+      tags?: string[];
+    },
+    agentUrl: string,
+    authorizedFor?: string
+  ): Promise<void> {
+    // Upsert the property
+    const savedProperty = await this.db.upsertProperty({
+      property_id: property.property_id,
+      publisher_domain: property.publisher_domain,
+      property_type: property.property_type,
+      name: property.name,
+      identifiers: property.identifiers,
+      tags: property.tags,
+    });
+
+    // Link agent to property
+    if (savedProperty.id) {
+      await this.db.upsertAgentPropertyAuthorization({
+        agent_url: agentUrl,
+        property_id: savedProperty.id,
+        authorized_for: authorizedFor,
+      });
+    }
+  }
+
+  /**
+   * Get all properties an agent can sell (from database).
+   */
+  async getPropertiesForAgent(agentUrl: string): Promise<DiscoveredProperty[]> {
+    return this.db.getPropertiesForAgent(agentUrl);
+  }
+
+  /**
+   * Get all publisher domains for an agent (from properties).
+   */
+  async getPublisherDomainsForAgent(agentUrl: string): Promise<string[]> {
+    return this.db.getPublisherDomainsForAgent(agentUrl);
+  }
+
+  /**
+   * Get all properties for a publisher domain.
+   */
+  async getPropertiesForDomain(domain: string): Promise<DiscoveredProperty[]> {
+    return this.db.getPropertiesForDomain(domain);
+  }
+
+  /**
+   * Find agents that can sell a specific property by identifier.
+   */
+  async findAgentsForPropertyIdentifier(
+    identifierType: string,
+    identifierValue: string
+  ): Promise<Array<{ agent_url: string; property: DiscoveredProperty; publisher_domain: string }>> {
+    return this.db.findAgentsForPropertyIdentifier(identifierType, identifierValue);
+  }
+
+  // ============================================
+  // Validation (for real-time checks)
+  // ============================================
+
+  /**
+   * Validate agent authorization against a product's publisher_properties.
+   * Accepts the same format as Product.publisher_properties from get_products.
+   *
+   * Use cases:
+   * - "Does agent X have rights to sell this product's inventory?"
+   * - "What percentage of this product is covered by agent X?"
+   *
+   * @param agentUrl - The agent URL to validate
+   * @param publisherProperties - Array of selectors (same format as Product.publisher_properties)
+   */
+  async validateAgentForProduct(
+    agentUrl: string,
+    publisherProperties: PublisherPropertySelector[]
+  ): Promise<{
+    authorized: boolean;
+    coverage_percentage: number;
+    total_requested: number;
+    total_authorized: number;
+    selectors: Array<{
+      publisher_domain: string;
+      selection_type: 'all' | 'by_id' | 'by_tag';
+      requested_count: number;
+      authorized_count: number;
+      unauthorized_items?: string[];
+      source: 'adagents_json' | 'agent_claim' | 'none';
+    }>;
+  }> {
+    return this.db.validateAgentForProduct(agentUrl, publisherProperties);
+  }
+
+  /**
+   * Expand publisher_properties selectors to all concrete property identifiers.
+   * Used by real-time systems to pre-cache all valid identifiers for a product.
+   *
+   * Use case: Real-time ad server needs to validate incoming requests against
+   * a product's authorized inventory. This expands the selectors to a flat list
+   * of all identifiers (domains, bundle IDs, etc.) that the system can cache.
+   *
+   * @param agentUrl - The agent URL
+   * @param publisherProperties - Array of selectors to expand
+   */
+  async expandPublisherPropertiesToIdentifiers(
+    agentUrl: string,
+    publisherProperties: PublisherPropertySelector[]
+  ): Promise<Array<{
+    publisher_domain: string;
+    property_id: string;
+    property_name: string;
+    property_type: string;
+    identifiers: Array<{ type: string; value: string }>;
+    tags: string[];
+  }>> {
+    return this.db.expandPublisherPropertiesToIdentifiers(agentUrl, publisherProperties);
+  }
+
+  /**
+   * Quick check if a property identifier is authorized for an agent.
+   * Optimized for real-time ad request validation.
+   * Use case: "Is this property ID/domain authorized for this agent?"
+   *
+   * @param agentUrl - The agent URL to check
+   * @param identifierType - Type (domain, ios_bundle, android_package, etc.)
+   * @param identifierValue - The identifier value
+   */
+  async isPropertyAuthorizedForAgent(
+    agentUrl: string,
+    identifierType: string,
+    identifierValue: string
+  ): Promise<{
+    authorized: boolean;
+    property_id?: string;
+    publisher_domain?: string;
+  }> {
+    return this.db.isPropertyAuthorizedForAgent(agentUrl, identifierType, identifierValue);
+  }
+
+  // ============================================
   // Maintenance
   // ============================================
 
@@ -292,8 +443,10 @@ export class FederatedIndexService {
     registered_publishers: number;
     discovered_agents: number;
     discovered_publishers: number;
+    discovered_properties: number;
     authorizations: number;
     authorizations_by_source: { adagents_json: number; agent_claim: number };
+    properties_by_type: Record<string, number>;
   }> {
     // Count registered
     const profiles = await this.memberDb.listProfiles({ is_public: true });
