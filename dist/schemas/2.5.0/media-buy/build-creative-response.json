@@ -6,7 +6,6 @@
   "type": "object",
   "oneOf": [
     {
-      "title": "BuildCreativeSuccess",
       "description": "Success response - creative manifest generated successfully",
       "type": "object",
       "properties": {
@@ -32,7 +31,6 @@
       }
     },
     {
-      "title": "BuildCreativeError",
       "description": "Error response - creative generation failed",
       "type": "object",
       "properties": {

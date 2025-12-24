@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/2.5.0/core/push-notification-config.json",
   "title": "Push Notification Config",
-  "description": "Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. Supports Bearer tokens (simple) or HMAC signatures (production-recommended). This schema is designed for composition via allOf - consuming schemas should define their own additionalProperties constraints.",
+  "description": "Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. Supports Bearer tokens (simple) or HMAC signatures (production-recommended).",
   "type": "object",
   "properties": {
     "url": {
@@ -38,5 +38,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["url", "authentication"]
+  "required": ["url", "authentication"],
+  "additionalProperties": false
 }

@@ -10,7 +10,8 @@
       "properties": {
         "$schema": {
           "type": "string",
-          "description": "JSON Schema identifier for this adagents.json file"
+          "description": "JSON Schema identifier for this adagents.json file",
+          "default": "https://adcontextprotocol.org/schemas/adagents.json"
         },
         "authoritative_location": {
           "type": "string",
@@ -33,7 +34,8 @@
       "properties": {
         "$schema": {
           "type": "string",
-          "description": "JSON Schema identifier for this adagents.json file"
+          "description": "JSON Schema identifier for this adagents.json file",
+          "default": "https://adcontextprotocol.org/schemas/adagents.json"
         },
         "contact": {
       "type": "object",
@@ -245,12 +247,12 @@
   ],
   "examples": [
     {
-      "$schema": "/schemas/2.5.0/adagents.json",
+      "$schema": "https://adcontextprotocol.org/schemas/adagents.json",
       "authoritative_location": "https://cdn.example.com/adagents/v2/adagents.json",
       "last_updated": "2025-01-15T10:00:00Z"
     },
     {
-      "$schema": "/schemas/2.5.0/adagents.json",
+      "$schema": "https://adcontextprotocol.org/schemas/adagents.json",
       "properties": [
         {
           "property_type": "website",
@@ -278,7 +280,7 @@
       "last_updated": "2025-01-10T12:00:00Z"
     },
     {
-      "$schema": "/schemas/2.5.0/adagents.json",
+      "$schema": "https://adcontextprotocol.org/schemas/adagents.json",
       "contact": {
         "name": "Meta Advertising Operations",
         "email": "adops@meta.com",
@@ -343,7 +345,7 @@
       "last_updated": "2025-01-10T15:30:00Z"
     },
     {
-      "$schema": "/schemas/2.5.0/adagents.json",
+      "$schema": "https://adcontextprotocol.org/schemas/adagents.json",
       "contact": {
         "name": "Tumblr Advertising"
       },
@@ -375,7 +377,7 @@
       "last_updated": "2025-01-10T16:00:00Z"
     },
     {
-      "$schema": "/schemas/2.5.0/adagents.json",
+      "$schema": "https://adcontextprotocol.org/schemas/adagents.json",
       "contact": {
         "name": "Example Third-Party Sales Agent",
         "email": "sales@agent.example",

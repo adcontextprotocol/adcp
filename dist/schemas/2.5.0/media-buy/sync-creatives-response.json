@@ -6,7 +6,6 @@
   "type": "object",
   "oneOf": [
     {
-      "title": "SyncCreativesSuccess",
       "description": "Success response - sync operation processed creatives (may include per-item failures)",
       "type": "object",
       "properties": {
@@ -107,7 +106,6 @@
       }
     },
     {
-      "title": "SyncCreativesError",
       "description": "Error response - operation failed completely, no creatives were processed",
       "type": "object",
       "properties": {

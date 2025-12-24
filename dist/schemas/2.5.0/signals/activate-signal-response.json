@@ -6,7 +6,6 @@
   "type": "object",
   "oneOf": [
     {
-      "title": "ActivateSignalSuccess",
       "description": "Success response - signal activated successfully to one or more deployment targets",
       "type": "object",
       "properties": {
@@ -35,7 +34,6 @@
       }
     },
     {
-      "title": "ActivateSignalError",
       "description": "Error response - operation failed, signal not activated",
       "type": "object",
       "properties": {

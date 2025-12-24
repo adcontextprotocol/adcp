@@ -6,7 +6,6 @@
   "type": "object",
   "oneOf": [
     {
-      "title": "ProvidePerformanceFeedbackSuccess",
       "description": "Success response - feedback received and processed",
       "type": "object",
       "properties": {
@@ -33,7 +32,6 @@
       }
     },
     {
-      "title": "ProvidePerformanceFeedbackError",
       "description": "Error response - feedback rejected or could not be processed",
       "type": "object",
       "properties": {
