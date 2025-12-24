@@ -551,6 +551,14 @@ The duplication is minimal since we use `$ref` - we're only repeating the refere
 - ✅ `preview-creative-response.json` - `ext` in each variant
 - ✅ `sync-creatives-response.json` - `ext` in each variant
 
+### Avoiding allOf with additionalProperties
+
+Never use `allOf` when you need `additionalProperties: false`. JSON Schema's `additionalProperties` only sees properties in the **same schema object** - not from `$ref` or `allOf`. Properties from composed schemas get rejected as "additional".
+
+**Solution**: Inline the base schema fields. Add a `$comment` noting which base schema was inlined.
+
+**Example**: `create-media-buy-request.json` `reporting_webhook` inlines `push-notification-config.json` fields.
+
 ### Schema Location Map
 
 - **Task Requests**: `static/schemas/v1/media-buy/` or `static/schemas/v1/signals/`
