@@ -1,5 +1,41 @@
 # Changelog
 
+## 2.5.2
+
+### Minor Changes
+
+- Add `assets_optional` field to format schema for better asset discovery
+
+  **Schema Changes:**
+
+  - **format.json**: Add `assets_optional` array field alongside existing `assets_required`
+
+  **Rationale:**
+
+  Formats often support optional assets that enhance the creative experience but aren't strictly required. Previously, there was no way to advertise these capabilities - buyers could only see required assets. The new `assets_optional` field enables:
+
+  - **Better asset discovery**: Buyers and AI agents can see the full range of assets a format supports
+  - **Richer creatives**: When optional assets are available, formats can produce enhanced experiences
+  - **Clear separation**: Required vs optional assets are explicitly distinguished
+
+  **Example:**
+
+  ```json
+  {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" },
+    "assets_required": [
+      { "item_type": "individual", "asset_id": "video_file", "asset_type": "video" }
+    ],
+    "assets_optional": [
+      { "item_type": "individual", "asset_id": "end_card", "asset_type": "image" },
+      { "item_type": "individual", "asset_id": "companion_banner", "asset_type": "image" },
+      { "item_type": "individual", "asset_id": "impression_tracker", "asset_type": "tracking_pixel" }
+    ]
+  }
+  ```
+
+  **Migration:** Non-breaking change. Existing formats without `assets_optional` continue to work unchanged.
+
 ## 2.5.1
 
 ### Patch Changes

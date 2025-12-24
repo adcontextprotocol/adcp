@@ -218,6 +218,7 @@ Formats are JSON objects with the following key fields:
   "type": "video",
   "assets_required": [
     {
+      "item_type": "individual",
       "asset_id": "video_file",
       "asset_type": "video",
       "asset_role": "hero_video",
@@ -228,6 +229,38 @@ Formats are JSON objects with the following key fields:
         "resolution": ["1920x1080", "1280x720"]
       }
     }
+  ],
+  "assets_optional": [
+    {
+      "item_type": "individual",
+      "asset_id": "end_card_image",
+      "asset_type": "image",
+      "asset_role": "end_card",
+      "requirements": {
+        "dimensions": "1920x1080",
+        "format": ["PNG", "JPG"]
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "companion_banner",
+      "asset_type": "image",
+      "asset_role": "companion",
+      "requirements": {
+        "dimensions": "300x250",
+        "format": ["PNG", "JPG", "GIF"]
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "impression_tracker",
+      "asset_type": "tracking_pixel",
+      "asset_role": "third_party_tracking",
+      "requirements": {
+        "format": ["url"],
+        "description": "Third-party impression tracking pixel URL"
+      }
+    }
   ]
 }
 ```
@@ -236,9 +269,19 @@ Formats are JSON objects with the following key fields:
 - **format_id**: Unique identifier (may be namespaced with `domain:id`)
 - **agent_url**: The creative agent authoritative for this format
 - **type**: Category (video, display, audio, native, dooh, rich_media)
-- **assets_required**: Array of asset specifications
+- **assets_required**: Array of required asset specifications - creatives MUST provide these
+- **assets_optional**: Array of optional asset specifications - creatives MAY provide these for enhanced experiences
 - **asset_role**: Identifies asset purpose (hero_image, logo, cta_button, etc.)
 - **renders**: Array of rendered outputs with dimensions - see below
+
+### Asset Discovery
+
+The `assets_required` and `assets_optional` arrays enable comprehensive asset discovery. Buyers can inspect a format to understand:
+
+1. **What they must provide** (`assets_required`) - Minimum assets needed for a valid creative
+2. **What they can provide** (`assets_optional`) - Additional assets that enhance the creative or addtional third-party tracking assets.
+
+This separation helps creative tools and AI agents understand the full capabilities of a format, enabling richer creative experiences when optional assets are available while ensuring minimum requirements are always clear.
 
 ### Rendered Outputs and Dimensions
 

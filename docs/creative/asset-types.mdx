@@ -338,7 +338,9 @@ The keys in the assets object correspond to the `asset_id` values defined in the
 
 ## Usage in Creative Formats
 
-Creative formats specify their required assets using `assets_required` (an array):
+Creative formats specify their assets using two arrays:
+- **`assets_required`** - Assets that MUST be provided for a valid creative
+- **`assets_optional`** - Assets that MAY be provided for enhanced experiences (e.g., companion banners, third-party tracking pixels)
 
 ```json
 {
@@ -358,6 +360,17 @@ Creative formats specify their required assets using `assets_required` (an array
         "acceptable_codecs": ["h264"],
         "acceptable_resolutions": ["1920x1080", "1280x720"],
         "max_file_size_mb": 30
+      }
+    }
+  ],
+  "assets_optional": [
+    {
+      "item_type": "individual",
+      "asset_id": "impression_tracker",
+      "asset_type": "tracking_pixel",
+      "requirements": {
+        "format": ["url"],
+        "description": "Third-party impression tracking pixel URL"
       }
     }
   ]
