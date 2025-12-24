@@ -962,6 +962,20 @@ export class HTTPServer {
                       userEmail,
                     }, 'Subscription created - membership agreement recorded atomically');
 
+                    // Record audit log for subscription creation
+                    await orgDb.recordAuditLog({
+                      workos_organization_id: org.workos_organization_id,
+                      workos_user_id: workosUser.id,
+                      action: 'subscription_created',
+                      resource_type: 'subscription',
+                      resource_id: subscription.id,
+                      details: {
+                        status: subscription.status,
+                        agreement_version: agreementVersion,
+                        stripe_customer_id: customerId,
+                      },
+                    });
+
                     // Send Slack notification for new subscription
                     // Get subscription details for notification
                     const subItems = subscription.items?.data || [];
@@ -1048,6 +1062,19 @@ export class HTTPServer {
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
+                  // Record audit log for subscription cancellation (use system user since webhook context)
+                  await orgDb.recordAuditLog({
+                    workos_organization_id: org.workos_organization_id,
+                    workos_user_id: 'system',
+                    action: 'subscription_cancelled',
+                    resource_type: 'subscription',
+                    resource_id: subscription.id,
+                    details: {
+                      status: subscription.status,
+                      stripe_customer_id: customerId,
+                    },
+                  });
+
                   notifySubscriptionCancelled({
                     organizationName: org.name || 'Unknown Organization',
                   }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
@@ -1602,6 +1629,73 @@ export class HTTPServer {
       res.sendFile(adminPath);
     });
 
+
+    // GET /api/admin/audit-logs - Get audit log entries
+    this.app.get('/api/admin/audit-logs', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const {
+          organization_id,
+          action,
+          resource_type,
+          limit = '50',
+          offset = '0',
+        } = req.query;
+
+        const auditOrgDb = new OrganizationDatabase();
+        const result = await auditOrgDb.getAuditLogs({
+          workos_organization_id: organization_id as string | undefined,
+          action: action as string | undefined,
+          resource_type: resource_type as string | undefined,
+          limit: parseInt(limit as string, 10),
+          offset: parseInt(offset as string, 10),
+        });
+
+        // Enrich with organization and user names
+        const enrichedEntries = await Promise.all(
+          result.entries.map(async (entry) => {
+            let organizationName = 'Unknown';
+            let userName = 'Unknown';
+
+            try {
+              const org = await workos!.organizations.getOrganization(entry.workos_organization_id);
+              organizationName = org.name;
+            } catch {
+              // Org may have been deleted
+            }
+
+            if (entry.workos_user_id !== 'system') {
+              try {
+                const user = await workos!.userManagement.getUser(entry.workos_user_id);
+                userName = user.email || `${user.firstName} ${user.lastName}`.trim() || 'Unknown';
+              } catch {
+                // User may have been deleted
+              }
+            } else {
+              userName = 'System';
+            }
+
+            return {
+              ...entry,
+              organization_name: organizationName,
+              user_name: userName,
+            };
+          })
+        );
+
+        res.json({
+          entries: enrichedEntries,
+          total: result.total,
+          limit: parseInt(limit as string, 10),
+          offset: parseInt(offset as string, 10),
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Get audit logs error:');
+        res.status(500).json({
+          error: 'Failed to get audit logs',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
 
     // Admin agreement management endpoints
     // GET /api/admin/agreements - List all agreements
@@ -3460,6 +3554,13 @@ Disallow: /api/admin/
       res.sendFile(analyticsPath);
     });
 
+    this.app.get('/admin/audit', requireAuth, requireAdmin, (req, res) => {
+      const auditPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-audit.html')
+        : path.join(__dirname, '../public/admin-audit.html');
+      res.sendFile(auditPath);
+    });
+
     this.app.get('/admin/perspectives', requireAuth, requireAdmin, (req, res) => {
       const perspectivesPath = process.env.NODE_ENV === 'production'
         ? path.join(__dirname, '../server/public/admin-perspectives.html')
@@ -4678,6 +4779,18 @@ Disallow: /api/admin/
           requestId: request.id,
         }, 'Join request created');
 
+        // Record audit log for join request
+        await orgDb.recordAuditLog({
+          workos_organization_id: organization_id,
+          workos_user_id: user.id,
+          action: 'join_request_created',
+          resource_type: 'join_request',
+          resource_id: request.id,
+          details: {
+            user_email: user.email,
+          },
+        });
+
         res.status(201).json({
           success: true,
           message: `Request to join ${orgName} submitted`,
@@ -4851,6 +4964,20 @@ Disallow: /api/admin/
           email: request.user_email,
         }, 'Join request approved');
 
+        // Record audit log for join request approval
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'join_request_approved',
+          resource_type: 'join_request',
+          resource_id: requestId,
+          details: {
+            requester_user_id: request.workos_user_id,
+            requester_email: request.user_email,
+            role_assigned: role,
+          },
+        });
+
         res.json({
           success: true,
           message: `Invitation sent to ${request.user_email}`,
@@ -4936,6 +5063,20 @@ Disallow: /api/admin/
           requesterId: request.workos_user_id,
           reason,
         }, 'Join request rejected');
+
+        // Record audit log for join request rejection
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'join_request_rejected',
+          resource_type: 'join_request',
+          resource_id: requestId,
+          details: {
+            requester_user_id: request.workos_user_id,
+            requester_email: request.user_email,
+            reason: reason || null,
+          },
+        });
 
         res.json({
           success: true,
@@ -5197,6 +5338,21 @@ Disallow: /api/admin/
           company_type: orgRecord.company_type,
           revenue_tier: orgRecord.revenue_tier,
         }, 'Organization record created in database');
+
+        // Record audit log for organization creation
+        await orgDb.recordAuditLog({
+          workos_organization_id: workosOrg.id,
+          workos_user_id: user.id,
+          action: 'organization_created',
+          resource_type: 'organization',
+          resource_id: workosOrg.id,
+          details: {
+            name: trimmedName,
+            is_personal: is_personal || false,
+            company_type: company_type || null,
+            revenue_tier: revenue_tier || null,
+          },
+        });
 
         // Record ToS and Privacy Policy acceptance
         const tosAgreement = await orgDb.getCurrentAgreementByType('terms_of_service');
