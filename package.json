@@ -1,6 +1,6 @@
 {
   "name": "adcontextprotocol",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "private": true,
   "scripts": {
     "start": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && DOTENV_CONFIG_PATH=.env.local PORT=${CONDUCTOR_PORT:-3000} tsx watch server/src/index.ts'",

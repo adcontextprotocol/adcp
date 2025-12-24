@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry v1",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "2.5.0",
+  "adcp_version": "2.5.1",
   "standard_formats_version": "2.0.0",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
