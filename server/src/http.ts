@@ -5184,7 +5184,7 @@ Disallow: /api/admin/
         logger.info({ userId: user.id, orgId: workosOrg.id }, 'User added as organization owner');
 
         // Create organization record in our database
-        await orgDb.createOrganization({
+        const orgRecord = await orgDb.createOrganization({
           workos_organization_id: workosOrg.id,
           name: trimmedName,
           is_personal: is_personal || false,
@@ -5192,7 +5192,11 @@ Disallow: /api/admin/
           revenue_tier: revenue_tier || undefined,
         });
 
-        logger.info({ orgId: workosOrg.id }, 'Organization record created in database');
+        logger.info({
+          orgId: workosOrg.id,
+          company_type: orgRecord.company_type,
+          revenue_tier: orgRecord.revenue_tier,
+        }, 'Organization record created in database');
 
         // Record ToS and Privacy Policy acceptance
         const tosAgreement = await orgDb.getCurrentAgreementByType('terms_of_service');
