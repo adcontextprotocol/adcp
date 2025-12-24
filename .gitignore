@@ -3,7 +3,12 @@
 
 # Production
 /build
-/dist
+
+# Ignore dist except for released schemas
+/dist/*
+!/dist/schemas
+/dist/schemas/latest
+/dist/schemas/v*
 
 # Generated files
 .docusaurus

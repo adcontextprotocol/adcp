@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.0/enums/format-category.json",
+  "title": "Format Category",
+  "description": "High-level categories for creative formats based on media type and delivery channel. Describes WHERE and HOW a creative displays, not what content it contains.",
+  "type": "string",
+  "enum": [
+    "audio",
+    "video",
+    "display",
+    "native",
+    "dooh",
+    "rich_media",
+    "universal"
+  ]
+}

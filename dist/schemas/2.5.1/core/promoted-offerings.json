@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.1/core/promoted-offerings.json",
+  "title": "Promoted Offerings",
+  "description": "Complete offering specification combining brand manifest, product selectors, and asset filters. Provides all context needed for creative generation about what is being promoted.",
+  "type": "object",
+  "properties": {
+    "brand_manifest": {
+      "$ref": "/schemas/2.5.1/core/brand-manifest-ref.json",
+      "description": "Brand information manifest containing assets, themes, and guidelines. Can be provided inline or as a URL reference to a hosted manifest."
+    },
+    "product_selectors": {
+      "$ref": "/schemas/2.5.1/core/promoted-products.json",
+      "description": "Selectors to choose which products/offerings from the brand manifest product catalog to promote"
+    },
+    "offerings": {
+      "type": "array",
+      "description": "Inline offerings for campaigns without a product catalog. Each offering has a name, description, and associated assets.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Offering name (e.g., 'Winter Sale', 'New Product Launch')"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of what's being offered"
+          },
+          "assets": {
+            "type": "array",
+            "description": "Assets specific to this offering",
+            "items": {
+              "type": "object",
+              "description": "Asset definition using standard asset structure",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+    "asset_selectors": {
+      "type": "object",
+      "description": "Selectors to choose specific assets from the brand manifest",
+      "properties": {
+        "tags": {
+          "type": "array",
+          "description": "Select assets with specific tags (e.g., ['holiday', 'premium'])",
+          "items": {
+            "type": "string"
+          }
+        },
+        "asset_types": {
+          "type": "array",
+          "description": "Filter by asset type (e.g., ['image', 'video'])",
+          "items": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "vast", "daast", "text", "url", "html", "css", "javascript", "webhook"]
+          }
+        },
+        "exclude_tags": {
+          "type": "array",
+          "description": "Exclude assets with these tags",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["brand_manifest"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "brand_manifest": {
+        "name": "Brand Name",
+        "url": "https://brand.com"
+      },
+      "product_selectors": {
+        "manifest_skus": ["SKU-123", "SKU-456"]
+      },
+      "asset_selectors": {
+        "tags": ["holiday"],
+        "asset_types": ["image", "video"]
+      }
+    }
+  ]
+}

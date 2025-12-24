@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.0/protocols/adcp-extension.json",
+  "title": "AdCP Agent Card Extension",
+  "description": "Extension metadata for agent cards (MCP and A2A) declaring AdCP version and supported protocol domains",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the AdCP specification this agent implements (e.g., '2.4.0')"
+    },
+    "protocols_supported": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["media_buy", "creative", "signals"]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "AdCP protocol domains supported by this agent. At least one must be specified."
+    }
+  },
+  "required": ["adcp_version", "protocols_supported"],
+  "additionalProperties": false
+}

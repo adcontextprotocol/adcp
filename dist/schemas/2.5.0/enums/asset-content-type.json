@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.0/enums/asset-content-type.json",
+  "title": "Asset Content Type",
+  "description": "Types of content that can be used as creative assets. Describes what KIND of content an asset contains (image, video, code, etc.), not where it displays.",
+  "type": "string",
+  "enum": [
+    "image",
+    "video",
+    "audio",
+    "text",
+    "markdown",
+    "html",
+    "css",
+    "javascript",
+    "vast",
+    "daast",
+    "promoted_offerings",
+    "url",
+    "webhook"
+  ]
+}

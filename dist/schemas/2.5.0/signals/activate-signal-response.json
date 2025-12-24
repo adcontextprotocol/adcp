@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/2.5.0/signals/activate-signal-response.json",
+  "title": "Activate Signal Response",
+  "description": "Response payload for activate_signal task. Returns either complete success data OR error information, never both. This enforces atomic operation semantics - the signal is either fully activated or not activated at all.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "ActivateSignalSuccess",
+      "description": "Success response - signal activated successfully to one or more deployment targets",
+      "type": "object",
+      "properties": {
+        "deployments": {
+          "type": "array",
+          "description": "Array of deployment results for each deployment target",
+          "items": {
+            "$ref": "/schemas/2.5.0/core/deployment.json"
+          }
+        },
+        "context": {
+          "$ref": "/schemas/2.5.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/2.5.0/core/ext.json"
+        }
+      },
+      "required": [
+        "deployments"
+      ],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "title": "ActivateSignalError",
+      "description": "Error response - operation failed, signal not activated",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Array of errors explaining why activation failed (e.g., platform connectivity issues, signal definition problems, authentication failures)",
+          "items": {
+            "$ref": "/schemas/2.5.0/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/2.5.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/2.5.0/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "deployments"
+        ]
+      }
+    }
+  ]
+}
