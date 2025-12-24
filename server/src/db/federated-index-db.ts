@@ -44,6 +44,50 @@ export interface AgentPublisherAuthorization {
 }
 
 /**
+ * Property identifier from adagents.json
+ */
+export interface PropertyIdentifier {
+  type: string;  // domain, ios_bundle, android_package, etc.
+  value: string;
+}
+
+/**
+ * Discovered property from adagents.json properties array
+ */
+export interface DiscoveredProperty {
+  id?: string;
+  property_id?: string;  // Optional ID from adagents.json
+  publisher_domain: string;
+  property_type: string;  // website, mobile_app, ctv_app, etc.
+  name: string;
+  identifiers: PropertyIdentifier[];
+  tags?: string[];
+  discovered_at?: Date;
+  last_validated?: Date;
+  expires_at?: Date;
+}
+
+/**
+ * Agent-property authorization
+ */
+export interface AgentPropertyAuthorization {
+  id?: string;
+  agent_url: string;
+  property_id: string;  // UUID of discovered_properties row
+  authorized_for?: string;
+  discovered_at?: Date;
+}
+
+/**
+ * Publisher property selector from AdCP Product schema.
+ * Supports three selection patterns: all, by_id, by_tag
+ */
+export type PublisherPropertySelector =
+  | { publisher_domain: string; selection_type: 'all' }
+  | { publisher_domain: string; selection_type: 'by_id'; property_ids: string[] }
+  | { publisher_domain: string; selection_type: 'by_tag'; property_tags: string[] };
+
+/**
  * Database operations for federated discovery index
  */
 export class FederatedIndexDatabase {
@@ -257,6 +301,534 @@ export class FederatedIndexDatabase {
   }
 
   // ============================================
+  // Property CRUD (for crawler)
+  // ============================================
+
+  /**
+   * Upsert a discovered property
+   */
+  async upsertProperty(property: DiscoveredProperty): Promise<DiscoveredProperty> {
+    const result = await query<DiscoveredProperty>(
+      `INSERT INTO discovered_properties (
+         property_id, publisher_domain, property_type, name, identifiers, tags, expires_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (publisher_domain, name, property_type) DO UPDATE SET
+         property_id = COALESCE(EXCLUDED.property_id, discovered_properties.property_id),
+         identifiers = EXCLUDED.identifiers,
+         tags = EXCLUDED.tags,
+         last_validated = NOW(),
+         expires_at = EXCLUDED.expires_at
+       RETURNING *`,
+      [
+        property.property_id || null,
+        property.publisher_domain,
+        property.property_type,
+        property.name,
+        JSON.stringify(property.identifiers),
+        property.tags || [],
+        property.expires_at || null,
+      ]
+    );
+    return this.deserializeProperty(result.rows[0]);
+  }
+
+  /**
+   * Link an agent to a property
+   */
+  async upsertAgentPropertyAuthorization(auth: AgentPropertyAuthorization): Promise<AgentPropertyAuthorization> {
+    const result = await query<AgentPropertyAuthorization>(
+      `INSERT INTO agent_property_authorizations (
+         agent_url, property_id, authorized_for
+       ) VALUES ($1, $2, $3)
+       ON CONFLICT (agent_url, property_id) DO UPDATE SET
+         authorized_for = COALESCE(EXCLUDED.authorized_for, agent_property_authorizations.authorized_for)
+       RETURNING *`,
+      [
+        auth.agent_url,
+        auth.property_id,
+        auth.authorized_for || null,
+      ]
+    );
+    return result.rows[0];
+  }
+
+  /**
+   * Get all properties for an agent (via agent_property_authorizations)
+   */
+  async getPropertiesForAgent(agentUrl: string): Promise<DiscoveredProperty[]> {
+    const result = await query<DiscoveredProperty>(
+      `SELECT p.*
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE apa.agent_url = $1
+       ORDER BY p.publisher_domain, p.property_type, p.name`,
+      [agentUrl]
+    );
+    return result.rows.map(row => this.deserializeProperty(row));
+  }
+
+  /**
+   * Get all properties for a publisher domain
+   */
+  async getPropertiesForDomain(domain: string): Promise<DiscoveredProperty[]> {
+    const result = await query<DiscoveredProperty>(
+      `SELECT * FROM discovered_properties
+       WHERE publisher_domain = $1
+       ORDER BY property_type, name`,
+      [domain]
+    );
+    return result.rows.map(row => this.deserializeProperty(row));
+  }
+
+  /**
+   * Get publisher domains for an agent (from properties)
+   */
+  async getPublisherDomainsForAgent(agentUrl: string): Promise<string[]> {
+    const result = await query<{ publisher_domain: string }>(
+      `SELECT DISTINCT p.publisher_domain
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE apa.agent_url = $1
+       ORDER BY p.publisher_domain`,
+      [agentUrl]
+    );
+    return result.rows.map(r => r.publisher_domain);
+  }
+
+  /**
+   * Find agents that can sell a specific property by identifier
+   */
+  async findAgentsForPropertyIdentifier(
+    identifierType: string,
+    identifierValue: string
+  ): Promise<Array<{ agent_url: string; property: DiscoveredProperty; publisher_domain: string }>> {
+    // Query properties that have matching identifier in JSONB array
+    const result = await query<{
+      agent_url: string;
+      publisher_domain: string;
+      id: string;
+      property_id: string;
+      property_type: string;
+      name: string;
+      identifiers: string;
+      tags: string[];
+    }>(
+      `SELECT apa.agent_url, p.publisher_domain, p.id, p.property_id, p.property_type, p.name, p.identifiers, p.tags
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE p.identifiers @> $1::jsonb
+       ORDER BY p.publisher_domain, apa.agent_url`,
+      [JSON.stringify([{ type: identifierType, value: identifierValue }])]
+    );
+
+    return result.rows.map(row => ({
+      agent_url: row.agent_url,
+      publisher_domain: row.publisher_domain,
+      property: this.deserializeProperty(row),
+    }));
+  }
+
+  /**
+   * Deserialize property row (parse JSONB identifiers)
+   */
+  private deserializeProperty(row: any): DiscoveredProperty {
+    return {
+      ...row,
+      identifiers: typeof row.identifiers === 'string'
+        ? JSON.parse(row.identifiers)
+        : row.identifiers || [],
+    };
+  }
+
+  // ============================================
+  // Validation Queries
+  // ============================================
+
+  /**
+   * Validate agent authorization against publisher_properties array (Product schema format).
+   * Returns detailed breakdown per selector showing what's authorized vs not.
+   *
+   * @param agentUrl - The agent URL to validate
+   * @param publisherProperties - Array of publisher property selectors (same format as Product.publisher_properties)
+   * @returns Detailed validation result per selector
+   */
+  async validateAgentForProduct(
+    agentUrl: string,
+    publisherProperties: PublisherPropertySelector[]
+  ): Promise<{
+    authorized: boolean;
+    coverage_percentage: number;
+    total_requested: number;
+    total_authorized: number;
+    selectors: Array<{
+      publisher_domain: string;
+      selection_type: 'all' | 'by_id' | 'by_tag';
+      requested_count: number;
+      authorized_count: number;
+      unauthorized_items?: string[];  // IDs or tags not covered
+      source: 'adagents_json' | 'agent_claim' | 'none';
+    }>;
+  }> {
+    const selectorResults: Array<{
+      publisher_domain: string;
+      selection_type: 'all' | 'by_id' | 'by_tag';
+      requested_count: number;
+      authorized_count: number;
+      unauthorized_items?: string[];
+      source: 'adagents_json' | 'agent_claim' | 'none';
+    }> = [];
+
+    let totalRequested = 0;
+    let totalAuthorized = 0;
+
+    for (const selector of publisherProperties) {
+      let result: { requested: number; authorized: number; unauthorized?: string[]; source: 'adagents_json' | 'agent_claim' | 'none' };
+
+      switch (selector.selection_type) {
+        case 'all':
+          result = await this.validateSelectorAll(agentUrl, selector.publisher_domain);
+          break;
+        case 'by_id':
+          result = await this.validateSelectorByIds(agentUrl, selector.publisher_domain, selector.property_ids);
+          break;
+        case 'by_tag':
+          result = await this.validateSelectorByTags(agentUrl, selector.publisher_domain, selector.property_tags);
+          break;
+      }
+
+      selectorResults.push({
+        publisher_domain: selector.publisher_domain,
+        selection_type: selector.selection_type,
+        requested_count: result.requested,
+        authorized_count: result.authorized,
+        unauthorized_items: result.unauthorized,
+        source: result.source,
+      });
+
+      totalRequested += result.requested;
+      totalAuthorized += result.authorized;
+    }
+
+    const coveragePercentage = totalRequested > 0 ? Math.round((totalAuthorized / totalRequested) * 100) : 0;
+
+    return {
+      authorized: totalAuthorized === totalRequested && totalRequested > 0,
+      coverage_percentage: coveragePercentage,
+      total_requested: totalRequested,
+      total_authorized: totalAuthorized,
+      selectors: selectorResults,
+    };
+  }
+
+  /**
+   * Validate "all" selector - agent must have authorization for the publisher domain
+   */
+  private async validateSelectorAll(
+    agentUrl: string,
+    publisherDomain: string
+  ): Promise<{ requested: number; authorized: number; source: 'adagents_json' | 'agent_claim' | 'none' }> {
+    // Count total properties for this publisher
+    const totalResult = await query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM discovered_properties WHERE publisher_domain = $1`,
+      [publisherDomain]
+    );
+    const totalCount = parseInt(totalResult.rows[0]?.count || '0', 10);
+
+    // Count properties the agent is authorized for
+    const authorizedResult = await query<{ count: string }>(
+      `SELECT COUNT(*) as count
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE p.publisher_domain = $1 AND apa.agent_url = $2`,
+      [publisherDomain, agentUrl]
+    );
+    const authorizedCount = parseInt(authorizedResult.rows[0]?.count || '0', 10);
+
+    // Check authorization source
+    const source = await this.getAuthorizationSource(agentUrl, publisherDomain);
+
+    return {
+      requested: totalCount,
+      authorized: authorizedCount,
+      source,
+    };
+  }
+
+  /**
+   * Validate "by_id" selector - check specific property IDs
+   */
+  private async validateSelectorByIds(
+    agentUrl: string,
+    publisherDomain: string,
+    propertyIds: string[]
+  ): Promise<{ requested: number; authorized: number; unauthorized: string[]; source: 'adagents_json' | 'agent_claim' | 'none' }> {
+    if (propertyIds.length === 0) {
+      return { requested: 0, authorized: 0, unauthorized: [], source: 'none' };
+    }
+
+    // Find which property IDs the agent is authorized for
+    const result = await query<{ property_id: string }>(
+      `SELECT p.property_id
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE p.publisher_domain = $1
+         AND apa.agent_url = $2
+         AND p.property_id = ANY($3)`,
+      [publisherDomain, agentUrl, propertyIds]
+    );
+
+    const authorizedIds = new Set(result.rows.map(r => r.property_id));
+    const unauthorizedIds = propertyIds.filter(id => !authorizedIds.has(id));
+    const source = await this.getAuthorizationSource(agentUrl, publisherDomain);
+
+    return {
+      requested: propertyIds.length,
+      authorized: authorizedIds.size,
+      unauthorized: unauthorizedIds,
+      source,
+    };
+  }
+
+  /**
+   * Validate "by_tag" selector - check properties matching tags
+   */
+  private async validateSelectorByTags(
+    agentUrl: string,
+    publisherDomain: string,
+    propertyTags: string[]
+  ): Promise<{ requested: number; authorized: number; unauthorized: string[]; source: 'adagents_json' | 'agent_claim' | 'none' }> {
+    if (propertyTags.length === 0) {
+      return { requested: 0, authorized: 0, unauthorized: [], source: 'none' };
+    }
+
+    // Count total properties matching these tags for this publisher
+    const totalResult = await query<{ count: string }>(
+      `SELECT COUNT(*) as count
+       FROM discovered_properties
+       WHERE publisher_domain = $1 AND tags && $2`,
+      [publisherDomain, propertyTags]
+    );
+    const totalCount = parseInt(totalResult.rows[0]?.count || '0', 10);
+
+    // Count authorized properties matching these tags
+    const authorizedResult = await query<{ count: string }>(
+      `SELECT COUNT(*) as count
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE p.publisher_domain = $1
+         AND apa.agent_url = $2
+         AND p.tags && $3`,
+      [publisherDomain, agentUrl, propertyTags]
+    );
+    const authorizedCount = parseInt(authorizedResult.rows[0]?.count || '0', 10);
+
+    // Find which tags have coverage (single query instead of N+1)
+    const coveredTagsResult = await query<{ tag: string }>(
+      `SELECT DISTINCT unnest(p.tags) as tag
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE p.publisher_domain = $1
+         AND apa.agent_url = $2
+         AND p.tags && $3`,
+      [publisherDomain, agentUrl, propertyTags]
+    );
+    const coveredTags = new Set(coveredTagsResult.rows.map(r => r.tag));
+    const unauthorizedTags = propertyTags.filter(tag => !coveredTags.has(tag));
+
+    const source = await this.getAuthorizationSource(agentUrl, publisherDomain);
+
+    return {
+      requested: totalCount,
+      authorized: authorizedCount,
+      unauthorized: unauthorizedTags,
+      source,
+    };
+  }
+
+  /**
+   * Get authorization source for an agent/publisher pair
+   */
+  private async getAuthorizationSource(
+    agentUrl: string,
+    publisherDomain: string
+  ): Promise<'adagents_json' | 'agent_claim' | 'none'> {
+    const authResult = await query<{ source: string }>(
+      `SELECT source FROM agent_publisher_authorizations
+       WHERE agent_url = $1 AND publisher_domain = $2
+       ORDER BY CASE source WHEN 'adagents_json' THEN 0 ELSE 1 END
+       LIMIT 1`,
+      [agentUrl, publisherDomain]
+    );
+
+    if (authResult.rows.length === 0) return 'none';
+    return authResult.rows[0].source as 'adagents_json' | 'agent_claim';
+  }
+
+  /**
+   * Expand publisher_properties selectors to concrete property identifiers.
+   * Used by real-time systems to cache all valid identifiers for a product.
+   *
+   * @param agentUrl - The agent URL
+   * @param publisherProperties - Array of selectors to expand
+   * @returns All property identifiers covered by the selectors
+   */
+  async expandPublisherPropertiesToIdentifiers(
+    agentUrl: string,
+    publisherProperties: PublisherPropertySelector[]
+  ): Promise<Array<{
+    publisher_domain: string;
+    property_id: string;
+    property_name: string;
+    property_type: string;
+    identifiers: PropertyIdentifier[];
+    tags: string[];
+  }>> {
+    const results: Array<{
+      publisher_domain: string;
+      property_id: string;
+      property_name: string;
+      property_type: string;
+      identifiers: PropertyIdentifier[];
+      tags: string[];
+    }> = [];
+
+    for (const selector of publisherProperties) {
+      let properties: DiscoveredProperty[];
+
+      switch (selector.selection_type) {
+        case 'all':
+          properties = await this.getAuthorizedPropertiesForDomain(agentUrl, selector.publisher_domain);
+          break;
+        case 'by_id':
+          properties = await this.getAuthorizedPropertiesByIds(agentUrl, selector.publisher_domain, selector.property_ids);
+          break;
+        case 'by_tag':
+          properties = await this.getAuthorizedPropertiesByTags(agentUrl, selector.publisher_domain, selector.property_tags);
+          break;
+      }
+
+      for (const prop of properties) {
+        results.push({
+          publisher_domain: prop.publisher_domain,
+          property_id: prop.property_id || prop.id || '',
+          property_name: prop.name,
+          property_type: prop.property_type,
+          identifiers: prop.identifiers,
+          tags: prop.tags || [],
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Get all authorized properties for an agent in a specific domain
+   */
+  private async getAuthorizedPropertiesForDomain(
+    agentUrl: string,
+    publisherDomain: string
+  ): Promise<DiscoveredProperty[]> {
+    const result = await query<DiscoveredProperty>(
+      `SELECT p.*
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE p.publisher_domain = $1 AND apa.agent_url = $2
+       ORDER BY p.property_type, p.name`,
+      [publisherDomain, agentUrl]
+    );
+    return result.rows.map(row => this.deserializeProperty(row));
+  }
+
+  /**
+   * Get authorized properties by specific IDs
+   */
+  private async getAuthorizedPropertiesByIds(
+    agentUrl: string,
+    publisherDomain: string,
+    propertyIds: string[]
+  ): Promise<DiscoveredProperty[]> {
+    if (propertyIds.length === 0) return [];
+
+    const result = await query<DiscoveredProperty>(
+      `SELECT p.*
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE p.publisher_domain = $1
+         AND apa.agent_url = $2
+         AND p.property_id = ANY($3)
+       ORDER BY p.property_type, p.name`,
+      [publisherDomain, agentUrl, propertyIds]
+    );
+    return result.rows.map(row => this.deserializeProperty(row));
+  }
+
+  /**
+   * Get authorized properties by tags
+   */
+  private async getAuthorizedPropertiesByTags(
+    agentUrl: string,
+    publisherDomain: string,
+    propertyTags: string[]
+  ): Promise<DiscoveredProperty[]> {
+    if (propertyTags.length === 0) return [];
+
+    const result = await query<DiscoveredProperty>(
+      `SELECT p.*
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE p.publisher_domain = $1
+         AND apa.agent_url = $2
+         AND p.tags && $3
+       ORDER BY p.property_type, p.name`,
+      [publisherDomain, agentUrl, propertyTags]
+    );
+    return result.rows.map(row => this.deserializeProperty(row));
+  }
+
+  /**
+   * Check if a specific property identifier is authorized for an agent.
+   * Optimized for real-time ad request validation.
+   *
+   * @param agentUrl - The agent URL to check
+   * @param identifierType - Type of identifier (domain, ios_bundle, android_package, etc.)
+   * @param identifierValue - The identifier value to look up
+   * @returns Quick validation result
+   */
+  async isPropertyAuthorizedForAgent(
+    agentUrl: string,
+    identifierType: string,
+    identifierValue: string
+  ): Promise<{
+    authorized: boolean;
+    property_id?: string;
+    publisher_domain?: string;
+  }> {
+    const result = await query<{
+      id: string;
+      publisher_domain: string;
+    }>(
+      `SELECT p.id, p.publisher_domain
+       FROM discovered_properties p
+       JOIN agent_property_authorizations apa ON apa.property_id = p.id
+       WHERE apa.agent_url = $1
+         AND p.identifiers @> $2::jsonb
+       LIMIT 1`,
+      [agentUrl, JSON.stringify([{ type: identifierType, value: identifierValue }])]
+    );
+
+    if (result.rows.length === 0) {
+      return { authorized: false };
+    }
+
+    return {
+      authorized: true,
+      property_id: result.rows[0].id,
+      publisher_domain: result.rows[0].publisher_domain,
+    };
+  }
+
+  // ============================================
   // Cleanup
   // ============================================
 
@@ -291,6 +863,8 @@ export class FederatedIndexDatabase {
    * Clear all federated discovery data (for testing or reset)
    */
   async clearAll(): Promise<void> {
+    await query('DELETE FROM agent_property_authorizations');
+    await query('DELETE FROM discovered_properties');
     await query('DELETE FROM agent_publisher_authorizations');
     await query('DELETE FROM discovered_publishers');
     await query('DELETE FROM discovered_agents');
@@ -306,15 +880,21 @@ export class FederatedIndexDatabase {
   async getStats(): Promise<{
     discovered_agents: number;
     discovered_publishers: number;
+    discovered_properties: number;
     authorizations: number;
     authorizations_by_source: { adagents_json: number; agent_claim: number };
+    properties_by_type: Record<string, number>;
   }> {
-    const [agentsResult, publishersResult, authResult, authBySourceResult] = await Promise.all([
+    const [agentsResult, publishersResult, propertiesResult, authResult, authBySourceResult, propsByTypeResult] = await Promise.all([
       query<{ count: string }>('SELECT COUNT(*) as count FROM discovered_agents'),
       query<{ count: string }>('SELECT COUNT(DISTINCT domain) as count FROM discovered_publishers'),
+      query<{ count: string }>('SELECT COUNT(*) as count FROM discovered_properties'),
       query<{ count: string }>('SELECT COUNT(*) as count FROM agent_publisher_authorizations'),
       query<{ source: string; count: string }>(
         `SELECT source, COUNT(*) as count FROM agent_publisher_authorizations GROUP BY source`
+      ),
+      query<{ property_type: string; count: string }>(
+        `SELECT property_type, COUNT(*) as count FROM discovered_properties GROUP BY property_type`
       ),
     ]);
 
@@ -324,11 +904,18 @@ export class FederatedIndexDatabase {
       if (row.source === 'agent_claim') bySource.agent_claim = parseInt(row.count, 10);
     }
 
+    const propsByType: Record<string, number> = {};
+    for (const row of propsByTypeResult.rows) {
+      propsByType[row.property_type] = parseInt(row.count, 10);
+    }
+
     return {
       discovered_agents: parseInt(agentsResult.rows[0].count, 10),
       discovered_publishers: parseInt(publishersResult.rows[0].count, 10),
+      discovered_properties: parseInt(propertiesResult.rows[0].count, 10),
       authorizations: parseInt(authResult.rows[0].count, 10),
       authorizations_by_source: bySource,
+      properties_by_type: propsByType,
     };
   }
 }

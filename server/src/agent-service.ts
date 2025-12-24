@@ -1,24 +1,31 @@
 import { MemberDatabase } from "./db/member-db.js";
+import { FederatedIndexDatabase, type DiscoveredAgent } from "./db/federated-index-db.js";
 import type { Agent, AgentType, AgentConfig, MemberProfile } from "./types.js";
+import { isValidAgentType } from "./types.js";
 
 /**
- * Service for accessing agents from member profiles
- * Replaces the old Registry class
+ * Service for accessing agents from member profiles and discovered agents
+ * Merges registered agents (from member profiles) with discovered agents (from federated discovery)
  */
 export class AgentService {
   private memberDb: MemberDatabase;
+  private federatedDb: FederatedIndexDatabase;
 
   constructor() {
     this.memberDb = new MemberDatabase();
+    this.federatedDb = new FederatedIndexDatabase();
   }
 
   /**
    * List all public agents, optionally filtered by type
+   * Includes both registered agents (from member profiles) and discovered agents
+   * Registered agents take precedence for deduplication
    */
   async listAgents(type?: AgentType): Promise<Agent[]> {
     const profiles = await this.memberDb.listProfiles({ is_public: true });
-    const agents: Agent[] = [];
+    const agentsByUrl = new Map<string, Agent>();
 
+    // First, collect registered agents from member profiles
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
         if (!agentConfig.is_public) continue;
@@ -26,17 +33,30 @@ export class AgentService {
         const agentType = agentConfig.type || "unknown";
         if (type && agentType !== type) continue;
 
-        agents.push(this.configToAgent(agentConfig, profile));
+        agentsByUrl.set(agentConfig.url, this.configToAgent(agentConfig, profile));
       }
     }
 
-    return agents;
+    // Then, add discovered agents (if not already registered)
+    const discoveredAgents = await this.federatedDb.getAllDiscoveredAgents(type);
+    for (const discovered of discoveredAgents) {
+      if (agentsByUrl.has(discovered.agent_url)) continue; // Skip if already registered
+
+      const agentType = isValidAgentType(discovered.agent_type) ? discovered.agent_type : "unknown";
+      if (type && agentType !== type) continue;
+
+      agentsByUrl.set(discovered.agent_url, this.discoveredToAgent(discovered));
+    }
+
+    return Array.from(agentsByUrl.values());
   }
 
   /**
    * Get agent by URL
+   * Checks registered agents first, then discovered agents
    */
   async getAgentByUrl(url: string): Promise<Agent | undefined> {
+    // Check registered agents first
     const profiles = await this.memberDb.listProfiles({ is_public: true });
 
     for (const profile of profiles) {
@@ -44,6 +64,14 @@ export class AgentService {
         if (agentConfig.url === url && agentConfig.is_public) {
           return this.configToAgent(agentConfig, profile);
         }
+      }
+    }
+
+    // Check discovered agents
+    const discoveredAgents = await this.federatedDb.getAllDiscoveredAgents();
+    for (const discovered of discoveredAgents) {
+      if (discovered.agent_url === url) {
+        return this.discoveredToAgent(discovered);
       }
     }
 
@@ -106,6 +134,26 @@ export class AgentService {
         website: profile.contact_website || "",
       },
       added_date: profile.created_at.toISOString().split("T")[0],
+    };
+  }
+
+  /**
+   * Convert DiscoveredAgent to Agent format
+   */
+  private discoveredToAgent(discovered: DiscoveredAgent): Agent {
+    return {
+      name: discovered.name || new URL(discovered.agent_url).hostname,
+      url: discovered.agent_url,
+      type: isValidAgentType(discovered.agent_type) ? discovered.agent_type : "unknown",
+      protocol: (discovered.protocol as "mcp" | "a2a") || "mcp",
+      description: `Discovered from ${discovered.source_domain}`,
+      mcp_endpoint: discovered.agent_url,
+      contact: {
+        name: discovered.source_domain,
+        email: "",
+        website: discovered.source_domain.startsWith("http") ? discovered.source_domain : `https://${discovered.source_domain}`,
+      },
+      added_date: discovered.discovered_at?.toISOString().split("T")[0] || new Date().toISOString().split("T")[0],
     };
   }
 }

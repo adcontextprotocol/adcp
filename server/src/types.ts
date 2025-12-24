@@ -1,4 +1,16 @@
-export type AgentType = "creative" | "signals" | "sales";
+export type AgentType = "creative" | "signals" | "sales" | "unknown";
+
+/**
+ * Valid agent type values for runtime validation
+ */
+export const VALID_AGENT_TYPES: readonly AgentType[] = ["creative", "signals", "sales", "unknown"] as const;
+
+/**
+ * Type guard to check if a string is a valid AgentType
+ */
+export function isValidAgentType(value: string | undefined | null): value is AgentType {
+  return typeof value === 'string' && VALID_AGENT_TYPES.includes(value as AgentType);
+}
 
 export interface FormatInfo {
   name: string;
@@ -70,12 +82,25 @@ export interface AgentCapabilities {
   };
 }
 
+/**
+ * Summary of an agent's property inventory (counts, not full list)
+ * Full property list available via /api/registry/agents/:id/properties
+ */
+export interface PropertySummary {
+  total_count: number;
+  count_by_type: Record<string, number>; // e.g., { "website": 50, "mobile_app": 20 }
+  tags: string[]; // All unique tags across properties
+  publisher_count: number;
+}
+
 export interface AgentWithStats extends Agent {
   health?: AgentHealth;
   stats?: AgentStats;
   capabilities?: AgentCapabilities;
-  properties?: any[];
   propertiesError?: string;
+  // Property summary (counts, not full list to avoid millions of records)
+  publisher_domains?: string[];
+  property_summary?: PropertySummary;
 }
 
 export interface AdAgentsJson {

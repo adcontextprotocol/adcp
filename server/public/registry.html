@@ -509,7 +509,7 @@
                 <p style="margin-bottom: var(--space-2);">Learn more about the Ad Context Protocol:</p>
                 <ul style="list-style: none; padding: 0;">
                     <li style="margin: var(--space-2) 0;"><a href="https://adcontextprotocol.org" target="_blank" class="footer-resource-link">→ AdCP Documentation</a></li>
-                    <li style="margin: var(--space-2) 0;"><a href="/api/agents" class="footer-resource-link">→ REST API</a></li>
+                    <li style="margin: var(--space-2) 0;"><a href="/api/registry/agents" class="footer-resource-link">→ REST API</a></li>
                     <li style="margin: var(--space-2) 0;"><a href="https://github.com/adcontextprotocol" target="_blank" class="footer-resource-link">→ GitHub</a></li>
                 </ul>
             </div>
@@ -569,8 +569,9 @@
         async function loadAllAgents() {
             try {
                 // Load all agents with health, properties, and capabilities in one call
-                const response = await fetch('/api/agents?health=true&properties=true&capabilities=true');
-                const agents = await response.json();
+                const response = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true');
+                const data = await response.json();
+                const agents = data.agents || data; // Handle both wrapped and unwrapped response
 
                 salesAgents = agents.filter(a => a.type === 'sales');
                 creativeAgents = agents.filter(a => a.type === 'creative');
@@ -1021,15 +1022,32 @@
                 const [type, ...nameParts] = agentId.split('/');
                 const name = nameParts.join('/');
 
-                // Fetch agent with health check
-                const [agentResp, capsResp] = await Promise.all([
-                    fetch(`/api/agents/${type}/${name}?health=true`),
-                    fetch(`/api/agents?health=true&capabilities=true&properties=true`)
-                ]);
+                // Fetch all agents with enrichment and find the specific one
+                const capsResp = await fetch('/api/registry/agents?health=true&capabilities=true&properties=true');
+                const capsData = await capsResp.json();
+                const allAgents = capsData.agents || [];
 
-                const agent = await agentResp.json();
-                const allAgents = await capsResp.json();
-                const agentWithCaps = allAgents.find(a => a.url === agent.url) || agent;
+                // Find the specific agent using multiple matching strategies (most to least specific)
+                const agentWithCaps =
+                    // 1. Exact type + slug match
+                    allAgents.find(a => {
+                        const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
+                        return a.type === type && slugName === name;
+                    }) ||
+                    // 2. Type match + URL hostname contains the name (more specific than includes)
+                    allAgents.find(a => {
+                        try {
+                            const hostname = new URL(a.url).hostname.toLowerCase();
+                            return a.type === type && hostname.includes(name.toLowerCase());
+                        } catch { return false; }
+                    }) ||
+                    // 3. Any agent with exact slug match (fallback for type mismatch)
+                    allAgents.find(a => {
+                        const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
+                        return slugName === name;
+                    });
+
+                const agent = agentWithCaps || { name: name, url: '', type: type };
 
                 document.getElementById('detail-name').textContent = agent.name;
                 document.getElementById('detail-url').textContent = agent.url;
@@ -1213,8 +1231,9 @@
             const section = document.getElementById('tools-section');
             try {
                 // Fetch capability discovery which includes all tools
-                const response = await fetch(`/api/agents?health=true&capabilities=true`);
-                const allAgents = await response.json();
+                const response = await fetch('/api/registry/agents?health=true&capabilities=true');
+                const data = await response.json();
+                const allAgents = data.agents || data;
                 const agentWithCaps = allAgents.find(a => a.url === agent.url);
 
                 if (!agentWithCaps || !agentWithCaps.capabilities || agentWithCaps.capabilities.tools_count === 0) {

@@ -169,13 +169,26 @@ export class CrawlerService {
           processedDomains.add(pubConfig.domain);
 
           if (validation.valid && validation.raw_data?.authorized_agents) {
-            console.log(`  ${pubConfig.domain}: found ${validation.raw_data.authorized_agents.length} authorized agents`);
+            const agentCount = validation.raw_data.authorized_agents.length;
+            const propCount = validation.raw_data.properties?.length || 0;
+            console.log(`  ${pubConfig.domain}: found ${agentCount} agents, ${propCount} properties`);
+
+            // Record agents
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
               if (!authorizedAgent.url) continue;
 
               await this.federatedIndex.recordAgentFromAdagentsJson(
                 authorizedAgent.url,
                 pubConfig.domain,
+                authorizedAgent.authorized_for,
+                authorizedAgent.property_ids
+              );
+
+              // Record properties and link to this agent
+              await this.recordPropertiesForAgent(
+                validation.raw_data.properties || [],
+                pubConfig.domain,
+                authorizedAgent.url,
                 authorizedAgent.authorized_for,
                 authorizedAgent.property_ids
               );
@@ -207,7 +220,7 @@ export class CrawlerService {
             validation.valid
           );
 
-          // If valid and not already processed, record agents from adagents.json
+          // If valid and not already processed, record agents and properties from adagents.json
           if (validation.valid && validation.raw_data?.authorized_agents && !processedDomains.has(domain)) {
             await this.federatedIndex.markPublisherHasValidAdagents(domain);
             processedDomains.add(domain);
@@ -218,6 +231,15 @@ export class CrawlerService {
               await this.federatedIndex.recordAgentFromAdagentsJson(
                 authorizedAgent.url,
                 domain,
+                authorizedAgent.authorized_for,
+                authorizedAgent.property_ids
+              );
+
+              // Record properties and link to this agent
+              await this.recordPropertiesForAgent(
+                validation.raw_data.properties || [],
+                domain,
+                authorizedAgent.url,
                 authorizedAgent.authorized_for,
                 authorizedAgent.property_ids
               );
@@ -232,9 +254,13 @@ export class CrawlerService {
     // Log stats
     try {
       const stats = await this.federatedIndex.getStats();
+      const propTypes = Object.entries(stats.properties_by_type)
+        .map(([type, count]) => `${count} ${type}`)
+        .join(', ');
       console.log(
-        `Federated index populated: ${stats.discovered_agents} discovered agents, ` +
-        `${stats.discovered_publishers} discovered publishers, ` +
+        `Federated index populated: ${stats.discovered_agents} agents, ` +
+        `${stats.discovered_publishers} publishers, ` +
+        `${stats.discovered_properties} properties (${propTypes || 'none'}), ` +
         `${stats.authorizations} authorizations ` +
         `(${stats.authorizations_by_source.adagents_json} verified, ${stats.authorizations_by_source.agent_claim} claims)`
       );
@@ -248,5 +274,46 @@ export class CrawlerService {
    */
   getFederatedIndex(): FederatedIndexService {
     return this.federatedIndex;
+  }
+
+  /**
+   * Record properties from adagents.json and link them to an agent.
+   * If the agent has property_ids specified, only record those specific properties.
+   */
+  private async recordPropertiesForAgent(
+    properties: Array<{
+      property_id?: string;
+      property_type: string;
+      name: string;
+      identifiers: Array<{ type: string; value: string }>;
+      tags?: string[];
+      publisher_domain?: string;
+    }>,
+    publisherDomain: string,
+    agentUrl: string,
+    authorizedFor?: string,
+    limitToPropertyIds?: string[]
+  ): Promise<void> {
+    for (const prop of properties) {
+      // If agent has specific property_ids, only record those
+      if (limitToPropertyIds && limitToPropertyIds.length > 0) {
+        if (!prop.property_id || !limitToPropertyIds.includes(prop.property_id)) {
+          continue;
+        }
+      }
+
+      await this.federatedIndex.recordProperty(
+        {
+          property_id: prop.property_id,
+          publisher_domain: prop.publisher_domain || publisherDomain,
+          property_type: prop.property_type,
+          name: prop.name,
+          identifiers: prop.identifiers,
+          tags: prop.tags,
+        },
+        agentUrl,
+        authorizedFor
+      );
+    }
   }
 }
