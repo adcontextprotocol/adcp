@@ -957,6 +957,39 @@ body {
   text-decoration: underline;
 }
 
+/* Hero Points - Vertical cards with frosted glass effect */
+.hero-point {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.5);
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  backdrop-filter: blur(10px);
+  transition: var(--transition-all);
+}
+
+.hero-point:hover {
+  background: rgba(255, 255, 255, 0.65);
+  transform: translateY(-2px);
+}
+
+.hero-point-icon {
+  font-size: var(--text-3xl);
+  margin-bottom: var(--space-2);
+}
+
+.hero-point-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 240px;
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
 /* -----------------------------------------------------------------------------
    12.2 Buttons
 
