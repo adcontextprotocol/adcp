@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Audit Log - AdCP Admin</title>
+  <script src="/admin-nav.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--color-bg-page);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      flex: 1;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      width: 100%;
+    }
+
+    h1 {
+      color: var(--color-text-heading);
+      margin-bottom: 30px;
+      font-size: 28px;
+    }
+
+    .filters {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .filter-group label {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      font-weight: 500;
+    }
+
+    .filter-group select, .filter-group input {
+      padding: 8px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+      background: var(--color-bg-card);
+      min-width: 180px;
+    }
+
+    .section {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 30px;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .section h2 {
+      color: var(--color-text-heading);
+      font-size: 20px;
+    }
+
+    .total-count {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 2px solid var(--color-border);
+      color: var(--color-text-secondary);
+      font-weight: 600;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid var(--color-border);
+      color: var(--color-text);
+      font-size: 14px;
+    }
+
+    tr:hover {
+      background-color: var(--color-bg-subtle);
+    }
+
+    .action-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .action-created {
+      background-color: var(--color-success-50);
+      color: var(--color-success-700);
+    }
+
+    .action-updated {
+      background-color: var(--color-info-50);
+      color: var(--color-info-700);
+    }
+
+    .action-deleted, .action-rejected, .action-cancelled {
+      background-color: var(--color-error-50);
+      color: var(--color-error-700);
+    }
+
+    .action-approved {
+      background-color: var(--color-success-50);
+      color: var(--color-success-700);
+    }
+
+    .details-cell {
+      max-width: 300px;
+    }
+
+    .details-json {
+      font-family: monospace;
+      font-size: 12px;
+      background: var(--color-bg-subtle);
+      padding: 8px;
+      border-radius: 4px;
+      max-height: 100px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .pagination button {
+      padding: 8px 16px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: var(--color-bg-card);
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--color-text);
+    }
+
+    .pagination button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .pagination button:not(:disabled):hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .pagination-info {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--color-text-secondary);
+    }
+
+    .timestamp {
+      color: var(--color-text-muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div id="admin-nav"></div>
+
+  <div class="container">
+    <h1>Audit Log</h1>
+
+    <div class="filters">
+      <div class="filter-group">
+        <label>Action</label>
+        <select id="actionFilter">
+          <option value="">All Actions</option>
+          <option value="organization_created">Organization Created</option>
+          <option value="organization_settings_updated">Settings Updated</option>
+          <option value="organization_renamed">Organization Renamed</option>
+          <option value="organization_deleted">Organization Deleted</option>
+          <option value="member_invited">Member Invited</option>
+          <option value="member_removed">Member Removed</option>
+          <option value="member_role_updated">Role Updated</option>
+          <option value="invitation_revoked">Invitation Revoked</option>
+          <option value="join_request_created">Join Request Created</option>
+          <option value="join_request_approved">Join Request Approved</option>
+          <option value="join_request_rejected">Join Request Rejected</option>
+          <option value="subscription_created">Subscription Created</option>
+          <option value="subscription_cancelled">Subscription Cancelled</option>
+          <option value="api_key_created">API Key Created</option>
+          <option value="api_key_revoked">API Key Revoked</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label>Resource Type</label>
+        <select id="resourceFilter">
+          <option value="">All Resources</option>
+          <option value="organization">Organization</option>
+          <option value="member">Member</option>
+          <option value="invitation">Invitation</option>
+          <option value="join_request">Join Request</option>
+          <option value="subscription">Subscription</option>
+          <option value="api_key">API Key</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h2>Activity Log</h2>
+        <span class="total-count" id="totalCount"></span>
+      </div>
+
+      <div id="auditTableContainer">
+        <div class="loading">Loading audit logs...</div>
+      </div>
+
+      <div class="pagination" id="pagination" style="display: none;">
+        <button id="prevBtn" onclick="prevPage()">Previous</button>
+        <span class="pagination-info" id="pageInfo"></span>
+        <button id="nextBtn" onclick="nextPage()">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentOffset = 0;
+    const limit = 50;
+    let totalEntries = 0;
+
+    function getActionClass(action) {
+      if (action.includes('created')) return 'action-created';
+      if (action.includes('updated')) return 'action-updated';
+      if (action.includes('deleted') || action.includes('rejected') || action.includes('revoked') || action.includes('cancelled')) return 'action-deleted';
+      if (action.includes('approved')) return 'action-approved';
+      return '';
+    }
+
+    function formatAction(action) {
+      return action.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    }
+
+    function formatTimestamp(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleString();
+    }
+
+    function formatDetails(details) {
+      if (!details || Object.keys(details).length === 0) return '-';
+      return JSON.stringify(details, null, 2);
+    }
+
+    async function loadAuditLogs() {
+      const actionFilter = document.getElementById('actionFilter').value;
+      const resourceFilter = document.getElementById('resourceFilter').value;
+
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+        offset: currentOffset.toString(),
+      });
+
+      if (actionFilter) params.set('action', actionFilter);
+      if (resourceFilter) params.set('resource_type', resourceFilter);
+
+      document.getElementById('auditTableContainer').innerHTML = '<div class="loading">Loading audit logs...</div>';
+
+      try {
+        const response = await fetch(`/api/admin/audit-logs?${params}`);
+        if (!response.ok) throw new Error('Failed to load audit logs');
+
+        const data = await response.json();
+        totalEntries = data.total;
+
+        document.getElementById('totalCount').textContent = `${totalEntries} entries`;
+
+        if (data.entries.length === 0) {
+          document.getElementById('auditTableContainer').innerHTML = '<div class="empty-state">No audit log entries found</div>';
+          document.getElementById('pagination').style.display = 'none';
+          return;
+        }
+
+        const tableHtml = `
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Action</th>
+                <th>Organization</th>
+                <th>User</th>
+                <th>Resource</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.entries.map(entry => `
+                <tr>
+                  <td class="timestamp">${formatTimestamp(entry.created_at)}</td>
+                  <td><span class="action-badge ${getActionClass(entry.action)}">${formatAction(entry.action)}</span></td>
+                  <td>${escapeHtml(entry.organization_name)}</td>
+                  <td>${escapeHtml(entry.user_name)}</td>
+                  <td>${entry.resource_type}${entry.resource_id ? ` (${entry.resource_id.substring(0, 8)}...)` : ''}</td>
+                  <td class="details-cell">
+                    <div class="details-json">${escapeHtml(formatDetails(entry.details))}</div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        document.getElementById('auditTableContainer').innerHTML = tableHtml;
+
+        // Update pagination
+        const totalPages = Math.ceil(totalEntries / limit);
+        const currentPage = Math.floor(currentOffset / limit) + 1;
+        document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+        document.getElementById('prevBtn').disabled = currentOffset === 0;
+        document.getElementById('nextBtn').disabled = currentOffset + limit >= totalEntries;
+        document.getElementById('pagination').style.display = totalPages > 1 ? 'flex' : 'none';
+
+      } catch (error) {
+        console.error('Error loading audit logs:', error);
+        document.getElementById('auditTableContainer').innerHTML = '<div class="empty-state">Error loading audit logs</div>';
+      }
+    }
+
+    function prevPage() {
+      if (currentOffset > 0) {
+        currentOffset -= limit;
+        loadAuditLogs();
+      }
+    }
+
+    function nextPage() {
+      if (currentOffset + limit < totalEntries) {
+        currentOffset += limit;
+        loadAuditLogs();
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Event listeners for filters
+    document.getElementById('actionFilter').addEventListener('change', () => {
+      currentOffset = 0;
+      loadAuditLogs();
+    });
+
+    document.getElementById('resourceFilter').addEventListener('change', () => {
+      currentOffset = 0;
+      loadAuditLogs();
+    });
+
+    // Initial load
+    loadAuditLogs();
+  </script>
+</body>
+</html>

@@ -99,6 +99,52 @@ const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD || '';
 // Allow insecure cookies for local Docker development
 const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
 
+// System user ID for audit logs from webhook/automated contexts
+const SYSTEM_USER_ID = 'system';
+
+// In-memory cache for WorkOS organization and user lookups
+// Used to reduce API calls when enriching audit logs
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+
+const workosOrgCache = new Map<string, CacheEntry<{ name: string }>>();
+const workosUserCache = new Map<string, CacheEntry<{ displayName: string }>>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCachedOrg(orgId: string): { name: string } | null {
+  const entry = workosOrgCache.get(orgId);
+  if (entry && entry.expiresAt > Date.now()) {
+    return entry.value;
+  }
+  workosOrgCache.delete(orgId);
+  return null;
+}
+
+function setCachedOrg(orgId: string, name: string): void {
+  workosOrgCache.set(orgId, {
+    value: { name },
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+}
+
+function getCachedUser(userId: string): { displayName: string } | null {
+  const entry = workosUserCache.get(userId);
+  if (entry && entry.expiresAt > Date.now()) {
+    return entry.value;
+  }
+  workosUserCache.delete(userId);
+  return null;
+}
+
+function setCachedUser(userId: string, displayName: string): void {
+  workosUserCache.set(userId, {
+    value: { displayName },
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+}
+
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
@@ -968,6 +1014,20 @@ export class HTTPServer {
                       userEmail,
                     }, 'Subscription created - membership agreement recorded atomically');
 
+                    // Record audit log for subscription creation
+                    await orgDb.recordAuditLog({
+                      workos_organization_id: org.workos_organization_id,
+                      workos_user_id: workosUser.id,
+                      action: 'subscription_created',
+                      resource_type: 'subscription',
+                      resource_id: subscription.id,
+                      details: {
+                        status: subscription.status,
+                        agreement_version: agreementVersion,
+                        stripe_customer_id: customerId,
+                      },
+                    });
+
                     // Send Slack notification for new subscription
                     // Get subscription details for notification
                     const subItems = subscription.items?.data || [];
@@ -1054,6 +1114,19 @@ export class HTTPServer {
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
+                  // Record audit log for subscription cancellation (use system user since webhook context)
+                  await orgDb.recordAuditLog({
+                    workos_organization_id: org.workos_organization_id,
+                    workos_user_id: SYSTEM_USER_ID,
+                    action: 'subscription_cancelled',
+                    resource_type: 'subscription',
+                    resource_id: subscription.id,
+                    details: {
+                      status: subscription.status,
+                      stripe_customer_id: customerId,
+                    },
+                  });
+
                   notifySubscriptionCancelled({
                     organizationName: org.name || 'Unknown Organization',
                   }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
@@ -1608,6 +1681,88 @@ export class HTTPServer {
       res.sendFile(adminPath);
     });
 
+
+    // GET /api/admin/audit-logs - Get audit log entries
+    this.app.get('/api/admin/audit-logs', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const {
+          organization_id,
+          action,
+          resource_type,
+          limit = '50',
+          offset = '0',
+        } = req.query;
+
+        const auditOrgDb = new OrganizationDatabase();
+        const result = await auditOrgDb.getAuditLogs({
+          workos_organization_id: organization_id as string | undefined,
+          action: action as string | undefined,
+          resource_type: resource_type as string | undefined,
+          limit: parseInt(limit as string, 10),
+          offset: parseInt(offset as string, 10),
+        });
+
+        // Enrich with organization and user names (with caching to reduce API calls)
+        const enrichedEntries = await Promise.all(
+          result.entries.map(async (entry) => {
+            let organizationName = 'Unknown';
+            let userName = 'Unknown';
+
+            // Check cache first for organization
+            const cachedOrg = getCachedOrg(entry.workos_organization_id);
+            if (cachedOrg) {
+              organizationName = cachedOrg.name;
+            } else {
+              try {
+                const org = await workos!.organizations.getOrganization(entry.workos_organization_id);
+                organizationName = org.name;
+                setCachedOrg(entry.workos_organization_id, org.name);
+              } catch (err) {
+                logger.warn({ err, orgId: entry.workos_organization_id }, 'Failed to fetch organization name for audit log');
+              }
+            }
+
+            if (entry.workos_user_id !== SYSTEM_USER_ID) {
+              // Check cache first for user
+              const cachedUser = getCachedUser(entry.workos_user_id);
+              if (cachedUser) {
+                userName = cachedUser.displayName;
+              } else {
+                try {
+                  const user = await workos!.userManagement.getUser(entry.workos_user_id);
+                  const displayName = user.email || `${user.firstName} ${user.lastName}`.trim() || 'Unknown';
+                  userName = displayName;
+                  setCachedUser(entry.workos_user_id, displayName);
+                } catch (err) {
+                  logger.warn({ err, userId: entry.workos_user_id }, 'Failed to fetch user name for audit log');
+                }
+              }
+            } else {
+              userName = 'System';
+            }
+
+            return {
+              ...entry,
+              organization_name: organizationName,
+              user_name: userName,
+            };
+          })
+        );
+
+        res.json({
+          entries: enrichedEntries,
+          total: result.total,
+          limit: parseInt(limit as string, 10),
+          offset: parseInt(offset as string, 10),
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Get audit logs error:');
+        res.status(500).json({
+          error: 'Failed to get audit logs',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
 
     // Admin agreement management endpoints
     // GET /api/admin/agreements - List all agreements
@@ -3468,6 +3623,13 @@ Disallow: /api/admin/
       res.sendFile(analyticsPath);
     });
 
+    this.app.get('/admin/audit', requireAuth, requireAdmin, (req, res) => {
+      const auditPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-audit.html')
+        : path.join(__dirname, '../public/admin-audit.html');
+      res.sendFile(auditPath);
+    });
+
     this.app.get('/admin/perspectives', requireAuth, requireAdmin, (req, res) => {
       const perspectivesPath = process.env.NODE_ENV === 'production'
         ? path.join(__dirname, '../server/public/admin-perspectives.html')
@@ -4686,6 +4848,18 @@ Disallow: /api/admin/
           requestId: request.id,
         }, 'Join request created');
 
+        // Record audit log for join request
+        await orgDb.recordAuditLog({
+          workos_organization_id: organization_id,
+          workos_user_id: user.id,
+          action: 'join_request_created',
+          resource_type: 'join_request',
+          resource_id: request.id,
+          details: {
+            user_email: user.email,
+          },
+        });
+
         res.status(201).json({
           success: true,
           message: `Request to join ${orgName} submitted`,
@@ -4859,6 +5033,20 @@ Disallow: /api/admin/
           email: request.user_email,
         }, 'Join request approved');
 
+        // Record audit log for join request approval
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'join_request_approved',
+          resource_type: 'join_request',
+          resource_id: requestId,
+          details: {
+            requester_user_id: request.workos_user_id,
+            requester_email: request.user_email,
+            role_assigned: role,
+          },
+        });
+
         res.json({
           success: true,
           message: `Invitation sent to ${request.user_email}`,
@@ -4944,6 +5132,20 @@ Disallow: /api/admin/
           requesterId: request.workos_user_id,
           reason,
         }, 'Join request rejected');
+
+        // Record audit log for join request rejection
+        await orgDb.recordAuditLog({
+          workos_organization_id: orgId,
+          workos_user_id: user.id,
+          action: 'join_request_rejected',
+          resource_type: 'join_request',
+          resource_id: requestId,
+          details: {
+            requester_user_id: request.workos_user_id,
+            requester_email: request.user_email,
+            reason: reason || null,
+          },
+        });
 
         res.json({
           success: true,
@@ -5205,6 +5407,21 @@ Disallow: /api/admin/
           company_type: orgRecord.company_type,
           revenue_tier: orgRecord.revenue_tier,
         }, 'Organization record created in database');
+
+        // Record audit log for organization creation
+        await orgDb.recordAuditLog({
+          workos_organization_id: workosOrg.id,
+          workos_user_id: user.id,
+          action: 'organization_created',
+          resource_type: 'organization',
+          resource_id: workosOrg.id,
+          details: {
+            name: trimmedName,
+            is_personal: is_personal || false,
+            company_type: company_type || null,
+            revenue_tier: revenue_tier || null,
+          },
+        });
 
         // Record ToS and Privacy Policy acceptance
         const tosAgreement = await orgDb.getCurrentAgreementByType('terms_of_service');
