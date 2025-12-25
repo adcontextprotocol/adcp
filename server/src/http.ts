@@ -2,7 +2,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
-import { WorkOS } from "@workos-inc/node";
+import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
@@ -38,6 +38,7 @@ import {
   notifySubscriptionCancelled,
   notifyWorkingGroupPost,
 } from "./notifications/slack.js";
+import { createAdminRouter } from "./routes/admin.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -203,6 +204,11 @@ export class HTTPServer {
     } else {
       logger.warn('Authentication disabled - WORKOS environment variables not configured');
     }
+
+    // Mount admin routes
+    const adminRouter = createAdminRouter();
+    this.app.use('/admin', adminRouter);
+    this.app.use('/api/admin', adminRouter);
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
@@ -3439,6 +3445,8 @@ Disallow: /api/admin/
     });
 
     // Serve admin pages
+    // Note: /admin/prospects route is now in routes/admin.ts
+
     this.app.get('/admin/members', requireAuth, requireAdmin, (req, res) => {
       const membersPath = process.env.NODE_ENV === 'production'
         ? path.join(__dirname, '../server/public/admin-members.html')
@@ -8785,6 +8793,11 @@ Disallow: /api/admin/
         });
       }
     });
+
+    // Note: Prospect management routes are now in routes/admin.ts
+    // Routes: GET/POST /api/admin/prospects, POST /api/admin/prospects/bulk,
+    //         PUT /api/admin/prospects/:orgId, GET /api/admin/prospects/stats,
+    //         GET /api/admin/organizations
 
     // NOTE: Agent management is now handled through member profiles.
     // Agents are stored in the member_profiles.agents JSONB array.
