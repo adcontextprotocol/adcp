@@ -5,6 +5,29 @@ import { createLogger } from '../logger.js';
 const logger = createLogger('rate-limit');
 
 /**
+ * Generate a rate limit key from request, preferring user ID over IP.
+ * Uses proper IPv6 subnet masking when falling back to IP addresses.
+ */
+function generateKey(req: Request): string {
+  const userId = (req as any).user?.id;
+  if (userId) {
+    return userId;
+  }
+
+  const ip = req.ip || 'unknown';
+
+  // For IPv6 addresses, mask to /64 subnet to prevent bypass attacks
+  // IPv6 users can easily rotate through addresses in their allocation
+  if (ip.includes(':')) {
+    // Extract first 4 segments (64 bits) of IPv6 address
+    const segments = ip.split(':').slice(0, 4);
+    return segments.join(':') + '::/64';
+  }
+
+  return ip;
+}
+
+/**
  * Rate limiter for invitation endpoints
  * Limits: 10 invitations per 15 minutes per user
  */
@@ -13,11 +36,8 @@ export const invitationRateLimiter = rateLimit({
   max: 10, // 10 requests per window
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: Request) => {
-    // Rate limit by authenticated user ID if available, otherwise by IP
-    const userId = (req as any).user?.id;
-    return userId || req.ip || 'unknown';
-  },
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
     logger.warn({
       userId: (req as any).user?.id,
@@ -42,10 +62,8 @@ export const orgCreationRateLimiter = rateLimit({
   max: 5, // 5 requests per window
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: Request) => {
-    const userId = (req as any).user?.id;
-    return userId || req.ip || 'unknown';
-  },
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
     logger.warn({
       userId: (req as any).user?.id,
