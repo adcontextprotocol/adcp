@@ -111,12 +111,10 @@ Here's a complete creative manifest showing the current structure without redund
       "height": 250
     },
     "headline": {
-      "content": "Nutrition Dogs Love",
-      "language": "en"
+      "content": "Nutrition Dogs Love"
     },
     "description": {
-      "content": "Made with real chicken and wholesome grains",
-      "language": "en"
+      "content": "Made with real chicken and wholesome grains"
     },
     "clickthrough_url": {
       "url": "https://example.com/products/premium-dog-food",
@@ -143,24 +141,24 @@ Static manifests contain all assets ready for immediate rendering. These are pro
     "id": "native_responsive"
   },
   "assets": {
-    "hero_image": {              // asset_id from format spec
+    "hero_image": {
       "url": "https://cdn.example.com/hero.jpg",
       "width": 1200,
       "height": 627,
       "alt_text": "Product image"
     },
-    "logo": {                    // asset_id from format spec
+    "logo": {
       "url": "https://cdn.example.com/logo.png",
       "width": 100,
       "height": 100
     },
-    "headline": {                // asset_id from format spec
+    "headline": {
       "content": "Premium Quality You Can Trust"
     },
-    "description": {             // asset_id from format spec
+    "description": {
       "content": "Discover why veterinarians recommend our formula"
     },
-    "cta_text": {                // asset_id from format spec
+    "cta_text": {
       "content": "Learn More"
     }
   }
@@ -193,8 +191,7 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
       "security": {
         "method": "hmac_sha256",
         "hmac_header": "X-Signature"
-      },
-      "fallback_required": true
+      }
     },
     "fallback_image": {
       "url": "https://cdn.example.com/fallback-300x250.jpg",

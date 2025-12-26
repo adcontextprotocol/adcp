@@ -45,6 +45,7 @@ Buyers discover available formats using the `list_creative_formats` task, which 
 
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/creative/list-creative-formats-response.json",
   "formats": [
     {
       "format_id": {
@@ -56,7 +57,9 @@ Buyers discover available formats using the `list_creative_formats` task, which 
     }
   ],
   "creative_agents": [
-    "https://creative.adcontextprotocol.org"
+    {
+      "agent_url": "https://creative.adcontextprotocol.org"
+    }
   ]
 }
 ```
@@ -118,11 +121,13 @@ Formats include two optional fields for visual presentation in format browsing U
 **Example**:
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/format.json",
   "format_id": {
     "agent_url": "https://publisher.com",
     "id": "homepage_takeover_premium"
   },
   "name": "Premium Homepage Takeover",
+  "type": "rich_media",
   "description": "Full-screen immersive experience with video, carousel, and companion units",
   "preview_image": "https://publisher.com/format-cards/homepage-takeover.png",
   "example_url": "https://publisher.com/formats/homepage-takeover-demo"
@@ -210,6 +215,7 @@ Formats are JSON objects with the following key fields:
 
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_30s_hosted"
@@ -218,6 +224,7 @@ Formats are JSON objects with the following key fields:
   "type": "video",
   "assets_required": [
     {
+      "item_type": "individual",
       "asset_id": "video_file",
       "asset_type": "video",
       "asset_role": "hero_video",
@@ -246,10 +253,12 @@ Formats specify their rendered outputs via the `renders` array. Most formats pro
 
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250"
   },
+  "name": "Display Banner 300x250",
   "type": "display",
   "renders": [
     {
@@ -260,8 +269,7 @@ Formats specify their rendered outputs via the `renders` array. Most formats pro
         "responsive": {
           "width": false,
           "height": false
-        },
-        "unit": "px"
+        }
       }
     }
   ]
@@ -271,10 +279,12 @@ Formats specify their rendered outputs via the `renders` array. Most formats pro
 **Multi-render example (companion ad):**
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v2/core/format.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "video_with_companion_300x250"
   },
+  "name": "Video with Companion Banner",
   "type": "video",
   "renders": [
     {
@@ -282,7 +292,10 @@ Formats specify their rendered outputs via the `renders` array. Most formats pro
       "dimensions": {
         "width": 1920,
         "height": 1080,
-        "unit": "px"
+        "responsive": {
+          "width": false,
+          "height": false
+        }
       }
     },
     {
@@ -290,7 +303,10 @@ Formats specify their rendered outputs via the `renders` array. Most formats pro
       "dimensions": {
         "width": 300,
         "height": 250,
-        "unit": "px"
+        "responsive": {
+          "width": false,
+          "height": false
+        }
       }
     }
   ]
