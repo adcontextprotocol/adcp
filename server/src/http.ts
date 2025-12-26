@@ -9480,6 +9480,53 @@ Disallow: /api/admin/
       }
     });
 
+    /**
+     * Build a map of AAO user emails to WorkOS user IDs
+     * Used by both GET and POST auto-link-suggested endpoints
+     *
+     * Uses listUsers with organizationId filter which returns email directly,
+     * avoiding N+1 getUser calls per membership.
+     */
+    async function buildAaoEmailToUserIdMap(): Promise<Map<string, string>> {
+      const aaoEmailToUserId = new Map<string, string>();
+
+      if (!workos) {
+        return aaoEmailToUserId;
+      }
+
+      const orgDatabase = new OrganizationDatabase();
+      const orgs = await orgDatabase.listOrganizations();
+
+      // Use listUsers with organizationId filter - returns email directly
+      // This is O(orgs) API calls instead of O(orgs * users)
+      for (const org of orgs) {
+        try {
+          // Paginate through all users in the organization
+          let after: string | undefined;
+          do {
+            const usersResponse = await workos.userManagement.listUsers({
+              organizationId: org.workos_organization_id,
+              limit: 100,
+              after,
+            });
+
+            for (const user of usersResponse.data) {
+              if (user.email) {
+                aaoEmailToUserId.set(user.email.toLowerCase(), user.id);
+              }
+            }
+
+            // Get cursor for next page
+            after = usersResponse.listMetadata?.after || undefined;
+          } while (after);
+        } catch (orgErr) {
+          logger.warn({ err: orgErr, orgId: org.workos_organization_id }, 'Failed to fetch users for organization');
+        }
+      }
+
+      return aaoEmailToUserId;
+    }
+
     // GET /api/admin/slack/auto-link-suggested - Get suggested email matches (without linking)
     this.app.get('/api/admin/slack/auto-link-suggested', requireAuth, requireAdmin, async (_req, res) => {
       try {
@@ -9489,30 +9536,11 @@ Disallow: /api/admin/
           excludeRecentlyNudged: false,
         });
 
-        // Get all AAO users
-        const orgDatabase = new OrganizationDatabase();
-        const orgs = await orgDatabase.listOrganizations();
-        const aaoEmailToUserId = new Map<string, string>();
+        // Get all AAO users (shared helper)
+        const aaoEmailToUserId = await buildAaoEmailToUserIdMap();
 
-        if (workos) {
-          for (const org of orgs) {
-            try {
-              const memberships = await workos.userManagement.listOrganizationMemberships({
-                organizationId: org.workos_organization_id,
-              });
-              for (const membership of memberships.data) {
-                try {
-                  const user = await workos.userManagement.getUser(membership.userId);
-                  aaoEmailToUserId.set(user.email.toLowerCase(), user.id);
-                } catch {
-                  // Skip users we can't fetch
-                }
-              }
-            } catch {
-              // Skip orgs we can't fetch
-            }
-          }
-        }
+        // Get all currently mapped WorkOS user IDs in one query (avoids N+1)
+        const mappedWorkosUserIds = await slackDb.getMappedWorkosUserIds();
 
         // Find matching emails (without linking)
         const suggestions: Array<{
@@ -9528,9 +9556,8 @@ Disallow: /api/admin/
           const workosUserId = aaoEmailToUserId.get(slackUser.slack_email.toLowerCase());
           if (!workosUserId) continue;
 
-          // Check if WorkOS user is already mapped to another Slack user
-          const existingMapping = await slackDb.getByWorkosUserId(workosUserId);
-          if (existingMapping) continue;
+          // Check if WorkOS user is already mapped to another Slack user (O(1) lookup)
+          if (mappedWorkosUserIds.has(workosUserId)) continue;
 
           suggestions.push({
             slack_user_id: slackUser.slack_user_id,
@@ -9561,30 +9588,11 @@ Disallow: /api/admin/
           excludeRecentlyNudged: false,
         });
 
-        // Get all AAO users
-        const orgDatabase = new OrganizationDatabase();
-        const orgs = await orgDatabase.listOrganizations();
-        const aaoEmailToUserId = new Map<string, string>();
+        // Get all AAO users (shared helper)
+        const aaoEmailToUserId = await buildAaoEmailToUserIdMap();
 
-        if (workos) {
-          for (const org of orgs) {
-            try {
-              const memberships = await workos.userManagement.listOrganizationMemberships({
-                organizationId: org.workos_organization_id,
-              });
-              for (const membership of memberships.data) {
-                try {
-                  const user = await workos.userManagement.getUser(membership.userId);
-                  aaoEmailToUserId.set(user.email.toLowerCase(), user.id);
-                } catch {
-                  // Skip users we can't fetch
-                }
-              }
-            } catch {
-              // Skip orgs we can't fetch
-            }
-          }
-        }
+        // Get all currently mapped WorkOS user IDs in one query (avoids N+1)
+        const mappedWorkosUserIds = await slackDb.getMappedWorkosUserIds();
 
         // Link matching emails
         let linked = 0;
@@ -9596,9 +9604,8 @@ Disallow: /api/admin/
           const workosUserId = aaoEmailToUserId.get(slackUser.slack_email.toLowerCase());
           if (!workosUserId) continue;
 
-          // Check if WorkOS user is already mapped to another Slack user
-          const existingMapping = await slackDb.getByWorkosUserId(workosUserId);
-          if (existingMapping) continue;
+          // Check if WorkOS user is already mapped to another Slack user (O(1) lookup)
+          if (mappedWorkosUserIds.has(workosUserId)) continue;
 
           try {
             await slackDb.mapUser({
@@ -9608,6 +9615,8 @@ Disallow: /api/admin/
               mapped_by_user_id: adminUser?.id,
             });
             linked++;
+            // Add to set so we don't try to map same user twice in this batch
+            mappedWorkosUserIds.add(workosUserId);
           } catch (err) {
             errors.push(`Failed to link ${slackUser.slack_email}: ${err instanceof Error ? err.message : 'Unknown error'}`);
           }
