@@ -333,4 +333,15 @@ export class SlackDatabase {
     return result.rows[0] || null;
   }
 
+  /**
+   * Get all WorkOS user IDs that are currently mapped to Slack users
+   * Used to efficiently check for existing mappings without N+1 queries
+   */
+  async getMappedWorkosUserIds(): Promise<Set<string>> {
+    const result = await query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM slack_user_mappings WHERE workos_user_id IS NOT NULL`
+    );
+    return new Set(result.rows.map(row => row.workos_user_id));
+  }
+
 }

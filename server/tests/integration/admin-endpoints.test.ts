@@ -419,4 +419,161 @@ describe('Admin Endpoints Integration Tests', () => {
       await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [SUB_ORG_ID]);
     });
   });
+
+  describe('GET /api/admin/slack/auto-link-suggested', () => {
+    const TEST_SLACK_USER_ID = 'U_test_slack_user';
+    const TEST_SLACK_EMAIL = 'test-slack@example.com';
+
+    beforeEach(async () => {
+      // Clean up any existing test data
+      await pool.query('DELETE FROM slack_user_mappings WHERE slack_user_id LIKE $1', ['U_test_%']);
+    });
+
+    afterEach(async () => {
+      // Clean up test data
+      await pool.query('DELETE FROM slack_user_mappings WHERE slack_user_id LIKE $1', ['U_test_%']);
+    });
+
+    it('should return empty suggestions when no unmapped Slack users exist', async () => {
+      const response = await request(app)
+        .get('/api/admin/slack/auto-link-suggested')
+        .expect(200);
+
+      expect(response.body).toHaveProperty('suggestions');
+      expect(response.body.suggestions).toBeInstanceOf(Array);
+    });
+
+    it('should return suggestions array structure with correct fields', async () => {
+      // Create an unmapped Slack user
+      await pool.query(
+        `INSERT INTO slack_user_mappings (
+          slack_user_id, slack_email, slack_display_name, slack_real_name,
+          slack_is_bot, slack_is_deleted, mapping_status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [TEST_SLACK_USER_ID, TEST_SLACK_EMAIL, 'Test User', 'Test Real Name', false, false, 'unmapped']
+      );
+
+      const response = await request(app)
+        .get('/api/admin/slack/auto-link-suggested')
+        .expect(200);
+
+      expect(response.body).toHaveProperty('suggestions');
+      expect(response.body.suggestions).toBeInstanceOf(Array);
+
+      // If there are suggestions, verify structure
+      // (WorkOS integration may not return matches in test environment)
+      if (response.body.suggestions.length > 0) {
+        const suggestion = response.body.suggestions[0];
+        expect(suggestion).toHaveProperty('slack_user_id');
+        expect(suggestion).toHaveProperty('slack_email');
+        expect(suggestion).toHaveProperty('slack_name');
+        expect(suggestion).toHaveProperty('workos_user_id');
+      }
+    });
+
+    it('should not include mapped Slack users in suggestions', async () => {
+      // Create a mapped Slack user
+      await pool.query(
+        `INSERT INTO slack_user_mappings (
+          slack_user_id, slack_email, slack_display_name, slack_real_name,
+          slack_is_bot, slack_is_deleted, mapping_status, workos_user_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [TEST_SLACK_USER_ID, TEST_SLACK_EMAIL, 'Test User', 'Test Real Name', false, false, 'mapped', 'user_already_mapped']
+      );
+
+      const response = await request(app)
+        .get('/api/admin/slack/auto-link-suggested')
+        .expect(200);
+
+      // The mapped user should not appear in suggestions
+      const matchingSuggestion = response.body.suggestions.find(
+        (s: any) => s.slack_user_id === TEST_SLACK_USER_ID
+      );
+      expect(matchingSuggestion).toBeUndefined();
+    });
+
+    it('should not include bot users in suggestions', async () => {
+      // Create a bot Slack user
+      await pool.query(
+        `INSERT INTO slack_user_mappings (
+          slack_user_id, slack_email, slack_display_name, slack_real_name,
+          slack_is_bot, slack_is_deleted, mapping_status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        ['U_test_bot', 'bot@example.com', 'Bot User', 'Bot', true, false, 'unmapped']
+      );
+
+      const response = await request(app)
+        .get('/api/admin/slack/auto-link-suggested')
+        .expect(200);
+
+      // Bot users should not appear in suggestions
+      const matchingSuggestion = response.body.suggestions.find(
+        (s: any) => s.slack_user_id === 'U_test_bot'
+      );
+      expect(matchingSuggestion).toBeUndefined();
+    });
+
+    it('should not include deleted users in suggestions', async () => {
+      // Create a deleted Slack user
+      await pool.query(
+        `INSERT INTO slack_user_mappings (
+          slack_user_id, slack_email, slack_display_name, slack_real_name,
+          slack_is_bot, slack_is_deleted, mapping_status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        ['U_test_deleted', 'deleted@example.com', 'Deleted User', 'Deleted', false, true, 'unmapped']
+      );
+
+      const response = await request(app)
+        .get('/api/admin/slack/auto-link-suggested')
+        .expect(200);
+
+      // Deleted users should not appear in suggestions
+      const matchingSuggestion = response.body.suggestions.find(
+        (s: any) => s.slack_user_id === 'U_test_deleted'
+      );
+      expect(matchingSuggestion).toBeUndefined();
+    });
+  });
+
+  describe('POST /api/admin/slack/auto-link-suggested', () => {
+    beforeEach(async () => {
+      // Clean up any existing test data
+      await pool.query('DELETE FROM slack_user_mappings WHERE slack_user_id LIKE $1', ['U_test_%']);
+    });
+
+    afterEach(async () => {
+      // Clean up test data
+      await pool.query('DELETE FROM slack_user_mappings WHERE slack_user_id LIKE $1', ['U_test_%']);
+    });
+
+    it('should return linked count and errors array', async () => {
+      const response = await request(app)
+        .post('/api/admin/slack/auto-link-suggested')
+        .expect(200);
+
+      expect(response.body).toHaveProperty('linked');
+      expect(response.body).toHaveProperty('errors');
+      expect(typeof response.body.linked).toBe('number');
+      expect(response.body.errors).toBeInstanceOf(Array);
+    });
+
+    it('should return 0 linked when no matches exist', async () => {
+      // Create an unmapped Slack user with no matching AAO email
+      await pool.query(
+        `INSERT INTO slack_user_mappings (
+          slack_user_id, slack_email, slack_display_name, slack_real_name,
+          slack_is_bot, slack_is_deleted, mapping_status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        ['U_test_no_match', 'no-match-email@nonexistent-domain.invalid', 'No Match', 'No Match User', false, false, 'unmapped']
+      );
+
+      const response = await request(app)
+        .post('/api/admin/slack/auto-link-suggested')
+        .expect(200);
+
+      // Should not have linked anything since the email doesn't match any AAO user
+      expect(response.body.linked).toBe(0);
+      expect(response.body.errors).toEqual([]);
+    });
+  });
 });
