@@ -9480,6 +9480,76 @@ Disallow: /api/admin/
       }
     });
 
+    // GET /api/admin/slack/auto-link-suggested - Get suggested email matches (without linking)
+    this.app.get('/api/admin/slack/auto-link-suggested', requireAuth, requireAdmin, async (_req, res) => {
+      try {
+        // Get all unmapped Slack users
+        const unmappedSlack = await slackDb.getUnmappedUsers({
+          excludeOptedOut: false,
+          excludeRecentlyNudged: false,
+        });
+
+        // Get all AAO users
+        const orgDatabase = new OrganizationDatabase();
+        const orgs = await orgDatabase.listOrganizations();
+        const aaoEmailToUserId = new Map<string, string>();
+
+        if (workos) {
+          for (const org of orgs) {
+            try {
+              const memberships = await workos.userManagement.listOrganizationMemberships({
+                organizationId: org.workos_organization_id,
+              });
+              for (const membership of memberships.data) {
+                try {
+                  const user = await workos.userManagement.getUser(membership.userId);
+                  aaoEmailToUserId.set(user.email.toLowerCase(), user.id);
+                } catch {
+                  // Skip users we can't fetch
+                }
+              }
+            } catch {
+              // Skip orgs we can't fetch
+            }
+          }
+        }
+
+        // Find matching emails (without linking)
+        const suggestions: Array<{
+          slack_user_id: string;
+          slack_email: string;
+          slack_name: string;
+          workos_user_id: string;
+        }> = [];
+
+        for (const slackUser of unmappedSlack) {
+          if (!slackUser.slack_email) continue;
+
+          const workosUserId = aaoEmailToUserId.get(slackUser.slack_email.toLowerCase());
+          if (!workosUserId) continue;
+
+          // Check if WorkOS user is already mapped to another Slack user
+          const existingMapping = await slackDb.getByWorkosUserId(workosUserId);
+          if (existingMapping) continue;
+
+          suggestions.push({
+            slack_user_id: slackUser.slack_user_id,
+            slack_email: slackUser.slack_email,
+            slack_name: slackUser.slack_real_name || slackUser.slack_display_name || '',
+            workos_user_id: workosUserId,
+          });
+        }
+
+        res.json({ suggestions });
+      } catch (error) {
+        logger.error({ err: error }, 'Get suggested matches error');
+        res.status(500).json({
+          error: 'Failed to get suggested matches',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // POST /api/admin/slack/auto-link-suggested - Auto-link all suggested email matches
     this.app.post('/api/admin/slack/auto-link-suggested', requireAuth, requireAdmin, async (req, res) => {
       try {
