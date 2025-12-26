@@ -47,7 +47,8 @@ CREATE INDEX IF NOT EXISTS idx_slack_mapping_unmapped_active
   ON slack_user_mappings(mapping_status)
   WHERE mapping_status = 'unmapped' AND slack_is_bot = false AND slack_is_deleted = false;
 
--- Trigger for updated_at
+-- Trigger for updated_at (drop first to make idempotent)
+DROP TRIGGER IF EXISTS update_slack_user_mappings_updated_at ON slack_user_mappings;
 CREATE TRIGGER update_slack_user_mappings_updated_at
   BEFORE UPDATE ON slack_user_mappings
   FOR EACH ROW
