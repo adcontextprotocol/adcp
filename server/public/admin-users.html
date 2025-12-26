@@ -332,15 +332,15 @@
           </div>
           <div class="stat-card clickable" onclick="filterByStatus('mapped')" id="stat-mapped">
             <div id="mappedUsers" class="stat-value">-</div>
-            <div class="stat-label">Mapped</div>
+            <div class="stat-label">Both</div>
           </div>
           <div class="stat-card clickable" onclick="filterByStatus('suggested_match')" id="stat-suggested">
             <div id="suggestedUsers" class="stat-value">-</div>
-            <div class="stat-label">Suggested</div>
+            <div class="stat-label">Can Link</div>
           </div>
           <div class="stat-card clickable" onclick="filterByStatus('aao_only')" id="stat-aao">
             <div id="aaoOnlyUsers" class="stat-value">-</div>
-            <div class="stat-label">AAO Only</div>
+            <div class="stat-label">Website Only</div>
           </div>
           <div class="stat-card clickable" onclick="filterByStatus('slack_only')" id="stat-slack">
             <div id="slackOnlyUsers" class="stat-value">-</div>
@@ -634,18 +634,22 @@
         case 'aao_only': return 'status-aao-only';
         case 'slack_only':
         case 'unmapped': return 'status-slack-only';
-        default: return 'status-unmapped';
+        default:
+          // If Slack isn't configured, treat as Website Only
+          return slackConfigured ? 'status-unmapped' : 'status-aao-only';
       }
     }
 
     function getStatusLabel(status) {
       switch (status) {
-        case 'mapped': return 'Mapped';
-        case 'suggested_match': return 'Suggested';
-        case 'aao_only': return 'AAO Only';
+        case 'mapped': return 'Website + Slack';
+        case 'suggested_match': return 'Can Link (email match)';
+        case 'aao_only': return 'Website Only';
         case 'slack_only':
         case 'unmapped': return 'Slack Only';
-        default: return status || 'Unknown';
+        default:
+          // If Slack isn't configured, show as Website user
+          return slackConfigured ? (status || 'Unknown') : 'Website Only';
       }
     }
 
@@ -657,12 +661,12 @@
         document.getElementById('aaoOnlyUsers').textContent = stats.aao_only || 0;
         document.getElementById('slackOnlyUsers').textContent = stats.slack_only || 0;
       } else {
-        // Fallback for non-unified endpoint
+        // Fallback for non-unified endpoint (Slack not configured)
         document.getElementById('totalUsers').textContent = allUsers.length;
-        document.getElementById('mappedUsers').textContent = '-';
-        document.getElementById('suggestedUsers').textContent = '-';
+        document.getElementById('mappedUsers').textContent = '0';
+        document.getElementById('suggestedUsers').textContent = '0';
         document.getElementById('aaoOnlyUsers').textContent = allUsers.length;
-        document.getElementById('slackOnlyUsers').textContent = '-';
+        document.getElementById('slackOnlyUsers').textContent = '0';
       }
 
       // Update active stat card

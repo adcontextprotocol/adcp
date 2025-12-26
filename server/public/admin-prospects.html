@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <title>Admin - Prospects - AdCP Registry</title>
+  <title>Admin - Account Management - AdCP Registry</title>
   <script src="/admin-nav.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
@@ -32,67 +32,107 @@
     h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
     .subtitle { color: var(--color-text-secondary); margin-bottom: var(--space-5); }
 
-    /* Pipeline Stats */
-    .pipeline-stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: var(--space-3);
+    /* View Tabs */
+    .view-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
       margin-bottom: var(--space-5);
-      padding: var(--space-4);
-      background: var(--color-gray-50);
+      padding-bottom: var(--space-4);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+    }
+    .view-tab {
+      padding: var(--space-2) var(--space-4);
+      border: var(--border-1) solid var(--color-gray-200);
       border-radius: var(--radius-md);
-    }
-    .stat-item {
-      text-align: center;
-      padding: var(--space-3);
-      border-radius: var(--radius-sm);
       background: var(--color-bg-card);
-    }
-    .stat-count {
-      font-size: var(--text-2xl);
-      font-weight: var(--font-bold);
-      color: var(--color-text-heading);
-    }
-    .stat-label {
-      font-size: var(--text-xs);
       color: var(--color-text-secondary);
-      text-transform: capitalize;
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .view-tab:hover {
+      background: var(--color-gray-50);
+      border-color: var(--color-gray-300);
+    }
+    .view-tab.active {
+      background: var(--color-brand);
+      color: white;
+      border-color: var(--color-brand);
+    }
+    .view-tab .badge {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+    .view-tab.active .badge {
+      background: var(--color-primary-200);
+      color: var(--color-primary-900);
     }
 
-    /* Filters */
+    /* Section Headers */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+    .section-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+    .section-description {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+
+    /* Filters - simplified */
     .filters {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: var(--space-4);
-      margin-bottom: var(--space-5);
-      padding: var(--space-5);
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+      padding: var(--space-3);
       background: var(--color-gray-50);
       border-radius: var(--radius-md);
     }
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
     .filter-group label {
-      display: block;
-      margin-bottom: var(--space-1);
-      font-weight: var(--font-semibold);
+      font-weight: var(--font-medium);
       font-size: var(--text-sm);
-      color: var(--color-text-heading);
+      color: var(--color-text-secondary);
     }
     .filter-group select,
     .filter-group input {
-      width: 100%;
-      padding: var(--space-2);
+      padding: var(--space-1.5) var(--space-2.5);
       border: var(--border-1) solid var(--color-gray-200);
       border-radius: var(--radius-md);
       font-size: var(--text-sm);
+      min-width: 120px;
+    }
+    .filter-group input[type="text"] {
+      min-width: 180px;
     }
 
     /* Actions */
     .actions {
       display: flex;
       gap: var(--space-2.5);
-      margin-bottom: var(--space-5);
     }
     .btn {
-      padding: var(--space-2.5) var(--space-5);
+      padding: var(--space-2) var(--space-4);
       border: none;
       border-radius: var(--radius-md);
       font-size: var(--text-sm);
@@ -113,12 +153,15 @@
     .btn-secondary:hover {
       background: var(--color-gray-300);
     }
+    .btn-sm {
+      padding: var(--space-1.5) var(--space-3);
+      font-size: var(--text-xs);
+    }
 
     /* Table */
     .prospects-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: var(--space-5);
     }
     .prospects-table th {
       background: var(--color-gray-50);
@@ -137,42 +180,63 @@
     .prospects-table tr:hover {
       background: var(--color-gray-50);
     }
-    .prospects-table tr.has-members {
-      background: var(--color-success-50);
+
+    /* Engagement fires */
+    .engagement-fires {
+      font-size: var(--text-sm);
+      letter-spacing: 1px;
+      cursor: help;
+    }
+
+    /* Company link */
+    .company-link {
+      color: var(--color-text-heading);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+    }
+    .company-link:hover {
+      color: var(--color-brand);
+      text-decoration: underline;
     }
 
     /* Status badges */
     .status-badge {
       display: inline-block;
-      padding: var(--space-1) var(--space-2);
+      padding: var(--space-0.5) var(--space-2);
       border-radius: var(--radius-sm);
       font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .status-member { background: var(--color-success-100); color: var(--color-success-700); }
+    .status-prospect { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .status-cold { background: var(--color-gray-200); color: var(--color-text-secondary); }
+
+    /* Priority indicators */
+    .priority-high {
+      color: var(--color-error-600);
       font-weight: var(--font-semibold);
     }
-    .status-prospect { background: var(--color-gray-200); color: var(--color-text-heading); }
-    .status-contacted { background: var(--color-info-100); color: var(--color-info-700); }
-    .status-responded { background: var(--color-warning-100); color: var(--color-warning-700); }
-    .status-interested { background: var(--color-primary-100); color: var(--color-primary-700); }
-    .status-negotiating { background: var(--color-primary-200); color: var(--color-primary-800); }
-    .status-joined { background: var(--color-success-100); color: var(--color-success-700); }
-    .status-declined { background: var(--color-error-100); color: var(--color-error-700); }
-
-    .member-badge {
-      background: var(--color-success-100);
-      color: var(--color-success-700);
-      padding: var(--space-0.5) var(--space-1.5);
-      border-radius: var(--radius-sm);
-      font-size: var(--text-xs);
-      margin-left: var(--space-2);
+    .priority-medium {
+      color: var(--color-warning-600);
+    }
+    .priority-low {
+      color: var(--color-text-muted);
     }
 
-    .parent-badge {
-      background: var(--color-primary-100);
-      color: var(--color-primary-700);
+    /* Stakeholder badges */
+    .stakeholder-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
       padding: var(--space-0.5) var(--space-1.5);
       border-radius: var(--radius-sm);
       font-size: var(--text-xs);
-      margin-left: var(--space-2);
+      background: var(--color-primary-50);
+      color: var(--color-primary-700);
+    }
+    .stakeholder-badge.owner {
+      background: var(--color-success-50);
+      color: var(--color-success-700);
     }
 
     /* Loading */
@@ -180,6 +244,17 @@
       text-align: center;
       padding: var(--space-12);
       color: var(--color-text-secondary);
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: var(--space-12);
+      color: var(--color-text-secondary);
+    }
+    .empty-state h3 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
     }
 
     /* Buttons */
@@ -304,14 +379,14 @@
     .import-success { color: var(--color-success-600); }
     .import-error { color: var(--color-error-600); }
 
-    /* Next action highlight */
-    .next-action-due {
-      color: var(--color-warning-600);
-      font-weight: var(--font-semibold);
-    }
-    .next-action-overdue {
+    /* Date badges */
+    .date-overdue {
       color: var(--color-error-600);
       font-weight: var(--font-semibold);
+    }
+    .date-soon {
+      color: var(--color-warning-600);
+      font-weight: var(--font-medium);
     }
   </style>
 </head>
@@ -319,113 +394,105 @@
   <!-- Header injected by admin-nav.js -->
 
   <div id="loading" class="loading">
-    Loading prospects...
+    Loading accounts...
   </div>
 
   <div id="content" style="display: none;">
     <div class="container">
       <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div class="section-header">
           <div>
-            <h1>Prospect Pipeline</h1>
-            <p class="subtitle">Track outreach for AAO membership</p>
+            <h1>Account Management</h1>
+            <p class="subtitle">Track and manage organization relationships</p>
           </div>
           <div class="actions">
-            <button class="btn btn-secondary" onclick="openMarkExistingModal()">Mark Existing Org</button>
-            <button class="btn btn-secondary" onclick="openBulkImportModal()">Bulk Import</button>
-            <button class="btn btn-primary" onclick="openAddProspectModal()">+ Add Prospect</button>
+            <button class="btn btn-secondary btn-sm" onclick="openBulkImportModal()">Bulk Import</button>
+            <button class="btn btn-primary btn-sm" onclick="openAddProspectModal()">+ Add Prospect</button>
           </div>
         </div>
 
-        <!-- Pipeline Stats -->
-        <div id="pipelineStats" class="pipeline-stats">
-          <div class="stat-item">
-            <div class="stat-count">-</div>
-            <div class="stat-label">Total</div>
-          </div>
+        <!-- View Tabs -->
+        <div class="view-tabs">
+          <button class="view-tab" data-view="needs_followup" onclick="switchView('needs_followup')">
+            Needs Follow-up
+            <span class="badge" id="count-needs_followup">0</span>
+          </button>
+          <button class="view-tab" data-view="new_signups" onclick="switchView('new_signups')">
+            New Signups
+            <span class="badge" id="count-new_signups">0</span>
+          </button>
+          <button class="view-tab" data-view="hot_prospects" onclick="switchView('hot_prospects')">
+            Hot Prospects
+            <span class="badge" id="count-hot_prospects">0</span>
+          </button>
+          <button class="view-tab" data-view="going_cold" onclick="switchView('going_cold')">
+            Going Cold
+            <span class="badge" id="count-going_cold">0</span>
+          </button>
+          <button class="view-tab" data-view="renewals" onclick="switchView('renewals')">
+            Renewals
+            <span class="badge" id="count-renewals">0</span>
+          </button>
+          <button class="view-tab" data-view="low_engagement" onclick="switchView('low_engagement')">
+            Low Engagement
+            <span class="badge" id="count-low_engagement">0</span>
+          </button>
+          <button class="view-tab" data-view="my_accounts" onclick="switchView('my_accounts')">
+            My Accounts
+            <span class="badge" id="count-my_accounts">0</span>
+          </button>
+          <button class="view-tab active" data-view="all" onclick="switchView('all')">
+            All
+          </button>
         </div>
+
+        <!-- View Description -->
+        <div id="viewDescription" class="section-description" style="margin-bottom: var(--space-4);"></div>
 
         <!-- Filters -->
         <div class="filters">
           <div class="filter-group">
-            <label>Status</label>
-            <select id="filterStatus" onchange="applyFilters()">
-              <option value="">All Statuses</option>
-              <option value="prospect">Prospect</option>
-              <option value="contacted">Contacted</option>
-              <option value="responded">Responded</option>
-              <option value="interested">Interested</option>
-              <option value="negotiating">Negotiating</option>
-              <option value="joined">Joined</option>
-              <option value="declined">Declined</option>
-            </select>
+            <label>Search</label>
+            <input type="text" id="filterSearch" placeholder="Company name..." oninput="applyFilters()">
           </div>
-
           <div class="filter-group">
             <label>Owner</label>
             <select id="filterOwner" onchange="applyFilters()">
-              <option value="">All Owners</option>
+              <option value="">All</option>
               <option value="Brian">Brian</option>
               <option value="Randy">Randy</option>
               <option value="Matt">Matt</option>
             </select>
           </div>
-
           <div class="filter-group">
             <label>Type</label>
             <select id="filterType" onchange="applyFilters()">
-              <option value="">All Types</option>
+              <option value="">All</option>
               <option value="adtech">Ad Tech</option>
               <option value="agency">Agency</option>
               <option value="brand">Brand</option>
               <option value="publisher">Publisher</option>
             </select>
           </div>
-
-          <div class="filter-group">
-            <label>Source</label>
-            <select id="filterSource" onchange="applyFilters()">
-              <option value="">All Sources</option>
-              <option value="aao_launch_list">AAO Launch List</option>
-              <option value="slack">Slack</option>
-              <option value="referral">Referral</option>
-              <option value="inbound">Inbound</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label>Has Members</label>
-            <select id="filterMembers" onchange="applyFilters()">
-              <option value="">All</option>
-              <option value="yes">Has Members</option>
-              <option value="no">No Members Yet</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label>Search</label>
-            <input type="text" id="filterSearch" placeholder="Company name..." oninput="applyFilters()">
-          </div>
         </div>
 
-        <div id="prospectsCount" style="color: var(--color-text-secondary); margin-bottom: var(--space-2.5);">
-          Showing 0 prospects
+        <div id="prospectsCount" style="color: var(--color-text-secondary); margin-bottom: var(--space-2.5); font-size: var(--text-sm);">
+          Showing 0 accounts
         </div>
 
         <table class="prospects-table">
-          <thead>
+          <thead id="tableHeader">
             <tr>
               <th>Company</th>
+              <th>Engagement</th>
               <th>Type</th>
-              <th>Status</th>
               <th>Owner</th>
-              <th>Contact</th>
-              <th>Next Action</th>
-              <th>Actions</th>
+              <th>Action Needed</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="prospectsTableBody">
-            <tr><td colspan="7" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No prospects found</td></tr>
+            <tr><td colspan="6" class="empty-state">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -480,12 +547,13 @@
           <div class="form-group">
             <label>Status</label>
             <select id="prospectStatus">
+              <option value="signed_up">Signed Up</option>
               <option value="prospect">Prospect</option>
               <option value="contacted">Contacted</option>
               <option value="responded">Responded</option>
               <option value="interested">Interested</option>
               <option value="negotiating">Negotiating</option>
-              <option value="joined">Joined</option>
+              <option value="converted">Converted</option>
               <option value="declined">Declined</option>
             </select>
           </div>
@@ -581,131 +649,91 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
     </div>
   </div>
 
-  <!-- Mark Existing Org Modal -->
-  <div id="markExistingModal" class="modal">
-    <div class="modal-content" style="max-width: 500px;">
-      <div class="modal-header">
-        <h2>Track Existing Organization</h2>
-        <button class="modal-close" onclick="closeMarkExistingModal()">&times;</button>
-      </div>
-
-      <p style="margin-bottom: var(--space-4); color: var(--color-text-secondary);">
-        Add an existing organization (signed up but not subscribed) to your prospect pipeline.
-      </p>
-
-      <div class="form-group">
-        <label>Organization</label>
-        <select id="existingOrgSelect" style="width: 100%; padding: var(--space-2.5);">
-          <option value="">Select an organization...</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label>Domain (optional)</label>
-        <input type="text" id="existingOrgDomain" placeholder="example.com" style="width: 100%; padding: var(--space-2.5);">
-        <div class="form-hint">Add email domain for auto-matching future signups</div>
-      </div>
-
-      <div class="form-group">
-        <label>Status</label>
-        <select id="existingOrgStatus" style="width: 100%; padding: var(--space-2.5);">
-          <option value="interested" selected>Interested (they signed up)</option>
-          <option value="negotiating">Negotiating</option>
-          <option value="contacted">Contacted</option>
-          <option value="responded">Responded</option>
-          <option value="declined">Declined</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label>Source</label>
-        <select id="existingOrgSource" style="width: 100%; padding: var(--space-2.5);">
-          <option value="inbound" selected>Inbound (they found us)</option>
-          <option value="aao_launch_list">AAO Launch List</option>
-          <option value="slack">Slack</option>
-          <option value="referral">Referral</option>
-        </select>
-      </div>
-
-      <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" onclick="closeMarkExistingModal()">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="markExistingAsProspect()" id="markExistingBtn">Add to Pipeline</button>
-      </div>
-    </div>
-  </div>
-
   <script>
     let allProspects = [];
     let filteredProspects = [];
     let allOrganizations = [];
+    let currentView = 'all';
+    let viewCounts = {};
 
-    async function loadProspects() {
+    const viewDescriptions = {
+      needs_followup: 'Organizations with pending follow-up actions due within 7 days',
+      new_signups: 'Organizations that signed up in the last 14 days with no logged activities',
+      hot_prospects: 'Non-members with high engagement (3+ fires) - good candidates for conversion',
+      going_cold: 'Organizations with no activity in the last 30 days - may need re-engagement',
+      renewals: 'Active members with subscriptions ending in the next 60 days',
+      low_engagement: 'Active members with low engagement (2 fires or less) - retention risk',
+      my_accounts: 'Organizations where you are listed as owner or connected',
+      all: 'All organizations in the system'
+    };
+
+    async function loadData() {
       try {
-        const [prospectsRes, orgsRes, statsRes] = await Promise.all([
-          fetch('/api/admin/prospects'),
-          fetch('/api/admin/organizations'),
-          fetch('/api/admin/prospects/stats')
-        ]);
-
-        if (!prospectsRes.ok || !orgsRes.ok) {
-          if (prospectsRes.status === 401 || orgsRes.status === 401) {
-            window.AdminNav.redirectToLogin();
-            return;
-          }
-          throw new Error('Failed to load data');
+        // Load view counts first for badges
+        const countsRes = await fetch('/api/admin/prospects/view-counts');
+        if (countsRes.ok) {
+          viewCounts = await countsRes.json();
+          updateViewCounts();
         }
 
-        allProspects = await prospectsRes.json();
-        allOrganizations = await orgsRes.json();
-        const stats = await statsRes.json();
+        // Load organizations for dropdown
+        const orgsRes = await fetch('/api/admin/organizations');
+        if (orgsRes.ok) {
+          allOrganizations = await orgsRes.json();
+          populateParentDropdown();
+        }
 
-        filteredProspects = allProspects;
-        renderProspects();
-        renderStats(stats);
-        populateParentDropdown();
+        // Load current view
+        await loadView(currentView);
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
       } catch (error) {
-        console.error('Error loading prospects:', error);
+        console.error('Error loading data:', error);
         document.getElementById('loading').innerHTML =
-          '<p style="color: var(--color-error-600);">Failed to load prospects. <a href="/auth/login">Try logging in again</a></p>';
+          '<p style="color: var(--color-error-600);">Failed to load data. <a href="/auth/login">Try logging in again</a></p>';
       }
     }
 
-    function renderStats(stats) {
-      const container = document.getElementById('pipelineStats');
+    function updateViewCounts() {
+      document.getElementById('count-needs_followup').textContent = viewCounts.needs_followup || 0;
+      document.getElementById('count-new_signups').textContent = viewCounts.new_signups || 0;
+      document.getElementById('count-going_cold').textContent = viewCounts.going_cold || 0;
+      document.getElementById('count-renewals').textContent = viewCounts.renewals || 0;
+      document.getElementById('count-my_accounts').textContent = viewCounts.my_accounts || 0;
+      // hot_prospects and low_engagement are calculated client-side, so we don't show counts
+    }
 
-      const statusOrder = ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'joined', 'declined'];
-      const statusLabels = {
-        prospect: 'Prospect',
-        contacted: 'Contacted',
-        responded: 'Responded',
-        interested: 'Interested',
-        negotiating: 'Negotiating',
-        joined: 'Joined',
-        declined: 'Declined'
-      };
+    async function loadView(view) {
+      currentView = view;
 
-      let html = `
-        <div class="stat-item">
-          <div class="stat-count">${stats.total}</div>
-          <div class="stat-label">Total</div>
-        </div>
-      `;
-
-      statusOrder.forEach(status => {
-        const item = stats.by_status.find(s => s.prospect_status === status);
-        const count = item ? item.count : 0;
-        html += `
-          <div class="stat-item">
-            <div class="stat-count">${count}</div>
-            <div class="stat-label">${statusLabels[status]}</div>
-          </div>
-        `;
+      // Update active tab
+      document.querySelectorAll('.view-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.view === view);
       });
 
-      container.innerHTML = html;
+      // Update description
+      document.getElementById('viewDescription').textContent = viewDescriptions[view] || '';
+
+      // Fetch data for view
+      const viewParam = view === 'all' ? '' : `?view=${view}`;
+      const response = await fetch(`/api/admin/prospects${viewParam}`);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          window.AdminNav.redirectToLogin();
+          return;
+        }
+        throw new Error('Failed to load prospects');
+      }
+
+      allProspects = await response.json();
+      filteredProspects = allProspects;
+      applyFilters();
+    }
+
+    function switchView(view) {
+      loadView(view);
     }
 
     function populateParentDropdown() {
@@ -720,20 +748,13 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
     }
 
     function applyFilters() {
-      const statusFilter = document.getElementById('filterStatus').value;
       const ownerFilter = document.getElementById('filterOwner').value;
       const typeFilter = document.getElementById('filterType').value;
-      const sourceFilter = document.getElementById('filterSource').value;
-      const membersFilter = document.getElementById('filterMembers').value;
       const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
 
       filteredProspects = allProspects.filter(prospect => {
-        if (statusFilter && prospect.prospect_status !== statusFilter) return false;
         if (ownerFilter && prospect.prospect_owner !== ownerFilter) return false;
         if (typeFilter && prospect.company_type !== typeFilter) return false;
-        if (sourceFilter && prospect.prospect_source !== sourceFilter) return false;
-        if (membersFilter === 'yes' && !prospect.has_members) return false;
-        if (membersFilter === 'no' && prospect.has_members) return false;
         if (searchFilter && !prospect.name.toLowerCase().includes(searchFilter)) return false;
         return true;
       });
@@ -745,10 +766,17 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       const tbody = document.getElementById('prospectsTableBody');
       const countDiv = document.getElementById('prospectsCount');
 
-      countDiv.textContent = `Showing ${filteredProspects.length} of ${allProspects.length} prospects`;
+      countDiv.textContent = `Showing ${filteredProspects.length} account${filteredProspects.length !== 1 ? 's' : ''}`;
 
       if (filteredProspects.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: var(--space-10); color: var(--color-text-secondary);">No prospects found</td></tr>';
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>No accounts found</h3>
+              <p>No organizations match the current view and filters.</p>
+            </td>
+          </tr>
+        `;
         return;
       }
 
@@ -760,19 +788,21 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       };
 
       tbody.innerHTML = filteredProspects.map(prospect => {
-        const statusClass = `status-${prospect.prospect_status}`;
+        // Company name with link
+        let companyHtml = `<a href="/admin/organizations/${prospect.workos_organization_id}" class="company-link">${prospect.name}</a>`;
 
-        // Company name with badges
-        let companyHtml = `<strong>${prospect.name}</strong>`;
-        if (prospect.has_members) {
-          companyHtml += `<span class="member-badge">${prospect.member_count} member${prospect.member_count !== 1 ? 's' : ''}</span>`;
+        // Add member status badge
+        if (prospect.subscription_status === 'active') {
+          companyHtml += `<br><span class="status-badge status-member">Member</span>`;
         }
-        if (prospect.parent_name) {
-          companyHtml += `<br><small style="color: var(--color-text-muted);">Subsidiary of ${prospect.parent_name}</small>`;
+        if (prospect.member_count > 0) {
+          companyHtml += ` <small style="color: var(--color-text-muted);">${prospect.member_count} user${prospect.member_count !== 1 ? 's' : ''}</small>`;
         }
-        if (prospect.subsidiary_count > 0) {
-          companyHtml += `<span class="parent-badge">${prospect.subsidiary_count} subsidiaries</span>`;
-        }
+
+        // Engagement fires
+        const fires = '\u{1F525}'.repeat(prospect.engagement_level || 1);
+        const engagementTooltip = prospect.engagement_reasons?.join(', ') || 'Cold';
+        const engagementHtml = `<span class="engagement-fires" title="${engagementTooltip}">${fires}</span>`;
 
         // Type
         const typeHtml = prospect.company_type ? typeLabels[prospect.company_type] || prospect.company_type : '<span style="color: var(--color-text-muted);">-</span>';
@@ -780,47 +810,47 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         // Owner
         const ownerHtml = prospect.prospect_owner || '<span style="color: var(--color-text-muted);">-</span>';
 
-        // Contact info
-        let contactHtml = '-';
-        if (prospect.prospect_contact_name || prospect.prospect_contact_email) {
-          contactHtml = '';
-          if (prospect.prospect_contact_name) {
-            contactHtml += prospect.prospect_contact_name;
-            if (prospect.prospect_contact_title) {
-              contactHtml += `<br><small style="color: var(--color-text-muted);">${prospect.prospect_contact_title}</small>`;
-            }
-          }
-          if (prospect.prospect_contact_email) {
-            contactHtml += `<br><a href="mailto:${prospect.prospect_contact_email}" style="font-size: var(--text-xs);">${prospect.prospect_contact_email}</a>`;
-          }
-        }
-
-        // Next action with date styling
-        let nextActionHtml = '-';
-        if (prospect.prospect_next_action) {
-          nextActionHtml = prospect.prospect_next_action;
+        // Action needed - context-dependent
+        let actionHtml = '-';
+        if (currentView === 'needs_followup' && prospect.followup_due) {
+          const dueDate = new Date(prospect.followup_due);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const daysUntil = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
+          const dateClass = daysUntil < 0 ? 'date-overdue' : (daysUntil <= 3 ? 'date-soon' : '');
+          actionHtml = `<span class="${dateClass}">${prospect.followup_description || 'Follow up'}</span><br><small class="${dateClass}">${dueDate.toLocaleDateString()}</small>`;
+        } else if (currentView === 'new_signups') {
+          const signupDate = new Date(prospect.created_at);
+          actionHtml = `Welcome outreach<br><small>Signed up ${signupDate.toLocaleDateString()}</small>`;
+        } else if (currentView === 'going_cold') {
+          const lastActivity = prospect.last_activity_at ? new Date(prospect.last_activity_at) : null;
+          actionHtml = lastActivity ? `Re-engage<br><small>Last activity ${lastActivity.toLocaleDateString()}</small>` : 'Re-engage';
+        } else if (currentView === 'renewals') {
+          const renewalDate = prospect.subscription_current_period_end ? new Date(prospect.subscription_current_period_end) : null;
+          actionHtml = renewalDate ? `Renewal check-in<br><small>Expires ${renewalDate.toLocaleDateString()}</small>` : 'Renewal check-in';
+        } else if (currentView === 'hot_prospects') {
+          actionHtml = 'Convert to member';
+        } else if (currentView === 'low_engagement') {
+          actionHtml = 'Increase engagement';
+        } else if (prospect.prospect_next_action) {
+          actionHtml = prospect.prospect_next_action;
           if (prospect.prospect_next_action_date) {
             const actionDate = new Date(prospect.prospect_next_action_date);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const daysUntil = Math.floor((actionDate - today) / (1000 * 60 * 60 * 24));
-
-            let dateClass = '';
-            if (daysUntil < 0) dateClass = 'next-action-overdue';
-            else if (daysUntil <= 3) dateClass = 'next-action-due';
-
-            nextActionHtml += `<br><small class="${dateClass}">${actionDate.toLocaleDateString()}</small>`;
+            const dateClass = daysUntil < 0 ? 'date-overdue' : (daysUntil <= 3 ? 'date-soon' : '');
+            actionHtml += `<br><small class="${dateClass}">${actionDate.toLocaleDateString()}</small>`;
           }
         }
 
         return `
-          <tr class="${prospect.has_members ? 'has-members' : ''}">
+          <tr>
             <td>${companyHtml}</td>
+            <td>${engagementHtml}</td>
             <td>${typeHtml}</td>
-            <td><span class="status-badge ${statusClass}">${prospect.prospect_status}</span></td>
             <td>${ownerHtml}</td>
-            <td>${contactHtml}</td>
-            <td>${nextActionHtml}</td>
+            <td>${actionHtml}</td>
             <td>
               <button class="btn-icon" onclick="editProspect('${prospect.workos_organization_id}')" title="Edit">Edit</button>
             </td>
@@ -850,8 +880,8 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       document.getElementById('prospectModalTitle').textContent = 'Edit Prospect';
       document.getElementById('editOrgId').value = orgId;
       document.getElementById('prospectName').value = prospect.name;
-      document.getElementById('prospectName').disabled = true; // Can't rename WorkOS org easily
-      document.getElementById('prospectDomain').value = ''; // Domain already set in WorkOS
+      document.getElementById('prospectName').disabled = true;
+      document.getElementById('prospectDomain').value = '';
       document.getElementById('prospectDomain').disabled = true;
       document.getElementById('prospectCompanyType').value = prospect.company_type || '';
       document.getElementById('prospectOwner').value = prospect.prospect_owner || '';
@@ -918,7 +948,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         }
 
         closeProspectModal();
-        loadProspects();
+        loadData();
       } catch (error) {
         alert('Error: ' + error.message);
       } finally {
@@ -1071,7 +1101,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
 
         // Show results
         const resultsDiv = document.getElementById('importResults');
-        let html = `<strong>Imported: ${result.imported}</strong> | Failed: ${result.failed}<br><br>`;
+        let html = `<strong>Imported: ${result.created}</strong> | Failed: ${result.failed}<br><br>`;
 
         if (result.results.success.length > 0) {
           html += '<div class="import-success">Success:<br>';
@@ -1092,84 +1122,13 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         resultsDiv.innerHTML = html;
         resultsDiv.style.display = 'block';
 
-        // Refresh list
-        loadProspects();
+        // Refresh data
+        loadData();
       } catch (error) {
         alert('Error: ' + error.message);
       } finally {
         btn.disabled = false;
         btn.textContent = 'Import';
-      }
-    }
-
-    // Mark existing org as prospect
-    function openMarkExistingModal() {
-      const select = document.getElementById('existingOrgSelect');
-      select.innerHTML = '<option value="">Select an organization...</option>';
-
-      // Filter to orgs not already in prospect pipeline
-      const prospectOrgIds = new Set(allProspects.map(p => p.workos_organization_id));
-      const availableOrgs = allOrganizations.filter(org => !prospectOrgIds.has(org.workos_organization_id));
-
-      if (availableOrgs.length === 0) {
-        select.innerHTML = '<option value="">All organizations are already in the pipeline</option>';
-      } else {
-        availableOrgs.forEach(org => {
-          select.innerHTML += `<option value="${org.workos_organization_id}">${org.name}</option>`;
-        });
-      }
-
-      document.getElementById('existingOrgDomain').value = '';
-      document.getElementById('existingOrgStatus').value = 'interested';
-      document.getElementById('existingOrgSource').value = 'inbound';
-      document.getElementById('markExistingModal').style.display = 'block';
-    }
-
-    function closeMarkExistingModal() {
-      document.getElementById('markExistingModal').style.display = 'none';
-    }
-
-    async function markExistingAsProspect() {
-      const orgId = document.getElementById('existingOrgSelect').value;
-      if (!orgId) {
-        alert('Please select an organization');
-        return;
-      }
-
-      const domain = document.getElementById('existingOrgDomain').value.trim() || null;
-      const status = document.getElementById('existingOrgStatus').value;
-      const source = document.getElementById('existingOrgSource').value;
-
-      const btn = document.getElementById('markExistingBtn');
-      btn.disabled = true;
-      btn.textContent = 'Adding...';
-
-      try {
-        const response = await fetch(`/api/admin/prospects/${orgId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prospect_status: status,
-            prospect_source: source,
-            domain: domain
-          })
-        });
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
-            return;
-          }
-          throw new Error('Failed to update organization');
-        }
-
-        closeMarkExistingModal();
-        loadProspects();
-      } catch (error) {
-        alert('Error: ' + error.message);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Add to Pipeline';
       }
     }
 
@@ -1181,7 +1140,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
     }
 
     // Initialize
-    loadProspects();
+    loadData();
   </script>
 </body>
 </html>

@@ -23,6 +23,7 @@ export interface SlackUserMapping {
   last_nudge_at: Date | null;
   nudge_count: number;
   last_slack_sync_at: Date | null;
+  last_slack_activity_at: Date | null;
   mapped_at: Date | null;
   mapped_by_user_id: string | null;
   created_at: Date;

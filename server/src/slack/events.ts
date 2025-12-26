@@ -1,7 +1,7 @@
 /**
  * Slack Events API handlers
  *
- * Handles events from Slack like team_join, member_joined_channel
+ * Handles events from Slack like team_join, member_joined_channel, message
  */
 
 import { logger } from '../logger.js';
@@ -25,7 +25,36 @@ export interface SlackMemberJoinedChannelEvent {
   inviter?: string;
 }
 
-export type SlackEvent = SlackTeamJoinEvent | SlackMemberJoinedChannelEvent | { type: string };
+export interface SlackMessageEvent {
+  type: 'message';
+  subtype?: string;
+  user?: string;
+  channel: string;
+  ts: string;
+  thread_ts?: string;
+  text?: string;
+  channel_type?: string;
+}
+
+export interface SlackReactionAddedEvent {
+  type: 'reaction_added';
+  user: string;
+  reaction: string;
+  item: {
+    type: string;
+    channel: string;
+    ts: string;
+  };
+  item_user?: string;
+  event_ts: string;
+}
+
+export type SlackEvent =
+  | SlackTeamJoinEvent
+  | SlackMemberJoinedChannelEvent
+  | SlackMessageEvent
+  | SlackReactionAddedEvent
+  | { type: string };
 
 export interface SlackEventPayload {
   type: 'event_callback' | 'url_verification';
@@ -79,7 +108,7 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
 
 /**
  * Handle member_joined_channel event
- * Can be used for paid-only channel enforcement
+ * Records channel join activity for engagement tracking
  */
 export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelEvent): Promise<void> {
   logger.debug(
@@ -87,8 +116,110 @@ export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelE
     'User joined channel'
   );
 
-  // TODO: Check if channel is paid-only and verify user has subscription
-  // For now, just log the event
+  try {
+    // Get user's org mapping if they're linked
+    const mapping = await slackDb.getBySlackUserId(event.user);
+    let organizationId: string | undefined;
+
+    if (mapping?.workos_user_id) {
+      // Note: Would need to lookup org from WorkOS - for now just record without org
+      // This could be enhanced with a cache or join table
+    }
+
+    await slackDb.recordActivity({
+      slack_user_id: event.user,
+      activity_type: 'channel_join',
+      channel_id: event.channel,
+      activity_timestamp: new Date(),
+      organization_id: organizationId,
+      metadata: {
+        channel_type: event.channel_type,
+        inviter: event.inviter,
+      },
+    });
+  } catch (error) {
+    logger.error({ error, userId: event.user }, 'Failed to record channel join activity');
+  }
+}
+
+/**
+ * Handle message event
+ * Records message activity for engagement tracking
+ */
+export async function handleMessage(event: SlackMessageEvent): Promise<void> {
+  // Skip bot messages, message edits/deletes, etc.
+  if (event.subtype || !event.user) {
+    return;
+  }
+
+  logger.debug(
+    { userId: event.user, channel: event.channel, hasThread: !!event.thread_ts },
+    'User sent message'
+  );
+
+  try {
+    // Get user's org mapping if they're linked
+    const mapping = await slackDb.getBySlackUserId(event.user);
+    let organizationId: string | undefined;
+
+    if (mapping?.workos_user_id) {
+      // Note: Would need to lookup org from WorkOS - for now just record without org
+    }
+
+    // Determine if this is a thread reply or a new message
+    const isThreadReply = event.thread_ts && event.thread_ts !== event.ts;
+    const activityType = isThreadReply ? 'thread_reply' : 'message';
+
+    await slackDb.recordActivity({
+      slack_user_id: event.user,
+      activity_type: activityType,
+      channel_id: event.channel,
+      activity_timestamp: new Date(parseFloat(event.ts) * 1000),
+      organization_id: organizationId,
+      metadata: {
+        channel_type: event.channel_type,
+        is_thread_reply: isThreadReply,
+        message_length: event.text?.length || 0,
+      },
+    });
+  } catch (error) {
+    logger.error({ error, userId: event.user }, 'Failed to record message activity');
+  }
+}
+
+/**
+ * Handle reaction_added event
+ * Records reaction activity for engagement tracking
+ */
+export async function handleReactionAdded(event: SlackReactionAddedEvent): Promise<void> {
+  logger.debug(
+    { userId: event.user, reaction: event.reaction, channel: event.item.channel },
+    'User added reaction'
+  );
+
+  try {
+    // Get user's org mapping if they're linked
+    const mapping = await slackDb.getBySlackUserId(event.user);
+    let organizationId: string | undefined;
+
+    if (mapping?.workos_user_id) {
+      // Note: Would need to lookup org from WorkOS - for now just record without org
+    }
+
+    await slackDb.recordActivity({
+      slack_user_id: event.user,
+      activity_type: 'reaction',
+      channel_id: event.item.channel,
+      activity_timestamp: new Date(parseFloat(event.event_ts) * 1000),
+      organization_id: organizationId,
+      metadata: {
+        reaction: event.reaction,
+        item_type: event.item.type,
+      },
+    });
+  } catch (error) {
+    logger.error({ error, userId: event.user }, 'Failed to record reaction activity');
+  }
 }
 
 /**
@@ -109,6 +240,14 @@ export async function handleSlackEvent(payload: SlackEventPayload): Promise<void
 
     case 'member_joined_channel':
       await handleMemberJoinedChannel(event as SlackMemberJoinedChannelEvent);
+      break;
+
+    case 'message':
+      await handleMessage(event as SlackMessageEvent);
+      break;
+
+    case 'reaction_added':
+      await handleReactionAdded(event as SlackReactionAddedEvent);
       break;
 
     default:

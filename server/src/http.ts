@@ -258,9 +258,9 @@ export class HTTPServer {
     }
 
     // Mount admin routes
-    const adminRouter = createAdminRouter();
-    this.app.use('/admin', adminRouter);
-    this.app.use('/api/admin', adminRouter);
+    const { pageRouter, apiRouter } = createAdminRouter();
+    this.app.use('/admin', pageRouter);      // Page routes: /admin/prospects
+    this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/prospects
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
@@ -9292,11 +9292,35 @@ Disallow: /api/admin/
           return res.status(503).json({ error: 'Authentication not configured' });
         }
 
-        const { search, status } = req.query;
+        const { search, status, group } = req.query;
         const searchTerm = typeof search === 'string' ? search.toLowerCase() : '';
         const statusFilter = typeof status === 'string' ? status : '';
+        const filterByGroup = typeof group === 'string' ? group : undefined;
 
         const orgDatabase = new OrganizationDatabase();
+        const wgDb = new WorkingGroupDatabase();
+
+        // Get all working group memberships from our database
+        const allWgMemberships = await wgDb.getAllMemberships();
+
+        // Create a map of user_id -> working groups
+        const userWorkingGroups = new Map<string, Array<{
+          id: string;
+          name: string;
+          slug: string;
+          is_private: boolean;
+        }>>();
+
+        for (const m of allWgMemberships) {
+          const groups = userWorkingGroups.get(m.user_id) || [];
+          groups.push({
+            id: m.working_group_id,
+            name: m.working_group_name,
+            slug: m.working_group_slug || '',
+            is_private: m.is_private || false,
+          });
+          userWorkingGroups.set(m.user_id, groups);
+        }
 
         // Get all Slack users from our mapping table
         const slackMappings = await slackDb.getAllMappings({
@@ -9330,6 +9354,13 @@ Disallow: /api/admin/
           // Mapping status
           mapping_status: 'mapped' | 'slack_only' | 'aao_only' | 'suggested_match';
           mapping_source: string | null;
+          // Working groups (only for AAO users)
+          working_groups: Array<{
+            id: string;
+            name: string;
+            slug: string;
+            is_private: boolean;
+          }>;
         };
 
         const unifiedUsers: UnifiedUser[] = [];
@@ -9385,6 +9416,15 @@ Disallow: /api/admin/
                   // Don't mark as processed - we'll show suggestion but still allow manual link
                 }
 
+                // Get working groups for this user
+                const workingGroups = userWorkingGroups.get(user.id) || [];
+
+                // Apply group filter
+                if (filterByGroup) {
+                  const hasGroup = workingGroups.some(g => g.id === filterByGroup);
+                  if (!hasGroup) continue;
+                }
+
                 // Apply search filter
                 if (searchTerm) {
                   const matches =
@@ -9407,6 +9447,7 @@ Disallow: /api/admin/
                   ...slackInfo,
                   mapping_status: mappingStatus,
                   mapping_source: slackMapping?.mapping_source || null,
+                  working_groups: workingGroups,
                 });
               } catch (userErr) {
                 logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
@@ -9433,6 +9474,9 @@ Disallow: /api/admin/
             if (wasProcessed) continue;
           }
 
+          // Skip Slack-only users when filtering by group (they have no groups)
+          if (filterByGroup) continue;
+
           // Apply search filter
           if (searchTerm) {
             const matches =
@@ -9454,6 +9498,7 @@ Disallow: /api/admin/
             slack_real_name: slackUser.slack_real_name,
             mapping_status: 'slack_only',
             mapping_source: null,
+            working_groups: [], // Slack-only users have no working groups
           });
         }
 

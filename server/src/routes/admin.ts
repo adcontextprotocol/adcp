@@ -14,6 +14,9 @@ import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
+import { SlackDatabase } from "../db/slack-db.js";
+
+const slackDb = new SlackDatabase();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,15 +39,17 @@ const workos = AUTH_ENABLED
 
 /**
  * Create admin routes
+ * Returns separate routers for page routes (/admin/*) and API routes (/api/admin/*)
  */
-export function createAdminRouter(): Router {
-  const router = Router();
+export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
+  const pageRouter = Router();
+  const apiRouter = Router();
 
   // =========================================================================
-  // ADMIN PAGE ROUTES
+  // ADMIN PAGE ROUTES (mounted at /admin)
   // =========================================================================
 
-  router.get("/prospects", requireAuth, requireAdmin, (req, res) => {
+  pageRouter.get("/prospects", requireAuth, requireAdmin, (req, res) => {
     const prospectsPath =
       process.env.NODE_ENV === "production"
         ? path.join(__dirname, "../../server/public/admin-prospects.html")
@@ -53,23 +58,24 @@ export function createAdminRouter(): Router {
   });
 
   // =========================================================================
-  // PROSPECT MANAGEMENT API (AAO Outreach Tracking)
+  // PROSPECT MANAGEMENT API (mounted at /api/admin)
   // =========================================================================
 
-  // GET /api/admin/prospects - List all prospects
-  router.get("/prospects", requireAuth, requireAdmin, async (req, res) => {
+  // GET /api/admin/prospects - List all prospects with action-based views
+  apiRouter.get("/prospects", requireAuth, requireAdmin, async (req, res) => {
     try {
       const pool = getPool();
-      const { status, source } = req.query;
+      const { status, source, view, owner } = req.query;
 
-      let query = `
+      // Base SELECT fields
+      const selectFields = `
         SELECT
           o.workos_organization_id,
           o.name,
           o.company_type,
           o.revenue_tier,
-          o.prospect_status,
-          o.prospect_source,
+          COALESCE(o.prospect_status, 'signed_up') as prospect_status,
+          COALESCE(o.prospect_source, 'organic') as prospect_source,
           o.prospect_owner,
           o.prospect_notes,
           o.prospect_contact_name,
@@ -80,35 +86,221 @@ export function createAdminRouter(): Router {
           o.parent_organization_id,
           o.created_at,
           o.updated_at,
+          o.invoice_requested_at,
+          o.last_activity_at,
           p.name as parent_name,
-          (SELECT COUNT(*) FROM organizations WHERE parent_organization_id = o.workos_organization_id) as subsidiary_count
-        FROM organizations o
-        LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
-        WHERE o.prospect_status IS NOT NULL
+          (SELECT COUNT(*) FROM organizations WHERE parent_organization_id = o.workos_organization_id) as subsidiary_count,
+          o.subscription_status,
+          o.subscription_product_name,
+          o.subscription_current_period_end
       `;
-      const params: (string | null)[] = [];
 
-      if (status && typeof status === "string") {
-        params.push(status);
-        query += ` AND o.prospect_status = $${params.length}`;
+      const params: (string | Date | null)[] = [];
+      let query = "";
+      let orderBy = "";
+
+      // Action-based views
+      if (view && typeof view === "string") {
+        switch (view) {
+          case "needs_followup":
+            // Orgs with pending next steps due in next 7 days
+            query = `
+              ${selectFields},
+              na.next_step_due_date as followup_due,
+              na.description as followup_description
+              FROM organizations o
+              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              INNER JOIN org_activities na ON na.organization_id = o.workos_organization_id
+                AND na.is_next_step = TRUE
+                AND na.next_step_completed_at IS NULL
+                AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
+            `;
+            orderBy = ` ORDER BY na.next_step_due_date ASC NULLS FIRST`;
+            break;
+
+          case "hot_prospects":
+            // Non-paying orgs with high engagement (level 3+)
+            // We'll calculate engagement in JS, so just get non-paying orgs
+            query = `
+              ${selectFields}
+              FROM organizations o
+              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              WHERE (
+                o.subscription_status IS NULL
+                OR o.subscription_status NOT IN ('active', 'trialing')
+                OR o.subscription_canceled_at IS NOT NULL
+              )
+            `;
+            orderBy = ` ORDER BY o.invoice_requested_at DESC NULLS LAST, o.last_activity_at DESC NULLS LAST`;
+            break;
+
+          case "new_signups":
+            // Orgs created in last 14 days with no activities logged
+            const fourteenDaysAgo = new Date();
+            fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+            params.push(fourteenDaysAgo);
+            query = `
+              ${selectFields}
+              FROM organizations o
+              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              WHERE o.created_at > $${params.length}
+                AND NOT EXISTS (SELECT 1 FROM org_activities WHERE organization_id = o.workos_organization_id)
+            `;
+            orderBy = ` ORDER BY o.created_at DESC`;
+            break;
+
+          case "going_cold":
+            // Orgs with activity more than 30 days ago (but had some activity)
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            params.push(thirtyDaysAgo);
+            query = `
+              ${selectFields}
+              FROM organizations o
+              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              WHERE o.last_activity_at IS NOT NULL
+                AND o.last_activity_at < $${params.length}
+                AND (
+                  o.subscription_status IS NULL
+                  OR o.subscription_status NOT IN ('active', 'trialing')
+                  OR o.subscription_canceled_at IS NOT NULL
+                )
+            `;
+            orderBy = ` ORDER BY o.last_activity_at ASC`;
+            break;
+
+          case "renewals":
+            // Paying orgs with subscription ending in next 60 days
+            const sixtyDaysFromNow = new Date();
+            sixtyDaysFromNow.setDate(sixtyDaysFromNow.getDate() + 60);
+            params.push(new Date());
+            params.push(sixtyDaysFromNow);
+            query = `
+              ${selectFields}
+              FROM organizations o
+              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              WHERE o.subscription_status = 'active'
+                AND o.subscription_current_period_end IS NOT NULL
+                AND o.subscription_current_period_end >= $${params.length - 1}
+                AND o.subscription_current_period_end <= $${params.length}
+            `;
+            orderBy = ` ORDER BY o.subscription_current_period_end ASC`;
+            break;
+
+          case "low_engagement":
+            // Paying members with low engagement (we'll filter by engagement_level <= 2 in JS)
+            query = `
+              ${selectFields}
+              FROM organizations o
+              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              WHERE o.subscription_status = 'active'
+                AND o.subscription_canceled_at IS NULL
+            `;
+            orderBy = ` ORDER BY o.last_activity_at ASC NULLS FIRST`;
+            break;
+
+          case "my_accounts":
+            // Accounts where current user is a stakeholder
+            const userId = req.user?.id;
+            if (userId) {
+              params.push(userId);
+              query = `
+                ${selectFields},
+                os.role as stakeholder_role
+                FROM organizations o
+                LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+                INNER JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+                  AND os.user_id = $${params.length}
+              `;
+              orderBy = ` ORDER BY os.role ASC, o.name ASC`;
+            } else {
+              // No user ID, return empty
+              return res.json([]);
+            }
+            break;
+
+          default:
+            // Fall back to default query for unknown views
+            query = `
+              ${selectFields}
+              FROM organizations o
+              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              WHERE (
+                o.subscription_status IS NULL
+                OR o.subscription_status NOT IN ('active', 'trialing')
+                OR o.subscription_canceled_at IS NOT NULL
+              )
+            `;
+            orderBy = ` ORDER BY o.created_at DESC`;
+        }
+      } else {
+        // Default: Show all non-paying orgs (original behavior)
+        query = `
+          ${selectFields}
+          FROM organizations o
+          LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+          WHERE (
+            o.subscription_status IS NULL
+            OR o.subscription_status NOT IN ('active', 'trialing')
+            OR o.subscription_canceled_at IS NOT NULL
+          )
+        `;
+        orderBy = ` ORDER BY o.prospect_next_action_date ASC NULLS LAST, o.created_at DESC`;
       }
 
-      if (source && typeof source === "string") {
-        params.push(source);
-        query += ` AND o.prospect_source = $${params.length}`;
+      // Apply additional filters (status, source, owner) if not using a specialized view
+      if (!view || view === "hot_prospects" || view === "going_cold" || view === "low_engagement") {
+        if (status && typeof status === "string") {
+          params.push(status);
+          query += ` AND o.prospect_status = $${params.length}`;
+        }
+
+        if (source && typeof source === "string") {
+          params.push(source);
+          query += ` AND o.prospect_source = $${params.length}`;
+        }
+
+        if (owner && typeof owner === "string") {
+          params.push(owner);
+          query += ` AND o.prospect_owner = $${params.length}`;
+        }
       }
 
-      const { owner } = req.query;
-      if (owner && typeof owner === "string") {
-        params.push(owner);
-        query += ` AND o.prospect_owner = $${params.length}`;
-      }
-
-      query += ` ORDER BY o.prospect_next_action_date ASC NULLS LAST, o.created_at DESC`;
+      query += orderBy;
 
       const result = await pool.query(query, params);
 
-      // Enrich with WorkOS membership count
+      // Get working group counts for all orgs
+      const workingGroupCounts = await pool.query(`
+        SELECT workos_organization_id as organization_id, COUNT(DISTINCT working_group_id) as wg_count
+        FROM working_group_memberships
+        WHERE status = 'active' AND workos_organization_id IS NOT NULL
+        GROUP BY workos_organization_id
+      `);
+      const wgCountMap = new Map(
+        workingGroupCounts.rows.map((r) => [r.organization_id, parseInt(r.wg_count)])
+      );
+
+      // Get recent activity counts (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const recentActivityCounts = await pool.query(
+        `
+        SELECT organization_id, COUNT(*) as activity_count
+        FROM org_activities
+        WHERE activity_date > $1
+        GROUP BY organization_id
+      `,
+        [thirtyDaysAgo]
+      );
+      const activityCountMap = new Map(
+        recentActivityCounts.rows.map((r) => [
+          r.organization_id,
+          parseInt(r.activity_count),
+        ])
+      );
+
+      // Enrich with WorkOS membership count and engagement level
       const prospects = await Promise.all(
         result.rows.map(async (row) => {
           let memberCount = 0;
@@ -124,15 +316,50 @@ export function createAdminRouter(): Router {
             // Org might not exist in WorkOS yet or other error
           }
 
+          // Calculate engagement level
+          const wgCount = wgCountMap.get(row.workos_organization_id) || 0;
+          const recentActivityCount =
+            activityCountMap.get(row.workos_organization_id) || 0;
+
+          let engagementLevel = 1; // Base level - exists
+          const engagementReasons: string[] = [];
+
+          if (row.invoice_requested_at) {
+            engagementLevel = 5;
+            engagementReasons.push("Requested invoice");
+          } else if (wgCount > 0) {
+            engagementLevel = 4;
+            engagementReasons.push(`In ${wgCount} working group(s)`);
+          } else if (memberCount > 0) {
+            engagementLevel = 3;
+            engagementReasons.push(`${memberCount} team member(s)`);
+          } else if (recentActivityCount > 0) {
+            engagementLevel = 2;
+            engagementReasons.push("Recent contact");
+          }
+
           return {
             ...row,
             member_count: memberCount,
             has_members: memberCount > 0,
+            working_group_count: wgCount,
+            engagement_level: engagementLevel,
+            engagement_reasons: engagementReasons,
           };
         })
       );
 
-      res.json(prospects);
+      // Filter by engagement level for specific views
+      let filteredProspects = prospects;
+      if (view === "hot_prospects") {
+        // Only show high engagement (level 3+)
+        filteredProspects = prospects.filter((p) => p.engagement_level >= 3);
+      } else if (view === "low_engagement") {
+        // Only show low engagement (level 2 or less)
+        filteredProspects = prospects.filter((p) => p.engagement_level <= 2);
+      }
+
+      res.json(filteredProspects);
     } catch (error) {
       logger.error({ err: error }, "Error fetching prospects");
       res.status(500).json({
@@ -143,7 +370,7 @@ export function createAdminRouter(): Router {
   });
 
   // POST /api/admin/prospects - Create a new prospect
-  router.post("/prospects", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/prospects", requireAuth, requireAdmin, async (req, res) => {
     try {
       const {
         name,
@@ -238,7 +465,7 @@ export function createAdminRouter(): Router {
   });
 
   // POST /api/admin/prospects/bulk - Bulk import prospects
-  router.post(
+  apiRouter.post(
     "/prospects/bulk",
     requireAuth,
     requireAdmin,
@@ -356,7 +583,7 @@ export function createAdminRouter(): Router {
   );
 
   // PUT /api/admin/prospects/:orgId - Update prospect
-  router.put(
+  apiRouter.put(
     "/prospects/:orgId",
     requireAuth,
     requireAdmin,
@@ -465,7 +692,7 @@ export function createAdminRouter(): Router {
   );
 
   // GET /api/admin/prospects/stats - Get prospect statistics
-  router.get(
+  apiRouter.get(
     "/prospects/stats",
     requireAuth,
     requireAdmin,
@@ -473,15 +700,21 @@ export function createAdminRouter(): Router {
       try {
         const pool = getPool();
 
+        // Count all non-paying orgs by status (including signed_up for those without explicit status)
         const result = await pool.query(`
         SELECT
-          prospect_status,
+          COALESCE(prospect_status, 'signed_up') as prospect_status,
           COUNT(*) as count
         FROM organizations
-        WHERE prospect_status IS NOT NULL
-        GROUP BY prospect_status
+        WHERE (
+          subscription_status IS NULL
+          OR subscription_status NOT IN ('active', 'trialing')
+          OR subscription_canceled_at IS NOT NULL
+        )
+        GROUP BY COALESCE(prospect_status, 'signed_up')
         ORDER BY
-          CASE prospect_status
+          CASE COALESCE(prospect_status, 'signed_up')
+            WHEN 'signed_up' THEN 0
             WHEN 'prospect' THEN 1
             WHEN 'contacted' THEN 2
             WHEN 'interested' THEN 3
@@ -515,7 +748,7 @@ export function createAdminRouter(): Router {
   );
 
   // GET /api/admin/organizations - List all organizations (for parent org dropdown)
-  router.get(
+  apiRouter.get(
     "/organizations",
     requireAuth,
     requireAdmin,
@@ -544,5 +777,943 @@ export function createAdminRouter(): Router {
     }
   );
 
-  return router;
+  // =========================================================================
+  // ORGANIZATION DETAIL PAGE AND API
+  // =========================================================================
+
+  // Page route for org detail
+  pageRouter.get(
+    "/organizations/:orgId",
+    requireAuth,
+    requireAdmin,
+    (req, res) => {
+      const detailPath =
+        process.env.NODE_ENV === "production"
+          ? path.join(__dirname, "../../server/public/admin-org-detail.html")
+          : path.join(__dirname, "../../public/admin-org-detail.html");
+      res.sendFile(detailPath);
+    }
+  );
+
+  // GET /api/admin/organizations/:orgId - Get full org details with engagement data
+  apiRouter.get(
+    "/organizations/:orgId",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const pool = getPool();
+
+        // Get organization details
+        const orgResult = await pool.query(
+          `
+          SELECT
+            o.*,
+            p.name as parent_name,
+            (SELECT COUNT(*) FROM organizations WHERE parent_organization_id = o.workos_organization_id) as subsidiary_count
+          FROM organizations o
+          LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+          WHERE o.workos_organization_id = $1
+        `,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const org = orgResult.rows[0];
+
+        // Get member count from WorkOS
+        let memberCount = 0;
+        let members: any[] = [];
+        try {
+          if (workos) {
+            const memberships =
+              await workos.userManagement.listOrganizationMemberships({
+                organizationId: orgId,
+              });
+            memberCount = memberships.data?.length || 0;
+
+            // Get user details for each membership
+            for (const membership of memberships.data || []) {
+              try {
+                const user = await workos.userManagement.getUser(
+                  membership.userId
+                );
+                members.push({
+                  id: user.id,
+                  email: user.email,
+                  firstName: user.firstName,
+                  lastName: user.lastName,
+                  role: membership.role?.slug || "member",
+                });
+              } catch {
+                // User might not exist
+              }
+            }
+          }
+        } catch {
+          // Org might not exist in WorkOS
+        }
+
+        // Get working group memberships
+        const workingGroupResult = await pool.query(
+          `
+          SELECT DISTINCT wg.id, wg.name, wg.slug, wgm.status, wgm.joined_at
+          FROM working_group_memberships wgm
+          JOIN working_groups wg ON wgm.working_group_id = wg.id
+          WHERE wgm.workos_organization_id = $1 AND wgm.status = 'active'
+        `,
+          [orgId]
+        );
+
+        // Get recent activities
+        const activitiesResult = await pool.query(
+          `
+          SELECT *
+          FROM org_activities
+          WHERE organization_id = $1
+          ORDER BY activity_date DESC
+          LIMIT 50
+        `,
+          [orgId]
+        );
+
+        // Get pending next steps
+        const nextStepsResult = await pool.query(
+          `
+          SELECT *
+          FROM org_activities
+          WHERE organization_id = $1
+            AND is_next_step = TRUE
+            AND next_step_completed_at IS NULL
+          ORDER BY next_step_due_date ASC NULLS LAST
+        `,
+          [orgId]
+        );
+
+        // Calculate engagement level (fire emojis)
+        let engagementLevel = 1; // Base level - exists
+        let engagementReasons: string[] = [];
+
+        if (org.invoice_requested_at) {
+          engagementLevel = 5;
+          engagementReasons.push("Requested invoice");
+        } else if (workingGroupResult.rows.length > 0) {
+          engagementLevel = 4;
+          engagementReasons.push(
+            `In ${workingGroupResult.rows.length} working group(s)`
+          );
+        } else if (memberCount > 0) {
+          engagementLevel = 3;
+          engagementReasons.push(`${memberCount} team member(s)`);
+        } else if (activitiesResult.rows.length > 0) {
+          const recentActivity = activitiesResult.rows.find((a) => {
+            const activityDate = new Date(a.activity_date);
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            return activityDate > thirtyDaysAgo;
+          });
+          if (recentActivity) {
+            engagementLevel = 2;
+            engagementReasons.push("Recent contact");
+          }
+        }
+
+        res.json({
+          ...org,
+          member_count: memberCount,
+          members,
+          working_groups: workingGroupResult.rows,
+          activities: activitiesResult.rows,
+          next_steps: nextStepsResult.rows,
+          engagement_level: engagementLevel,
+          engagement_reasons: engagementReasons,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching organization details");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch organization details",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/organizations/:orgId/activities - Log an activity
+  apiRouter.post(
+    "/organizations/:orgId/activities",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const {
+          activity_type,
+          description,
+          activity_date,
+          is_next_step,
+          next_step_due_date,
+          next_step_owner_user_id,
+          next_step_owner_name,
+        } = req.body;
+
+        if (!activity_type) {
+          return res.status(400).json({ error: "activity_type is required" });
+        }
+
+        const pool = getPool();
+
+        // Get logged-in user info
+        const loggedByUserId = req.user?.id || null;
+        const loggedByName = req.user
+          ? `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() ||
+            req.user.email
+          : null;
+
+        const result = await pool.query(
+          `
+          INSERT INTO org_activities (
+            organization_id,
+            activity_type,
+            description,
+            logged_by_user_id,
+            logged_by_name,
+            activity_date,
+            is_next_step,
+            next_step_due_date,
+            next_step_owner_user_id,
+            next_step_owner_name
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING *
+        `,
+          [
+            orgId,
+            activity_type,
+            description || null,
+            loggedByUserId,
+            loggedByName,
+            activity_date || new Date(),
+            is_next_step || false,
+            next_step_due_date || null,
+            next_step_owner_user_id || null,
+            next_step_owner_name || null,
+          ]
+        );
+
+        // Update last_activity_at on the organization
+        await pool.query(
+          `
+          UPDATE organizations
+          SET last_activity_at = $2, updated_at = NOW()
+          WHERE workos_organization_id = $1
+        `,
+          [orgId, activity_date || new Date()]
+        );
+
+        // If invoice_requested, update that field too
+        if (activity_type === "invoice_requested") {
+          await pool.query(
+            `
+            UPDATE organizations
+            SET invoice_requested_at = $2
+            WHERE workos_organization_id = $1 AND invoice_requested_at IS NULL
+          `,
+            [orgId, activity_date || new Date()]
+          );
+        }
+
+        res.status(201).json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, "Error logging activity");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to log activity",
+        });
+      }
+    }
+  );
+
+  // PUT /api/admin/organizations/:orgId/activities/:activityId - Update activity (e.g., complete next step)
+  apiRouter.put(
+    "/organizations/:orgId/activities/:activityId",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId, activityId } = req.params;
+        const { next_step_completed_at, description, next_step_due_date } =
+          req.body;
+
+        const pool = getPool();
+
+        const updates: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
+        if (next_step_completed_at !== undefined) {
+          updates.push(`next_step_completed_at = $${paramIndex++}`);
+          values.push(next_step_completed_at);
+        }
+        if (description !== undefined) {
+          updates.push(`description = $${paramIndex++}`);
+          values.push(description);
+        }
+        if (next_step_due_date !== undefined) {
+          updates.push(`next_step_due_date = $${paramIndex++}`);
+          values.push(next_step_due_date);
+        }
+
+        if (updates.length === 0) {
+          return res.status(400).json({ error: "No fields to update" });
+        }
+
+        updates.push("updated_at = NOW()");
+        values.push(activityId);
+        values.push(orgId);
+
+        const result = await pool.query(
+          `
+          UPDATE org_activities
+          SET ${updates.join(", ")}
+          WHERE id = $${paramIndex} AND organization_id = $${paramIndex + 1}
+          RETURNING *
+        `,
+          values
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: "Activity not found" });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, "Error updating activity");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to update activity",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // STAKEHOLDER MANAGEMENT API
+  // =========================================================================
+
+  // GET /api/admin/organizations/:orgId/stakeholders - Get all stakeholders for an org
+  apiRouter.get(
+    "/organizations/:orgId/stakeholders",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const pool = getPool();
+
+        const result = await pool.query(
+          `
+          SELECT *
+          FROM org_stakeholders
+          WHERE organization_id = $1
+          ORDER BY
+            CASE role
+              WHEN 'owner' THEN 1
+              WHEN 'interested' THEN 2
+              WHEN 'connected' THEN 3
+            END,
+            created_at ASC
+        `,
+          [orgId]
+        );
+
+        res.json(result.rows);
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching stakeholders");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch stakeholders",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/organizations/:orgId/stakeholders - Add stakeholder (or update role)
+  apiRouter.post(
+    "/organizations/:orgId/stakeholders",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const { user_id, user_name, user_email, role, notes } = req.body;
+
+        // If no user_id provided, use the current logged-in user
+        const actualUserId = user_id || req.user?.id;
+        const actualUserName =
+          user_name ||
+          (req.user
+            ? `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() ||
+              req.user.email
+            : null);
+        const actualUserEmail = user_email || req.user?.email;
+
+        if (!actualUserId) {
+          return res.status(400).json({ error: "user_id is required" });
+        }
+
+        if (!role || !["owner", "interested", "connected"].includes(role)) {
+          return res.status(400).json({
+            error: "role must be one of: owner, interested, connected",
+          });
+        }
+
+        const pool = getPool();
+
+        // Upsert: insert or update if already exists
+        const result = await pool.query(
+          `
+          INSERT INTO org_stakeholders (
+            organization_id,
+            user_id,
+            user_name,
+            user_email,
+            role,
+            notes
+          ) VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (organization_id, user_id)
+          DO UPDATE SET
+            role = EXCLUDED.role,
+            notes = COALESCE(EXCLUDED.notes, org_stakeholders.notes),
+            user_name = EXCLUDED.user_name,
+            user_email = EXCLUDED.user_email,
+            updated_at = NOW()
+          RETURNING *
+        `,
+          [
+            orgId,
+            actualUserId,
+            actualUserName,
+            actualUserEmail,
+            role,
+            notes || null,
+          ]
+        );
+
+        res.status(201).json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, "Error adding stakeholder");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to add stakeholder",
+        });
+      }
+    }
+  );
+
+  // DELETE /api/admin/organizations/:orgId/stakeholders/:stakeholderId - Remove stakeholder
+  apiRouter.delete(
+    "/organizations/:orgId/stakeholders/:stakeholderId",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId, stakeholderId } = req.params;
+        const pool = getPool();
+
+        const result = await pool.query(
+          `
+          DELETE FROM org_stakeholders
+          WHERE id = $1 AND organization_id = $2
+          RETURNING *
+        `,
+          [stakeholderId, orgId]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: "Stakeholder not found" });
+        }
+
+        res.json({ success: true, deleted: result.rows[0] });
+      } catch (error) {
+        logger.error({ err: error }, "Error removing stakeholder");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to remove stakeholder",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/organizations/:orgId/stakeholders/me - Quick "I'm connected" for current user
+  apiRouter.post(
+    "/organizations/:orgId/stakeholders/me",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const { role } = req.body;
+
+        if (!req.user?.id) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const actualRole = role || "connected";
+        if (!["owner", "interested", "connected"].includes(actualRole)) {
+          return res.status(400).json({
+            error: "role must be one of: owner, interested, connected",
+          });
+        }
+
+        const pool = getPool();
+
+        const userName =
+          `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() ||
+          req.user.email;
+
+        // Upsert for current user
+        const result = await pool.query(
+          `
+          INSERT INTO org_stakeholders (
+            organization_id,
+            user_id,
+            user_name,
+            user_email,
+            role
+          ) VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (organization_id, user_id)
+          DO UPDATE SET
+            role = EXCLUDED.role,
+            updated_at = NOW()
+          RETURNING *
+        `,
+          [orgId, req.user.id, userName, req.user.email, actualRole]
+        );
+
+        res.status(201).json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, "Error adding self as stakeholder");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to add yourself as stakeholder",
+        });
+      }
+    }
+  );
+
+  // DELETE /api/admin/organizations/:orgId/stakeholders/me - Remove self as stakeholder
+  apiRouter.delete(
+    "/organizations/:orgId/stakeholders/me",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+
+        if (!req.user?.id) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const pool = getPool();
+
+        const result = await pool.query(
+          `
+          DELETE FROM org_stakeholders
+          WHERE organization_id = $1 AND user_id = $2
+          RETURNING *
+        `,
+          [orgId, req.user.id]
+        );
+
+        if (result.rows.length === 0) {
+          return res
+            .status(404)
+            .json({ error: "You are not a stakeholder for this organization" });
+        }
+
+        res.json({ success: true, deleted: result.rows[0] });
+      } catch (error) {
+        logger.error({ err: error }, "Error removing self as stakeholder");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to remove yourself as stakeholder",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // SLACK DOMAIN DISCOVERY FOR PROSPECT IDENTIFICATION
+  // =========================================================================
+
+  // GET /api/admin/slack/domains - Get email domains from unmapped Slack users
+  // These are potential organizations to add as prospects
+  apiRouter.get(
+    "/slack/domains",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { min_users, limit, include_free } = req.query;
+
+        const domains = await slackDb.getUnmappedDomains({
+          excludeFreeEmailProviders: include_free !== "true",
+          minUsers: min_users ? parseInt(min_users as string, 10) : 1,
+          limit: limit ? parseInt(limit as string, 10) : 100,
+        });
+
+        // Check which domains already have organizations
+        const pool = getPool();
+        const enrichedDomains = await Promise.all(
+          domains.map(async (domain) => {
+            // Check if this domain is already associated with an org
+            // by checking WorkOS organization domains
+            let existingOrg = null;
+            try {
+              if (workos) {
+                // Search for orgs with this domain
+                const orgs = await workos.organizations.listOrganizations({
+                  limit: 1,
+                  domains: [domain.domain],
+                });
+                if (orgs.data.length > 0) {
+                  const orgResult = await pool.query(
+                    `SELECT name, workos_organization_id FROM organizations WHERE workos_organization_id = $1`,
+                    [orgs.data[0].id]
+                  );
+                  if (orgResult.rows.length > 0) {
+                    existingOrg = {
+                      id: orgs.data[0].id,
+                      name: orgResult.rows[0].name,
+                    };
+                  }
+                }
+              }
+            } catch {
+              // Ignore lookup errors
+            }
+
+            return {
+              ...domain,
+              existing_org: existingOrg,
+              is_new_prospect: !existingOrg,
+            };
+          })
+        );
+
+        res.json({
+          domains: enrichedDomains,
+          total: enrichedDomains.length,
+          new_prospect_count: enrichedDomains.filter((d) => d.is_new_prospect)
+            .length,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching Slack domains");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch Slack domains",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/slack/domains/:domain/create-prospect - Create a prospect from a Slack domain
+  apiRouter.post(
+    "/slack/domains/:domain/create-prospect",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domain } = req.params;
+        const { name, prospect_notes } = req.body;
+
+        if (!workos) {
+          return res.status(500).json({ error: "WorkOS not configured" });
+        }
+
+        // Get the users from this domain for context
+        const domainData = await slackDb.getUnmappedDomains({
+          excludeFreeEmailProviders: false,
+          minUsers: 1,
+        });
+        const domainInfo = domainData.find(
+          (d) => d.domain.toLowerCase() === domain.toLowerCase()
+        );
+
+        if (!domainInfo) {
+          return res.status(404).json({
+            error: "Domain not found in unmapped Slack users",
+          });
+        }
+
+        // Generate a name if not provided
+        const orgName =
+          name ||
+          domain
+            .split(".")
+            .slice(0, -1)
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(" ");
+
+        // Create organization in WorkOS with the domain
+        const workosOrg = await workos.organizations.createOrganization({
+          name: orgName,
+          domainData: [{ domain: domain, state: DomainDataState.Verified }],
+        });
+
+        logger.info(
+          { orgId: workosOrg.id, name: orgName, domain },
+          "Created WorkOS organization from Slack domain"
+        );
+
+        // Create local record
+        const pool = getPool();
+        const slackUserNames = domainInfo.users
+          .map((u) => u.slack_real_name || u.slack_display_name)
+          .filter(Boolean)
+          .slice(0, 5)
+          .join(", ");
+
+        const notes =
+          prospect_notes ||
+          `Discovered via Slack. ${domainInfo.user_count} user(s) in Slack workspace: ${slackUserNames}`;
+
+        const result = await pool.query(
+          `INSERT INTO organizations (
+            workos_organization_id,
+            name,
+            prospect_status,
+            prospect_source,
+            prospect_notes
+          ) VALUES ($1, $2, $3, $4, $5)
+          RETURNING *`,
+          [workosOrg.id, orgName, "prospect", "slack_discovery", notes]
+        );
+
+        res.status(201).json({
+          ...result.rows[0],
+          domain,
+          slack_users: domainInfo.users,
+          workos_org: {
+            id: workosOrg.id,
+            domains: workosOrg.domains,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error creating prospect from Slack domain");
+
+        if (error instanceof Error && error.message.includes("domain")) {
+          return res.status(400).json({
+            error: "Domain error",
+            message: error.message,
+          });
+        }
+
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to create prospect",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // SLACK ACTIVITY INSIGHTS FOR ENGAGEMENT TRACKING
+  // =========================================================================
+
+  // GET /api/admin/slack/activity/top-users - Get most active Slack users
+  apiRouter.get(
+    "/slack/activity/top-users",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { days, limit, mapped_only } = req.query;
+
+        const users = await slackDb.getMostActiveUsers({
+          days: days ? parseInt(days as string, 10) : 30,
+          limit: limit ? parseInt(limit as string, 10) : 50,
+          mappedOnly: mapped_only === "true",
+        });
+
+        res.json({
+          users,
+          total: users.length,
+          period_days: days ? parseInt(days as string, 10) : 30,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching top Slack users");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch top Slack users",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/slack/activity/user/:slackUserId - Get activity summary for a Slack user
+  apiRouter.get(
+    "/slack/activity/user/:slackUserId",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { slackUserId } = req.params;
+        const { days } = req.query;
+
+        const [summary, mapping] = await Promise.all([
+          slackDb.getActivitySummary(slackUserId, {
+            days: days ? parseInt(days as string, 10) : 30,
+          }),
+          slackDb.getBySlackUserId(slackUserId),
+        ]);
+
+        if (!mapping) {
+          return res.status(404).json({ error: "Slack user not found" });
+        }
+
+        res.json({
+          user: {
+            slack_user_id: mapping.slack_user_id,
+            slack_email: mapping.slack_email,
+            slack_real_name: mapping.slack_real_name,
+            slack_display_name: mapping.slack_display_name,
+            workos_user_id: mapping.workos_user_id,
+            mapping_status: mapping.mapping_status,
+          },
+          activity: summary,
+          period_days: days ? parseInt(days as string, 10) : 30,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching Slack user activity");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch Slack user activity",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/organizations/:orgId/slack-activity - Get Slack activity for an org
+  apiRouter.get(
+    "/organizations/:orgId/slack-activity",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const { days } = req.query;
+
+        const summary = await slackDb.getOrgActivitySummary(orgId, {
+          days: days ? parseInt(days as string, 10) : 30,
+        });
+
+        res.json({
+          organization_id: orgId,
+          activity: summary,
+          period_days: days ? parseInt(days as string, 10) : 30,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching org Slack activity");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch organization Slack activity",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/prospects/view-counts - Get counts for each view for the nav
+  apiRouter.get(
+    "/prospects/view-counts",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const userId = req.user?.id;
+
+        // Run all counts in parallel
+        const [
+          needsFollowup,
+          newSignups,
+          goingCold,
+          renewals,
+          myAccounts,
+        ] = await Promise.all([
+          // Needs follow-up: pending next steps due in next 7 days
+          pool.query(`
+            SELECT COUNT(DISTINCT o.workos_organization_id) as count
+            FROM organizations o
+            INNER JOIN org_activities na ON na.organization_id = o.workos_organization_id
+              AND na.is_next_step = TRUE
+              AND na.next_step_completed_at IS NULL
+              AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
+          `),
+
+          // New signups: created in last 14 days with no activities
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.created_at > NOW() - INTERVAL '14 days'
+              AND NOT EXISTS (SELECT 1 FROM org_activities WHERE organization_id = o.workos_organization_id)
+          `),
+
+          // Going cold: last activity > 30 days ago
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.last_activity_at IS NOT NULL
+              AND o.last_activity_at < NOW() - INTERVAL '30 days'
+              AND (
+                o.subscription_status IS NULL
+                OR o.subscription_status NOT IN ('active', 'trialing')
+                OR o.subscription_canceled_at IS NOT NULL
+              )
+          `),
+
+          // Renewals: subscription ending in next 60 days
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.subscription_status = 'active'
+              AND o.subscription_current_period_end IS NOT NULL
+              AND o.subscription_current_period_end >= NOW()
+              AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
+          `),
+
+          // My accounts: orgs where current user is a stakeholder
+          userId
+            ? pool.query(
+                `
+            SELECT COUNT(*) as count
+            FROM org_stakeholders
+            WHERE user_id = $1
+          `,
+                [userId]
+              )
+            : Promise.resolve({ rows: [{ count: 0 }] }),
+        ]);
+
+        res.json({
+          needs_followup: parseInt(needsFollowup.rows[0]?.count || "0"),
+          new_signups: parseInt(newSignups.rows[0]?.count || "0"),
+          going_cold: parseInt(goingCold.rows[0]?.count || "0"),
+          renewals: parseInt(renewals.rows[0]?.count || "0"),
+          my_accounts: parseInt(myAccounts.rows[0]?.count || "0"),
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching view counts");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch view counts",
+        });
+      }
+    }
+  );
+
+  return { pageRouter, apiRouter };
 }

@@ -333,4 +333,373 @@ export class SlackDatabase {
     return result.rows[0] || null;
   }
 
+  // ============== Domain Aggregation for Prospect Discovery ==============
+
+  /**
+   * Get unique email domains from unmapped Slack users
+   * These are potential organizations to add as prospects
+   */
+  async getUnmappedDomains(options: {
+    excludeFreeEmailProviders?: boolean;
+    minUsers?: number;
+    limit?: number;
+  } = {}): Promise<Array<{
+    domain: string;
+    user_count: number;
+    users: Array<{
+      slack_user_id: string;
+      slack_email: string;
+      slack_real_name: string | null;
+      slack_display_name: string | null;
+    }>;
+  }>> {
+    const excludeFree = options.excludeFreeEmailProviders !== false;
+    const minUsers = options.minUsers ?? 1;
+
+    // Common free email providers to exclude
+    const freeEmailDomains = [
+      'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
+      'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
+      'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
+      'yandex.com', 'gmx.com', 'gmx.net', 'fastmail.com', 'tutanota.com',
+    ];
+
+    let domainExcludeClause = '';
+    if (excludeFree) {
+      const placeholders = freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ');
+      domainExcludeClause = `AND LOWER(SPLIT_PART(slack_email, '@', 2)) NOT IN (${placeholders})`;
+    }
+
+    // First, get the domains with counts
+    const domainQuery = `
+      SELECT
+        LOWER(SPLIT_PART(slack_email, '@', 2)) as domain,
+        COUNT(*) as user_count
+      FROM slack_user_mappings
+      WHERE mapping_status = 'unmapped'
+        AND slack_is_bot = false
+        AND slack_is_deleted = false
+        AND slack_email IS NOT NULL
+        AND slack_email LIKE '%@%'
+        ${domainExcludeClause}
+      GROUP BY LOWER(SPLIT_PART(slack_email, '@', 2))
+      HAVING COUNT(*) >= $${excludeFree ? freeEmailDomains.length + 1 : 1}
+      ORDER BY COUNT(*) DESC, domain ASC
+      ${options.limit ? `LIMIT $${excludeFree ? freeEmailDomains.length + 2 : 2}` : ''}
+    `;
+
+    const domainParams: unknown[] = excludeFree ? [...freeEmailDomains, minUsers] : [minUsers];
+    if (options.limit) {
+      domainParams.push(options.limit);
+    }
+
+    const domainResult = await query<{ domain: string; user_count: string }>(
+      domainQuery,
+      domainParams
+    );
+
+    // Now get the users for each domain
+    const results: Array<{
+      domain: string;
+      user_count: number;
+      users: Array<{
+        slack_user_id: string;
+        slack_email: string;
+        slack_real_name: string | null;
+        slack_display_name: string | null;
+      }>;
+    }> = [];
+
+    for (const row of domainResult.rows) {
+      const usersResult = await query<{
+        slack_user_id: string;
+        slack_email: string;
+        slack_real_name: string | null;
+        slack_display_name: string | null;
+      }>(
+        `SELECT slack_user_id, slack_email, slack_real_name, slack_display_name
+         FROM slack_user_mappings
+         WHERE mapping_status = 'unmapped'
+           AND slack_is_bot = false
+           AND slack_is_deleted = false
+           AND LOWER(SPLIT_PART(slack_email, '@', 2)) = $1
+         ORDER BY slack_real_name NULLS LAST, slack_display_name NULLS LAST`,
+        [row.domain]
+      );
+
+      results.push({
+        domain: row.domain,
+        user_count: parseInt(row.user_count, 10),
+        users: usersResult.rows,
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Check if a domain already exists as an organization (by checking member emails)
+   */
+  async isDomainInOrganization(domain: string): Promise<{
+    exists: boolean;
+    organization_id?: string;
+    organization_name?: string;
+  }> {
+    // This checks if any mapped user has this domain
+    const result = await query<{
+      workos_user_id: string;
+    }>(
+      `SELECT workos_user_id
+       FROM slack_user_mappings
+       WHERE mapping_status = 'mapped'
+         AND LOWER(SPLIT_PART(slack_email, '@', 2)) = LOWER($1)
+       LIMIT 1`,
+      [domain]
+    );
+
+    if (result.rows.length === 0) {
+      return { exists: false };
+    }
+
+    // We found a mapped user with this domain, but we'd need to lookup
+    // their org via WorkOS - return true but without org details for now
+    return { exists: true };
+  }
+
+  // ============== Slack Activity Tracking ==============
+
+  /**
+   * Record a Slack activity event
+   */
+  async recordActivity(activity: {
+    slack_user_id: string;
+    activity_type: string;
+    channel_id?: string;
+    channel_name?: string;
+    activity_timestamp: Date;
+    organization_id?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    // Insert raw activity
+    await query(
+      `INSERT INTO slack_activities (
+        slack_user_id, activity_type, channel_id, channel_name,
+        activity_timestamp, organization_id, metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        activity.slack_user_id,
+        activity.activity_type,
+        activity.channel_id || null,
+        activity.channel_name || null,
+        activity.activity_timestamp,
+        activity.organization_id || null,
+        activity.metadata ? JSON.stringify(activity.metadata) : null,
+      ]
+    );
+
+    // Update daily aggregation
+    const activityDate = activity.activity_timestamp.toISOString().split('T')[0];
+    const columnMap: Record<string, string> = {
+      message: 'message_count',
+      reaction: 'reaction_count',
+      thread_reply: 'thread_reply_count',
+      channel_join: 'channel_join_count',
+    };
+    const countColumn = columnMap[activity.activity_type] || null;
+
+    if (countColumn) {
+      await query(
+        `INSERT INTO slack_activity_daily (
+          slack_user_id, activity_date, ${countColumn}, total_activity, organization_id
+        ) VALUES ($1, $2, 1, 1, $3)
+        ON CONFLICT (slack_user_id, activity_date)
+        DO UPDATE SET
+          ${countColumn} = slack_activity_daily.${countColumn} + 1,
+          total_activity = slack_activity_daily.total_activity + 1,
+          organization_id = COALESCE(EXCLUDED.organization_id, slack_activity_daily.organization_id),
+          updated_at = NOW()`,
+        [activity.slack_user_id, activityDate, activity.organization_id || null]
+      );
+    } else {
+      // Unknown activity type - just increment total
+      await query(
+        `INSERT INTO slack_activity_daily (
+          slack_user_id, activity_date, total_activity, organization_id
+        ) VALUES ($1, $2, 1, $3)
+        ON CONFLICT (slack_user_id, activity_date)
+        DO UPDATE SET
+          total_activity = slack_activity_daily.total_activity + 1,
+          organization_id = COALESCE(EXCLUDED.organization_id, slack_activity_daily.organization_id),
+          updated_at = NOW()`,
+        [activity.slack_user_id, activityDate, activity.organization_id || null]
+      );
+    }
+
+    // Update last_slack_activity_at on the user mapping
+    await query(
+      `UPDATE slack_user_mappings
+       SET last_slack_activity_at = $2, updated_at = NOW()
+       WHERE slack_user_id = $1
+         AND (last_slack_activity_at IS NULL OR last_slack_activity_at < $2)`,
+      [activity.slack_user_id, activity.activity_timestamp]
+    );
+  }
+
+  /**
+   * Get activity summary for a Slack user
+   */
+  async getActivitySummary(slackUserId: string, options: {
+    days?: number;
+  } = {}): Promise<{
+    total_messages: number;
+    total_reactions: number;
+    total_thread_replies: number;
+    total_channel_joins: number;
+    total_activity: number;
+    active_days: number;
+    last_activity_at: Date | null;
+  }> {
+    const days = options.days ?? 30;
+
+    const result = await query<{
+      total_messages: string;
+      total_reactions: string;
+      total_thread_replies: string;
+      total_channel_joins: string;
+      total_activity: string;
+      active_days: string;
+    }>(
+      `SELECT
+        COALESCE(SUM(message_count), 0)::text as total_messages,
+        COALESCE(SUM(reaction_count), 0)::text as total_reactions,
+        COALESCE(SUM(thread_reply_count), 0)::text as total_thread_replies,
+        COALESCE(SUM(channel_join_count), 0)::text as total_channel_joins,
+        COALESCE(SUM(total_activity), 0)::text as total_activity,
+        COUNT(*)::text as active_days
+       FROM slack_activity_daily
+       WHERE slack_user_id = $1
+         AND activity_date >= CURRENT_DATE - $2::integer`,
+      [slackUserId, days]
+    );
+
+    const mapping = await this.getBySlackUserId(slackUserId);
+
+    const row = result.rows[0];
+    return {
+      total_messages: parseInt(row.total_messages, 10),
+      total_reactions: parseInt(row.total_reactions, 10),
+      total_thread_replies: parseInt(row.total_thread_replies, 10),
+      total_channel_joins: parseInt(row.total_channel_joins, 10),
+      total_activity: parseInt(row.total_activity, 10),
+      active_days: parseInt(row.active_days, 10),
+      last_activity_at: mapping?.last_slack_activity_at || null,
+    };
+  }
+
+  /**
+   * Get organization activity summary from Slack (aggregates all mapped users)
+   */
+  async getOrgActivitySummary(organizationId: string, options: {
+    days?: number;
+  } = {}): Promise<{
+    total_messages: number;
+    total_reactions: number;
+    total_thread_replies: number;
+    total_activity: number;
+    active_users: number;
+    active_days: number;
+  }> {
+    const days = options.days ?? 30;
+
+    const result = await query<{
+      total_messages: string;
+      total_reactions: string;
+      total_thread_replies: string;
+      total_activity: string;
+      active_users: string;
+      active_days: string;
+    }>(
+      `SELECT
+        COALESCE(SUM(message_count), 0)::text as total_messages,
+        COALESCE(SUM(reaction_count), 0)::text as total_reactions,
+        COALESCE(SUM(thread_reply_count), 0)::text as total_thread_replies,
+        COALESCE(SUM(total_activity), 0)::text as total_activity,
+        COUNT(DISTINCT slack_user_id)::text as active_users,
+        COUNT(DISTINCT activity_date)::text as active_days
+       FROM slack_activity_daily
+       WHERE organization_id = $1
+         AND activity_date >= CURRENT_DATE - $2::integer`,
+      [organizationId, days]
+    );
+
+    const row = result.rows[0];
+    return {
+      total_messages: parseInt(row.total_messages, 10),
+      total_reactions: parseInt(row.total_reactions, 10),
+      total_thread_replies: parseInt(row.total_thread_replies, 10),
+      total_activity: parseInt(row.total_activity, 10),
+      active_users: parseInt(row.active_users, 10),
+      active_days: parseInt(row.active_days, 10),
+    };
+  }
+
+  /**
+   * Get most active Slack users (for engagement insights)
+   */
+  async getMostActiveUsers(options: {
+    days?: number;
+    limit?: number;
+    mappedOnly?: boolean;
+  } = {}): Promise<Array<{
+    slack_user_id: string;
+    slack_email: string | null;
+    slack_real_name: string | null;
+    workos_user_id: string | null;
+    mapping_status: SlackMappingStatus;
+    total_activity: number;
+    active_days: number;
+  }>> {
+    const days = options.days ?? 30;
+    const limit = options.limit ?? 50;
+    const mappedOnly = options.mappedOnly ?? false;
+
+    const mappedClause = mappedOnly ? "AND m.mapping_status = 'mapped'" : '';
+
+    const result = await query<{
+      slack_user_id: string;
+      slack_email: string | null;
+      slack_real_name: string | null;
+      workos_user_id: string | null;
+      mapping_status: SlackMappingStatus;
+      total_activity: string;
+      active_days: string;
+    }>(
+      `SELECT
+        m.slack_user_id,
+        m.slack_email,
+        m.slack_real_name,
+        m.workos_user_id,
+        m.mapping_status,
+        COALESCE(SUM(d.total_activity), 0)::text as total_activity,
+        COUNT(DISTINCT d.activity_date)::text as active_days
+       FROM slack_user_mappings m
+       LEFT JOIN slack_activity_daily d ON m.slack_user_id = d.slack_user_id
+         AND d.activity_date >= CURRENT_DATE - $1::integer
+       WHERE m.slack_is_bot = false
+         AND m.slack_is_deleted = false
+         ${mappedClause}
+       GROUP BY m.slack_user_id, m.slack_email, m.slack_real_name, m.workos_user_id, m.mapping_status
+       HAVING COALESCE(SUM(d.total_activity), 0) > 0
+       ORDER BY COALESCE(SUM(d.total_activity), 0) DESC
+       LIMIT $2`,
+      [days, limit]
+    );
+
+    return result.rows.map(row => ({
+      ...row,
+      total_activity: parseInt(row.total_activity, 10),
+      active_days: parseInt(row.active_days, 10),
+    }));
+  }
+
 }
