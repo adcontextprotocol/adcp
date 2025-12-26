@@ -9641,7 +9641,14 @@ Disallow: /api/admin/
 
     // POST /api/slack/commands - Handle Slack slash commands
     // Note: This uses URL-encoded form data, not JSON
-    this.app.post('/api/slack/commands', express.urlencoded({ extended: true }), async (req, res) => {
+    // Use express.urlencoded() with verify callback to capture raw body for signature verification
+    this.app.post('/api/slack/commands', express.urlencoded({
+      extended: true,
+      verify: (req, _res, buf) => {
+        // Store raw body on request for signature verification
+        (req as any).rawBody = buf.toString('utf8');
+      }
+    }), async (req, res) => {
       try {
         // Verify the request is from Slack
         if (isSlackSigningConfigured()) {
@@ -9653,9 +9660,12 @@ Disallow: /api/admin/
             return res.status(401).json({ error: 'Missing signature headers' });
           }
 
-          // Reconstruct the raw body for verification
-          // URL-encoded params need to be serialized back
-          const rawBody = new URLSearchParams(req.body as Record<string, string>).toString();
+          // Use the raw body captured by the verify callback
+          const rawBody = (req as any).rawBody;
+          if (!rawBody) {
+            logger.warn('Raw body not captured for Slack signature verification');
+            return res.status(500).json({ error: 'Internal error' });
+          }
 
           const isValid = verifySlackSignature(
             process.env.SLACK_SIGNING_SECRET || '',
@@ -9696,7 +9706,13 @@ Disallow: /api/admin/
     });
 
     // POST /api/slack/events - Handle Slack Events API
-    this.app.post('/api/slack/events', express.json(), async (req, res) => {
+    // Use express.json() with verify callback to capture raw body for signature verification
+    this.app.post('/api/slack/events', express.json({
+      verify: (req, _res, buf) => {
+        // Store raw body on request for signature verification
+        (req as any).rawBody = buf.toString('utf8');
+      }
+    }), async (req, res) => {
       try {
         // Handle URL verification challenge
         if (req.body.type === 'url_verification') {
@@ -9713,7 +9729,12 @@ Disallow: /api/admin/
             return res.status(401).json({ error: 'Missing signature headers' });
           }
 
-          const rawBody = JSON.stringify(req.body);
+          // Use the raw body captured by the verify callback
+          const rawBody = (req as any).rawBody;
+          if (!rawBody) {
+            logger.warn('Raw body not captured for Slack signature verification');
+            return res.status(500).json({ error: 'Internal error' });
+          }
 
           const isValid = verifySlackSignature(
             process.env.SLACK_SIGNING_SECRET || '',
