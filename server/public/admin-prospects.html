@@ -465,7 +465,15 @@
             </select>
           </div>
           <div class="filter-group">
-            <label>Type</label>
+            <label>Account Type</label>
+            <select id="filterAccountType" onchange="applyFilters()">
+              <option value="company" selected>Companies Only</option>
+              <option value="individual">Individuals Only</option>
+              <option value="">All</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Company Type</label>
             <select id="filterType" onchange="applyFilters()">
               <option value="">All</option>
               <option value="adtech">Ad Tech</option>
@@ -751,8 +759,13 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       const ownerFilter = document.getElementById('filterOwner').value;
       const typeFilter = document.getElementById('filterType').value;
       const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
+      const accountTypeFilter = document.getElementById('filterAccountType').value;
 
       filteredProspects = allProspects.filter(prospect => {
+        // Account type filter (Individual vs Company)
+        if (accountTypeFilter === 'company' && prospect.is_personal) return false;
+        if (accountTypeFilter === 'individual' && !prospect.is_personal) return false;
+
         if (ownerFilter && prospect.prospect_owner !== ownerFilter) return false;
         if (typeFilter && prospect.company_type !== typeFilter) return false;
         if (searchFilter && !prospect.name.toLowerCase().includes(searchFilter)) return false;
