@@ -133,6 +133,10 @@
       background: var(--color-error-100);
       color: var(--color-error-700);
     }
+    .status-unpaid {
+      background: var(--color-error-100);
+      color: var(--color-error-700);
+    }
     .status-none {
       background: var(--color-gray-200);
       color: var(--color-text-heading);
@@ -331,6 +335,7 @@
               <option value="trialing">Trialing</option>
               <option value="past_due">Past Due</option>
               <option value="canceled">Canceled</option>
+              <option value="unpaid">Unpaid</option>
               <option value="none">No Subscription</option>
             </select>
           </div>
@@ -517,7 +522,7 @@
       }
 
       tbody.innerHTML = filteredMembers.map(member => {
-        const statusClass = `status-${member.subscription_status || 'none'}`.replace('_', '');
+        const statusClass = `status-${member.subscription_status || 'none'}`;
         const statusText = member.subscription_status || 'none';
 
         // Format company type
