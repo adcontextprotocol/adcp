@@ -197,10 +197,16 @@ export class HTTPServer {
       next();
     });
 
-    // Use JSON parser for all routes EXCEPT Stripe webhooks (which need raw body)
+    // Use JSON parser for all routes EXCEPT those that need raw body for signature verification
     // Limit increased to 10MB to support base64-encoded logo uploads in member profiles
     this.app.use((req, res, next) => {
-      if (req.path === '/api/webhooks/stripe') {
+      // Skip global JSON parser for routes that need raw body capture:
+      // - Stripe webhooks: need raw body for webhook signature verification
+      // - Slack commands: need raw body for Slack signature verification (URL-encoded)
+      // - Slack events: need raw body for Slack signature verification (JSON)
+      if (req.path === '/api/webhooks/stripe' ||
+          req.path === '/api/slack/commands' ||
+          req.path === '/api/slack/events') {
         next();
       } else {
         express.json({ limit: '10mb' })(req, res, next);
