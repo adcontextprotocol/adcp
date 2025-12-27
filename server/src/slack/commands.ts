@@ -4,10 +4,14 @@
  * Handles /aao commands from Slack users
  */
 
+import { WorkOS } from '@workos-inc/node';
 import { logger } from '../logger.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { OrganizationDatabase } from '../db/organization-db.js';
 import type { SlackSlashCommand } from './types.js';
+
+// Initialize WorkOS client for user membership lookups
+const workos = process.env.WORKOS_API_KEY ? new WorkOS(process.env.WORKOS_API_KEY) : null;
 
 const slackDb = new SlackDatabase();
 const orgDb = new OrganizationDatabase();
@@ -141,15 +145,13 @@ async function handleStatusCommand(command: SlackSlashCommand): Promise<CommandR
       };
     }
 
-    // Get organization for this user
-    // We need to look up which org they belong to via WorkOS
-    // For now, we'll just show that they're linked
-    const subscriptionInfo = await getSubscriptionInfoForUser(mapping.workos_user_id);
+    // Get all organizations for this user
+    const userOrgs = await getOrganizationsForUser(mapping.workos_user_id);
 
-    if (!subscriptionInfo) {
+    if (userOrgs.length === 0) {
       return {
         response_type: 'ephemeral',
-        text: 'Account linked but no subscription found',
+        text: 'Account linked but no organizations found',
         blocks: [
           {
             type: 'section',
@@ -175,53 +177,50 @@ async function handleStatusCommand(command: SlackSlashCommand): Promise<CommandR
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text: ':x: *Subscription:* None found\n\nVisit <https://agenticadvertising.org/dashboard|your dashboard> to manage your subscription.',
+              text: ':x: *Organizations:* None found\n\nVisit <https://agenticadvertising.org/dashboard|your dashboard> to join or create an organization.',
             },
           },
         ],
       };
     }
 
-    const statusEmoji = subscriptionInfo.status === 'active' ? ':white_check_mark:' : ':warning:';
-    const statusText = subscriptionInfo.status === 'active' ? 'Active' : subscriptionInfo.status;
+    // Build organization blocks - show all orgs the user belongs to
+    const orgBlocks: SlackBlockElement[] = userOrgs.map(org => {
+      const statusEmoji = org.status === 'active' ? ':white_check_mark:' : ':large_orange_circle:';
+      const statusText = org.status === 'active' ? 'Active' : (org.status === 'none' ? 'No subscription' : org.status);
+      const planText = org.product_name ? ` (${org.product_name})` : '';
+
+      return {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${statusEmoji} *${org.org_name}*\nSubscription: ${statusText}${planText}${org.renews_at ? `\nRenews: ${org.renews_at}` : ''}`,
+        },
+      };
+    });
+
+    // Check if any org has an active subscription
+    const hasActiveSubscription = userOrgs.some(org => org.status === 'active');
+    const headerEmoji = hasActiveSubscription ? ':white_check_mark:' : ':large_orange_circle:';
 
     return {
       response_type: 'ephemeral',
-      text: `Your AAO Status: ${statusText}`,
+      text: `Your AAO Status`,
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${statusEmoji} *Your AAO Status*`,
+            text: `${headerEmoji} *Your AAO Status*`,
           },
         },
         {
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*Organization:*\n${subscriptionInfo.org_name}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Subscription:*\n${statusText}`,
-            },
-          ],
+          type: 'divider',
         },
-        ...(subscriptionInfo.product_name ? [{
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*Plan:*\n${subscriptionInfo.product_name}`,
-            },
-            ...(subscriptionInfo.renews_at ? [{
-              type: 'mrkdwn',
-              text: `*Renews:*\n${subscriptionInfo.renews_at}`,
-            }] : []),
-          ],
-        }] : []),
+        ...orgBlocks,
+        {
+          type: 'divider',
+        },
         {
           type: 'actions',
           elements: [
@@ -306,8 +305,13 @@ async function handleWhoamiCommand(command: SlackSlashCommand): Promise<CommandR
       };
     }
 
-    // Get more details about the linked account
-    const subscriptionInfo = await getSubscriptionInfoForUser(mapping.workos_user_id);
+    // Get all organizations for this user
+    const userOrgs = await getOrganizationsForUser(mapping.workos_user_id);
+
+    // Build organization list text
+    const orgsText = userOrgs.length > 0
+      ? userOrgs.map(org => org.org_name).join(', ')
+      : 'None';
 
     return {
       response_type: 'ephemeral',
@@ -333,19 +337,19 @@ async function handleWhoamiCommand(command: SlackSlashCommand): Promise<CommandR
             },
           ],
         },
-        ...(subscriptionInfo ? [{
+        {
           type: 'section',
           fields: [
             {
               type: 'mrkdwn',
-              text: `*AAO Organization:*\n${subscriptionInfo.org_name}`,
+              text: `*AAO Organizations:*\n${orgsText}`,
             },
             {
               type: 'mrkdwn',
               text: `*Linked:*\n${mapping.mapping_source === 'email_auto' ? 'Automatic (email match)' : 'Manual'}`,
             },
           ],
-        }] : []),
+        },
         {
           type: 'context',
           elements: [
@@ -448,39 +452,59 @@ async function handleLinkCommand(command: SlackSlashCommand): Promise<CommandRes
   }
 }
 
-/**
- * Helper to get subscription info for a WorkOS user
- */
-async function getSubscriptionInfoForUser(workosUserId: string): Promise<{
+interface OrgInfo {
   org_name: string;
   status: string;
   product_name?: string;
   renews_at?: string;
-} | null> {
+}
+
+/**
+ * Helper to get all organizations a WorkOS user belongs to
+ */
+async function getOrganizationsForUser(workosUserId: string): Promise<OrgInfo[]> {
   try {
-    // Get all organizations and check which one the user belongs to
+    if (!workos) {
+      logger.warn('WorkOS client not initialized, cannot get organization info');
+      return [];
+    }
+
+    // Get the user's actual organization memberships from WorkOS
+    const memberships = await workos.userManagement.listOrganizationMemberships({
+      userId: workosUserId,
+    });
+
+    if (memberships.data.length === 0) {
+      logger.debug({ workosUserId }, 'User has no organization memberships');
+      return [];
+    }
+
+    // Get the WorkOS org IDs the user belongs to
+    const userWorkosOrgIds = new Set(memberships.data.map(m => m.organizationId));
+
+    // Get all organizations from our database
     const orgs = await orgDb.listOrganizations();
 
+    // Find all orgs that the user belongs to
+    const userOrgs: OrgInfo[] = [];
     for (const org of orgs) {
-      // Check if user is in this org (we'd need WorkOS client here)
-      // For now, return the org info if subscription exists
-      if (org.subscription_status) {
+      if (org.workos_organization_id && userWorkosOrgIds.has(org.workos_organization_id)) {
         const renewsAt = org.subscription_current_period_end
           ? new Date(org.subscription_current_period_end).toLocaleDateString()
           : undefined;
 
-        return {
+        userOrgs.push({
           org_name: org.name,
-          status: org.subscription_status,
+          status: org.subscription_status || 'none',
           product_name: org.subscription_product_name || undefined,
           renews_at: renewsAt,
-        };
+        });
       }
     }
 
-    return null;
+    return userOrgs;
   } catch (error) {
-    logger.error({ error, workosUserId }, 'Error getting subscription info');
-    return null;
+    logger.error({ error, workosUserId }, 'Error getting organization info');
+    return [];
   }
 }
