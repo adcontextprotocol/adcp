@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/deal-filters.json",
+  "title": "Deal Filters",
+  "description": "Structured filters for deal discovery",
+  "type": "object",
+  "properties": {
+    "deal_type": {
+      "type": "array",
+      "description": "Filter by deal types",
+      "items": {
+        "type": "string",
+        "enum": ["PMP", "Curated"]
+      }
+    },
+    "ad_type": {
+      "type": "array",
+      "description": "Filter by ad format types",
+      "items": {
+        "type": "string",
+        "enum": ["Banner", "Video", "Native"]
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "description": "Filter by SSP platform identifiers",
+      "items": {
+        "type": "string"
+      }
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Filter deals available on or after this start date (ISO 8601 date format: YYYY-MM-DD)"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Filter deals available on or before this end date (ISO 8601 date format: YYYY-MM-DD)"
+    },
+    "status": {
+      "type": "array",
+      "description": "Filter by deal status",
+      "items": {
+        "type": "string",
+        "enum": ["draft", "active", "inactive"]
+      }
+    },
+    "countries": {
+      "type": "array",
+      "description": "Filter by target countries using ISO 3166-1 alpha-2 country codes (e.g., ['US', 'CA', 'GB'])",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "devices": {
+      "type": "array",
+      "description": "Filter by device types in deal targeting",
+      "items": {
+        "type": "string",
+        "enum": ["Desktop", "Tablet", "Mobile", "CTV"]
+      }
+    }
+  },
+  "additionalProperties": false
+}
