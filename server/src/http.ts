@@ -1889,6 +1889,7 @@ export class HTTPServer {
             is_personal,
             stripe_customer_id,
             created_at,
+            subscription_status,
             subscription_amount,
             subscription_interval,
             subscription_currency,
@@ -1943,20 +1944,8 @@ export class HTTPServer {
               ? Math.floor(new Date(row.subscription_current_period_end).getTime() / 1000)
               : null;
 
-            // Infer subscription status from existing fields
-            let subscriptionStatus = 'none';
-            if (row.subscription_amount && row.subscription_current_period_end) {
-              const periodEnd = new Date(row.subscription_current_period_end);
-              const now = new Date();
-
-              if (row.subscription_canceled_at) {
-                subscriptionStatus = 'canceled';
-              } else if (periodEnd > now) {
-                subscriptionStatus = 'active';
-              } else {
-                subscriptionStatus = 'expired';
-              }
-            }
+            // Use subscription_status from database (populated by Stripe webhooks)
+            const subscriptionStatus = row.subscription_status || 'none';
 
             return {
               company_id: row.workos_organization_id, // Keep company_id name for backwards compatibility
