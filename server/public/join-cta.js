@@ -245,7 +245,7 @@ function renderJoinCta(options = {}) {
         <div class="join-cta-button-wrapper">
           <a href="/auth/signup?return_to=/onboarding?signup=true" class="btn btn-primary">Join as a Company</a>
         </div>
-        <p class="join-cta-card-footer">Open to brands, publishers, agencies, and ad tech providers</p>
+        <p class="join-cta-card-footer">Open to brands, publishers, agencies, and technology providers</p>
       </div>
 
       <!-- Individual Membership -->
