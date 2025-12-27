@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - Dashboard</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/dashboard-nav.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background: var(--color-bg-page);
+    }
+
+    .page-header {
+      padding: 32px 40px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+    }
+
+    .page-header h1 {
+      margin: 0 0 8px 0;
+      font-size: 28px;
+      color: var(--color-text-heading);
+    }
+
+    .page-header p {
+      margin: 0;
+      color: var(--color-text-secondary);
+      font-size: 14px;
+    }
+
+    .page-content {
+      padding: 32px 40px;
+      max-width: 800px;
+    }
+
+    .settings-section {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .settings-section-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-subtle);
+    }
+
+    .settings-section-header h2 {
+      margin: 0;
+      font-size: 16px;
+      color: var(--color-text-heading);
+    }
+
+    .settings-section-header p {
+      margin: 8px 0 0;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+
+    .settings-section-body {
+      padding: 24px;
+    }
+
+    .settings-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .settings-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .settings-row:first-child {
+      padding-top: 0;
+    }
+
+    .settings-label {
+      flex: 1;
+    }
+
+    .settings-label h3 {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+
+    .settings-label p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+
+    .settings-value {
+      margin-left: 24px;
+    }
+
+    .danger-section {
+      border-color: var(--color-error-200);
+    }
+
+    .danger-section .settings-section-header {
+      background: var(--color-error-50);
+      border-bottom-color: var(--color-error-200);
+    }
+
+    .danger-section .settings-section-header h2 {
+      color: var(--color-error-600);
+    }
+
+    .loading {
+      text-align: center;
+      padding: 60px;
+      color: var(--color-text-secondary);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--color-success-600);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: var(--shadow-lg);
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+
+    .toast.error {
+      background: var(--color-error-600);
+    }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 450px;
+      width: 90%;
+      box-shadow: var(--shadow-xl);
+    }
+
+    .modal h2 {
+      margin: 0 0 16px 0;
+      font-size: 18px;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+      justify-content: flex-end;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+
+    .delete-warning {
+      background: var(--color-error-50);
+      border-left: 4px solid var(--color-error-500);
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .delete-warning p {
+      margin: 0 0 8px 0;
+      color: var(--color-error-700);
+      font-size: 14px;
+    }
+
+    .delete-warning ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--color-error-700);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <!-- AAO top navigation -->
+  <div id="adcp-nav"></div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- Rename Modal -->
+  <div id="renameModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Rename Organization</h2>
+      <div class="form-group">
+        <label for="newOrgName">Organization Name</label>
+        <input type="text" id="newOrgName" placeholder="Enter new name">
+      </div>
+      <div class="modal-buttons">
+        <button class="btn btn-secondary" onclick="closeRenameModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveOrgName()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Workspace Modal -->
+  <div id="deleteModal" class="modal-overlay">
+    <div class="modal">
+      <h2 style="color: var(--color-error-600);">Delete Workspace</h2>
+      <div class="delete-warning">
+        <p><strong>This action cannot be undone.</strong></p>
+        <p>Deleting this workspace will permanently remove:</p>
+        <ul>
+          <li>All team members and their access</li>
+          <li>Your member profile</li>
+          <li>All workspace settings</li>
+        </ul>
+      </div>
+      <div class="form-group">
+        <label>Type <strong id="deleteConfirmName"></strong> to confirm</label>
+        <input type="text" id="deleteConfirmInput" placeholder="Type workspace name" oninput="checkDeleteConfirmation()">
+      </div>
+      <div class="modal-buttons">
+        <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+        <button class="btn btn-danger" id="deleteConfirmBtn" onclick="deleteWorkspace()" disabled style="opacity: 0.5;">Delete Workspace</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-header">
+    <h1>Settings</h1>
+    <p>Manage your organization settings and preferences</p>
+  </div>
+
+  <div class="page-content">
+    <div id="loading" class="loading">Loading settings...</div>
+
+    <div id="content" style="display: none;">
+      <!-- Organization Settings -->
+      <div class="settings-section">
+        <div class="settings-section-header">
+          <h2>Organization</h2>
+          <p>Basic organization information</p>
+        </div>
+        <div class="settings-section-body">
+          <div class="settings-row">
+            <div class="settings-label">
+              <h3>Organization Name</h3>
+              <p id="currentOrgName">Loading...</p>
+            </div>
+            <div class="settings-value">
+              <button class="btn btn-secondary btn-sm" onclick="openRenameModal()">Rename</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <h3>Workspace Type</h3>
+              <p id="workspaceType">Loading...</p>
+            </div>
+            <div class="settings-value">
+              <button class="btn btn-secondary btn-sm" id="convertToTeamBtn" onclick="convertToTeam()" style="display: none;">Upgrade to Team</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <h3>Organization ID</h3>
+              <p id="orgId" style="font-family: monospace; font-size: 12px;">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Danger Zone -->
+      <div id="dangerZone" class="settings-section danger-section" style="display: none;">
+        <div class="settings-section-header">
+          <h2>Danger Zone</h2>
+          <p>Irreversible actions</p>
+        </div>
+        <div class="settings-section-body">
+          <div class="settings-row">
+            <div class="settings-label">
+              <h3>Delete Workspace</h3>
+              <p>Permanently delete this workspace and all its data</p>
+            </div>
+            <div class="settings-value">
+              <button class="btn btn-danger btn-sm" onclick="openDeleteModal()">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentOrg = null;
+
+    // Get org ID from URL or localStorage
+    function getOrgId() {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('org') || localStorage.getItem('selectedOrgId');
+    }
+
+    // Show toast notification
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = 'toast show' + (isError ? ' error' : '');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // Load settings data
+    async function loadSettings() {
+      try {
+        const response = await fetch('/api/me', { credentials: 'include' });
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
+            return;
+          }
+          throw new Error('Failed to load user data');
+        }
+
+        const data = await response.json();
+        const orgId = getOrgId();
+        currentOrg = data.organizations?.find(o => o.id === orgId) || data.organizations?.[0];
+
+        if (!currentOrg) {
+          document.getElementById('loading').innerHTML = 'No organization found';
+          return;
+        }
+
+        // Initialize sidebar with org info
+        DashboardNav.init({
+          showOrgSwitcher: data.organizations?.length > 1,
+          currentOrgName: currentOrg.name,
+          showAdmin: data.isAdmin
+        });
+
+        // Set up org switcher if multiple orgs
+        if (data.organizations?.length > 1) {
+          DashboardNav.setOrgOptions(data.organizations, currentOrg.id, (newOrgId) => {
+            localStorage.setItem('selectedOrgId', newOrgId);
+            window.location.href = '/dashboard/settings?org=' + newOrgId;
+          });
+        }
+
+        renderSettings();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        document.getElementById('loading').innerHTML = 'Error loading settings. Please refresh.';
+      }
+    }
+
+    function renderSettings() {
+      document.getElementById('currentOrgName').textContent = currentOrg.name;
+      document.getElementById('orgId').textContent = currentOrg.id;
+
+      const isPersonal = currentOrg.is_personal;
+      document.getElementById('workspaceType').textContent = isPersonal ? 'Personal workspace' : 'Team workspace';
+
+      if (isPersonal) {
+        document.getElementById('convertToTeamBtn').style.display = 'block';
+      }
+
+      // Show danger zone for owners
+      if (currentOrg.role === 'owner') {
+        document.getElementById('dangerZone').style.display = 'block';
+      }
+    }
+
+    // Rename modal
+    function openRenameModal() {
+      document.getElementById('newOrgName').value = currentOrg.name;
+      document.getElementById('renameModal').classList.add('show');
+    }
+
+    function closeRenameModal() {
+      document.getElementById('renameModal').classList.remove('show');
+    }
+
+    async function saveOrgName() {
+      const newName = document.getElementById('newOrgName').value.trim();
+      if (!newName) return;
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName }),
+          credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to rename');
+
+        currentOrg.name = newName;
+        renderSettings();
+        DashboardNav.setOrgName(newName);
+        closeRenameModal();
+        showToast('Organization renamed successfully');
+      } catch (error) {
+        showToast('Failed to rename organization', true);
+      }
+    }
+
+    // Delete modal
+    function openDeleteModal() {
+      document.getElementById('deleteConfirmName').textContent = currentOrg.name;
+      document.getElementById('deleteConfirmInput').value = '';
+      document.getElementById('deleteConfirmBtn').disabled = true;
+      document.getElementById('deleteConfirmBtn').style.opacity = '0.5';
+      document.getElementById('deleteModal').classList.add('show');
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').classList.remove('show');
+    }
+
+    function checkDeleteConfirmation() {
+      const input = document.getElementById('deleteConfirmInput').value;
+      const btn = document.getElementById('deleteConfirmBtn');
+      const matches = input === currentOrg.name;
+      btn.disabled = !matches;
+      btn.style.opacity = matches ? '1' : '0.5';
+    }
+
+    async function deleteWorkspace() {
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to delete');
+
+        localStorage.removeItem('selectedOrgId');
+        window.location.href = '/dashboard';
+      } catch (error) {
+        showToast('Failed to delete workspace', true);
+      }
+    }
+
+    // Convert to team
+    async function convertToTeam() {
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}/convert-to-team`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to convert');
+
+        showToast('Converted to team workspace');
+        setTimeout(() => window.location.reload(), 1000);
+      } catch (error) {
+        showToast('Failed to convert to team', true);
+      }
+    }
+
+    // Initialize
+    loadSettings();
+  </script>
+</body>
+</html>

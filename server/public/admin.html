@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <title>Admin - AdCP Registry</title>
-  <script src="/admin-nav.js"></script>
   <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
   <style>
     /* =============================================================================
        Admin Dashboard styles
@@ -128,7 +129,8 @@
   </style>
 </head>
 <body>
-  <!-- Header injected by admin-nav.js -->
+  <!-- AAO top navigation -->
+  <div id="adcp-nav"></div>
 
   <div id="loading" class="loading">
     Loading...
@@ -197,6 +199,12 @@
           <div class="admin-card-icon">📊</div>
           <h2>Analytics</h2>
           <p>View revenue metrics, customer health, subscription analytics, and business intelligence dashboards powered by Metabase.</p>
+        </a>
+
+        <a href="/admin/email" class="admin-card">
+          <div class="admin-card-icon">📧</div>
+          <h2>Email</h2>
+          <p>Manage email templates, send newsletters and announcements. View email engagement stats and manage campaigns.</p>
         </a>
       </div>
     </div>

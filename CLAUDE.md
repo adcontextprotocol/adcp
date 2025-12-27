@@ -81,6 +81,22 @@ Implementation details can be mentioned as:
 - Write for an audience implementing the protocol, not using a specific implementation
 - Keep examples generic and illustrative
 
+### Organization Naming - CRITICAL
+
+**The organization name is "AgenticAdvertising.org" - NOT "Alliance for Agentic Advertising" or "AAO".**
+
+**Rules:**
+- ✅ Use **AgenticAdvertising.org** in all user-facing content (emails, UI, documentation)
+- ✅ Use **agenticadvertising.org** for URLs and domain references
+- ❌ DO NOT use "Alliance for Agentic Advertising"
+- ❌ DO NOT use "AAO" or "AAO Team" (use "AgenticAdvertising.org Team")
+- ❌ DO NOT use adcontextprotocol.org as the organization name (that's the protocol docs site)
+
+**Why this matters:**
+- AgenticAdvertising.org is the member organization/community
+- AdCP (Ad Context Protocol) is the technical protocol specification
+- These are related but distinct - members join AgenticAdvertising.org, they use AdCP
+
 ### Schema Compliance - CRITICAL RULE
 
 **🚨 ABSOLUTE REQUIREMENT: All documentation, code examples, and API usage MUST match the current JSON schemas exactly.**
