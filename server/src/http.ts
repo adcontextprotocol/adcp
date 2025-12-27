@@ -151,6 +151,40 @@ function setCachedUser(userId: string, displayName: string): void {
   });
 }
 
+// Cache for unified users endpoint (admin users page)
+// Stores all WorkOS users by org to avoid repeated API calls
+interface WorkOSUserInfo {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+interface UnifiedUsersCache {
+  usersByOrg: Map<string, WorkOSUserInfo[]>;
+  expiresAt: number;
+}
+let unifiedUsersCache: UnifiedUsersCache | null = null;
+const UNIFIED_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour - invalidated on mutations
+
+function getUnifiedUsersCache(): Map<string, WorkOSUserInfo[]> | null {
+  if (unifiedUsersCache && unifiedUsersCache.expiresAt > Date.now()) {
+    return unifiedUsersCache.usersByOrg;
+  }
+  unifiedUsersCache = null;
+  return null;
+}
+
+function setUnifiedUsersCache(usersByOrg: Map<string, WorkOSUserInfo[]>): void {
+  unifiedUsersCache = {
+    usersByOrg,
+    expiresAt: Date.now() + UNIFIED_CACHE_TTL_MS,
+  };
+}
+
+function invalidateUnifiedUsersCache(): void {
+  unifiedUsersCache = null;
+}
+
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
@@ -9268,6 +9302,8 @@ Disallow: /api/admin/
       try {
         const result = await syncSlackUsers();
         logger.info(result, 'Slack user sync completed');
+        // Invalidate cache since mappings may have changed
+        invalidateUnifiedUsersCache();
         res.json(result);
       } catch (error) {
         logger.error({ err: error }, 'Slack sync error');
@@ -9351,6 +9387,9 @@ Disallow: /api/admin/
           'Slack user manually linked'
         );
 
+        // Invalidate unified users cache so next load reflects the change
+        invalidateUnifiedUsersCache();
+
         res.json({ mapping: updated });
       } catch (error) {
         logger.error({ err: error }, 'Link Slack user error');
@@ -9388,6 +9427,9 @@ Disallow: /api/admin/
           { slackUserId, previousWorkosUserId: slackUser.workos_user_id, adminUserId: adminUser?.id },
           'Slack user unlinked'
         );
+
+        // Invalidate unified users cache so next load reflects the change
+        invalidateUnifiedUsersCache();
 
         res.json({ mapping: updated });
       } catch (error) {
@@ -9505,97 +9547,127 @@ Disallow: /api/admin/
         const unifiedUsers: UnifiedUser[] = [];
         const processedSlackIds = new Set<string>();
 
-        // Get all AAO users from WorkOS via org memberships
+        // Get all AAO users from WorkOS using listUsers (much more efficient than getUser per membership)
         const orgs = await orgDatabase.listOrganizations();
         const seenUserIds = new Set<string>();
 
-        for (const org of orgs) {
-          try {
-            const memberships = await workos.userManagement.listOrganizationMemberships({
-              organizationId: org.workos_organization_id,
-            });
+        // Check cache first
+        let cachedUsersByOrg = getUnifiedUsersCache();
+        let cacheHit = cachedUsersByOrg !== null;
 
-            for (const membership of memberships.data) {
-              if (seenUserIds.has(membership.userId)) continue;
+        if (!cachedUsersByOrg) {
+          // Build cache - fetch all users from WorkOS
+          cachedUsersByOrg = new Map<string, WorkOSUserInfo[]>();
 
-              try {
-                const user = await workos.userManagement.getUser(membership.userId);
-                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
-
-                // Check if user has Slack mapping
-                const slackMapping = slackByWorkosId.get(user.id);
-                // Also check for email match if no direct mapping
-                const suggestedSlack = !slackMapping ? slackByEmail.get(user.email.toLowerCase()) : null;
-
-                let mappingStatus: UnifiedUser['mapping_status'] = 'aao_only';
-                let slackInfo = {
-                  slack_user_id: null as string | null,
-                  slack_email: null as string | null,
-                  slack_display_name: null as string | null,
-                  slack_real_name: null as string | null,
-                };
-
-                if (slackMapping) {
-                  mappingStatus = 'mapped';
-                  slackInfo = {
-                    slack_user_id: slackMapping.slack_user_id,
-                    slack_email: slackMapping.slack_email,
-                    slack_display_name: slackMapping.slack_display_name,
-                    slack_real_name: slackMapping.slack_real_name,
-                  };
-                  processedSlackIds.add(slackMapping.slack_user_id);
-                } else if (suggestedSlack && suggestedSlack.mapping_status === 'unmapped') {
-                  mappingStatus = 'suggested_match';
-                  slackInfo = {
-                    slack_user_id: suggestedSlack.slack_user_id,
-                    slack_email: suggestedSlack.slack_email,
-                    slack_display_name: suggestedSlack.slack_display_name,
-                    slack_real_name: suggestedSlack.slack_real_name,
-                  };
-                  // Don't mark as processed - we'll show suggestion but still allow manual link
-                }
-
-                // Get working groups for this user
-                const workingGroups = userWorkingGroups.get(user.id) || [];
-
-                // Apply group filter
-                if (filterByGroup) {
-                  const hasGroup = workingGroups.some(g => g.id === filterByGroup);
-                  if (!hasGroup) continue;
-                }
-
-                // Apply search filter
-                if (searchTerm) {
-                  const matches =
-                    user.email.toLowerCase().includes(searchTerm) ||
-                    fullName.toLowerCase().includes(searchTerm) ||
-                    org.name.toLowerCase().includes(searchTerm) ||
-                    (slackInfo.slack_email?.toLowerCase().includes(searchTerm)) ||
-                    (slackInfo.slack_display_name?.toLowerCase().includes(searchTerm)) ||
-                    (slackInfo.slack_real_name?.toLowerCase().includes(searchTerm));
-                  if (!matches) continue;
-                }
-
-                seenUserIds.add(user.id);
-                unifiedUsers.push({
-                  workos_user_id: user.id,
-                  email: user.email,
-                  name: fullName || user.email,
-                  org_id: org.workos_organization_id,
-                  org_name: org.name,
-                  ...slackInfo,
-                  mapping_status: mappingStatus,
-                  mapping_source: slackMapping?.mapping_source || null,
-                  working_groups: workingGroups,
+          for (const org of orgs) {
+            try {
+              const orgUsers: WorkOSUserInfo[] = [];
+              let after: string | undefined;
+              do {
+                const usersResponse = await workos.userManagement.listUsers({
+                  organizationId: org.workos_organization_id,
+                  limit: 100,
+                  after,
                 });
-              } catch (userErr) {
-                logger.warn({ userId: membership.userId, err: userErr }, 'Failed to fetch user details from WorkOS');
-                // Continue processing other users - don't fail the whole request
-              }
+
+                for (const user of usersResponse.data) {
+                  orgUsers.push({
+                    id: user.id,
+                    email: user.email,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                  });
+                }
+
+                after = usersResponse.listMetadata?.after || undefined;
+              } while (after);
+
+              cachedUsersByOrg.set(org.workos_organization_id, orgUsers);
+            } catch (orgErr) {
+              logger.warn({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch users for org from WorkOS');
             }
-          } catch (orgErr) {
-            logger.warn({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships from WorkOS');
-            // Continue processing other orgs - don't fail the whole request
+          }
+
+          // Store in cache
+          setUnifiedUsersCache(cachedUsersByOrg);
+        }
+
+        logger.info({ cacheHit, orgCount: orgs.length }, 'Unified users: WorkOS user fetch');
+
+        // Process cached users
+        for (const org of orgs) {
+          const orgUsers = cachedUsersByOrg.get(org.workos_organization_id) || [];
+
+          for (const user of orgUsers) {
+            if (seenUserIds.has(user.id)) continue;
+            const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
+
+            // Check if user has Slack mapping
+            const slackMapping = slackByWorkosId.get(user.id);
+            // Also check for email match if no direct mapping
+            const suggestedSlack = !slackMapping ? slackByEmail.get(user.email.toLowerCase()) : null;
+
+            let mappingStatus: UnifiedUser['mapping_status'] = 'aao_only';
+            let slackInfo = {
+              slack_user_id: null as string | null,
+              slack_email: null as string | null,
+              slack_display_name: null as string | null,
+              slack_real_name: null as string | null,
+            };
+
+            if (slackMapping) {
+              mappingStatus = 'mapped';
+              slackInfo = {
+                slack_user_id: slackMapping.slack_user_id,
+                slack_email: slackMapping.slack_email,
+                slack_display_name: slackMapping.slack_display_name,
+                slack_real_name: slackMapping.slack_real_name,
+              };
+              processedSlackIds.add(slackMapping.slack_user_id);
+            } else if (suggestedSlack && suggestedSlack.mapping_status === 'unmapped') {
+              mappingStatus = 'suggested_match';
+              slackInfo = {
+                slack_user_id: suggestedSlack.slack_user_id,
+                slack_email: suggestedSlack.slack_email,
+                slack_display_name: suggestedSlack.slack_display_name,
+                slack_real_name: suggestedSlack.slack_real_name,
+              };
+              // Don't mark as processed - we'll show suggestion but still allow manual link
+            }
+
+            // Get working groups for this user
+            const workingGroups = userWorkingGroups.get(user.id) || [];
+
+            // Apply group filter
+            if (filterByGroup) {
+              const hasGroup = workingGroups.some(g => g.id === filterByGroup);
+              if (!hasGroup) continue;
+            }
+
+            // Apply search filter
+            if (searchTerm) {
+              const matches =
+                user.email.toLowerCase().includes(searchTerm) ||
+                fullName.toLowerCase().includes(searchTerm) ||
+                org.name.toLowerCase().includes(searchTerm) ||
+                (slackInfo.slack_email?.toLowerCase().includes(searchTerm)) ||
+                (slackInfo.slack_display_name?.toLowerCase().includes(searchTerm)) ||
+                (slackInfo.slack_real_name?.toLowerCase().includes(searchTerm));
+              if (!matches) continue;
+            }
+
+            seenUserIds.add(user.id);
+            unifiedUsers.push({
+              workos_user_id: user.id,
+              email: user.email,
+              name: fullName || user.email,
+              org_id: org.workos_organization_id,
+              org_name: org.name,
+              ...slackInfo,
+              mapping_status: mappingStatus,
+              mapping_source: slackMapping?.mapping_source || null,
+              working_groups: workingGroups,
+            });
           }
         }
 
@@ -9836,6 +9908,11 @@ Disallow: /api/admin/
         }
 
         logger.info({ linked, errors: errors.length, adminUserId: adminUser?.id }, 'Auto-linked suggested matches');
+
+        // Invalidate cache since mappings changed
+        if (linked > 0) {
+          invalidateUnifiedUsersCache();
+        }
 
         res.json({
           linked,
