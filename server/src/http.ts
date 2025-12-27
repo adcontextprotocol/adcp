@@ -1069,6 +1069,27 @@ export class HTTPServer {
                       currency: subscription.currency,
                       interval,
                     }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
+
+                    // Record to org_activities for prospect tracking
+                    const amountStr = amount ? `$${(amount / 100).toFixed(2)}` : '';
+                    const intervalStr = interval ? `/${interval}` : '';
+                    await pool.query(
+                      `INSERT INTO org_activities (
+                        organization_id,
+                        activity_type,
+                        description,
+                        logged_by_user_id,
+                        logged_by_name,
+                        activity_date
+                      ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                      [
+                        org.workos_organization_id,
+                        'subscription',
+                        `Subscribed to ${productName || 'membership'} ${amountStr}${intervalStr}`.trim(),
+                        workosUser.id,
+                        userEmail,
+                      ]
+                    );
                   } else {
                     logger.error({
                       userEmail,
@@ -1088,7 +1109,7 @@ export class HTTPServer {
               }
             }
 
-            // Update database with subscription status and period end
+            // Update database with subscription status, period end, and pricing details
             // This allows admin dashboard to display data without querying Stripe API
             try {
               const customerId = subscription.customer as string;
@@ -1102,17 +1123,29 @@ export class HTTPServer {
                   periodEnd = new Date((subscription as any).current_period_end * 1000);
                 }
 
+                // Extract pricing details from subscription items
+                const priceData = subscription.items?.data?.[0]?.price;
+                const amount = priceData?.unit_amount ?? null;
+                const currency = priceData?.currency ?? null;
+                const interval = priceData?.recurring?.interval ?? null;
+
                 await pool.query(
                   `UPDATE organizations
                    SET subscription_status = $1,
                        stripe_subscription_id = $2,
                        subscription_current_period_end = $3,
+                       subscription_amount = COALESCE($4, subscription_amount),
+                       subscription_currency = COALESCE($5, subscription_currency),
+                       subscription_interval = COALESCE($6, subscription_interval),
                        updated_at = NOW()
-                   WHERE workos_organization_id = $4`,
+                   WHERE workos_organization_id = $7`,
                   [
                     subscription.status,
                     subscription.id,
                     periodEnd,
+                    amount,
+                    currency,
+                    interval,
                     org.workos_organization_id
                   ]
                 );
@@ -1122,6 +1155,9 @@ export class HTTPServer {
                   subscriptionId: subscription.id,
                   status: subscription.status,
                   periodEnd: periodEnd?.toISOString(),
+                  amount,
+                  currency,
+                  interval,
                 }, 'Subscription data synced to database');
 
                 // Send Slack notification for subscription cancellation
@@ -1142,6 +1178,25 @@ export class HTTPServer {
                   notifySubscriptionCancelled({
                     organizationName: org.name || 'Unknown Organization',
                   }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
+
+                  // Record to org_activities for prospect tracking
+                  await pool.query(
+                    `INSERT INTO org_activities (
+                      organization_id,
+                      activity_type,
+                      description,
+                      logged_by_user_id,
+                      logged_by_name,
+                      activity_date
+                    ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                    [
+                      org.workos_organization_id,
+                      'subscription_cancelled',
+                      'Subscription cancelled',
+                      SYSTEM_USER_ID,
+                      'System',
+                    ]
+                  );
                 }
               }
             } catch (syncError) {
@@ -1393,6 +1448,28 @@ export class HTTPServer {
                 productName: productName || undefined,
                 isRecurring: revenueType === 'subscription_recurring',
               }).catch(err => logger.error({ err }, 'Failed to send Slack payment notification'));
+
+              // Record to org_activities for prospect tracking (for recurring payments)
+              if (revenueType === 'subscription_recurring') {
+                const amountFormatted = `$${(invoice.amount_paid / 100).toFixed(2)}`;
+                await pool.query(
+                  `INSERT INTO org_activities (
+                    organization_id,
+                    activity_type,
+                    description,
+                    logged_by_user_id,
+                    logged_by_name,
+                    activity_date
+                  ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                  [
+                    org.workos_organization_id,
+                    'payment',
+                    `Renewal payment ${amountFormatted} for ${productName || 'membership'}`,
+                    SYSTEM_USER_ID,
+                    'System',
+                  ]
+                );
+              }
             }
             break;
           }
@@ -9346,6 +9423,7 @@ Disallow: /api/admin/
     // GET /api/admin/slack/unified - Get unified view of all AAO users + all Slack users
     // Shows AAO users with their Slack status, and Slack-only users not yet on AAO
     this.app.get('/api/admin/slack/unified', requireAuth, requireAdmin, async (req, res) => {
+      const startTime = Date.now();
       try {
         if (!workos) {
           return res.status(503).json({ error: 'Authentication not configured' });
@@ -9355,6 +9433,8 @@ Disallow: /api/admin/
         const searchTerm = typeof search === 'string' ? search.toLowerCase() : '';
         const statusFilter = typeof status === 'string' ? status : '';
         const filterByGroup = typeof group === 'string' ? group : undefined;
+
+        logger.info({ search, status, group }, 'Unified users endpoint: starting');
 
         const orgDatabase = new OrganizationDatabase();
         const wgDb = new WorkingGroupDatabase();
@@ -9509,13 +9589,21 @@ Disallow: /api/admin/
                   working_groups: workingGroups,
                 });
               } catch (userErr) {
-                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
+                logger.warn({ userId: membership.userId, err: userErr }, 'Failed to fetch user details from WorkOS');
+                // Continue processing other users - don't fail the whole request
               }
             }
           } catch (orgErr) {
-            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
+            logger.warn({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships from WorkOS');
+            // Continue processing other orgs - don't fail the whole request
           }
         }
+
+        logger.info({
+          totalOrgs: orgs.length,
+          uniqueUsers: seenUserIds.size,
+          slackMappings: slackMappings.length,
+        }, 'Unified users endpoint: completed WorkOS data fetch');
 
         // Add Slack-only users (not mapped and not already processed as suggested match)
         for (const slackUser of slackMappings) {
@@ -9587,9 +9675,17 @@ Disallow: /api/admin/
           return aName.localeCompare(bName);
         });
 
+        const duration = Date.now() - startTime;
+        logger.info({
+          totalUsers: filteredUsers.length,
+          stats,
+          durationMs: duration,
+        }, 'Unified users endpoint: completed');
+
         res.json({ users: filteredUsers, stats });
       } catch (error) {
-        logger.error({ err: error }, 'Get unified Slack/AAO users error');
+        const duration = Date.now() - startTime;
+        logger.error({ err: error, durationMs: duration }, 'Get unified Slack/AAO users error');
         res.status(500).json({
           error: 'Failed to get unified users',
           message: error instanceof Error ? error.message : 'Unknown error',

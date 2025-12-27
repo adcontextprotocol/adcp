@@ -328,6 +328,15 @@
 
         <div class="filters">
           <div class="filter-group">
+            <label>Account Type</label>
+            <select id="filterAccountType" onchange="applyFilters()">
+              <option value="company" selected>Companies Only</option>
+              <option value="individual">Individuals Only</option>
+              <option value="">All</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
             <label>Subscription Status</label>
             <select id="filterStatus" onchange="applyFilters()">
               <option value="">All Statuses</option>
@@ -468,9 +477,18 @@
       const expiringFilter = document.getElementById('filterExpiring').value;
       const searchFilter = document.getElementById('filterSearch').value.toLowerCase();
       const agreementFilter = document.getElementById('filterAgreement').value;
-      console.log('[admin-members] Filters:', { statusFilter, expiringFilter, searchFilter, agreementFilter });
+      const accountTypeFilter = document.getElementById('filterAccountType').value;
+      console.log('[admin-members] Filters:', { statusFilter, expiringFilter, searchFilter, agreementFilter, accountTypeFilter });
 
       filteredMembers = allMembers.filter(member => {
+        // Account type filter (Individual vs Company)
+        if (accountTypeFilter === 'company' && member.is_personal) {
+          return false;
+        }
+        if (accountTypeFilter === 'individual' && !member.is_personal) {
+          return false;
+        }
+
         // Status filter
         if (statusFilter && member.subscription_status !== statusFilter) {
           return false;
