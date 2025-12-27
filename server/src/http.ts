@@ -26,7 +26,7 @@ import { MemberDatabase } from "./db/member-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
-import { syncSlackUsers, getSyncStatus } from "./slack/sync.js";
+import { syncSlackUsers, getSyncStatus, syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { verifySlackSignature, isSlackSigningConfigured } from "./slack/verify.js";
@@ -3324,6 +3324,70 @@ export class HTTPServer {
         logger.error({ err: error }, 'Remove working group member error:');
         res.status(500).json({
           error: 'Failed to remove member',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/working-groups/:id/sync-from-slack - Sync members from Slack channel
+    this.app.post('/api/admin/working-groups/:id/sync-from-slack', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        // Verify the working group exists
+        const workingGroup = await workingGroupDb.getWorkingGroupById(id);
+        if (!workingGroup) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: 'The specified working group does not exist'
+          });
+        }
+
+        // Sync members from Slack
+        const result = await syncWorkingGroupMembersFromSlack(id);
+
+        if (result.errors.length > 0 && result.members_added === 0 && result.members_already_in_group === 0) {
+          return res.status(400).json({
+            error: 'Sync failed',
+            message: result.errors[0],
+            result
+          });
+        }
+
+        res.json({
+          success: true,
+          result
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Sync working group members from Slack error:');
+        res.status(500).json({
+          error: 'Failed to sync members',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/working-groups/sync-all-from-slack - Sync all working groups with Slack channels
+    this.app.post('/api/admin/working-groups/sync-all-from-slack', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const results = await syncAllWorkingGroupMembersFromSlack();
+
+        const totalAdded = results.reduce((sum, r) => sum + r.members_added, 0);
+        const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
+
+        res.json({
+          success: true,
+          summary: {
+            groups_synced: results.length,
+            total_members_added: totalAdded,
+            total_errors: totalErrors
+          },
+          results
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Sync all working groups from Slack error:');
+        res.status(500).json({
+          error: 'Failed to sync working groups',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }

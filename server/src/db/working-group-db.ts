@@ -17,6 +17,42 @@ function escapeLikePattern(str: string): string {
 }
 
 /**
+ * Extract Slack channel ID from a Slack URL
+ * Handles formats like:
+ * - https://agenticads.slack.com/archives/C09HEERCY8P
+ * - https://app.slack.com/client/T123/C09HEERCY8P
+ * Returns null if no valid channel ID found
+ */
+function extractSlackChannelId(url: string | null | undefined): string | null {
+  if (!url) return null;
+
+  // Slack channel IDs start with C (public) or G (private) followed by alphanumeric
+  const channelIdPattern = /[CG][A-Z0-9]{8,}/;
+
+  // Try to extract from URL path
+  try {
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split('/').filter(Boolean);
+
+    // Look for channel ID in path segments (usually the last one)
+    for (let i = pathParts.length - 1; i >= 0; i--) {
+      const match = pathParts[i].match(channelIdPattern);
+      if (match) {
+        return match[0];
+      }
+    }
+  } catch {
+    // If URL parsing fails, try regex on the whole string
+    const match = url.match(channelIdPattern);
+    if (match) {
+      return match[0];
+    }
+  }
+
+  return null;
+}
+
+/**
  * Database operations for working groups
  */
 export class WorkingGroupDatabase {
@@ -26,19 +62,23 @@ export class WorkingGroupDatabase {
    * Create a new working group
    */
   async createWorkingGroup(input: CreateWorkingGroupInput): Promise<WorkingGroup> {
+    // Auto-extract channel ID from URL if not explicitly provided
+    const channelId = input.slack_channel_id || extractSlackChannelId(input.slack_channel_url);
+
     const result = await query<WorkingGroup>(
       `INSERT INTO working_groups (
-        name, slug, description, slack_channel_url,
+        name, slug, description, slack_channel_url, slack_channel_id,
         chair_user_id, chair_name, chair_title, chair_org_name,
         vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name,
         is_private, status, display_order
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *`,
       [
         input.name,
         input.slug,
         input.description || null,
         input.slack_channel_url || null,
+        channelId,
         input.chair_user_id || null,
         input.chair_name || null,
         input.chair_title || null,
@@ -85,10 +125,16 @@ export class WorkingGroupDatabase {
     id: string,
     updates: UpdateWorkingGroupInput
   ): Promise<WorkingGroup | null> {
+    // Auto-extract channel ID from URL if URL is being updated and channel_id isn't explicitly set
+    if (updates.slack_channel_url !== undefined && updates.slack_channel_id === undefined) {
+      updates.slack_channel_id = extractSlackChannelId(updates.slack_channel_url) ?? undefined;
+    }
+
     const COLUMN_MAP: Record<keyof UpdateWorkingGroupInput, string> = {
       name: 'name',
       description: 'description',
       slack_channel_url: 'slack_channel_url',
+      slack_channel_id: 'slack_channel_id',
       chair_user_id: 'chair_user_id',
       chair_name: 'chair_name',
       chair_title: 'chair_title',
@@ -242,6 +288,29 @@ export class WorkingGroupDatabase {
 
     const result = await query(sql, params);
     return result.rows.length === 0;
+  }
+
+  /**
+   * Get working group by Slack channel ID
+   */
+  async getWorkingGroupBySlackChannelId(slackChannelId: string): Promise<WorkingGroup | null> {
+    const result = await query<WorkingGroup>(
+      'SELECT * FROM working_groups WHERE slack_channel_id = $1',
+      [slackChannelId]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * List working groups that have Slack channel IDs configured
+   */
+  async listWorkingGroupsWithSlackChannel(): Promise<WorkingGroup[]> {
+    const result = await query<WorkingGroup>(
+      `SELECT * FROM working_groups
+       WHERE slack_channel_id IS NOT NULL AND status = 'active'
+       ORDER BY display_order, name`
+    );
+    return result.rows;
   }
 
   // ============== Memberships ==============
