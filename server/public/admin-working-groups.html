@@ -397,7 +397,7 @@
       </div>
 
       <div id="detailsTab" class="tab-content active">
-        <form id="groupForm" onsubmit="saveGroup(event)">
+        <form id="groupForm" onsubmit="saveGroup(event)" autocomplete="off">
           <input type="hidden" id="groupId">
 
           <div class="form-group">
@@ -421,6 +421,18 @@
             </div>
           </div>
 
+          <div class="form-row">
+            <div class="form-group">
+              <label>Display Order</label>
+              <input type="number" id="displayOrder" value="0" min="0">
+              <small>Lower numbers appear first</small>
+            </div>
+            <div class="form-group checkbox-group" style="align-self: end; padding-bottom: var(--space-1);">
+              <input type="checkbox" id="isPrivate">
+              <label for="isPrivate" style="margin-bottom: 0;">Private (invite-only)</label>
+            </div>
+          </div>
+
           <div class="form-group">
             <label>Description (Markdown)</label>
             <textarea id="description" placeholder="Describe the working group's purpose and activities..."></textarea>
@@ -434,49 +446,15 @@
             </small>
           </div>
 
-          <div class="form-group checkbox-group">
-            <input type="checkbox" id="isPrivate">
-            <label for="isPrivate" style="margin-bottom: 0;">Private (invite-only)</label>
-          </div>
-
           <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-4); font-size: var(--text-base);">Leadership</h3>
 
           <div class="form-group">
-            <label>Chair</label>
-            <div class="user-search">
-              <input type="text" id="chairSearch" placeholder="Search for a user..." oninput="searchUsers('chair')" autocomplete="new-password" data-lpignore="true" data-form-type="other" name="wg-lead-search-1">
-              <div id="chairResults" class="user-search-results"></div>
+            <label>Leaders</label>
+            <div id="leadersList" class="leaders-list"></div>
+            <div class="user-search" style="margin-top: var(--space-2);">
+              <input type="search" id="leaderSearch" placeholder="Search for a user to add as leader..." oninput="searchUsers('leader')" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" name="wg-leader-search-field" role="combobox" aria-autocomplete="list">
+              <div id="leaderResults" class="user-search-results"></div>
             </div>
-            <div id="chairSelected" class="selected-user" style="display: none;">
-              <div>
-                <span class="name" id="chairName"></span>
-                <span class="org" id="chairOrg"></span>
-              </div>
-              <span class="clear" onclick="clearChair()">Clear</span>
-            </div>
-            <input type="hidden" id="chairUserId">
-            <input type="hidden" id="chairUserName">
-            <input type="hidden" id="chairTitle">
-            <input type="hidden" id="chairOrgName">
-          </div>
-
-          <div class="form-group">
-            <label>Vice Chair</label>
-            <div class="user-search">
-              <input type="text" id="viceChairSearch" placeholder="Search for a user..." oninput="searchUsers('viceChair')" autocomplete="new-password" data-lpignore="true" data-form-type="other" name="wg-lead-search-2">
-              <div id="viceChairResults" class="user-search-results"></div>
-            </div>
-            <div id="viceChairSelected" class="selected-user" style="display: none;">
-              <div>
-                <span class="name" id="viceChairName"></span>
-                <span class="org" id="viceChairOrg"></span>
-              </div>
-              <span class="clear" onclick="clearViceChair()">Clear</span>
-            </div>
-            <input type="hidden" id="viceChairUserId">
-            <input type="hidden" id="viceChairUserName">
-            <input type="hidden" id="viceChairTitle">
-            <input type="hidden" id="viceChairOrgName">
           </div>
 
           <div class="modal-buttons">
@@ -509,7 +487,7 @@
           <div class="form-group" style="margin-top: var(--space-4);">
             <label>Add Member</label>
             <div class="user-search">
-              <input type="text" id="memberSearch" placeholder="Search for a user to add..." oninput="searchUsers('member')" autocomplete="new-password" data-lpignore="true" data-form-type="other" name="wg-member-search">
+              <input type="search" id="memberSearch" placeholder="Search for a user to add..." oninput="searchUsers('member')" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" name="wg-member-search-field" role="combobox" aria-autocomplete="list">
               <div id="memberResults" class="user-search-results"></div>
             </div>
           </div>
@@ -715,7 +693,7 @@
                 ${statusBadge}
                 ${accessBadge}
                 <span>${group.member_count || 0} members</span>
-                ${group.chair_name ? `<span>· Chair: ${escapeHtml(group.chair_name)}</span>` : ''}
+                ${group.leaders && group.leaders.length > 0 ? `<span>· Leaders: ${group.leaders.map(l => escapeHtml(l.name || 'Unknown')).join(', ')}</span>` : ''}
               </div>
             </div>
             <div class="group-actions">
@@ -744,10 +722,13 @@
       }
     }
 
+    // Current leaders in the form
+    let currentLeaders = [];
+
     // Search users
     async function searchUsers(type) {
-      const inputId = type === 'chair' ? 'chairSearch' : type === 'viceChair' ? 'viceChairSearch' : 'memberSearch';
-      const resultsId = type === 'chair' ? 'chairResults' : type === 'viceChair' ? 'viceChairResults' : 'memberResults';
+      const inputId = type === 'leader' ? 'leaderSearch' : 'memberSearch';
+      const resultsId = type === 'leader' ? 'leaderResults' : 'memberResults';
 
       const query = document.getElementById(inputId).value.trim();
       const resultsDiv = document.getElementById(resultsId);
@@ -788,7 +769,7 @@
       }, 300);
     }
 
-    // Select user for chair/vice-chair
+    // Select user for leader or member
     function selectUser(type, userId, name, email, orgName) {
       if (type === 'member') {
         addMember(userId, name, email, orgName);
@@ -797,30 +778,47 @@
         return;
       }
 
-      const prefix = type === 'chair' ? 'chair' : 'viceChair';
+      if (type === 'leader') {
+        // Check if already a leader
+        if (currentLeaders.some(l => l.user_id === userId)) {
+          document.getElementById('leaderSearch').value = '';
+          document.getElementById('leaderResults').classList.remove('show');
+          return;
+        }
 
-      document.getElementById(`${prefix}UserId`).value = userId;
-      document.getElementById(`${prefix}UserName`).value = name;
-      document.getElementById(`${prefix}OrgName`).value = orgName;
-      document.getElementById(`${prefix}Name`).textContent = name;
-      document.getElementById(`${prefix}Org`).textContent = orgName ? ` (${orgName})` : '';
-      document.getElementById(`${prefix}Selected`).style.display = 'flex';
-      document.getElementById(`${prefix}Search`).value = '';
-      document.getElementById(`${prefix}Results`).classList.remove('show');
+        currentLeaders.push({ user_id: userId, name, org_name: orgName });
+        renderLeadersList();
+        document.getElementById('leaderSearch').value = '';
+        document.getElementById('leaderResults').classList.remove('show');
+      }
     }
 
-    function clearChair() {
-      document.getElementById('chairUserId').value = '';
-      document.getElementById('chairUserName').value = '';
-      document.getElementById('chairOrgName').value = '';
-      document.getElementById('chairSelected').style.display = 'none';
+    function removeLeader(userId) {
+      currentLeaders = currentLeaders.filter(l => l.user_id !== userId);
+      renderLeadersList();
     }
 
-    function clearViceChair() {
-      document.getElementById('viceChairUserId').value = '';
-      document.getElementById('viceChairUserName').value = '';
-      document.getElementById('viceChairOrgName').value = '';
-      document.getElementById('viceChairSelected').style.display = 'none';
+    function renderLeadersList() {
+      const listDiv = document.getElementById('leadersList');
+      if (currentLeaders.length === 0) {
+        listDiv.innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm);">No leaders assigned</div>';
+        return;
+      }
+
+      listDiv.innerHTML = currentLeaders.map(l => `
+        <div class="selected-user" style="display: flex; margin-bottom: var(--space-2);">
+          <div>
+            <span class="name">${escapeHtml(l.name || 'Unknown')}</span>
+            <span class="org">${l.org_name ? ` (${escapeHtml(l.org_name)})` : ''}</span>
+          </div>
+          <span class="clear" onclick="removeLeader('${escapeJs(l.user_id)}')">Remove</span>
+        </div>
+      `).join('');
+    }
+
+    function clearLeaders() {
+      currentLeaders = [];
+      renderLeadersList();
     }
 
     // Add member
@@ -968,8 +966,7 @@
       document.getElementById('groupForm').reset();
       document.getElementById('groupId').value = '';
       document.getElementById('membersTab').style.display = 'none';
-      clearChair();
-      clearViceChair();
+      clearLeaders();
       validateSlackUrl(); // Reset status message
       showTab('details');
       document.getElementById('groupModal').style.display = 'flex';
@@ -992,30 +989,15 @@
         validateSlackUrl();
         document.getElementById('status').value = editingGroup.status || 'active';
         document.getElementById('isPrivate').checked = editingGroup.is_private || false;
+        document.getElementById('displayOrder').value = editingGroup.display_order || 0;
 
-        // Chair
-        if (editingGroup.chair_user_id) {
-          document.getElementById('chairUserId').value = editingGroup.chair_user_id;
-          document.getElementById('chairUserName').value = editingGroup.chair_name || '';
-          document.getElementById('chairOrgName').value = editingGroup.chair_org_name || '';
-          document.getElementById('chairName').textContent = editingGroup.chair_name || '';
-          document.getElementById('chairOrg').textContent = editingGroup.chair_org_name ? ` (${editingGroup.chair_org_name})` : '';
-          document.getElementById('chairSelected').style.display = 'flex';
-        } else {
-          clearChair();
-        }
-
-        // Vice Chair
-        if (editingGroup.vice_chair_user_id) {
-          document.getElementById('viceChairUserId').value = editingGroup.vice_chair_user_id;
-          document.getElementById('viceChairUserName').value = editingGroup.vice_chair_name || '';
-          document.getElementById('viceChairOrgName').value = editingGroup.vice_chair_org_name || '';
-          document.getElementById('viceChairName').textContent = editingGroup.vice_chair_name || '';
-          document.getElementById('viceChairOrg').textContent = editingGroup.vice_chair_org_name ? ` (${editingGroup.vice_chair_org_name})` : '';
-          document.getElementById('viceChairSelected').style.display = 'flex';
-        } else {
-          clearViceChair();
-        }
+        // Leaders
+        currentLeaders = (editingGroup.leaders || []).map(l => ({
+          user_id: l.user_id,
+          name: l.name,
+          org_name: l.org_name
+        }));
+        renderLeadersList();
 
         // Show members tab for existing groups
         document.getElementById('membersTab').style.display = 'block';
@@ -1035,11 +1017,9 @@
       editingGroup = null;
 
       // Clear search inputs and results
-      document.getElementById('chairSearch').value = '';
-      document.getElementById('viceChairSearch').value = '';
+      document.getElementById('leaderSearch').value = '';
       document.getElementById('memberSearch').value = '';
-      document.getElementById('chairResults').classList.remove('show');
-      document.getElementById('viceChairResults').classList.remove('show');
+      document.getElementById('leaderResults').classList.remove('show');
       document.getElementById('memberResults').classList.remove('show');
 
       // Clear sync result
@@ -1059,12 +1039,8 @@
         slack_channel_url: document.getElementById('slackUrl').value.trim() || null,
         status: document.getElementById('status').value,
         is_private: document.getElementById('isPrivate').checked,
-        chair_user_id: document.getElementById('chairUserId').value || null,
-        chair_name: document.getElementById('chairUserName').value || null,
-        chair_org_name: document.getElementById('chairOrgName').value || null,
-        vice_chair_user_id: document.getElementById('viceChairUserId').value || null,
-        vice_chair_name: document.getElementById('viceChairUserName').value || null,
-        vice_chair_org_name: document.getElementById('viceChairOrgName').value || null,
+        display_order: parseInt(document.getElementById('displayOrder').value) || 0,
+        leader_user_ids: currentLeaders.map(l => l.user_id),
       };
 
       const saveBtn = document.getElementById('saveBtn');
