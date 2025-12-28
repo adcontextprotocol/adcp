@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Addie - AdCP Registry</title>
+  <script src="/admin-nav.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    /* =============================================================================
+       Addie Admin Dashboard styles
+       Uses design system variables - see /design-system.css for tokens
+       ============================================================================= */
+
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-lg);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
+    h2 { margin-bottom: var(--space-4); color: var(--color-text-heading); font-size: var(--text-xl); }
+
+    /* Stats row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-6);
+    }
+    .stat-card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-5);
+      box-shadow: var(--shadow-xs);
+      text-align: center;
+    }
+    .stat-value {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-brand);
+    }
+    .stat-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: var(--space-1);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+      margin-bottom: var(--space-5);
+    }
+    .tab {
+      padding: var(--space-3) var(--space-5);
+      background: transparent;
+      border: none;
+      border-bottom: var(--border-2) solid transparent;
+      cursor: pointer;
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-secondary);
+      transition: var(--transition-all);
+    }
+    .tab:hover {
+      color: var(--color-text-heading);
+    }
+    .tab.active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Knowledge list */
+    .knowledge-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .knowledge-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: var(--space-4);
+    }
+    .knowledge-item:hover {
+      border-color: var(--color-brand);
+    }
+    .knowledge-info h3 {
+      font-size: var(--text-base);
+      margin-bottom: var(--space-1);
+      color: var(--color-text-heading);
+    }
+    .knowledge-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      display: flex;
+      gap: var(--space-2.5);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .knowledge-excerpt {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      margin-top: var(--space-2);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .knowledge-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+
+    /* Interactions list */
+    .interactions-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .interaction-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+    }
+    .interaction-item.flagged {
+      border-color: var(--color-warning-400);
+      background: var(--color-warning-50);
+    }
+    .interaction-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-2);
+    }
+    .interaction-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      display: flex;
+      gap: var(--space-2.5);
+      flex-wrap: wrap;
+    }
+    .interaction-content {
+      margin-top: var(--space-3);
+    }
+    .interaction-input, .interaction-output {
+      font-size: var(--text-sm);
+      padding: var(--space-3);
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-2);
+    }
+    .interaction-input {
+      background: var(--color-gray-100);
+    }
+    .interaction-output {
+      background: var(--color-primary-50);
+    }
+    .interaction-label {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-1);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .badge-docs { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-blog { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-faq { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-perspective { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-guidelines { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-active { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-inactive { background: var(--color-gray-200); color: var(--color-gray-600); }
+    .badge-flagged { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-pending { background: var(--color-info-100); color: var(--color-info-700); }
+
+    /* Buttons */
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .btn-small { padding: var(--space-1.5) var(--space-3); font-size: var(--text-xs); }
+    .btn-primary { background: var(--color-brand); color: white; }
+    .btn-primary:hover { background: var(--color-primary-700); }
+    .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
+    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-danger { background: var(--color-error-500); color: white; }
+    .btn-danger:hover { background: var(--color-error-600); }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--color-surface-overlay);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: var(--space-5);
+    }
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-8);
+      max-width: 800px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .form-group {
+      margin-bottom: var(--space-5);
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      font-size: var(--text-sm);
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: var(--space-2.5);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-family: inherit;
+    }
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+    .form-group textarea {
+      min-height: 200px;
+      font-family: var(--font-mono);
+    }
+    .form-group small {
+      display: block;
+      margin-top: var(--space-1);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+    }
+    .modal-buttons {
+      display: flex;
+      gap: var(--space-2.5);
+      justify-content: flex-end;
+      margin-top: var(--space-6);
+      padding-top: var(--space-5);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+
+    /* Header bar */
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-5);
+    }
+    .filter-row {
+      display: flex;
+      gap: var(--space-3);
+      align-items: center;
+    }
+    .filter-row select, .filter-row input {
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: var(--space-10);
+      color: var(--color-text-secondary);
+    }
+    .empty-state h3 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    /* Queue items */
+    .queue-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      margin-bottom: var(--space-3);
+    }
+    .queue-item-content {
+      background: var(--color-bg-subtle);
+      padding: var(--space-3);
+      border-radius: var(--radius-sm);
+      margin: var(--space-3) 0;
+      font-size: var(--text-sm);
+      white-space: pre-wrap;
+    }
+    .queue-item-actions {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    /* Rules list */
+    .rules-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .rule-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+    }
+    .rule-item:hover {
+      border-color: var(--color-brand);
+    }
+    .rule-item.inactive {
+      opacity: 0.6;
+      background: var(--color-bg-subtle);
+    }
+    .rule-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--space-2);
+    }
+    .rule-info h3 {
+      font-size: var(--text-base);
+      margin-bottom: var(--space-1);
+      color: var(--color-text-heading);
+    }
+    .rule-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      display: flex;
+      gap: var(--space-2.5);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .rule-content-preview {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      margin-top: var(--space-2);
+      padding: var(--space-2);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-sm);
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      white-space: pre-wrap;
+    }
+    .rule-stats {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-2);
+      display: flex;
+      gap: var(--space-3);
+    }
+    .rule-actions {
+      display: flex;
+      gap: var(--space-2);
+      flex-shrink: 0;
+    }
+
+    /* Rule type badges */
+    .badge-system_prompt { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-behavior { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-knowledge { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-constraint { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-response_style { background: var(--color-warning-100); color: var(--color-warning-700); }
+
+    /* Suggestions list */
+    .suggestions-list {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .suggestion-item {
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .suggestion-item:hover {
+      border-color: var(--color-brand);
+      background: var(--color-bg-subtle);
+    }
+    .suggestion-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--space-2);
+    }
+    .suggestion-type {
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+    .suggestion-confidence {
+      font-size: var(--text-sm);
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .suggestion-confidence.medium {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .suggestion-confidence.low {
+      background: var(--color-gray-200);
+      color: var(--color-gray-700);
+    }
+    .suggestion-reasoning {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-2);
+    }
+    .suggestion-preview {
+      font-size: var(--text-sm);
+      padding: var(--space-2);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-sm);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .suggestions-stats {
+      display: flex;
+      gap: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    /* Badge for suggestion types */
+    .badge-new_rule { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-modify_rule { background: var(--color-info-100); color: var(--color-info-700); }
+    .badge-disable_rule { background: var(--color-error-100); color: var(--color-error-700); }
+    .badge-merge_rules { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-experiment { background: var(--color-primary-100); color: var(--color-primary-700); }
+
+    /* Suggestion detail */
+    .suggestion-detail-section {
+      margin-bottom: var(--space-4);
+    }
+    .suggestion-detail-section h4 {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-2);
+    }
+    .suggestion-detail-content {
+      background: var(--color-bg-subtle);
+      padding: var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      white-space: pre-wrap;
+    }
+
+    /* Rating stars */
+    .rating-input {
+      display: flex;
+      gap: var(--space-1);
+      margin: var(--space-2) 0;
+    }
+    .rating-input button {
+      background: none;
+      border: none;
+      font-size: var(--text-xl);
+      cursor: pointer;
+      color: var(--color-gray-300);
+      transition: var(--transition-all);
+    }
+    .rating-input button:hover,
+    .rating-input button.active {
+      color: var(--color-warning-500);
+    }
+  </style>
+</head>
+<body>
+  <div id="admin-nav"></div>
+
+  <div class="container">
+    <h1>Addie Dashboard</h1>
+    <p style="color: var(--color-text-secondary); margin-bottom: var(--space-6);">
+      Manage Addie's knowledge base, view interactions, and review pending actions.
+    </p>
+
+    <!-- Stats row -->
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-knowledge">-</div>
+        <div class="stat-label">Knowledge Documents</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-interactions">-</div>
+        <div class="stat-label">Interactions (30d)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-flagged">-</div>
+        <div class="stat-label">Flagged</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-pending">-</div>
+        <div class="stat-label">Pending Approval</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="rules">Rules</button>
+      <button class="tab" data-tab="suggestions">Suggestions</button>
+      <button class="tab" data-tab="knowledge">Knowledge Base</button>
+      <button class="tab" data-tab="interactions">Interactions</button>
+      <button class="tab" data-tab="queue">Approval Queue</button>
+    </div>
+
+    <!-- Rules Tab -->
+    <div class="tab-content active" id="tab-rules">
+      <div class="card">
+        <div class="header-bar">
+          <div class="filter-row">
+            <select id="rule-type-filter">
+              <option value="">All Types</option>
+              <option value="system_prompt">System Prompt</option>
+              <option value="behavior">Behavior</option>
+              <option value="knowledge">Knowledge</option>
+              <option value="constraint">Constraint</option>
+              <option value="response_style">Response Style</option>
+            </select>
+            <label><input type="checkbox" id="active-rules-only" checked> Active only</label>
+          </div>
+          <div style="display: flex; gap: var(--space-2);">
+            <button class="btn btn-secondary" onclick="viewSystemPrompt()">View System Prompt</button>
+            <button class="btn btn-primary" onclick="openRuleModal()">Add Rule</button>
+          </div>
+        </div>
+        <div class="rules-list" id="rules-list">
+          <div class="empty-state">
+            <h3>Loading...</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Suggestions Tab -->
+    <div class="tab-content" id="tab-suggestions">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h2 style="margin: 0;">Claude's Suggestions</h2>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
+              AI-generated recommendations to improve Addie's behavior
+            </p>
+          </div>
+          <button class="btn btn-primary" onclick="runAnalysis()" id="run-analysis-btn">Run Analysis</button>
+        </div>
+        <div class="suggestions-stats" id="suggestions-stats" style="margin-bottom: var(--space-4);"></div>
+        <div class="suggestions-list" id="suggestions-list">
+          <div class="empty-state">
+            <h3>Loading...</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Knowledge Base Tab -->
+    <div class="tab-content" id="tab-knowledge">
+      <div class="card">
+        <div class="header-bar">
+          <div class="filter-row">
+            <select id="category-filter">
+              <option value="">All Categories</option>
+              <option value="docs">Documentation</option>
+              <option value="blog">Blog Posts</option>
+              <option value="faq">FAQ</option>
+              <option value="perspective">Perspectives</option>
+              <option value="guidelines">Guidelines</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="openKnowledgeModal()">Add Knowledge</button>
+        </div>
+        <div class="knowledge-list" id="knowledge-list">
+          <div class="empty-state">
+            <h3>Loading...</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactions Tab -->
+    <div class="tab-content" id="tab-interactions">
+      <div class="card">
+        <div class="header-bar">
+          <div class="filter-row">
+            <label><input type="checkbox" id="flagged-only"> Flagged only</label>
+            <label><input type="checkbox" id="unreviewed-only"> Unreviewed only</label>
+          </div>
+        </div>
+        <div class="interactions-list" id="interactions-list">
+          <div class="empty-state">
+            <h3>Loading...</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Approval Queue Tab -->
+    <div class="tab-content" id="tab-queue">
+      <div class="card">
+        <div id="queue-list">
+          <div class="empty-state">
+            <h3>Loading...</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rule Modal -->
+  <div class="modal-overlay" id="rule-modal">
+    <div class="modal">
+      <h2 id="rule-modal-title">Add Rule</h2>
+      <form id="rule-form">
+        <input type="hidden" id="rule-id">
+        <div class="form-group">
+          <label for="rule-name">Name</label>
+          <input type="text" id="rule-name" required placeholder="e.g., Knowledge Search First">
+        </div>
+        <div class="form-group">
+          <label for="rule-type">Type</label>
+          <select id="rule-type" required>
+            <option value="system_prompt">System Prompt</option>
+            <option value="behavior">Behavior</option>
+            <option value="knowledge">Knowledge</option>
+            <option value="constraint">Constraint</option>
+            <option value="response_style">Response Style</option>
+          </select>
+          <small>
+            <strong>System Prompt:</strong> Core identity and personality |
+            <strong>Behavior:</strong> Specific actions to take |
+            <strong>Knowledge:</strong> Domain facts |
+            <strong>Constraint:</strong> Things NOT to do |
+            <strong>Response Style:</strong> Formatting preferences
+          </small>
+        </div>
+        <div class="form-group">
+          <label for="rule-description">Description (optional)</label>
+          <input type="text" id="rule-description" placeholder="Brief description of what this rule does">
+        </div>
+        <div class="form-group">
+          <label for="rule-priority">Priority</label>
+          <input type="number" id="rule-priority" value="0" min="0" max="100">
+          <small>Higher priority rules are applied first (0-100)</small>
+        </div>
+        <div class="form-group">
+          <label for="rule-content">Content</label>
+          <textarea id="rule-content" required placeholder="Enter the rule content here..."></textarea>
+          <small>Use clear, direct language. This will be included in Addie's system prompt.</small>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeRuleModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- System Prompt Modal -->
+  <div class="modal-overlay" id="system-prompt-modal">
+    <div class="modal" style="max-width: 1000px;">
+      <h2>Current System Prompt</h2>
+      <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">
+        This is the compiled prompt sent to Claude, built from all active rules.
+      </p>
+      <div id="system-prompt-content" style="background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--text-sm); max-height: 60vh; overflow-y: auto;"></div>
+      <div class="modal-buttons">
+        <button type="button" class="btn btn-secondary" onclick="closeSystemPromptModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Suggestion Detail Modal -->
+  <div class="modal-overlay" id="suggestion-modal">
+    <div class="modal">
+      <h2 id="suggestion-modal-title">Suggestion Details</h2>
+      <div id="suggestion-detail-content"></div>
+      <div class="modal-buttons" id="suggestion-modal-buttons"></div>
+    </div>
+  </div>
+
+  <!-- Knowledge Modal -->
+  <div class="modal-overlay" id="knowledge-modal">
+    <div class="modal">
+      <h2 id="knowledge-modal-title">Add Knowledge</h2>
+      <form id="knowledge-form">
+        <input type="hidden" id="knowledge-id">
+        <div class="form-group">
+          <label for="knowledge-title">Title</label>
+          <input type="text" id="knowledge-title" required>
+        </div>
+        <div class="form-group">
+          <label for="knowledge-category">Category</label>
+          <select id="knowledge-category" required>
+            <option value="docs">Documentation</option>
+            <option value="blog">Blog Post</option>
+            <option value="faq">FAQ</option>
+            <option value="perspective">Perspective</option>
+            <option value="guidelines">Guidelines</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="knowledge-source-url">Source URL (optional)</label>
+          <input type="url" id="knowledge-source-url" placeholder="https://...">
+        </div>
+        <div class="form-group">
+          <label for="knowledge-content">Content</label>
+          <textarea id="knowledge-content" required placeholder="Enter the knowledge content here..."></textarea>
+          <small>Use plain text. Markdown is not currently supported.</small>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeKnowledgeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    // Load stats
+    async function loadStats() {
+      try {
+        const [knowledgeRes, interactionsRes, queueRes] = await Promise.all([
+          fetch('/api/admin/addie/knowledge/categories'),
+          fetch('/api/admin/addie/interactions/stats'),
+          fetch('/api/admin/addie/queue/stats')
+        ]);
+
+        const knowledge = await knowledgeRes.json();
+        const interactions = await interactionsRes.json();
+        const queue = await queueRes.json();
+
+        const totalKnowledge = knowledge.categories?.reduce((sum, c) => sum + c.count, 0) || 0;
+        document.getElementById('stat-knowledge').textContent = totalKnowledge;
+        document.getElementById('stat-interactions').textContent = interactions.total || 0;
+        document.getElementById('stat-flagged').textContent = interactions.flagged || 0;
+        document.getElementById('stat-pending').textContent = queue.pending || 0;
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      }
+    }
+
+    // Load knowledge list
+    async function loadKnowledge() {
+      const category = document.getElementById('category-filter').value;
+      const url = category
+        ? `/api/admin/addie/knowledge?category=${category}`
+        : '/api/admin/addie/knowledge';
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        const list = document.getElementById('knowledge-list');
+        if (!data.documents || data.documents.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No knowledge documents</h3><p>Add some knowledge to help Addie answer questions.</p></div>';
+          return;
+        }
+
+        list.innerHTML = data.documents.map(doc => `
+          <div class="knowledge-item">
+            <div class="knowledge-info">
+              <h3>${escapeHtml(doc.title)}</h3>
+              <div class="knowledge-meta">
+                <span class="badge badge-${doc.category}">${doc.category}</span>
+                <span class="badge ${doc.is_active ? 'badge-active' : 'badge-inactive'}">${doc.is_active ? 'Active' : 'Inactive'}</span>
+                ${doc.source_url ? `<a href="${escapeHtml(doc.source_url)}" target="_blank" style="color: var(--color-brand);">Source</a>` : ''}
+              </div>
+              <div class="knowledge-excerpt">${escapeHtml(doc.content.substring(0, 200))}...</div>
+            </div>
+            <div class="knowledge-actions">
+              <button class="btn btn-small btn-secondary" onclick="editKnowledge(${doc.id})">Edit</button>
+              <button class="btn btn-small ${doc.is_active ? 'btn-secondary' : 'btn-primary'}" onclick="toggleKnowledgeActive(${doc.id}, ${!doc.is_active})">
+                ${doc.is_active ? 'Deactivate' : 'Activate'}
+              </button>
+              <button class="btn btn-small btn-danger" onclick="deleteKnowledge(${doc.id})">Delete</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading knowledge:', error);
+        document.getElementById('knowledge-list').innerHTML =
+          '<div class="empty-state"><h3>Error loading knowledge</h3></div>';
+      }
+    }
+
+    // Load interactions
+    async function loadInteractions() {
+      const flaggedOnly = document.getElementById('flagged-only').checked;
+      const unreviewedOnly = document.getElementById('unreviewed-only').checked;
+
+      let url = '/api/admin/addie/interactions?limit=50';
+      if (flaggedOnly) url += '&flagged_only=true';
+      if (unreviewedOnly) url += '&unreviewed_only=true';
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        const list = document.getElementById('interactions-list');
+        if (!data.interactions || data.interactions.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No interactions found</h3><p>Interactions will appear here once Addie starts chatting.</p></div>';
+          return;
+        }
+
+        list.innerHTML = data.interactions.map(interaction => `
+          <div class="interaction-item ${interaction.flagged ? 'flagged' : ''}">
+            <div class="interaction-header">
+              <div class="interaction-meta">
+                <span class="badge badge-${interaction.event_type}">${interaction.event_type}</span>
+                ${interaction.flagged ? '<span class="badge badge-flagged">Flagged</span>' : ''}
+                <span>${new Date(interaction.timestamp).toLocaleString()}</span>
+                <span>${interaction.latency_ms}ms</span>
+                ${interaction.tools_used?.length > 0 ? `<span>Tools: ${interaction.tools_used.join(', ')}</span>` : ''}
+              </div>
+              <button class="btn btn-small btn-secondary" onclick="markReviewed('${interaction.id}')">Mark Reviewed</button>
+            </div>
+            <div class="interaction-content">
+              <div class="interaction-label">Input:</div>
+              <div class="interaction-input">${escapeHtml(interaction.input_text)}</div>
+              <div class="interaction-label">Output:</div>
+              <div class="interaction-output">${escapeHtml(interaction.output_text)}</div>
+              ${interaction.flag_reason ? `<div style="color: var(--color-warning-600); font-size: var(--text-sm); margin-top: var(--space-2);"><strong>Flag reason:</strong> ${escapeHtml(interaction.flag_reason)}</div>` : ''}
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading interactions:', error);
+        document.getElementById('interactions-list').innerHTML =
+          '<div class="empty-state"><h3>Error loading interactions</h3></div>';
+      }
+    }
+
+    // Load approval queue
+    async function loadQueue() {
+      try {
+        const response = await fetch('/api/admin/addie/queue');
+        const data = await response.json();
+
+        const list = document.getElementById('queue-list');
+        if (!data.items || data.items.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No pending approvals</h3><p>Addie will queue proactive actions here for your review.</p></div>';
+          return;
+        }
+
+        list.innerHTML = data.items.map(item => `
+          <div class="queue-item">
+            <div class="interaction-meta">
+              <span class="badge badge-pending">${item.action_type}</span>
+              <span>${item.trigger_type}</span>
+              <span>${new Date(item.created_at).toLocaleString()}</span>
+              ${item.expires_at ? `<span>Expires: ${new Date(item.expires_at).toLocaleString()}</span>` : ''}
+            </div>
+            <div class="queue-item-content">${escapeHtml(item.proposed_content)}</div>
+            <div class="queue-item-actions">
+              <button class="btn btn-small btn-primary" onclick="approveItem(${item.id})">Approve</button>
+              <button class="btn btn-small btn-danger" onclick="rejectItem(${item.id})">Reject</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading queue:', error);
+        document.getElementById('queue-list').innerHTML =
+          '<div class="empty-state"><h3>Error loading queue</h3></div>';
+      }
+    }
+
+    // Knowledge modal functions
+    function openKnowledgeModal(doc = null) {
+      document.getElementById('knowledge-modal-title').textContent = doc ? 'Edit Knowledge' : 'Add Knowledge';
+      document.getElementById('knowledge-id').value = doc?.id || '';
+      document.getElementById('knowledge-title').value = doc?.title || '';
+      document.getElementById('knowledge-category').value = doc?.category || 'docs';
+      document.getElementById('knowledge-source-url').value = doc?.source_url || '';
+      document.getElementById('knowledge-content').value = doc?.content || '';
+      document.getElementById('knowledge-modal').style.display = 'flex';
+    }
+
+    function closeKnowledgeModal() {
+      document.getElementById('knowledge-modal').style.display = 'none';
+      document.getElementById('knowledge-form').reset();
+    }
+
+    async function editKnowledge(id) {
+      try {
+        const response = await fetch(`/api/admin/addie/knowledge/${id}`);
+        const doc = await response.json();
+        openKnowledgeModal(doc);
+      } catch (error) {
+        console.error('Error loading knowledge:', error);
+        alert('Error loading knowledge document');
+      }
+    }
+
+    async function toggleKnowledgeActive(id, isActive) {
+      try {
+        await fetch(`/api/admin/addie/knowledge/${id}/active`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: isActive })
+        });
+        loadKnowledge();
+        loadStats();
+      } catch (error) {
+        console.error('Error toggling knowledge:', error);
+        alert('Error updating knowledge document');
+      }
+    }
+
+    async function deleteKnowledge(id) {
+      if (!confirm('Are you sure you want to delete this knowledge document?')) return;
+
+      try {
+        await fetch(`/api/admin/addie/knowledge/${id}`, { method: 'DELETE' });
+        loadKnowledge();
+        loadStats();
+      } catch (error) {
+        console.error('Error deleting knowledge:', error);
+        alert('Error deleting knowledge document');
+      }
+    }
+
+    // Form submission
+    document.getElementById('knowledge-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const id = document.getElementById('knowledge-id').value;
+      const data = {
+        title: document.getElementById('knowledge-title').value,
+        category: document.getElementById('knowledge-category').value,
+        source_url: document.getElementById('knowledge-source-url').value || null,
+        content: document.getElementById('knowledge-content').value
+      };
+
+      try {
+        const url = id ? `/api/admin/addie/knowledge/${id}` : '/api/admin/addie/knowledge';
+        const method = id ? 'PUT' : 'POST';
+
+        await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        closeKnowledgeModal();
+        loadKnowledge();
+        loadStats();
+      } catch (error) {
+        console.error('Error saving knowledge:', error);
+        alert('Error saving knowledge document');
+      }
+    });
+
+    // Mark interaction as reviewed
+    async function markReviewed(id) {
+      try {
+        await fetch(`/api/admin/addie/interactions/${id}/review`, { method: 'PUT' });
+        loadInteractions();
+        loadStats();
+      } catch (error) {
+        console.error('Error marking reviewed:', error);
+        alert('Error marking interaction as reviewed');
+      }
+    }
+
+    // Approve/reject queue items
+    async function approveItem(id) {
+      try {
+        await fetch(`/api/admin/addie/queue/${id}/approve`, { method: 'PUT' });
+        loadQueue();
+        loadStats();
+      } catch (error) {
+        console.error('Error approving item:', error);
+        alert('Error approving item');
+      }
+    }
+
+    async function rejectItem(id) {
+      const reason = prompt('Reason for rejection (optional):');
+      try {
+        await fetch(`/api/admin/addie/queue/${id}/reject`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason })
+        });
+        loadQueue();
+        loadStats();
+      } catch (error) {
+        console.error('Error rejecting item:', error);
+        alert('Error rejecting item');
+      }
+    }
+
+    // Utility functions
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Event listeners
+    document.getElementById('category-filter').addEventListener('change', loadKnowledge);
+    document.getElementById('flagged-only').addEventListener('change', loadInteractions);
+    document.getElementById('unreviewed-only').addEventListener('change', loadInteractions);
+
+    // Close modal on outside click
+    document.getElementById('knowledge-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeKnowledgeModal();
+    });
+
+    // =========================================================================
+    // RULES FUNCTIONS
+    // =========================================================================
+
+    async function loadRules() {
+      const activeOnly = document.getElementById('active-rules-only').checked;
+      const url = activeOnly ? '/api/admin/addie/rules?active_only=true' : '/api/admin/addie/rules';
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        const list = document.getElementById('rules-list');
+        if (!data.rules || data.rules.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No rules found</h3><p>Add rules to customize Addie\'s behavior.</p></div>';
+          return;
+        }
+
+        list.innerHTML = data.rules.map(rule => `
+          <div class="rule-item ${rule.is_active ? '' : 'inactive'}">
+            <div class="rule-header">
+              <div class="rule-info">
+                <h3>${escapeHtml(rule.name)}</h3>
+                <div class="rule-meta">
+                  <span class="badge badge-${rule.rule_type}">${rule.rule_type.replace('_', ' ')}</span>
+                  <span class="badge ${rule.is_active ? 'badge-active' : 'badge-inactive'}">${rule.is_active ? 'Active' : 'Inactive'}</span>
+                  <span>Priority: ${rule.priority}</span>
+                  <span>v${rule.version}</span>
+                </div>
+                ${rule.description ? `<div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(rule.description)}</div>` : ''}
+              </div>
+              <div class="rule-actions">
+                <button class="btn btn-small btn-secondary" onclick="editRule(${rule.id})">Edit</button>
+                <button class="btn btn-small ${rule.is_active ? 'btn-secondary' : 'btn-primary'}" onclick="toggleRuleActive(${rule.id}, ${!rule.is_active})">
+                  ${rule.is_active ? 'Deactivate' : 'Activate'}
+                </button>
+              </div>
+            </div>
+            <div class="rule-content-preview">${escapeHtml(rule.content)}</div>
+            <div class="rule-stats">
+              <span>Used ${rule.interactions_count} times</span>
+              ${rule.avg_rating ? `<span>Avg rating: ${rule.avg_rating.toFixed(1)}/5</span>` : ''}
+              <span>+${rule.positive_ratings || 0} / -${rule.negative_ratings || 0}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading rules:', error);
+        document.getElementById('rules-list').innerHTML =
+          '<div class="empty-state"><h3>Error loading rules</h3></div>';
+      }
+    }
+
+    function openRuleModal(rule = null) {
+      document.getElementById('rule-modal-title').textContent = rule ? 'Edit Rule' : 'Add Rule';
+      document.getElementById('rule-id').value = rule?.id || '';
+      document.getElementById('rule-name').value = rule?.name || '';
+      document.getElementById('rule-type').value = rule?.rule_type || 'behavior';
+      document.getElementById('rule-description').value = rule?.description || '';
+      document.getElementById('rule-priority').value = rule?.priority ?? 0;
+      document.getElementById('rule-content').value = rule?.content || '';
+      document.getElementById('rule-modal').style.display = 'flex';
+    }
+
+    function closeRuleModal() {
+      document.getElementById('rule-modal').style.display = 'none';
+      document.getElementById('rule-form').reset();
+    }
+
+    async function editRule(id) {
+      try {
+        const response = await fetch(`/api/admin/addie/rules/${id}`);
+        const rule = await response.json();
+        openRuleModal(rule);
+      } catch (error) {
+        console.error('Error loading rule:', error);
+        alert('Error loading rule');
+      }
+    }
+
+    async function toggleRuleActive(id, isActive) {
+      try {
+        await fetch(`/api/admin/addie/rules/${id}/active`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: isActive })
+        });
+        loadRules();
+        loadStats();
+      } catch (error) {
+        console.error('Error toggling rule:', error);
+        alert('Error updating rule');
+      }
+    }
+
+    document.getElementById('rule-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const id = document.getElementById('rule-id').value;
+      const data = {
+        rule_type: document.getElementById('rule-type').value,
+        name: document.getElementById('rule-name').value,
+        description: document.getElementById('rule-description').value || null,
+        priority: parseInt(document.getElementById('rule-priority').value, 10),
+        content: document.getElementById('rule-content').value
+      };
+
+      try {
+        const url = id ? `/api/admin/addie/rules/${id}` : '/api/admin/addie/rules';
+        const method = id ? 'PUT' : 'POST';
+
+        await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        closeRuleModal();
+        loadRules();
+        loadStats();
+      } catch (error) {
+        console.error('Error saving rule:', error);
+        alert('Error saving rule');
+      }
+    });
+
+    async function viewSystemPrompt() {
+      try {
+        const response = await fetch('/api/admin/addie/rules/system-prompt');
+        const data = await response.json();
+        document.getElementById('system-prompt-content').textContent = data.system_prompt || '(No rules configured)';
+        document.getElementById('system-prompt-modal').style.display = 'flex';
+      } catch (error) {
+        console.error('Error loading system prompt:', error);
+        alert('Error loading system prompt');
+      }
+    }
+
+    function closeSystemPromptModal() {
+      document.getElementById('system-prompt-modal').style.display = 'none';
+    }
+
+    // =========================================================================
+    // SUGGESTIONS FUNCTIONS
+    // =========================================================================
+
+    async function loadSuggestions() {
+      try {
+        const [suggestionsRes, statsRes] = await Promise.all([
+          fetch('/api/admin/addie/suggestions'),
+          fetch('/api/admin/addie/suggestions/stats')
+        ]);
+
+        const suggestions = await suggestionsRes.json();
+        const stats = await statsRes.json();
+
+        // Update stats
+        document.getElementById('suggestions-stats').innerHTML = `
+          <span><strong>${stats.pending}</strong> pending</span>
+          <span><strong>${stats.approved}</strong> approved</span>
+          <span><strong>${stats.applied}</strong> applied</span>
+          <span><strong>${stats.rejected}</strong> rejected</span>
+        `;
+
+        const list = document.getElementById('suggestions-list');
+        if (!suggestions.suggestions || suggestions.suggestions.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No pending suggestions</h3><p>Run an analysis to generate suggestions for improving Addie\'s rules.</p></div>';
+          return;
+        }
+
+        list.innerHTML = suggestions.suggestions.map(s => {
+          const confidenceClass = s.confidence >= 0.7 ? '' : s.confidence >= 0.4 ? 'medium' : 'low';
+          const typeLabels = {
+            new_rule: 'New Rule',
+            modify_rule: 'Modify Rule',
+            disable_rule: 'Disable Rule',
+            merge_rules: 'Merge Rules',
+            experiment: 'Experiment'
+          };
+
+          return `
+            <div class="suggestion-item" onclick="viewSuggestion(${s.id})">
+              <div class="suggestion-header">
+                <div>
+                  <span class="badge badge-${s.suggestion_type}">${typeLabels[s.suggestion_type] || s.suggestion_type}</span>
+                  ${s.suggested_name ? `<span class="suggestion-type" style="margin-left: var(--space-2);">${escapeHtml(s.suggested_name)}</span>` : ''}
+                </div>
+                ${s.confidence ? `<span class="suggestion-confidence ${confidenceClass}">${Math.round(s.confidence * 100)}% confident</span>` : ''}
+              </div>
+              <div class="suggestion-reasoning">${escapeHtml(s.reasoning)}</div>
+              <div class="suggestion-preview">${escapeHtml(s.suggested_content.substring(0, 200))}</div>
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        console.error('Error loading suggestions:', error);
+        document.getElementById('suggestions-list').innerHTML =
+          '<div class="empty-state"><h3>Error loading suggestions</h3></div>';
+      }
+    }
+
+    async function viewSuggestion(id) {
+      try {
+        const response = await fetch(`/api/admin/addie/suggestions/${id}`);
+        const s = await response.json();
+
+        const typeLabels = {
+          new_rule: 'New Rule',
+          modify_rule: 'Modify Rule',
+          disable_rule: 'Disable Rule',
+          merge_rules: 'Merge Rules',
+          experiment: 'Experiment'
+        };
+
+        document.getElementById('suggestion-modal-title').textContent = typeLabels[s.suggestion_type] || s.suggestion_type;
+
+        document.getElementById('suggestion-detail-content').innerHTML = `
+          <div class="suggestion-detail-section">
+            <h4>Suggestion Type</h4>
+            <p><span class="badge badge-${s.suggestion_type}">${typeLabels[s.suggestion_type]}</span>
+            ${s.confidence ? `<span class="suggestion-confidence ${s.confidence >= 0.7 ? '' : s.confidence >= 0.4 ? 'medium' : 'low'}" style="margin-left: var(--space-2);">${Math.round(s.confidence * 100)}% confidence</span>` : ''}</p>
+          </div>
+
+          ${s.suggested_name ? `
+          <div class="suggestion-detail-section">
+            <h4>Suggested Name</h4>
+            <p>${escapeHtml(s.suggested_name)}</p>
+          </div>
+          ` : ''}
+
+          ${s.suggested_rule_type ? `
+          <div class="suggestion-detail-section">
+            <h4>Rule Type</h4>
+            <p><span class="badge badge-${s.suggested_rule_type}">${s.suggested_rule_type.replace('_', ' ')}</span></p>
+          </div>
+          ` : ''}
+
+          <div class="suggestion-detail-section">
+            <h4>Reasoning</h4>
+            <div class="suggestion-detail-content">${escapeHtml(s.reasoning)}</div>
+          </div>
+
+          <div class="suggestion-detail-section">
+            <h4>Suggested Content</h4>
+            <div class="suggestion-detail-content">${escapeHtml(s.suggested_content)}</div>
+          </div>
+
+          ${s.expected_impact ? `
+          <div class="suggestion-detail-section">
+            <h4>Expected Impact</h4>
+            <div class="suggestion-detail-content">${escapeHtml(s.expected_impact)}</div>
+          </div>
+          ` : ''}
+
+          ${s.pattern_summary ? `
+          <div class="suggestion-detail-section">
+            <h4>Pattern Identified</h4>
+            <div class="suggestion-detail-content">${escapeHtml(s.pattern_summary)}</div>
+          </div>
+          ` : ''}
+        `;
+
+        document.getElementById('suggestion-modal-buttons').innerHTML = `
+          <button type="button" class="btn btn-secondary" onclick="closeSuggestionModal()">Close</button>
+          <button type="button" class="btn btn-danger" onclick="rejectSuggestion(${s.id})">Reject</button>
+          <button type="button" class="btn btn-primary" onclick="approveSuggestion(${s.id})">Approve</button>
+        `;
+
+        document.getElementById('suggestion-modal').style.display = 'flex';
+      } catch (error) {
+        console.error('Error loading suggestion:', error);
+        alert('Error loading suggestion details');
+      }
+    }
+
+    function closeSuggestionModal() {
+      document.getElementById('suggestion-modal').style.display = 'none';
+    }
+
+    async function approveSuggestion(id) {
+      const notes = prompt('Approval notes (optional):');
+      try {
+        await fetch(`/api/admin/addie/suggestions/${id}/approve`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes })
+        });
+
+        // Ask if they want to apply immediately
+        if (confirm('Suggestion approved. Apply it now to create/update the rule?')) {
+          await fetch(`/api/admin/addie/suggestions/${id}/apply`, { method: 'PUT' });
+          alert('Suggestion applied! The rule has been updated.');
+          loadRules();
+        }
+
+        closeSuggestionModal();
+        loadSuggestions();
+      } catch (error) {
+        console.error('Error approving suggestion:', error);
+        alert('Error approving suggestion');
+      }
+    }
+
+    async function rejectSuggestion(id) {
+      const notes = prompt('Rejection reason (optional):');
+      try {
+        await fetch(`/api/admin/addie/suggestions/${id}/reject`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes })
+        });
+        closeSuggestionModal();
+        loadSuggestions();
+      } catch (error) {
+        console.error('Error rejecting suggestion:', error);
+        alert('Error rejecting suggestion');
+      }
+    }
+
+    async function runAnalysis() {
+      const btn = document.getElementById('run-analysis-btn');
+      btn.disabled = true;
+      btn.textContent = 'Running Analysis...';
+
+      try {
+        const response = await fetch('/api/admin/addie/analysis/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            days: 7,
+            max_interactions: 100
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          alert(`Analysis complete!\n\n${result.suggestions_generated} suggestions generated.\n\n${result.summary}`);
+          loadSuggestions();
+        } else {
+          alert('Analysis failed: ' + (result.message || result.error));
+        }
+      } catch (error) {
+        console.error('Error running analysis:', error);
+        alert('Error running analysis');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Analysis';
+      }
+    }
+
+    // Event listeners for rules and suggestions
+    document.getElementById('active-rules-only').addEventListener('change', loadRules);
+    document.getElementById('rule-type-filter').addEventListener('change', loadRules);
+
+    // Close modals on outside click
+    document.getElementById('rule-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeRuleModal();
+    });
+    document.getElementById('system-prompt-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeSystemPromptModal();
+    });
+    document.getElementById('suggestion-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeSuggestionModal();
+    });
+
+    // Initial load
+    loadStats();
+    loadRules();
+    loadSuggestions();
+    loadKnowledge();
+    loadInteractions();
+    loadQueue();
+  </script>
+</body>
+</html>

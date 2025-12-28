@@ -45,6 +45,7 @@ import {
   notifyWorkingGroupPost,
 } from "./notifications/slack.js";
 import { createAdminRouter } from "./routes/admin.js";
+import { createAddieAdminRouter } from "./routes/addie-admin.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -267,6 +268,11 @@ export class HTTPServer {
     const { pageRouter, apiRouter } = createAdminRouter();
     this.app.use('/admin', pageRouter);      // Page routes: /admin/prospects
     this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/prospects
+
+    // Mount Addie admin routes
+    const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
+    this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
+    this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org

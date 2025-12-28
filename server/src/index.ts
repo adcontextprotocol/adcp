@@ -3,6 +3,7 @@ import { HTTPServer } from "./http.js";
 import { validateEnvironment } from "./env-validation.js";
 import { runMigrations } from "./db/migrate.js";
 import { getDatabaseConfig } from "./config.js";
+import { initializeAddie } from "./addie/index.js";
 
 // Validate environment variables before starting server
 validateEnvironment();
@@ -21,6 +22,14 @@ async function main() {
       console.error('Migration failed:', error);
       process.exit(1);
     }
+  }
+
+  // Initialize Addie (AAO Community Agent)
+  try {
+    await initializeAddie();
+  } catch (error) {
+    console.warn('Addie initialization failed (non-fatal):', error);
+    // Don't exit - Addie is optional
   }
 
   const httpServer = new HTTPServer();
