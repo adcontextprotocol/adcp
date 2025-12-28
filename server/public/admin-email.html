@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Email Management - AdCP Admin</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--color-bg-page);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      flex: 1;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      width: 100%;
+    }
+
+    h1 {
+      color: var(--color-text-heading);
+      margin-bottom: 30px;
+      font-size: 28px;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .metric-card {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: var(--shadow-md);
+    }
+
+    .metric-label {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      color: var(--color-text-heading);
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .metric-subtext {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      margin-top: 4px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: 8px;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      border-radius: 6px 6px 0 0;
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .tab.active {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .section {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 30px;
+    }
+
+    .section h2 {
+      color: var(--color-text-heading);
+      font-size: 20px;
+      margin-bottom: 20px;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 2px solid var(--color-border);
+      color: var(--color-text-secondary);
+      font-weight: 600;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid var(--color-border);
+      color: var(--color-text);
+      font-size: 14px;
+    }
+
+    tr:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .status-sent {
+      background: var(--color-success-50);
+      color: var(--color-success-700);
+    }
+
+    .status-draft {
+      background: var(--color-gray-100);
+      color: var(--color-gray-700);
+    }
+
+    .status-scheduled {
+      background: var(--color-info-50);
+      color: var(--color-info-700);
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .btn-secondary {
+      background: var(--color-bg-subtle);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--color-gray-200);
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .template-preview {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 12px;
+      font-size: 13px;
+      max-height: 200px;
+      overflow: auto;
+    }
+
+    .category-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .category-card {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .category-card h3 {
+      font-size: 16px;
+      color: var(--color-text-heading);
+      margin-bottom: 4px;
+    }
+
+    .category-card p {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .category-stat {
+      font-size: 12px;
+      color: var(--color-text-muted);
+    }
+  </style>
+</head>
+<body>
+  <!-- AAO top navigation -->
+  <div id="adcp-nav"></div>
+
+  <div id="loading" class="loading">
+    Loading...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <h1>Email Management</h1>
+
+      <!-- Stats -->
+      <div class="metrics-grid" id="statsGrid">
+        <div class="metric-card">
+          <div class="metric-label">Total Sent</div>
+          <div class="metric-value" id="totalSent">-</div>
+          <div class="metric-subtext">All time</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Open Rate</div>
+          <div class="metric-value" id="openRate">-</div>
+          <div class="metric-subtext">Average</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Click Rate</div>
+          <div class="metric-value" id="clickRate">-</div>
+          <div class="metric-subtext">Average</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Campaigns</div>
+          <div class="metric-value" id="totalCampaigns">-</div>
+          <div class="metric-subtext">Total</div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('campaigns')">Campaigns</button>
+        <button class="tab" onclick="switchTab('templates')">Templates</button>
+        <button class="tab" onclick="switchTab('categories')">Categories</button>
+        <button class="tab" onclick="switchTab('recent')">Recent Sends</button>
+      </div>
+
+      <!-- Campaigns Tab -->
+      <div id="tab-campaigns" class="tab-content active">
+        <div class="section">
+          <div class="section-header">
+            <h2>Email Campaigns</h2>
+            <button class="btn btn-primary" onclick="openCreateCampaignModal()">Create Campaign</button>
+          </div>
+          <div id="campaignsList">
+            <div class="empty-state">
+              <div class="empty-state-icon">📬</div>
+              <p>No campaigns yet. Create your first campaign to start engaging with members.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Templates Tab -->
+      <div id="tab-templates" class="tab-content">
+        <div class="section">
+          <h2>Email Templates</h2>
+          <p style="color: var(--color-text-secondary); margin-bottom: 20px;">
+            These are the system email templates. Edit with care - changes affect all new emails sent.
+          </p>
+          <div id="templatesList">
+            <table>
+              <thead>
+                <tr>
+                  <th>Template</th>
+                  <th>Type</th>
+                  <th>Last Edited</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="templatesTableBody">
+                <tr>
+                  <td colspan="4" class="loading">Loading templates...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Categories Tab -->
+      <div id="tab-categories" class="tab-content">
+        <div class="section">
+          <h2>Email Categories</h2>
+          <p style="color: var(--color-text-secondary); margin-bottom: 20px;">
+            Users can subscribe or unsubscribe from these categories. Transactional emails are always sent.
+          </p>
+          <div id="categoriesList" class="category-list">
+            <div class="loading">Loading categories...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Sends Tab -->
+      <div id="tab-recent" class="tab-content">
+        <div class="section">
+          <h2>Recent Email Sends</h2>
+          <div id="recentSendsList">
+            <table>
+              <thead>
+                <tr>
+                  <th>Recipient</th>
+                  <th>Type</th>
+                  <th>Subject</th>
+                  <th>Sent</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="recentSendsTableBody">
+                <tr>
+                  <td colspan="5" class="loading">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentTab = 'campaigns';
+
+    function switchTab(tabName) {
+      // Update tab buttons
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
+
+      // Update tab content
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+
+      currentTab = tabName;
+
+      // Load data for tab if needed
+      if (tabName === 'templates' && !templatesLoaded) {
+        loadTemplates();
+      } else if (tabName === 'categories' && !categoriesLoaded) {
+        loadCategories();
+      } else if (tabName === 'recent' && !recentLoaded) {
+        loadRecentSends();
+      }
+    }
+
+    let templatesLoaded = false;
+    let categoriesLoaded = false;
+    let recentLoaded = false;
+
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/admin/email/stats');
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load stats');
+        }
+
+        const stats = await response.json();
+
+        document.getElementById('totalSent').textContent = stats.total_sent?.toLocaleString() || '0';
+        document.getElementById('openRate').textContent = (stats.avg_open_rate?.toFixed(1) || '0') + '%';
+        document.getElementById('clickRate').textContent = (stats.avg_click_rate?.toFixed(1) || '0') + '%';
+        document.getElementById('totalCampaigns').textContent = stats.total_campaigns || '0';
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading stats:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load email data. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    async function loadCampaigns() {
+      try {
+        const response = await fetch('/api/admin/email/campaigns');
+        if (!response.ok) throw new Error('Failed to load campaigns');
+
+        const data = await response.json();
+
+        if (!data.campaigns || data.campaigns.length === 0) {
+          return; // Keep empty state
+        }
+
+        const html = `
+          <table>
+            <thead>
+              <tr>
+                <th>Campaign</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th>Sent</th>
+                <th>Opens</th>
+                <th>Clicks</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.campaigns.map(c => `
+                <tr>
+                  <td>
+                    <strong>${escapeHtml(c.name)}</strong>
+                    <br><small style="color: var(--color-text-muted);">${escapeHtml(c.subject)}</small>
+                  </td>
+                  <td>${escapeHtml(c.category_id)}</td>
+                  <td><span class="status-badge status-${c.status}">${c.status}</span></td>
+                  <td>${c.sent_count || 0}</td>
+                  <td>${c.open_count || 0} (${c.sent_count > 0 ? ((c.open_count / c.sent_count) * 100).toFixed(1) : 0}%)</td>
+                  <td>${c.click_count || 0} (${c.sent_count > 0 ? ((c.click_count / c.sent_count) * 100).toFixed(1) : 0}%)</td>
+                  <td>
+                    ${c.status === 'draft' ? `
+                      <button class="btn btn-sm btn-secondary" onclick="editCampaign('${c.id}')">Edit</button>
+                      <button class="btn btn-sm btn-primary" onclick="sendCampaign('${c.id}')">Send</button>
+                    ` : `
+                      <button class="btn btn-sm btn-secondary" onclick="viewCampaign('${c.id}')">View</button>
+                    `}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        document.getElementById('campaignsList').innerHTML = html;
+      } catch (error) {
+        console.error('Error loading campaigns:', error);
+      }
+    }
+
+    async function loadTemplates() {
+      try {
+        const response = await fetch('/api/admin/email/templates');
+        if (!response.ok) throw new Error('Failed to load templates');
+
+        const data = await response.json();
+        templatesLoaded = true;
+
+        const html = data.templates.map(t => `
+          <tr>
+            <td>
+              <strong>${escapeHtml(t.name)}</strong>
+              <br><small style="color: var(--color-text-muted);">${escapeHtml(t.description || '')}</small>
+            </td>
+            <td>${t.category_id || 'Transactional'}</td>
+            <td>${t.last_edited_at ? new Date(t.last_edited_at).toLocaleDateString() : 'Never'}</td>
+            <td>
+              <button class="btn btn-sm btn-secondary" onclick="viewTemplate('${t.id}')">View</button>
+            </td>
+          </tr>
+        `).join('');
+
+        document.getElementById('templatesTableBody').innerHTML = html || '<tr><td colspan="4">No templates found</td></tr>';
+      } catch (error) {
+        console.error('Error loading templates:', error);
+        document.getElementById('templatesTableBody').innerHTML =
+          '<tr><td colspan="4" style="color: var(--color-error-600);">Failed to load templates</td></tr>';
+      }
+    }
+
+    async function loadCategories() {
+      try {
+        const response = await fetch('/api/email-preferences/categories');
+        if (!response.ok) throw new Error('Failed to load categories');
+
+        const data = await response.json();
+        categoriesLoaded = true;
+
+        const html = data.categories.map(c => `
+          <div class="category-card">
+            <h3>${escapeHtml(c.name)}</h3>
+            <p>${escapeHtml(c.description || 'No description')}</p>
+            <div class="category-stat">
+              Default: ${c.default_enabled ? 'Subscribed' : 'Unsubscribed'}
+            </div>
+          </div>
+        `).join('');
+
+        document.getElementById('categoriesList').innerHTML = html || '<p>No categories found</p>';
+      } catch (error) {
+        console.error('Error loading categories:', error);
+        document.getElementById('categoriesList').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load categories</p>';
+      }
+    }
+
+    async function loadRecentSends() {
+      try {
+        const response = await fetch('/api/admin/email/recent');
+        if (!response.ok) throw new Error('Failed to load recent sends');
+
+        const data = await response.json();
+        recentLoaded = true;
+
+        const html = data.emails.map(e => `
+          <tr>
+            <td>${escapeHtml(e.recipient_email)}</td>
+            <td>${escapeHtml(e.email_type)}</td>
+            <td>${escapeHtml(e.subject || '-')}</td>
+            <td>${e.sent_at ? new Date(e.sent_at).toLocaleString() : '-'}</td>
+            <td>
+              ${e.opened_at ? '<span style="color: var(--color-success-600);">Opened</span>' :
+                e.bounced_at ? '<span style="color: var(--color-error-600);">Bounced</span>' :
+                e.delivered_at ? '<span style="color: var(--color-info-600);">Delivered</span>' :
+                '<span style="color: var(--color-text-muted);">Sent</span>'}
+            </td>
+          </tr>
+        `).join('');
+
+        document.getElementById('recentSendsTableBody').innerHTML = html || '<tr><td colspan="5">No recent emails</td></tr>';
+      } catch (error) {
+        console.error('Error loading recent sends:', error);
+        document.getElementById('recentSendsTableBody').innerHTML =
+          '<tr><td colspan="5" style="color: var(--color-error-600);">Failed to load recent sends</td></tr>';
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function openCreateCampaignModal() {
+      alert('Campaign creation coming soon! For now, campaigns can be created via the API.');
+    }
+
+    function editCampaign(id) {
+      alert('Campaign editing coming soon!');
+    }
+
+    function sendCampaign(id) {
+      if (confirm('Are you sure you want to send this campaign? This cannot be undone.')) {
+        alert('Campaign sending coming soon!');
+      }
+    }
+
+    function viewCampaign(id) {
+      alert('Campaign viewing coming soon!');
+    }
+
+    function viewTemplate(id) {
+      alert('Template viewing coming soon!');
+    }
+
+    // Initialize
+    loadStats();
+    loadCampaigns();
+  </script>
+</body>
+</html>

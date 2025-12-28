@@ -45,6 +45,8 @@ import {
   notifyWorkingGroupPost,
 } from "./notifications/slack.js";
 import { createAdminRouter } from "./routes/admin.js";
+import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
+import { emailPrefsDb } from "./db/email-preferences-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -318,6 +320,335 @@ export class HTTPServer {
       }
       res.redirect('/team.html' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
     });
+
+    // Email click tracker - records clicks and redirects to destination
+    this.app.get('/r/:trackingId', async (req, res) => {
+      const { trackingId } = req.params;
+      const destinationUrl = req.query.to as string;
+      const linkName = req.query.ln as string;
+
+      if (!destinationUrl) {
+        logger.warn({ trackingId }, 'Click tracker missing destination URL');
+        return res.redirect('/');
+      }
+
+      try {
+        // Record the click
+        await emailDb.recordClick({
+          tracking_id: trackingId,
+          link_name: linkName,
+          destination_url: destinationUrl,
+          ip_address: req.ip,
+          user_agent: req.get('user-agent'),
+          referrer: req.get('referer'),
+          utm_source: req.query.utm_source as string,
+          utm_medium: req.query.utm_medium as string,
+          utm_campaign: req.query.utm_campaign as string,
+        });
+
+        logger.debug({ trackingId, linkName, destination: destinationUrl }, 'Email click recorded');
+      } catch (error) {
+        // Log but don't fail - always redirect even if tracking fails
+        logger.error({ error, trackingId }, 'Failed to record email click');
+      }
+
+      // Always redirect to destination
+      res.redirect(destinationUrl);
+    });
+
+    // ==================== Email Preferences & Unsubscribe ====================
+
+    // One-click unsubscribe (no auth required) - POST for RFC 8058 compliance
+    this.app.post('/unsubscribe/:token', async (req, res) => {
+      const { token } = req.params;
+      const { category } = req.body;
+
+      try {
+        if (category) {
+          // Unsubscribe from specific category
+          const success = await emailPrefsDb.unsubscribeFromCategory(token, category);
+          if (success) {
+            logger.info({ token: token.substring(0, 8) + '...', category }, 'User unsubscribed from category');
+            return res.json({ success: true, message: `Unsubscribed from ${category}` });
+          }
+        } else {
+          // Global unsubscribe
+          const success = await emailPrefsDb.globalUnsubscribe(token);
+          if (success) {
+            logger.info({ token: token.substring(0, 8) + '...' }, 'User globally unsubscribed');
+            return res.json({ success: true, message: 'Unsubscribed from all emails' });
+          }
+        }
+
+        return res.status(404).json({ success: false, message: 'Invalid unsubscribe link' });
+      } catch (error) {
+        logger.error({ error, token: token.substring(0, 8) + '...' }, 'Error processing unsubscribe');
+        return res.status(500).json({ success: false, message: 'Error processing unsubscribe' });
+      }
+    });
+
+    // Unsubscribe page (GET - shows confirmation page, handles one-click via List-Unsubscribe-Post)
+    this.app.get('/unsubscribe/:token', async (req, res) => {
+      const { token } = req.params;
+
+      try {
+        const prefs = await emailPrefsDb.getUserPreferencesByToken(token);
+        if (!prefs) {
+          return res.status(404).send('Invalid unsubscribe link');
+        }
+
+        // Get categories for the preferences page
+        const categories = await emailPrefsDb.getCategories();
+        const userCategoryPrefs = prefs.workos_user_id
+          ? await emailPrefsDb.getUserCategoryPreferences(prefs.workos_user_id)
+          : categories.map(c => ({
+              category_id: c.id,
+              category_name: c.name,
+              category_description: c.description,
+              enabled: c.default_enabled,
+              is_override: false,
+            }));
+
+        // Serve a simple preferences management page
+        res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Preferences - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: var(--color-text); max-width: 600px; margin: 0 auto; padding: 20px; background: var(--color-bg-page); }
+    h1 { color: var(--color-text-heading); }
+    .card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    .category { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--color-border); }
+    .category:last-child { border-bottom: none; }
+    .category-info h3 { margin: 0 0 4px 0; font-size: 16px; color: var(--color-text-heading); }
+    .category-info p { margin: 0; font-size: 14px; color: var(--color-text-secondary); }
+    .toggle { position: relative; width: 50px; height: 26px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-gray-300); border-radius: 26px; transition: 0.3s; }
+    .toggle input:checked + .slider { background: var(--color-success-500); }
+    .toggle .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background: var(--color-bg-card); border-radius: 50%; transition: 0.3s; }
+    .toggle input:checked + .slider:before { transform: translateX(24px); }
+    .btn { display: inline-block; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; cursor: pointer; border: none; font-size: 16px; }
+    .btn-danger { background: var(--color-error-500); color: white; }
+    .btn-danger:hover { background: var(--color-error-600); }
+    .btn-secondary { background: var(--color-bg-subtle); color: var(--color-text); border: 1px solid var(--color-border); }
+    .success { background: var(--color-success-50); border: 1px solid var(--color-success-500); color: var(--color-success-700); padding: 12px; border-radius: 6px; margin-bottom: 20px; display: none; }
+    .global-unsubscribe { margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--color-border); }
+  </style>
+</head>
+<body>
+  <h1>Email Preferences</h1>
+  <p>Manage which emails you receive from AgenticAdvertising.org</p>
+
+  <div id="success" class="success">Your preferences have been saved.</div>
+
+  ${prefs.global_unsubscribe ? `
+    <div class="card">
+      <p><strong>You are currently unsubscribed from all emails.</strong></p>
+      <p>You will only receive essential transactional emails (like security alerts).</p>
+      <button class="btn btn-secondary" onclick="resubscribe()">Re-subscribe to emails</button>
+    </div>
+  ` : `
+    <div class="card">
+      ${userCategoryPrefs.map(cat => `
+        <div class="category">
+          <div class="category-info">
+            <h3>${cat.category_name}</h3>
+            <p>${cat.category_description || ''}</p>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" ${cat.enabled ? 'checked' : ''} onchange="toggleCategory('${cat.category_id}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="global-unsubscribe">
+      <p>Want to stop receiving all non-essential emails?</p>
+      <button class="btn btn-danger" onclick="globalUnsubscribe()">Unsubscribe from all</button>
+    </div>
+  `}
+
+  <script>
+    const token = '${token}';
+
+    async function toggleCategory(categoryId, enabled) {
+      try {
+        const res = await fetch('/api/email-preferences/category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, category_id: categoryId, enabled })
+        });
+        if (res.ok) showSuccess();
+      } catch (e) { console.error(e); }
+    }
+
+    async function globalUnsubscribe() {
+      if (!confirm('Are you sure you want to unsubscribe from all emails?')) return;
+      try {
+        const res = await fetch('/unsubscribe/' + token, { method: 'POST' });
+        if (res.ok) location.reload();
+      } catch (e) { console.error(e); }
+    }
+
+    async function resubscribe() {
+      try {
+        const res = await fetch('/api/email-preferences/resubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        if (res.ok) location.reload();
+      } catch (e) { console.error(e); }
+    }
+
+    function showSuccess() {
+      const el = document.getElementById('success');
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+  </script>
+</body>
+</html>
+        `);
+      } catch (error) {
+        logger.error({ error }, 'Error rendering unsubscribe page');
+        res.status(500).send('Error loading preferences');
+      }
+    });
+
+    // Update category preference via token (no auth required)
+    this.app.post('/api/email-preferences/category', async (req, res) => {
+      const { token, category_id, enabled } = req.body;
+
+      if (!token || !category_id || enabled === undefined) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      try {
+        const prefs = await emailPrefsDb.getUserPreferencesByToken(token);
+        if (!prefs) {
+          return res.status(404).json({ error: 'Invalid token' });
+        }
+
+        await emailPrefsDb.setCategoryPreference({
+          workos_user_id: prefs.workos_user_id,
+          email: prefs.email,
+          category_id,
+          enabled,
+        });
+
+        logger.info({ userId: prefs.workos_user_id, category_id, enabled }, 'Category preference updated');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error updating category preference');
+        res.status(500).json({ error: 'Error updating preference' });
+      }
+    });
+
+    // Resubscribe via token (no auth required)
+    this.app.post('/api/email-preferences/resubscribe', async (req, res) => {
+      const { token } = req.body;
+
+      if (!token) {
+        return res.status(400).json({ error: 'Missing token' });
+      }
+
+      try {
+        const prefs = await emailPrefsDb.getUserPreferencesByToken(token);
+        if (!prefs) {
+          return res.status(404).json({ error: 'Invalid token' });
+        }
+
+        await emailPrefsDb.resubscribe(prefs.workos_user_id);
+        logger.info({ userId: prefs.workos_user_id }, 'User resubscribed');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error processing resubscribe');
+        res.status(500).json({ error: 'Error processing resubscribe' });
+      }
+    });
+
+    // Get email categories (public)
+    this.app.get('/api/email-preferences/categories', async (req, res) => {
+      try {
+        const categories = await emailPrefsDb.getCategories();
+        res.json({ categories });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching email categories');
+        res.status(500).json({ error: 'Error fetching categories' });
+      }
+    });
+
+    // Get user's email preferences (authenticated)
+    this.app.get('/api/email-preferences', requireAuth, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+        const userEmail = (req as any).user.email;
+
+        // Get or create preferences
+        const prefs = await emailPrefsDb.getOrCreateUserPreferences({
+          workos_user_id: userId,
+          email: userEmail,
+        });
+
+        // Get category preferences
+        const categoryPrefs = await emailPrefsDb.getUserCategoryPreferences(userId);
+
+        res.json({
+          global_unsubscribe: prefs.global_unsubscribe,
+          categories: categoryPrefs,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching user preferences');
+        res.status(500).json({ error: 'Error fetching preferences' });
+      }
+    });
+
+    // Update user's email preferences (authenticated)
+    this.app.post('/api/email-preferences', requireAuth, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+        const userEmail = (req as any).user.email;
+        const { category_id, enabled } = req.body;
+
+        if (!category_id || enabled === undefined) {
+          return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        await emailPrefsDb.setCategoryPreference({
+          workos_user_id: userId,
+          email: userEmail,
+          category_id,
+          enabled,
+        });
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error updating preferences');
+        res.status(500).json({ error: 'Error updating preferences' });
+      }
+    });
+
+    // Resubscribe for authenticated users
+    this.app.post('/api/email-preferences/resubscribe-me', requireAuth, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+
+        await emailPrefsDb.resubscribe(userId);
+        logger.info({ userId }, 'User resubscribed via dashboard');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error processing resubscribe');
+        res.status(500).json({ error: 'Error processing resubscribe' });
+      }
+    });
+
     this.app.get('/dashboard', async (req, res) => {
       // Redirect to AAO for auth-requiring pages when on AdCP domain
       if (this.isAdcpDomain(req)) {
@@ -347,6 +678,40 @@ export class HTTPServer {
         res.status(500).send('Error loading dashboard');
       }
     });
+
+    // Dashboard sub-pages with sidebar navigation
+    // Helper to serve dashboard pages with template variable replacement
+    const serveDashboardPage = async (req: express.Request, res: express.Response, filename: string) => {
+      if (this.isAdcpDomain(req)) {
+        return res.redirect(`https://agenticadvertising.org/dashboard/${filename.replace('dashboard-', '').replace('.html', '')}`);
+      }
+      try {
+        const fs = await import('fs/promises');
+        const pagePath = process.env.NODE_ENV === 'production'
+          ? path.join(__dirname, `../server/public/${filename}`)
+          : path.join(__dirname, `../public/${filename}`);
+        let html = await fs.readFile(pagePath, 'utf-8');
+
+        // Replace template variables (for billing page with Stripe)
+        html = html
+          .replace(/\{\{STRIPE_PUBLISHABLE_KEY\}\}/g, process.env.STRIPE_PUBLISHABLE_KEY || '')
+          .replace(/\{\{STRIPE_PRICING_TABLE_ID\}\}/g, process.env.STRIPE_PRICING_TABLE_ID || '')
+          .replace(/\{\{STRIPE_PRICING_TABLE_ID_INDIVIDUAL\}\}/g, process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
+
+        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.send(html);
+      } catch (error) {
+        logger.error({ err: error, filename }, 'Error serving dashboard page');
+        res.status(500).send('Error loading page');
+      }
+    };
+
+    this.app.get('/dashboard/settings', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
+    this.app.get('/dashboard/billing', (req, res) => serveDashboardPage(req, res, 'dashboard-billing.html'));
+    this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
 
     // API endpoints
 
@@ -1103,6 +1468,15 @@ export class HTTPServer {
                       currency: subscription.currency,
                       interval,
                     }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
+
+// Send welcome email to new member
+                    sendWelcomeEmail({
+                      to: userEmail,
+                      organizationName: org.name || 'Unknown Organization',
+                      productName,
+                      workosUserId: workosUser.id,
+                      workosOrganizationId: org.workos_organization_id,
+                    }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
 
                     // Record to org_activities for prospect tracking
                     const amountStr = amount ? `$${(amount / 100).toFixed(2)}` : '';
@@ -3827,6 +4201,13 @@ Disallow: /api/admin/
       res.sendFile(usersPath);
     });
 
+    this.app.get('/admin/email', requireAuth, requireAdmin, (req, res) => {
+      const emailPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-email.html')
+        : path.join(__dirname, '../public/admin-email.html');
+      res.sendFile(emailPath);
+    });
+
     // Registry API endpoints (consolidated agents, publishers, lookups)
     this.setupRegistryRoutes();
   }
@@ -4347,7 +4728,12 @@ Disallow: /api/admin/
         // This happens when:
         // 1. User has never accepted them, OR
         // 2. The version has been updated since they last accepted
+        let isFirstTimeUser = false;
         try {
+          // Check if user has ANY prior acceptances (to detect first-time users)
+          const priorAcceptances = await orgDb.getUserAgreementAcceptances(user.id);
+          isFirstTimeUser = priorAcceptances.length === 0;
+
           const tosAgreement = await orgDb.getCurrentAgreementByType('terms_of_service');
           const privacyAgreement = await orgDb.getCurrentAgreementByType('privacy_policy');
 
@@ -4408,6 +4794,35 @@ Disallow: /api/admin/
         });
 
         logger.debug({ count: memberships.data.length }, 'Organization memberships retrieved');
+
+        // Send welcome email to first-time users (async, don't block auth flow)
+        if (isFirstTimeUser && memberships.data.length > 0) {
+          // Get org details to determine subscription status
+          const firstMembership = memberships.data[0];
+          const orgId = firstMembership.organizationId;
+
+          // Fire and forget - don't block the auth callback
+          (async () => {
+            try {
+              const org = await orgDb.getOrganization(orgId);
+              const workosOrg = await workos!.organizations.getOrganization(orgId);
+              const hasActiveSubscription = org?.subscription_status === 'active';
+
+              await sendUserSignupEmail({
+                to: user.email,
+                firstName: user.firstName || undefined,
+                organizationName: workosOrg?.name || org?.name || undefined,
+                hasActiveSubscription,
+                workosUserId: user.id,
+                workosOrganizationId: orgId,
+              });
+
+              logger.info({ userId: user.id, orgId, hasActiveSubscription }, 'First-time user signup email sent');
+            } catch (emailError) {
+              logger.error({ error: emailError, userId: user.id }, 'Failed to send signup email');
+            }
+          })();
+        }
 
         // Parse return_to and slack_user_id from state
         let returnTo = '/dashboard';
@@ -9924,6 +10339,100 @@ Disallow: /api/admin/
           error: 'Failed to auto-link suggested matches',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
+      }
+    });
+
+    // ============== Admin Email Endpoints ==============
+
+    // GET /api/admin/email/stats - Email statistics for admin dashboard
+    this.app.get('/api/admin/email/stats', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+
+        // Get total emails sent
+        const sentResult = await pool.query(
+          `SELECT COUNT(*) as count FROM email_events WHERE sent_at IS NOT NULL`
+        );
+        const totalSent = parseInt(sentResult.rows[0]?.count || '0');
+
+        // Get open rate
+        const openResult = await pool.query(
+          `SELECT
+            COUNT(*) FILTER (WHERE opened_at IS NOT NULL) as opened,
+            COUNT(*) as total
+           FROM email_events
+           WHERE sent_at IS NOT NULL`
+        );
+        const avgOpenRate = openResult.rows[0]?.total > 0
+          ? (parseInt(openResult.rows[0].opened) / parseInt(openResult.rows[0].total)) * 100
+          : 0;
+
+        // Get click rate
+        const clickResult = await pool.query(
+          `SELECT
+            COUNT(*) FILTER (WHERE first_clicked_at IS NOT NULL) as clicked,
+            COUNT(*) as total
+           FROM email_events
+           WHERE sent_at IS NOT NULL`
+        );
+        const avgClickRate = clickResult.rows[0]?.total > 0
+          ? (parseInt(clickResult.rows[0].clicked) / parseInt(clickResult.rows[0].total)) * 100
+          : 0;
+
+        // Get campaign count
+        const campaignResult = await pool.query(
+          `SELECT COUNT(*) as count FROM email_campaigns`
+        );
+        const totalCampaigns = parseInt(campaignResult.rows[0]?.count || '0');
+
+        res.json({
+          total_sent: totalSent,
+          avg_open_rate: avgOpenRate,
+          avg_click_rate: avgClickRate,
+          total_campaigns: totalCampaigns,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching email stats');
+        res.status(500).json({ error: 'Failed to fetch email stats' });
+      }
+    });
+
+    // GET /api/admin/email/campaigns - List all campaigns
+    this.app.get('/api/admin/email/campaigns', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const campaigns = await emailPrefsDb.getCampaigns();
+        res.json({ campaigns });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching campaigns');
+        res.status(500).json({ error: 'Failed to fetch campaigns' });
+      }
+    });
+
+    // GET /api/admin/email/templates - List all templates
+    this.app.get('/api/admin/email/templates', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const templates = await emailPrefsDb.getTemplates();
+        res.json({ templates });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching templates');
+        res.status(500).json({ error: 'Failed to fetch templates' });
+      }
+    });
+
+    // GET /api/admin/email/recent - Recent email sends
+    this.app.get('/api/admin/email/recent', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT *
+           FROM email_events
+           ORDER BY created_at DESC
+           LIMIT 100`
+        );
+        res.json({ emails: result.rows });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching recent emails');
+        res.status(500).json({ error: 'Failed to fetch recent emails' });
       }
     });
 
