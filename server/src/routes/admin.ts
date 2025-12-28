@@ -74,6 +74,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           o.name,
           o.company_type,
           o.revenue_tier,
+          o.is_personal,
           COALESCE(o.prospect_status, 'signed_up') as prospect_status,
           COALESCE(o.prospect_source, 'organic') as prospect_source,
           o.prospect_owner,

@@ -267,23 +267,29 @@
     .tabs {
       display: flex;
       gap: var(--space-1);
-      border-bottom: var(--border-1) solid var(--color-gray-200);
+      border-bottom: 2px solid var(--color-gray-200);
       margin-bottom: var(--space-5);
     }
     .tab {
       padding: var(--space-2.5) var(--space-4);
       cursor: pointer;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
+      border: 2px solid transparent;
+      border-bottom: none;
+      border-radius: var(--radius-md) var(--radius-md) 0 0;
+      margin-bottom: -2px;
       color: var(--color-text-secondary);
+      background: var(--color-bg-subtle);
+      font-weight: var(--font-medium);
+      transition: var(--transition-all);
     }
     .tab:hover {
       color: var(--color-text-heading);
+      background: var(--color-gray-100);
     }
     .tab.active {
-      border-bottom-color: var(--color-brand);
+      border-color: var(--color-gray-200);
+      background: var(--color-bg-card);
       color: var(--color-brand);
-      font-weight: var(--font-medium);
     }
     .tab-content {
       display: none;
@@ -422,18 +428,15 @@
 
           <div class="form-group">
             <label>Slack Channel URL</label>
-            <input type="url" id="slackUrl" placeholder="https://aao.slack.com/...">
+            <input type="url" id="slackUrl" placeholder="https://agenticads.slack.com/archives/C09HEERCY8P" oninput="validateSlackUrl()">
+            <small id="slackUrlStatus" style="margin-top: var(--space-1); display: block;">
+              <span style="color: var(--color-text-muted);">Channel ID will be auto-extracted for member sync</span>
+            </small>
           </div>
 
-          <div class="form-row">
-            <div class="form-group checkbox-group">
-              <input type="checkbox" id="isPrivate">
-              <label for="isPrivate" style="margin-bottom: 0;">Private (invite-only)</label>
-            </div>
-            <div class="form-group">
-              <label>Display Order</label>
-              <input type="number" id="displayOrder" value="0" min="0">
-            </div>
+          <div class="form-group checkbox-group">
+            <input type="checkbox" id="isPrivate">
+            <label for="isPrivate" style="margin-bottom: 0;">Private (invite-only)</label>
           </div>
 
           <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-4); font-size: var(--text-base);">Leadership</h3>
@@ -441,7 +444,7 @@
           <div class="form-group">
             <label>Chair</label>
             <div class="user-search">
-              <input type="text" id="chairSearch" placeholder="Search for a user..." oninput="searchUsers('chair')" autocomplete="off">
+              <input type="text" id="chairSearch" placeholder="Search for a user..." oninput="searchUsers('chair')" autocomplete="new-password" data-lpignore="true" data-form-type="other" name="wg-lead-search-1">
               <div id="chairResults" class="user-search-results"></div>
             </div>
             <div id="chairSelected" class="selected-user" style="display: none;">
@@ -460,7 +463,7 @@
           <div class="form-group">
             <label>Vice Chair</label>
             <div class="user-search">
-              <input type="text" id="viceChairSearch" placeholder="Search for a user..." oninput="searchUsers('viceChair')" autocomplete="off">
+              <input type="text" id="viceChairSearch" placeholder="Search for a user..." oninput="searchUsers('viceChair')" autocomplete="new-password" data-lpignore="true" data-form-type="other" name="wg-lead-search-2">
               <div id="viceChairResults" class="user-search-results"></div>
             </div>
             <div id="viceChairSelected" class="selected-user" style="display: none;">
@@ -486,10 +489,27 @@
       <div id="membersTab-content" class="tab-content">
         <div class="members-section">
           <h3>Members (<span id="memberCount">0</span>)</h3>
+
+          <!-- Slack Sync Section -->
+          <div id="slackSyncSection" style="margin: var(--space-4) 0; padding: var(--space-4); background: var(--color-bg-subtle); border-radius: var(--rounded);">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <strong>Sync from Slack</strong>
+                <p style="margin: var(--space-1) 0 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
+                  Import members from the linked Slack channel
+                </p>
+              </div>
+              <button type="button" class="btn btn-secondary" onclick="syncFromSlack()" id="syncSlackBtn">
+                Sync Members
+              </button>
+            </div>
+            <div id="syncResult" style="margin-top: var(--space-3); display: none;"></div>
+          </div>
+
           <div class="form-group" style="margin-top: var(--space-4);">
             <label>Add Member</label>
             <div class="user-search">
-              <input type="text" id="memberSearch" placeholder="Search for a user to add..." oninput="searchUsers('member')" autocomplete="off">
+              <input type="text" id="memberSearch" placeholder="Search for a user to add..." oninput="searchUsers('member')" autocomplete="new-password" data-lpignore="true" data-form-type="other" name="wg-member-search">
               <div id="memberResults" class="user-search-results"></div>
             </div>
           </div>
@@ -700,7 +720,7 @@
             </div>
             <div class="group-actions">
               <button class="btn btn-secondary btn-small" onclick="window.open('/working-groups/${group.slug}', '_blank')">View</button>
-              <button class="btn btn-primary btn-small" onclick="editGroup('${group.id}')">Edit</button>
+              <button class="btn btn-primary btn-small" onclick="editGroup('${group.id}')">Manage</button>
               <button class="btn btn-danger btn-small" onclick="showDeleteModal('${group.id}', '${escapeHtml(group.name).replace(/'/g, "\\'")}')">Delete</button>
             </div>
           </div>
@@ -869,8 +889,75 @@
             </div>
           `).join('');
         }
+
+        // Update Slack sync section visibility and clear previous result
+        updateSlackSyncVisibility();
+        document.getElementById('syncResult').style.display = 'none';
+        document.getElementById('syncResult').innerHTML = '';
       } catch (error) {
         console.error('Error loading members:', error);
+      }
+    }
+
+    // Update Slack sync section visibility based on whether channel ID is set
+    function updateSlackSyncVisibility() {
+      const syncSection = document.getElementById('slackSyncSection');
+      const hasSlackChannel = editingGroup && editingGroup.slack_channel_id;
+      syncSection.style.display = hasSlackChannel ? 'block' : 'none';
+    }
+
+    // Sync members from Slack
+    async function syncFromSlack() {
+      if (!editingGroup || !editingGroup.id) {
+        alert('No working group selected');
+        return;
+      }
+
+      const btn = document.getElementById('syncSlackBtn');
+      const resultDiv = document.getElementById('syncResult');
+
+      btn.disabled = true;
+      btn.textContent = 'Syncing...';
+      resultDiv.style.display = 'none';
+
+      try {
+        const response = await fetch(`/api/admin/working-groups/${editingGroup.id}/sync-from-slack`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          resultDiv.innerHTML = `<div style="color: var(--color-error-600);">Error: ${escapeHtml(data.message || 'Sync failed')}</div>`;
+          resultDiv.style.display = 'block';
+          return;
+        }
+
+        const result = data.result;
+        let message = `<strong>Sync complete!</strong><br>`;
+        message += `Channel members: ${result.total_channel_members}<br>`;
+        message += `Added: ${result.members_added}<br>`;
+        message += `Already members: ${result.members_already_in_group}<br>`;
+        if (result.unmapped_slack_users > 0) {
+          message += `<span style="color: var(--color-warning-600);">Unmapped Slack users (not linked to website accounts): ${result.unmapped_slack_users}</span>`;
+        }
+        if (result.errors.length > 0) {
+          message += `<br><span style="color: var(--color-error-600);">Errors: ${result.errors.length}</span>`;
+        }
+
+        resultDiv.innerHTML = message;
+        resultDiv.style.display = 'block';
+
+        // Reload members list
+        await loadMembers(editingGroup.id);
+      } catch (error) {
+        console.error('Sync error:', error);
+        resultDiv.innerHTML = `<div style="color: var(--color-error-600);">Error: ${error.message || 'Network error'}</div>`;
+        resultDiv.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sync Members';
       }
     }
 
@@ -883,6 +970,7 @@
       document.getElementById('membersTab').style.display = 'none';
       clearChair();
       clearViceChair();
+      validateSlackUrl(); // Reset status message
       showTab('details');
       document.getElementById('groupModal').style.display = 'flex';
     }
@@ -895,15 +983,15 @@
 
         editingGroup = await response.json();
 
-        document.getElementById('modalTitle').textContent = 'Edit Working Group';
+        document.getElementById('modalTitle').textContent = 'Manage Working Group';
         document.getElementById('groupId').value = editingGroup.id;
         document.getElementById('name').value = editingGroup.name || '';
         document.getElementById('slug').value = editingGroup.slug || '';
         document.getElementById('description').value = editingGroup.description || '';
         document.getElementById('slackUrl').value = editingGroup.slack_channel_url || '';
+        validateSlackUrl();
         document.getElementById('status').value = editingGroup.status || 'active';
         document.getElementById('isPrivate').checked = editingGroup.is_private || false;
-        document.getElementById('displayOrder').value = editingGroup.display_order || 0;
 
         // Chair
         if (editingGroup.chair_user_id) {
@@ -953,6 +1041,10 @@
       document.getElementById('chairResults').classList.remove('show');
       document.getElementById('viceChairResults').classList.remove('show');
       document.getElementById('memberResults').classList.remove('show');
+
+      // Clear sync result
+      document.getElementById('syncResult').style.display = 'none';
+      document.getElementById('syncResult').innerHTML = '';
     }
 
     // Save group
@@ -967,7 +1059,6 @@
         slack_channel_url: document.getElementById('slackUrl').value.trim() || null,
         status: document.getElementById('status').value,
         is_private: document.getElementById('isPrivate').checked,
-        display_order: parseInt(document.getElementById('displayOrder').value) || 0,
         chair_user_id: document.getElementById('chairUserId').value || null,
         chair_name: document.getElementById('chairUserName').value || null,
         chair_org_name: document.getElementById('chairOrgName').value || null,
@@ -1054,6 +1145,43 @@
     function escapeJs(text) {
       if (!text) return '';
       return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+    }
+
+    // Extract Slack channel ID from URL (mirrors server-side logic)
+    function extractSlackChannelId(url) {
+      if (!url) return null;
+      // Slack channel IDs start with C (public) or G (private) followed by alphanumeric
+      const channelIdPattern = /[CG][A-Z0-9]{8,}/;
+      try {
+        const urlObj = new URL(url);
+        const pathParts = urlObj.pathname.split('/').filter(Boolean);
+        for (let i = pathParts.length - 1; i >= 0; i--) {
+          const match = pathParts[i].match(channelIdPattern);
+          if (match) return match[0];
+        }
+      } catch {
+        const match = url.match(channelIdPattern);
+        if (match) return match[0];
+      }
+      return null;
+    }
+
+    // Validate Slack URL and show status
+    function validateSlackUrl() {
+      const url = document.getElementById('slackUrl').value.trim();
+      const statusEl = document.getElementById('slackUrlStatus');
+
+      if (!url) {
+        statusEl.innerHTML = '<span style="color: var(--color-text-muted);">Channel ID will be auto-extracted for member sync</span>';
+        return;
+      }
+
+      const channelId = extractSlackChannelId(url);
+      if (channelId) {
+        statusEl.innerHTML = `<span style="color: var(--color-success-600);">✓ Channel ID detected: ${escapeHtml(channelId)}</span>`;
+      } else {
+        statusEl.innerHTML = '<span style="color: var(--color-warning-600);">⚠ Could not detect channel ID from URL</span>';
+      }
     }
 
     // Close search results when clicking outside

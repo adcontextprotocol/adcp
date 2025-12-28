@@ -26,7 +26,7 @@ import { MemberDatabase } from "./db/member-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
-import { syncSlackUsers, getSyncStatus } from "./slack/sync.js";
+import { syncSlackUsers, getSyncStatus, syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { verifySlackSignature, isSlackSigningConfigured } from "./slack/verify.js";
@@ -151,6 +151,40 @@ function setCachedUser(userId: string, displayName: string): void {
     value: { displayName },
     expiresAt: Date.now() + CACHE_TTL_MS,
   });
+}
+
+// Cache for unified users endpoint (admin users page)
+// Stores all WorkOS users by org to avoid repeated API calls
+interface WorkOSUserInfo {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+interface UnifiedUsersCache {
+  usersByOrg: Map<string, WorkOSUserInfo[]>;
+  expiresAt: number;
+}
+let unifiedUsersCache: UnifiedUsersCache | null = null;
+const UNIFIED_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour - invalidated on mutations
+
+function getUnifiedUsersCache(): Map<string, WorkOSUserInfo[]> | null {
+  if (unifiedUsersCache && unifiedUsersCache.expiresAt > Date.now()) {
+    return unifiedUsersCache.usersByOrg;
+  }
+  unifiedUsersCache = null;
+  return null;
+}
+
+function setUnifiedUsersCache(usersByOrg: Map<string, WorkOSUserInfo[]>): void {
+  unifiedUsersCache = {
+    usersByOrg,
+    expiresAt: Date.now() + UNIFIED_CACHE_TTL_MS,
+  };
+}
+
+function invalidateUnifiedUsersCache(): void {
+  unifiedUsersCache = null;
 }
 
 export class HTTPServer {
@@ -1435,7 +1469,7 @@ export class HTTPServer {
                       interval,
                     }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
 
-                    // Send welcome email to new member
+// Send welcome email to new member
                     sendWelcomeEmail({
                       to: userEmail,
                       organizationName: org.name || 'Unknown Organization',
@@ -1443,6 +1477,27 @@ export class HTTPServer {
                       workosUserId: workosUser.id,
                       workosOrganizationId: org.workos_organization_id,
                     }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
+
+                    // Record to org_activities for prospect tracking
+                    const amountStr = amount ? `$${(amount / 100).toFixed(2)}` : '';
+                    const intervalStr = interval ? `/${interval}` : '';
+                    await pool.query(
+                      `INSERT INTO org_activities (
+                        organization_id,
+                        activity_type,
+                        description,
+                        logged_by_user_id,
+                        logged_by_name,
+                        activity_date
+                      ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                      [
+                        org.workos_organization_id,
+                        'subscription',
+                        `Subscribed to ${productName || 'membership'} ${amountStr}${intervalStr}`.trim(),
+                        workosUser.id,
+                        userEmail,
+                      ]
+                    );
                   } else {
                     logger.error({
                       userEmail,
@@ -1462,7 +1517,7 @@ export class HTTPServer {
               }
             }
 
-            // Update database with subscription status and period end
+            // Update database with subscription status, period end, and pricing details
             // This allows admin dashboard to display data without querying Stripe API
             try {
               const customerId = subscription.customer as string;
@@ -1476,17 +1531,29 @@ export class HTTPServer {
                   periodEnd = new Date((subscription as any).current_period_end * 1000);
                 }
 
+                // Extract pricing details from subscription items
+                const priceData = subscription.items?.data?.[0]?.price;
+                const amount = priceData?.unit_amount ?? null;
+                const currency = priceData?.currency ?? null;
+                const interval = priceData?.recurring?.interval ?? null;
+
                 await pool.query(
                   `UPDATE organizations
                    SET subscription_status = $1,
                        stripe_subscription_id = $2,
                        subscription_current_period_end = $3,
+                       subscription_amount = COALESCE($4, subscription_amount),
+                       subscription_currency = COALESCE($5, subscription_currency),
+                       subscription_interval = COALESCE($6, subscription_interval),
                        updated_at = NOW()
-                   WHERE workos_organization_id = $4`,
+                   WHERE workos_organization_id = $7`,
                   [
                     subscription.status,
                     subscription.id,
                     periodEnd,
+                    amount,
+                    currency,
+                    interval,
                     org.workos_organization_id
                   ]
                 );
@@ -1496,6 +1563,9 @@ export class HTTPServer {
                   subscriptionId: subscription.id,
                   status: subscription.status,
                   periodEnd: periodEnd?.toISOString(),
+                  amount,
+                  currency,
+                  interval,
                 }, 'Subscription data synced to database');
 
                 // Send Slack notification for subscription cancellation
@@ -1516,6 +1586,25 @@ export class HTTPServer {
                   notifySubscriptionCancelled({
                     organizationName: org.name || 'Unknown Organization',
                   }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
+
+                  // Record to org_activities for prospect tracking
+                  await pool.query(
+                    `INSERT INTO org_activities (
+                      organization_id,
+                      activity_type,
+                      description,
+                      logged_by_user_id,
+                      logged_by_name,
+                      activity_date
+                    ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                    [
+                      org.workos_organization_id,
+                      'subscription_cancelled',
+                      'Subscription cancelled',
+                      SYSTEM_USER_ID,
+                      'System',
+                    ]
+                  );
                 }
               }
             } catch (syncError) {
@@ -1767,6 +1856,28 @@ export class HTTPServer {
                 productName: productName || undefined,
                 isRecurring: revenueType === 'subscription_recurring',
               }).catch(err => logger.error({ err }, 'Failed to send Slack payment notification'));
+
+              // Record to org_activities for prospect tracking (for recurring payments)
+              if (revenueType === 'subscription_recurring') {
+                const amountFormatted = `$${(invoice.amount_paid / 100).toFixed(2)}`;
+                await pool.query(
+                  `INSERT INTO org_activities (
+                    organization_id,
+                    activity_type,
+                    description,
+                    logged_by_user_id,
+                    logged_by_name,
+                    activity_date
+                  ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                  [
+                    org.workos_organization_id,
+                    'payment',
+                    `Renewal payment ${amountFormatted} for ${productName || 'membership'}`,
+                    SYSTEM_USER_ID,
+                    'System',
+                  ]
+                );
+              }
             }
             break;
           }
@@ -3698,6 +3809,70 @@ export class HTTPServer {
         logger.error({ err: error }, 'Remove working group member error:');
         res.status(500).json({
           error: 'Failed to remove member',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/working-groups/:id/sync-from-slack - Sync members from Slack channel
+    this.app.post('/api/admin/working-groups/:id/sync-from-slack', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        // Verify the working group exists
+        const workingGroup = await workingGroupDb.getWorkingGroupById(id);
+        if (!workingGroup) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: 'The specified working group does not exist'
+          });
+        }
+
+        // Sync members from Slack
+        const result = await syncWorkingGroupMembersFromSlack(id);
+
+        if (result.errors.length > 0 && result.members_added === 0 && result.members_already_in_group === 0) {
+          return res.status(400).json({
+            error: 'Sync failed',
+            message: result.errors[0],
+            result
+          });
+        }
+
+        res.json({
+          success: true,
+          result
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Sync working group members from Slack error:');
+        res.status(500).json({
+          error: 'Failed to sync members',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/working-groups/sync-all-from-slack - Sync all working groups with Slack channels
+    this.app.post('/api/admin/working-groups/sync-all-from-slack', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const results = await syncAllWorkingGroupMembersFromSlack();
+
+        const totalAdded = results.reduce((sum, r) => sum + r.members_added, 0);
+        const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
+
+        res.json({
+          success: true,
+          summary: {
+            groups_synced: results.length,
+            total_members_added: totalAdded,
+            total_errors: totalErrors
+          },
+          results
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Sync all working groups from Slack error:');
+        res.status(500).json({
+          error: 'Failed to sync working groups',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -9542,6 +9717,8 @@ Disallow: /api/admin/
       try {
         const result = await syncSlackUsers();
         logger.info(result, 'Slack user sync completed');
+        // Invalidate cache since mappings may have changed
+        invalidateUnifiedUsersCache();
         res.json(result);
       } catch (error) {
         logger.error({ err: error }, 'Slack sync error');
@@ -9625,6 +9802,9 @@ Disallow: /api/admin/
           'Slack user manually linked'
         );
 
+        // Invalidate unified users cache so next load reflects the change
+        invalidateUnifiedUsersCache();
+
         res.json({ mapping: updated });
       } catch (error) {
         logger.error({ err: error }, 'Link Slack user error');
@@ -9663,6 +9843,9 @@ Disallow: /api/admin/
           'Slack user unlinked'
         );
 
+        // Invalidate unified users cache so next load reflects the change
+        invalidateUnifiedUsersCache();
+
         res.json({ mapping: updated });
       } catch (error) {
         logger.error({ err: error }, 'Unlink Slack user error');
@@ -9697,6 +9880,7 @@ Disallow: /api/admin/
     // GET /api/admin/slack/unified - Get unified view of all AAO users + all Slack users
     // Shows AAO users with their Slack status, and Slack-only users not yet on AAO
     this.app.get('/api/admin/slack/unified', requireAuth, requireAdmin, async (req, res) => {
+      const startTime = Date.now();
       try {
         if (!workos) {
           return res.status(503).json({ error: 'Authentication not configured' });
@@ -9706,6 +9890,8 @@ Disallow: /api/admin/
         const searchTerm = typeof search === 'string' ? search.toLowerCase() : '';
         const statusFilter = typeof status === 'string' ? status : '';
         const filterByGroup = typeof group === 'string' ? group : undefined;
+
+        logger.info({ search, status, group }, 'Unified users endpoint: starting');
 
         const orgDatabase = new OrganizationDatabase();
         const wgDb = new WorkingGroupDatabase();
@@ -9776,97 +9962,135 @@ Disallow: /api/admin/
         const unifiedUsers: UnifiedUser[] = [];
         const processedSlackIds = new Set<string>();
 
-        // Get all AAO users from WorkOS via org memberships
+        // Get all AAO users from WorkOS using listUsers (much more efficient than getUser per membership)
         const orgs = await orgDatabase.listOrganizations();
         const seenUserIds = new Set<string>();
 
-        for (const org of orgs) {
-          try {
-            const memberships = await workos.userManagement.listOrganizationMemberships({
-              organizationId: org.workos_organization_id,
-            });
+        // Check cache first
+        let cachedUsersByOrg = getUnifiedUsersCache();
+        let cacheHit = cachedUsersByOrg !== null;
 
-            for (const membership of memberships.data) {
-              if (seenUserIds.has(membership.userId)) continue;
+        if (!cachedUsersByOrg) {
+          // Build cache - fetch all users from WorkOS
+          cachedUsersByOrg = new Map<string, WorkOSUserInfo[]>();
 
-              try {
-                const user = await workos.userManagement.getUser(membership.userId);
-                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
-
-                // Check if user has Slack mapping
-                const slackMapping = slackByWorkosId.get(user.id);
-                // Also check for email match if no direct mapping
-                const suggestedSlack = !slackMapping ? slackByEmail.get(user.email.toLowerCase()) : null;
-
-                let mappingStatus: UnifiedUser['mapping_status'] = 'aao_only';
-                let slackInfo = {
-                  slack_user_id: null as string | null,
-                  slack_email: null as string | null,
-                  slack_display_name: null as string | null,
-                  slack_real_name: null as string | null,
-                };
-
-                if (slackMapping) {
-                  mappingStatus = 'mapped';
-                  slackInfo = {
-                    slack_user_id: slackMapping.slack_user_id,
-                    slack_email: slackMapping.slack_email,
-                    slack_display_name: slackMapping.slack_display_name,
-                    slack_real_name: slackMapping.slack_real_name,
-                  };
-                  processedSlackIds.add(slackMapping.slack_user_id);
-                } else if (suggestedSlack && suggestedSlack.mapping_status === 'unmapped') {
-                  mappingStatus = 'suggested_match';
-                  slackInfo = {
-                    slack_user_id: suggestedSlack.slack_user_id,
-                    slack_email: suggestedSlack.slack_email,
-                    slack_display_name: suggestedSlack.slack_display_name,
-                    slack_real_name: suggestedSlack.slack_real_name,
-                  };
-                  // Don't mark as processed - we'll show suggestion but still allow manual link
-                }
-
-                // Get working groups for this user
-                const workingGroups = userWorkingGroups.get(user.id) || [];
-
-                // Apply group filter
-                if (filterByGroup) {
-                  const hasGroup = workingGroups.some(g => g.id === filterByGroup);
-                  if (!hasGroup) continue;
-                }
-
-                // Apply search filter
-                if (searchTerm) {
-                  const matches =
-                    user.email.toLowerCase().includes(searchTerm) ||
-                    fullName.toLowerCase().includes(searchTerm) ||
-                    org.name.toLowerCase().includes(searchTerm) ||
-                    (slackInfo.slack_email?.toLowerCase().includes(searchTerm)) ||
-                    (slackInfo.slack_display_name?.toLowerCase().includes(searchTerm)) ||
-                    (slackInfo.slack_real_name?.toLowerCase().includes(searchTerm));
-                  if (!matches) continue;
-                }
-
-                seenUserIds.add(user.id);
-                unifiedUsers.push({
-                  workos_user_id: user.id,
-                  email: user.email,
-                  name: fullName || user.email,
-                  org_id: org.workos_organization_id,
-                  org_name: org.name,
-                  ...slackInfo,
-                  mapping_status: mappingStatus,
-                  mapping_source: slackMapping?.mapping_source || null,
-                  working_groups: workingGroups,
+          for (const org of orgs) {
+            try {
+              const orgUsers: WorkOSUserInfo[] = [];
+              let after: string | undefined;
+              do {
+                const usersResponse = await workos.userManagement.listUsers({
+                  organizationId: org.workos_organization_id,
+                  limit: 100,
+                  after,
                 });
-              } catch (userErr) {
-                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
-              }
+
+                for (const user of usersResponse.data) {
+                  orgUsers.push({
+                    id: user.id,
+                    email: user.email,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                  });
+                }
+
+                after = usersResponse.listMetadata?.after || undefined;
+              } while (after);
+
+              cachedUsersByOrg.set(org.workos_organization_id, orgUsers);
+            } catch (orgErr) {
+              logger.warn({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch users for org from WorkOS');
             }
-          } catch (orgErr) {
-            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
+          }
+
+          // Store in cache
+          setUnifiedUsersCache(cachedUsersByOrg);
+        }
+
+        logger.info({ cacheHit, orgCount: orgs.length }, 'Unified users: WorkOS user fetch');
+
+        // Process cached users
+        for (const org of orgs) {
+          const orgUsers = cachedUsersByOrg.get(org.workos_organization_id) || [];
+
+          for (const user of orgUsers) {
+            if (seenUserIds.has(user.id)) continue;
+            const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
+
+            // Check if user has Slack mapping
+            const slackMapping = slackByWorkosId.get(user.id);
+            // Also check for email match if no direct mapping
+            const suggestedSlack = !slackMapping ? slackByEmail.get(user.email.toLowerCase()) : null;
+
+            let mappingStatus: UnifiedUser['mapping_status'] = 'aao_only';
+            let slackInfo = {
+              slack_user_id: null as string | null,
+              slack_email: null as string | null,
+              slack_display_name: null as string | null,
+              slack_real_name: null as string | null,
+            };
+
+            if (slackMapping) {
+              mappingStatus = 'mapped';
+              slackInfo = {
+                slack_user_id: slackMapping.slack_user_id,
+                slack_email: slackMapping.slack_email,
+                slack_display_name: slackMapping.slack_display_name,
+                slack_real_name: slackMapping.slack_real_name,
+              };
+              processedSlackIds.add(slackMapping.slack_user_id);
+            } else if (suggestedSlack && suggestedSlack.mapping_status === 'unmapped') {
+              mappingStatus = 'suggested_match';
+              slackInfo = {
+                slack_user_id: suggestedSlack.slack_user_id,
+                slack_email: suggestedSlack.slack_email,
+                slack_display_name: suggestedSlack.slack_display_name,
+                slack_real_name: suggestedSlack.slack_real_name,
+              };
+              // Don't mark as processed - we'll show suggestion but still allow manual link
+            }
+
+            // Get working groups for this user
+            const workingGroups = userWorkingGroups.get(user.id) || [];
+
+            // Apply group filter
+            if (filterByGroup) {
+              const hasGroup = workingGroups.some(g => g.id === filterByGroup);
+              if (!hasGroup) continue;
+            }
+
+            // Apply search filter
+            if (searchTerm) {
+              const matches =
+                user.email.toLowerCase().includes(searchTerm) ||
+                fullName.toLowerCase().includes(searchTerm) ||
+                org.name.toLowerCase().includes(searchTerm) ||
+                (slackInfo.slack_email?.toLowerCase().includes(searchTerm)) ||
+                (slackInfo.slack_display_name?.toLowerCase().includes(searchTerm)) ||
+                (slackInfo.slack_real_name?.toLowerCase().includes(searchTerm));
+              if (!matches) continue;
+            }
+
+            seenUserIds.add(user.id);
+            unifiedUsers.push({
+              workos_user_id: user.id,
+              email: user.email,
+              name: fullName || user.email,
+              org_id: org.workos_organization_id,
+              org_name: org.name,
+              ...slackInfo,
+              mapping_status: mappingStatus,
+              mapping_source: slackMapping?.mapping_source || null,
+              working_groups: workingGroups,
+            });
           }
         }
+
+        logger.info({
+          totalOrgs: orgs.length,
+          uniqueUsers: seenUserIds.size,
+          slackMappings: slackMappings.length,
+        }, 'Unified users endpoint: completed WorkOS data fetch');
 
         // Add Slack-only users (not mapped and not already processed as suggested match)
         for (const slackUser of slackMappings) {
@@ -9938,9 +10162,17 @@ Disallow: /api/admin/
           return aName.localeCompare(bName);
         });
 
+        const duration = Date.now() - startTime;
+        logger.info({
+          totalUsers: filteredUsers.length,
+          stats,
+          durationMs: duration,
+        }, 'Unified users endpoint: completed');
+
         res.json({ users: filteredUsers, stats });
       } catch (error) {
-        logger.error({ err: error }, 'Get unified Slack/AAO users error');
+        const duration = Date.now() - startTime;
+        logger.error({ err: error, durationMs: duration }, 'Get unified Slack/AAO users error');
         res.status(500).json({
           error: 'Failed to get unified users',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -10091,6 +10323,11 @@ Disallow: /api/admin/
         }
 
         logger.info({ linked, errors: errors.length, adminUserId: adminUser?.id }, 'Auto-linked suggested matches');
+
+        // Invalidate cache since mappings changed
+        if (linked > 0) {
+          invalidateUnifiedUsersCache();
+        }
 
         res.json({
           linked,

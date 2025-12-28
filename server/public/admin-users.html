@@ -536,7 +536,7 @@
       });
     }
 
-    async function loadUsers() {
+    async function loadUsers(retryCount = 0) {
       const search = document.getElementById('searchInput').value.trim();
       const statusFilter = document.getElementById('statusFilter').value;
       const groupFilter = document.getElementById('groupFilter').value;
@@ -551,7 +551,10 @@
 
       try {
         const response = await fetch(`${endpoint}?${params}`);
-        if (!response.ok) throw new Error('Failed to load users');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
 
         const data = await response.json();
         allUsers = data.users || [];
@@ -560,6 +563,18 @@
         updateStats(data.stats);
       } catch (error) {
         console.error('Error loading users:', error);
+        // Retry up to 2 times with exponential backoff
+        if (retryCount < 2) {
+          const delay = Math.pow(2, retryCount) * 500; // 500ms, 1000ms
+          console.log(`Retrying loadUsers in ${delay}ms (attempt ${retryCount + 2}/3)`);
+          setTimeout(() => loadUsers(retryCount + 1), delay);
+        } else {
+          // Show error to user after all retries failed
+          const tbody = document.getElementById('usersTableBody');
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: var(--space-8); color: var(--color-error-600);">
+            Failed to load users. <button class="btn btn-secondary btn-small" onclick="loadUsers()">Retry</button>
+          </td></tr>`;
+        }
       }
     }
 
@@ -597,7 +612,7 @@
         // Actions based on status
         let actions = '';
         if (user.mapping_status === 'suggested_match') {
-          actions = `<button class="btn btn-success btn-small" onclick="linkUser('${user.slack_user_id}', '${user.workos_user_id}')">Link</button>`;
+          actions = `<button class="btn btn-success btn-small" onclick="linkUser('${user.slack_user_id}', '${user.workos_user_id}', event)">Link</button>`;
         } else if (user.mapping_status === 'mapped') {
           actions = `<button class="btn btn-secondary btn-small" onclick="unlinkUser('${user.slack_user_id}')">Unlink</button>`;
         } else if (user.mapping_status === 'slack_only') {
@@ -689,7 +704,14 @@
       loadUsers();
     }
 
-    async function linkUser(slackUserId, workosUserId) {
+    async function linkUser(slackUserId, workosUserId, event) {
+      // Find and disable the button
+      const btn = event?.target;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Linking...';
+      }
+
       try {
         const response = await fetch(`/api/admin/slack/users/${slackUserId}/link`, {
           method: 'POST',
@@ -697,13 +719,29 @@
           body: JSON.stringify({ workos_user_id: workosUserId })
         });
         if (response.ok) {
-          await loadUsers();
+          // Update the row immediately to show success
+          if (btn) {
+            btn.textContent = 'Linked!';
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-secondary');
+          }
+          // Give a brief moment for visual feedback then reload
+          setTimeout(() => loadUsers(), 300);
         } else {
-          alert('Failed to link user');
+          const errorData = await response.json().catch(() => ({}));
+          alert(errorData.message || 'Failed to link user');
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Link';
+          }
         }
       } catch (error) {
         console.error('Error linking user:', error);
         alert('Error linking user');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Link';
+        }
       }
     }
 

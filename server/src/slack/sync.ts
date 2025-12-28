@@ -7,8 +7,9 @@
  */
 
 import { logger } from '../logger.js';
-import { getSlackUsers, isSlackConfigured } from './client.js';
+import { getSlackUsers, getChannelMembers, isSlackConfigured } from './client.js';
 import { SlackDatabase } from '../db/slack-db.js';
+import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import type { SyncSlackUsersResult } from './types.js';
 
 const slackDb = new SlackDatabase();
@@ -132,4 +133,158 @@ export async function getSyncStatus(): Promise<{
     stats,
     last_sync: lastSync,
   };
+}
+
+// ============== Working Group Member Sync ==============
+
+export interface SyncWorkingGroupMembersResult {
+  working_group_id: string;
+  working_group_name: string;
+  slack_channel_id: string;
+  total_channel_members: number;
+  members_added: number;
+  members_already_in_group: number;
+  unmapped_slack_users: number;
+  errors: string[];
+}
+
+/**
+ * Sync members from a Slack channel to a working group
+ *
+ * 1. Gets all members of the Slack channel
+ * 2. For each member, checks if they have a mapped WorkOS user
+ * 3. If mapped, adds them to the working group (if not already a member)
+ */
+export async function syncWorkingGroupMembersFromSlack(
+  workingGroupId: string
+): Promise<SyncWorkingGroupMembersResult> {
+  const workingGroupDb = new WorkingGroupDatabase();
+
+  // Get the working group
+  const workingGroup = await workingGroupDb.getWorkingGroupById(workingGroupId);
+  if (!workingGroup) {
+    return {
+      working_group_id: workingGroupId,
+      working_group_name: 'Unknown',
+      slack_channel_id: '',
+      total_channel_members: 0,
+      members_added: 0,
+      members_already_in_group: 0,
+      unmapped_slack_users: 0,
+      errors: ['Working group not found'],
+    };
+  }
+
+  if (!workingGroup.slack_channel_id) {
+    return {
+      working_group_id: workingGroupId,
+      working_group_name: workingGroup.name,
+      slack_channel_id: '',
+      total_channel_members: 0,
+      members_added: 0,
+      members_already_in_group: 0,
+      unmapped_slack_users: 0,
+      errors: ['Working group does not have a Slack channel ID configured'],
+    };
+  }
+
+  if (!isSlackConfigured()) {
+    return {
+      working_group_id: workingGroupId,
+      working_group_name: workingGroup.name,
+      slack_channel_id: workingGroup.slack_channel_id,
+      total_channel_members: 0,
+      members_added: 0,
+      members_already_in_group: 0,
+      unmapped_slack_users: 0,
+      errors: ['Slack is not configured (SLACK_BOT_TOKEN missing)'],
+    };
+  }
+
+  const result: SyncWorkingGroupMembersResult = {
+    working_group_id: workingGroupId,
+    working_group_name: workingGroup.name,
+    slack_channel_id: workingGroup.slack_channel_id,
+    total_channel_members: 0,
+    members_added: 0,
+    members_already_in_group: 0,
+    unmapped_slack_users: 0,
+    errors: [],
+  };
+
+  try {
+    logger.info(
+      { workingGroupId, channelId: workingGroup.slack_channel_id },
+      'Starting working group member sync from Slack'
+    );
+
+    // Get all members of the Slack channel
+    const channelMemberIds = await getChannelMembers(workingGroup.slack_channel_id);
+    result.total_channel_members = channelMemberIds.length;
+
+    logger.info(
+      { count: channelMemberIds.length, channelId: workingGroup.slack_channel_id },
+      'Fetched channel members from Slack'
+    );
+
+    // Process each channel member
+    for (const slackUserId of channelMemberIds) {
+      try {
+        // Look up the Slack user mapping
+        const mapping = await slackDb.getBySlackUserId(slackUserId);
+
+        if (!mapping || !mapping.workos_user_id) {
+          // User not mapped to WorkOS
+          result.unmapped_slack_users++;
+          continue;
+        }
+
+        // Check if already a member
+        const isMember = await workingGroupDb.isMember(workingGroupId, mapping.workos_user_id);
+        if (isMember) {
+          result.members_already_in_group++;
+          continue;
+        }
+
+        // Add to working group
+        await workingGroupDb.addMembership({
+          working_group_id: workingGroupId,
+          workos_user_id: mapping.workos_user_id,
+          user_email: mapping.slack_email || undefined,
+          user_name: mapping.slack_real_name || mapping.slack_display_name || undefined,
+        });
+
+        result.members_added++;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        result.errors.push(`Failed to process Slack user ${slackUserId}: ${errorMessage}`);
+        logger.error({ error, slackUserId }, 'Failed to process Slack user for working group sync');
+      }
+    }
+
+    logger.info(result, 'Working group member sync from Slack completed');
+    return result;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    result.errors.push(`Sync failed: ${errorMessage}`);
+    logger.error({ error, workingGroupId }, 'Working group member sync from Slack failed');
+    return result;
+  }
+}
+
+/**
+ * Sync all working groups that have Slack channels configured
+ */
+export async function syncAllWorkingGroupMembersFromSlack(): Promise<SyncWorkingGroupMembersResult[]> {
+  const workingGroupDb = new WorkingGroupDatabase();
+  const results: SyncWorkingGroupMembersResult[] = [];
+
+  const workingGroups = await workingGroupDb.listWorkingGroupsWithSlackChannel();
+
+  for (const wg of workingGroups) {
+    const result = await syncWorkingGroupMembersFromSlack(wg.id);
+    results.push(result);
+  }
+
+  return results;
 }
