@@ -3642,8 +3642,7 @@ export class HTTPServer {
     this.app.post('/api/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { name, slug, description, slack_channel_url, is_private, status, display_order,
-                chair_user_id, chair_name, chair_title, chair_org_name,
-                vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name } = req.body;
+                leader_user_ids } = req.body;
 
         if (!name || !slug) {
           return res.status(400).json({
@@ -3672,12 +3671,8 @@ export class HTTPServer {
 
         const group = await workingGroupDb.createWorkingGroup({
           name, slug, description, slack_channel_url, is_private, status, display_order,
-          chair_user_id, chair_name, chair_title, chair_org_name,
-          vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name
+          leader_user_ids
         });
-
-        // Ensure chair/vice-chair are members
-        await workingGroupDb.ensureLeadershipAreMembers(group.id);
 
         res.status(201).json(group);
       } catch (error) {
@@ -3702,11 +3697,6 @@ export class HTTPServer {
             error: 'Working group not found',
             message: `No working group found with id ${id}`
           });
-        }
-
-        // Ensure chair/vice-chair are members if leadership was updated
-        if (updates.chair_user_id || updates.vice_chair_user_id) {
-          await workingGroupDb.ensureLeadershipAreMembers(group.id);
         }
 
         res.json(group);
@@ -7980,11 +7970,12 @@ Disallow: /api/admin/
           });
         }
 
-        // Check if user is chair or vice-chair - they can't leave without being replaced
-        if (group.chair_user_id === user.id || group.vice_chair_user_id === user.id) {
+        // Check if user is a leader - they can't leave without being replaced
+        const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
+        if (isLeader) {
           return res.status(403).json({
             error: 'Cannot leave',
-            message: 'As chair or vice-chair, you must be replaced before leaving the group',
+            message: 'As a leader, you must be replaced before leaving the group',
           });
         }
 
@@ -8052,8 +8043,8 @@ Disallow: /api/admin/
           });
         }
 
-        // Check if user is a leader (chair or vice-chair)
-        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+        // Check if user is a leader
+        const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
 
         // Non-leaders can only create members-only posts
         const finalMembersOnly = isLeader ? (is_members_only ?? true) : true;
@@ -8174,7 +8165,7 @@ Disallow: /api/admin/
         }
 
         const post = existing.rows[0];
-        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+        const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
         const isAuthor = post.author_user_id === user.id;
 
         // Only authors or leaders can edit posts
@@ -8284,7 +8275,7 @@ Disallow: /api/admin/
         }
 
         const post = existing.rows[0];
-        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+        const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
         const isAuthor = post.author_user_id === user.id;
 
         // Only authors or leaders can delete posts
