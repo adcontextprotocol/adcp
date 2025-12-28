@@ -664,18 +664,18 @@ export class OrganizationDatabase {
 
   /**
    * Record a user login for engagement tracking
+   * Uses org_activities table with activity_type = 'dashboard_login'
    */
   async recordUserLogin(data: {
     workos_user_id: string;
-    workos_organization_id?: string;
-    ip_address?: string;
-    user_agent?: string;
+    workos_organization_id: string;
+    user_name?: string;
   }): Promise<void> {
     const pool = getPool();
     await pool.query(
-      `INSERT INTO user_logins (workos_user_id, workos_organization_id, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4)`,
-      [data.workos_user_id, data.workos_organization_id || null, data.ip_address || null, data.user_agent || null]
+      `INSERT INTO org_activities (organization_id, activity_type, logged_by_user_id, logged_by_name, activity_date)
+       VALUES ($1, 'dashboard_login', $2, $3, NOW())`,
+      [data.workos_organization_id, data.workos_user_id, data.user_name || null]
     );
   }
 
@@ -685,24 +685,11 @@ export class OrganizationDatabase {
   async getOrgLoginCount(workos_organization_id: string, days: number = 30): Promise<number> {
     const pool = getPool();
     const result = await pool.query(
-      `SELECT COUNT(*) as count FROM user_logins
-       WHERE workos_organization_id = $1
-       AND logged_in_at > NOW() - INTERVAL '1 day' * $2`,
+      `SELECT COUNT(*) as count FROM org_activities
+       WHERE organization_id = $1
+       AND activity_type = 'dashboard_login'
+       AND activity_date > NOW() - INTERVAL '1 day' * $2`,
       [workos_organization_id, days]
-    );
-    return parseInt(result.rows[0].count, 10);
-  }
-
-  /**
-   * Get login count for a user in the last N days
-   */
-  async getUserLoginCount(workos_user_id: string, days: number = 30): Promise<number> {
-    const pool = getPool();
-    const result = await pool.query(
-      `SELECT COUNT(*) as count FROM user_logins
-       WHERE workos_user_id = $1
-       AND logged_in_at > NOW() - INTERVAL '1 day' * $2`,
-      [workos_user_id, days]
     );
     return parseInt(result.rows[0].count, 10);
   }
@@ -713,8 +700,9 @@ export class OrganizationDatabase {
   async getOrgLastLogin(workos_organization_id: string): Promise<Date | null> {
     const pool = getPool();
     const result = await pool.query(
-      `SELECT MAX(logged_in_at) as last_login FROM user_logins
-       WHERE workos_organization_id = $1`,
+      `SELECT MAX(activity_date) as last_login FROM org_activities
+       WHERE organization_id = $1
+       AND activity_type = 'dashboard_login'`,
       [workos_organization_id]
     );
     return result.rows[0]?.last_login || null;
@@ -775,17 +763,19 @@ export class OrganizationDatabase {
         `SELECT 1 FROM member_profiles WHERE workos_organization_id = $1`,
         [workos_organization_id]
       ),
-      // Login count (last 30 days)
+      // Login count (last 30 days) - uses org_activities with dashboard_login type
       pool.query(
-        `SELECT COUNT(*) as count FROM user_logins
-         WHERE workos_organization_id = $1
-         AND logged_in_at > NOW() - INTERVAL '30 days'`,
+        `SELECT COUNT(*) as count FROM org_activities
+         WHERE organization_id = $1
+         AND activity_type = 'dashboard_login'
+         AND activity_date > NOW() - INTERVAL '30 days'`,
         [workos_organization_id]
       ),
-      // Last login
+      // Last login - uses org_activities with dashboard_login type
       pool.query(
-        `SELECT MAX(logged_in_at) as last_login FROM user_logins
-         WHERE workos_organization_id = $1`,
+        `SELECT MAX(activity_date) as last_login FROM org_activities
+         WHERE organization_id = $1
+         AND activity_type = 'dashboard_login'`,
         [workos_organization_id]
       ),
       // Working group membership count

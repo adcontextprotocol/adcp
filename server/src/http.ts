@@ -4798,11 +4798,11 @@ Disallow: /api/admin/
         // Record login for engagement tracking (fire and forget)
         if (memberships.data.length > 0) {
           const primaryOrgId = memberships.data[0].organizationId;
+          const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
           orgDb.recordUserLogin({
             workos_user_id: user.id,
             workos_organization_id: primaryOrgId,
-            ip_address: req.ip,
-            user_agent: req.get('user-agent'),
+            user_name: userName,
           }).catch((err) => {
             logger.error({ error: err, userId: user.id }, 'Failed to record user login');
           });
