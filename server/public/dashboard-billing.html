@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Billing - Dashboard</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/dashboard-nav.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background: var(--color-bg-page);
+    }
+
+    .page-header {
+      padding: 32px 40px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+    }
+
+    .page-header h1 {
+      margin: 0 0 8px 0;
+      font-size: 28px;
+      color: var(--color-text-heading);
+    }
+
+    .page-header p {
+      margin: 0;
+      color: var(--color-text-secondary);
+      font-size: 14px;
+    }
+
+    .page-content {
+      padding: 32px 40px;
+      max-width: 900px;
+    }
+
+    .billing-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .billing-card-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-subtle);
+    }
+
+    .billing-card-header h2 {
+      margin: 0;
+      font-size: 16px;
+      color: var(--color-text-heading);
+    }
+
+    .billing-card-body {
+      padding: 24px;
+    }
+
+    /* Subscription status */
+    .subscription-status {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .subscription-status.active {
+      background: var(--color-success-50);
+      border: 1px solid var(--color-success-200);
+    }
+
+    .subscription-status.inactive {
+      background: var(--color-gray-50);
+      border: 1px solid var(--color-gray-200);
+    }
+
+    .subscription-status.past_due {
+      background: var(--color-warning-50);
+      border: 1px solid var(--color-warning-200);
+    }
+
+    .subscription-icon {
+      font-size: 32px;
+      flex-shrink: 0;
+    }
+
+    .subscription-info h3 {
+      margin: 0 0 4px 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .subscription-info p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--color-text-secondary);
+    }
+
+    .subscription-status.active .subscription-info h3 {
+      color: var(--color-success-700);
+    }
+
+    .subscription-status.past_due .subscription-info h3 {
+      color: var(--color-warning-700);
+    }
+
+    /* Membership promo */
+    .membership-promo {
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-600) 100%);
+      border-radius: 12px;
+      padding: 32px;
+      color: white;
+      margin-bottom: 24px;
+    }
+
+    .membership-promo h2 {
+      margin: 0 0 12px 0;
+      font-size: 24px;
+      color: white;
+    }
+
+    .membership-promo p {
+      margin: 0 0 20px 0;
+      opacity: 0.9;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .membership-promo a {
+      color: white;
+      text-decoration: underline;
+    }
+
+    /* Agreement section */
+    .agreement-box {
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 20px;
+      background: var(--color-bg-subtle);
+      margin-bottom: 20px;
+    }
+
+    .agreement-box h4 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      color: var(--color-text-heading);
+    }
+
+    .agreement-content {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 16px;
+      background: white;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .agreement-checkbox {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .agreement-checkbox input {
+      margin-top: 3px;
+      cursor: pointer;
+    }
+
+    .agreement-checkbox span {
+      font-size: 14px;
+    }
+
+    .agreement-warning {
+      text-align: center;
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      padding: 12px;
+      background: var(--color-warning-50);
+      border: 1px solid var(--color-warning-300);
+      border-radius: 6px;
+      margin-top: 16px;
+    }
+
+    /* Pricing table wrapper */
+    .pricing-wrapper {
+      transition: opacity 0.3s;
+    }
+
+    .pricing-wrapper.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 60px;
+      color: var(--color-text-secondary);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--color-success-600);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: var(--shadow-lg);
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <!-- AAO top navigation -->
+  <div id="adcp-nav"></div>
+
+  <div id="toast" class="toast"></div>
+
+  <div class="page-header">
+    <h1>Billing</h1>
+    <p>Manage your membership and billing information</p>
+  </div>
+
+  <div class="page-content">
+    <div id="loading" class="loading">Loading billing information...</div>
+
+    <div id="content" style="display: none;">
+      <!-- Current subscription status (for subscribers) -->
+      <div id="subscriptionCard" class="billing-card" style="display: none;">
+        <div class="billing-card-header">
+          <h2>Current Membership</h2>
+        </div>
+        <div class="billing-card-body">
+          <div id="subscriptionStatus" class="subscription-status active">
+            <!-- Filled by JS -->
+          </div>
+          <button id="manageBillingBtn" class="btn btn-primary" onclick="openBillingPortal()">
+            Manage Billing
+          </button>
+        </div>
+      </div>
+
+      <!-- Membership signup (for non-subscribers) -->
+      <div id="membershipSection" style="display: none;">
+        <div class="membership-promo">
+          <h2>Become a Member</h2>
+          <p>
+            Unlock your public member profile, appear in the directory, and support the AdCP ecosystem.
+            <a href="/membership">Learn more about founding membership benefits →</a>
+          </p>
+        </div>
+
+        <div class="billing-card">
+          <div class="billing-card-header">
+            <h2>Membership Agreement</h2>
+          </div>
+          <div class="billing-card-body">
+            <div class="agreement-content" id="agreementContent">
+              Loading agreement...
+            </div>
+            <label class="agreement-checkbox">
+              <input type="checkbox" id="agreementCheckbox" onchange="toggleAgreement()">
+              <span>I have read and agree to the <strong>AgenticAdvertising.org Membership Agreement</strong></span>
+            </label>
+          </div>
+        </div>
+
+        <div id="pricingWrapper" class="pricing-wrapper disabled">
+          <script async src="https://js.stripe.com/v3/pricing-table.js"></script>
+          <div id="pricingTableContainer"></div>
+        </div>
+
+        <div id="agreementWarning" class="agreement-warning">
+          Please accept the membership agreement above to continue
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentOrg = null;
+
+    // Get org ID from URL or localStorage
+    function getOrgId() {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('org') || localStorage.getItem('selectedOrgId');
+    }
+
+    // Show toast
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // Load billing data
+    async function loadBilling() {
+      try {
+        const response = await fetch('/api/me', { credentials: 'include' });
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
+            return;
+          }
+          throw new Error('Failed to load user data');
+        }
+
+        const data = await response.json();
+        const orgId = getOrgId();
+        currentOrg = data.organizations?.find(o => o.id === orgId) || data.organizations?.[0];
+
+        if (!currentOrg) {
+          document.getElementById('loading').innerHTML = 'No organization found';
+          return;
+        }
+
+        // Initialize sidebar
+        DashboardNav.init({
+          showOrgSwitcher: data.organizations?.length > 1,
+          currentOrgName: currentOrg.name,
+          showAdmin: data.isAdmin
+        });
+
+        if (data.organizations?.length > 1) {
+          DashboardNav.setOrgOptions(data.organizations, currentOrg.id, (newOrgId) => {
+            localStorage.setItem('selectedOrgId', newOrgId);
+            window.location.href = '/dashboard/billing?org=' + newOrgId;
+          });
+        }
+
+        renderBilling();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading billing:', error);
+        document.getElementById('loading').innerHTML = 'Error loading billing information. Please refresh.';
+      }
+    }
+
+    function renderBilling() {
+      const hasSubscription = currentOrg.billing?.status === 'active';
+      const subscriptionCard = document.getElementById('subscriptionCard');
+      const membershipSection = document.getElementById('membershipSection');
+
+      if (hasSubscription) {
+        subscriptionCard.style.display = 'block';
+        membershipSection.style.display = 'none';
+        renderSubscriptionStatus();
+      } else {
+        subscriptionCard.style.display = 'none';
+        membershipSection.style.display = 'block';
+        loadAgreement();
+        updatePricingTable();
+      }
+    }
+
+    function renderSubscriptionStatus() {
+      const status = currentOrg.billing;
+      const statusEl = document.getElementById('subscriptionStatus');
+
+      let statusClass = 'active';
+      let icon = '✓';
+      let title = status.product_name || 'Active Membership';
+      let description = '';
+
+      if (status.status === 'past_due') {
+        statusClass = 'past_due';
+        icon = '⚠️';
+        title = 'Payment Past Due';
+        description = 'Please update your payment method to continue your membership.';
+      } else if (status.status === 'active') {
+        const renewalDate = status.current_period_end
+          ? new Date(status.current_period_end * 1000).toLocaleDateString()
+          : '';
+        const memberSince = currentOrg.agreement_signed_at
+          ? new Date(currentOrg.agreement_signed_at).toLocaleDateString()
+          : '';
+
+        description = `${memberSince ? 'Member since ' + memberSince + ' • ' : ''}Renews ${renewalDate}`;
+
+        if (status.cancel_at_period_end) {
+          description += ' (cancels at period end)';
+        }
+      }
+
+      statusEl.className = 'subscription-status ' + statusClass;
+      statusEl.innerHTML = `
+        <div class="subscription-icon">${icon}</div>
+        <div class="subscription-info">
+          <h3>${title}</h3>
+          <p>${description}</p>
+        </div>
+      `;
+    }
+
+    async function loadAgreement() {
+      try {
+        const response = await fetch('/api/agreements/membership');
+        if (!response.ok) throw new Error('Failed to load agreement');
+
+        const data = await response.json();
+        const content = data.agreement?.content || 'Agreement not available.';
+
+        // Render markdown
+        const html = DOMPurify.sanitize(marked.parse(content));
+        document.getElementById('agreementContent').innerHTML = html;
+      } catch (error) {
+        console.error('Error loading agreement:', error);
+        document.getElementById('agreementContent').innerHTML = 'Unable to load agreement. Please refresh.';
+      }
+    }
+
+    function toggleAgreement() {
+      const checkbox = document.getElementById('agreementCheckbox');
+      const wrapper = document.getElementById('pricingWrapper');
+      const warning = document.getElementById('agreementWarning');
+
+      if (checkbox.checked) {
+        wrapper.classList.remove('disabled');
+        warning.style.display = 'none';
+      } else {
+        wrapper.classList.add('disabled');
+        warning.style.display = 'block';
+      }
+    }
+
+    function updatePricingTable() {
+      const container = document.getElementById('pricingTableContainer');
+      if (!container) return;
+
+      container.innerHTML = '';
+
+      const pricingTableId = currentOrg.is_personal
+        ? '{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}'
+        : '{{STRIPE_PRICING_TABLE_ID}}';
+
+      const pricingTable = document.createElement('stripe-pricing-table');
+      pricingTable.setAttribute('pricing-table-id', pricingTableId);
+      pricingTable.setAttribute('publishable-key', '{{STRIPE_PUBLISHABLE_KEY}}');
+
+      if (currentOrg.customerSessionSecret) {
+        pricingTable.setAttribute('customer-session-client-secret', currentOrg.customerSessionSecret);
+      }
+
+      container.appendChild(pricingTable);
+    }
+
+    async function openBillingPortal() {
+      try {
+        const response = await fetch(`/api/billing/portal?org=${currentOrg.id}`, {
+          credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to get billing portal');
+
+        const data = await response.json();
+        if (data.url) {
+          window.location.href = data.url;
+        }
+      } catch (error) {
+        console.error('Error opening billing portal:', error);
+        showToast('Failed to open billing portal');
+      }
+    }
+
+    // Initialize
+    loadBilling();
+  </script>
+</body>
+</html>

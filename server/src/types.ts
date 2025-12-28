@@ -316,6 +316,7 @@ export interface WorkingGroup {
   slug: string;
   description?: string;
   slack_channel_url?: string;
+  slack_channel_id?: string;
   chair_user_id?: string;
   chair_name?: string;
   chair_title?: string;
@@ -350,6 +351,7 @@ export interface CreateWorkingGroupInput {
   slug: string;
   description?: string;
   slack_channel_url?: string;
+  slack_channel_id?: string;
   chair_user_id?: string;
   chair_name?: string;
   chair_title?: string;
@@ -367,6 +369,7 @@ export interface UpdateWorkingGroupInput {
   name?: string;
   description?: string;
   slack_channel_url?: string;
+  slack_channel_id?: string;
   chair_user_id?: string;
   chair_name?: string;
   chair_title?: string;

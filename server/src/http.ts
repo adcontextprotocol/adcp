@@ -26,7 +26,7 @@ import { MemberDatabase } from "./db/member-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
-import { syncSlackUsers, getSyncStatus } from "./slack/sync.js";
+import { syncSlackUsers, getSyncStatus, syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { verifySlackSignature, isSlackSigningConfigured } from "./slack/verify.js";
@@ -46,6 +46,8 @@ import {
 } from "./notifications/slack.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
+import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
+import { emailPrefsDb } from "./db/email-preferences-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -150,6 +152,40 @@ function setCachedUser(userId: string, displayName: string): void {
     value: { displayName },
     expiresAt: Date.now() + CACHE_TTL_MS,
   });
+}
+
+// Cache for unified users endpoint (admin users page)
+// Stores all WorkOS users by org to avoid repeated API calls
+interface WorkOSUserInfo {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+interface UnifiedUsersCache {
+  usersByOrg: Map<string, WorkOSUserInfo[]>;
+  expiresAt: number;
+}
+let unifiedUsersCache: UnifiedUsersCache | null = null;
+const UNIFIED_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour - invalidated on mutations
+
+function getUnifiedUsersCache(): Map<string, WorkOSUserInfo[]> | null {
+  if (unifiedUsersCache && unifiedUsersCache.expiresAt > Date.now()) {
+    return unifiedUsersCache.usersByOrg;
+  }
+  unifiedUsersCache = null;
+  return null;
+}
+
+function setUnifiedUsersCache(usersByOrg: Map<string, WorkOSUserInfo[]>): void {
+  unifiedUsersCache = {
+    usersByOrg,
+    expiresAt: Date.now() + UNIFIED_CACHE_TTL_MS,
+  };
+}
+
+function invalidateUnifiedUsersCache(): void {
+  unifiedUsersCache = null;
 }
 
 export class HTTPServer {
@@ -290,6 +326,335 @@ export class HTTPServer {
       }
       res.redirect('/team.html' + (req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''));
     });
+
+    // Email click tracker - records clicks and redirects to destination
+    this.app.get('/r/:trackingId', async (req, res) => {
+      const { trackingId } = req.params;
+      const destinationUrl = req.query.to as string;
+      const linkName = req.query.ln as string;
+
+      if (!destinationUrl) {
+        logger.warn({ trackingId }, 'Click tracker missing destination URL');
+        return res.redirect('/');
+      }
+
+      try {
+        // Record the click
+        await emailDb.recordClick({
+          tracking_id: trackingId,
+          link_name: linkName,
+          destination_url: destinationUrl,
+          ip_address: req.ip,
+          user_agent: req.get('user-agent'),
+          referrer: req.get('referer'),
+          utm_source: req.query.utm_source as string,
+          utm_medium: req.query.utm_medium as string,
+          utm_campaign: req.query.utm_campaign as string,
+        });
+
+        logger.debug({ trackingId, linkName, destination: destinationUrl }, 'Email click recorded');
+      } catch (error) {
+        // Log but don't fail - always redirect even if tracking fails
+        logger.error({ error, trackingId }, 'Failed to record email click');
+      }
+
+      // Always redirect to destination
+      res.redirect(destinationUrl);
+    });
+
+    // ==================== Email Preferences & Unsubscribe ====================
+
+    // One-click unsubscribe (no auth required) - POST for RFC 8058 compliance
+    this.app.post('/unsubscribe/:token', async (req, res) => {
+      const { token } = req.params;
+      const { category } = req.body;
+
+      try {
+        if (category) {
+          // Unsubscribe from specific category
+          const success = await emailPrefsDb.unsubscribeFromCategory(token, category);
+          if (success) {
+            logger.info({ token: token.substring(0, 8) + '...', category }, 'User unsubscribed from category');
+            return res.json({ success: true, message: `Unsubscribed from ${category}` });
+          }
+        } else {
+          // Global unsubscribe
+          const success = await emailPrefsDb.globalUnsubscribe(token);
+          if (success) {
+            logger.info({ token: token.substring(0, 8) + '...' }, 'User globally unsubscribed');
+            return res.json({ success: true, message: 'Unsubscribed from all emails' });
+          }
+        }
+
+        return res.status(404).json({ success: false, message: 'Invalid unsubscribe link' });
+      } catch (error) {
+        logger.error({ error, token: token.substring(0, 8) + '...' }, 'Error processing unsubscribe');
+        return res.status(500).json({ success: false, message: 'Error processing unsubscribe' });
+      }
+    });
+
+    // Unsubscribe page (GET - shows confirmation page, handles one-click via List-Unsubscribe-Post)
+    this.app.get('/unsubscribe/:token', async (req, res) => {
+      const { token } = req.params;
+
+      try {
+        const prefs = await emailPrefsDb.getUserPreferencesByToken(token);
+        if (!prefs) {
+          return res.status(404).send('Invalid unsubscribe link');
+        }
+
+        // Get categories for the preferences page
+        const categories = await emailPrefsDb.getCategories();
+        const userCategoryPrefs = prefs.workos_user_id
+          ? await emailPrefsDb.getUserCategoryPreferences(prefs.workos_user_id)
+          : categories.map(c => ({
+              category_id: c.id,
+              category_name: c.name,
+              category_description: c.description,
+              enabled: c.default_enabled,
+              is_override: false,
+            }));
+
+        // Serve a simple preferences management page
+        res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Preferences - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: var(--color-text); max-width: 600px; margin: 0 auto; padding: 20px; background: var(--color-bg-page); }
+    h1 { color: var(--color-text-heading); }
+    .card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    .category { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--color-border); }
+    .category:last-child { border-bottom: none; }
+    .category-info h3 { margin: 0 0 4px 0; font-size: 16px; color: var(--color-text-heading); }
+    .category-info p { margin: 0; font-size: 14px; color: var(--color-text-secondary); }
+    .toggle { position: relative; width: 50px; height: 26px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-gray-300); border-radius: 26px; transition: 0.3s; }
+    .toggle input:checked + .slider { background: var(--color-success-500); }
+    .toggle .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background: var(--color-bg-card); border-radius: 50%; transition: 0.3s; }
+    .toggle input:checked + .slider:before { transform: translateX(24px); }
+    .btn { display: inline-block; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; cursor: pointer; border: none; font-size: 16px; }
+    .btn-danger { background: var(--color-error-500); color: white; }
+    .btn-danger:hover { background: var(--color-error-600); }
+    .btn-secondary { background: var(--color-bg-subtle); color: var(--color-text); border: 1px solid var(--color-border); }
+    .success { background: var(--color-success-50); border: 1px solid var(--color-success-500); color: var(--color-success-700); padding: 12px; border-radius: 6px; margin-bottom: 20px; display: none; }
+    .global-unsubscribe { margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--color-border); }
+  </style>
+</head>
+<body>
+  <h1>Email Preferences</h1>
+  <p>Manage which emails you receive from AgenticAdvertising.org</p>
+
+  <div id="success" class="success">Your preferences have been saved.</div>
+
+  ${prefs.global_unsubscribe ? `
+    <div class="card">
+      <p><strong>You are currently unsubscribed from all emails.</strong></p>
+      <p>You will only receive essential transactional emails (like security alerts).</p>
+      <button class="btn btn-secondary" onclick="resubscribe()">Re-subscribe to emails</button>
+    </div>
+  ` : `
+    <div class="card">
+      ${userCategoryPrefs.map(cat => `
+        <div class="category">
+          <div class="category-info">
+            <h3>${cat.category_name}</h3>
+            <p>${cat.category_description || ''}</p>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" ${cat.enabled ? 'checked' : ''} onchange="toggleCategory('${cat.category_id}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="global-unsubscribe">
+      <p>Want to stop receiving all non-essential emails?</p>
+      <button class="btn btn-danger" onclick="globalUnsubscribe()">Unsubscribe from all</button>
+    </div>
+  `}
+
+  <script>
+    const token = '${token}';
+
+    async function toggleCategory(categoryId, enabled) {
+      try {
+        const res = await fetch('/api/email-preferences/category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, category_id: categoryId, enabled })
+        });
+        if (res.ok) showSuccess();
+      } catch (e) { console.error(e); }
+    }
+
+    async function globalUnsubscribe() {
+      if (!confirm('Are you sure you want to unsubscribe from all emails?')) return;
+      try {
+        const res = await fetch('/unsubscribe/' + token, { method: 'POST' });
+        if (res.ok) location.reload();
+      } catch (e) { console.error(e); }
+    }
+
+    async function resubscribe() {
+      try {
+        const res = await fetch('/api/email-preferences/resubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        if (res.ok) location.reload();
+      } catch (e) { console.error(e); }
+    }
+
+    function showSuccess() {
+      const el = document.getElementById('success');
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+  </script>
+</body>
+</html>
+        `);
+      } catch (error) {
+        logger.error({ error }, 'Error rendering unsubscribe page');
+        res.status(500).send('Error loading preferences');
+      }
+    });
+
+    // Update category preference via token (no auth required)
+    this.app.post('/api/email-preferences/category', async (req, res) => {
+      const { token, category_id, enabled } = req.body;
+
+      if (!token || !category_id || enabled === undefined) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      try {
+        const prefs = await emailPrefsDb.getUserPreferencesByToken(token);
+        if (!prefs) {
+          return res.status(404).json({ error: 'Invalid token' });
+        }
+
+        await emailPrefsDb.setCategoryPreference({
+          workos_user_id: prefs.workos_user_id,
+          email: prefs.email,
+          category_id,
+          enabled,
+        });
+
+        logger.info({ userId: prefs.workos_user_id, category_id, enabled }, 'Category preference updated');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error updating category preference');
+        res.status(500).json({ error: 'Error updating preference' });
+      }
+    });
+
+    // Resubscribe via token (no auth required)
+    this.app.post('/api/email-preferences/resubscribe', async (req, res) => {
+      const { token } = req.body;
+
+      if (!token) {
+        return res.status(400).json({ error: 'Missing token' });
+      }
+
+      try {
+        const prefs = await emailPrefsDb.getUserPreferencesByToken(token);
+        if (!prefs) {
+          return res.status(404).json({ error: 'Invalid token' });
+        }
+
+        await emailPrefsDb.resubscribe(prefs.workos_user_id);
+        logger.info({ userId: prefs.workos_user_id }, 'User resubscribed');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error processing resubscribe');
+        res.status(500).json({ error: 'Error processing resubscribe' });
+      }
+    });
+
+    // Get email categories (public)
+    this.app.get('/api/email-preferences/categories', async (req, res) => {
+      try {
+        const categories = await emailPrefsDb.getCategories();
+        res.json({ categories });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching email categories');
+        res.status(500).json({ error: 'Error fetching categories' });
+      }
+    });
+
+    // Get user's email preferences (authenticated)
+    this.app.get('/api/email-preferences', requireAuth, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+        const userEmail = (req as any).user.email;
+
+        // Get or create preferences
+        const prefs = await emailPrefsDb.getOrCreateUserPreferences({
+          workos_user_id: userId,
+          email: userEmail,
+        });
+
+        // Get category preferences
+        const categoryPrefs = await emailPrefsDb.getUserCategoryPreferences(userId);
+
+        res.json({
+          global_unsubscribe: prefs.global_unsubscribe,
+          categories: categoryPrefs,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching user preferences');
+        res.status(500).json({ error: 'Error fetching preferences' });
+      }
+    });
+
+    // Update user's email preferences (authenticated)
+    this.app.post('/api/email-preferences', requireAuth, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+        const userEmail = (req as any).user.email;
+        const { category_id, enabled } = req.body;
+
+        if (!category_id || enabled === undefined) {
+          return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        await emailPrefsDb.setCategoryPreference({
+          workos_user_id: userId,
+          email: userEmail,
+          category_id,
+          enabled,
+        });
+
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error updating preferences');
+        res.status(500).json({ error: 'Error updating preferences' });
+      }
+    });
+
+    // Resubscribe for authenticated users
+    this.app.post('/api/email-preferences/resubscribe-me', requireAuth, async (req, res) => {
+      try {
+        const userId = (req as any).user.id;
+
+        await emailPrefsDb.resubscribe(userId);
+        logger.info({ userId }, 'User resubscribed via dashboard');
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Error processing resubscribe');
+        res.status(500).json({ error: 'Error processing resubscribe' });
+      }
+    });
+
     this.app.get('/dashboard', async (req, res) => {
       // Redirect to AAO for auth-requiring pages when on AdCP domain
       if (this.isAdcpDomain(req)) {
@@ -319,6 +684,40 @@ export class HTTPServer {
         res.status(500).send('Error loading dashboard');
       }
     });
+
+    // Dashboard sub-pages with sidebar navigation
+    // Helper to serve dashboard pages with template variable replacement
+    const serveDashboardPage = async (req: express.Request, res: express.Response, filename: string) => {
+      if (this.isAdcpDomain(req)) {
+        return res.redirect(`https://agenticadvertising.org/dashboard/${filename.replace('dashboard-', '').replace('.html', '')}`);
+      }
+      try {
+        const fs = await import('fs/promises');
+        const pagePath = process.env.NODE_ENV === 'production'
+          ? path.join(__dirname, `../server/public/${filename}`)
+          : path.join(__dirname, `../public/${filename}`);
+        let html = await fs.readFile(pagePath, 'utf-8');
+
+        // Replace template variables (for billing page with Stripe)
+        html = html
+          .replace(/\{\{STRIPE_PUBLISHABLE_KEY\}\}/g, process.env.STRIPE_PUBLISHABLE_KEY || '')
+          .replace(/\{\{STRIPE_PRICING_TABLE_ID\}\}/g, process.env.STRIPE_PRICING_TABLE_ID || '')
+          .replace(/\{\{STRIPE_PRICING_TABLE_ID_INDIVIDUAL\}\}/g, process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
+
+        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.send(html);
+      } catch (error) {
+        logger.error({ err: error, filename }, 'Error serving dashboard page');
+        res.status(500).send('Error loading page');
+      }
+    };
+
+    this.app.get('/dashboard/settings', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
+    this.app.get('/dashboard/billing', (req, res) => serveDashboardPage(req, res, 'dashboard-billing.html'));
+    this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
 
     // API endpoints
 
@@ -1075,6 +1474,36 @@ export class HTTPServer {
                       currency: subscription.currency,
                       interval,
                     }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
+
+// Send welcome email to new member
+                    sendWelcomeEmail({
+                      to: userEmail,
+                      organizationName: org.name || 'Unknown Organization',
+                      productName,
+                      workosUserId: workosUser.id,
+                      workosOrganizationId: org.workos_organization_id,
+                    }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
+
+                    // Record to org_activities for prospect tracking
+                    const amountStr = amount ? `$${(amount / 100).toFixed(2)}` : '';
+                    const intervalStr = interval ? `/${interval}` : '';
+                    await pool.query(
+                      `INSERT INTO org_activities (
+                        organization_id,
+                        activity_type,
+                        description,
+                        logged_by_user_id,
+                        logged_by_name,
+                        activity_date
+                      ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                      [
+                        org.workos_organization_id,
+                        'subscription',
+                        `Subscribed to ${productName || 'membership'} ${amountStr}${intervalStr}`.trim(),
+                        workosUser.id,
+                        userEmail,
+                      ]
+                    );
                   } else {
                     logger.error({
                       userEmail,
@@ -1094,7 +1523,7 @@ export class HTTPServer {
               }
             }
 
-            // Update database with subscription status and period end
+            // Update database with subscription status, period end, and pricing details
             // This allows admin dashboard to display data without querying Stripe API
             try {
               const customerId = subscription.customer as string;
@@ -1108,17 +1537,29 @@ export class HTTPServer {
                   periodEnd = new Date((subscription as any).current_period_end * 1000);
                 }
 
+                // Extract pricing details from subscription items
+                const priceData = subscription.items?.data?.[0]?.price;
+                const amount = priceData?.unit_amount ?? null;
+                const currency = priceData?.currency ?? null;
+                const interval = priceData?.recurring?.interval ?? null;
+
                 await pool.query(
                   `UPDATE organizations
                    SET subscription_status = $1,
                        stripe_subscription_id = $2,
                        subscription_current_period_end = $3,
+                       subscription_amount = COALESCE($4, subscription_amount),
+                       subscription_currency = COALESCE($5, subscription_currency),
+                       subscription_interval = COALESCE($6, subscription_interval),
                        updated_at = NOW()
-                   WHERE workos_organization_id = $4`,
+                   WHERE workos_organization_id = $7`,
                   [
                     subscription.status,
                     subscription.id,
                     periodEnd,
+                    amount,
+                    currency,
+                    interval,
                     org.workos_organization_id
                   ]
                 );
@@ -1128,6 +1569,9 @@ export class HTTPServer {
                   subscriptionId: subscription.id,
                   status: subscription.status,
                   periodEnd: periodEnd?.toISOString(),
+                  amount,
+                  currency,
+                  interval,
                 }, 'Subscription data synced to database');
 
                 // Send Slack notification for subscription cancellation
@@ -1148,6 +1592,25 @@ export class HTTPServer {
                   notifySubscriptionCancelled({
                     organizationName: org.name || 'Unknown Organization',
                   }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
+
+                  // Record to org_activities for prospect tracking
+                  await pool.query(
+                    `INSERT INTO org_activities (
+                      organization_id,
+                      activity_type,
+                      description,
+                      logged_by_user_id,
+                      logged_by_name,
+                      activity_date
+                    ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                    [
+                      org.workos_organization_id,
+                      'subscription_cancelled',
+                      'Subscription cancelled',
+                      SYSTEM_USER_ID,
+                      'System',
+                    ]
+                  );
                 }
               }
             } catch (syncError) {
@@ -1399,6 +1862,28 @@ export class HTTPServer {
                 productName: productName || undefined,
                 isRecurring: revenueType === 'subscription_recurring',
               }).catch(err => logger.error({ err }, 'Failed to send Slack payment notification'));
+
+              // Record to org_activities for prospect tracking (for recurring payments)
+              if (revenueType === 'subscription_recurring') {
+                const amountFormatted = `$${(invoice.amount_paid / 100).toFixed(2)}`;
+                await pool.query(
+                  `INSERT INTO org_activities (
+                    organization_id,
+                    activity_type,
+                    description,
+                    logged_by_user_id,
+                    logged_by_name,
+                    activity_date
+                  ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                  [
+                    org.workos_organization_id,
+                    'payment',
+                    `Renewal payment ${amountFormatted} for ${productName || 'membership'}`,
+                    SYSTEM_USER_ID,
+                    'System',
+                  ]
+                );
+              }
             }
             break;
           }
@@ -3335,6 +3820,70 @@ export class HTTPServer {
       }
     });
 
+    // POST /api/admin/working-groups/:id/sync-from-slack - Sync members from Slack channel
+    this.app.post('/api/admin/working-groups/:id/sync-from-slack', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        // Verify the working group exists
+        const workingGroup = await workingGroupDb.getWorkingGroupById(id);
+        if (!workingGroup) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: 'The specified working group does not exist'
+          });
+        }
+
+        // Sync members from Slack
+        const result = await syncWorkingGroupMembersFromSlack(id);
+
+        if (result.errors.length > 0 && result.members_added === 0 && result.members_already_in_group === 0) {
+          return res.status(400).json({
+            error: 'Sync failed',
+            message: result.errors[0],
+            result
+          });
+        }
+
+        res.json({
+          success: true,
+          result
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Sync working group members from Slack error:');
+        res.status(500).json({
+          error: 'Failed to sync members',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/working-groups/sync-all-from-slack - Sync all working groups with Slack channels
+    this.app.post('/api/admin/working-groups/sync-all-from-slack', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const results = await syncAllWorkingGroupMembersFromSlack();
+
+        const totalAdded = results.reduce((sum, r) => sum + r.members_added, 0);
+        const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
+
+        res.json({
+          success: true,
+          summary: {
+            groups_synced: results.length,
+            total_members_added: totalAdded,
+            total_errors: totalErrors
+          },
+          results
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Sync all working groups from Slack error:');
+        res.status(500).json({
+          error: 'Failed to sync working groups',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // GET /api/admin/working-groups/:id/posts - List all posts for a working group
     this.app.get('/api/admin/working-groups/:id/posts', requireAuth, requireAdmin, async (req, res) => {
       try {
@@ -3656,6 +4205,13 @@ Disallow: /api/admin/
         ? path.join(__dirname, '../server/public/admin-users.html')
         : path.join(__dirname, '../public/admin-users.html');
       res.sendFile(usersPath);
+    });
+
+    this.app.get('/admin/email', requireAuth, requireAdmin, (req, res) => {
+      const emailPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-email.html')
+        : path.join(__dirname, '../public/admin-email.html');
+      res.sendFile(emailPath);
     });
 
     // Registry API endpoints (consolidated agents, publishers, lookups)
@@ -4178,7 +4734,12 @@ Disallow: /api/admin/
         // This happens when:
         // 1. User has never accepted them, OR
         // 2. The version has been updated since they last accepted
+        let isFirstTimeUser = false;
         try {
+          // Check if user has ANY prior acceptances (to detect first-time users)
+          const priorAcceptances = await orgDb.getUserAgreementAcceptances(user.id);
+          isFirstTimeUser = priorAcceptances.length === 0;
+
           const tosAgreement = await orgDb.getCurrentAgreementByType('terms_of_service');
           const privacyAgreement = await orgDb.getCurrentAgreementByType('privacy_policy');
 
@@ -4239,6 +4800,35 @@ Disallow: /api/admin/
         });
 
         logger.debug({ count: memberships.data.length }, 'Organization memberships retrieved');
+
+        // Send welcome email to first-time users (async, don't block auth flow)
+        if (isFirstTimeUser && memberships.data.length > 0) {
+          // Get org details to determine subscription status
+          const firstMembership = memberships.data[0];
+          const orgId = firstMembership.organizationId;
+
+          // Fire and forget - don't block the auth callback
+          (async () => {
+            try {
+              const org = await orgDb.getOrganization(orgId);
+              const workosOrg = await workos!.organizations.getOrganization(orgId);
+              const hasActiveSubscription = org?.subscription_status === 'active';
+
+              await sendUserSignupEmail({
+                to: user.email,
+                firstName: user.firstName || undefined,
+                organizationName: workosOrg?.name || org?.name || undefined,
+                hasActiveSubscription,
+                workosUserId: user.id,
+                workosOrganizationId: orgId,
+              });
+
+              logger.info({ userId: user.id, orgId, hasActiveSubscription }, 'First-time user signup email sent');
+            } catch (emailError) {
+              logger.error({ error: emailError, userId: user.id }, 'Failed to send signup email');
+            }
+          })();
+        }
 
         // Parse return_to and slack_user_id from state
         let returnTo = '/dashboard';
@@ -9133,6 +9723,8 @@ Disallow: /api/admin/
       try {
         const result = await syncSlackUsers();
         logger.info(result, 'Slack user sync completed');
+        // Invalidate cache since mappings may have changed
+        invalidateUnifiedUsersCache();
         res.json(result);
       } catch (error) {
         logger.error({ err: error }, 'Slack sync error');
@@ -9216,6 +9808,9 @@ Disallow: /api/admin/
           'Slack user manually linked'
         );
 
+        // Invalidate unified users cache so next load reflects the change
+        invalidateUnifiedUsersCache();
+
         res.json({ mapping: updated });
       } catch (error) {
         logger.error({ err: error }, 'Link Slack user error');
@@ -9254,6 +9849,9 @@ Disallow: /api/admin/
           'Slack user unlinked'
         );
 
+        // Invalidate unified users cache so next load reflects the change
+        invalidateUnifiedUsersCache();
+
         res.json({ mapping: updated });
       } catch (error) {
         logger.error({ err: error }, 'Unlink Slack user error');
@@ -9288,6 +9886,7 @@ Disallow: /api/admin/
     // GET /api/admin/slack/unified - Get unified view of all AAO users + all Slack users
     // Shows AAO users with their Slack status, and Slack-only users not yet on AAO
     this.app.get('/api/admin/slack/unified', requireAuth, requireAdmin, async (req, res) => {
+      const startTime = Date.now();
       try {
         if (!workos) {
           return res.status(503).json({ error: 'Authentication not configured' });
@@ -9297,6 +9896,8 @@ Disallow: /api/admin/
         const searchTerm = typeof search === 'string' ? search.toLowerCase() : '';
         const statusFilter = typeof status === 'string' ? status : '';
         const filterByGroup = typeof group === 'string' ? group : undefined;
+
+        logger.info({ search, status, group }, 'Unified users endpoint: starting');
 
         const orgDatabase = new OrganizationDatabase();
         const wgDb = new WorkingGroupDatabase();
@@ -9367,97 +9968,135 @@ Disallow: /api/admin/
         const unifiedUsers: UnifiedUser[] = [];
         const processedSlackIds = new Set<string>();
 
-        // Get all AAO users from WorkOS via org memberships
+        // Get all AAO users from WorkOS using listUsers (much more efficient than getUser per membership)
         const orgs = await orgDatabase.listOrganizations();
         const seenUserIds = new Set<string>();
 
-        for (const org of orgs) {
-          try {
-            const memberships = await workos.userManagement.listOrganizationMemberships({
-              organizationId: org.workos_organization_id,
-            });
+        // Check cache first
+        let cachedUsersByOrg = getUnifiedUsersCache();
+        let cacheHit = cachedUsersByOrg !== null;
 
-            for (const membership of memberships.data) {
-              if (seenUserIds.has(membership.userId)) continue;
+        if (!cachedUsersByOrg) {
+          // Build cache - fetch all users from WorkOS
+          cachedUsersByOrg = new Map<string, WorkOSUserInfo[]>();
 
-              try {
-                const user = await workos.userManagement.getUser(membership.userId);
-                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
-
-                // Check if user has Slack mapping
-                const slackMapping = slackByWorkosId.get(user.id);
-                // Also check for email match if no direct mapping
-                const suggestedSlack = !slackMapping ? slackByEmail.get(user.email.toLowerCase()) : null;
-
-                let mappingStatus: UnifiedUser['mapping_status'] = 'aao_only';
-                let slackInfo = {
-                  slack_user_id: null as string | null,
-                  slack_email: null as string | null,
-                  slack_display_name: null as string | null,
-                  slack_real_name: null as string | null,
-                };
-
-                if (slackMapping) {
-                  mappingStatus = 'mapped';
-                  slackInfo = {
-                    slack_user_id: slackMapping.slack_user_id,
-                    slack_email: slackMapping.slack_email,
-                    slack_display_name: slackMapping.slack_display_name,
-                    slack_real_name: slackMapping.slack_real_name,
-                  };
-                  processedSlackIds.add(slackMapping.slack_user_id);
-                } else if (suggestedSlack && suggestedSlack.mapping_status === 'unmapped') {
-                  mappingStatus = 'suggested_match';
-                  slackInfo = {
-                    slack_user_id: suggestedSlack.slack_user_id,
-                    slack_email: suggestedSlack.slack_email,
-                    slack_display_name: suggestedSlack.slack_display_name,
-                    slack_real_name: suggestedSlack.slack_real_name,
-                  };
-                  // Don't mark as processed - we'll show suggestion but still allow manual link
-                }
-
-                // Get working groups for this user
-                const workingGroups = userWorkingGroups.get(user.id) || [];
-
-                // Apply group filter
-                if (filterByGroup) {
-                  const hasGroup = workingGroups.some(g => g.id === filterByGroup);
-                  if (!hasGroup) continue;
-                }
-
-                // Apply search filter
-                if (searchTerm) {
-                  const matches =
-                    user.email.toLowerCase().includes(searchTerm) ||
-                    fullName.toLowerCase().includes(searchTerm) ||
-                    org.name.toLowerCase().includes(searchTerm) ||
-                    (slackInfo.slack_email?.toLowerCase().includes(searchTerm)) ||
-                    (slackInfo.slack_display_name?.toLowerCase().includes(searchTerm)) ||
-                    (slackInfo.slack_real_name?.toLowerCase().includes(searchTerm));
-                  if (!matches) continue;
-                }
-
-                seenUserIds.add(user.id);
-                unifiedUsers.push({
-                  workos_user_id: user.id,
-                  email: user.email,
-                  name: fullName || user.email,
-                  org_id: org.workos_organization_id,
-                  org_name: org.name,
-                  ...slackInfo,
-                  mapping_status: mappingStatus,
-                  mapping_source: slackMapping?.mapping_source || null,
-                  working_groups: workingGroups,
+          for (const org of orgs) {
+            try {
+              const orgUsers: WorkOSUserInfo[] = [];
+              let after: string | undefined;
+              do {
+                const usersResponse = await workos.userManagement.listUsers({
+                  organizationId: org.workos_organization_id,
+                  limit: 100,
+                  after,
                 });
-              } catch (userErr) {
-                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
-              }
+
+                for (const user of usersResponse.data) {
+                  orgUsers.push({
+                    id: user.id,
+                    email: user.email,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                  });
+                }
+
+                after = usersResponse.listMetadata?.after || undefined;
+              } while (after);
+
+              cachedUsersByOrg.set(org.workos_organization_id, orgUsers);
+            } catch (orgErr) {
+              logger.warn({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch users for org from WorkOS');
             }
-          } catch (orgErr) {
-            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
+          }
+
+          // Store in cache
+          setUnifiedUsersCache(cachedUsersByOrg);
+        }
+
+        logger.info({ cacheHit, orgCount: orgs.length }, 'Unified users: WorkOS user fetch');
+
+        // Process cached users
+        for (const org of orgs) {
+          const orgUsers = cachedUsersByOrg.get(org.workos_organization_id) || [];
+
+          for (const user of orgUsers) {
+            if (seenUserIds.has(user.id)) continue;
+            const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
+
+            // Check if user has Slack mapping
+            const slackMapping = slackByWorkosId.get(user.id);
+            // Also check for email match if no direct mapping
+            const suggestedSlack = !slackMapping ? slackByEmail.get(user.email.toLowerCase()) : null;
+
+            let mappingStatus: UnifiedUser['mapping_status'] = 'aao_only';
+            let slackInfo = {
+              slack_user_id: null as string | null,
+              slack_email: null as string | null,
+              slack_display_name: null as string | null,
+              slack_real_name: null as string | null,
+            };
+
+            if (slackMapping) {
+              mappingStatus = 'mapped';
+              slackInfo = {
+                slack_user_id: slackMapping.slack_user_id,
+                slack_email: slackMapping.slack_email,
+                slack_display_name: slackMapping.slack_display_name,
+                slack_real_name: slackMapping.slack_real_name,
+              };
+              processedSlackIds.add(slackMapping.slack_user_id);
+            } else if (suggestedSlack && suggestedSlack.mapping_status === 'unmapped') {
+              mappingStatus = 'suggested_match';
+              slackInfo = {
+                slack_user_id: suggestedSlack.slack_user_id,
+                slack_email: suggestedSlack.slack_email,
+                slack_display_name: suggestedSlack.slack_display_name,
+                slack_real_name: suggestedSlack.slack_real_name,
+              };
+              // Don't mark as processed - we'll show suggestion but still allow manual link
+            }
+
+            // Get working groups for this user
+            const workingGroups = userWorkingGroups.get(user.id) || [];
+
+            // Apply group filter
+            if (filterByGroup) {
+              const hasGroup = workingGroups.some(g => g.id === filterByGroup);
+              if (!hasGroup) continue;
+            }
+
+            // Apply search filter
+            if (searchTerm) {
+              const matches =
+                user.email.toLowerCase().includes(searchTerm) ||
+                fullName.toLowerCase().includes(searchTerm) ||
+                org.name.toLowerCase().includes(searchTerm) ||
+                (slackInfo.slack_email?.toLowerCase().includes(searchTerm)) ||
+                (slackInfo.slack_display_name?.toLowerCase().includes(searchTerm)) ||
+                (slackInfo.slack_real_name?.toLowerCase().includes(searchTerm));
+              if (!matches) continue;
+            }
+
+            seenUserIds.add(user.id);
+            unifiedUsers.push({
+              workos_user_id: user.id,
+              email: user.email,
+              name: fullName || user.email,
+              org_id: org.workos_organization_id,
+              org_name: org.name,
+              ...slackInfo,
+              mapping_status: mappingStatus,
+              mapping_source: slackMapping?.mapping_source || null,
+              working_groups: workingGroups,
+            });
           }
         }
+
+        logger.info({
+          totalOrgs: orgs.length,
+          uniqueUsers: seenUserIds.size,
+          slackMappings: slackMappings.length,
+        }, 'Unified users endpoint: completed WorkOS data fetch');
 
         // Add Slack-only users (not mapped and not already processed as suggested match)
         for (const slackUser of slackMappings) {
@@ -9529,9 +10168,17 @@ Disallow: /api/admin/
           return aName.localeCompare(bName);
         });
 
+        const duration = Date.now() - startTime;
+        logger.info({
+          totalUsers: filteredUsers.length,
+          stats,
+          durationMs: duration,
+        }, 'Unified users endpoint: completed');
+
         res.json({ users: filteredUsers, stats });
       } catch (error) {
-        logger.error({ err: error }, 'Get unified Slack/AAO users error');
+        const duration = Date.now() - startTime;
+        logger.error({ err: error, durationMs: duration }, 'Get unified Slack/AAO users error');
         res.status(500).json({
           error: 'Failed to get unified users',
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -9683,6 +10330,11 @@ Disallow: /api/admin/
 
         logger.info({ linked, errors: errors.length, adminUserId: adminUser?.id }, 'Auto-linked suggested matches');
 
+        // Invalidate cache since mappings changed
+        if (linked > 0) {
+          invalidateUnifiedUsersCache();
+        }
+
         res.json({
           linked,
           errors,
@@ -9693,6 +10345,100 @@ Disallow: /api/admin/
           error: 'Failed to auto-link suggested matches',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
+      }
+    });
+
+    // ============== Admin Email Endpoints ==============
+
+    // GET /api/admin/email/stats - Email statistics for admin dashboard
+    this.app.get('/api/admin/email/stats', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+
+        // Get total emails sent
+        const sentResult = await pool.query(
+          `SELECT COUNT(*) as count FROM email_events WHERE sent_at IS NOT NULL`
+        );
+        const totalSent = parseInt(sentResult.rows[0]?.count || '0');
+
+        // Get open rate
+        const openResult = await pool.query(
+          `SELECT
+            COUNT(*) FILTER (WHERE opened_at IS NOT NULL) as opened,
+            COUNT(*) as total
+           FROM email_events
+           WHERE sent_at IS NOT NULL`
+        );
+        const avgOpenRate = openResult.rows[0]?.total > 0
+          ? (parseInt(openResult.rows[0].opened) / parseInt(openResult.rows[0].total)) * 100
+          : 0;
+
+        // Get click rate
+        const clickResult = await pool.query(
+          `SELECT
+            COUNT(*) FILTER (WHERE first_clicked_at IS NOT NULL) as clicked,
+            COUNT(*) as total
+           FROM email_events
+           WHERE sent_at IS NOT NULL`
+        );
+        const avgClickRate = clickResult.rows[0]?.total > 0
+          ? (parseInt(clickResult.rows[0].clicked) / parseInt(clickResult.rows[0].total)) * 100
+          : 0;
+
+        // Get campaign count
+        const campaignResult = await pool.query(
+          `SELECT COUNT(*) as count FROM email_campaigns`
+        );
+        const totalCampaigns = parseInt(campaignResult.rows[0]?.count || '0');
+
+        res.json({
+          total_sent: totalSent,
+          avg_open_rate: avgOpenRate,
+          avg_click_rate: avgClickRate,
+          total_campaigns: totalCampaigns,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching email stats');
+        res.status(500).json({ error: 'Failed to fetch email stats' });
+      }
+    });
+
+    // GET /api/admin/email/campaigns - List all campaigns
+    this.app.get('/api/admin/email/campaigns', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const campaigns = await emailPrefsDb.getCampaigns();
+        res.json({ campaigns });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching campaigns');
+        res.status(500).json({ error: 'Failed to fetch campaigns' });
+      }
+    });
+
+    // GET /api/admin/email/templates - List all templates
+    this.app.get('/api/admin/email/templates', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const templates = await emailPrefsDb.getTemplates();
+        res.json({ templates });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching templates');
+        res.status(500).json({ error: 'Failed to fetch templates' });
+      }
+    });
+
+    // GET /api/admin/email/recent - Recent email sends
+    this.app.get('/api/admin/email/recent', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT *
+           FROM email_events
+           ORDER BY created_at DESC
+           LIMIT 100`
+        );
+        res.json({ emails: result.rows });
+      } catch (error) {
+        logger.error({ error }, 'Error fetching recent emails');
+        res.status(500).json({ error: 'Failed to fetch recent emails' });
       }
     });
 
