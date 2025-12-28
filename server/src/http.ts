@@ -4795,6 +4795,19 @@ Disallow: /api/admin/
 
         logger.debug({ count: memberships.data.length }, 'Organization memberships retrieved');
 
+        // Record login for engagement tracking (fire and forget)
+        if (memberships.data.length > 0) {
+          const primaryOrgId = memberships.data[0].organizationId;
+          orgDb.recordUserLogin({
+            workos_user_id: user.id,
+            workos_organization_id: primaryOrgId,
+            ip_address: req.ip,
+            user_agent: req.get('user-agent'),
+          }).catch((err) => {
+            logger.error({ error: err, userId: user.id }, 'Failed to record user login');
+          });
+        }
+
         // Send welcome email to first-time users (async, don't block auth flow)
         if (isFirstTimeUser && memberships.data.length > 0) {
           // Get org details to determine subscription status
