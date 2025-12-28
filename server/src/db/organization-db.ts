@@ -657,4 +657,163 @@ export class OrganizationDatabase {
       throw error;
     }
   }
+
+  // ========================================
+  // ENGAGEMENT TRACKING
+  // ========================================
+
+  /**
+   * Record a user login for engagement tracking
+   * Uses org_activities table with activity_type = 'dashboard_login'
+   */
+  async recordUserLogin(data: {
+    workos_user_id: string;
+    workos_organization_id: string;
+    user_name?: string;
+  }): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO org_activities (organization_id, activity_type, logged_by_user_id, logged_by_name, activity_date)
+       VALUES ($1, 'dashboard_login', $2, $3, NOW())`,
+      [data.workos_organization_id, data.workos_user_id, data.user_name || null]
+    );
+  }
+
+  /**
+   * Get login count for an organization in the last N days
+   */
+  async getOrgLoginCount(workos_organization_id: string, days: number = 30): Promise<number> {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT COUNT(*) as count FROM org_activities
+       WHERE organization_id = $1
+       AND activity_type = 'dashboard_login'
+       AND activity_date > NOW() - INTERVAL '1 day' * $2`,
+      [workos_organization_id, days]
+    );
+    return parseInt(result.rows[0].count, 10);
+  }
+
+  /**
+   * Get the most recent login for an organization
+   */
+  async getOrgLastLogin(workos_organization_id: string): Promise<Date | null> {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT MAX(activity_date) as last_login FROM org_activities
+       WHERE organization_id = $1
+       AND activity_type = 'dashboard_login'`,
+      [workos_organization_id]
+    );
+    return result.rows[0]?.last_login || null;
+  }
+
+  /**
+   * Set the interest level for an organization (human-set)
+   */
+  async setInterestLevel(
+    workos_organization_id: string,
+    data: {
+      interest_level: 'low' | 'medium' | 'high' | 'very_high' | null;
+      note?: string;
+      set_by?: string;
+    }
+  ): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `UPDATE organizations
+       SET interest_level = $2,
+           interest_level_note = $3,
+           interest_level_set_by = $4,
+           interest_level_set_at = CASE WHEN $2 IS NOT NULL THEN NOW() ELSE NULL END,
+           updated_at = NOW()
+       WHERE workos_organization_id = $1`,
+      [workos_organization_id, data.interest_level, data.note || null, data.set_by || null]
+    );
+  }
+
+  /**
+   * Get engagement signals for an organization
+   * Returns all computed signals for display in admin UI
+   */
+  async getEngagementSignals(workos_organization_id: string): Promise<{
+    has_member_profile: boolean;
+    login_count_30d: number;
+    last_login: Date | null;
+    working_group_count: number;
+    email_click_count_30d: number;
+    interest_level: string | null;
+    interest_level_note: string | null;
+    interest_level_set_by: string | null;
+    interest_level_set_at: Date | null;
+  }> {
+    const pool = getPool();
+
+    // Run all queries in parallel for efficiency
+    const [
+      profileResult,
+      loginCountResult,
+      lastLoginResult,
+      wgResult,
+      emailClickResult,
+      orgResult
+    ] = await Promise.all([
+      // Check if member profile exists
+      pool.query(
+        `SELECT 1 FROM member_profiles WHERE workos_organization_id = $1`,
+        [workos_organization_id]
+      ),
+      // Login count (last 30 days) - uses org_activities with dashboard_login type
+      pool.query(
+        `SELECT COUNT(*) as count FROM org_activities
+         WHERE organization_id = $1
+         AND activity_type = 'dashboard_login'
+         AND activity_date > NOW() - INTERVAL '30 days'`,
+        [workos_organization_id]
+      ),
+      // Last login - uses org_activities with dashboard_login type
+      pool.query(
+        `SELECT MAX(activity_date) as last_login FROM org_activities
+         WHERE organization_id = $1
+         AND activity_type = 'dashboard_login'`,
+        [workos_organization_id]
+      ),
+      // Working group membership count
+      pool.query(
+        `SELECT COUNT(DISTINCT wgm.working_group_id) as count
+         FROM working_group_memberships wgm
+         WHERE wgm.workos_organization_id = $1
+         AND wgm.status = 'active'`,
+        [workos_organization_id]
+      ),
+      // Email click count (last 30 days)
+      pool.query(
+        `SELECT COUNT(*) as count FROM email_clicks ec
+         JOIN email_events ee ON ee.id = ec.email_event_id
+         WHERE ee.workos_organization_id = $1
+         AND ec.clicked_at > NOW() - INTERVAL '30 days'`,
+        [workos_organization_id]
+      ),
+      // Organization interest level fields
+      pool.query(
+        `SELECT interest_level, interest_level_note, interest_level_set_by, interest_level_set_at
+         FROM organizations WHERE workos_organization_id = $1`,
+        [workos_organization_id]
+      )
+    ]);
+
+    const org = orgResult.rows[0] || {};
+
+    return {
+      has_member_profile: profileResult.rows.length > 0,
+      login_count_30d: parseInt(loginCountResult.rows[0]?.count || '0', 10),
+      last_login: lastLoginResult.rows[0]?.last_login || null,
+      working_group_count: parseInt(wgResult.rows[0]?.count || '0', 10),
+      email_click_count_30d: parseInt(emailClickResult.rows[0]?.count || '0', 10),
+      interest_level: org.interest_level || null,
+      interest_level_note: org.interest_level_note || null,
+      interest_level_set_by: org.interest_level_set_by || null,
+      interest_level_set_at: org.interest_level_set_at || null,
+    };
+  }
 }

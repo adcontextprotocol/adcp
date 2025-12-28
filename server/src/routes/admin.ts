@@ -15,8 +15,10 @@ import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { SlackDatabase } from "../db/slack-db.js";
+import { OrganizationDatabase } from "../db/organization-db.js";
 
 const slackDb = new SlackDatabase();
+const orgDb = new OrganizationDatabase();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -895,21 +897,41 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           [orgId]
         );
 
-        // Calculate engagement level (fire emojis)
+        // Get engagement signals using the new engagement tracking system
+        const engagementSignals = await orgDb.getEngagementSignals(orgId);
+
+        // Calculate engagement level based on signals
         let engagementLevel = 1; // Base level - exists
         let engagementReasons: string[] = [];
 
-        if (org.invoice_requested_at) {
+        // Priority-based scoring - use human interest level first if set
+        if (engagementSignals.interest_level === 'very_high') {
+          engagementLevel = 5;
+          engagementReasons.push(`Interest: Very High (${engagementSignals.interest_level_set_by || 'admin'})`);
+        } else if (engagementSignals.interest_level === 'high') {
+          engagementLevel = 4;
+          engagementReasons.push(`Interest: High (${engagementSignals.interest_level_set_by || 'admin'})`);
+        } else if (org.invoice_requested_at) {
           engagementLevel = 5;
           engagementReasons.push("Requested invoice");
-        } else if (workingGroupResult.rows.length > 0) {
+        } else if (engagementSignals.working_group_count > 0) {
           engagementLevel = 4;
-          engagementReasons.push(
-            `In ${workingGroupResult.rows.length} working group(s)`
-          );
+          engagementReasons.push(`In ${engagementSignals.working_group_count} working group(s)`);
+        } else if (engagementSignals.has_member_profile) {
+          engagementLevel = 4;
+          engagementReasons.push("Member profile configured");
+        } else if (engagementSignals.login_count_30d > 3) {
+          engagementLevel = 3;
+          engagementReasons.push(`${engagementSignals.login_count_30d} dashboard logins (30d)`);
         } else if (memberCount > 0) {
           engagementLevel = 3;
           engagementReasons.push(`${memberCount} team member(s)`);
+        } else if (engagementSignals.email_click_count_30d > 0) {
+          engagementLevel = 2;
+          engagementReasons.push(`${engagementSignals.email_click_count_30d} email clicks (30d)`);
+        } else if (engagementSignals.login_count_30d > 0) {
+          engagementLevel = 2;
+          engagementReasons.push(`${engagementSignals.login_count_30d} dashboard login(s) (30d)`);
         } else if (activitiesResult.rows.length > 0) {
           const recentActivity = activitiesResult.rows.find((a) => {
             const activityDate = new Date(a.activity_date);
@@ -923,6 +945,15 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           }
         }
 
+        // Handle low/medium interest levels - should cap the engagement
+        if (engagementSignals.interest_level === 'low') {
+          engagementLevel = Math.min(engagementLevel, 2);
+          engagementReasons.unshift(`Interest: Low (${engagementSignals.interest_level_set_by || 'admin'})`);
+        } else if (engagementSignals.interest_level === 'medium') {
+          engagementLevel = Math.min(engagementLevel, 3);
+          engagementReasons.unshift(`Interest: Medium (${engagementSignals.interest_level_set_by || 'admin'})`);
+        }
+
         res.json({
           ...org,
           member_count: memberCount,
@@ -932,6 +963,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           next_steps: nextStepsResult.rows,
           engagement_level: engagementLevel,
           engagement_reasons: engagementReasons,
+          engagement_signals: engagementSignals,
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching organization details");
@@ -1341,6 +1373,82 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to remove yourself as stakeholder",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // ENGAGEMENT / INTEREST LEVEL MANAGEMENT
+  // =========================================================================
+
+  // PUT /api/admin/organizations/:orgId/interest-level - Set interest level for an org
+  apiRouter.put(
+    "/organizations/:orgId/interest-level",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const { interest_level, note } = req.body;
+
+        // Validate interest level
+        const validLevels = ['low', 'medium', 'high', 'very_high', null];
+        if (!validLevels.includes(interest_level)) {
+          return res.status(400).json({
+            error: "Invalid interest_level. Must be one of: low, medium, high, very_high (or null to clear)",
+          });
+        }
+
+        // Get the admin's name
+        const setBy = req.user
+          ? `${req.user.firstName || ""} ${req.user.lastName || ""}`.trim() ||
+            req.user.email
+          : "admin";
+
+        await orgDb.setInterestLevel(orgId, {
+          interest_level,
+          note,
+          set_by: setBy,
+        });
+
+        // Return the updated engagement signals
+        const engagementSignals = await orgDb.getEngagementSignals(orgId);
+
+        logger.info(
+          { orgId, interest_level, setBy },
+          "Interest level updated"
+        );
+
+        res.json({
+          success: true,
+          engagement_signals: engagementSignals,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error setting interest level");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to set interest level",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/organizations/:orgId/engagement-signals - Get engagement signals for an org
+  apiRouter.get(
+    "/organizations/:orgId/engagement-signals",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const engagementSignals = await orgDb.getEngagementSignals(orgId);
+        res.json(engagementSignals);
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching engagement signals");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch engagement signals",
         });
       }
     }
