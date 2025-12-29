@@ -163,12 +163,12 @@ export async function handleAssistantMessage(
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response
+  // Send response using Addie's bot token
   try {
     await sendChannelMessage(channelId, {
       text: outputValidation.sanitized,
       thread_ts: event.thread_ts,
-    });
+    }, true); // useAddieToken = true
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to send response');
   }
@@ -249,12 +249,12 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in thread
+  // Send response in thread using Addie's bot token
   try {
     await sendChannelMessage(event.channel, {
       text: outputValidation.sanitized,
       thread_ts: event.thread_ts || event.ts,
-    });
+    }, true); // useAddieToken = true
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to send mention response');
   }
