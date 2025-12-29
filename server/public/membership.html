@@ -545,6 +545,14 @@
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
 
+  <!-- Pricing summary for search engines and AI indexing (sr-only = visually hidden) -->
+  <div class="sr-only" aria-hidden="true">
+    <h2>Membership Pricing Summary</h2>
+    <p>Company Membership: $10,000/year for organizations with $5M+ annual revenue, or $2,500/year for organizations under $5M revenue.</p>
+    <p>Individual Membership: $250/year for industry professionals, or $50/year for students, academics, and non-profits.</p>
+    <p>Founding member pricing is available through March 31, 2026. Benefits include board eligibility, voting rights, working group participation, and professional development.</p>
+  </div>
+
   <!-- Hero Section -->
   <section class="hero hero--membership">
     <div class="hero-container">
@@ -843,7 +851,22 @@
   <section class="pricing-section" id="pricing">
     <div class="pricing-section-container">
       <h2>Membership Pricing</h2>
-      <div id="join-cta-container"></div>
+      <div id="join-cta-container">
+        <!-- Static pricing for SEO and non-JS clients -->
+        <noscript>
+          <div class="pricing-static">
+            <h3>Company Membership</h3>
+            <p><strong>$10,000/year</strong> for organizations with $5M+ annual revenue</p>
+            <p><strong>$2,500/year</strong> for organizations under $5M annual revenue</p>
+            <p>Benefits include: Board eligibility, board voting rights, standards development participation, working group access, and all team members can participate.</p>
+
+            <h3>Individual Membership</h3>
+            <p><strong>$250/year</strong> for industry professionals</p>
+            <p><strong>$50/year</strong> for students, academics & non-profits</p>
+            <p>Benefits include: Professional development, certification courses, member directory listing, working group participation, community Slack access, and event discounts.</p>
+          </div>
+        </noscript>
+      </div>
     </div>
   </section>
 

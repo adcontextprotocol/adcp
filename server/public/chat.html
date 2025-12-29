@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat with Addie - Agentic Advertising</title>
+  <link rel="icon" type="image/svg+xml" href="/AAo.svg">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-family-sans);
+      background: var(--color-bg-page);
+      color: var(--color-text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 0 16px;
+    }
+
+    .chat-header {
+      text-align: center;
+      padding: 32px 16px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      margin: 0 -16px;
+      padding-left: 32px;
+      padding-right: 32px;
+    }
+
+    .chat-header h1 {
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    .chat-header h1 .addie-avatar {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-600) 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .chat-header p {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+    }
+
+    .messages-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .message {
+      display: flex;
+      gap: 12px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message--user {
+      flex-direction: row-reverse;
+    }
+
+    .message-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .message--assistant .message-avatar {
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-600) 100%);
+    }
+
+    .message--user .message-avatar {
+      background: var(--color-gray-200);
+    }
+
+    .message-content {
+      max-width: 70%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .message--assistant .message-content {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 16px 16px 16px 4px;
+    }
+
+    .message--user .message-content {
+      background: var(--color-brand);
+      color: white;
+      border-radius: 16px 16px 4px 16px;
+    }
+
+    .message-content p {
+      margin-bottom: 8px;
+    }
+
+    .message-content p:last-child {
+      margin-bottom: 0;
+    }
+
+    .message-content code {
+      background: var(--color-bg-subtle);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: var(--font-family-mono);
+      font-size: 13px;
+    }
+
+    .message--user .message-content code {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .message-content pre {
+      background: var(--color-gray-900);
+      color: var(--color-gray-100);
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+
+    .message-content pre code {
+      background: none;
+      padding: 0;
+      color: inherit;
+    }
+
+    .message-content a {
+      color: var(--color-brand);
+      text-decoration: underline;
+    }
+
+    .message--user .message-content a {
+      color: white;
+    }
+
+    .message-content ul, .message-content ol {
+      margin: 8px 0;
+      padding-left: 20px;
+    }
+
+    .message-content li {
+      margin-bottom: 4px;
+    }
+
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 8px 0;
+    }
+
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      background: var(--color-text-muted);
+      border-radius: 50%;
+      animation: bounce 1.4s ease-in-out infinite;
+    }
+
+    .typing-indicator span:nth-child(1) { animation-delay: 0s; }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-4px); }
+    }
+
+    .chat-input-container {
+      padding: 16px 0 24px;
+      border-top: 1px solid var(--color-border);
+      background: var(--color-bg-page);
+    }
+
+    .chat-input-wrapper {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    .chat-input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid var(--color-border);
+      border-radius: 24px;
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--color-bg-card);
+      color: var(--color-text);
+      resize: none;
+      min-height: 48px;
+      max-height: 200px;
+      line-height: 1.5;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .chat-input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+
+    .chat-input::placeholder {
+      color: var(--color-text-muted);
+    }
+
+    .send-button {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: none;
+      background: var(--color-brand);
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, transform 0.1s;
+      flex-shrink: 0;
+    }
+
+    .send-button:hover:not(:disabled) {
+      background: var(--color-brand-hover);
+    }
+
+    .send-button:active:not(:disabled) {
+      transform: scale(0.95);
+    }
+
+    .send-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .send-button svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .suggested-prompts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .suggested-prompt {
+      padding: 8px 16px;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .suggested-prompt:hover {
+      background: var(--color-bg-subtle);
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+
+    .welcome-message {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--color-text-secondary);
+    }
+
+    .welcome-message h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 8px;
+    }
+
+    .welcome-message p {
+      margin-bottom: 24px;
+    }
+
+    .error-toast {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--color-error-600);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      box-shadow: var(--shadow-lg);
+      z-index: 1000;
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translate(-50%, 20px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
+    }
+
+    /* Status indicator */
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--color-text-muted);
+      margin-top: 8px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-success-500);
+    }
+
+    .status-dot--offline {
+      background: var(--color-error-500);
+    }
+
+    /* Feedback controls */
+    .message-feedback {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--color-border);
+      font-size: 12px;
+    }
+
+    .feedback-label {
+      color: var(--color-text-muted);
+    }
+
+    .feedback-buttons {
+      display: flex;
+      gap: 4px;
+    }
+
+    .feedback-btn {
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      transition: all 0.2s;
+    }
+
+    .feedback-btn:hover {
+      background: var(--color-bg-subtle);
+      border-color: var(--color-brand);
+    }
+
+    .feedback-btn.active {
+      background: var(--color-brand);
+      border-color: var(--color-brand);
+      color: white;
+    }
+
+    .feedback-btn.positive:hover,
+    .feedback-btn.positive.active {
+      background: var(--color-success-500);
+      border-color: var(--color-success-500);
+      color: white;
+    }
+
+    .feedback-btn.negative:hover,
+    .feedback-btn.negative.active {
+      background: var(--color-error-500);
+      border-color: var(--color-error-500);
+      color: white;
+    }
+
+    .feedback-expand {
+      background: none;
+      border: none;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 4px;
+    }
+
+    .feedback-expand:hover {
+      color: var(--color-brand);
+    }
+
+    .feedback-form {
+      display: none;
+      margin-top: 8px;
+      padding: 12px;
+      background: var(--color-bg-subtle);
+      border-radius: 8px;
+    }
+
+    .feedback-form.visible {
+      display: block;
+    }
+
+    .feedback-form label {
+      display: block;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .feedback-form select,
+    .feedback-form textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--color-bg-card);
+      color: var(--color-text);
+      margin-bottom: 8px;
+    }
+
+    .feedback-form textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    .feedback-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+
+    .feedback-tag {
+      font-size: 11px;
+      padding: 4px 8px;
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      cursor: pointer;
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      transition: all 0.2s;
+    }
+
+    .feedback-tag:hover {
+      border-color: var(--color-brand);
+    }
+
+    .feedback-tag.selected {
+      background: var(--color-primary-100);
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+
+    .feedback-submit {
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .feedback-submit:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .feedback-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .feedback-success {
+      color: var(--color-success-600);
+      font-size: 12px;
+      padding: 4px 0;
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .message-content {
+        max-width: 85%;
+      }
+
+      .chat-header h1 {
+        font-size: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="chat-container">
+    <div class="chat-header">
+      <h1>
+        <span class="addie-avatar">A</span>
+        Chat with Addie
+      </h1>
+      <p>Your AI assistant for AdCP and Agentic Advertising</p>
+    </div>
+
+    <div class="messages-container" id="messagesContainer">
+      <div class="welcome-message" id="welcomeMessage">
+        <h2>Hi! I'm Addie</h2>
+        <p>I'm here to help you learn about AdCP, the Advertising Context Protocol, and agentic advertising. Ask me anything!</p>
+        <div class="suggested-prompts" id="suggestedPrompts">
+          <button class="suggested-prompt" data-prompt="What is AdCP?">What is AdCP?</button>
+          <button class="suggested-prompt" data-prompt="How do I get started with AdCP?">How do I get started?</button>
+          <button class="suggested-prompt" data-prompt="What is agentic advertising?">What is agentic advertising?</button>
+          <button class="suggested-prompt" data-prompt="How do I become an AAO member?">Become a member</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-input-container">
+      <div class="chat-input-wrapper">
+        <textarea
+          class="chat-input"
+          id="chatInput"
+          placeholder="Ask Addie anything..."
+          rows="1"
+        ></textarea>
+        <button class="send-button" id="sendButton" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="status-indicator" id="statusIndicator">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Connecting...</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="/nav.js"></script>
+  <script>
+    (function() {
+      'use strict';
+
+      // Elements
+      const messagesContainer = document.getElementById('messagesContainer');
+      const welcomeMessage = document.getElementById('welcomeMessage');
+      const chatInput = document.getElementById('chatInput');
+      const sendButton = document.getElementById('sendButton');
+      const suggestedPrompts = document.getElementById('suggestedPrompts');
+      const statusDot = document.getElementById('statusDot');
+      const statusText = document.getElementById('statusText');
+
+      // State
+      let conversationId = null;
+      let isLoading = false;
+      let isReady = false;
+
+      // Check Addie status
+      async function checkStatus() {
+        try {
+          const response = await fetch('/api/addie/chat/status');
+          const data = await response.json();
+          isReady = data.ready;
+          updateStatusIndicator();
+        } catch (error) {
+          isReady = false;
+          updateStatusIndicator();
+        }
+      }
+
+      function updateStatusIndicator() {
+        if (isReady) {
+          statusDot.classList.remove('status-dot--offline');
+          statusText.textContent = 'Addie is online';
+        } else {
+          statusDot.classList.add('status-dot--offline');
+          statusText.textContent = 'Addie is offline';
+        }
+        updateSendButton();
+      }
+
+      // Auto-resize textarea
+      function autoResize() {
+        chatInput.style.height = 'auto';
+        chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
+      }
+
+      // Update send button state
+      function updateSendButton() {
+        const hasText = chatInput.value.trim().length > 0;
+        sendButton.disabled = !hasText || isLoading || !isReady;
+      }
+
+      // Render markdown-like formatting
+      function renderMessage(text) {
+        // Escape HTML
+        text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        // Code blocks
+        text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+
+        // Inline code
+        text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // Bold
+        text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+        // Italic
+        text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+        // Links
+        text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+        // Line breaks to paragraphs
+        const paragraphs = text.split(/\n\n+/);
+        text = paragraphs.map(p => {
+          // Check if it's a list
+          if (p.match(/^[-*]\s/m)) {
+            const items = p.split(/\n/).filter(l => l.trim());
+            return '<ul>' + items.map(i => '<li>' + i.replace(/^[-*]\s/, '') + '</li>').join('') + '</ul>';
+          }
+          // Check if it's a numbered list
+          if (p.match(/^\d+\.\s/m)) {
+            const items = p.split(/\n/).filter(l => l.trim());
+            return '<ol>' + items.map(i => '<li>' + i.replace(/^\d+\.\s/, '') + '</li>').join('') + '</ol>';
+          }
+          // Regular paragraph
+          return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
+        }).join('');
+
+        return text;
+      }
+
+      // Add message to chat
+      function addMessage(content, role, messageId = null) {
+        // Hide welcome message
+        if (welcomeMessage) {
+          welcomeMessage.style.display = 'none';
+        }
+
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message message--${role}`;
+
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'message-avatar';
+        avatarDiv.textContent = role === 'assistant' ? 'A' : '';
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.innerHTML = renderMessage(content);
+
+        // Add feedback controls for assistant messages
+        if (role === 'assistant' && messageId) {
+          const feedbackDiv = createFeedbackUI(messageId);
+          contentDiv.appendChild(feedbackDiv);
+        }
+
+        messageDiv.appendChild(avatarDiv);
+        messageDiv.appendChild(contentDiv);
+        messagesContainer.appendChild(messageDiv);
+
+        // Scroll to bottom
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+        return messageDiv;
+      }
+
+      // Create feedback UI for a message
+      function createFeedbackUI(messageId) {
+        const container = document.createElement('div');
+        container.className = 'message-feedback';
+        container.innerHTML = `
+          <span class="feedback-label">Was this helpful?</span>
+          <div class="feedback-buttons">
+            <button class="feedback-btn positive" data-rating="5" title="Helpful">&#128077;</button>
+            <button class="feedback-btn negative" data-rating="2" title="Not helpful">&#128078;</button>
+          </div>
+          <button class="feedback-expand" title="Add more feedback">More...</button>
+          <div class="feedback-form">
+            <label>What could be better?</label>
+            <select class="feedback-category">
+              <option value="">Select category</option>
+              <option value="accuracy">Accuracy - Information was wrong</option>
+              <option value="completeness">Completeness - Missing important info</option>
+              <option value="helpfulness">Helpfulness - Didn't solve my problem</option>
+              <option value="clarity">Clarity - Hard to understand</option>
+              <option value="tone">Tone - Response style</option>
+            </select>
+            <label>Tags (click to select)</label>
+            <div class="feedback-tags">
+              <span class="feedback-tag" data-tag="wrong_answer">Wrong answer</span>
+              <span class="feedback-tag" data-tag="missing_info">Missing info</span>
+              <span class="feedback-tag" data-tag="too_long">Too long</span>
+              <span class="feedback-tag" data-tag="too_short">Too short</span>
+              <span class="feedback-tag" data-tag="outdated">Outdated</span>
+              <span class="feedback-tag" data-tag="off_topic">Off topic</span>
+            </div>
+            <label>How could we improve? (optional)</label>
+            <textarea class="feedback-suggestion" placeholder="Tell us what would make this answer better..."></textarea>
+            <button class="feedback-submit" disabled>Submit Feedback</button>
+            <div class="feedback-success" style="display:none;">Thank you for your feedback!</div>
+          </div>
+        `;
+
+        let selectedRating = null;
+        const selectedTags = new Set();
+
+        // Quick rating buttons
+        container.querySelectorAll('.feedback-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            selectedRating = parseInt(btn.dataset.rating);
+            container.querySelectorAll('.feedback-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            container.querySelector('.feedback-submit').disabled = false;
+
+            // Auto-submit simple thumbs up/down
+            if (selectedRating === 5) {
+              await submitFeedback(messageId, selectedRating, null, [], null);
+              showFeedbackSuccess(container);
+            }
+          });
+        });
+
+        // Expand to show full form
+        container.querySelector('.feedback-expand').addEventListener('click', () => {
+          container.querySelector('.feedback-form').classList.toggle('visible');
+        });
+
+        // Tag selection
+        container.querySelectorAll('.feedback-tag').forEach(tag => {
+          tag.addEventListener('click', () => {
+            const tagValue = tag.dataset.tag;
+            if (selectedTags.has(tagValue)) {
+              selectedTags.delete(tagValue);
+              tag.classList.remove('selected');
+            } else {
+              selectedTags.add(tagValue);
+              tag.classList.add('selected');
+            }
+          });
+        });
+
+        // Submit full feedback
+        container.querySelector('.feedback-submit').addEventListener('click', async () => {
+          const category = container.querySelector('.feedback-category').value || null;
+          const suggestion = container.querySelector('.feedback-suggestion').value.trim() || null;
+
+          await submitFeedback(messageId, selectedRating || 3, category, Array.from(selectedTags), suggestion);
+          showFeedbackSuccess(container);
+        });
+
+        return container;
+      }
+
+      function showFeedbackSuccess(container) {
+        container.querySelector('.feedback-form').classList.remove('visible');
+        container.querySelector('.feedback-buttons').style.display = 'none';
+        container.querySelector('.feedback-expand').style.display = 'none';
+        container.querySelector('.feedback-label').textContent = 'Thanks for your feedback!';
+        container.querySelector('.feedback-label').style.color = 'var(--color-success-600)';
+      }
+
+      async function submitFeedback(messageId, rating, category, tags, suggestion) {
+        try {
+          await fetch(`/api/addie/chat/${conversationId}/feedback`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message_id: messageId,
+              rating: rating,
+              rating_category: category,
+              feedback_tags: tags.length > 0 ? tags : null,
+              improvement_suggestion: suggestion
+            })
+          });
+        } catch (error) {
+          console.error('Failed to submit feedback:', error);
+        }
+      }
+
+      // Add typing indicator
+      function addTypingIndicator() {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message message--assistant';
+        messageDiv.id = 'typingIndicator';
+
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'message-avatar';
+        avatarDiv.textContent = 'A';
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+
+        messageDiv.appendChild(avatarDiv);
+        messageDiv.appendChild(contentDiv);
+        messagesContainer.appendChild(messageDiv);
+
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+
+      // Remove typing indicator
+      function removeTypingIndicator() {
+        const indicator = document.getElementById('typingIndicator');
+        if (indicator) {
+          indicator.remove();
+        }
+      }
+
+      // Show error toast
+      function showError(message) {
+        const toast = document.createElement('div');
+        toast.className = 'error-toast';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+          toast.remove();
+        }, 5000);
+      }
+
+      // Send message
+      async function sendMessage() {
+        const message = chatInput.value.trim();
+        if (!message || isLoading || !isReady) return;
+
+        isLoading = true;
+        updateSendButton();
+
+        // Add user message
+        addMessage(message, 'user');
+
+        // Clear input
+        chatInput.value = '';
+        autoResize();
+
+        // Show typing indicator
+        addTypingIndicator();
+
+        try {
+          const response = await fetch('/api/addie/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message,
+              conversation_id: conversationId,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to send message');
+          }
+
+          const data = await response.json();
+
+          // Store conversation ID
+          conversationId = data.conversation_id;
+
+          // Remove typing indicator and add response with message ID for feedback
+          removeTypingIndicator();
+          addMessage(data.response, 'assistant', data.message_id);
+
+        } catch (error) {
+          console.error('Error sending message:', error);
+          removeTypingIndicator();
+          showError('Failed to send message. Please try again.');
+        } finally {
+          isLoading = false;
+          updateSendButton();
+        }
+      }
+
+      // Event listeners
+      chatInput.addEventListener('input', () => {
+        autoResize();
+        updateSendButton();
+      });
+
+      chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      sendButton.addEventListener('click', sendMessage);
+
+      // Suggested prompts
+      suggestedPrompts.addEventListener('click', (e) => {
+        if (e.target.classList.contains('suggested-prompt')) {
+          const prompt = e.target.dataset.prompt;
+          chatInput.value = prompt;
+          autoResize();
+          updateSendButton();
+          sendMessage();
+        }
+      });
+
+      // Initialize
+      checkStatus();
+      // Check status periodically
+      setInterval(checkStatus, 30000);
+
+    })();
+  </script>
+</body>
+</html>

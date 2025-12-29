@@ -32,6 +32,8 @@ services:
     volumes:
       # Mount public directory for hot reloading static files
       - ./server/public:/app/server/public:ro
+      # Mount docs directory for Addie knowledge base
+      - ./docs:/app/docs:ro
     depends_on:
       postgres:
         condition: service_healthy
