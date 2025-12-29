@@ -14,6 +14,7 @@ import type {
 } from './types.js';
 
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
+const ADDIE_BOT_TOKEN = process.env.ADDIE_BOT_TOKEN;
 const SLACK_API_BASE = 'https://slack.com/api';
 
 // Rate limiting: Slack's tier 2 methods allow ~20 requests per minute
@@ -84,14 +85,17 @@ async function slackRequest<T>(
 
 /**
  * Make a POST request to the Slack API (for chat.postMessage, etc.)
+ * @param useAddieToken - If true, uses ADDIE_BOT_TOKEN instead of SLACK_BOT_TOKEN
  */
 async function slackPostRequest<T>(
   method: string,
   body: Record<string, unknown>,
-  retries = 3
+  retries = 3,
+  useAddieToken = false
 ): Promise<T> {
-  if (!SLACK_BOT_TOKEN) {
-    throw new Error('SLACK_BOT_TOKEN is not configured');
+  const token = useAddieToken ? (ADDIE_BOT_TOKEN || SLACK_BOT_TOKEN) : SLACK_BOT_TOKEN;
+  if (!token) {
+    throw new Error(useAddieToken ? 'ADDIE_BOT_TOKEN is not configured' : 'SLACK_BOT_TOKEN is not configured');
   }
 
   const url = `${SLACK_API_BASE}/${method}`;
@@ -101,7 +105,7 @@ async function slackPostRequest<T>(
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json; charset=utf-8',
         },
         body: JSON.stringify(body),
@@ -245,10 +249,12 @@ export async function sendDirectMessage(
 
 /**
  * Send a message to a channel
+ * @param useAddieToken - If true, uses ADDIE_BOT_TOKEN for Addie's DM channels
  */
 export async function sendChannelMessage(
   channelId: string,
-  message: SlackBlockMessage
+  message: SlackBlockMessage,
+  useAddieToken = false
 ): Promise<{ ok: boolean; ts?: string; error?: string }> {
   try {
     const response = await slackPostRequest<{ ts: string }>('chat.postMessage', {
@@ -257,9 +263,9 @@ export async function sendChannelMessage(
       blocks: message.blocks,
       thread_ts: message.thread_ts,
       reply_broadcast: message.reply_broadcast,
-    });
+    }, 3, useAddieToken);
 
-    logger.info({ channelId, ts: response.ts }, 'Sent Slack channel message');
+    logger.info({ channelId, ts: response.ts, useAddieToken }, 'Sent Slack channel message');
     return { ok: true, ts: response.ts };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
