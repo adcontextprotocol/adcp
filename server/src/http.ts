@@ -4932,6 +4932,12 @@ Disallow: /api/admin/
 
     // GET /auth/logout - Clear session and redirect
     this.app.get('/auth/logout', async (req, res) => {
+      // Dev mode: just redirect to home (dev mode uses query params, not cookies)
+      if (isDevModeEnabled()) {
+        logger.debug('Dev mode logout - redirecting to home');
+        return res.redirect('/');
+      }
+
       try {
         const sessionCookie = req.cookies['wos-session'];
 
