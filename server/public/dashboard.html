@@ -821,6 +821,8 @@
           const name = m.first_name && m.last_name ? `${m.first_name} ${m.last_name}` : m.email || 'Unknown';
           const role = m.role || 'Member';
 
+          const email = m.email || '';
+
           return `
             <div style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--color-border);">
               <div style="width: 40px; height: 40px; border-radius: 50%; background: ${bgColor}; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-weight: 600; flex-shrink: 0;">
@@ -828,7 +830,7 @@
               </div>
               <div style="flex: 1; min-width: 0;">
                 <div style="font-weight: 500; color: var(--color-text-heading); font-size: 14px;">${escapeHtml(name)}</div>
-                <div style="color: var(--color-text-secondary); font-size: 12px;">${escapeHtml(role)}</div>
+                <div style="color: var(--color-text-secondary); font-size: 12px;">${escapeHtml(role)}${email ? ` · ${escapeHtml(email)}` : ''}</div>
               </div>
             </div>
           `;
