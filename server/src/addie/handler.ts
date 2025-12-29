@@ -22,6 +22,7 @@ import {
 } from './mcp/knowledge-search.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
+import { getMemberContext, formatMemberContextForPrompt } from './member-context.js';
 import type {
   AssistantThreadStartedEvent,
   AppMentionEvent,
@@ -98,6 +99,30 @@ export function isAddieReady(): boolean {
 }
 
 /**
+ * Build message with member context prepended
+ *
+ * Fetches member context for the user and formats it as a prefix to the message.
+ * Gracefully degrades to just the original message if context lookup fails.
+ */
+async function buildMessageWithMemberContext(
+  userId: string,
+  sanitizedMessage: string
+): Promise<string> {
+  try {
+    const memberContext = await getMemberContext(userId);
+    const memberContextText = formatMemberContextForPrompt(memberContext);
+
+    if (memberContextText) {
+      return `${memberContextText}\n---\n\n${sanitizedMessage}`;
+    }
+    return sanitizedMessage;
+  } catch (error) {
+    logger.warn({ error, userId }, 'Addie: Failed to get member context, continuing without it');
+    return sanitizedMessage;
+  }
+}
+
+/**
  * Handle Assistant thread started event
  */
 export async function handleAssistantThreadStarted(
@@ -146,10 +171,16 @@ export async function handleAssistantMessage(
     // Status update failed, continue anyway
   }
 
+  // Build message with member context for personalization
+  const messageWithContext = await buildMessageWithMemberContext(
+    event.user,
+    inputValidation.sanitized
+  );
+
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized);
+    response = await claudeClient.processMessage(messageWithContext);
   } catch (error) {
     logger.error({ error }, 'Addie: Error processing message');
     response = {
@@ -232,10 +263,16 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   // Sanitize input
   const inputValidation = sanitizeInput(rawText);
 
+  // Build message with member context for personalization
+  const messageWithContext = await buildMessageWithMemberContext(
+    event.user,
+    inputValidation.sanitized
+  );
+
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized);
+    response = await claudeClient.processMessage(messageWithContext);
   } catch (error) {
     logger.error({ error }, 'Addie: Error processing mention');
     response = {
