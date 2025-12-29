@@ -968,6 +968,34 @@ Key environment variables for local development:
 - `DATABASE_URL` - PostgreSQL connection string
 - `RUN_MIGRATIONS=true` - Auto-run migrations on startup (used by Docker)
 
+### Slack Apps - IMPORTANT
+
+**This project has TWO separate Slack apps** with independent credentials:
+
+1. **AgenticAdvertising.org Bot** (main workspace bot)
+   - Environment variables: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`
+   - Event endpoint: `/api/slack/events`
+   - Commands endpoint: `/api/slack/commands`
+   - Used for: Member sync, working group notifications, general workspace automation
+
+2. **Addie AI Assistant** (AI assistant)
+   - Environment variables: `ADDIE_BOT_TOKEN` (falls back to `SLACK_BOT_TOKEN`), `ADDIE_SIGNING_SECRET`
+   - Event endpoint: `/api/addie/slack/events`
+   - Used for: AI-powered chat assistant, Slack assistant threads, DMs to Addie
+
+**Why separate apps?**
+- Different bot identities and personalities
+- Separate signing secrets for security isolation
+- Independent event subscriptions and scopes
+- Easier to manage permissions and rate limits
+
+**Slack App Configuration:**
+When setting up a new environment, configure each Slack app's Event Subscriptions Request URL:
+- Main bot: `https://your-domain/api/slack/events`
+- Addie: `https://your-domain/api/addie/slack/events`
+
+**Important:** Each app must have its own signing secret. Never share signing secrets between apps.
+
 ## Code Standards
 
 ### TypeScript/JavaScript

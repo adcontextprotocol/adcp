@@ -104,3 +104,10 @@ export function verifySlackRequest(req: Request, res: Response, next: NextFuncti
 export function isSlackSigningConfigured(): boolean {
   return Boolean(SLACK_SIGNING_SECRET);
 }
+
+/**
+ * Check if Addie Slack signing secret is configured
+ */
+export function isAddieSigningConfigured(): boolean {
+  return Boolean(process.env.ADDIE_SIGNING_SECRET);
+}
