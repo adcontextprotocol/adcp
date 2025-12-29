@@ -14,6 +14,10 @@
        Uses design system variables - see /design-system.css for tokens
        ============================================================================= */
 
+    html {
+      scroll-behavior: smooth;
+    }
+
     body {
       background: var(--color-bg-page);
     }
@@ -210,113 +214,227 @@
   <script src="/member-card.js"></script>
 
   <div class="container">
-    <!-- Welcome Header with Org Info -->
-    <div class="welcome" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 20px;">
-      <div>
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-          <h1 id="orgName" style="margin: 0;">Dashboard</h1>
-          <button id="editOrgNameBtn" onclick="openRenameModal()" style="display: none; background: none; border: none; cursor: pointer; padding: 4px; color: var(--color-text-secondary); opacity: 0.7; transition: opacity 0.2s;" title="Rename organization">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-          </button>
-          <span id="orgBadge"></span>
-        </div>
-        <p id="orgRole" style="margin: 0; font-size: 14px; color: var(--color-text-secondary);"></p>
-      </div>
-    </div>
+    <!-- Hidden elements for backwards compatibility -->
+    <span id="orgName" style="display: none;"></span>
+    <span id="orgBadge" style="display: none;"></span>
+    <span id="orgRole" style="display: none;"></span>
+    <button id="editOrgNameBtn" style="display: none;"></button>
 
     <div id="loading" class="loading">
       Loading your information...
     </div>
 
     <div id="content" style="display:none;">
-      <!-- Membership section - shown prominently at top for non-subscribers -->
-      <div id="membershipSection" class="card" style="display:none; margin-bottom: 24px;">
-        <div style="background: linear-gradient(135deg, var(--aao-primary) 0%, var(--aao-primary-light) 100%); padding: 20px; border-radius: 8px; color: white; margin-bottom: 20px;">
-          <h3 style="margin: 0 0 8px 0; color: white;">Become a Member</h3>
-          <p style="margin: 0 0 12px 0; color: rgba(255,255,255,0.9); font-size: 14px;">Unlock your public member profile, appear in the directory, and support the AdCP ecosystem.</p>
-          <a href="/membership" style="color: white; font-size: 13px; text-decoration: underline;">Learn more about founding membership benefits →</a>
+
+      <!-- Dashboard section styles -->
+      <style>
+        .dashboard-section {
+          margin-bottom: 48px;
+          scroll-margin-top: 80px; /* Account for fixed header when jumping to anchors */
+        }
+        .section-header {
+          margin-bottom: 16px;
+        }
+        .section-header h2 {
+          margin: 0 0 4px 0;
+          font-size: 20px;
+          color: var(--color-text-heading);
+        }
+        .section-header p {
+          margin: 0;
+          font-size: 14px;
+          color: var(--color-text-secondary);
+        }
+        .action-bar {
+          margin-top: 12px;
+          padding: 16px;
+          background: var(--color-bg-card);
+          border: 1px solid var(--color-border);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        .action-bar-status {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .status-badge {
+          padding: 4px 10px;
+          border-radius: 4px;
+          font-size: 12px;
+          font-weight: 500;
+        }
+        .status-text {
+          color: var(--color-text-secondary);
+          font-size: 14px;
+        }
+        .action-bar-buttons {
+          display: flex;
+          gap: 8px;
+        }
+        .section-card {
+          background: var(--color-bg-card);
+          border: 1px solid var(--color-border);
+          border-radius: 12px;
+          overflow: hidden;
+        }
+        .section-card-body {
+          padding: 20px;
+        }
+      </style>
+
+      <!-- ========== PROFILE SECTION ========== -->
+      <section id="profile" class="dashboard-section">
+        <div class="section-header">
+          <h2>Member Profile</h2>
+          <p>How your organization appears in the member directory</p>
+        </div>
+        <div id="profileCardContainer">
+          <div class="section-card" style="padding: 40px; text-align: center; color: var(--color-text-secondary);">
+            Loading profile...
+          </div>
+        </div>
+        <div id="profileActionBar" class="action-bar" style="display: none;">
+          <div class="action-bar-status">
+            <span id="profileStatusBadge" class="status-badge"></span>
+            <span id="profileStatusText" class="status-text"></span>
+          </div>
+          <div id="profileActionButtons" class="action-bar-buttons"></div>
+        </div>
+      </section>
+
+      <!-- ========== TEAM SECTION ========== -->
+      <section id="team" class="dashboard-section">
+        <div class="section-header">
+          <h2>Team</h2>
+          <p>Manage your organization's members</p>
+        </div>
+        <div class="section-card" id="teamCard">
+          <div id="teamCardContent" class="section-card-body">
+            <div style="text-align: center; color: var(--color-text-secondary);">Loading team...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== WORKING GROUPS SECTION ========== -->
+      <section id="working-groups" class="dashboard-section">
+        <div class="section-header">
+          <h2>Working Groups</h2>
+          <p>Collaborate with other members on shared interests</p>
+        </div>
+        <div class="section-card" id="workingGroupsCard">
+          <div id="workingGroupsCardContent" class="section-card-body">
+            <div style="text-align: center; color: var(--color-text-secondary);">Loading working groups...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== MEMBERSHIP SECTION ========== -->
+      <section id="membership" class="dashboard-section">
+        <div class="section-header">
+          <h2>Membership</h2>
+          <p>Your subscription and billing</p>
         </div>
 
+        <!-- Membership Card (for subscribers) -->
+        <div class="section-card" id="membershipCard" style="display: none;">
+          <div style="display: flex; align-items: start; gap: 16px; padding: 20px;">
+            <div id="membershipIcon" style="width: 64px; height: 64px; border-radius: 12px; background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-400) 100%); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; color: white;">
+              ⭐
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <h3 id="membershipTitle" style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Membership</h3>
+                <span id="membershipBadge" style="display: none; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;"></span>
+              </div>
+              <p id="membershipDescription" style="margin: 0 0 12px 0; color: var(--color-text-secondary); font-size: 14px;">Loading...</p>
+              <div id="membershipActions"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pricing Section (for non-subscribers) -->
+        <div id="inlinePricingSection" class="section-card" style="display: none;">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 20px; border-bottom: 1px solid var(--color-border);">
+            <div style="width: 48px; height: 48px; border-radius: 10px; background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-400) 100%); display: flex; align-items: center; justify-content: center; font-size: 24px; color: white;">
+              ⭐
+            </div>
+            <div>
+              <h3 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Become a Member</h3>
+              <p style="margin: 4px 0 0 0; color: var(--color-text-secondary); font-size: 14px;">Publish your profile, join the directory, and support the ecosystem.</p>
+            </div>
+          </div>
+          <div class="section-card-body">
+            <!-- Agreement checkbox -->
+            <div style="border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; background: var(--color-bg-subtle); margin-bottom: 16px;">
+              <div id="inlineAgreementContent" style="max-height: 150px; overflow-y: auto; padding: 12px; background: white; border: 1px solid var(--color-border); border-radius: 4px; margin-bottom: 12px; font-size: 13px; line-height: 1.6;">
+                Loading agreement...
+              </div>
+              <label style="display: flex; align-items: start; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="inlineAgreementCheckbox" style="margin-top: 3px; cursor: pointer;" />
+                <span style="font-size: 13px;">I have read and agree to the <strong>AgenticAdvertising.org Membership Agreement</strong></span>
+              </label>
+            </div>
+
+            <!-- Pricing table (disabled until agreement accepted) -->
+            <div id="inlinePricingWrapper" style="opacity: 0.5; pointer-events: none; transition: opacity 0.3s;">
+              <script async src="https://js.stripe.com/v3/pricing-table.js"></script>
+              <div id="inlinePricingContainer"></div>
+            </div>
+            <div id="inlineAgreementWarning" style="display: block; text-align: center; color: var(--color-text-secondary); font-size: 13px; margin-top: 12px; padding: 10px; background: var(--color-warning-50); border: 1px solid var(--color-warning-300); border-radius: 4px;">
+              Please accept the membership agreement above to view pricing
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Hidden legacy elements for JS compatibility -->
+      <div id="memberProfileDetails" style="display: none;"></div>
+      <div id="membershipCardContent" style="display: none;"></div>
+      <div id="membershipCardHeader" style="display: none;"></div>
+
+      <!-- Hidden elements for status card JS compatibility -->
+      <span id="profileStatus" style="display: none;"></span>
+      <span id="profileSubtext" style="display: none;"></span>
+      <span id="teamStatus" style="display: none;"></span>
+      <span id="teamSubtext" style="display: none;"></span>
+      <span id="workingGroupStatus" style="display: none;"></span>
+      <span id="workingGroupSubtext" style="display: none;"></span>
+      <span id="membershipStatus" style="display: none;"></span>
+      <span id="membershipSubtext" style="display: none;"></span>
+      <span id="billingActionText" style="display: none;"></span>
+      <a id="billingAction" href="/dashboard/membership" style="display: none;"></a>
+      <a id="inviteTeamAction" href="/team" style="display: none;"></a>
+
+      <!-- Hidden membership signup section - shown in modal or expanded view -->
+      <div id="membershipSection" style="display:none;">
         <div style="border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; background: var(--color-bg-subtle); margin-bottom: 20px;">
           <h4 style="margin: 0 0 10px 0; font-size: 16px;">Membership Agreement</h4>
           <div id="membershipAgreementContent" style="max-height: 200px; overflow-y: auto; padding: 15px; background: white; border: 1px solid var(--color-border); border-radius: 4px; margin-bottom: 15px; font-size: 14px; line-height: 1.6;">
             Loading agreement...
           </div>
-
           <label style="display: flex; align-items: start; gap: 10px; cursor: pointer;">
             <input type="checkbox" id="membershipAgreementCheckbox" style="margin-top: 4px; cursor: pointer;" />
             <span style="font-size: 14px;">I have read and agree to the <strong>AgenticAdvertising.org Membership Agreement</strong></span>
           </label>
         </div>
-
         <div id="pricingTableWrapper" style="opacity: 0.5; pointer-events: none; transition: opacity 0.3s;">
           <script async src="https://js.stripe.com/v3/pricing-table.js"></script>
-          <!-- Pricing table will be dynamically inserted here with customer session -->
           <div id="pricingTableContainer"></div>
         </div>
-
         <div id="agreementWarning" style="display: block; text-align: center; color: var(--color-text-secondary); font-size: 14px; margin-top: 10px; padding: 10px; background: var(--color-warning-50); border: 1px solid var(--color-warning-300); border-radius: 4px;">
           Please accept the membership agreement above to continue
         </div>
       </div>
 
-      <!-- Main Layout: Member Profile (large) + Sidebar (Membership, Team, Agreements) -->
-      <div class="dashboard-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; align-items: start;">
-
-        <!-- LEFT COLUMN: Member Profile (prominent) -->
-        <div class="card" id="memberProfileCard" style="padding: 0; overflow: hidden;">
-          <div style="background: linear-gradient(135deg, var(--aao-primary) 0%, var(--aao-primary-light) 100%); padding: 20px 24px; color: white;">
-            <h2 style="margin: 0; color: white; display: flex; align-items: center; gap: 10px;">
-              <span style="font-size: 24px;">🏢</span> Member Profile
-            </h2>
-            <p style="margin: 8px 0 0 0; opacity: 0.9; font-size: 14px;">Your public presence in the AdCP member directory</p>
-          </div>
-          <div id="memberProfileDetails" style="padding: 24px;"></div>
-        </div>
-
-        <!-- RIGHT COLUMN: Membership, Team, Agreements -->
-        <div style="display: flex; flex-direction: column; gap: 20px;">
-
-          <!-- Membership Card -->
-          <div class="card">
-            <h2 style="display: flex; align-items: center; gap: 8px; font-size: 16px;">
-              <span style="font-size: 18px;">💳</span> Membership
-            </h2>
-            <div id="billingDetails"></div>
-          </div>
-
-          <!-- Team Card -->
-          <div class="card">
-            <h2 style="display: flex; align-items: center; gap: 8px; font-size: 16px;">
-              <span style="font-size: 18px;">👥</span> Team
-            </h2>
-            <div id="teamDetails"></div>
-          </div>
-
-          <!-- Working Groups Card -->
-          <div class="card">
-            <h2 style="display: flex; align-items: center; gap: 8px; font-size: 16px;">
-              <span style="font-size: 18px;">🏛️</span> Working Groups
-            </h2>
-            <div id="workingGroupsDetails">
-              <p style="color: var(--color-text-secondary); font-size: 13px;">Loading...</p>
-            </div>
-          </div>
-
-          <!-- Agreements (compact) - only shown for subscribers -->
-          <div id="agreementsCard" class="card" style="background: var(--color-bg-subtle); display: none;">
-            <h2 style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--color-text-secondary); margin-bottom: 10px;">
-              <span style="font-size: 16px;">📋</span> Agreements
-            </h2>
-            <div id="agreementsSection" style="font-size: 13px;">
-              <p style="color: var(--color-text-secondary);">Loading...</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- Legacy elements for backwards compatibility -->
+      <div id="billingDetails" style="display: none;"></div>
+      <div id="teamDetails" style="display: none;"></div>
+      <div id="workingGroupsDetails" style="display: none;"></div>
 
     </div>
   </div>
@@ -326,6 +444,22 @@
     let selectedOrgId = null;
     let allOrganizations = [];
     let membershipAgreement = null;
+
+    // Dev mode helper: get current dev_user from URL
+    function getDevUser() {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('dev_user');
+    }
+
+    // Dev mode helper: add dev_user to API URL if present
+    function apiUrl(path) {
+      const devUser = getDevUser();
+      if (devUser) {
+        const separator = path.includes('?') ? '&' : '?';
+        return `${path}${separator}dev_user=${devUser}`;
+      }
+      return path;
+    }
 
     // Escape HTML to prevent XSS
     function escapeHtml(text) {
@@ -358,10 +492,14 @@
       url.searchParams.set('org', orgId);
       window.history.replaceState({}, '', url);
 
-      // Update sidebar org name
+      // Update sidebar org name and badges
       const selectedOrg = allOrganizations.find(o => o.id === orgId);
       if (selectedOrg) {
         DashboardNav.setOrgName(selectedOrg.name);
+        DashboardNav.setOrgStatus({
+          isPersonal: selectedOrg.billing?.is_personal || false,
+          isSubscribed: selectedOrg.billing?.status === 'active'
+        });
       }
 
       // Re-render the selected org
@@ -375,170 +513,241 @@
 
       currentOrg = org;
 
-      // Build billing info display
-      let billingInfo = '';
+      const isPersonal = org.billing?.is_personal || org.is_personal || false;
+      const hasSubscription = org.billing?.status === 'active';
+      const hasEverSubscribed = org.billing?.status && org.billing.status !== 'none';
 
-      if (org.billingError) {
-        billingInfo = `
-          <div style="margin-top: 8px; padding: 10px; background: var(--color-error-50); border-left: 3px solid var(--color-error-600); border-radius: 4px;">
-            <div style="color: var(--color-error-600); font-weight: bold; margin-bottom: 4px;">⚠ Error Loading Billing Info</div>
-            <small style="color: var(--color-text-secondary);">${org.billingError}</small>
-            <br>
-            <small style="color: var(--color-text-secondary);">Please refresh the page or contact support if this persists.</small>
+      // Update legacy hidden elements for backwards compatibility
+      document.getElementById('orgName').textContent = org.name;
+      document.getElementById('orgRole').textContent = `Your role: ${org.role || 'member'}`;
+
+      // ===== PROFILE CARD =====
+      renderProfileCard(org.id, hasSubscription);
+
+      // ===== MEMBERSHIP CARD =====
+      renderMembershipCard(org, hasSubscription);
+
+      // ===== LOAD DATA =====
+      loadTeamSection(org.id);
+      loadWorkingGroupsSection();
+
+      // ===== MEMBERSHIP SIGNUP SECTION (hidden, for modal use) =====
+      const membershipSection = document.getElementById('membershipSection');
+      if (!hasSubscription) {
+        updatePricingTable(org);
+      }
+      membershipSection.style.display = 'none';
+    }
+
+    // Render the profile card using shared renderMemberCard component
+    async function renderProfileCard(orgId, hasSubscription) {
+      // Inject shared styles for member card
+      injectMemberCardStyles();
+
+      const container = document.getElementById('profileCardContainer');
+      const actionBar = document.getElementById('profileActionBar');
+      const statusBadge = document.getElementById('profileStatusBadge');
+      const statusText = document.getElementById('profileStatusText');
+      const actionButtons = document.getElementById('profileActionButtons');
+
+      try {
+        const response = await fetch(`/api/me/member-profile?org=${orgId}`);
+
+        if (!response.ok) {
+          throw new Error('Failed to load profile');
+        }
+
+        const data = await response.json();
+        const profile = data.profile;
+
+        if (!profile) {
+          // No profile yet - show create profile prompt
+          container.innerHTML = `
+            <div class="card" style="padding: 40px; text-align: center;">
+              <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
+              <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create Your Profile</h3>
+              <p style="margin: 0 0 20px 0; color: var(--color-text-secondary);">Set up your presence in the member directory</p>
+              <a href="/member-profile?org=${orgId}" class="btn btn-primary">Create Profile</a>
+            </div>
+          `;
+          actionBar.style.display = 'none';
+          return;
+        }
+
+        // Use the shared renderMemberCard function with isPreview=true (no click-to-view)
+        container.innerHTML = renderMemberCard(profile, { isPreview: true, showVisibilityBadge: true });
+
+        // Show action bar with status and buttons
+        actionBar.style.display = 'block';
+
+        // Status badge
+        if (profile.is_public) {
+          statusBadge.textContent = 'Public';
+          statusBadge.style.background = 'var(--color-success-100)';
+          statusBadge.style.color = 'var(--color-success-700)';
+          statusText.textContent = 'Your profile is visible in the member directory';
+        } else {
+          statusBadge.textContent = 'Draft';
+          statusBadge.style.background = 'var(--color-gray-100)';
+          statusBadge.style.color = 'var(--color-text-muted)';
+          statusText.textContent = 'Your profile is not yet published';
+        }
+
+        // Action buttons
+        let buttonsHtml = '';
+        if (profile.is_public && profile.slug) {
+          buttonsHtml = `
+            <a href="/members/${escapeHtml(profile.slug)}" target="_blank" class="btn btn-ghost btn-sm">View Live</a>
+            <a href="/member-profile?org=${orgId}" class="btn btn-primary btn-sm">Edit Profile</a>
+          `;
+        } else if (hasSubscription) {
+          buttonsHtml = `
+            <button onclick="toggleProfileVisibility('${orgId}', true)" class="btn btn-primary btn-sm">Publish</button>
+            <a href="/member-profile?org=${orgId}" class="btn btn-ghost btn-sm">Edit Profile</a>
+          `;
+        } else {
+          buttonsHtml = `
+            <a href="/membership#pricing" class="btn btn-primary btn-sm">Subscribe to Publish</a>
+            <a href="/member-profile?org=${orgId}" class="btn btn-ghost btn-sm">Edit Profile</a>
+          `;
+        }
+        actionButtons.innerHTML = buttonsHtml;
+
+      } catch (error) {
+        console.error('Error loading profile:', error);
+        container.innerHTML = `
+          <div class="card" style="padding: 40px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+            <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Unable to Load Profile</h3>
+            <p style="margin: 0 0 20px 0; color: var(--color-text-secondary);">There was a problem loading your profile</p>
+            <a href="/member-profile?org=${orgId}" class="btn btn-primary">Go to Profile</a>
           </div>
         `;
-      } else if (org.billing?.status === 'active') {
+        actionBar.style.display = 'none';
+      }
+    }
+
+    // Render the membership card
+    function renderMembershipCard(org, hasSubscription) {
+      const membershipCard = document.getElementById('membershipCard');
+      const membershipIcon = document.getElementById('membershipIcon');
+      const membershipTitle = document.getElementById('membershipTitle');
+      const membershipDescription = document.getElementById('membershipDescription');
+      const membershipBadge = document.getElementById('membershipBadge');
+      const membershipActions = document.getElementById('membershipActions');
+      const inlinePricingSection = document.getElementById('inlinePricingSection');
+
+      if (hasSubscription) {
+        // Show the membership card for subscribers (below profile card)
+        membershipCard.style.display = 'block';
+        inlinePricingSection.style.display = 'none';
+
+        const productName = org.billing.product_name || 'Founding Member';
         const renewalDate = org.billing.current_period_end
           ? new Date(org.billing.current_period_end * 1000).toLocaleDateString()
           : '';
-        const productName = org.billing.product_name || 'Subscription';
-        const cancelNote = org.billing.cancel_at_period_end
-          ? ' (cancels at period end)'
-          : '';
-        const memberSince = org.agreement_signed_at
-          ? new Date(org.agreement_signed_at).toLocaleDateString()
-          : '';
+        const cancelNote = org.billing.cancel_at_period_end ? ' (cancels at period end)' : '';
 
-        billingInfo = `
-          <div style="margin-top: 8px; padding: 10px; background: var(--color-info-50); border-left: 3px solid var(--color-success-600); border-radius: 4px;">
-            <div style="color: var(--color-success-600); font-weight: bold; margin-bottom: 4px;">✓ ${productName}</div>
-            ${memberSince ? `<small style="color: var(--color-text-secondary); display: block;">Member since: ${memberSince}</small>` : ''}
-            <small style="color: var(--color-text-secondary);">Renews: ${renewalDate}${cancelNote}</small>
-          </div>
-        `;
-      } else if (org.billing?.status === 'past_due') {
-        billingInfo = `
-          <div style="margin-top: 8px; padding: 10px; background: var(--color-warning-50); border-left: 3px solid var(--color-warning-500); border-radius: 4px;">
-            <div style="color: var(--color-warning-500); font-weight: bold;">⚠ Payment Past Due</div>
-            <small style="color: var(--color-text-secondary);">Please update your payment method</small>
-          </div>
-        `;
-      } else if (org.billing?.status === 'none') {
-        billingInfo = `
-          <div style="margin-top: 8px; padding: 10px; background: var(--color-bg-subtle); border-left: 3px solid var(--color-gray-400); border-radius: 4px;">
-            <div style="color: var(--color-text-secondary);">No Active Subscription</div>
-          </div>
+        membershipIcon.innerHTML = '✓';
+        membershipIcon.style.background = 'linear-gradient(135deg, var(--color-success-600) 0%, var(--color-success-500) 100%)';
+        membershipTitle.textContent = productName;
+        membershipDescription.textContent = renewalDate ? `Renews ${renewalDate}${cancelNote}` : 'Thank you for your support!';
+
+        membershipBadge.textContent = 'Active';
+        membershipBadge.style.display = 'inline-block';
+        membershipBadge.style.background = 'var(--color-success-100)';
+        membershipBadge.style.color = 'var(--color-success-700)';
+
+        membershipActions.innerHTML = `
+          <button onclick="openBillingPortal('${org.id}')" class="btn btn-secondary btn-sm">Manage Billing</button>
         `;
       } else {
-        billingInfo = `
-          <div style="margin-top: 8px; padding: 10px; background: var(--color-error-50); border-left: 3px solid var(--color-error-600); border-radius: 4px;">
-            <div style="color: var(--color-error-600); font-weight: bold;">Unexpected billing status: ${org.billing?.status || 'unknown'}</div>
-          </div>
-        `;
+        // Hide the small membership card and show inline pricing
+        membershipCard.style.display = 'none';
+        inlinePricingSection.style.display = 'block';
+
+        // Load the membership agreement into inline section
+        loadInlineMembershipAgreement();
+
+        // Create pricing table in inline container
+        createInlinePricingTable(org);
+
+        // Set up the agreement checkbox handler
+        setupInlineAgreementCheckbox();
+      }
+    }
+
+    // Load membership agreement into inline section
+    async function loadInlineMembershipAgreement() {
+      try {
+        const response = await fetch('/docs/membership-agreement.md');
+        const markdown = await response.text();
+        const renderedHtml = marked.parse(markdown);
+        document.getElementById('inlineAgreementContent').innerHTML = DOMPurify.sanitize(renderedHtml);
+      } catch (error) {
+        console.error('Error loading membership agreement:', error);
+        document.getElementById('inlineAgreementContent').innerHTML =
+          '<p style="color: var(--color-error-500);">Unable to load membership agreement. Please try again later.</p>';
+      }
+    }
+
+    // Create Stripe pricing table in inline container
+    function createInlinePricingTable(org) {
+      const container = document.getElementById('inlinePricingContainer');
+      if (!container) return;
+
+      container.innerHTML = '';
+
+      const pricingTableId = org.is_personal
+        ? '{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}'
+        : '{{STRIPE_PRICING_TABLE_ID}}';
+
+      const pricingTable = document.createElement('stripe-pricing-table');
+      pricingTable.setAttribute('pricing-table-id', pricingTableId);
+      pricingTable.setAttribute('publishable-key', '{{STRIPE_PUBLISHABLE_KEY}}');
+
+      if (org.customerSessionSecret) {
+        pricingTable.setAttribute('customer-session-client-secret', org.customerSessionSecret);
       }
 
-      // Show different UI for personal vs team workspaces
-      const isPersonal = org.is_personal || false;
-      const personalBadge = isPersonal
-        ? `<span style="display: inline-block; padding: 2px 8px; background: var(--color-info-100); color: var(--color-info-700); border-radius: 10px; font-size: 11px;">Personal</span>`
-        : `<span style="display: inline-block; padding: 2px 8px; background: var(--color-success-100); color: var(--color-success-700); border-radius: 10px; font-size: 11px;">Team</span>`;
+      container.appendChild(pricingTable);
+    }
 
-      // Subscription badge - shows AdCP membership status
-      const subscriptionBadge = org.billing?.status === 'active'
-        ? `<span style="display: inline-block; padding: 2px 8px; background: var(--color-primary-100); color: var(--color-success-800); border-radius: 10px; font-size: 11px;">✓ Subscribed</span>`
-        : '';
+    // Set up agreement checkbox handler for inline pricing
+    function setupInlineAgreementCheckbox() {
+      const checkbox = document.getElementById('inlineAgreementCheckbox');
+      const wrapper = document.getElementById('inlinePricingWrapper');
+      const warning = document.getElementById('inlineAgreementWarning');
 
-      // Update welcome header with org info
-      document.getElementById('orgName').textContent = org.name;
-      document.getElementById('orgBadge').innerHTML = personalBadge + ' ' + subscriptionBadge;
-      document.getElementById('orgRole').textContent = `Your role: ${org.role || 'member'}`;
+      if (!checkbox || !wrapper || !warning) return;
 
-      // Show edit button for owners and admins
-      const editBtn = document.getElementById('editOrgNameBtn');
-      if (org.role === 'owner' || org.role === 'admin') {
-        editBtn.style.display = 'inline-flex';
-      } else {
-        editBtn.style.display = 'none';
-      }
+      checkbox.addEventListener('change', function() {
+        if (this.checked) {
+          wrapper.style.opacity = '1';
+          wrapper.style.pointerEvents = 'auto';
+          warning.style.display = 'none';
+        } else {
+          wrapper.style.opacity = '0.5';
+          wrapper.style.pointerEvents = 'none';
+          warning.style.display = 'block';
+        }
+      });
+    }
 
-      // Render Billing Card
-      // Only show Manage Billing button if user has subscribed at least once (any status except 'none')
-      const hasEverSubscribed = org.billing?.status && org.billing.status !== 'none';
-      const billingDetailsDiv = document.getElementById('billingDetails');
-      billingDetailsDiv.innerHTML = `
-        ${billingInfo}
-        ${hasEverSubscribed ? `
-        <div style="margin-top: 15px;">
-          <button
-            onclick="openBillingPortal('${org.id}')"
-            class="btn btn-primary btn-block"
-          >
-            Manage Billing
-          </button>
-        </div>
-        ` : ''}
-      `;
-
-      // Render Team Card
-      const teamDetailsDiv = document.getElementById('teamDetails');
-      if (isPersonal) {
-        teamDetailsDiv.innerHTML = `
-          <div style="padding: 15px; background: var(--color-bg-subtle); border-radius: 8px; margin-bottom: 15px;">
-            <p style="margin: 0; color: var(--color-text-secondary); font-size: 14px;">Personal workspace - upgrade to team to invite members.</p>
-          </div>
-          <button
-            onclick="convertToTeam('${org.id}')"
-            class="btn btn-primary btn-block"
-            title="Convert to a team workspace to invite members"
-          >
-            Upgrade to Team
-          </button>
-        `;
-      } else {
-        // Load team members with avatars
-        loadTeamPreview(org.id);
-        teamDetailsDiv.innerHTML = `
-          <div id="teamMembersPreview" style="margin-bottom: 12px;">
-            <p style="color: var(--color-text-secondary); font-size: 13px;">Loading team...</p>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <a
-              href="/team?org=${org.id}&action=invite"
-              class="btn btn-primary btn-sm"
-              style="flex: 1;"
-            >
-              + Invite
-            </a>
-            <a
-              href="/team?org=${org.id}"
-              class="btn btn-ghost btn-sm"
-              style="flex: 1;"
-            >
-              Manage
-            </a>
-          </div>
-        `;
-      }
-
-      // Render Member Profile Card - always accessible for all users
-      const memberProfileDetailsDiv = document.getElementById('memberProfileDetails');
-      const memberProfileCard = document.getElementById('memberProfileCard');
-      const hasSubscription = org.billing?.status === 'active';
-
-      memberProfileCard.style.opacity = '1';
-      // Load member profile preview for everyone
-      loadMemberProfilePreview(org.id, hasSubscription);
-      memberProfileDetailsDiv.innerHTML = `
-        <div id="memberProfilePreview" style="min-height: 150px;">
-          <p style="color: var(--color-text-secondary); font-size: 14px;">Loading profile...</p>
-        </div>
-        <div id="memberProfileActions" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--color-border);"></div>
-      `;
-
-      // Load working groups for the user
-      loadWorkingGroups();
-
-      // Show/hide membership section based on this org's subscription status
-      const membershipSection = document.getElementById('membershipSection');
-
-      // Show membership section for any org without an active subscription
-      if (org.billing?.status !== 'active') {
-        membershipSection.style.display = 'block';
-
-        // Create pricing table (includes customer session if available for payment method pre-fill)
-        updatePricingTable(org);
-      } else {
-        membershipSection.style.display = 'none';
+    // Load team count for status card
+    async function loadTeamCount(orgId) {
+      try {
+        const response = await fetch(`/api/organizations/${orgId}/members`);
+        if (response.ok) {
+          const members = await response.json();
+          const count = members.length;
+          document.getElementById('teamStatus').textContent = count.toString();
+          document.getElementById('teamSubtext').textContent = count === 1 ? 'member' : 'members';
+        }
+      } catch (error) {
+        console.error('Error loading team count:', error);
+        document.getElementById('teamStatus').textContent = '--';
+        document.getElementById('teamSubtext').textContent = 'Unable to load';
       }
     }
 
@@ -568,6 +777,82 @@
       }
 
       container.appendChild(pricingTable);
+    }
+
+    // Load team section content
+    async function loadTeamSection(orgId) {
+      const container = document.getElementById('teamCardContent');
+      if (!container) return;
+
+      try {
+        const response = await fetch(`/api/organizations/${orgId}/members`);
+        if (!response.ok) throw new Error('Failed to load team');
+
+        const data = await response.json();
+        const members = data.members || [];
+
+        if (members.length === 0) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 20px;">
+              <div style="font-size: 32px; margin-bottom: 12px;">👥</div>
+              <p style="margin: 0 0 16px 0; color: var(--color-text-secondary);">No team members yet</p>
+              <a href="/team?org=${orgId}" class="btn btn-primary btn-sm">Invite Team Members</a>
+            </div>
+          `;
+          return;
+        }
+
+        // Render member list
+        const membersHtml = members.map((m, i) => {
+          let initials = '';
+          if (m.first_name && m.last_name) {
+            initials = m.first_name[0] + m.last_name[0];
+          } else if (m.first_name) {
+            initials = m.first_name.substring(0, 2);
+          } else if (m.email) {
+            initials = m.email.split('@')[0].substring(0, 2);
+          } else {
+            initials = '?';
+          }
+          const colors = ['var(--color-brand)', 'var(--color-primary-500)', 'var(--color-warning-500)', 'var(--color-error-500)', 'var(--color-primary-400)'];
+          const bgColor = colors[i % colors.length];
+          const name = m.first_name && m.last_name ? `${m.first_name} ${m.last_name}` : m.email || 'Unknown';
+          const role = m.role || 'Member';
+
+          return `
+            <div style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--color-border);">
+              <div style="width: 40px; height: 40px; border-radius: 50%; background: ${bgColor}; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-weight: 600; flex-shrink: 0;">
+                ${escapeHtml(initials.toUpperCase())}
+              </div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-weight: 500; color: var(--color-text-heading); font-size: 14px;">${escapeHtml(name)}</div>
+                <div style="color: var(--color-text-secondary); font-size: 12px;">${escapeHtml(role)}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        container.innerHTML = `
+          <div style="margin-bottom: 16px;">
+            ${membersHtml}
+          </div>
+          <a href="/team?org=${orgId}" class="btn btn-primary btn-sm" style="width: 100%;">Manage Team</a>
+        `;
+
+        // Remove border from last member item
+        const lastItem = container.querySelector('div > div:last-of-type');
+        if (lastItem) {
+          lastItem.style.borderBottom = 'none';
+        }
+
+      } catch (error) {
+        console.error('Error loading team section:', error);
+        container.innerHTML = `
+          <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">
+            Unable to load team. <a href="/team?org=${orgId}" style="color: var(--color-brand);">Go to Team page</a>
+          </div>
+        `;
+      }
     }
 
     // Load team preview with member avatars
@@ -634,23 +919,21 @@
       }
     }
 
-    // Load working groups for the current user
-    async function loadWorkingGroups() {
-      const detailsEl = document.getElementById('workingGroupsDetails');
-      if (!detailsEl) return;
+    // Load working groups section content
+    async function loadWorkingGroupsSection() {
+      const container = document.getElementById('workingGroupsCardContent');
+      if (!container) return;
 
       try {
         const response = await fetch('/api/me/working-groups', { credentials: 'include' });
 
         if (!response.ok) {
           if (response.status === 401) {
-            detailsEl.innerHTML = `
-              <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">
-                Log in to see your working groups.
-              </p>
-              <a href="/working-groups" class="btn btn-ghost btn-sm" style="width: 100%;">
-                Browse Groups
-              </a>
+            container.innerHTML = `
+              <div style="text-align: center; padding: 20px;">
+                <p style="color: var(--color-text-secondary); margin: 0 0 16px 0;">Log in to see your working groups.</p>
+                <a href="/working-groups" class="btn btn-primary btn-sm">Browse Groups</a>
+              </div>
             `;
             return;
           }
@@ -659,6 +942,98 @@
 
         const data = await response.json();
         const groups = data.working_groups || [];
+
+        if (groups.length === 0) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 20px;">
+              <div style="font-size: 32px; margin-bottom: 12px;">🏛️</div>
+              <p style="margin: 0 0 16px 0; color: var(--color-text-secondary);">You haven't joined any working groups yet.</p>
+              <a href="/working-groups" class="btn btn-primary btn-sm">Browse Working Groups</a>
+            </div>
+          `;
+          return;
+        }
+
+        // Render working groups list
+        const groupsHtml = groups.map(g => `
+          <a href="/working-groups/${escapeHtml(g.slug)}" style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--color-border); text-decoration: none; transition: opacity 0.15s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+            <div style="width: 40px; height: 40px; border-radius: 8px; background: ${g.is_private ? 'var(--color-warning-100)' : 'var(--color-primary-100)'}; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;">
+              ${g.is_private ? '🔒' : '🏛️'}
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-weight: 500; color: var(--color-text-heading); font-size: 14px;">${escapeHtml(g.name)}</div>
+              <div style="color: var(--color-text-secondary); font-size: 12px;">${g.is_private ? 'Private' : 'Public'} group</div>
+            </div>
+          </a>
+        `).join('');
+
+        container.innerHTML = `
+          <div style="margin-bottom: 16px;">
+            ${groupsHtml}
+          </div>
+          <a href="/working-groups" class="btn btn-ghost btn-sm" style="width: 100%;">Browse All Groups</a>
+        `;
+
+        // Remove border from last group item
+        const groupItems = container.querySelectorAll('a[href^="/working-groups/"]');
+        if (groupItems.length > 0) {
+          groupItems[groupItems.length - 1].style.borderBottom = 'none';
+        }
+
+      } catch (error) {
+        console.error('Error loading working groups section:', error);
+        container.innerHTML = `
+          <div style="text-align: center; padding: 20px; color: var(--color-text-secondary);">
+            Unable to load working groups. <a href="/working-groups" style="color: var(--color-brand);">Browse Groups</a>
+          </div>
+        `;
+      }
+    }
+
+    // Load working groups for the current user (legacy - kept for compatibility)
+    async function loadWorkingGroups() {
+      const detailsEl = document.getElementById('workingGroupsDetails');
+
+      // Update status card helpers
+      function updateStatusCard(count, subtext) {
+        const statusEl = document.getElementById('workingGroupStatus');
+        const subtextEl = document.getElementById('workingGroupSubtext');
+        if (statusEl) statusEl.textContent = count.toString();
+        if (subtextEl) subtextEl.textContent = subtext;
+      }
+
+      try {
+        const response = await fetch('/api/me/working-groups', { credentials: 'include' });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            updateStatusCard('0', 'Log in to join');
+            if (detailsEl) {
+              detailsEl.innerHTML = `
+                <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">
+                  Log in to see your working groups.
+                </p>
+                <a href="/working-groups" class="btn btn-ghost btn-sm" style="width: 100%;">
+                  Browse Groups
+                </a>
+              `;
+            }
+            return;
+          }
+          throw new Error('Failed to load working groups');
+        }
+
+        const data = await response.json();
+        const groups = data.working_groups || [];
+
+        // Update status card
+        if (groups.length === 0) {
+          updateStatusCard('0', 'Browse to join');
+        } else {
+          updateStatusCard(groups.length.toString(), groups.length === 1 ? 'group joined' : 'groups joined');
+        }
+
+        if (!detailsEl) return;
 
         if (groups.length === 0) {
           detailsEl.innerHTML = `
@@ -692,14 +1067,17 @@
         `;
       } catch (error) {
         console.error('Error loading working groups:', error);
-        detailsEl.innerHTML = `
-          <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">
-            Unable to load working groups.
-          </p>
-          <a href="/working-groups" class="btn btn-ghost btn-sm" style="width: 100%;">
-            Browse Groups
-          </a>
-        `;
+        updateStatusCard('--', 'Unable to load');
+        if (detailsEl) {
+          detailsEl.innerHTML = `
+            <p style="color: var(--color-text-secondary); font-size: 13px; margin-bottom: 12px;">
+              Unable to load working groups.
+            </p>
+            <a href="/working-groups" class="btn btn-ghost btn-sm" style="width: 100%;">
+              Browse Groups
+            </a>
+          `;
+        }
       }
     }
 
@@ -709,19 +1087,30 @@
       // Inject shared styles for member card
       injectMemberCardStyles();
 
+      // Helper to update profile status card
+      function updateProfileStatusCard(status, subtext) {
+        const statusEl = document.getElementById('profileStatus');
+        const subtextEl = document.getElementById('profileSubtext');
+        if (statusEl) statusEl.innerHTML = status;
+        if (subtextEl) subtextEl.textContent = subtext;
+      }
+
       try {
         const response = await fetch(`/api/me/member-profile?org=${orgId}`);
         const previewEl = document.getElementById('memberProfilePreview');
         const actionsContainer = document.getElementById('memberProfileActions');
 
         if (!response.ok || response.status === 404) {
+          // No profile - update status card
+          updateProfileStatusCard('Not Set', 'Create your profile');
+
           if (previewEl) {
             previewEl.innerHTML = `
-              <div style="text-align: center; padding: 30px 20px;">
-                <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
-                <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create Your Profile</h3>
-                <p style="margin: 0; color: var(--color-text-muted); font-size: 14px; max-width: 300px; margin: 0 auto;">
-                  Set up your member profile to build your presence in the ecosystem. Your profile will be published to the member directory when you subscribe as a member.
+              <div style="text-align: center; padding: 20px 16px;">
+                <div style="font-size: 32px; margin-bottom: 12px;">✨</div>
+                <h4 style="margin: 0 0 6px 0; color: var(--color-text-heading); font-size: 14px;">Create Your Profile</h4>
+                <p style="margin: 0; color: var(--color-text-muted); font-size: 12px;">
+                  Build your presence in the ecosystem
                 </p>
               </div>
             `;
@@ -730,7 +1119,7 @@
             actionsContainer.innerHTML = `
               <a
                 href="/member-profile?org=${orgId}"
-                style="display: block; text-align: center; padding: 12px 24px; background: var(--color-brand); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+                class="btn btn-primary btn-sm btn-block"
               >
                 Create Profile
               </a>
@@ -742,124 +1131,83 @@
         const data = await response.json();
         const profile = data.profile;
 
+        // Update profile status card based on profile state
+        if (profile) {
+          if (profile.is_public) {
+            updateProfileStatusCard('<span style="color: var(--color-success-600);">✓ Public</span>', 'Live in directory');
+          } else if (hasSubscription) {
+            updateProfileStatusCard('Draft', 'Ready to publish');
+          } else {
+            updateProfileStatusCard('Draft', 'Subscribe to publish');
+          }
+        } else {
+          updateProfileStatusCard('Not Set', 'Create your profile');
+        }
+
         if (previewEl && profile) {
           // Store profile data for use in action buttons
           window.currentMemberProfile = profile;
 
-          // Use shared renderMemberCard function with preview mode and visibility badge
-          // This creates a wrapper div, then extracts the inner content for our preview container
-          const cardHtml = renderMemberCard(profile, { isPreview: true, showVisibilityBadge: true });
+          // Compact profile preview for sidebar card
+          const logoHtml = profile.logo_url
+            ? `<img src="${escapeHtml(profile.logo_url)}" alt="" style="width: 48px; height: 48px; border-radius: 8px; object-fit: cover;">`
+            : `<div style="width: 48px; height: 48px; border-radius: 8px; background: var(--color-bg-subtle); display: flex; align-items: center; justify-content: center; font-size: 20px;">🏢</div>`;
 
-          // Render the card (skip outer div since our container provides that)
-          previewEl.innerHTML = cardHtml;
+          const statusBadge = profile.is_public
+            ? '<span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--color-success-100); color: var(--color-success-700); border-radius: 4px; font-size: 11px; font-weight: 500;">✓ Public</span>'
+            : '<span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--color-gray-100); color: var(--color-text-muted); border-radius: 4px; font-size: 11px; font-weight: 500;">Draft</span>';
 
-          // Add "preview" class to prevent hover effects
-          const card = previewEl.querySelector('.member-card');
-          if (card) {
-            card.classList.add('preview');
-            // Remove box-shadow since we're inside a card already
-            card.style.boxShadow = 'none';
-          }
+          const tagline = profile.tagline
+            ? `<p style="margin: 4px 0 0 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(profile.tagline)}</p>`
+            : '';
 
-          // Update action buttons in footer section (separate from the card)
-          // Note: Website/LinkedIn links are already shown in the member card footer, so we only show action buttons here
+          previewEl.innerHTML = `
+            <div style="display: flex; gap: 12px; align-items: start;">
+              ${logoHtml}
+              <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span style="font-weight: 600; font-size: 14px; color: var(--color-text-heading);">${escapeHtml(profile.name || 'Unnamed')}</span>
+                  ${statusBadge}
+                </div>
+                ${tagline}
+              </div>
+            </div>
+          `;
+
+          // Compact action buttons
           if (actionsContainer) {
-            actionsContainer.style.cssText = 'padding: 1rem 0 0 0; background: transparent; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--color-gray-100); margin-top: 0;';
-
-            // Build visibility status/action on left
-            let visibilitySection = '';
-            if (profile.is_public) {
-              visibilitySection = `
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: var(--color-primary-100); color: var(--color-brand); border-radius: 4px; font-size: 12px; font-weight: 500;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>
-                    Public
-                  </span>
-                  <button
-                    onclick="toggleProfileVisibility('${orgId}', false)"
-                    class="btn btn-ghost btn-sm"
-                  >
-                    Unpublish
-                  </button>
+            let actionHtml = '';
+            if (profile.is_public && profile.slug) {
+              actionHtml = `
+                <div style="display: flex; gap: 8px;">
+                  <a href="/members/${escapeHtml(profile.slug)}" target="_blank" class="btn btn-ghost btn-sm" style="flex: 1;">View Live</a>
+                  <a href="/member-profile?org=${orgId}" class="btn btn-primary btn-sm" style="flex: 1;">Edit</a>
                 </div>
               `;
             } else if (hasSubscription) {
-              // Has subscription but not public - can make public
-              visibilitySection = `
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: var(--color-gray-100); color: var(--color-text-muted); border-radius: 4px; font-size: 12px; font-weight: 500;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    Draft
-                  </span>
-                  <button
-                    onclick="toggleProfileVisibility('${orgId}', true)"
-                    class="btn btn-primary btn-sm"
-                  >
-                    Make Public
-                  </button>
-                </div>
-              `;
-            } else {
-              // No subscription - show upgrade prompt
-              visibilitySection = `
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: var(--color-gray-100); color: var(--color-text-muted); border-radius: 4px; font-size: 12px; font-weight: 500;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    Draft
-                  </span>
-                  <button
-                    onclick="scrollToMembership()"
-                    class="btn btn-primary btn-sm"
-                    title="Membership required to publish"
-                  >
-                    🔒 Publish
-                  </button>
-                </div>
-              `;
-            }
-
-            // Build edit/view buttons on right
-            let editButtons = '';
-            if (profile.is_public && profile.slug) {
-              editButtons = `
+              actionHtml = `
                 <div style="display: flex; gap: 8px;">
-                  <a
-                    href="/members/${profile.slug}"
-                    target="_blank"
-                    style="padding: 8px 16px; background: white; color: var(--color-text-heading); border: 1px solid var(--color-border); border-radius: 6px; text-decoration: none; font-size: 14px;"
-                  >
-                    View Live
-                  </a>
-                  <a
-                    href="/member-profile?org=${orgId}"
-                    style="padding: 8px 16px; background: var(--color-brand); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
-                  >
-                    Edit
-                  </a>
+                  <button onclick="toggleProfileVisibility('${orgId}', true)" class="btn btn-primary btn-sm" style="flex: 1;">Publish</button>
+                  <a href="/member-profile?org=${orgId}" class="btn btn-ghost btn-sm" style="flex: 1;">Edit</a>
                 </div>
               `;
             } else {
-              editButtons = `
-                <a
-                  href="/member-profile?org=${orgId}"
-                  style="padding: 8px 16px; background: var(--color-brand); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
-                >
-                  Edit
-                </a>
+              actionHtml = `
+                <div style="display: flex; gap: 8px;">
+                  <a href="/membership#pricing" class="btn btn-primary btn-sm" style="flex: 1;">🔒 Publish</a>
+                  <a href="/member-profile?org=${orgId}" class="btn btn-ghost btn-sm" style="flex: 1;">Edit</a>
+                </div>
               `;
             }
-
-            actionsContainer.innerHTML = visibilitySection + editButtons;
+            actionsContainer.innerHTML = actionHtml;
           }
         } else if (previewEl) {
-          // No profile exists - show "Create Your Profile" UI
+          // No profile exists - show compact "Create Your Profile" UI
           previewEl.innerHTML = `
-            <div style="text-align: center; padding: 30px 20px;">
-              <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
-              <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create Your Profile</h3>
-              <p style="margin: 0; color: var(--color-text-muted); font-size: 14px; max-width: 300px; margin: 0 auto;">
-                Set up your member profile to build your presence in the ecosystem. Your profile will be published to the member directory when you subscribe as a member.
-              </p>
+            <div style="text-align: center; padding: 16px;">
+              <div style="font-size: 32px; margin-bottom: 8px;">✨</div>
+              <h4 style="margin: 0 0 4px 0; color: var(--color-text-heading); font-size: 14px;">Create Your Profile</h4>
+              <p style="margin: 0; color: var(--color-text-muted); font-size: 12px;">Build your presence in the ecosystem</p>
             </div>
           `;
           if (actionsContainer) {
@@ -958,107 +1306,6 @@
       }
     }
 
-    // Load and display user's agreements (compact view)
-    // Only shown for subscribers - non-subscribers see inline agreement in membership section
-    async function loadMyAgreements() {
-      const section = document.getElementById('agreementsSection');
-      const agreementsCard = document.getElementById('agreementsCard');
-
-      // Only show agreements card for subscribers of the CURRENT org
-      if (!currentOrgHasActiveSubscription()) {
-        if (agreementsCard) agreementsCard.style.display = 'none';
-        return;
-      }
-
-      // Show the card for subscribers
-      if (agreementsCard) agreementsCard.style.display = 'block';
-
-      try {
-        const response = await fetch('/api/me/agreements');
-        if (!response.ok) throw new Error('Failed to load agreements');
-
-        const data = await response.json();
-        const agreements = data.agreements || [];
-
-        if (agreements.length === 0) {
-          section.innerHTML = '<p style="color: var(--color-gray-400); font-size: 12px;">No agreements.</p>';
-          return;
-        }
-
-        section.innerHTML = agreements.map(agreement => {
-          const isSigned = !!agreement.version;
-          const isOutdated = agreement.is_outdated;
-
-          // Escape values that will be used in onclick handlers
-          const escapedType = escapeHtml(agreement.type).replace(/'/g, '\\\'');
-          const escapedCurrentVersion = escapeHtml(agreement.current_version || '').replace(/'/g, '\\\'');
-          const escapedVersion = escapeHtml(agreement.version || '').replace(/'/g, '\\\'');
-
-          // Missing/unsigned = red, outdated = orange, current = green
-          let statusDot, statusText, actionButton;
-          if (!isSigned) {
-            statusDot = '<span style="width: 6px; height: 6px; background: var(--color-error-500); border-radius: 50%; display: inline-block;"></span>';
-            statusText = '<span style="color: var(--color-error-500); font-size: 10px; font-weight: 500;">Required</span>';
-            actionButton = `<button onclick="viewAgreementForAcceptance('${escapedType}', '${escapedCurrentVersion}')"
-                      class="btn btn-danger btn-sm">
-                Sign
-              </button>`;
-          } else if (isOutdated) {
-            statusDot = '<span style="width: 6px; height: 6px; background: var(--color-warning-500); border-radius: 50%; display: inline-block;"></span>';
-            statusText = '';
-            actionButton = `
-              <div style="display: flex; gap: 4px;">
-                <button onclick="viewAgreement('${escapedType}', '${escapedVersion}')"
-                        style="padding: 4px 8px; background: transparent; color: var(--color-brand); border: none; font-size: 12px; cursor: pointer; text-decoration: underline;">
-                  View
-                </button>
-                <button onclick="copyAgreementLink('${escapedType}')" title="Copy link to share"
-                        style="padding: 4px 6px; background: transparent; color: var(--color-text-muted); border: none; font-size: 12px; cursor: pointer;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                </button>
-              </div>`;
-          } else {
-            statusDot = '<span style="width: 6px; height: 6px; background: var(--color-brand); border-radius: 50%; display: inline-block;"></span>';
-            statusText = '';
-            actionButton = `
-              <div style="display: flex; gap: 4px;">
-                <button onclick="viewAgreement('${escapedType}', '${escapedVersion}')"
-                        style="padding: 4px 8px; background: transparent; color: var(--color-brand); border: none; font-size: 12px; cursor: pointer; text-decoration: underline;">
-                  View
-                </button>
-                <button onclick="copyAgreementLink('${escapedType}')" title="Copy link to share"
-                        style="padding: 4px 6px; background: transparent; color: var(--color-text-muted); border: none; font-size: 12px; cursor: pointer;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                </button>
-              </div>`;
-          }
-
-          return `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-border);">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                ${statusDot}
-                <span style="color: var(--color-text-heading); font-size: 13px;">${escapeHtml(formatAgreementType(agreement.type))}</span>
-                ${statusText}
-              </div>
-              ${actionButton}
-            </div>
-          `;
-        }).join('');
-
-        // Note: We don't auto-popup membership agreements anymore
-        // Users accept them inline when choosing a plan, which is less intrusive
-      } catch (error) {
-        console.error('Error loading agreements:', error);
-        section.innerHTML = '<p style="color: var(--color-error-500); font-size: 12px;">Failed to load.</p>';
-      }
-    }
-
     // Handle agreement checkbox change
     // Note: Agreement acceptance is recorded in Stripe webhook when subscription succeeds
     // This just enables/disables the pricing table UI
@@ -1152,7 +1399,7 @@
 
     async function loadUserData() {
       try {
-        const response = await fetch('/api/me');
+        const response = await fetch(apiUrl('/api/me'));
         if (!response.ok) {
           if (response.status === 401) {
             const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
@@ -1173,7 +1420,7 @@
           const orgsWithBilling = await Promise.all(
             data.organizations.map(async (org) => {
               try {
-                const billingResponse = await fetch(`/api/organizations/${org.id}/billing`);
+                const billingResponse = await fetch(apiUrl(`/api/organizations/${org.id}/billing`));
                 if (billingResponse.ok) {
                   const billingData = await billingResponse.json();
                   return {
@@ -1234,7 +1481,9 @@
           const selectedOrg = orgsWithBilling.find(o => o.id === selectedOrgId) || orgsWithBilling[0];
           DashboardNav.init({
             showOrgSwitcher: hasMultipleOrgs,
-            currentOrgName: selectedOrg?.name || 'Dashboard',
+            currentOrgName: selectedOrg?.name || 'Organization',
+            isPersonal: selectedOrg?.billing?.is_personal || false,
+            isSubscribed: selectedOrg?.billing?.status === 'active',
             showAdmin: isAdmin
           });
 
@@ -1251,9 +1500,6 @@
           // Load membership agreement if needed for any org
           await loadMembershipAgreement();
           setupAgreementCheckbox();
-
-          // Load user's signed agreements (only shown for subscribers)
-          await loadMyAgreements();
 
           // Check if membership agreement already accepted - if so, enable pricing table
           await checkMembershipAgreementStatus();
@@ -1634,8 +1880,6 @@
           }
         }
 
-        // Reload agreements list to update UI
-        await loadMyAgreements();
       } catch (error) {
         console.error('Error accepting agreement:', error);
         alert('Failed to accept agreement: ' + error.message);

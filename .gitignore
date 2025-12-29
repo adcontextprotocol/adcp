@@ -36,3 +36,4 @@ coverage/
 
 # Stripe webhook secret (dynamically generated)
 .stripe-webhook-secret
+test-results/
