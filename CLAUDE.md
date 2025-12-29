@@ -997,6 +997,85 @@ When setting up a new environment, configure each Slack app's Event Subscription
 
 **Important:** Each app must have its own signing secret. Never share signing secrets between apps.
 
+### Dev Mode Testing (Cookie-Based Sessions)
+
+**CRITICAL SECURITY NOTE**: Dev mode ONLY works when `DEV_USER_EMAIL` and `DEV_USER_ID` are set in `.env.local`. This bypasses authentication for local testing and must NEVER be enabled in production.
+
+**How to Enable Dev Mode:**
+
+Add these to your `.env.local`:
+```bash
+DEV_USER_EMAIL=dev@example.com
+DEV_USER_ID=dev-user-123
+```
+
+**Test Users:**
+
+Dev mode provides three test users to simulate different dashboard states:
+
+| User | Cookie Value | Description |
+|------|--------------|-------------|
+| Admin | `admin` | Full admin access, active subscriber |
+| Member | `member` | Regular member, active subscriber |
+| Visitor | `nonmember` | Non-subscriber, sees pricing prompts |
+
+**How to Use Dev Login:**
+
+1. **Dev Login Page** (easiest for browser testing):
+   - Navigate to any protected page (e.g., `/dashboard`)
+   - You'll be redirected to `/dev-login.html`
+   - Click one of the three user cards to log in
+   - You'll be redirected back to your original destination
+
+2. **Direct URL:**
+   ```
+   http://localhost:3000/dev-login.html
+   ```
+
+3. **API Testing with curl:**
+   ```bash
+   # Login and save cookie
+   curl -X POST http://localhost:3000/auth/dev-login \
+     -H "Content-Type: application/json" \
+     -H "Origin: http://localhost:3000" \
+     -d '{"user": "admin"}' \
+     -c /tmp/cookies.txt
+
+   # Use cookie for API requests
+   curl http://localhost:3000/api/organizations -b /tmp/cookies.txt
+   ```
+
+**Logout:**
+
+- Navigate to `/auth/logout` to clear your dev session
+- You'll be redirected to the homepage
+- Access any protected page to log in again as a different user
+
+**What Each User Sees:**
+
+- **Admin** (subscriber + admin):
+  - Full dashboard features
+  - Admin sidebar links visible
+  - Can access `/admin/*` pages
+
+- **Member** (subscriber):
+  - Full dashboard features
+  - Cannot access admin pages (gets 403)
+
+- **Visitor** (non-subscriber):
+  - Inline pricing section prompting membership
+  - Limited features until they subscribe
+
+**Security Safeguards:**
+
+The dev mode system has multiple layers of protection:
+1. Environment variables must be explicitly set
+2. Dev login only works from localhost (host header validation)
+3. CSRF protection via origin header check
+4. `return_to` parameter validated to prevent open redirects
+5. In production (without env vars), all dev overrides are ignored
+6. The auth middleware validates dev mode status on every request
+
 ## Code Standards
 
 ### TypeScript/JavaScript

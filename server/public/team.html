@@ -258,6 +258,11 @@
       color: var(--color-warning-700);
       margin: 0;
     }
+    /* Override dashboard-nav's container reset to keep content properly sized */
+    .dashboard-main .container {
+      max-width: var(--container-lg) !important;
+      margin: var(--space-6) auto !important;
+    }
     /* Domain verification section */
     .domain-section {
       margin-top: var(--space-4);
@@ -280,6 +285,7 @@
   <!-- Shared Navigation -->
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
+  <script src="/dashboard-nav.js"></script>
 
   <!-- Invite Modal -->
   <div id="inviteModal" class="modal-overlay">
@@ -474,6 +480,7 @@
 
         const data = await response.json();
         currentUser = data.user;
+        const isAdmin = currentUser?.isAdmin || false;
 
         // Populate organization dropdown
         const orgSelect = document.getElementById('orgSelect');
@@ -497,6 +504,33 @@
           }
 
           document.getElementById('loading').style.display = 'none';
+
+          // Get first org name and check subscription for sidebar
+          const firstOrg = data.organizations[0];
+          let isSubscribed = false;
+
+          // Fetch billing info for subscription status
+          try {
+            const billingResponse = await fetch(`/api/billing?org=${firstOrg.id}`, { credentials: 'include' });
+            if (billingResponse.ok) {
+              const billingData = await billingResponse.json();
+              isSubscribed = billingData.subscription?.status === 'active' ||
+                            billingData.subscription?.status === 'trialing';
+            }
+          } catch (e) {
+            console.error('Failed to fetch billing info:', e);
+          }
+
+          // Initialize dashboard sidebar
+          if (typeof DashboardNav !== 'undefined') {
+            DashboardNav.init({
+              showOrgSwitcher: false,
+              currentOrgName: firstOrg.name || 'Organization',
+              isPersonal: false,
+              isSubscribed: isSubscribed,
+              showAdmin: isAdmin
+            });
+          }
 
           if (orgSelect.value) {
             loadTeamMembers();
