@@ -56,7 +56,7 @@ export class AddieClaudeClient {
   private readonly CACHE_TTL_MS = 300000; // Cache rules for 5 minutes (rules change rarely)
   private webSearchEnabled: boolean = true; // Enable web search for external questions
 
-  constructor(apiKey: string, model: string = 'claude-sonnet-4-20250514') {
+  constructor(apiKey: string, model: string = 'claude-sonnet-4-5') {
     this.client = new Anthropic({ apiKey });
     this.model = model;
     this.addieDb = new AddieDatabase();
