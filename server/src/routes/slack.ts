@@ -1,13 +1,12 @@
 /**
  * Slack public routes module
  *
- * Handles public Slack webhook endpoints:
- * - Slash commands
- * - Events API (for both main AAO bot and Addie)
+ * Handles public Slack webhook endpoints for both Slack apps.
+ * All routes are mounted under /api/slack/ for consistency.
  *
  * Note: There are TWO separate Slack apps:
- * 1. AgenticAdvertising.org Bot - uses SLACK_SIGNING_SECRET
- * 2. Addie AI Assistant - uses ADDIE_SIGNING_SECRET
+ * 1. AgenticAdvertising.org Bot - /api/slack/aaobot/*
+ * 2. Addie AI Assistant - /api/slack/addie/*
  */
 
 import { Router } from 'express';
@@ -26,18 +25,18 @@ const logger = createLogger('slack-routes');
 
 /**
  * Create public Slack routes
- * Returns a router to be mounted at /api/slack and /api/addie/slack
+ * Returns a router to be mounted at /api/slack with sub-routers for each bot
  */
-export function createSlackRouter(): { mainRouter: Router; addieRouter: Router } {
-  const mainRouter = Router();
+export function createSlackRouter(): { aaobotRouter: Router; addieRouter: Router } {
+  const aaobotRouter = Router();
   const addieRouter = Router();
 
   // =========================================================================
-  // MAIN AAO BOT ROUTES (mounted at /api/slack)
+  // MAIN AAO BOT ROUTES (mounted at /api/slack/aaobot)
   // =========================================================================
 
-  // POST /api/slack/commands - Handle Slack slash commands
-  mainRouter.post(
+  // POST /api/slack/aaobot/commands - Handle Slack slash commands
+  aaobotRouter.post(
     '/commands',
     slackUrlencodedParser(),
     createSlackSignatureVerifier(process.env.SLACK_SIGNING_SECRET, 'AAO Bot'),
@@ -66,8 +65,8 @@ export function createSlackRouter(): { mainRouter: Router; addieRouter: Router }
     }
   );
 
-  // POST /api/slack/events - Handle Slack Events API for main AAO bot
-  mainRouter.post(
+  // POST /api/slack/aaobot/events - Handle Slack Events API for main AAO bot
+  aaobotRouter.post(
     '/events',
     slackJsonParser(),
     async (req, res) => {
@@ -108,10 +107,10 @@ export function createSlackRouter(): { mainRouter: Router; addieRouter: Router }
   );
 
   // =========================================================================
-  // ADDIE AI ASSISTANT ROUTES (mounted at /api/addie/slack)
+  // ADDIE AI ASSISTANT ROUTES (mounted at /api/slack/addie)
   // =========================================================================
 
-  // POST /api/addie/slack/events - Handle Slack Events API for Addie
+  // POST /api/slack/addie/events - Handle Slack Events API for Addie
   addieRouter.post(
     '/events',
     slackJsonParser(),
@@ -152,5 +151,5 @@ export function createSlackRouter(): { mainRouter: Router; addieRouter: Router }
     }
   );
 
-  return { mainRouter, addieRouter };
+  return { aaobotRouter, addieRouter };
 }

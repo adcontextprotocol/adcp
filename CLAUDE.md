@@ -970,17 +970,18 @@ Key environment variables for local development:
 
 ### Slack Apps - IMPORTANT
 
-**This project has TWO separate Slack apps** with independent credentials:
+**This project has TWO separate Slack apps** with independent credentials.
+All Slack endpoints are grouped under `/api/slack/` for consistency.
 
 1. **AgenticAdvertising.org Bot** (main workspace bot)
    - Environment variables: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`
-   - Event endpoint: `/api/slack/events`
-   - Commands endpoint: `/api/slack/commands`
+   - Event endpoint: `/api/slack/aaobot/events`
+   - Commands endpoint: `/api/slack/aaobot/commands`
    - Used for: Member sync, working group notifications, general workspace automation
 
 2. **Addie AI Assistant** (AI assistant)
    - Environment variables: `ADDIE_BOT_TOKEN` (falls back to `SLACK_BOT_TOKEN`), `ADDIE_SIGNING_SECRET`
-   - Event endpoint: `/api/addie/slack/events`
+   - Event endpoint: `/api/slack/addie/events`
    - Used for: AI-powered chat assistant, Slack assistant threads, DMs to Addie
 
 **Why separate apps?**
@@ -991,8 +992,8 @@ Key environment variables for local development:
 
 **Slack App Configuration:**
 When setting up a new environment, configure each Slack app's Event Subscriptions Request URL:
-- Main bot: `https://your-domain/api/slack/events`
-- Addie: `https://your-domain/api/addie/slack/events`
+- AAO bot: `https://your-domain/api/slack/aaobot/events`
+- Addie: `https://your-domain/api/slack/addie/events`
 
 **Important:** Each app must have its own signing secret. Never share signing secrets between apps.
 

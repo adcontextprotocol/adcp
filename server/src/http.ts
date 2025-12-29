@@ -294,9 +294,10 @@ export class HTTPServer {
     this.app.use('/api/addie/chat', chatApiRouter);     // API routes: /api/addie/chat
 
     // Mount Slack routes (public webhook endpoints)
-    const { mainRouter: slackMainRouter, addieRouter: slackAddieRouter } = createSlackRouter();
-    this.app.use('/api/slack', slackMainRouter);        // Main AAO bot: /api/slack/commands, /api/slack/events
-    this.app.use('/api/addie/slack', slackAddieRouter); // Addie bot: /api/addie/slack/events
+    // All Slack routes under /api/slack/ for consistency
+    const { aaobotRouter, addieRouter: slackAddieRouter } = createSlackRouter();
+    this.app.use('/api/slack/aaobot', aaobotRouter);    // AAO bot: /api/slack/aaobot/commands, /api/slack/aaobot/events
+    this.app.use('/api/slack/addie', slackAddieRouter); // Addie bot: /api/slack/addie/events
 
     // Mount admin Slack and Email routes
     const adminSlackRouter = createAdminSlackRouter();

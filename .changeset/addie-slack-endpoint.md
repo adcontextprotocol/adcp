@@ -1,9 +1,16 @@
 ---
 ---
 
-Server-only changes: Add Addie Slack endpoint and refactor route structure.
+Server-only changes: Refactor Slack endpoints with consistent URL structure.
 
-- Add separate Slack events endpoint for Addie AI (`/api/addie/slack/events`)
+**BREAKING CHANGE:** Slack endpoint URLs changed:
+- AAO bot: `/api/slack/events` → `/api/slack/aaobot/events`
+- AAO bot: `/api/slack/commands` → `/api/slack/aaobot/commands`
+- Addie: Added `/api/slack/addie/events`
+
+Update Slack app Event Subscription URLs in production.
+
+Also:
 - Extract Slack middleware to `server/src/middleware/slack.ts`
 - Extract public Slack routes to `server/src/routes/slack.ts`
 - Extract admin Slack routes to `server/src/routes/admin/slack.ts`
