@@ -26,7 +26,11 @@ import { MemberDatabase } from "./db/member-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
-import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "./slack/sync.js";
+import { syncSlackUsers, getSyncStatus, syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "./slack/sync.js";
+import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
+import { handleSlashCommand } from "./slack/commands.js";
+import { verifySlackSignature, isSlackSigningConfigured, isAddieSigningConfigured } from "./slack/verify.js";
+import { handleSlackEvent } from "./slack/events.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, createRequireWorkingGroupLeader, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
@@ -41,9 +45,16 @@ import {
   notifyWorkingGroupPost,
 } from "./notifications/slack.js";
 import { createAdminRouter } from "./routes/admin.js";
-import { createSlackRouter, invalidateUnifiedUsersCache } from "./routes/slack.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
+import { createSlackRouter } from "./routes/slack.js";
+import { createAdminSlackRouter, createAdminEmailRouter } from "./routes/admin/index.js";
+import {
+  getUnifiedUsersCache,
+  setUnifiedUsersCache,
+  invalidateUnifiedUsersCache,
+  type WorkOSUserInfo,
+} from "./cache/unified-users.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 
@@ -158,7 +169,7 @@ function setCachedUser(userId: string, displayName: string): void {
   });
 }
 
-// Note: Unified users cache for admin users page has been moved to routes/slack.ts
+// Cache for unified users endpoint moved to ./cache/unified-users.ts
 
 export class HTTPServer {
   private app: express.Application;
@@ -215,7 +226,8 @@ export class HTTPServer {
       // - Slack events: need raw body for Slack signature verification (JSON)
       if (req.path === '/api/webhooks/stripe' ||
           req.path === '/api/slack/commands' ||
-          req.path === '/api/slack/events') {
+          req.path === '/api/slack/events' ||
+          req.path === '/api/addie/slack/events') {
         next();
       } else {
         express.json({ limit: '10mb' })(req, res, next);
@@ -277,11 +289,6 @@ export class HTTPServer {
     this.app.use('/admin', pageRouter);      // Page routes: /admin/prospects
     this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/prospects
 
-    // Mount Slack routes
-    const { adminRouter: slackAdminRouter, publicRouter: slackPublicRouter } = createSlackRouter();
-    this.app.use('/api/admin/slack', slackAdminRouter);  // Admin routes: /api/admin/slack/*
-    this.app.use('/api/slack', slackPublicRouter);       // Public routes: /api/slack/*
-
     // Mount Addie admin routes
     const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
     this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
@@ -291,6 +298,18 @@ export class HTTPServer {
     const { pageRouter: chatPageRouter, apiRouter: chatApiRouter } = createAddieChatRouter();
     this.app.use('/chat', chatPageRouter);              // Page routes: /chat
     this.app.use('/api/addie/chat', chatApiRouter);     // API routes: /api/addie/chat
+
+    // Mount Slack routes (public webhook endpoints)
+    // All Slack routes under /api/slack/ for consistency
+    const { aaobotRouter, addieRouter: slackAddieRouter } = createSlackRouter();
+    this.app.use('/api/slack/aaobot', aaobotRouter);    // AAO bot: /api/slack/aaobot/commands, /api/slack/aaobot/events
+    this.app.use('/api/slack/addie', slackAddieRouter); // Addie bot: /api/slack/addie/events
+
+    // Mount admin Slack and Email routes
+    const adminSlackRouter = createAdminSlackRouter();
+    this.app.use('/api/admin/slack', adminSlackRouter); // Admin Slack: /api/admin/slack/*
+    const adminEmailRouter = createAdminEmailRouter();
+    this.app.use('/api/admin/email', adminEmailRouter); // Admin Email: /api/admin/email/*
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
@@ -10055,6 +10074,64 @@ Disallow: /api/admin/
 
     // Note: Slack Public routes have been moved to routes/slack.ts
     // Routes: POST /api/slack/commands, /api/slack/events
+
+    // POST /api/addie/slack/events - Handle Slack Events API for Addie (separate Slack app)
+    // Uses ADDIE_SIGNING_SECRET for verification (separate from main AAO bot)
+    this.app.post('/api/addie/slack/events', express.json({
+      verify: (req, _res, buf) => {
+        // Store raw body on request for signature verification
+        (req as any).rawBody = buf.toString('utf8');
+      }
+    }), async (req, res) => {
+      try {
+        // Handle URL verification challenge
+        if (req.body.type === 'url_verification') {
+          return res.json({ challenge: req.body.challenge });
+        }
+
+        // Verify the request is from Slack using Addie's signing secret
+        if (isAddieSigningConfigured()) {
+          const signature = req.headers['x-slack-signature'] as string;
+          const timestamp = req.headers['x-slack-request-timestamp'] as string;
+
+          if (!signature || !timestamp) {
+            logger.warn('Missing Slack signature headers for Addie');
+            return res.status(401).json({ error: 'Missing signature headers' });
+          }
+
+          // Use the raw body captured by the verify callback
+          const rawBody = (req as any).rawBody;
+          if (!rawBody) {
+            logger.warn('Raw body not captured for Addie Slack signature verification');
+            return res.status(500).json({ error: 'Internal error' });
+          }
+
+          const isValid = verifySlackSignature(
+            process.env.ADDIE_SIGNING_SECRET || '',
+            signature,
+            timestamp,
+            rawBody
+          );
+
+          if (!isValid) {
+            logger.warn('Invalid Slack signature for Addie event');
+            return res.status(401).json({ error: 'Invalid signature' });
+          }
+        }
+
+        // Handle events asynchronously (don't block response)
+        // Slack requires response within 3 seconds
+        handleSlackEvent(req.body).catch(err => {
+          logger.error({ err }, 'Error handling Addie Slack event');
+        });
+
+        // Always respond with 200 immediately to acknowledge receipt
+        res.status(200).send();
+      } catch (error) {
+        logger.error({ err: error }, 'Addie Slack event error');
+        res.status(500).json({ error: 'Internal error' });
+      }
+    });
 
     // Utility: Check slug availability
     this.app.get('/api/members/check-slug/:slug', async (req, res) => {

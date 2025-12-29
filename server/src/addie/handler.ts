@@ -301,7 +301,7 @@ async function setAssistantSuggestedPrompts(
   channelId: string,
   prompts: SuggestedPrompt[]
 ): Promise<void> {
-  const token = process.env.ADDIE_SLACK_BOT_TOKEN || process.env.SLACK_BOT_TOKEN;
+  const token = process.env.ADDIE_BOT_TOKEN || process.env.SLACK_BOT_TOKEN;
   if (!token) return;
 
   const response = await fetch('https://slack.com/api/assistant.threads.setSuggestedPrompts', {
@@ -327,7 +327,7 @@ async function setAssistantSuggestedPrompts(
  * Uses Slack's assistant.threads.setStatus API
  */
 async function setAssistantStatus(channelId: string, status: string): Promise<void> {
-  const token = process.env.ADDIE_SLACK_BOT_TOKEN || process.env.SLACK_BOT_TOKEN;
+  const token = process.env.ADDIE_BOT_TOKEN || process.env.SLACK_BOT_TOKEN;
   if (!token) return;
 
   const response = await fetch('https://slack.com/api/assistant.threads.setStatus', {
