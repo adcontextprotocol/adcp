@@ -115,8 +115,8 @@ export function validateOutput(text: string): ValidationResult {
     }
   }
 
-  // Truncate very long outputs
-  const MAX_OUTPUT_LENGTH = 3000;
+  // Truncate very long outputs (increased to 10000 to support web search responses)
+  const MAX_OUTPUT_LENGTH = 10000;
   let sanitized = text;
   if (text.length > MAX_OUTPUT_LENGTH) {
     sanitized = text.substring(0, MAX_OUTPUT_LENGTH) + '\n\n_[Response truncated]_';

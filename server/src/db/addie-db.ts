@@ -87,6 +87,56 @@ export interface AddieInteractionStats {
   avg_latency_ms: number;
 }
 
+// ============== Web Conversation Types ==============
+
+export interface WebConversationSummary {
+  conversation_id: string;
+  user_id: string | null;
+  user_name: string | null;
+  channel: string;
+  message_count: number;
+  last_message_at: Date;
+  created_at: Date;
+  // Summary of first message
+  first_message_preview: string | null;
+  // Indicates if there were tool uses
+  has_tool_uses: boolean;
+}
+
+export interface WebConversationMessage {
+  id: number;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  tool_use: string[] | null;
+  tool_results: unknown[] | null;
+  tokens_input: number | null;
+  tokens_output: number | null;
+  model: string | null;
+  latency_ms: number | null;
+  created_at: Date;
+}
+
+export interface WebConversationDetail {
+  conversation_id: string;
+  user_id: string | null;
+  user_name: string | null;
+  channel: string;
+  message_count: number;
+  metadata: Record<string, unknown> | null;
+  created_at: Date;
+  last_message_at: Date;
+  messages: WebConversationMessage[];
+}
+
+export interface WebConversationStats {
+  total_conversations: number;
+  total_messages: number;
+  avg_messages_per_conversation: number;
+  conversations_last_24h: number;
+  avg_latency_ms: number;
+  tool_usage: Record<string, number>;
+}
+
 // ============== Rules Types ==============
 
 export type RuleType = 'system_prompt' | 'behavior' | 'knowledge' | 'constraint' | 'response_style';
@@ -121,8 +171,9 @@ export interface AddieRuleInput {
 
 // ============== Suggestions Types ==============
 
-export type SuggestionType = 'new_rule' | 'modify_rule' | 'disable_rule' | 'merge_rules' | 'experiment';
+export type SuggestionType = 'new_rule' | 'modify_rule' | 'disable_rule' | 'merge_rules' | 'experiment' | 'publish_content';
 export type SuggestionStatus = 'pending' | 'approved' | 'rejected' | 'applied' | 'superseded';
+export type ContentType = 'docs' | 'perspectives' | 'external_link';
 
 export interface AddieRuleSuggestion {
   id: number;
@@ -144,6 +195,10 @@ export interface AddieRuleSuggestion {
   applied_at: Date | null;
   resulting_rule_id: number | null;
   analysis_batch_id: string | null;
+  // Content suggestion fields (for publish_content type)
+  content_type: ContentType | null;
+  suggested_topic: string | null;
+  external_sources: string[] | null;
   created_at: Date;
 }
 
@@ -160,6 +215,10 @@ export interface AddieRuleSuggestionInput {
   supporting_interactions?: string[];
   pattern_summary?: string;
   analysis_batch_id?: string;
+  // Content suggestion fields (for publish_content type)
+  content_type?: ContentType;
+  suggested_topic?: string;
+  external_sources?: string[];
 }
 
 // ============== Experiments Types ==============
@@ -959,8 +1018,9 @@ export class AddieDatabase {
       `INSERT INTO addie_rule_suggestions (
         suggestion_type, target_rule_id, suggested_name, suggested_content,
         suggested_rule_type, reasoning, evidence, confidence, expected_impact,
-        supporting_interactions, pattern_summary, analysis_batch_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        supporting_interactions, pattern_summary, analysis_batch_id,
+        content_type, suggested_topic, external_sources
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *`,
       [
         input.suggestion_type,
@@ -975,6 +1035,9 @@ export class AddieDatabase {
         input.supporting_interactions ? JSON.stringify(input.supporting_interactions) : null,
         input.pattern_summary || null,
         input.analysis_batch_id || null,
+        input.content_type || null,
+        input.suggested_topic || null,
+        input.external_sources ? JSON.stringify(input.external_sources) : null,
       ]
     );
     return result.rows[0];
@@ -1114,6 +1177,7 @@ export class AddieDatabase {
       disable_rule: 0,
       merge_rules: 0,
       experiment: 0,
+      publish_content: 0,
     };
 
     for (const typeRow of byTypeResult.rows) {
@@ -1417,5 +1481,145 @@ export class AddieDatabase {
     if (ruleIds && ruleIds.length > 0) {
       await this.incrementRuleUsage(ruleIds);
     }
+  }
+
+  // ============== Web Conversations Methods ==============
+
+  /**
+   * Get list of web conversations with summary info
+   */
+  async getWebConversations(options: {
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<WebConversationSummary[]> {
+    const limit = options.limit ?? 50;
+    const offset = options.offset ?? 0;
+
+    const result = await query(
+      `SELECT
+        c.conversation_id,
+        c.user_id,
+        c.user_name,
+        c.channel,
+        c.message_count,
+        c.last_message_at,
+        c.created_at,
+        (SELECT content FROM addie_messages WHERE conversation_id = c.conversation_id AND role = 'user' ORDER BY created_at ASC LIMIT 1) as first_message_preview,
+        EXISTS(SELECT 1 FROM addie_messages WHERE conversation_id = c.conversation_id AND tool_use IS NOT NULL) as has_tool_uses
+      FROM addie_conversations c
+      ORDER BY c.last_message_at DESC
+      LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+
+    return result.rows.map(row => ({
+      conversation_id: row.conversation_id,
+      user_id: row.user_id,
+      user_name: row.user_name,
+      channel: row.channel,
+      message_count: row.message_count,
+      last_message_at: row.last_message_at,
+      created_at: row.created_at,
+      first_message_preview: row.first_message_preview ?
+        (row.first_message_preview.length > 100 ? row.first_message_preview.substring(0, 100) + '...' : row.first_message_preview) : null,
+      has_tool_uses: row.has_tool_uses,
+    }));
+  }
+
+  /**
+   * Get a single web conversation with all messages and execution details
+   */
+  async getWebConversationWithMessages(conversationId: string): Promise<WebConversationDetail | null> {
+    // Get conversation info
+    const convResult = await query(
+      `SELECT
+        conversation_id, user_id, user_name, channel, message_count,
+        metadata, created_at, last_message_at
+      FROM addie_conversations
+      WHERE conversation_id = $1`,
+      [conversationId]
+    );
+
+    if (convResult.rows.length === 0) {
+      return null;
+    }
+
+    const conv = convResult.rows[0];
+
+    // Get all messages
+    const msgResult = await query(
+      `SELECT
+        id, role, content, tool_use, tool_results,
+        tokens_input, tokens_output, model, latency_ms, created_at
+      FROM addie_messages
+      WHERE conversation_id = $1
+      ORDER BY created_at ASC`,
+      [conversationId]
+    );
+
+    return {
+      conversation_id: conv.conversation_id,
+      user_id: conv.user_id,
+      user_name: conv.user_name,
+      channel: conv.channel,
+      message_count: conv.message_count,
+      metadata: conv.metadata,
+      created_at: conv.created_at,
+      last_message_at: conv.last_message_at,
+      messages: msgResult.rows.map(row => ({
+        id: row.id,
+        role: row.role,
+        content: row.content,
+        tool_use: row.tool_use,
+        tool_results: row.tool_results,
+        tokens_input: row.tokens_input,
+        tokens_output: row.tokens_output,
+        model: row.model,
+        latency_ms: row.latency_ms,
+        created_at: row.created_at,
+      })),
+    };
+  }
+
+  /**
+   * Get statistics about web conversations
+   */
+  async getWebConversationStats(): Promise<WebConversationStats> {
+    const statsResult = await query(`
+      SELECT
+        COUNT(DISTINCT c.conversation_id) as total_conversations,
+        COUNT(m.id) as total_messages,
+        ROUND(AVG(c.message_count)::numeric, 1) as avg_messages_per_conversation,
+        COUNT(DISTINCT c.conversation_id) FILTER (WHERE c.created_at > NOW() - INTERVAL '24 hours') as conversations_last_24h,
+        ROUND(AVG(m.latency_ms) FILTER (WHERE m.latency_ms IS NOT NULL)::numeric, 0) as avg_latency_ms
+      FROM addie_conversations c
+      LEFT JOIN addie_messages m ON c.conversation_id = m.conversation_id
+    `);
+
+    // Get tool usage breakdown
+    const toolResult = await query(`
+      SELECT
+        jsonb_array_elements_text(tool_use::jsonb) as tool_name,
+        COUNT(*) as usage_count
+      FROM addie_messages
+      WHERE tool_use IS NOT NULL AND tool_use != '[]'
+      GROUP BY tool_name
+      ORDER BY usage_count DESC
+    `);
+
+    const toolUsage: Record<string, number> = {};
+    for (const row of toolResult.rows) {
+      toolUsage[row.tool_name] = parseInt(row.usage_count, 10);
+    }
+
+    const stats = statsResult.rows[0];
+    return {
+      total_conversations: parseInt(stats.total_conversations, 10) || 0,
+      total_messages: parseInt(stats.total_messages, 10) || 0,
+      avg_messages_per_conversation: parseFloat(stats.avg_messages_per_conversation) || 0,
+      conversations_last_24h: parseInt(stats.conversations_last_24h, 10) || 0,
+      avg_latency_ms: parseInt(stats.avg_latency_ms, 10) || 0,
+      tool_usage: toolUsage,
+    };
   }
 }

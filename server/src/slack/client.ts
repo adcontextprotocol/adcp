@@ -335,6 +335,53 @@ export async function getChannelMembers(channelId: string): Promise<string[]> {
 }
 
 /**
+ * Search message result
+ */
+export interface SlackSearchMatch {
+  iid: string;
+  team: string;
+  channel: { id: string; name: string };
+  type: string;
+  user: string;
+  username: string;
+  ts: string;
+  text: string;
+  permalink: string;
+}
+
+/**
+ * Search for messages across public channels
+ * Requires search:read scope
+ */
+export async function searchSlackMessages(
+  query: string,
+  options: { count?: number; sort?: 'score' | 'timestamp' } = {}
+): Promise<{ matches: SlackSearchMatch[]; total: number }> {
+  try {
+    const response = await slackRequest<{
+      messages: {
+        total: number;
+        matches: SlackSearchMatch[];
+      };
+    }>('search.messages', {
+      query,
+      count: options.count ?? 10,
+      sort: options.sort ?? 'score',
+      sort_dir: 'desc',
+    });
+
+    return {
+      matches: response.messages?.matches ?? [],
+      total: response.messages?.total ?? 0,
+    };
+  } catch (error) {
+    // search:read scope might not be granted
+    logger.error({ error, query }, 'Failed to search Slack messages');
+    return { matches: [], total: 0 };
+  }
+}
+
+/**
  * Test the Slack connection (auth.test)
  */
 export async function testSlackConnection(): Promise<{

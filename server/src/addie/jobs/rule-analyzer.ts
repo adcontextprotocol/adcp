@@ -26,7 +26,7 @@ interface AnalysisResult {
 }
 
 interface ClaudeSuggestion {
-  type: 'new_rule' | 'modify_rule' | 'disable_rule';
+  type: 'new_rule' | 'modify_rule' | 'disable_rule' | 'publish_content';
   target_rule_id?: number;
   rule_type?: string;
   name?: string;
@@ -36,6 +36,10 @@ interface ClaudeSuggestion {
   expected_impact: string;
   supporting_interaction_ids: string[];
   pattern: string;
+  // For publish_content suggestions
+  content_type?: 'docs' | 'perspectives' | 'external_link';
+  suggested_topic?: string;
+  external_sources?: string[];
 }
 
 interface ClaudeAnalysisResponse {
@@ -109,16 +113,31 @@ export async function analyzeInteractions(options: {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      system: `You are an expert at analyzing AI agent interactions and improving agent behavior through rule refinement.
+      system: `You are an expert at analyzing AI agent interactions and improving agent behavior.
 
-Your task is to analyze a set of interactions between Addie (an AI assistant) and users, then suggest improvements to Addie's operating rules.
+Your task is to analyze interactions between Addie (an AI assistant for the AAO community) and users, then suggest improvements.
+
+IMPORTANT DISTINCTION:
+- **Rule changes** are for behavior, tone, formatting, when to use tools, etc.
+- **Content gaps** are for missing information that should be published publicly
+
+Addie uses PUBLIC knowledge sources:
+1. docs.adcontextprotocol.org - Protocol documentation (search_docs tool)
+2. Web search - External industry sources
+3. Slack search - Community discussions
+
+When information is missing, DO NOT suggest adding to a private knowledge base.
+Instead, suggest publishing content publicly where ANY agent can find it:
+- "docs" = Add to protocol documentation
+- "perspectives" = Write a perspectives article on agenticadvertising.org
+- "external_link" = Reference and link to external authoritative content
 
 Focus on:
 1. Patterns in user questions and Addie's responses
 2. Cases where users seemed unsatisfied (low ratings, negative sentiment)
-3. Opportunities to make Addie more helpful, accurate, or personable
-4. Rules that may be too restrictive or too permissive
-5. Missing capabilities or knowledge gaps
+3. DISTINGUISH: Is the issue a behavior/rule problem OR a missing content problem?
+4. For missing content: What topic? Should we write it or link to external sources?
+5. External sources that users found helpful (like bokonads.com, IAB Tech Lab, etc.)
 
 Output your analysis as JSON matching the specified schema.`,
       messages: [
@@ -158,6 +177,10 @@ Output your analysis as JSON matching the specified schema.`,
       supporting_interactions: s.supporting_interaction_ids,
       pattern_summary: s.pattern,
       analysis_batch_id: batchId,
+      // Content suggestion fields (for publish_content type)
+      content_type: s.content_type as AddieRuleSuggestionInput['content_type'],
+      suggested_topic: s.suggested_topic,
+      external_sources: s.external_sources,
     }));
 
     // Save suggestions to database
@@ -245,10 +268,12 @@ ${JSON.stringify(interactionSummaries, null, 2)}
 ## Analysis Instructions
 
 1. Identify patterns in the interactions - what questions are common, what responses work well, what causes issues
-2. Look for rules that may need modification based on interaction outcomes
-3. Suggest new rules for gaps in current behavior
-4. Consider disabling rules that may be causing problems
-5. Be conservative - only suggest changes with clear evidence
+2. DISTINGUISH between RULE issues and CONTENT issues:
+   - Rule issues: Addie's behavior, tone, formatting, tool usage
+   - Content issues: Missing information that should be published publicly
+3. For content gaps, recommend WHERE to publish: docs (protocol docs), perspectives (org blog), or external_link (link to existing content)
+4. Be conservative - only suggest changes with clear evidence
+5. Prefer external_link when authoritative content already exists (IAB Tech Lab, bokonads.com, etc.)
 
 ## Output Schema
 
@@ -267,23 +292,26 @@ Respond with JSON matching this schema:
   ],
   "suggestions": [
     {
-      "type": "new_rule" | "modify_rule" | "disable_rule",
+      "type": "new_rule" | "modify_rule" | "disable_rule" | "publish_content",
       "target_rule_id": null,
       "rule_type": "system_prompt" | "behavior" | "knowledge" | "constraint" | "response_style",
-      "name": "Rule name (for new rules)",
-      "content": "The full rule content",
+      "name": "Rule name (for new rules) or content title (for publish_content)",
+      "content": "The full rule content OR a description of what content to publish",
       "reasoning": "Why this change would help",
       "confidence": 0.8,
       "expected_impact": "What improvement we expect",
       "supporting_interaction_ids": ["id1", "id2"],
-      "pattern": "Which pattern this addresses"
+      "pattern": "Which pattern this addresses",
+      "content_type": "docs | perspectives | external_link (only for publish_content)",
+      "suggested_topic": "Topic or title for content (only for publish_content)",
+      "external_sources": ["URLs of external sources to reference (only for external_link)"]
     }
   ],
   "summary": "Overall summary of the analysis findings"
 }
 \`\`\`
 
-Focus on actionable, evidence-based suggestions. Only suggest changes where you have reasonable confidence they will improve Addie's performance.`;
+Focus on actionable, evidence-based suggestions. For content gaps, prefer linking to existing external sources rather than creating new content when possible.`;
 }
 
 /**

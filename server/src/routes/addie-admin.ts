@@ -331,6 +331,68 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // =========================================================================
+  // WEB CONVERSATIONS API (mounted at /api/admin/addie/conversations)
+  // =========================================================================
+
+  // GET /api/admin/addie/conversations - List all web conversations
+  apiRouter.get("/conversations", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { limit, offset } = req.query;
+
+      const conversations = await addieDb.getWebConversations({
+        limit: limit ? parseInt(limit as string, 10) : 50,
+        offset: offset ? parseInt(offset as string, 10) : undefined,
+      });
+
+      res.json({
+        conversations,
+        total: conversations.length,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching web conversations");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch web conversations",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/conversations/:id - Get a single conversation with messages
+  apiRouter.get("/conversations/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const conversation = await addieDb.getWebConversationWithMessages(id);
+
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      res.json(conversation);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching conversation");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch conversation",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/conversations/stats - Get conversation statistics
+  apiRouter.get("/conversations/stats", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stats = await addieDb.getWebConversationStats();
+      res.json(stats);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching conversation stats");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch conversation statistics",
+      });
+    }
+  });
+
+  // =========================================================================
   // APPROVAL QUEUE API (mounted at /api/admin/addie/queue)
   // =========================================================================
 
@@ -784,6 +846,81 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to apply suggestion",
+      });
+    }
+  });
+
+  // POST /api/admin/addie/suggestions - Create a manual suggestion
+  apiRouter.post("/suggestions", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const {
+        suggestion_type,
+        target_rule_id,
+        suggested_name,
+        suggested_content,
+        suggested_rule_type,
+        reasoning,
+        confidence,
+        expected_impact,
+        supporting_interactions,
+        content_type,
+        suggested_topic,
+        external_sources,
+      } = req.body;
+
+      // Validate required fields
+      if (!suggestion_type || !suggested_content || !reasoning) {
+        return res.status(400).json({
+          error: "Missing required fields",
+          required: ["suggestion_type", "suggested_content", "reasoning"],
+        });
+      }
+
+      // Validate suggestion_type
+      const validTypes = ["new_rule", "modify_rule", "disable_rule", "merge_rules", "experiment", "publish_content"];
+      if (!validTypes.includes(suggestion_type)) {
+        return res.status(400).json({
+          error: "Invalid suggestion_type",
+          valid_types: validTypes,
+        });
+      }
+
+      // If publish_content, require content_type
+      if (suggestion_type === "publish_content" && !content_type) {
+        return res.status(400).json({
+          error: "content_type is required for publish_content suggestions",
+          valid_content_types: ["docs", "perspectives", "external_link"],
+        });
+      }
+
+      const suggestion = await addieDb.createSuggestion({
+        suggestion_type,
+        target_rule_id,
+        suggested_name,
+        suggested_content,
+        suggested_rule_type,
+        reasoning,
+        confidence: confidence ?? 0.5,
+        expected_impact,
+        supporting_interactions,
+        content_type,
+        suggested_topic,
+        external_sources,
+        analysis_batch_id: `manual-${Date.now()}`,
+      });
+
+      logger.info({
+        suggestionId: suggestion.id,
+        type: suggestion_type,
+        content_type,
+      }, "Created manual suggestion");
+
+      res.status(201).json(suggestion);
+    } catch (error) {
+      logger.error({ err: error }, "Error creating suggestion");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to create suggestion",
       });
     }
   });

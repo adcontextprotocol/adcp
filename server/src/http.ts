@@ -46,6 +46,7 @@ import {
 } from "./notifications/slack.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
+import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 
@@ -309,6 +310,11 @@ export class HTTPServer {
     const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
     this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
     this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
+
+    // Mount Addie chat routes (public chat interface)
+    const { pageRouter: chatPageRouter, apiRouter: chatApiRouter } = createAddieChatRouter();
+    this.app.use('/chat', chatPageRouter);              // Page routes: /chat
+    this.app.use('/api/addie/chat', chatApiRouter);     // API routes: /api/addie/chat
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org

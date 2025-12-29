@@ -1,34 +1,56 @@
 /**
  * Addie Knowledge Search
  *
- * Database-backed knowledge search for Addie using PostgreSQL full-text search.
+ * Searches public knowledge sources:
+ * 1. Indexed Mintlify docs (read from filesystem at startup)
+ * 2. Slack community discussions
+ * 3. Web search (handled by Claude's built-in tool)
+ *
+ * Note: We intentionally don't have a private knowledge database.
+ * All knowledge should be publicly available so any agent can find it.
+ * When knowledge gaps are identified, the fix is to publish content,
+ * not add to a private store.
  */
 
 import { logger } from '../../logger.js';
-import { AddieDatabase, type AddieSearchResult, type AddieKnowledge } from '../../db/addie-db.js';
 import type { AddieTool } from '../types.js';
+import {
+  initializeDocsIndex,
+  isDocsIndexReady,
+  searchDocs,
+  getDocById,
+  getDocCategories,
+  getDocCount,
+  type IndexedDoc,
+} from './docs-indexer.js';
+import { searchSlackMessages, isSlackConfigured } from '../../slack/client.js';
 
-const addieDb = new AddieDatabase();
 let initialized = false;
 
 /**
- * Initialize knowledge search (just marks as ready - data is in DB)
+ * Initialize knowledge search
+ * - Indexes docs from filesystem
  */
 export async function initializeKnowledgeSearch(): Promise<void> {
   logger.info('Addie: Initializing knowledge search');
 
-  // Verify we can connect and get categories
+  // Index docs from filesystem
   try {
-    const categories = await addieDb.getKnowledgeCategories();
-    const totalDocs = categories.reduce((sum, c) => sum + c.count, 0);
+    await initializeDocsIndex();
+    const docCount = getDocCount();
+    const categories = getDocCategories();
     logger.info(
-      { categories: categories.map(c => `${c.category}(${c.count})`).join(', '), totalDocs },
-      'Addie: Knowledge search ready'
+      {
+        docCount,
+        categories: categories.map(c => `${c.category}(${c.count})`).join(', '),
+      },
+      'Addie: Docs index ready'
     );
     initialized = true;
   } catch (error) {
-    logger.error({ error }, 'Addie: Failed to initialize knowledge search');
-    throw error;
+    logger.warn({ error }, 'Addie: Failed to index docs');
+    // Still mark as initialized - we can function with just web search
+    initialized = true;
   }
 }
 
@@ -40,114 +62,101 @@ export function isKnowledgeReady(): boolean {
 }
 
 /**
- * Search knowledge documents
+ * Search result with source citation
  */
-export async function searchKnowledge(
+export interface DocsSearchResult {
+  id: string;
+  title: string;
+  category: string;
+  headline: string;
+  sourceUrl: string;
+  content: string;
+}
+
+/**
+ * Search indexed documentation
+ * Returns results with full content and source URLs for citation
+ */
+export function searchDocsContent(
   query: string,
   options: { category?: string; limit?: number } = {}
-): Promise<{
-  results: AddieSearchResult[];
-  query: string;
-  total: number;
-}> {
-  if (!initialized) {
-    return { results: [], query, total: 0 };
-  }
-
-  try {
-    const results = await addieDb.searchKnowledge(query, {
-      category: options.category,
-      limit: options.limit ?? 5,
-    });
-
-    return {
-      results,
-      query,
-      total: results.length,
-    };
-  } catch (error) {
-    logger.error({ error, query }, 'Addie: Knowledge search failed');
-    return { results: [], query, total: 0 };
-  }
-}
-
-/**
- * Get a specific knowledge document by ID
- */
-export async function getKnowledgeById(id: number): Promise<AddieKnowledge | null> {
-  if (!initialized) return null;
-
-  try {
-    return await addieDb.getKnowledgeById(id);
-  } catch (error) {
-    logger.error({ error, id }, 'Addie: Failed to get knowledge document');
-    return null;
-  }
-}
-
-/**
- * Get knowledge categories
- */
-export async function getKnowledgeCategories(): Promise<Array<{ category: string; count: number }>> {
-  if (!initialized) return [];
-
-  try {
-    return await addieDb.getKnowledgeCategories();
-  } catch (error) {
-    logger.error({ error }, 'Addie: Failed to get knowledge categories');
+): DocsSearchResult[] {
+  if (!initialized || !isDocsIndexReady()) {
     return [];
   }
+
+  const limit = options.limit ?? 5;
+  const results = searchDocs(query, { category: options.category, limit });
+
+  return results.map((doc) => {
+    // Create a headline from first 200 chars (skip headings)
+    const headline = doc.content
+      .replace(/^#.*$/gm, '')
+      .replace(/\n+/g, ' ')
+      .trim()
+      .substring(0, 200);
+
+    return {
+      id: doc.id,
+      title: doc.title,
+      category: doc.category,
+      headline: headline + (headline.length >= 200 ? '...' : ''),
+      sourceUrl: doc.sourceUrl,
+      content: doc.content,
+    };
+  });
 }
 
 /**
  * Tool definitions for Claude
+ *
+ * We provide two search tools:
+ * 1. search_docs - Search our Mintlify documentation (fast, local, authoritative for AdCP)
+ * 2. search_slack - Search community discussions (real-world context)
+ *
+ * Web search is provided by Claude's built-in tool for external sources.
  */
 export const KNOWLEDGE_TOOLS: AddieTool[] = [
   {
-    name: 'search_knowledge',
+    name: 'search_docs',
     description:
-      'Search the knowledge base for relevant information about AdCP, agentic advertising, AAO, and related topics. Use this to answer questions.',
+      'Search the official AdCP documentation at docs.adcontextprotocol.org. Use this for questions about the AdCP protocol, tasks, schemas, and implementation guides. Returns full content with source URLs for citation.',
     input_schema: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'The search query - use relevant keywords from the question',
+          description: 'Search query - use relevant keywords from the question',
         },
         category: {
           type: 'string',
-          description: 'Optional category filter (docs, blog, faq, perspective, guidelines)',
+          description: 'Optional category filter (media-buy, signals, creative, intro, reference)',
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of results (default 5)',
+          description: 'Maximum number of results (default 3)',
         },
       },
       required: ['query'],
     },
   },
   {
-    name: 'get_knowledge',
+    name: 'search_slack',
     description:
-      'Get the full content of a specific knowledge document by ID. Use this after search_knowledge to read a document in detail.',
+      'Search Slack messages from public channels in the AAO workspace. Use this to find community discussions, Q&A, and real-world examples about AdCP, agentic advertising, and related topics. Cite the Slack permalink when using information from results.',
     input_schema: {
       type: 'object',
       properties: {
-        id: {
+        query: {
+          type: 'string',
+          description: 'Search query - keywords or phrases to find in Slack messages',
+        },
+        limit: {
           type: 'number',
-          description: 'The document ID from search results',
+          description: 'Maximum number of results (default 5, max 10)',
         },
       },
-      required: ['id'],
-    },
-  },
-  {
-    name: 'list_knowledge_categories',
-    description:
-      'List all knowledge categories with document counts. Use this to understand what knowledge is available.',
-    input_schema: {
-      type: 'object',
-      properties: {},
+      required: ['query'],
     },
   },
 ];
@@ -161,58 +170,74 @@ export function createKnowledgeToolHandlers(): Map<
 > {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
-  handlers.set('search_knowledge', async (input) => {
+  handlers.set('search_docs', async (input) => {
     const query = input.query as string;
     const category = input.category as string | undefined;
-    const limit = (input.limit as number) || 5;
+    const limit = (input.limit as number) || 3;
 
-    const results = await searchKnowledge(query, { category, limit });
+    const results = searchDocsContent(query, { category, limit });
 
-    if (results.results.length === 0) {
-      return `No knowledge found for query: "${query}"${category ? ` in category: ${category}` : ''}`;
+    if (results.length === 0) {
+      return `No documentation found for: "${query}"${category ? ` in category: ${category}` : ''}\n\nTry using web_search for external sources or search_slack for community discussions.`;
     }
 
-    const formatted = results.results
-      .map(
-        (doc, i) =>
-          `${i + 1}. **${doc.title}** [${doc.category}] (ID: ${doc.id})\n   ${doc.headline || 'No preview'}`
-      )
-      .join('\n\n');
+    // Return full content with source URLs for citation
+    const formatted = results
+      .map((doc, i) => {
+        // Truncate content if too long
+        const maxContentLength = 2000;
+        let content = doc.content;
+        if (content.length > maxContentLength) {
+          content = content.substring(0, maxContentLength) + '\n\n... [truncated - see full doc at source URL]';
+        }
 
-    return `Found ${results.total} documents:\n\n${formatted}`;
+        return `## ${i + 1}. ${doc.title}
+**Category:** ${doc.category}
+**Source:** ${doc.sourceUrl}
+
+${content}`;
+      })
+      .join('\n\n---\n\n');
+
+    return `Found ${results.length} documentation pages:\n\n${formatted}\n\n**Remember to cite the source URL when using this information.**`;
   });
 
-  handlers.set('get_knowledge', async (input) => {
-    const id = input.id as number;
-    const doc = await getKnowledgeById(id);
-
-    if (!doc) {
-      return `Knowledge document not found: ID ${id}`;
+  handlers.set('search_slack', async (input) => {
+    if (!isSlackConfigured()) {
+      return 'Slack search is not available - Slack integration is not configured.';
     }
 
-    const maxLength = 8000;
-    let content = doc.content;
-    if (content.length > maxLength) {
-      content = content.substring(0, maxLength) + '\n\n... [truncated]';
+    const query = input.query as string;
+    const limit = Math.min((input.limit as number) || 5, 10);
+
+    try {
+      const results = await searchSlackMessages(query, { count: limit });
+
+      if (results.matches.length === 0) {
+        return `No Slack discussions found for: "${query}"\n\nTry search_docs for documentation or web_search for external sources.`;
+      }
+
+      const formatted = results.matches
+        .map((match, i) => {
+          // Clean up the text (remove extra whitespace, truncate)
+          const cleanText = match.text
+            .replace(/\s+/g, ' ')
+            .trim()
+            .substring(0, 500);
+          const truncated = cleanText.length < match.text.length ? '...' : '';
+
+          return `### ${i + 1}. #${match.channel.name} - @${match.username}
+"${cleanText}${truncated}"
+
+**Source:** ${match.permalink}`;
+        })
+        .join('\n\n');
+
+      return `Found ${results.total} Slack messages (showing ${results.matches.length}):\n\n${formatted}\n\n**Remember to cite the Slack permalink when using this information.**`;
+    } catch (error) {
+      logger.error({ error, query }, 'Addie: Slack search failed');
+      return `Slack search failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
-
-    return `# ${doc.title}\n\nCategory: ${doc.category}${doc.source_url ? `\nSource: ${doc.source_url}` : ''}\n\n${content}`;
-  });
-
-  handlers.set('list_knowledge_categories', async () => {
-    const categories = await getKnowledgeCategories();
-
-    if (categories.length === 0) {
-      return 'No knowledge categories found.';
-    }
-
-    const formatted = categories
-      .map((c) => `- **${c.category}**: ${c.count} document${c.count === 1 ? '' : 's'}`)
-      .join('\n');
-
-    const total = categories.reduce((sum, c) => sum + c.count, 0);
-
-    return `Knowledge base categories (${total} total documents):\n\n${formatted}`;
   });
 
   return handlers;
