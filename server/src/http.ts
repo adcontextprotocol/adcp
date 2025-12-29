@@ -42,6 +42,8 @@ import {
 } from "./notifications/slack.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createSlackRouter, invalidateUnifiedUsersCache } from "./routes/slack.js";
+import { createAddieAdminRouter } from "./routes/addie-admin.js";
+import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 
@@ -279,6 +281,16 @@ export class HTTPServer {
     const { adminRouter: slackAdminRouter, publicRouter: slackPublicRouter } = createSlackRouter();
     this.app.use('/api/admin/slack', slackAdminRouter);  // Admin routes: /api/admin/slack/*
     this.app.use('/api/slack', slackPublicRouter);       // Public routes: /api/slack/*
+
+    // Mount Addie admin routes
+    const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
+    this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
+    this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
+
+    // Mount Addie chat routes (public chat interface)
+    const { pageRouter: chatPageRouter, apiRouter: chatApiRouter } = createAddieChatRouter();
+    this.app.use('/chat', chatPageRouter);              // Page routes: /chat
+    this.app.use('/api/addie/chat', chatApiRouter);     // API routes: /api/addie/chat
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
@@ -3650,8 +3662,7 @@ export class HTTPServer {
     this.app.post('/api/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { name, slug, description, slack_channel_url, is_private, status, display_order,
-                chair_user_id, chair_name, chair_title, chair_org_name,
-                vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name } = req.body;
+                leader_user_ids } = req.body;
 
         if (!name || !slug) {
           return res.status(400).json({
@@ -3680,12 +3691,8 @@ export class HTTPServer {
 
         const group = await workingGroupDb.createWorkingGroup({
           name, slug, description, slack_channel_url, is_private, status, display_order,
-          chair_user_id, chair_name, chair_title, chair_org_name,
-          vice_chair_user_id, vice_chair_name, vice_chair_title, vice_chair_org_name
+          leader_user_ids
         });
-
-        // Ensure chair/vice-chair are members
-        await workingGroupDb.ensureLeadershipAreMembers(group.id);
 
         res.status(201).json(group);
       } catch (error) {
@@ -3710,11 +3717,6 @@ export class HTTPServer {
             error: 'Working group not found',
             message: `No working group found with id ${id}`
           });
-        }
-
-        // Ensure chair/vice-chair are members if leadership was updated
-        if (updates.chair_user_id || updates.vice_chair_user_id) {
-          await workingGroupDb.ensureLeadershipAreMembers(group.id);
         }
 
         res.json(group);
@@ -4855,6 +4857,19 @@ Disallow: /api/admin/
         });
 
         logger.debug({ count: memberships.data.length }, 'Organization memberships retrieved');
+
+        // Record login for engagement tracking (fire and forget)
+        if (memberships.data.length > 0) {
+          const primaryOrgId = memberships.data[0].organizationId;
+          const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+          orgDb.recordUserLogin({
+            workos_user_id: user.id,
+            workos_organization_id: primaryOrgId,
+            user_name: userName,
+          }).catch((err) => {
+            logger.error({ error: err, userId: user.id }, 'Failed to record user login');
+          });
+        }
 
         // Send welcome email to first-time users (async, don't block auth flow)
         if (isFirstTimeUser && memberships.data.length > 0) {
@@ -8156,11 +8171,12 @@ Disallow: /api/admin/
           });
         }
 
-        // Check if user is chair or vice-chair - they can't leave without being replaced
-        if (group.chair_user_id === user.id || group.vice_chair_user_id === user.id) {
+        // Check if user is a leader - they can't leave without being replaced
+        const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
+        if (isLeader) {
           return res.status(403).json({
             error: 'Cannot leave',
-            message: 'As chair or vice-chair, you must be replaced before leaving the group',
+            message: 'As a leader, you must be replaced before leaving the group',
           });
         }
 
@@ -8228,8 +8244,8 @@ Disallow: /api/admin/
           });
         }
 
-        // Check if user is a leader (chair or vice-chair)
-        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+        // Check if user is a leader
+        const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
 
         // Non-leaders can only create members-only posts
         const finalMembersOnly = isLeader ? (is_members_only ?? true) : true;
@@ -8350,7 +8366,7 @@ Disallow: /api/admin/
         }
 
         const post = existing.rows[0];
-        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+        const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
         const isAuthor = post.author_user_id === user.id;
 
         // Only authors or leaders can edit posts
@@ -8460,7 +8476,7 @@ Disallow: /api/admin/
         }
 
         const post = existing.rows[0];
-        const isLeader = group.chair_user_id === user.id || group.vice_chair_user_id === user.id;
+        const isLeader = group.leaders?.some(l => l.user_id === user.id) ?? false;
         const isAuthor = post.author_user_id === user.id;
 
         // Only authors or leaders can delete posts

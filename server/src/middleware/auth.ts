@@ -633,13 +633,15 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
 /**
  * Factory function to create middleware that requires working group leader access
  * Must be used after requireAuth
- * Checks if user is chair/vice-chair of the specified working group OR a site admin
+ * Checks if user is a leader of the specified working group OR a site admin
  *
- * @param getSlugFromRequest - Function to extract the working group slug from the request
  * @param workingGroupDb - Database instance for looking up working group details
  */
 export function createRequireWorkingGroupLeader(
-  workingGroupDb: { getWorkingGroupBySlug: (slug: string) => Promise<{ id: string; chair_user_id?: string; vice_chair_user_id?: string } | null> }
+  workingGroupDb: {
+    getWorkingGroupBySlug: (slug: string) => Promise<{ id: string; leaders?: Array<{ user_id: string }> } | null>;
+    isLeader: (workingGroupId: string, userId: string) => Promise<boolean>;
+  }
 ) {
   return async function requireWorkingGroupLeader(req: Request, res: Response, next: NextFunction) {
     if (!req.user) {
@@ -675,15 +677,14 @@ export function createRequireWorkingGroupLeader(
       });
     }
 
-    // Check if user is chair or vice-chair
-    const isLeader = workingGroup.chair_user_id === req.user.id ||
-                     workingGroup.vice_chair_user_id === req.user.id;
+    // Check if user is a leader
+    const isLeader = await workingGroupDb.isLeader(workingGroup.id, req.user.id);
 
     if (!isLeader) {
       logger.warn({ userId: req.user.id, slug }, 'Non-leader user attempted to access working group admin endpoint');
       return res.status(403).json({
         error: 'Working group leader access required',
-        message: 'This resource is only accessible to the chair or vice-chair of this working group',
+        message: 'This resource is only accessible to leaders of this working group',
       });
     }
 

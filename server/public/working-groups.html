@@ -519,7 +519,7 @@
     }
 
     function renderGroupCard(group) {
-      const hasLeadership = group.chair_name || group.vice_chair_name;
+      const hasLeadership = group.leaders && group.leaders.length > 0;
 
       return `
         <a href="/working-groups/${escapeHtml(group.slug)}" class="group-card">
@@ -535,24 +535,15 @@
             ${hasLeadership ? `
               <div class="group-leadership">
                 <div class="group-leadership-title">Leadership</div>
-                ${group.chair_name ? `
+                ${group.leaders.map(leader => `
                   <div class="leader-item">
-                    <div class="leader-avatar">${getInitials(group.chair_name)}</div>
+                    <div class="leader-avatar">${getInitials(leader.name || 'Unknown')}</div>
                     <div class="leader-info">
-                      <div class="leader-name">${escapeHtml(group.chair_name)}</div>
-                      <div class="leader-role">Chair${group.chair_org_name ? ' · ' + escapeHtml(group.chair_org_name) : ''}</div>
+                      <div class="leader-name">${escapeHtml(leader.name || 'Unknown')}</div>
+                      <div class="leader-role">Leader${leader.org_name ? ' · ' + escapeHtml(leader.org_name) : ''}</div>
                     </div>
                   </div>
-                ` : ''}
-                ${group.vice_chair_name ? `
-                  <div class="leader-item">
-                    <div class="leader-avatar">${getInitials(group.vice_chair_name)}</div>
-                    <div class="leader-info">
-                      <div class="leader-name">${escapeHtml(group.vice_chair_name)}</div>
-                      <div class="leader-role">Vice Chair${group.vice_chair_org_name ? ' · ' + escapeHtml(group.vice_chair_org_name) : ''}</div>
-                    </div>
-                  </div>
-                ` : ''}
+                `).join('')}
               </div>
             ` : ''}
           </div>

@@ -310,6 +310,13 @@ export interface ListMemberProfilesOptions {
 export type WorkingGroupStatus = 'active' | 'inactive' | 'archived';
 export type WorkingGroupMembershipStatus = 'active' | 'inactive';
 
+export interface WorkingGroupLeader {
+  user_id: string;
+  name?: string;
+  org_name?: string;
+  created_at: Date;
+}
+
 export interface WorkingGroup {
   id: string;
   name: string;
@@ -317,19 +324,12 @@ export interface WorkingGroup {
   description?: string;
   slack_channel_url?: string;
   slack_channel_id?: string;
-  chair_user_id?: string;
-  chair_name?: string;
-  chair_title?: string;
-  chair_org_name?: string;
-  vice_chair_user_id?: string;
-  vice_chair_name?: string;
-  vice_chair_title?: string;
-  vice_chair_org_name?: string;
   is_private: boolean;
   status: WorkingGroupStatus;
   display_order: number;
   created_at: Date;
   updated_at: Date;
+  leaders?: WorkingGroupLeader[];
 }
 
 export interface WorkingGroupMembership {
@@ -352,14 +352,7 @@ export interface CreateWorkingGroupInput {
   description?: string;
   slack_channel_url?: string;
   slack_channel_id?: string;
-  chair_user_id?: string;
-  chair_name?: string;
-  chair_title?: string;
-  chair_org_name?: string;
-  vice_chair_user_id?: string;
-  vice_chair_name?: string;
-  vice_chair_title?: string;
-  vice_chair_org_name?: string;
+  leader_user_ids?: string[];
   is_private?: boolean;
   status?: WorkingGroupStatus;
   display_order?: number;
@@ -370,14 +363,7 @@ export interface UpdateWorkingGroupInput {
   description?: string;
   slack_channel_url?: string;
   slack_channel_id?: string;
-  chair_user_id?: string;
-  chair_name?: string;
-  chair_title?: string;
-  chair_org_name?: string;
-  vice_chair_user_id?: string;
-  vice_chair_name?: string;
-  vice_chair_title?: string;
-  vice_chair_org_name?: string;
+  leader_user_ids?: string[];
   is_private?: boolean;
   status?: WorkingGroupStatus;
   display_order?: number;
