@@ -10,7 +10,6 @@ import { MemberDatabase } from '../db/member-db.js';
 import { OrganizationDatabase } from '../db/organization-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
-import { AddieDatabase } from '../db/addie-db.js';
 import { workos } from '../auth/workos-client.js';
 import { logger } from '../logger.js';
 
@@ -19,7 +18,45 @@ const memberDb = new MemberDatabase();
 const orgDb = new OrganizationDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
 const emailPrefsDb = new EmailPreferencesDatabase();
-const addieDb = new AddieDatabase();
+
+// Cache for member context to avoid repeated lookups for the same user
+// TTL of 30 minutes - user profile data rarely changes, and we invalidate on specific events
+const MEMBER_CONTEXT_CACHE_TTL_MS = 30 * 60 * 1000;
+const memberContextCache = new Map<string, { context: MemberContext; timestamp: number }>();
+
+/**
+ * Get cached member context if still valid
+ */
+function getCachedContext(slackUserId: string): MemberContext | null {
+  const cached = memberContextCache.get(slackUserId);
+  if (!cached) return null;
+
+  const age = Date.now() - cached.timestamp;
+  if (age > MEMBER_CONTEXT_CACHE_TTL_MS) {
+    memberContextCache.delete(slackUserId);
+    return null;
+  }
+
+  return cached.context;
+}
+
+/**
+ * Cache member context for future lookups
+ */
+function setCachedContext(slackUserId: string, context: MemberContext): void {
+  memberContextCache.set(slackUserId, { context, timestamp: Date.now() });
+}
+
+/**
+ * Invalidate cached context for a user (call when user data changes)
+ */
+export function invalidateMemberContextCache(slackUserId?: string): void {
+  if (slackUserId) {
+    memberContextCache.delete(slackUserId);
+  } else {
+    memberContextCache.clear();
+  }
+}
 
 /**
  * Member context for Addie to use when responding
@@ -110,24 +147,27 @@ export interface MemberContext {
   /** Whether the Slack user is linked to their AgenticAdvertising.org account */
   slack_linked: boolean;
 
-  /** Previous Addie interactions */
-  addie_history?: {
-    total_interactions: number;
-    last_interaction_at: Date | null;
-    recent_topics: string[];
-  };
+  // Note: addie_history removed - Slack Assistant threads maintain conversation context automatically
 }
 
 /**
  * Look up member context from a Slack user ID
  *
  * Flow:
- * 1. Look up Slack user in slack_user_mappings
- * 2. If mapped, get WorkOS user ID
- * 3. Look up user's organization memberships in WorkOS
- * 4. Look up organization and member profile in local DB
+ * 1. Check cache for recent lookup
+ * 2. Look up Slack user in slack_user_mappings
+ * 3. If mapped, get WorkOS user ID
+ * 4. Look up user's organization memberships in WorkOS
+ * 5. Look up organization and member profile in local DB (in parallel)
  */
 export async function getMemberContext(slackUserId: string): Promise<MemberContext> {
+  // Check cache first for fast response
+  const cached = getCachedContext(slackUserId);
+  if (cached) {
+    logger.debug({ slackUserId }, 'Addie: Using cached member context');
+    return cached;
+  }
+
   const context: MemberContext = {
     is_mapped: false,
     is_member: false,
@@ -216,21 +256,68 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       joined_at: userJoinedAt,
     };
 
-    // Step 5: Get organization details from local DB
-    const org = await orgDb.getOrganization(organizationId);
+    // Steps 5-11: Run all independent lookups in parallel for better performance
+    // These queries don't depend on each other, so we can run them concurrently
+    // Note: Addie interaction history removed - Slack Assistant threads handle conversation context
+    const workosUserId = slackMapping.workos_user_id!; // We've already validated this is not null
+
+    const [
+      org,
+      profile,
+      subscriptionInfo,
+      engagement,
+      activity,
+      userWorkingGroups,
+      emailPrefs,
+    ] = await Promise.all([
+      // Step 5: Get organization details from local DB
+      orgDb.getOrganization(organizationId).catch(error => {
+        logger.warn({ error, organizationId }, 'Addie: Failed to get organization');
+        return null;
+      }),
+      // Step 6: Get member profile if exists
+      memberDb.getProfileByOrgId(organizationId).catch(error => {
+        logger.warn({ error, organizationId }, 'Addie: Failed to get member profile');
+        return null;
+      }),
+      // Step 7: Get subscription details
+      orgDb.getSubscriptionInfo(organizationId).catch(error => {
+        logger.warn({ error, organizationId }, 'Addie: Failed to get subscription info');
+        return null;
+      }),
+      // Step 8: Get engagement signals for the organization
+      orgDb.getEngagementSignals(organizationId).catch(error => {
+        logger.warn({ error, organizationId }, 'Addie: Failed to get engagement signals');
+        return null;
+      }),
+      // Step 9: Get Slack activity for the individual user
+      slackDb.getActivitySummary(slackUserId, { days: 30 }).catch(error => {
+        logger.warn({ error, slackUserId }, 'Addie: Failed to get Slack activity');
+        return null;
+      }),
+      // Step 10: Get working groups for the user
+      workingGroupDb.getWorkingGroupsForUser(workosUserId).catch(error => {
+        logger.warn({ error, workosUserId }, 'Addie: Failed to get working groups');
+        return [];
+      }),
+      // Step 11: Get email subscription preferences
+      emailPrefsDb.getUserPreferencesByUserId(workosUserId).catch(error => {
+        logger.warn({ error, workosUserId }, 'Addie: Failed to get email preferences');
+        return null;
+      }),
+    ]);
+
+    // Process organization details
     if (org) {
       context.organization = {
         workos_organization_id: org.workos_organization_id,
         name: org.name,
         subscription_status: org.subscription_status,
       };
-
-      // Check if active member
       context.is_member = org.subscription_status === 'active';
     }
 
-    // Step 6: Get member profile if exists
-    const profile = await memberDb.getProfileByOrgId(organizationId);
+    // Process member profile
     if (profile) {
       context.member_profile = {
         display_name: profile.display_name,
@@ -240,26 +327,20 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       };
     }
 
-    // Step 7: Get subscription details
-    try {
-      const subscriptionInfo = await orgDb.getSubscriptionInfo(organizationId);
-      if (subscriptionInfo && subscriptionInfo.status !== 'none') {
-        context.subscription = {
-          status: subscriptionInfo.status,
-          product_name: subscriptionInfo.product_name,
-          current_period_end: subscriptionInfo.current_period_end
-            ? new Date(subscriptionInfo.current_period_end * 1000)
-            : undefined,
-          cancel_at_period_end: subscriptionInfo.cancel_at_period_end,
-        };
-      }
-    } catch (error) {
-      logger.warn({ error, organizationId }, 'Addie: Failed to get subscription info');
+    // Process subscription info
+    if (subscriptionInfo && subscriptionInfo.status !== 'none') {
+      context.subscription = {
+        status: subscriptionInfo.status,
+        product_name: subscriptionInfo.product_name,
+        current_period_end: subscriptionInfo.current_period_end
+          ? new Date(subscriptionInfo.current_period_end * 1000)
+          : undefined,
+        cancel_at_period_end: subscriptionInfo.cancel_at_period_end,
+      };
     }
 
-    // Step 8: Get engagement signals for the organization
-    try {
-      const engagement = await orgDb.getEngagementSignals(organizationId);
+    // Process engagement signals
+    if (engagement) {
       context.engagement = {
         login_count_30d: engagement.login_count_30d,
         last_login: engagement.last_login,
@@ -267,13 +348,10 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         email_click_count_30d: engagement.email_click_count_30d,
         interest_level: engagement.interest_level,
       };
-    } catch (error) {
-      logger.warn({ error, organizationId }, 'Addie: Failed to get engagement signals');
     }
 
-    // Step 9: Get Slack activity for the individual user
-    try {
-      const activity = await slackDb.getActivitySummary(slackUserId, { days: 30 });
+    // Process Slack activity
+    if (activity) {
       context.slack_activity = {
         total_messages_30d: activity.total_messages,
         total_reactions_30d: activity.total_reactions,
@@ -281,60 +359,27 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         active_days_30d: activity.active_days,
         last_activity_at: activity.last_activity_at,
       };
-    } catch (error) {
-      logger.warn({ error, slackUserId }, 'Addie: Failed to get Slack activity');
     }
 
-    // Step 10: Get working groups for the user
-    const workosUserId = slackMapping.workos_user_id!; // We've already validated this is not null
-    try {
-      const userWorkingGroups = await workingGroupDb.getWorkingGroupsForUser(workosUserId);
-      if (userWorkingGroups.length > 0) {
-        const workingGroupsWithLeadership = await Promise.all(
-          userWorkingGroups.map(async (wg) => ({
-            name: wg.name,
-            is_leader: await workingGroupDb.isLeader(wg.id, workosUserId),
-          }))
-        );
-        context.working_groups = workingGroupsWithLeadership;
-      }
-    } catch (error) {
-      logger.warn({ error, workosUserId }, 'Addie: Failed to get working groups');
+    // Process working groups (need to check leadership in parallel)
+    if (userWorkingGroups.length > 0) {
+      const workingGroupsWithLeadership = await Promise.all(
+        userWorkingGroups.map(async (wg) => ({
+          name: wg.name,
+          is_leader: await workingGroupDb.isLeader(wg.id, workosUserId).catch(() => false),
+        }))
+      );
+      context.working_groups = workingGroupsWithLeadership;
     }
 
-    // Step 11: Get email subscription preferences
-    try {
-      const emailPrefs = await emailPrefsDb.getUserPreferencesByUserId(workosUserId);
-      if (emailPrefs) {
-        const categoryPrefs = await emailPrefsDb.getUserCategoryPreferences(workosUserId);
-        context.email_status = {
-          global_unsubscribed: emailPrefs.global_unsubscribe,
-          subscribed_categories: categoryPrefs.filter(c => c.enabled).map(c => c.category_name),
-          unsubscribed_categories: categoryPrefs.filter(c => !c.enabled).map(c => c.category_name),
-        };
-      }
-    } catch (error) {
-      logger.warn({ error, workosUserId }, 'Addie: Failed to get email preferences');
-    }
-
-    // Step 12: Get Addie interaction history for this user
-    try {
-      const interactions = await addieDb.getInteractions({ userId: slackUserId, limit: 10 });
-      if (interactions.length > 0) {
-        // Extract recent topics from input text (first 100 chars of each)
-        const recentTopics = interactions
-          .slice(0, 5)
-          .map(i => i.input_text.substring(0, 100))
-          .filter(t => t.length > 0);
-
-        context.addie_history = {
-          total_interactions: interactions.length,
-          last_interaction_at: interactions[0]?.timestamp || null,
-          recent_topics: recentTopics,
-        };
-      }
-    } catch (error) {
-      logger.warn({ error, slackUserId }, 'Addie: Failed to get Addie interaction history');
+    // Process email preferences (need to get category prefs if we have user prefs)
+    if (emailPrefs) {
+      const categoryPrefs = await emailPrefsDb.getUserCategoryPreferences(workosUserId).catch(() => []);
+      context.email_status = {
+        global_unsubscribed: emailPrefs.global_unsubscribe,
+        subscribed_categories: categoryPrefs.filter(c => c.enabled).map(c => c.category_name),
+        unsubscribed_categories: categoryPrefs.filter(c => !c.enabled).map(c => c.category_name),
+      };
     }
 
     logger.debug(
@@ -349,6 +394,9 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       },
       'Addie: Member context resolved'
     );
+
+    // Cache the context for future lookups
+    setCachedContext(slackUserId, context);
 
     return context;
   } catch (error) {
@@ -511,26 +559,7 @@ export function formatMemberContextForPrompt(context: MemberContext): string | n
     lines.push('Note: This user\'s Slack account is not yet linked to their AgenticAdvertising.org account.');
   }
 
-  // Previous Addie interactions
-  if (context.addie_history) {
-    lines.push('');
-    lines.push('### Previous Conversations with Addie');
-    lines.push(`Total interactions: ${context.addie_history.total_interactions}`);
-    if (context.addie_history.last_interaction_at) {
-      const lastChat = context.addie_history.last_interaction_at.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-      lines.push(`Last conversation: ${lastChat}`);
-    }
-    if (context.addie_history.recent_topics.length > 0) {
-      lines.push('Recent questions:');
-      for (const topic of context.addie_history.recent_topics.slice(0, 3)) {
-        lines.push(`- "${topic.length > 80 ? topic.substring(0, 80) + '...' : topic}"`);
-      }
-    }
-  }
+  // Note: Previous Addie interactions removed - Slack Assistant threads handle conversation context automatically
 
   lines.push('');
   lines.push('Use this context to personalize your response when relevant.');
