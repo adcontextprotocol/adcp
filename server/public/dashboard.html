@@ -680,8 +680,10 @@
     // Load membership agreement into inline section
     async function loadInlineMembershipAgreement() {
       try {
-        const response = await fetch('/docs/membership-agreement.md');
-        const markdown = await response.text();
+        const response = await fetch('/api/agreements/membership');
+        if (!response.ok) throw new Error('Failed to load agreement');
+        const data = await response.json();
+        const markdown = data.agreement?.content || 'Agreement not available.';
         const renderedHtml = marked.parse(markdown);
         document.getElementById('inlineAgreementContent').innerHTML = DOMPurify.sanitize(renderedHtml);
       } catch (error) {
