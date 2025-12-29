@@ -968,6 +968,67 @@ Key environment variables for local development:
 - `DATABASE_URL` - PostgreSQL connection string
 - `RUN_MIGRATIONS=true` - Auto-run migrations on startup (used by Docker)
 
+### Dev Mode Testing (Admin Overrides)
+
+**CRITICAL SECURITY NOTE**: Dev mode ONLY works when `DEV_USER_EMAIL` and `DEV_USER_ID` are set in `.env.local`. This bypasses authentication for local testing and must NEVER be enabled in production.
+
+**How to Enable Dev Mode:**
+
+Add these to your `.env.local`:
+```bash
+DEV_USER_EMAIL=dev@example.com
+DEV_USER_ID=dev-user-123
+```
+
+**Test Users:**
+
+Dev mode provides three test users to simulate different dashboard states:
+
+| User | Query Param | Description |
+|------|-------------|-------------|
+| Admin | `?dev_user=admin` | Full admin access, active subscriber |
+| Member | `?dev_user=member` | Regular member, active subscriber |
+| Non-member | `?dev_user=nonmember` | Non-subscriber, sees pricing prompts |
+
+**How to Switch Users:**
+
+1. **Query Parameter** (easiest for browser testing):
+   ```
+   http://localhost:3000/dashboard?dev_user=admin
+   http://localhost:3000/dashboard?dev_user=member
+   http://localhost:3000/dashboard?dev_user=nonmember
+   ```
+
+2. **HTTP Header** (for API testing):
+   ```bash
+   curl -H "X-Dev-User: admin" http://localhost:3000/api/organizations
+   ```
+
+**What Each User Sees:**
+
+- **Admin/Member** (subscribers):
+  - Profile card + Membership card side-by-side
+  - Full dashboard features
+  - Admin users also see admin sidebar links
+
+- **Non-member** (non-subscriber):
+  - Inline pricing section prompting membership
+  - Limited features until they subscribe
+
+**Mock Billing Data:**
+
+The `/api/billing/customer` endpoint returns mock data based on the dev user:
+- `admin` and `member`: Returns active subscription data (`isMember: true`)
+- `nonmember`: Returns no subscription data (`isMember: false`)
+
+**Security Safeguards:**
+
+The dev mode system has multiple layers of protection:
+1. Environment variables must be explicitly set
+2. Dev user override only works if dev mode is enabled
+3. In production (without env vars), all dev overrides are ignored
+4. The auth middleware validates dev mode status on every request
+
 ## Code Standards
 
 ### TypeScript/JavaScript

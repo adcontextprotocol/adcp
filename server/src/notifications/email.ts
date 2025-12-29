@@ -289,8 +289,8 @@ export async function sendUserSignupEmail(data: {
     : {
         subject: 'Welcome to AgenticAdvertising.org',
         ctaText: 'Become a Member',
-        ctaDestination: 'https://agenticadvertising.org/dashboard/billing',
-        ctaLinkName: 'cta_billing',
+        ctaDestination: 'https://agenticadvertising.org/dashboard/membership',
+        ctaLinkName: 'cta_membership',
       };
 
   try {
@@ -414,7 +414,7 @@ You've created an account, but your organization isn't a member yet. Membership 
 - Member Profile - Showcase your organization's capabilities
 
 Ready to become a member?
-https://agenticadvertising.org/dashboard/billing
+https://agenticadvertising.org/dashboard/membership
 
 If you have any questions, just reply to this email - we're happy to help.
 

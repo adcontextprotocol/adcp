@@ -32,7 +32,7 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { verifySlackSignature, isSlackSigningConfigured } from "./slack/verify.js";
 import { handleSlackEvent } from "./slack/events.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, createRequireWorkingGroupLeader } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, createRequireWorkingGroupLeader, isDevModeEnabled, getDevUser, getAvailableDevUsers, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -106,6 +106,12 @@ const WORKOS_REDIRECT_URI = process.env.WORKOS_REDIRECT_URI || 'http://localhost
 const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD || '';
 // Allow insecure cookies for local Docker development
 const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
+
+// Dev mode: bypass auth with a mock user for local testing
+// Set DEV_USER_EMAIL and DEV_USER_ID in .env.local to enable
+const DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
+const DEV_USER_ID = process.env.DEV_USER_ID;
+const DEV_MODE_ENABLED = !!(DEV_USER_EMAIL && DEV_USER_ID);
 
 // System user ID for audit logs from webhook/automated contexts
 const SYSTEM_USER_ID = 'system';
@@ -574,6 +580,33 @@ export class HTTPServer {
       }
     });
 
+    // GET /api/dev-mode - Get dev mode info (for UI dev user switcher)
+    this.app.get('/api/dev-mode', (req, res) => {
+      if (!isDevModeEnabled()) {
+        return res.status(404).json({
+          enabled: false,
+          message: 'Dev mode is not enabled',
+        });
+      }
+
+      const devUser = getDevUser(req);
+      const availableUsers = getAvailableDevUsers();
+
+      res.json({
+        enabled: true,
+        current_user: {
+          key: Object.entries(availableUsers).find(([, u]) => u.id === devUser.id)?.[0] || 'unknown',
+          ...devUser,
+        },
+        available_users: Object.entries(availableUsers).map(([key, user]) => ({
+          key,
+          ...user,
+          is_current: user.id === devUser.id,
+        })),
+        switch_hint: 'Use ?dev_user=<key> query param or X-Dev-User: <key> header',
+      });
+    });
+
     // Get email categories (public)
     this.app.get('/api/email-preferences/categories', async (req, res) => {
       try {
@@ -710,7 +743,12 @@ export class HTTPServer {
     };
 
     this.app.get('/dashboard/settings', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
-    this.app.get('/dashboard/billing', (req, res) => serveDashboardPage(req, res, 'dashboard-billing.html'));
+    this.app.get('/dashboard/membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
+    // Redirect old billing path to new membership path
+    this.app.get('/dashboard/billing', (req, res) => {
+      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+      res.redirect(301, `/dashboard/membership${query}`);
+    });
     this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
 
     // API endpoints
@@ -4948,6 +4986,51 @@ Disallow: /api/admin/
       try {
         const user = req.user!;
 
+        // Dev mode: return mock data without calling WorkOS
+        // Check if user ID matches any dev user
+        const isDevUser = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id);
+        if (isDevUser) {
+          const devUser = getDevUser(req);
+
+          // In dev mode, look up organizations from our local database
+          // All dev users get organizations so we can test dashboard states
+          // The billing API returns different subscription status based on isMember flag
+          const pool = getPool();
+          const result = await pool.query(
+            `SELECT workos_organization_id, name, is_personal
+             FROM organizations
+             WHERE workos_organization_id LIKE 'org_dev_%'
+             ORDER BY created_at DESC`
+          );
+
+          const organizations = result.rows.map(row => ({
+            id: row.workos_organization_id,
+            name: row.name,
+            role: 'owner', // Dev user is always owner of their orgs
+            status: 'active',
+            is_personal: row.is_personal || false,
+          }));
+
+          return res.json({
+            user: {
+              id: user.id,
+              email: user.email,
+              first_name: user.firstName,
+              last_name: user.lastName,
+              isAdmin: devUser.isAdmin,
+            },
+            organizations,
+            // Include dev mode info for debugging
+            dev_mode: {
+              enabled: true,
+              current_user: devUser.email,
+              user_type: devUser.isAdmin ? 'admin' : devUser.isMember ? 'member' : 'nonmember',
+              available_users: Object.keys(DEV_USERS),
+              switch_hint: 'Use ?dev_user=<key> or X-Dev-User header to switch',
+            },
+          });
+        }
+
         // Get user's WorkOS organization memberships
         const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
@@ -6024,25 +6107,38 @@ Disallow: /api/admin/
 
         logger.info({ organization_name: trimmedName, is_personal, company_type, revenue_tier }, 'Creating WorkOS organization');
 
-        // Create WorkOS Organization
-        const workosOrg = await workos!.organizations.createOrganization({
-          name: trimmedName,
-        });
+        let workosOrgId: string;
+        let workosOrgName: string;
 
-        logger.info({ orgId: workosOrg.id, name: trimmedName }, 'WorkOS organization created');
+        // Dev mode: skip WorkOS calls and generate a mock org ID
+        const isDevUser = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id);
+        if (isDevUser) {
+          workosOrgId = `org_dev_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+          workosOrgName = trimmedName;
+          logger.info({ orgId: workosOrgId, name: trimmedName, devUser: user.email }, 'DEV MODE: Mock organization created (no WorkOS)');
+        } else {
+          // Create WorkOS Organization
+          const workosOrg = await workos!.organizations.createOrganization({
+            name: trimmedName,
+          });
+          workosOrgId = workosOrg.id;
+          workosOrgName = workosOrg.name;
 
-        // Add user as organization owner (since they created it)
-        await workos!.userManagement.createOrganizationMembership({
-          userId: user.id,
-          organizationId: workosOrg.id,
-          roleSlug: 'owner',
-        });
+          logger.info({ orgId: workosOrgId, name: trimmedName }, 'WorkOS organization created');
 
-        logger.info({ userId: user.id, orgId: workosOrg.id }, 'User added as organization owner');
+          // Add user as organization owner (since they created it)
+          await workos!.userManagement.createOrganizationMembership({
+            userId: user.id,
+            organizationId: workosOrgId,
+            roleSlug: 'owner',
+          });
+
+          logger.info({ userId: user.id, orgId: workosOrgId }, 'User added as organization owner');
+        }
 
         // Create organization record in our database
         const orgRecord = await orgDb.createOrganization({
-          workos_organization_id: workosOrg.id,
+          workos_organization_id: workosOrgId,
           name: trimmedName,
           is_personal: is_personal || false,
           company_type: company_type || undefined,
@@ -6050,18 +6146,18 @@ Disallow: /api/admin/
         });
 
         logger.info({
-          orgId: workosOrg.id,
+          orgId: workosOrgId,
           company_type: orgRecord.company_type,
           revenue_tier: orgRecord.revenue_tier,
         }, 'Organization record created in database');
 
         // Record audit log for organization creation
         await orgDb.recordAuditLog({
-          workos_organization_id: workosOrg.id,
+          workos_organization_id: workosOrgId,
           workos_user_id: user.id,
           action: 'organization_created',
           resource_type: 'organization',
-          resource_id: workosOrg.id,
+          resource_id: workosOrgId,
           details: {
             name: trimmedName,
             is_personal: is_personal || false,
@@ -6082,7 +6178,7 @@ Disallow: /api/admin/
             agreement_version: tosAgreement.version,
             ip_address: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
             user_agent: req.headers['user-agent'] || 'unknown',
-            workos_organization_id: workosOrg.id,
+            workos_organization_id: workosOrgId,
           });
         }
 
@@ -6094,15 +6190,15 @@ Disallow: /api/admin/
             agreement_version: privacyAgreement.version,
             ip_address: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
             user_agent: req.headers['user-agent'] || 'unknown',
-            workos_organization_id: workosOrg.id,
+            workos_organization_id: workosOrgId,
           });
         }
 
         res.json({
           success: true,
           organization: {
-            id: workosOrg.id,
-            name: workosOrg.name,
+            id: workosOrgId,
+            name: workosOrgName,
           },
         });
       } catch (error) {
@@ -6526,9 +6622,48 @@ Disallow: /api/admin/
         const user = req.user!;
         const { orgId } = req.params;
 
+        // Dev mode: return mock billing data based on dev user type
+        if (isDevModeEnabled()) {
+          const devUser = getDevUser(req);
+          // For 'member' and 'admin' dev users, simulate active subscription
+          // For 'nonmember' dev user, simulate no subscription
+          if (devUser.isMember) {
+            return res.json({
+              subscription: {
+                status: 'active',
+                product_name: 'Founding Member',
+                current_period_end: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60), // 30 days from now
+                cancel_at_period_end: false,
+              },
+              stripe_customer_id: 'cus_dev_mock',
+              customer_session_secret: null,
+              company_type: 'agency',
+              revenue_tier: 'startup',
+              is_personal: false,
+            });
+          } else {
+            // Non-member dev user - no subscription
+            return res.json({
+              subscription: null,
+              stripe_customer_id: 'cus_dev_mock',
+              customer_session_secret: null,
+              company_type: null,
+              revenue_tier: null,
+              is_personal: true,
+            });
+          }
+        }
+
         // Get organization from database
         let org = await orgDb.getOrganization(orgId);
         if (!org) {
+          // Dev mode: skip WorkOS sync for dev orgs
+          if (DEV_MODE_ENABLED && orgId.startsWith('org_dev_')) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist in local database',
+            });
+          }
           // Organization not in local DB - try to sync from WorkOS on-demand
           try {
             const workosOrg = await workos!.organizations.getOrganization(orgId);
@@ -6551,17 +6686,21 @@ Disallow: /api/admin/
           });
         }
 
-        // Verify user is a member of this organization
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
-        });
-
-        if (memberships.data.length === 0) {
-          return res.status(403).json({
-            error: 'Access denied',
-            message: 'You are not a member of this organization',
+        // Dev mode: skip membership check for dev orgs (dev users own all dev orgs)
+        const isDevUserBilling = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && orgId.startsWith('org_dev_');
+        if (!isDevUserBilling) {
+          // Verify user is a member of this organization
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+            organizationId: orgId,
           });
+
+          if (memberships.data.length === 0) {
+            return res.status(403).json({
+              error: 'Access denied',
+              message: 'You are not a member of this organization',
+            });
+          }
         }
 
         // Get subscription info - if this fails, we want to know about it
@@ -6812,6 +6951,24 @@ Disallow: /api/admin/
       try {
         const user = req.user!;
         const { orgId } = req.params;
+
+        // Dev mode: return mock member list for dev orgs
+        const isDevUserMembers = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && orgId.startsWith('org_dev_');
+        if (isDevUserMembers) {
+          const devUser = getDevUser(req);
+          return res.json([
+            {
+              id: 'membership_dev_001',
+              user_id: devUser.id,
+              email: devUser.email,
+              first_name: devUser.firstName,
+              last_name: devUser.lastName,
+              role: 'owner',
+              status: 'active',
+              created_at: new Date().toISOString(),
+            },
+          ]);
+        }
 
         // Verify user is member of this organization
         const userMemberships = await workos!.userManagement.listOrganizationMemberships({
@@ -9137,6 +9294,25 @@ Disallow: /api/admin/
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
 
+        // Dev mode: handle dev organizations without WorkOS
+        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
+        if (isDevUserProfile) {
+          const localOrg = await orgDb.getOrganization(requestedOrgId!);
+          if (!localOrg) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist',
+            });
+          }
+          const profile = await memberDb.getProfileByOrgId(requestedOrgId!);
+          logger.info({ userId: user.id, orgId: requestedOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed (dev mode)');
+          return res.json({
+            profile: profile || null,
+            organization_id: requestedOrgId,
+            organization_name: localOrg.name,
+          });
+        }
+
         // Get user's organization memberships
         const memberships = await workos!.userManagement.listOrganizationMemberships({
           userId: user.id,
@@ -9235,38 +9411,54 @@ Disallow: /api/admin/
           });
         }
 
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
+        // Dev mode: handle dev organizations without WorkOS
+        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
 
-        if (memberships.data.length === 0) {
-          return res.status(400).json({
-            error: 'No organization',
-            message: 'User must be a member of an organization to create a profile',
-          });
-        }
-
-        // Determine which org to use
         let targetOrgId: string;
-        if (requestedOrgId) {
-          // Verify user is a member of the requested org
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
+
+        if (isDevUserProfile) {
+          // Dev mode: use the requested dev org directly
+          const localOrg = await orgDb.getOrganization(requestedOrgId!);
+          if (!localOrg) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist',
             });
           }
-          targetOrgId = requestedOrgId;
+          targetOrgId = requestedOrgId!;
+          logger.info({ userId: user.id, orgId: targetOrgId }, 'POST /api/me/member-profile: dev mode bypass');
         } else {
-          // Default to first org
-          targetOrgId = memberships.data[0].organizationId;
+          // Normal mode: check WorkOS memberships
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
+
+          if (memberships.data.length === 0) {
+            return res.status(400).json({
+              error: 'No organization',
+              message: 'User must be a member of an organization to create a profile',
+            });
+          }
+
+          if (requestedOrgId) {
+            // Verify user is a member of the requested org
+            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+            if (!isMember) {
+              return res.status(403).json({
+                error: 'Not authorized',
+                message: 'User is not a member of the requested organization',
+              });
+            }
+            targetOrgId = requestedOrgId;
+          } else {
+            // Default to first org
+            targetOrgId = memberships.data[0].organizationId;
+          }
         }
 
-        // Ensure organization exists in local DB (on-demand sync from WorkOS)
+        // Ensure organization exists in local DB (on-demand sync from WorkOS, skip for dev mode)
         let org = await orgDb.getOrganization(targetOrgId);
-        if (!org) {
+        if (!org && !isDevUserProfile) {
           try {
             const workosOrg = await workos!.organizations.getOrganization(targetOrgId);
             if (workosOrg) {
@@ -9364,31 +9556,47 @@ Disallow: /api/admin/
         const requestedOrgId = req.query.org as string | undefined;
         const updates = req.body;
 
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
+        // Dev mode: handle dev organizations without WorkOS
+        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
 
-        if (memberships.data.length === 0) {
-          return res.status(400).json({
-            error: 'No organization',
-            message: 'User must be a member of an organization to update a profile',
-          });
-        }
-
-        // Determine which org to use
         let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
+
+        if (isDevUserProfile) {
+          // Dev mode: use the requested dev org directly
+          const localOrg = await orgDb.getOrganization(requestedOrgId!);
+          if (!localOrg) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist',
             });
           }
-          targetOrgId = requestedOrgId;
+          targetOrgId = requestedOrgId!;
+          logger.info({ userId: user.id, orgId: targetOrgId }, 'PUT /api/me/member-profile: dev mode bypass');
         } else {
-          targetOrgId = memberships.data[0].organizationId;
+          // Normal mode: check WorkOS memberships
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
+
+          if (memberships.data.length === 0) {
+            return res.status(400).json({
+              error: 'No organization',
+              message: 'User must be a member of an organization to update a profile',
+            });
+          }
+
+          if (requestedOrgId) {
+            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+            if (!isMember) {
+              return res.status(403).json({
+                error: 'Not authorized',
+                message: 'User is not a member of the requested organization',
+              });
+            }
+            targetOrgId = requestedOrgId;
+          } else {
+            targetOrgId = memberships.data[0].organizationId;
+          }
         }
 
         // Check if profile exists
@@ -9452,31 +9660,47 @@ Disallow: /api/admin/
           });
         }
 
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
+        // Dev mode: handle dev organizations without WorkOS
+        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
 
-        if (memberships.data.length === 0) {
-          return res.status(400).json({
-            error: 'No organization',
-            message: 'User must be a member of an organization to update visibility',
-          });
-        }
-
-        // Determine which org to use
         let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
+
+        if (isDevUserProfile) {
+          // Dev mode: use the requested dev org directly
+          const localOrg = await orgDb.getOrganization(requestedOrgId!);
+          if (!localOrg) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist',
             });
           }
-          targetOrgId = requestedOrgId;
+          targetOrgId = requestedOrgId!;
+          logger.info({ userId: user.id, orgId: targetOrgId }, 'PUT /api/me/member-profile/visibility: dev mode bypass');
         } else {
-          targetOrgId = memberships.data[0].organizationId;
+          // Normal mode: check WorkOS memberships
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
+
+          if (memberships.data.length === 0) {
+            return res.status(400).json({
+              error: 'No organization',
+              message: 'User must be a member of an organization to update visibility',
+            });
+          }
+
+          if (requestedOrgId) {
+            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+            if (!isMember) {
+              return res.status(403).json({
+                error: 'Not authorized',
+                message: 'User is not a member of the requested organization',
+              });
+            }
+            targetOrgId = requestedOrgId;
+          } else {
+            targetOrgId = memberships.data[0].organizationId;
+          }
         }
 
         // Check if profile exists
@@ -9526,31 +9750,47 @@ Disallow: /api/admin/
         const user = req.user!;
         const requestedOrgId = req.query.org as string | undefined;
 
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
+        // Dev mode: handle dev organizations without WorkOS
+        const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
 
-        if (memberships.data.length === 0) {
-          return res.status(400).json({
-            error: 'No organization',
-            message: 'User must be a member of an organization',
-          });
-        }
-
-        // Determine which org to use
         let targetOrgId: string;
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
+
+        if (isDevUserProfile) {
+          // Dev mode: use the requested dev org directly
+          const localOrg = await orgDb.getOrganization(requestedOrgId!);
+          if (!localOrg) {
+            return res.status(404).json({
+              error: 'Organization not found',
+              message: 'The requested organization does not exist',
             });
           }
-          targetOrgId = requestedOrgId;
+          targetOrgId = requestedOrgId!;
+          logger.info({ userId: user.id, orgId: targetOrgId }, 'DELETE /api/me/member-profile: dev mode bypass');
         } else {
-          targetOrgId = memberships.data[0].organizationId;
+          // Normal mode: check WorkOS memberships
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+          });
+
+          if (memberships.data.length === 0) {
+            return res.status(400).json({
+              error: 'No organization',
+              message: 'User must be a member of an organization',
+            });
+          }
+
+          if (requestedOrgId) {
+            const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+            if (!isMember) {
+              return res.status(403).json({
+                error: 'Not authorized',
+                message: 'User is not a member of the requested organization',
+              });
+            }
+            targetOrgId = requestedOrgId;
+          } else {
+            targetOrgId = memberships.data[0].organizationId;
+          }
         }
 
         // Check if profile exists

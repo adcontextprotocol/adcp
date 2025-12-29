@@ -5,27 +5,24 @@
   'use strict';
 
   // Navigation configuration
+  // When on dashboard page, use anchor links; otherwise use full page links
+  const isDashboardPage = window.location.pathname === '/dashboard' || window.location.pathname === '/dashboard/';
+
   const NAV_CONFIG = {
     logo: 'Dashboard',
     sections: [
       {
-        label: 'Overview',
+        label: 'Dashboard',
         items: [
-          { href: '/dashboard', label: 'Home', icon: '🏠' },
-        ]
-      },
-      {
-        label: 'Organization',
-        items: [
-          { href: '/member-profile', label: 'Member Profile', icon: '🏢' },
-          { href: '/team', label: 'Team', icon: '👥' },
-          { href: '/working-groups', label: 'Working Groups', icon: '🏛️' },
+          { href: isDashboardPage ? '#profile' : '/dashboard#profile', label: 'Member Profile', icon: '🏢', anchor: 'profile' },
+          { href: isDashboardPage ? '#team' : '/dashboard#team', label: 'Team', icon: '👥', anchor: 'team' },
+          { href: isDashboardPage ? '#working-groups' : '/dashboard#working-groups', label: 'Working Groups', icon: '🏛️', anchor: 'working-groups' },
+          { href: isDashboardPage ? '#membership' : '/dashboard#membership', label: 'Membership', icon: '⭐', anchor: 'membership' },
         ]
       },
       {
         label: 'Account',
         items: [
-          { href: '/dashboard/billing', label: 'Billing', icon: '💳' },
           { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
           { href: '/dashboard/emails', label: 'Email Preferences', icon: '📧' },
         ]
@@ -38,9 +35,10 @@
   // Note: top nav is ~60px, so sidebar starts below it
   const SIDEBAR_STYLES = `
     .dashboard-layout {
-      display: flex;
       min-height: 100vh;
       padding-top: 60px; /* Space for top nav */
+      display: flex;
+      flex-direction: column;
     }
 
     .dashboard-sidebar {
@@ -58,11 +56,56 @@
     }
 
     .dashboard-sidebar-header {
-      padding: 20px 24px;
+      padding: 16px 20px;
       border-bottom: 1px solid var(--color-border);
       display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .dashboard-sidebar-org {
+      display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .dashboard-sidebar-org-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 200px;
+    }
+
+    .dashboard-sidebar-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .dashboard-sidebar-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .dashboard-sidebar-badge--team {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+
+    .dashboard-sidebar-badge--personal {
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+    }
+
+    .dashboard-sidebar-badge--subscribed {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
     }
 
     .dashboard-sidebar-logo {
@@ -150,17 +193,26 @@
     }
 
     .dashboard-main {
-      flex: 1;
       margin-left: 260px;
-      min-height: 100vh;
+      flex: 1;
       background: var(--color-bg-page);
+      width: calc(100% - 260px);
+    }
+
+    /* Container inside dashboard main should use full width since sidebar already constrains it */
+    .dashboard-main .container {
+      max-width: none;
+      width: 100%;
+      margin: 0;
+      padding: 24px 32px;
+      box-sizing: border-box;
     }
 
     /* Mobile sidebar toggle */
     .dashboard-sidebar-toggle {
       display: none;
       position: fixed;
-      top: 16px;
+      top: 76px; /* Below top nav */
       left: 16px;
       z-index: 101;
       background: var(--color-bg-card);
@@ -314,15 +366,32 @@
   // Create sidebar HTML
   function createSidebarHTML(options = {}) {
     const currentPath = window.location.pathname;
-    const { showAdmin = false, showOrgSwitcher = false, currentOrgName = 'Select Organization' } = options;
+    const {
+      showAdmin = false,
+      showOrgSwitcher = false,
+      currentOrgName = 'Organization',
+      isPersonal = false,
+      isSubscribed = false
+    } = options;
+
+    const currentHash = window.location.hash;
 
     const sectionsHTML = NAV_CONFIG.sections.map(section => {
       const itemsHTML = section.items.map(item => {
-        const isActive = currentPath === item.href ||
-                        (item.href !== '/dashboard' && currentPath.startsWith(item.href));
+        // For anchor links on dashboard, check hash; for page links, check path
+        let isActive = false;
+        if (item.anchor && isDashboardPage) {
+          // On dashboard with anchor links - check if hash matches or default to profile
+          isActive = currentHash === `#${item.anchor}` ||
+                    (item.anchor === 'profile' && (!currentHash || currentHash === ''));
+        } else if (!item.anchor) {
+          // Regular page links
+          isActive = currentPath === item.href ||
+                    (item.href !== '/dashboard' && currentPath.startsWith(item.href));
+        }
         const activeClass = isActive ? 'active' : '';
         return `
-          <a href="${item.href}" class="dashboard-nav-item ${activeClass}">
+          <a href="${item.href}" class="dashboard-nav-item ${activeClass}" ${item.anchor ? `data-anchor="${item.anchor}"` : ''}>
             <span class="dashboard-nav-icon">${item.icon}</span>
             <span>${item.label}</span>
           </a>
@@ -337,6 +406,7 @@
       `;
     }).join('');
 
+    // Org switcher for users with multiple orgs
     const orgSwitcherHTML = showOrgSwitcher ? `
       <div class="dashboard-org-switcher">
         <button class="dashboard-org-btn" onclick="DashboardNav.toggleOrgDropdown()">
@@ -353,15 +423,22 @@
       </a>
     ` : '';
 
+    // Build badges - only show Member badge for subscribers
+    const subscribedBadge = isSubscribed
+      ? '<span class="dashboard-sidebar-badge dashboard-sidebar-badge--subscribed">Member</span>'
+      : '';
+
     return `
       <button class="dashboard-sidebar-toggle" onclick="DashboardNav.toggleSidebar()">☰</button>
       <div class="dashboard-sidebar-overlay" onclick="DashboardNav.closeSidebar()"></div>
       <aside class="dashboard-sidebar" id="dashboardSidebar">
         <div class="dashboard-sidebar-header">
-          <a href="/dashboard" class="dashboard-sidebar-logo">
-            <img src="/AAo.svg" alt="AAO">
-            <span>${NAV_CONFIG.logo}</span>
-          </a>
+          <div class="dashboard-sidebar-org">
+            <span class="dashboard-sidebar-org-name" id="sidebarOrgName">${currentOrgName}</span>
+          </div>
+          <div class="dashboard-sidebar-badges" id="sidebarOrgBadges">
+            ${subscribedBadge}
+          </div>
         </div>
         ${orgSwitcherHTML}
         <nav class="dashboard-sidebar-nav">
@@ -378,34 +455,46 @@
     const existingMain = document.querySelector('.dashboard-main');
     if (existingMain) return; // Already wrapped
 
-    // Get all body children except scripts and the sidebar
+    // Get all body children except scripts, sidebar elements, nav, and footer
     const bodyChildren = Array.from(document.body.children).filter(el =>
       el.tagName !== 'SCRIPT' &&
       !el.classList.contains('dashboard-sidebar') &&
       !el.classList.contains('dashboard-sidebar-toggle') &&
-      !el.classList.contains('dashboard-sidebar-overlay')
+      !el.classList.contains('dashboard-sidebar-overlay') &&
+      !el.classList.contains('aao-footer') &&
+      el.id !== 'adcp-nav'
     );
 
     // Create main wrapper
     const mainWrapper = document.createElement('main');
     mainWrapper.className = 'dashboard-main';
 
-    // Move children to wrapper
+    // Move children to wrapper (except footer which stays at body level)
     bodyChildren.forEach(child => {
       mainWrapper.appendChild(child);
     });
 
-    // Add wrapper to body
-    document.body.appendChild(mainWrapper);
+    // Insert main wrapper before footer if footer exists, otherwise append to body
+    const footer = document.querySelector('.aao-footer');
+    if (footer) {
+      document.body.insertBefore(mainWrapper, footer);
+    } else {
+      document.body.appendChild(mainWrapper);
+    }
   }
 
   // Initialize navigation
   function init(options = {}) {
     injectStyles();
 
-    // Insert sidebar at start of body
+    // Insert sidebar after adcp-nav if present, otherwise at start of body
     const sidebarHTML = createSidebarHTML(options);
-    document.body.insertAdjacentHTML('afterbegin', sidebarHTML);
+    const adcpNav = document.getElementById('adcp-nav');
+    if (adcpNav) {
+      adcpNav.insertAdjacentHTML('afterend', sidebarHTML);
+    } else {
+      document.body.insertAdjacentHTML('afterbegin', sidebarHTML);
+    }
 
     // Add layout class to body
     document.body.classList.add('dashboard-layout');
@@ -441,8 +530,27 @@
   }
 
   function setOrgName(name) {
-    const el = document.getElementById('dashboardOrgName');
-    if (el) el.textContent = name;
+    // Update org switcher dropdown button
+    const dropdownEl = document.getElementById('dashboardOrgName');
+    if (dropdownEl) dropdownEl.textContent = name;
+
+    // Update sidebar header org name
+    const sidebarEl = document.getElementById('sidebarOrgName');
+    if (sidebarEl) sidebarEl.textContent = name;
+  }
+
+  // Update sidebar badges based on org status
+  function setOrgStatus(options = {}) {
+    const { isPersonal = false, isSubscribed = false } = options;
+    const badgesEl = document.getElementById('sidebarOrgBadges');
+    if (!badgesEl) return;
+
+    // Only show Member badge for subscribers
+    const subscribedBadge = isSubscribed
+      ? '<span class="dashboard-sidebar-badge dashboard-sidebar-badge--subscribed">Member</span>'
+      : '';
+
+    badgesEl.innerHTML = subscribedBadge;
   }
 
   function setOrgOptions(orgs, selectedId, onSelect) {
@@ -490,6 +598,51 @@
     }
   });
 
+  // Update active nav item when hash changes (for anchor-based navigation)
+  function updateActiveNavItem() {
+    if (!isDashboardPage) return;
+
+    const currentHash = window.location.hash;
+    const navItems = document.querySelectorAll('.dashboard-nav-item[data-anchor]');
+
+    navItems.forEach(item => {
+      const anchor = item.getAttribute('data-anchor');
+      const isActive = currentHash === `#${anchor}` ||
+                      (anchor === 'profile' && (!currentHash || currentHash === ''));
+      item.classList.toggle('active', isActive);
+    });
+  }
+
+  // Listen for hash changes
+  window.addEventListener('hashchange', updateActiveNavItem);
+
+  // Also handle smooth scrolling and intersection observer for scroll-based updates
+  if (isDashboardPage) {
+    // Set up intersection observer for sections to update nav on scroll
+    document.addEventListener('DOMContentLoaded', () => {
+      const sections = document.querySelectorAll('.dashboard-section[id]');
+      if (sections.length === 0) return;
+
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && entry.intersectionRatio > 0.3) {
+            const sectionId = entry.target.id;
+            // Update hash without triggering scroll
+            if (window.location.hash !== `#${sectionId}`) {
+              history.replaceState(null, '', `#${sectionId}`);
+              updateActiveNavItem();
+            }
+          }
+        });
+      }, {
+        rootMargin: '-100px 0px -60% 0px',
+        threshold: [0.3]
+      });
+
+      sections.forEach(section => observer.observe(section));
+    });
+  }
+
   // Export API
   window.DashboardNav = {
     config: NAV_CONFIG,
@@ -499,6 +652,7 @@
     toggleOrgDropdown,
     closeOrgDropdown,
     setOrgName,
+    setOrgStatus,
     setOrgOptions,
     selectOrg,
     showAdminLink

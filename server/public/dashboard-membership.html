@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Billing - Dashboard</title>
+  <title>Membership - Dashboard</title>
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
@@ -194,6 +194,65 @@
       margin-top: 16px;
     }
 
+    /* Agreements list */
+    .agreement-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .agreement-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .agreement-item:first-child {
+      padding-top: 0;
+    }
+
+    .agreement-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .agreement-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .agreement-status-dot.signed {
+      background: var(--color-success-500);
+    }
+
+    .agreement-status-dot.outdated {
+      background: var(--color-warning-500);
+    }
+
+    .agreement-status-dot.required {
+      background: var(--color-error-500);
+    }
+
+    .agreement-name {
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+
+    .agreement-meta {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
+
+    .agreement-actions {
+      display: flex;
+      gap: 8px;
+    }
+
     /* Pricing table wrapper */
     .pricing-wrapper {
       transition: opacity 0.3s;
@@ -238,12 +297,12 @@
   <div id="toast" class="toast"></div>
 
   <div class="page-header">
-    <h1>Billing</h1>
-    <p>Manage your membership and billing information</p>
+    <h1>Membership</h1>
+    <p>Manage your membership, billing, and agreements</p>
   </div>
 
   <div class="page-content">
-    <div id="loading" class="loading">Loading billing information...</div>
+    <div id="loading" class="loading">Loading membership information...</div>
 
     <div id="content" style="display: none;">
       <!-- Current subscription status (for subscribers) -->
@@ -258,6 +317,18 @@
           <button id="manageBillingBtn" class="btn btn-primary" onclick="openBillingPortal()">
             Manage Billing
           </button>
+        </div>
+      </div>
+
+      <!-- Agreements section (for subscribers) -->
+      <div id="agreementsCard" class="billing-card" style="display: none;">
+        <div class="billing-card-header">
+          <h2>Agreements</h2>
+        </div>
+        <div class="billing-card-body">
+          <div id="agreementsList">
+            Loading agreements...
+          </div>
         </div>
       </div>
 
@@ -346,7 +417,7 @@
         if (data.organizations?.length > 1) {
           DashboardNav.setOrgOptions(data.organizations, currentOrg.id, (newOrgId) => {
             localStorage.setItem('selectedOrgId', newOrgId);
-            window.location.href = '/dashboard/billing?org=' + newOrgId;
+            window.location.href = '/dashboard/membership?org=' + newOrgId;
           });
         }
 
@@ -364,13 +435,17 @@
       const hasSubscription = currentOrg.billing?.status === 'active';
       const subscriptionCard = document.getElementById('subscriptionCard');
       const membershipSection = document.getElementById('membershipSection');
+      const agreementsCard = document.getElementById('agreementsCard');
 
       if (hasSubscription) {
         subscriptionCard.style.display = 'block';
+        agreementsCard.style.display = 'block';
         membershipSection.style.display = 'none';
         renderSubscriptionStatus();
+        loadMyAgreements();
       } else {
         subscriptionCard.style.display = 'none';
+        agreementsCard.style.display = 'none';
         membershipSection.style.display = 'block';
         loadAgreement();
         updatePricingTable();
@@ -484,6 +559,101 @@
         console.error('Error opening billing portal:', error);
         showToast('Failed to open billing portal');
       }
+    }
+
+    // Format agreement type for display
+    function formatAgreementType(type) {
+      const map = {
+        'membership_agreement': 'Membership Agreement',
+        'terms_of_service': 'Terms of Service',
+        'privacy_policy': 'Privacy Policy',
+        'bylaws': 'Bylaws',
+        'ip_policy': 'IP Policy',
+        'antitrust_policy': 'Antitrust Policy'
+      };
+      return map[type] || type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Load and display user's agreements
+    async function loadMyAgreements() {
+      const listEl = document.getElementById('agreementsList');
+
+      try {
+        const response = await fetch('/api/me/agreements', { credentials: 'include' });
+        if (!response.ok) throw new Error('Failed to load agreements');
+
+        const data = await response.json();
+        const agreements = data.agreements || [];
+
+        if (agreements.length === 0) {
+          listEl.innerHTML = '<p style="color: var(--color-text-secondary);">No agreements to display.</p>';
+          return;
+        }
+
+        listEl.innerHTML = agreements.map(agreement => {
+          const isSigned = !!agreement.version;
+          const isOutdated = agreement.is_outdated;
+
+          let statusClass, statusLabel;
+          if (!isSigned) {
+            statusClass = 'required';
+            statusLabel = 'Required';
+          } else if (isOutdated) {
+            statusClass = 'outdated';
+            statusLabel = 'Update available';
+          } else {
+            statusClass = 'signed';
+            statusLabel = 'Signed';
+          }
+
+          const signedDate = agreement.signed_at
+            ? new Date(agreement.signed_at).toLocaleDateString()
+            : null;
+
+          const meta = signedDate
+            ? `Signed on ${signedDate}${isOutdated ? ' • New version available' : ''}`
+            : statusLabel;
+
+          // Actions
+          let actions = '';
+          if (!isSigned) {
+            actions = `<button class="btn btn-primary btn-sm" onclick="viewAgreement('${escapeHtml(agreement.type)}')">Review & Sign</button>`;
+          } else {
+            actions = `<button class="btn btn-secondary btn-sm" onclick="viewAgreement('${escapeHtml(agreement.type)}')">View</button>`;
+          }
+
+          return `
+            <div class="agreement-item">
+              <div class="agreement-info">
+                <div class="agreement-status-dot ${statusClass}"></div>
+                <div>
+                  <div class="agreement-name">${escapeHtml(formatAgreementType(agreement.type))}</div>
+                  <div class="agreement-meta">${escapeHtml(meta)}</div>
+                </div>
+              </div>
+              <div class="agreement-actions">
+                ${actions}
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        console.error('Error loading agreements:', error);
+        listEl.innerHTML = '<p style="color: var(--color-error-500);">Failed to load agreements.</p>';
+      }
+    }
+
+    // View an agreement
+    function viewAgreement(type) {
+      window.open(`/api/agreement?type=${encodeURIComponent(type)}`, '_blank');
     }
 
     // Initialize

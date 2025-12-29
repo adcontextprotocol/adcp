@@ -163,6 +163,13 @@
       background: var(--color-bg-page);
     }
 
+    /* Container inside admin main should use full width since sidebar already constrains it */
+    .admin-main .container {
+      max-width: none;
+      margin-left: 0;
+      margin-right: 0;
+    }
+
     /* Mobile sidebar toggle */
     .admin-sidebar-toggle {
       display: none;
@@ -276,12 +283,13 @@
     const existingMain = document.querySelector('.admin-main');
     if (existingMain) return; // Already wrapped
 
-    // Get all body children except scripts and the sidebar
+    // Get all body children except scripts, sidebar elements, nav, and footer
     const bodyChildren = Array.from(document.body.children).filter(el =>
       el.tagName !== 'SCRIPT' &&
       !el.classList.contains('admin-sidebar') &&
       !el.classList.contains('admin-sidebar-toggle') &&
       !el.classList.contains('admin-sidebar-overlay') &&
+      !el.classList.contains('aao-footer') &&
       el.id !== 'adcp-nav'
     );
 
@@ -289,13 +297,18 @@
     const mainWrapper = document.createElement('main');
     mainWrapper.className = 'admin-main';
 
-    // Move children to wrapper
+    // Move children to wrapper (except footer which stays at body level)
     bodyChildren.forEach(child => {
       mainWrapper.appendChild(child);
     });
 
-    // Add wrapper to body
-    document.body.appendChild(mainWrapper);
+    // Insert main wrapper before footer if footer exists, otherwise append to body
+    const footer = document.querySelector('.aao-footer');
+    if (footer) {
+      document.body.insertBefore(mainWrapper, footer);
+    } else {
+      document.body.appendChild(mainWrapper);
+    }
   }
 
   // Initialize navigation

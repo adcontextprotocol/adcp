@@ -78,6 +78,121 @@ const companyDb = new CompanyDatabase();
 // Allow insecure cookies for local Docker development
 const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
 
+// Dev mode: bypass auth with mock users for local testing
+// Set DEV_USER_EMAIL and DEV_USER_ID in .env.local to enable
+const DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
+const DEV_USER_ID = process.env.DEV_USER_ID;
+const DEV_MODE_ENABLED = !!(DEV_USER_EMAIL && DEV_USER_ID);
+
+// Multiple dev users for testing different scenarios
+// Switch between users by setting ?dev_user=<key> query param or X-Dev-User header
+export interface DevUserConfig {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  isAdmin: boolean;
+  isMember: boolean; // Has an organization membership
+  description: string;
+}
+
+export const DEV_USERS: Record<string, DevUserConfig> = {
+  // Admin dev user (separate from real admin accounts for testing)
+  admin: {
+    id: 'user_dev_admin_001',
+    email: 'admin@test.local',
+    firstName: 'Admin',
+    lastName: 'Tester',
+    isAdmin: true,
+    isMember: true,
+    description: 'Test admin with full access',
+  },
+  // Member user (has organization but not admin)
+  member: {
+    id: 'user_dev_member_001',
+    email: 'member@test.local',
+    firstName: 'Member',
+    lastName: 'User',
+    isAdmin: false,
+    isMember: true,
+    description: 'Regular member with organization access',
+  },
+  // Non-member user (no organization, just signed up)
+  nonmember: {
+    id: 'user_dev_nonmember_001',
+    email: 'visitor@test.local',
+    firstName: 'Visitor',
+    lastName: 'User',
+    isAdmin: false,
+    isMember: false,
+    description: 'User without any organization membership',
+  },
+};
+
+// Current dev user key (can be switched via query param or header)
+let currentDevUserKey = 'admin';
+
+if (DEV_MODE_ENABLED) {
+  logger.warn({
+    defaultUser: DEV_USERS.admin.email,
+    availableUsers: Object.keys(DEV_USERS),
+  }, 'DEV MODE ENABLED - Auth bypass active. DO NOT use in production!');
+  logger.info('Switch dev users with ?dev_user=<key> or X-Dev-User header (admin, member, nonmember)');
+}
+
+/**
+ * Get the current dev user based on request context
+ * Checks query param and header for user switching
+ */
+export function getDevUser(req?: Request): DevUserConfig {
+  let userKey = currentDevUserKey;
+
+  if (req) {
+    // Check query param first
+    const queryUser = req.query.dev_user as string;
+    if (queryUser && DEV_USERS[queryUser]) {
+      userKey = queryUser;
+    }
+    // Check header (takes precedence)
+    const headerUser = req.headers['x-dev-user'] as string;
+    if (headerUser && DEV_USERS[headerUser]) {
+      userKey = headerUser;
+    }
+  }
+
+  return DEV_USERS[userKey] || DEV_USERS.admin;
+}
+
+/**
+ * Create a mock user for dev mode
+ */
+function createDevUser(req?: Request): WorkOSUser {
+  const devUser = getDevUser(req);
+  return {
+    id: devUser.id,
+    email: devUser.email,
+    firstName: devUser.firstName,
+    lastName: devUser.lastName,
+    emailVerified: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Check if dev mode is enabled
+ */
+export function isDevModeEnabled(): boolean {
+  return DEV_MODE_ENABLED;
+}
+
+/**
+ * Get all available dev users (for UI switcher)
+ */
+export function getAvailableDevUsers(): Record<string, DevUserConfig> {
+  return DEV_USERS;
+}
+
 /**
  * Helper to set the session cookie with consistent options
  */
@@ -98,6 +213,13 @@ function setSessionCookie(res: Response, sealedSession: string) {
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  // Dev mode: bypass auth entirely
+  if (DEV_MODE_ENABLED) {
+    req.user = createDevUser(req);
+    req.accessToken = 'dev-mode-token';
+    return next();
+  }
+
   const sessionCookie = req.cookies['wos-session'];
   const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
 
@@ -370,6 +492,59 @@ export function requireRole(...allowedRoles: Array<'owner' | 'admin' | 'member'>
  * Checks if user's email is from @agenticadvertising.org domain
  */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  // Dev mode: check if dev user has admin flag
+  if (DEV_MODE_ENABLED) {
+    const devUser = getDevUser(req);
+    if (!req.user) {
+      req.user = createDevUser(req);
+      req.accessToken = 'dev-mode-token';
+    }
+    // Check dev user's isAdmin flag
+    if (!devUser.isAdmin) {
+      const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+      logger.warn({ userId: req.user.id, email: req.user.email }, 'Non-admin dev user attempted to access admin endpoint');
+      if (isHtmlRequest) {
+        return res.status(403).send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Access Denied</title>
+            <style>
+              body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: var(--color-bg-page, #f5f5f5); }
+              .container { background: var(--color-bg-card, white); padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+              h1 { color: var(--color-error-600, #c33); margin-bottom: 10px; }
+              p { color: var(--color-text-secondary, #666); margin-bottom: 20px; }
+              a { color: var(--color-brand, #667eea); text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              .dev-hint { margin-top: 20px; padding: 15px; background: var(--color-bg-subtle, #f9fafb); border-radius: 6px; font-size: 13px; }
+              code { background: var(--color-gray-200, #e5e7eb); padding: 2px 6px; border-radius: 4px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Access Denied</h1>
+              <p>This resource is only accessible to administrators.</p>
+              <p>Current dev user: <strong>${devUser.email}</strong></p>
+              <div class="dev-hint">
+                <strong>Dev Mode Tip:</strong><br>
+                Switch to admin user: <code>?dev_user=admin</code>
+              </div>
+              <p><a href="/">← Back to Home</a></p>
+            </div>
+          </body>
+          </html>
+        `);
+      }
+      return res.status(403).json({
+        error: 'Admin access required',
+        message: 'This resource is only accessible to administrators',
+        dev_hint: 'Switch to admin user with ?dev_user=admin or X-Dev-User: admin header',
+        current_dev_user: devUser.email,
+      });
+    }
+    return next();
+  }
+
   const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
 
   if (!req.user) {
@@ -494,6 +669,13 @@ export function createRequireWorkingGroupLeader(
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  // Dev mode: always set the dev user
+  if (DEV_MODE_ENABLED) {
+    req.user = createDevUser(req);
+    req.accessToken = 'dev-mode-token';
+    return next();
+  }
+
   const sessionCookie = req.cookies['wos-session'];
 
   if (!sessionCookie) {

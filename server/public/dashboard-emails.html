@@ -347,20 +347,21 @@
       }
 
       container.innerHTML = preferences.categories.map(cat => {
-        const isEnabled = preferences.preferences?.[cat.id] ?? cat.default_enabled;
+        // API returns category_name, category_description, category_id, enabled
+        const isEnabled = cat.enabled;
         const isDisabled = isGloballyUnsubscribed;
 
         return `
           <div class="email-category">
             <div class="email-category-info">
-              <h3 class="email-category-name">${escapeHtml(cat.name)}</h3>
-              <p class="email-category-desc">${escapeHtml(cat.description || '')}</p>
+              <h3 class="email-category-name">${escapeHtml(cat.category_name)}</h3>
+              <p class="email-category-desc">${escapeHtml(cat.category_description || '')}</p>
             </div>
             <label class="toggle">
               <input type="checkbox"
                      ${isEnabled ? 'checked' : ''}
                      ${isDisabled ? 'disabled' : ''}
-                     onchange="toggleCategory('${cat.id}', this.checked)">
+                     onchange="toggleCategory('${cat.category_id}', this.checked)">
               <span class="toggle-slider"></span>
             </label>
           </div>
@@ -386,9 +387,11 @@
 
         if (!response.ok) throw new Error('Failed to update preference');
 
-        // Update local state
-        if (!preferences.preferences) preferences.preferences = {};
-        preferences.preferences[categoryId] = enabled;
+        // Update local state - find the category and update its enabled status
+        const category = preferences.categories.find(c => c.category_id === categoryId);
+        if (category) {
+          category.enabled = enabled;
+        }
 
         showToast(enabled ? 'Subscribed' : 'Unsubscribed');
       } catch (error) {

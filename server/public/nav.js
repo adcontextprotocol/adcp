@@ -867,6 +867,19 @@
           gap: 1.5rem;
         }
       }
+
+      /* Sidebar layout support - footer respects sidebar width */
+      .dashboard-layout .aao-footer,
+      .admin-layout .aao-footer {
+        margin-left: 260px;
+      }
+
+      @media (max-width: 768px) {
+        .dashboard-layout .aao-footer,
+        .admin-layout .aao-footer {
+          margin-left: 0;
+        }
+      }
     </style>
   `;
 
