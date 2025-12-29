@@ -32,7 +32,7 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { verifySlackSignature, isSlackSigningConfigured } from "./slack/verify.js";
 import { handleSlackEvent } from "./slack/events.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, createRequireWorkingGroupLeader, isDevModeEnabled, getDevUser, getAvailableDevUsers, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, createRequireWorkingGroupLeader, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -594,16 +594,16 @@ export class HTTPServer {
 
       res.json({
         enabled: true,
-        current_user: {
+        current_user: devUser ? {
           key: Object.entries(availableUsers).find(([, u]) => u.id === devUser.id)?.[0] || 'unknown',
           ...devUser,
-        },
+        } : null,
         available_users: Object.entries(availableUsers).map(([key, user]) => ({
           key,
           ...user,
-          is_current: user.id === devUser.id,
+          is_current: devUser ? user.id === devUser.id : false,
         })),
-        switch_hint: 'Use ?dev_user=<key> query param or X-Dev-User: <key> header',
+        switch_hint: 'Log out and log in as a different user at /auth/login',
       });
     });
 
@@ -4642,11 +4642,17 @@ Disallow: /api/admin/
 
     const orgDb = new OrganizationDatabase();
 
-    // GET /auth/login - Redirect to WorkOS for authentication
+    // GET /auth/login - Redirect to WorkOS for authentication (or dev login page)
     // On AdCP domain, redirect to AAO first to keep auth on a single domain
     // Supports slack_user_id param for auto-linking after login (for existing users)
     this.app.get('/auth/login', (req, res) => {
       try {
+        // Dev mode: show dev login page
+        if (isDevModeEnabled()) {
+          const returnTo = req.query.return_to as string || '/dashboard';
+          return res.redirect(`/dev-login.html?return_to=${encodeURIComponent(returnTo)}`);
+        }
+
         // If on AdCP domain, redirect to AAO for login (keeps cookies on single domain)
         if (this.isAdcpDomain(req)) {
           const returnTo = req.query.return_to as string;
@@ -4688,6 +4694,30 @@ Disallow: /api/admin/
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
+    });
+
+    // POST /auth/dev-login - Set dev session cookie (dev mode only)
+    this.app.post('/auth/dev-login', (req, res) => {
+      if (!isDevModeEnabled()) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      const { user, return_to } = req.body;
+      if (!user || !DEV_USERS[user]) {
+        return res.status(400).json({ error: 'Invalid user', available: Object.keys(DEV_USERS) });
+      }
+
+      // Set dev session cookie
+      res.cookie(getDevSessionCookieName(), user, {
+        httpOnly: true,
+        secure: false, // Dev mode is always HTTP
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      logger.info({ user, returnTo: return_to }, 'Dev login - setting session cookie');
+      res.json({ success: true, redirect: return_to || '/dashboard' });
     });
 
     // GET /auth/signup - Redirect to WorkOS with sign-up screen hint
@@ -4932,9 +4962,15 @@ Disallow: /api/admin/
 
     // GET /auth/logout - Clear session and redirect
     this.app.get('/auth/logout', async (req, res) => {
-      // Dev mode: just redirect to home (dev mode uses query params, not cookies)
+      // Dev mode: clear dev-session cookie and redirect to home
       if (isDevModeEnabled()) {
-        logger.debug('Dev mode logout - redirecting to home');
+        logger.debug('Dev mode logout - clearing dev session cookie');
+        res.clearCookie(getDevSessionCookieName(), {
+          httpOnly: true,
+          secure: false,
+          sameSite: 'lax',
+          path: '/',
+        });
         return res.redirect('/');
       }
 
@@ -4994,10 +5030,8 @@ Disallow: /api/admin/
 
         // Dev mode: return mock data without calling WorkOS
         // Check if user ID matches any dev user
-        const isDevUser = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id);
-        if (isDevUser) {
-          const devUser = getDevUser(req);
-
+        const devUser = isDevModeEnabled() ? getDevUser(req) : null;
+        if (devUser) {
           // In dev mode, look up organizations from our local database
           // All dev users get organizations so we can test dashboard states
           // The billing API returns different subscription status based on isMember flag
@@ -5032,7 +5066,7 @@ Disallow: /api/admin/
               current_user: devUser.email,
               user_type: devUser.isAdmin ? 'admin' : devUser.isMember ? 'member' : 'nonmember',
               available_users: Object.keys(DEV_USERS),
-              switch_hint: 'Use ?dev_user=<key> or X-Dev-User header to switch',
+              switch_hint: 'Log out and log in as a different user',
             },
           });
         }
@@ -6629,8 +6663,8 @@ Disallow: /api/admin/
         const { orgId } = req.params;
 
         // Dev mode: return mock billing data based on dev user type
-        if (isDevModeEnabled()) {
-          const devUser = getDevUser(req);
+        const devUser = isDevModeEnabled() ? getDevUser(req) : null;
+        if (devUser) {
           // For 'member' and 'admin' dev users, simulate active subscription
           // For 'nonmember' dev user, simulate no subscription
           if (devUser.isMember) {
@@ -6959,16 +6993,15 @@ Disallow: /api/admin/
         const { orgId } = req.params;
 
         // Dev mode: return mock member list for dev orgs
-        const isDevUserMembers = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && orgId.startsWith('org_dev_');
-        if (isDevUserMembers) {
-          const devUser = getDevUser(req);
+        const devUserForMembers = isDevModeEnabled() ? getDevUser(req) : null;
+        if (devUserForMembers && orgId.startsWith('org_dev_')) {
           return res.json([
             {
               id: 'membership_dev_001',
-              user_id: devUser.id,
-              email: devUser.email,
-              first_name: devUser.firstName,
-              last_name: devUser.lastName,
+              user_id: devUserForMembers.id,
+              email: devUserForMembers.email,
+              first_name: devUserForMembers.firstName,
+              last_name: devUserForMembers.lastName,
               role: 'owner',
               status: 'active',
               created_at: new Date().toISOString(),

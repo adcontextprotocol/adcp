@@ -129,45 +129,48 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
   },
 };
 
-// Current dev user key (can be switched via query param or header)
-let currentDevUserKey = 'admin';
+// Dev session cookie name
+const DEV_SESSION_COOKIE = 'dev-session';
 
 if (DEV_MODE_ENABLED) {
   logger.warn({
-    defaultUser: DEV_USERS.admin.email,
     availableUsers: Object.keys(DEV_USERS),
   }, 'DEV MODE ENABLED - Auth bypass active. DO NOT use in production!');
-  logger.info('Switch dev users with ?dev_user=<key> or X-Dev-User header (admin, member, nonmember)');
+  logger.info('Visit /auth/login to select a test user');
 }
 
 /**
  * Get the current dev user based on request context
- * Checks query param and header for user switching
+ * Reads from dev-session cookie set by dev login page
  */
-export function getDevUser(req?: Request): DevUserConfig {
-  let userKey = currentDevUserKey;
+export function getDevUser(req?: Request): DevUserConfig | null {
+  if (!req) return null;
 
-  if (req) {
-    // Check query param first
-    const queryUser = req.query.dev_user as string;
-    if (queryUser && DEV_USERS[queryUser]) {
-      userKey = queryUser;
-    }
-    // Check header (takes precedence)
-    const headerUser = req.headers['x-dev-user'] as string;
-    if (headerUser && DEV_USERS[headerUser]) {
-      userKey = headerUser;
-    }
+  // Read user key from dev-session cookie
+  const userKey = req.cookies?.[DEV_SESSION_COOKIE];
+  if (userKey && DEV_USERS[userKey]) {
+    return DEV_USERS[userKey];
   }
 
-  return DEV_USERS[userKey] || DEV_USERS.admin;
+  // No valid dev session - user is not logged in
+  return null;
+}
+
+/**
+ * Get the dev session cookie name (for setting/clearing)
+ */
+export function getDevSessionCookieName(): string {
+  return DEV_SESSION_COOKIE;
 }
 
 /**
  * Create a mock user for dev mode
+ * Returns null if no dev user is logged in
  */
-function createDevUser(req?: Request): WorkOSUser {
+function createDevUser(req?: Request): WorkOSUser | null {
   const devUser = getDevUser(req);
+  if (!devUser) return null;
+
   return {
     id: devUser.id,
     email: devUser.email,
@@ -213,15 +216,29 @@ function setSessionCookie(res: Response, sealedSession: string) {
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  // Dev mode: bypass auth entirely
+  const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+
+  // Dev mode: check for dev-session cookie
   if (DEV_MODE_ENABLED) {
-    req.user = createDevUser(req);
-    req.accessToken = 'dev-mode-token';
-    return next();
+    const devUser = createDevUser(req);
+    if (devUser) {
+      req.user = devUser;
+      req.accessToken = 'dev-mode-token';
+      return next();
+    }
+    // No dev session - redirect to dev login page
+    logger.debug('No dev session cookie found');
+    if (isHtmlRequest) {
+      return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+    }
+    return res.status(401).json({
+      error: 'Authentication required',
+      message: 'Please log in to access this resource',
+      login_url: '/auth/login',
+    });
   }
 
   const sessionCookie = req.cookies['wos-session'];
-  const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
 
   logger.debug({ path: req.path, hasCookie: !!sessionCookie, isHtmlRequest }, 'Authentication check');
 
@@ -492,23 +509,42 @@ export function requireRole(...allowedRoles: Array<'owner' | 'admin' | 'member'>
  * Checks if user's email is from @agenticadvertising.org domain
  */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+
   // Dev mode: check if dev user has admin flag
   if (DEV_MODE_ENABLED) {
     const devUser = getDevUser(req);
-    if (!req.user) {
-      req.user = createDevUser(req);
-      req.accessToken = 'dev-mode-token';
+    if (!devUser) {
+      // Not logged in
+      if (isHtmlRequest) {
+        return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
+      }
+      return res.status(401).json({
+        error: 'Authentication required',
+        message: 'Please log in to access this resource',
+        login_url: '/auth/login',
+      });
     }
+
+    // Set user on request if not already set
+    if (!req.user) {
+      const mockUser = createDevUser(req);
+      if (mockUser) {
+        req.user = mockUser;
+        req.accessToken = 'dev-mode-token';
+      }
+    }
+
     // Check dev user's isAdmin flag
     if (!devUser.isAdmin) {
-      const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
-      logger.warn({ userId: req.user.id, email: req.user.email }, 'Non-admin dev user attempted to access admin endpoint');
+      logger.warn({ userId: devUser.id, email: devUser.email }, 'Non-admin dev user attempted to access admin endpoint');
       if (isHtmlRequest) {
         return res.status(403).send(`
           <!DOCTYPE html>
           <html>
           <head>
             <title>Access Denied</title>
+            <link rel="stylesheet" href="/design-system.css">
             <style>
               body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: var(--color-bg-page, #f5f5f5); }
               .container { background: var(--color-bg-card, white); padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
@@ -517,17 +553,16 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
               a { color: var(--color-brand, #667eea); text-decoration: none; }
               a:hover { text-decoration: underline; }
               .dev-hint { margin-top: 20px; padding: 15px; background: var(--color-bg-subtle, #f9fafb); border-radius: 6px; font-size: 13px; }
-              code { background: var(--color-gray-200, #e5e7eb); padding: 2px 6px; border-radius: 4px; }
             </style>
           </head>
           <body>
             <div class="container">
               <h1>Access Denied</h1>
               <p>This resource is only accessible to administrators.</p>
-              <p>Current dev user: <strong>${devUser.email}</strong></p>
+              <p>Current user: <strong>${devUser.email}</strong></p>
               <div class="dev-hint">
                 <strong>Dev Mode Tip:</strong><br>
-                Switch to admin user: <code>?dev_user=admin</code>
+                <a href="/auth/logout">Log out</a> and log in as admin
               </div>
               <p><a href="/">← Back to Home</a></p>
             </div>
@@ -538,14 +573,11 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
       return res.status(403).json({
         error: 'Admin access required',
         message: 'This resource is only accessible to administrators',
-        dev_hint: 'Switch to admin user with ?dev_user=admin or X-Dev-User: admin header',
-        current_dev_user: devUser.email,
+        current_user: devUser.email,
       });
     }
     return next();
   }
-
-  const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
 
   if (!req.user) {
     if (isHtmlRequest) {
@@ -669,10 +701,14 @@ export function createRequireWorkingGroupLeader(
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
-  // Dev mode: always set the dev user
+  // Dev mode: set dev user if logged in via dev-session cookie
   if (DEV_MODE_ENABLED) {
-    req.user = createDevUser(req);
-    req.accessToken = 'dev-mode-token';
+    const devUser = createDevUser(req);
+    if (devUser) {
+      req.user = devUser;
+      req.accessToken = 'dev-mode-token';
+    }
+    // No dev session = not logged in (which is fine for optional auth)
     return next();
   }
 
