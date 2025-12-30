@@ -53,18 +53,131 @@ interface ResendInboundPayload {
 }
 
 /**
+ * Addie email context types
+ * Parsed from subaddressing like addie+prospect@agenticadvertising.org
+ */
+type AddieContext =
+  | { type: 'prospect' }
+  | { type: 'working-group'; groupId: string }
+  | { type: 'unrouted' };
+
+/**
+ * Parse Addie context from email addresses
+ * Looks for addie+context@agenticadvertising.org patterns in TO/CC
+ *
+ * Examples:
+ *   addie+prospect@agenticadvertising.org → { type: 'prospect' }
+ *   addie+wg-governance@agenticadvertising.org → { type: 'working-group', groupId: 'governance' }
+ *   addie@agenticadvertising.org → { type: 'unrouted' }
+ */
+function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): AddieContext {
+  const allAddresses = [...toAddresses, ...ccAddresses];
+
+  for (const addr of allAddresses) {
+    const { email } = parseEmailAddress(addr);
+
+    // Check if this is an addie address
+    if (!email.endsWith('@agenticadvertising.org')) continue;
+    const localPart = email.split('@')[0];
+    if (!localPart.startsWith('addie')) continue;
+
+    // Check for subaddressing (addie+context)
+    const plusIndex = localPart.indexOf('+');
+    if (plusIndex === -1) {
+      // Plain addie@ address
+      continue;
+    }
+
+    const context = localPart.substring(plusIndex + 1);
+
+    if (context === 'prospect') {
+      return { type: 'prospect' };
+    }
+
+    if (context.startsWith('wg-')) {
+      return { type: 'working-group', groupId: context.substring(3) };
+    }
+
+    // Unknown context, log and treat as unrouted
+    logger.warn({ context, email }, 'Unknown Addie context in email address');
+  }
+
+  return { type: 'unrouted' };
+}
+
+/**
+ * Check if an email address is an AAO-owned address
+ */
+function isOwnAddress(email: string): boolean {
+  const domain = email.split('@')[1]?.toLowerCase();
+  return domain === 'agenticadvertising.org' || domain === 'updates.agenticadvertising.org';
+}
+
+/**
+ * Get all external (non-AAO) email addresses from an email
+ * Returns parsed info for each external participant
+ */
+function getExternalParticipants(
+  from: string,
+  toAddresses: string[],
+  ccAddresses: string[] = []
+): Array<{ email: string; displayName: string | null; domain: string; role: 'sender' | 'recipient' | 'cc' }> {
+  const participants: Array<{ email: string; displayName: string | null; domain: string; role: 'sender' | 'recipient' | 'cc' }> = [];
+  const seenEmails = new Set<string>();
+
+  // Check sender
+  const senderParsed = parseEmailAddress(from);
+  if (!isOwnAddress(senderParsed.email) && !seenEmails.has(senderParsed.email)) {
+    seenEmails.add(senderParsed.email);
+    participants.push({ ...senderParsed, role: 'sender' });
+  }
+
+  // Check TO recipients
+  for (const addr of toAddresses) {
+    const parsed = parseEmailAddress(addr);
+    if (!isOwnAddress(parsed.email) && !seenEmails.has(parsed.email)) {
+      seenEmails.add(parsed.email);
+      participants.push({ ...parsed, role: 'recipient' });
+    }
+  }
+
+  // Check CC recipients
+  for (const addr of ccAddresses) {
+    const parsed = parseEmailAddress(addr);
+    if (!isOwnAddress(parsed.email) && !seenEmails.has(parsed.email)) {
+      seenEmails.add(parsed.email);
+      participants.push({ ...parsed, role: 'cc' });
+    }
+  }
+
+  return participants;
+}
+
+/**
  * Parse email address to extract name and email parts
  * Handles formats like "John Doe <john@example.com>" or just "john@example.com"
  */
 function parseEmailAddress(emailStr: string): { email: string; displayName: string | null; domain: string } {
-  const match = emailStr.match(/^(?:"?([^"<]+)"?\s*)?<?([^>]+@([^>]+))>?$/);
-  if (match) {
+  // Match: "Display Name" <email@domain> or Display Name <email@domain>
+  const withBracketsMatch = emailStr.match(/^(?:"?([^"<]+)"?\s*)?<([^>]+@([^>]+))>$/);
+  if (withBracketsMatch) {
     return {
-      displayName: match[1]?.trim() || null,
-      email: match[2].toLowerCase(),
-      domain: match[3].toLowerCase(),
+      displayName: withBracketsMatch[1]?.trim() || null,
+      email: withBracketsMatch[2].toLowerCase(),
+      domain: withBracketsMatch[3].toLowerCase(),
     };
   }
+
+  // Simple email without brackets: email@domain
+  const simpleMatch = emailStr.match(/^([^@\s]+)@([^@\s]+)$/);
+  if (simpleMatch) {
+    return {
+      displayName: null,
+      email: emailStr.toLowerCase(),
+      domain: simpleMatch[2].toLowerCase(),
+    };
+  }
+
   // Fallback: treat whole string as email
   const atIndex = emailStr.indexOf('@');
   return {
@@ -75,10 +188,10 @@ function parseEmailAddress(emailStr: string): { email: string; displayName: stri
 }
 
 /**
- * Get or create an email contact, and check if they're linked to an org
+ * Get or create an email contact from pre-parsed participant info
  */
 async function getOrCreateEmailContact(
-  emailStr: string
+  participant: { email: string; displayName: string | null; domain: string }
 ): Promise<{
   contactId: string;
   organizationId: string | null;
@@ -87,13 +200,7 @@ async function getOrCreateEmailContact(
   domain: string;
 }> {
   const pool = getPool();
-  const { email, displayName, domain } = parseEmailAddress(emailStr);
-
-  // Skip our own addresses
-  if (domain === 'agenticadvertising.org' || domain === 'updates.agenticadvertising.org') {
-    logger.debug({ email }, 'Skipping our own email address');
-    throw new Error('Own email address');
-  }
+  const { email, displayName, domain } = participant;
 
   // Check if contact exists
   const existingResult = await pool.query(
@@ -174,32 +281,38 @@ async function getOrCreateEmailContact(
 }
 
 /**
- * Find the best contact from email addresses (to/cc)
- * Prioritizes non-AAO addresses and returns the first match
+ * Create/update contacts for all external participants
+ * Returns array of contact info for tracking
  */
-async function findPrimaryContact(
-  toAddresses: string[],
-  ccAddresses: string[] = []
-): Promise<{
+async function ensureContactsForParticipants(
+  participants: Array<{ email: string; displayName: string | null; domain: string; role: 'sender' | 'recipient' | 'cc' }>
+): Promise<Array<{
   contactId: string;
   organizationId: string | null;
   email: string;
   domain: string;
+  role: 'sender' | 'recipient' | 'cc';
   isNew: boolean;
-} | null> {
-  const allAddresses = [...toAddresses, ...ccAddresses];
+}>> {
+  const contacts: Array<{
+    contactId: string;
+    organizationId: string | null;
+    email: string;
+    domain: string;
+    role: 'sender' | 'recipient' | 'cc';
+    isNew: boolean;
+  }> = [];
 
-  for (const emailStr of allAddresses) {
+  for (const participant of participants) {
     try {
-      const contact = await getOrCreateEmailContact(emailStr);
-      return contact;
-    } catch {
-      // Skip own addresses or invalid emails
-      continue;
+      const contact = await getOrCreateEmailContact(participant);
+      contacts.push({ ...contact, role: participant.role });
+    } catch (error) {
+      logger.warn({ error, email: participant.email }, 'Failed to create contact for participant');
     }
   }
 
-  return null;
+  return contacts;
 }
 
 /**
@@ -426,6 +539,173 @@ function verifyResendWebhook(req: Request, rawBody: string): boolean {
 }
 
 /**
+ * Handle prospect context emails (addie+prospect@)
+ *
+ * Creates/updates contacts for ALL external participants and stores
+ * one activity record with the full context in metadata.
+ */
+async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<{
+  activityId: string;
+  contacts: Array<{ contactId: string; email: string; role: string; isNew: boolean }>;
+  insights: string;
+  method: string;
+  tokensUsed?: number;
+}> {
+  const pool = getPool();
+
+  // Get all external participants
+  const participants = getExternalParticipants(data.from, data.to, data.cc);
+
+  if (participants.length === 0) {
+    throw new Error('No external participants found in email');
+  }
+
+  logger.info({
+    participantCount: participants.length,
+    participants: participants.map(p => ({ email: p.email, role: p.role })),
+  }, 'Processing prospect email with external participants');
+
+  // Create/update contacts for all participants
+  const contacts = await ensureContactsForParticipants(participants);
+
+  if (contacts.length === 0) {
+    throw new Error('Failed to create any contacts');
+  }
+
+  // Fetch email body
+  const emailBody = await fetchEmailBody(data.email_id);
+
+  // Extract insights
+  const { insights, method, tokensUsed } = await extractInsightsWithClaude({
+    from: data.from,
+    subject: data.subject,
+    text: emailBody?.text,
+    to: data.to,
+    cc: data.cc,
+  });
+
+  // Build metadata with all participants
+  const metadata = {
+    email_id: data.email_id,
+    from: data.from,
+    to: data.to,
+    cc: data.cc,
+    has_attachments: (data.attachments?.length || 0) > 0,
+    received_at: data.created_at,
+    context: 'prospect',
+    all_contacts: contacts.map(c => ({
+      contact_id: c.contactId,
+      email: c.email,
+      domain: c.domain,
+      role: c.role,
+      is_new: c.isNew,
+      organization_id: c.organizationId,
+    })),
+  };
+
+  // Primary contact is the first recipient (the prospect being reached out to)
+  // Fall back to sender only if no external recipients (e.g., prospect replies directly to Addie)
+  const primaryContact = contacts.find(c => c.role === 'recipient') || contacts.find(c => c.role === 'cc') || contacts[0];
+
+  // Store activity (contacts linked via junction table)
+  const activityResult = await pool.query(
+    `INSERT INTO email_contact_activities (
+      email_id,
+      message_id,
+      subject,
+      direction,
+      insights,
+      insight_method,
+      tokens_used,
+      metadata,
+      email_date
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    RETURNING id`,
+    [
+      data.email_id,
+      data.message_id,
+      data.subject,
+      'inbound',
+      insights,
+      method,
+      tokensUsed || null,
+      JSON.stringify(metadata),
+      new Date(data.created_at),
+    ]
+  );
+
+  const activityId = activityResult.rows[0].id;
+
+  // Link all contacts to this activity via junction table
+  for (const contact of contacts) {
+    await pool.query(
+      `INSERT INTO email_activity_contacts (activity_id, contact_id, role, is_primary)
+       VALUES ($1, $2, $3, $4)`,
+      [activityId, contact.contactId, contact.role, contact.contactId === primaryContact.contactId]
+    );
+  }
+
+  // If primary contact is linked to an org, also store in org_activities
+  if (primaryContact.organizationId) {
+    await pool.query(
+      `INSERT INTO org_activities (
+        organization_id,
+        activity_type,
+        description,
+        logged_by_name,
+        activity_date,
+        metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        primaryContact.organizationId,
+        'email_inbound',
+        insights,
+        'Addie',
+        new Date(data.created_at),
+        JSON.stringify({
+          ...metadata,
+          message_id: data.message_id,
+          primary_contact_email: primaryContact.email,
+          insight_method: method,
+          tokens_used: tokensUsed,
+        }),
+      ]
+    );
+  }
+
+  return {
+    activityId: activityResult.rows[0].id,
+    contacts: contacts.map(c => ({
+      contactId: c.contactId,
+      email: c.email,
+      role: c.role,
+      isNew: c.isNew,
+    })),
+    insights,
+    method,
+    tokensUsed,
+  };
+}
+
+/**
+ * Handle unrouted emails (plain addie@ or unknown context)
+ *
+ * Logs the email but doesn't process it - for monitoring what comes in
+ * without a clear routing context.
+ */
+async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<void> {
+  // Just log for now - no processing
+  logger.info({
+    emailId: data.email_id,
+    messageId: data.message_id,
+    from: data.from,
+    to: data.to,
+    cc: data.cc,
+    subject: data.subject,
+  }, 'Received unrouted email (no context) - logging only');
+}
+
+/**
  * Create webhook routes router
  */
 export function createWebhooksRouter(): Router {
@@ -474,6 +754,10 @@ export function createWebhooksRouter(): Router {
         }
 
         const { data } = payload;
+
+        // Parse the Addie context from the email addresses
+        const context = parseAddieContext(data.to, data.cc);
+
         logger.info({
           emailId: data.email_id,
           messageId: data.message_id,
@@ -482,138 +766,57 @@ export function createWebhooksRouter(): Router {
           cc: data.cc,
           subject: data.subject,
           attachmentCount: data.attachments?.length || 0,
+          context: context.type,
         }, 'Processing inbound email');
 
-        const pool = getPool();
-
-        // Check for duplicate using message_id in email_contact_activities
-        const existingResult = await pool.query(
-          `SELECT id FROM email_contact_activities WHERE message_id = $1 LIMIT 1`,
-          [data.message_id]
-        );
-
-        if (existingResult.rows.length > 0) {
-          logger.info({ messageId: data.message_id, existingId: existingResult.rows[0].id }, 'Duplicate email detected, skipping');
-          return res.status(200).json({ ok: true, duplicate: true });
-        }
-
-        // Find or create the primary contact (recipient)
-        const contact = await findPrimaryContact(data.to, data.cc);
-
-        if (!contact) {
-          logger.warn({ to: data.to, cc: data.cc }, 'Could not find any valid contact email');
-          return res.status(200).json({ ok: true, noContact: true });
-        }
-
-        // Fetch the email body
-        const emailBody = await fetchEmailBody(data.email_id);
-
-        // Extract insights using Claude
-        const { insights, method, tokensUsed } = await extractInsightsWithClaude({
-          from: data.from,
-          subject: data.subject,
-          text: emailBody?.text,
-          to: data.to,
-          cc: data.cc,
-        });
-
-        // Build metadata
-        const metadata = {
-          email_id: data.email_id,
-          from: data.from,
-          to: data.to,
-          cc: data.cc,
-          has_attachments: (data.attachments?.length || 0) > 0,
-          received_at: data.created_at,
-        };
-
-        // Store in email_contact_activities (always)
-        const activityResult = await pool.query(
-          `INSERT INTO email_contact_activities (
-            email_contact_id,
-            email_id,
-            message_id,
-            subject,
-            direction,
-            insights,
-            insight_method,
-            tokens_used,
-            metadata,
-            email_date
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-          RETURNING id`,
-          [
-            contact.contactId,
-            data.email_id,
-            data.message_id,
-            data.subject,
-            'inbound',
-            insights,
-            method,
-            tokensUsed || null,
-            JSON.stringify(metadata),
-            new Date(data.created_at),
-          ]
-        );
-
-        // If contact is linked to an org, also store in org_activities
-        if (contact.organizationId) {
-          const orgActivityResult = await pool.query(
-            `INSERT INTO org_activities (
-              organization_id,
-              activity_type,
-              description,
-              logged_by_name,
-              activity_date,
-              metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id`,
-            [
-              contact.organizationId,
-              'email_inbound',
-              insights,
-              'Addie',
-              new Date(data.created_at),
-              JSON.stringify({
-                ...metadata,
-                message_id: data.message_id,
-                contact_email: contact.email,
-                insight_method: method,
-                tokens_used: tokensUsed,
-              }),
-            ]
+        // Check for duplicate using message_id (only for prospect context that stores activities)
+        if (context.type === 'prospect') {
+          const pool = getPool();
+          const existingResult = await pool.query(
+            `SELECT id FROM email_contact_activities WHERE message_id = $1 LIMIT 1`,
+            [data.message_id]
           );
 
-          const totalDurationMs = Date.now() - requestStartTime;
-          logger.info({
-            activityId: activityResult.rows[0].id,
-            orgActivityId: orgActivityResult.rows[0].id,
-            contactId: contact.contactId,
-            organizationId: contact.organizationId,
-            contactEmail: contact.email,
-            domain: contact.domain,
-            isNewContact: contact.isNew,
-            insightMethod: method,
-            tokensUsed,
-            totalDurationMs,
-            insightPreview: insights.substring(0, 100) + (insights.length > 100 ? '...' : ''),
-          }, 'Stored inbound email (org-linked contact)');
-        } else {
-          const totalDurationMs = Date.now() - requestStartTime;
-          logger.info({
-            activityId: activityResult.rows[0].id,
-            contactId: contact.contactId,
-            contactEmail: contact.email,
-            domain: contact.domain,
-            isNewContact: contact.isNew,
-            insightMethod: method,
-            tokensUsed,
-            totalDurationMs,
-            insightPreview: insights.substring(0, 100) + (insights.length > 100 ? '...' : ''),
-          }, 'Stored inbound email (unmapped contact)');
+          if (existingResult.rows.length > 0) {
+            logger.info({ messageId: data.message_id, existingId: existingResult.rows[0].id }, 'Duplicate email detected, skipping');
+            return res.status(200).json({ ok: true, duplicate: true });
+          }
         }
 
-        res.status(200).json({ ok: true });
+        // Route to appropriate handler based on context
+        switch (context.type) {
+          case 'prospect': {
+            const result = await handleProspectEmail(data);
+            const totalDurationMs = Date.now() - requestStartTime;
+
+            logger.info({
+              activityId: result.activityId,
+              contactCount: result.contacts.length,
+              contacts: result.contacts,
+              insightMethod: result.method,
+              tokensUsed: result.tokensUsed,
+              totalDurationMs,
+              insightPreview: result.insights.substring(0, 100) + (result.insights.length > 100 ? '...' : ''),
+            }, 'Processed prospect email');
+
+            return res.status(200).json({ ok: true, context: 'prospect' });
+          }
+
+          case 'working-group': {
+            // Future: route to working group handler
+            logger.info({
+              groupId: context.groupId,
+              emailId: data.email_id,
+            }, 'Working group email context not yet implemented');
+            return res.status(200).json({ ok: true, context: 'working-group', notImplemented: true });
+          }
+
+          case 'unrouted':
+          default: {
+            await handleUnroutedEmail(data);
+            return res.status(200).json({ ok: true, context: 'unrouted' });
+          }
+        }
       } catch (error) {
         const totalDurationMs = Date.now() - requestStartTime;
         logger.error({ error, totalDurationMs }, 'Error processing Resend inbound webhook');

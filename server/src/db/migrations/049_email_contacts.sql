@@ -59,11 +59,9 @@ COMMENT ON COLUMN email_contacts.domain IS 'Email domain for prospect discovery 
 COMMENT ON COLUMN email_contacts.mapping_status IS 'mapped = linked to AAO account, unmapped = no link';
 COMMENT ON COLUMN email_contacts.email_count IS 'Number of emails seen from/to this contact';
 
--- Email contact activities table (stores email insights per contact)
+-- Email activities table (stores email insights, linked to contacts via junction table)
 CREATE TABLE IF NOT EXISTS email_contact_activities (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-  email_contact_id UUID NOT NULL REFERENCES email_contacts(id) ON DELETE CASCADE,
 
   -- Email metadata
   email_id VARCHAR(255),        -- Resend email ID
@@ -85,10 +83,27 @@ CREATE TABLE IF NOT EXISTS email_contact_activities (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXISTS idx_email_contact_activities_contact ON email_contact_activities(email_contact_id);
 CREATE INDEX IF NOT EXISTS idx_email_contact_activities_message_id ON email_contact_activities(message_id);
 CREATE INDEX IF NOT EXISTS idx_email_contact_activities_date ON email_contact_activities(email_date DESC);
 
-COMMENT ON TABLE email_contact_activities IS 'Email activity log per contact, stores insights from inbound emails';
+COMMENT ON TABLE email_contact_activities IS 'Email activity log, linked to contacts via email_activity_contacts junction table';
 COMMENT ON COLUMN email_contact_activities.direction IS 'inbound = received by us, outbound = sent by us';
 COMMENT ON COLUMN email_contact_activities.insights IS 'AI-extracted insights from email content';
+
+-- Junction table linking activities to contacts
+CREATE TABLE IF NOT EXISTS email_activity_contacts (
+  activity_id UUID NOT NULL REFERENCES email_contact_activities(id) ON DELETE CASCADE,
+  contact_id UUID NOT NULL REFERENCES email_contacts(id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('sender', 'recipient', 'cc')),
+  is_primary BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY (activity_id, contact_id)
+);
+
+-- Indexes for junction table
+CREATE INDEX IF NOT EXISTS idx_email_activity_contacts_contact ON email_activity_contacts(contact_id);
+CREATE INDEX IF NOT EXISTS idx_email_activity_contacts_primary ON email_activity_contacts(activity_id) WHERE is_primary = true;
+
+COMMENT ON TABLE email_activity_contacts IS 'Links email activities to all participating contacts';
+COMMENT ON COLUMN email_activity_contacts.role IS 'Role of the contact in this email: sender, recipient (TO), or cc';
+COMMENT ON COLUMN email_activity_contacts.is_primary IS 'True for the contact the activity is primarily associated with (for display)';
