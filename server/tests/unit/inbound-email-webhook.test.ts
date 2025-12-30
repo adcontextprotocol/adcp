@@ -56,7 +56,7 @@ function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): A
   for (const addr of allAddresses) {
     const { email } = parseEmailAddress(addr);
 
-    if (!email.endsWith('@agenticadvertising.org')) continue;
+    if (!email.endsWith('@agenticadvertising.org') && !email.endsWith('@updates.agenticadvertising.org')) continue;
     const localPart = email.split('@')[0];
     if (!localPart.startsWith('addie')) continue;
 
@@ -216,6 +216,24 @@ describe('Inbound Email Webhook', () => {
     it('should handle case-insensitive matching', () => {
       const result = parseAddieContext(['Addie+Prospect@AgenticAdvertising.org']);
       expect(result).toEqual({ type: 'prospect' });
+    });
+
+    it('should handle updates.agenticadvertising.org subdomain for prospect', () => {
+      const result = parseAddieContext(['addie+prospect@updates.agenticadvertising.org']);
+      expect(result).toEqual({ type: 'prospect' });
+    });
+
+    it('should handle updates.agenticadvertising.org subdomain in CC', () => {
+      const result = parseAddieContext(
+        ['prospect@company.com'],
+        ['addie+prospect@updates.agenticadvertising.org']
+      );
+      expect(result).toEqual({ type: 'prospect' });
+    });
+
+    it('should handle updates.agenticadvertising.org subdomain for working-group', () => {
+      const result = parseAddieContext(['addie+wg-governance@updates.agenticadvertising.org']);
+      expect(result).toEqual({ type: 'working-group', groupId: 'governance' });
     });
   });
 

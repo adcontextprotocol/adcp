@@ -76,8 +76,8 @@ function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): A
   for (const addr of allAddresses) {
     const { email } = parseEmailAddress(addr);
 
-    // Check if this is an addie address
-    if (!email.endsWith('@agenticadvertising.org')) continue;
+    // Check if this is an addie address (either domain)
+    if (!email.endsWith('@agenticadvertising.org') && !email.endsWith('@updates.agenticadvertising.org')) continue;
     const localPart = email.split('@')[0];
     if (!localPart.startsWith('addie')) continue;
 
