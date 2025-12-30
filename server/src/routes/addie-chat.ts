@@ -26,6 +26,7 @@ import {
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from "../addie/mcp/knowledge-search.js";
+import { AddieModelConfig } from "../config/models.js";
 import {
   getWebMemberContext,
   formatMemberContextForPrompt,
@@ -51,8 +52,7 @@ async function initializeChatClient(): Promise<void> {
     return;
   }
 
-  const model = process.env.ADDIE_ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
-  claudeClient = new AddieClaudeClient(apiKey, model);
+  claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.chat);
 
   // Initialize knowledge search
   await initializeKnowledgeSearch();
@@ -353,7 +353,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const messageId = await saveMessage(conversationId, "assistant", outputValidation.sanitized, {
         toolUse: response.tools_used.length > 0 ? response.tools_used : undefined,
         toolResults: response.tool_executions.length > 0 ? response.tool_executions : undefined,
-        model: process.env.ADDIE_ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+        model: AddieModelConfig.chat,
         latencyMs,
         impersonatorEmail: impersonator?.email,
       });

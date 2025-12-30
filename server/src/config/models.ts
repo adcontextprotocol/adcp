@@ -1,0 +1,37 @@
+/**
+ * Centralized AI model configuration
+ *
+ * Default models can be overridden via environment variables.
+ * This allows switching models without code changes.
+ */
+
+/**
+ * Model IDs for different use cases
+ */
+export const ModelConfig = {
+  /**
+   * Primary model for complex tasks (Addie chat, rule analysis)
+   * Default: claude-sonnet-4-5
+   * Override: CLAUDE_MODEL_PRIMARY
+   */
+  primary: process.env.CLAUDE_MODEL_PRIMARY || 'claude-sonnet-4-5',
+
+  /**
+   * Fast model for simple tasks (insight extraction, classification)
+   * Default: claude-haiku-4-5
+   * Override: CLAUDE_MODEL_FAST
+   */
+  fast: process.env.CLAUDE_MODEL_FAST || 'claude-haiku-4-5',
+} as const;
+
+/**
+ * Addie-specific model configuration
+ * Separate env var for backwards compatibility
+ */
+export const AddieModelConfig = {
+  /**
+   * Model for Addie chat responses
+   * Override: ADDIE_ANTHROPIC_MODEL (falls back to primary)
+   */
+  chat: process.env.ADDIE_ANTHROPIC_MODEL || ModelConfig.primary,
+} as const;

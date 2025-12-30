@@ -49,6 +49,7 @@ import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { invalidateMemberContextCache } from "./addie/index.js";
 import { createSlackRouter } from "./routes/slack.js";
+import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createAdminSlackRouter, createAdminEmailRouter } from "./routes/admin/index.js";
 import {
   getUnifiedUsersCache,
@@ -313,6 +314,10 @@ export class HTTPServer {
     this.app.use('/api/admin/slack', adminSlackRouter); // Admin Slack: /api/admin/slack/*
     const adminEmailRouter = createAdminEmailRouter();
     this.app.use('/api/admin/email', adminEmailRouter); // Admin Email: /api/admin/email/*
+
+    // Mount webhook routes (external services like Resend)
+    const webhooksRouter = createWebhooksRouter();
+    this.app.use('/api/webhooks', webhooksRouter);      // Webhooks: /api/webhooks/resend-inbound
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
