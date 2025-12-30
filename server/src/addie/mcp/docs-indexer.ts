@@ -251,7 +251,6 @@ function indexWebsitePages(publicRoot: string): IndexedDoc[] {
   for (const relativePath of htmlFiles) {
     // Skip excluded pages (admin, dashboard, etc.)
     if (shouldExcludePage(relativePath)) {
-      logger.debug({ relativePath }, 'Addie Docs: Skipping excluded page');
       continue;
     }
 
@@ -285,8 +284,6 @@ function indexWebsitePages(publicRoot: string): IndexedDoc[] {
         content: cleanedContent,
         sourceUrl: `https://agenticadvertising.org/${urlPath}`,
       });
-
-      logger.debug({ id, title, contentLength: cleanedContent.length }, 'Addie Docs: Indexed website page');
     } catch (error) {
       logger.warn({ error, filePath }, 'Addie Docs: Failed to index website page');
     }
