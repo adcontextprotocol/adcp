@@ -13,6 +13,8 @@ export {
   handleAppMention,
 } from './handler.js';
 
+export { invalidateMemberContextCache } from './member-context.js';
+
 export type {
   AssistantThreadStartedEvent,
   AssistantThreadContextChangedEvent,
