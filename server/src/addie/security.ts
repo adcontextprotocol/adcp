@@ -99,6 +99,24 @@ export function sanitizeInput(text: string): ValidationResult {
 }
 
 /**
+ * Convert markdown links to Slack mrkdwn format.
+ * Markdown: [text](url) -> Slack mrkdwn: <url|text>
+ *
+ * Note: URLs with unbalanced parentheses (e.g., Wikipedia links like
+ * https://en.wikipedia.org/wiki/Foo_(bar)) may not convert correctly.
+ * This is a known limitation of simple regex-based parsing.
+ */
+export function markdownToSlackLinks(text: string): string {
+  // Match markdown links: [text](url)
+  // Capture group 1: link text, Capture group 2: URL
+  return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, linkText, url) => {
+    // Escape pipe characters in link text to prevent breaking Slack mrkdwn
+    const escapedText = linkText.replace(/\|/g, '\\|');
+    return `<${url}|${escapedText}>`;
+  });
+}
+
+/**
  * Validate output before sending to Slack
  */
 export function validateOutput(text: string): ValidationResult {
@@ -125,6 +143,9 @@ export function validateOutput(text: string): ValidationResult {
       reason = 'Output truncated due to length';
     }
   }
+
+  // Convert markdown links to Slack mrkdwn format
+  sanitized = markdownToSlackLinks(sanitized);
 
   return {
     valid: !flagged || (reason?.includes('truncated') ?? false),
