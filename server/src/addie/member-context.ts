@@ -10,6 +10,7 @@ import { MemberDatabase } from '../db/member-db.js';
 import { OrganizationDatabase } from '../db/organization-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
+import { AddieDatabase } from '../db/addie-db.js';
 import { workos } from '../auth/workos-client.js';
 import { logger } from '../logger.js';
 
@@ -18,6 +19,7 @@ const memberDb = new MemberDatabase();
 const orgDb = new OrganizationDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
 const emailPrefsDb = new EmailPreferencesDatabase();
+const addieDb = new AddieDatabase();
 
 // Cache for member context to avoid repeated lookups for the same user
 // TTL of 30 minutes - user profile data rarely changes, and we invalidate on specific events
@@ -147,7 +149,12 @@ export interface MemberContext {
   /** Whether the Slack user is linked to their AgenticAdvertising.org account */
   slack_linked: boolean;
 
-  // Note: addie_history removed - Slack Assistant threads maintain conversation context automatically
+  /** Previous Addie interactions (for web chat only - Slack threads have their own context) */
+  addie_history?: {
+    total_interactions: number;
+    last_interaction_at: Date | null;
+    recent_topics: string[];
+  };
 }
 
 /**
