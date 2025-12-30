@@ -47,6 +47,7 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
+import { invalidateMemberContextCache } from "./addie/index.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createAdminSlackRouter, createAdminEmailRouter } from "./routes/admin/index.js";
 import {
@@ -550,6 +551,9 @@ export class HTTPServer {
           enabled,
         });
 
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         logger.info({ userId: prefs.workos_user_id, category_id, enabled }, 'Category preference updated');
         res.json({ success: true });
       } catch (error) {
@@ -573,6 +577,10 @@ export class HTTPServer {
         }
 
         await emailPrefsDb.resubscribe(prefs.workos_user_id);
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         logger.info({ userId: prefs.workos_user_id }, 'User resubscribed');
         res.json({ success: true });
       } catch (error) {
@@ -662,6 +670,9 @@ export class HTTPServer {
           enabled,
         });
 
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         res.json({ success: true });
       } catch (error) {
         logger.error({ error }, 'Error updating preferences');
@@ -675,6 +686,10 @@ export class HTTPServer {
         const userId = (req as any).user.id;
 
         await emailPrefsDb.resubscribe(userId);
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         logger.info({ userId }, 'User resubscribed via dashboard');
         res.json({ success: true });
       } catch (error) {
@@ -1606,6 +1621,10 @@ export class HTTPServer {
                   currency,
                   interval,
                 }, 'Subscription data synced to database');
+
+                // Invalidate member context cache for all users in this org
+                // (subscription status affects is_member and subscription fields)
+                invalidateMemberContextCache();
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
@@ -3810,6 +3829,9 @@ export class HTTPServer {
           added_by_user_id: user.id,
         });
 
+        // Invalidate member context cache (working_groups field changed)
+        invalidateMemberContextCache();
+
         res.status(201).json(membership);
       } catch (error) {
         logger.error({ err: error }, 'Add working group member error:');
@@ -3832,6 +3854,9 @@ export class HTTPServer {
             message: 'User is not a member of this working group'
           });
         }
+
+        // Invalidate member context cache (working_groups field changed)
+        invalidateMemberContextCache();
 
         res.json({ success: true });
       } catch (error) {
@@ -3866,6 +3891,11 @@ export class HTTPServer {
             message: result.errors[0],
             result
           });
+        }
+
+        // Invalidate member context cache if any members were added
+        if (result.members_added > 0) {
+          invalidateMemberContextCache();
         }
 
         res.json({
@@ -8164,6 +8194,9 @@ Disallow: /api/admin/
           added_by_user_id: user.id, // Self-join
         });
 
+        // Invalidate Addie's member context cache - working group membership changed
+        invalidateMemberContextCache();
+
         res.status(201).json({ success: true, membership });
       } catch (error) {
         logger.error({ err: error }, 'Join working group error');
@@ -8207,6 +8240,9 @@ Disallow: /api/admin/
             message: 'You are not a member of this working group',
           });
         }
+
+        // Invalidate Addie's member context cache - working group membership changed
+        invalidateMemberContextCache();
 
         res.json({ success: true });
       } catch (error) {
@@ -9601,6 +9637,9 @@ Disallow: /api/admin/
           show_in_carousel: show_in_carousel ?? false,
         });
 
+        // Invalidate Addie's member context cache - organization profile created
+        invalidateMemberContextCache();
+
         logger.info({ profileId: profile.id, orgId: targetOrgId, slug, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile completed');
 
         res.status(201).json({ profile });
@@ -9696,6 +9735,9 @@ Disallow: /api/admin/
         delete updates.featured; // Only admins can set featured
 
         const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
+
+        // Invalidate Addie's member context cache - organization profile updated
+        invalidateMemberContextCache();
 
         const duration = Date.now() - startTime;
         logger.info({ profileId: profile?.id, orgId: targetOrgId, durationMs: duration }, 'Member profile updated');
@@ -9796,6 +9838,9 @@ Disallow: /api/admin/
           show_in_carousel: show_in_carousel ?? is_public, // Default to match is_public
         });
 
+        // Invalidate Addie's member context cache - organization profile visibility changed
+        invalidateMemberContextCache();
+
         logger.info({ profileId: profile?.id, orgId: targetOrgId, is_public }, 'Member profile visibility updated');
 
         res.json({ profile });
@@ -9871,6 +9916,9 @@ Disallow: /api/admin/
 
         await memberDb.deleteProfile(existingProfile.id);
 
+        // Invalidate Addie's member context cache - organization profile deleted
+        invalidateMemberContextCache();
+
         logger.info({ profileId: existingProfile.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile completed');
 
         res.json({ success: true });
@@ -9927,6 +9975,9 @@ Disallow: /api/admin/
           });
         }
 
+        // Invalidate Addie's member context cache - organization profile updated by admin
+        invalidateMemberContextCache();
+
         logger.info({ profileId: id, adminUpdate: true }, 'Member profile updated by admin');
 
         res.json({ profile });
@@ -9952,6 +10003,9 @@ Disallow: /api/admin/
             message: `No member profile found with ID: ${id}`,
           });
         }
+
+        // Invalidate Addie's member context cache - organization profile deleted by admin
+        invalidateMemberContextCache();
 
         logger.info({ profileId: id, adminDelete: true }, 'Member profile deleted by admin');
 

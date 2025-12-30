@@ -39,6 +39,7 @@ export interface SlackMessageEvent {
   type: 'message';
   subtype?: string;
   user?: string;
+  bot_id?: string; // Present when message is from a bot
   channel: string;
   ts: string;
   thread_ts?: string;
@@ -185,8 +186,12 @@ export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelE
  * Also routes DM messages to Addie for Assistant thread handling
  */
 export async function handleMessage(event: SlackMessageEvent): Promise<void> {
-  // Skip bot messages, message edits/deletes, etc.
-  if (event.subtype || !event.user) {
+  // Skip bot messages (including Addie's own messages), message edits/deletes, etc.
+  // The bot_id field is present when a bot sends a message
+  if (event.subtype || !event.user || event.bot_id) {
+    if (event.bot_id) {
+      logger.debug({ bot_id: event.bot_id, channel: event.channel }, 'Ignoring bot message');
+    }
     return;
   }
 
