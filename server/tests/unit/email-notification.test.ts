@@ -168,6 +168,82 @@ describe('Email Notifications', () => {
 
       expect(result).toBe(false);
     });
+
+    it('should use personal language for individual accounts', async () => {
+      const { sendWelcomeEmail } = await import('../../src/notifications/email.js');
+
+      await sendWelcomeEmail({
+        to: 'terri@example.com',
+        organizationName: "Terri Gillespie's Workspace",
+        isPersonal: true,
+        firstName: 'Terri',
+      });
+
+      const sendCall = mockSend.mock.calls[0]?.[0];
+      // Should use personal greeting
+      expect(sendCall?.html).toContain('Hi Terri,');
+      expect(sendCall?.text).toContain('Hi Terri,');
+      // Should use "you" instead of the workspace name
+      expect(sendCall?.html).toContain("We're excited to have you join us.");
+      expect(sendCall?.text).toContain("We're excited to have you join us.");
+      // Should NOT include the awkward workspace name
+      expect(sendCall?.html).not.toContain("Terri Gillespie's Workspace join us");
+      expect(sendCall?.text).not.toContain("Terri Gillespie's Workspace join us");
+      // Should use personal profile description
+      expect(sendCall?.html).toContain('Showcase your work and interests');
+      expect(sendCall?.text).toContain('Showcase your work and interests');
+    });
+
+    it('should use organization language for non-personal accounts', async () => {
+      const { sendWelcomeEmail } = await import('../../src/notifications/email.js');
+
+      await sendWelcomeEmail({
+        to: 'john@acme.com',
+        organizationName: 'Acme Corp',
+        isPersonal: false,
+        firstName: 'John',
+      });
+
+      const sendCall = mockSend.mock.calls[0]?.[0];
+      // Should use personal greeting with firstName
+      expect(sendCall?.html).toContain('Hi John,');
+      // Should include organization name in welcome message
+      expect(sendCall?.html).toContain("We're excited to have Acme Corp join us.");
+      // Should use organization profile description
+      expect(sendCall?.html).toContain("Showcase your organization's capabilities");
+    });
+
+    it('should fall back to generic greeting when firstName not provided', async () => {
+      const { sendWelcomeEmail } = await import('../../src/notifications/email.js');
+
+      await sendWelcomeEmail({
+        to: 'user@example.com',
+        organizationName: 'Some Org',
+        isPersonal: false,
+      });
+
+      const sendCall = mockSend.mock.calls[0]?.[0];
+      expect(sendCall?.html).toContain('Hi there,');
+      expect(sendCall?.text).toContain('Hi there,');
+    });
+
+    it('should include isPersonal in tracking metadata', async () => {
+      const { sendWelcomeEmail } = await import('../../src/notifications/email.js');
+
+      await sendWelcomeEmail({
+        to: 'terri@example.com',
+        organizationName: "Terri's Workspace",
+        isPersonal: true,
+      });
+
+      expect(mockCreateEmailEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            isPersonal: true,
+          }),
+        })
+      );
+    });
   });
 
   describe('sendUserSignupEmail', () => {

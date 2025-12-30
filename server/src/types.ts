@@ -169,6 +169,14 @@ export interface Agreement {
   created_at: Date;
 }
 
+/**
+ * Impersonator information when a session is impersonated via WorkOS
+ */
+export interface Impersonator {
+  email: string;
+  reason: string | null;
+}
+
 export interface WorkOSUser {
   id: string;
   email: string;
@@ -177,6 +185,8 @@ export interface WorkOSUser {
   emailVerified: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Present when this session is being impersonated by an admin */
+  impersonator?: Impersonator;
 }
 
 // Member Profile Types

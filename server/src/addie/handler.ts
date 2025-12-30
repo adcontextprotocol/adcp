@@ -26,6 +26,7 @@ import {
 } from './mcp/member-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
+import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import type { RequestTools } from './claude-client.js';
 import type {
@@ -40,7 +41,6 @@ let claudeClient: AddieClaudeClient | null = null;
 let addieDb: AddieDatabase | null = null;
 let initialized = false;
 let botUserId: string | null = null;
-let addieModel: string = 'claude-sonnet-4-20250514';
 
 /**
  * Initialize Addie
@@ -56,8 +56,7 @@ export async function initializeAddie(): Promise<void> {
   logger.info('Addie: Initializing...');
 
   // Initialize Claude client
-  addieModel = process.env.ADDIE_ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
-  claudeClient = new AddieClaudeClient(apiKey, addieModel);
+  claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.chat);
 
   // Initialize database access
   addieDb = new AddieDatabase();
@@ -319,7 +318,7 @@ export async function handleAssistantMessage(
     input_sanitized: inputValidation.sanitized,
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
-    model: addieModel,
+    model: AddieModelConfig.chat,
     latency_ms: Date.now() - startTime,
     flagged,
     flag_reason: flagReason || undefined,
@@ -408,7 +407,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     input_sanitized: inputValidation.sanitized,
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
-    model: addieModel,
+    model: AddieModelConfig.chat,
     latency_ms: Date.now() - startTime,
     flagged,
     flag_reason: flagReason || undefined,

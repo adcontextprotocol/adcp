@@ -10,6 +10,7 @@ import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
 import { ADDIE_SYSTEM_PROMPT, buildContextWithThread } from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';
+import { AddieModelConfig } from '../config/models.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -64,7 +65,7 @@ export class AddieClaudeClient {
   private readonly CACHE_TTL_MS = 300000; // Cache rules for 5 minutes (rules change rarely)
   private webSearchEnabled: boolean = true; // Enable web search for external questions
 
-  constructor(apiKey: string, model: string = 'claude-sonnet-4-5') {
+  constructor(apiKey: string, model: string = AddieModelConfig.chat) {
     this.client = new Anthropic({ apiKey });
     this.model = model;
     this.addieDb = new AddieDatabase();

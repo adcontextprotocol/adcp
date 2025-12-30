@@ -47,8 +47,9 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
-import { sendAccountLinkedMessage } from "./addie/index.js";
+import { sendAccountLinkedMessage, invalidateMemberContextCache } from "./addie/index.js";
 import { createSlackRouter } from "./routes/slack.js";
+import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createAdminSlackRouter, createAdminEmailRouter } from "./routes/admin/index.js";
 import {
   getUnifiedUsersCache,
@@ -58,6 +59,7 @@ import {
 } from "./cache/unified-users.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
+import { queuePerspectiveLink, processPendingResources } from "./addie/services/content-curator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -183,6 +185,7 @@ export class HTTPServer {
   private publisherTracker: PublisherTracker;
   private propertiesService: PropertiesService;
   private adagentsManager: AdAgentsManager;
+  private contentCuratorIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -311,6 +314,10 @@ export class HTTPServer {
     this.app.use('/api/admin/slack', adminSlackRouter); // Admin Slack: /api/admin/slack/*
     const adminEmailRouter = createAdminEmailRouter();
     this.app.use('/api/admin/email', adminEmailRouter); // Admin Email: /api/admin/email/*
+
+    // Mount webhook routes (external services like Resend)
+    const webhooksRouter = createWebhooksRouter();
+    this.app.use('/api/webhooks', webhooksRouter);      // Webhooks: /api/webhooks/resend-inbound
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
@@ -551,6 +558,9 @@ export class HTTPServer {
           enabled,
         });
 
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         logger.info({ userId: prefs.workos_user_id, category_id, enabled }, 'Category preference updated');
         res.json({ success: true });
       } catch (error) {
@@ -574,6 +584,10 @@ export class HTTPServer {
         }
 
         await emailPrefsDb.resubscribe(prefs.workos_user_id);
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         logger.info({ userId: prefs.workos_user_id }, 'User resubscribed');
         res.json({ success: true });
       } catch (error) {
@@ -663,6 +677,9 @@ export class HTTPServer {
           enabled,
         });
 
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         res.json({ success: true });
       } catch (error) {
         logger.error({ error }, 'Error updating preferences');
@@ -676,6 +693,10 @@ export class HTTPServer {
         const userId = (req as any).user.id;
 
         await emailPrefsDb.resubscribe(userId);
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         logger.info({ userId }, 'User resubscribed via dashboard');
         res.json({ success: true });
       } catch (error) {
@@ -1516,6 +1537,8 @@ export class HTTPServer {
                       productName,
                       workosUserId: workosUser.id,
                       workosOrganizationId: org.workos_organization_id,
+                      isPersonal: org.is_personal || false,
+                      firstName: workosUser.firstName || undefined,
                     }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
 
                     // Record to org_activities for prospect tracking
@@ -1607,6 +1630,10 @@ export class HTTPServer {
                   currency,
                   interval,
                 }, 'Subscription data synced to database');
+
+                // Invalidate member context cache for all users in this org
+                // (subscription status affects is_member and subscription fields)
+                invalidateMemberContextCache();
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
@@ -3397,7 +3424,22 @@ export class HTTPServer {
           ]
         );
 
-        res.json(result.rows[0]);
+        const perspective = result.rows[0];
+
+        // Queue external links for Addie's knowledge base when published
+        if (perspective.content_type === 'link' && perspective.status === 'published' && perspective.external_url) {
+          queuePerspectiveLink({
+            id: perspective.id,
+            title: perspective.title,
+            external_url: perspective.external_url,
+            category: perspective.category || 'perspective',
+            tags: perspective.tags,
+          }).catch(err => {
+            logger.warn({ err, perspectiveId: perspective.id }, 'Failed to queue perspective link for indexing');
+          });
+        }
+
+        res.json(perspective);
       } catch (error) {
         logger.error({ err: error }, 'Create perspective error:');
         // Check for unique constraint violation
@@ -3508,7 +3550,22 @@ export class HTTPServer {
           });
         }
 
-        res.json(result.rows[0]);
+        const perspective = result.rows[0];
+
+        // Queue external links for indexing when perspective is published
+        if (perspective.content_type === 'link' && perspective.status === 'published' && perspective.external_url) {
+          queuePerspectiveLink({
+            id: perspective.id,
+            title: perspective.title,
+            external_url: perspective.external_url,
+            category: perspective.category || 'perspective',
+            tags: perspective.tags,
+          }).catch(err => {
+            logger.warn({ err, perspectiveId: perspective.id }, 'Failed to queue perspective link for indexing');
+          });
+        }
+
+        res.json(perspective);
       } catch (error) {
         logger.error({ err: error }, 'Update perspective error:');
         // Check for unique constraint violation
@@ -3811,6 +3868,9 @@ export class HTTPServer {
           added_by_user_id: user.id,
         });
 
+        // Invalidate member context cache (working_groups field changed)
+        invalidateMemberContextCache();
+
         res.status(201).json(membership);
       } catch (error) {
         logger.error({ err: error }, 'Add working group member error:');
@@ -3833,6 +3893,9 @@ export class HTTPServer {
             message: 'User is not a member of this working group'
           });
         }
+
+        // Invalidate member context cache (working_groups field changed)
+        invalidateMemberContextCache();
 
         res.json({ success: true });
       } catch (error) {
@@ -3867,6 +3930,11 @@ export class HTTPServer {
             message: result.errors[0],
             result
           });
+        }
+
+        // Invalidate member context cache if any members were added
+        if (result.members_added > 0) {
+          invalidateMemberContextCache();
         }
 
         res.json({
@@ -5133,7 +5201,8 @@ Disallow: /api/admin/
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
 
-        res.json({
+        // Build response with optional impersonation info
+        const response: Record<string, unknown> = {
           user: {
             id: user.id,
             email: user.email,
@@ -5142,7 +5211,18 @@ Disallow: /api/admin/
             isAdmin,
           },
           organizations,
-        });
+        };
+
+        // Include impersonation info if present
+        if (user.impersonator) {
+          response.impersonation = {
+            active: true,
+            impersonator_email: user.impersonator.email,
+            reason: user.impersonator.reason,
+          };
+        }
+
+        res.json(response);
       } catch (error) {
         logger.error({ err: error }, 'Get current user error:');
         res.status(500).json({
@@ -8171,6 +8251,9 @@ Disallow: /api/admin/
           added_by_user_id: user.id, // Self-join
         });
 
+        // Invalidate Addie's member context cache - working group membership changed
+        invalidateMemberContextCache();
+
         res.status(201).json({ success: true, membership });
       } catch (error) {
         logger.error({ err: error }, 'Join working group error');
@@ -8214,6 +8297,9 @@ Disallow: /api/admin/
             message: 'You are not a member of this working group',
           });
         }
+
+        // Invalidate Addie's member context cache - working group membership changed
+        invalidateMemberContextCache();
 
         res.json({ success: true });
       } catch (error) {
@@ -9608,6 +9694,9 @@ Disallow: /api/admin/
           show_in_carousel: show_in_carousel ?? false,
         });
 
+        // Invalidate Addie's member context cache - organization profile created
+        invalidateMemberContextCache();
+
         logger.info({ profileId: profile.id, orgId: targetOrgId, slug, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile completed');
 
         res.status(201).json({ profile });
@@ -9703,6 +9792,9 @@ Disallow: /api/admin/
         delete updates.featured; // Only admins can set featured
 
         const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
+
+        // Invalidate Addie's member context cache - organization profile updated
+        invalidateMemberContextCache();
 
         const duration = Date.now() - startTime;
         logger.info({ profileId: profile?.id, orgId: targetOrgId, durationMs: duration }, 'Member profile updated');
@@ -9803,6 +9895,9 @@ Disallow: /api/admin/
           show_in_carousel: show_in_carousel ?? is_public, // Default to match is_public
         });
 
+        // Invalidate Addie's member context cache - organization profile visibility changed
+        invalidateMemberContextCache();
+
         logger.info({ profileId: profile?.id, orgId: targetOrgId, is_public }, 'Member profile visibility updated');
 
         res.json({ profile });
@@ -9878,6 +9973,9 @@ Disallow: /api/admin/
 
         await memberDb.deleteProfile(existingProfile.id);
 
+        // Invalidate Addie's member context cache - organization profile deleted
+        invalidateMemberContextCache();
+
         logger.info({ profileId: existingProfile.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile completed');
 
         res.json({ success: true });
@@ -9934,6 +10032,9 @@ Disallow: /api/admin/
           });
         }
 
+        // Invalidate Addie's member context cache - organization profile updated by admin
+        invalidateMemberContextCache();
+
         logger.info({ profileId: id, adminUpdate: true }, 'Member profile updated by admin');
 
         res.json({ profile });
@@ -9959,6 +10060,9 @@ Disallow: /api/admin/
             message: `No member profile found with ID: ${id}`,
           });
         }
+
+        // Invalidate Addie's member context cache - organization profile deleted by admin
+        invalidateMemberContextCache();
 
         logger.info({ profileId: id, adminDelete: true }, 'Member profile deleted by admin');
 
@@ -10432,6 +10536,10 @@ Disallow: /api/admin/
       this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes
     }
 
+    // Start periodic content curator for Addie's knowledge base
+    // Process pending external resources (fetch content, generate summaries)
+    this.startContentCurator();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
@@ -10442,6 +10550,40 @@ Disallow: /api/admin/
 
     // Setup graceful shutdown handlers
     this.setupShutdownHandlers();
+  }
+
+  /**
+   * Start periodic content curator for Addie's knowledge base
+   * Processes pending external resources (fetch content, generate AI summaries)
+   */
+  private startContentCurator(): void {
+    const CURATOR_INTERVAL_MINUTES = 5;
+
+    // Process on startup after a short delay
+    setTimeout(async () => {
+      try {
+        const result = await processPendingResources({ limit: 5 });
+        if (result.processed > 0) {
+          logger.info(result, 'Content curator: processed pending resources');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Content curator: initial processing failed');
+      }
+    }, 30000); // 30 second delay to let other services start
+
+    // Then process periodically
+    this.contentCuratorIntervalId = setInterval(async () => {
+      try {
+        const result = await processPendingResources({ limit: 5 });
+        if (result.processed > 0) {
+          logger.info(result, 'Content curator: processed pending resources');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Content curator: periodic processing failed');
+      }
+    }, CURATOR_INTERVAL_MINUTES * 60 * 1000);
+
+    logger.info({ intervalMinutes: CURATOR_INTERVAL_MINUTES }, 'Content curator started');
   }
 
   /**
@@ -10463,6 +10605,13 @@ Disallow: /api/admin/
    */
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
+
+    // Stop content curator
+    if (this.contentCuratorIntervalId) {
+      clearInterval(this.contentCuratorIntervalId);
+      this.contentCuratorIntervalId = null;
+      logger.info('Content curator stopped');
+    }
 
     // Close HTTP server
     if (this.server) {
