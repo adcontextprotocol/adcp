@@ -431,6 +431,8 @@ export class AddieDatabase {
    */
   async listKnowledge(options: {
     category?: string;
+    sourceType?: string;
+    fetchStatus?: string;
     activeOnly?: boolean;
     limit?: number;
     offset?: number;
@@ -444,6 +446,16 @@ export class AddieDatabase {
       params.push(options.category);
     }
 
+    if (options.sourceType) {
+      conditions.push(`source_type = $${paramIndex++}`);
+      params.push(options.sourceType);
+    }
+
+    if (options.fetchStatus) {
+      conditions.push(`fetch_status = $${paramIndex++}`);
+      params.push(options.fetchStatus);
+    }
+
     if (options.activeOnly !== false) {
       conditions.push('is_active = TRUE');
     }
@@ -453,7 +465,11 @@ export class AddieDatabase {
     let sql = `
       SELECT * FROM addie_knowledge
       ${whereClause}
-      ORDER BY category, title
+      ORDER BY
+        CASE WHEN source_type = 'curated' AND fetch_status = 'pending' THEN 0 ELSE 1 END,
+        updated_at DESC,
+        category,
+        title
     `;
 
     if (options.limit) {

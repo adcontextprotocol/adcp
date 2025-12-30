@@ -826,7 +826,6 @@
       <button class="tab active" data-tab="rules">Rules</button>
       <button class="tab" data-tab="suggestions">Suggestions</button>
       <button class="tab" data-tab="knowledge">Knowledge Base</button>
-      <button class="tab" data-tab="resources">Curated Resources</button>
       <button class="tab" data-tab="conversations">Conversations</button>
       <button class="tab" data-tab="interactions">Interactions</button>
       <button class="tab" data-tab="queue">Approval Queue</button>
@@ -886,6 +885,12 @@
       <div class="card">
         <div class="header-bar">
           <div class="filter-row">
+            <select id="source-type-filter">
+              <option value="">All Sources</option>
+              <option value="docs">Documentation</option>
+              <option value="curated">External Resources</option>
+              <option value="slack">Slack Messages</option>
+            </select>
             <select id="category-filter">
               <option value="">All Categories</option>
               <option value="docs">Documentation</option>
@@ -893,39 +898,19 @@
               <option value="faq">FAQ</option>
               <option value="perspective">Perspectives</option>
               <option value="guidelines">Guidelines</option>
+              <option value="industry">Industry</option>
             </select>
-          </div>
-          <button class="btn btn-primary" onclick="openKnowledgeModal()">Add Knowledge</button>
-        </div>
-        <div class="knowledge-list" id="knowledge-list">
-          <div class="empty-state">
-            <h3>Loading...</h3>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Curated Resources Tab -->
-    <div class="tab-content" id="tab-resources">
-      <div class="card">
-        <div class="header-bar">
-          <div>
-            <h2 style="margin: 0;">Curated Resources</h2>
-            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
-              External content with AI-generated summaries and Addie's analysis
-            </p>
-          </div>
-          <div class="filter-row">
-            <select id="resource-status-filter">
+            <select id="fetch-status-filter" style="display: none;">
               <option value="">All Status</option>
               <option value="pending">Pending</option>
               <option value="success">Fetched</option>
               <option value="failed">Failed</option>
             </select>
           </div>
+          <button class="btn btn-primary" onclick="openKnowledgeModal()">Add Knowledge</button>
         </div>
-        <div class="resources-stats" id="resources-stats" style="margin-bottom: var(--space-4);"></div>
-        <div class="resources-list" id="resources-list">
+        <div class="knowledge-stats" id="knowledge-stats" style="margin-bottom: var(--space-4);"></div>
+        <div class="knowledge-list" id="knowledge-list">
           <div class="empty-state">
             <h3>Loading...</h3>
           </div>
@@ -1291,43 +1276,134 @@
       }
     }
 
-    // Load knowledge list
+    // Load unified knowledge list (docs, curated resources, slack messages)
     async function loadKnowledge() {
+      const sourceType = document.getElementById('source-type-filter').value;
       const category = document.getElementById('category-filter').value;
-      const url = category
-        ? `/api/admin/addie/knowledge?category=${category}`
-        : '/api/admin/addie/knowledge';
+      const fetchStatus = document.getElementById('fetch-status-filter').value;
+
+      // Show/hide fetch status filter based on source type
+      const fetchStatusFilter = document.getElementById('fetch-status-filter');
+      fetchStatusFilter.style.display = sourceType === 'curated' ? 'block' : 'none';
+
+      // Build URL with filters
+      const params = new URLSearchParams();
+      if (sourceType) params.append('source_type', sourceType);
+      if (category) params.append('category', category);
+      if (fetchStatus && sourceType === 'curated') params.append('status', fetchStatus);
+
+      const url = '/api/admin/addie/knowledge' + (params.toString() ? '?' + params.toString() : '');
 
       try {
+        // Load stats
+        const statsRes = await fetch('/api/admin/addie/resources/stats');
+        const stats = await statsRes.json();
+        document.getElementById('knowledge-stats').innerHTML = `
+          <div style="display: flex; gap: var(--space-4); flex-wrap: wrap;">
+            <span class="badge badge-info">Total: ${stats.total}</span>
+            ${sourceType === 'curated' || !sourceType ? `
+              <span class="badge badge-warning">Pending: ${stats.pending}</span>
+              <span class="badge badge-success">Fetched: ${stats.success}</span>
+              <span class="badge badge-error">Failed: ${stats.failed}</span>
+            ` : ''}
+          </div>
+        `;
+
         const response = await fetch(url);
         const data = await response.json();
 
         const list = document.getElementById('knowledge-list');
-        if (!data.documents || data.documents.length === 0) {
+        const docs = data.documents || [];
+
+        if (docs.length === 0) {
           list.innerHTML = '<div class="empty-state"><h3>No knowledge documents</h3><p>Add some knowledge to help Addie answer questions.</p></div>';
           return;
         }
 
-        list.innerHTML = data.documents.map(doc => `
-          <div class="knowledge-item">
-            <div class="knowledge-info">
-              <h3>${escapeHtml(doc.title)}</h3>
-              <div class="knowledge-meta">
-                <span class="badge badge-${doc.category}">${doc.category}</span>
-                <span class="badge ${doc.is_active ? 'badge-active' : 'badge-inactive'}">${doc.is_active ? 'Active' : 'Inactive'}</span>
-                ${doc.source_url ? `<a href="${escapeHtml(doc.source_url)}" target="_blank" style="color: var(--color-brand);">Source</a>` : ''}
-              </div>
-              <div class="knowledge-excerpt">${escapeHtml(doc.content.substring(0, 200))}...</div>
-            </div>
-            <div class="knowledge-actions">
+        list.innerHTML = docs.map(doc => {
+          const isCurated = doc.source_type === 'curated';
+          const isSlack = doc.source_type === 'slack';
+
+          // Quality stars for curated content
+          const qualityStars = doc.quality_score
+            ? '★'.repeat(doc.quality_score) + '☆'.repeat(5 - doc.quality_score)
+            : '';
+
+          // Tags for curated content
+          const tags = doc.relevance_tags?.length ? doc.relevance_tags.join(', ') : '';
+
+          // Fetch status badge for curated content
+          const statusBadge = isCurated && doc.fetch_status
+            ? `<span class="badge ${doc.fetch_status === 'pending' ? 'badge-warning' : doc.fetch_status === 'success' ? 'badge-success' : 'badge-error'}">${doc.fetch_status}</span>`
+            : '';
+
+          // Source type badge
+          const sourceTypeBadge = `<span class="badge badge-${doc.source_type || 'docs'}">${doc.source_type || 'docs'}</span>`;
+
+          // Slack-specific info
+          const slackInfo = isSlack && doc.slack_channel_name
+            ? `<span class="badge badge-info">#${doc.slack_channel_name}</span><span style="color: var(--color-text-muted);">@${doc.slack_username || 'unknown'}</span>`
+            : '';
+
+          // URL link
+          const urlLink = doc.source_url || doc.fetch_url || doc.slack_permalink;
+          const urlHtml = urlLink
+            ? `<a href="${escapeHtml(urlLink)}" target="_blank" onclick="event.stopPropagation();" style="color: var(--color-brand);">${isSlack ? 'View in Slack' : 'Source'}</a>`
+            : '';
+
+          // Content preview
+          const contentPreview = doc.summary
+            ? `<strong>Summary:</strong> ${escapeHtml(doc.summary)}`
+            : doc.content
+              ? escapeHtml(doc.content.substring(0, 200)) + '...'
+              : '';
+
+          // Addie's take for curated content
+          const addieNotes = isCurated && doc.addie_notes
+            ? `<div class="knowledge-excerpt" style="color: var(--color-primary-600);"><strong>Addie's Take:</strong> ${escapeHtml(doc.addie_notes)}</div>`
+            : '';
+
+          // Click handler and edit button depend on source type
+          const clickHandler = isCurated ? `onclick="editResource(${doc.id})"` : '';
+          const cursorStyle = isCurated ? 'cursor: pointer;' : '';
+
+          // Actions based on source type
+          let actions = '';
+          if (isCurated) {
+            actions = `
+              <button class="btn btn-small btn-secondary" onclick="editResource(${doc.id})">Edit</button>
+              <button class="btn btn-small btn-danger" onclick="deleteResource(${doc.id})">Delete</button>
+            `;
+          } else if (!isSlack) {
+            actions = `
               <button class="btn btn-small btn-secondary" onclick="editKnowledge(${doc.id})">Edit</button>
               <button class="btn btn-small ${doc.is_active ? 'btn-secondary' : 'btn-primary'}" onclick="toggleKnowledgeActive(${doc.id}, ${!doc.is_active})">
                 ${doc.is_active ? 'Deactivate' : 'Activate'}
               </button>
               <button class="btn btn-small btn-danger" onclick="deleteKnowledge(${doc.id})">Delete</button>
+            `;
+          }
+
+          return `
+            <div class="knowledge-item" style="${cursorStyle}" ${clickHandler}>
+              <div class="knowledge-info">
+                <h3>${escapeHtml(doc.title)}</h3>
+                <div class="knowledge-meta">
+                  ${sourceTypeBadge}
+                  <span class="badge badge-${doc.category}">${doc.category}</span>
+                  ${statusBadge}
+                  ${slackInfo}
+                  ${qualityStars ? `<span title="Quality">${qualityStars}</span>` : ''}
+                  ${urlHtml}
+                </div>
+                ${contentPreview ? `<div class="knowledge-excerpt">${contentPreview}</div>` : ''}
+                ${addieNotes}
+                ${tags ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Tags: ${tags}</div>` : ''}
+              </div>
+              ${actions ? `<div class="knowledge-actions" onclick="event.stopPropagation();">${actions}</div>` : ''}
             </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
       } catch (error) {
         console.error('Error loading knowledge:', error);
         document.getElementById('knowledge-list').innerHTML =
@@ -1335,69 +1411,10 @@
       }
     }
 
-    // Load curated resources
-    async function loadResources() {
-      const status = document.getElementById('resource-status-filter').value;
-      let url = '/api/admin/addie/resources';
-      if (status) url += `?status=${status}`;
-
-      try {
-        // Load stats first
-        const statsRes = await fetch('/api/admin/addie/resources/stats');
-        const stats = await statsRes.json();
-        document.getElementById('resources-stats').innerHTML = `
-          <div style="display: flex; gap: var(--space-4); flex-wrap: wrap;">
-            <span class="badge badge-info">Total: ${stats.total}</span>
-            <span class="badge badge-warning">Pending: ${stats.pending}</span>
-            <span class="badge badge-success">Fetched: ${stats.success}</span>
-            <span class="badge badge-error">Failed: ${stats.failed}</span>
-          </div>
-        `;
-
-        // Load resources
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const list = document.getElementById('resources-list');
-        if (!data.resources || data.resources.length === 0) {
-          list.innerHTML = '<div class="empty-state"><h3>No curated resources</h3><p>Resources from perspectives and web searches will appear here.</p></div>';
-          return;
-        }
-
-        list.innerHTML = data.resources.map(r => {
-          const qualityStars = r.quality_score
-            ? '★'.repeat(r.quality_score) + '☆'.repeat(5 - r.quality_score)
-            : 'Not rated';
-          const tags = r.relevance_tags?.length ? r.relevance_tags.join(', ') : 'No tags';
-          const statusBadge = r.fetch_status === 'pending' ? 'badge-warning' :
-                              r.fetch_status === 'success' ? 'badge-success' : 'badge-error';
-
-          return `
-            <div class="knowledge-item" style="cursor: pointer;" onclick="editResource(${r.id})">
-              <div class="knowledge-info">
-                <h3>${escapeHtml(r.title)}</h3>
-                <div class="knowledge-meta">
-                  <span class="badge ${statusBadge}">${r.fetch_status}</span>
-                  <span class="badge badge-info">${r.discovery_source || 'unknown'}</span>
-                  <span title="Quality">${qualityStars}</span>
-                  <a href="${escapeHtml(r.source_url || r.fetch_url)}" target="_blank" onclick="event.stopPropagation();" style="color: var(--color-brand);">Open URL</a>
-                </div>
-                ${r.summary ? `<div class="knowledge-excerpt"><strong>Summary:</strong> ${escapeHtml(r.summary)}</div>` : ''}
-                ${r.addie_notes ? `<div class="knowledge-excerpt" style="color: var(--color-primary-600);"><strong>Addie's Take:</strong> ${escapeHtml(r.addie_notes)}</div>` : ''}
-                <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Tags: ${tags}</div>
-              </div>
-              <div class="knowledge-actions" onclick="event.stopPropagation();">
-                <button class="btn btn-small btn-secondary" onclick="editResource(${r.id})">Edit</button>
-                <button class="btn btn-small btn-danger" onclick="deleteResource(${r.id})">Delete</button>
-              </div>
-            </div>
-          `;
-        }).join('');
-      } catch (error) {
-        console.error('Error loading resources:', error);
-        document.getElementById('resources-list').innerHTML =
-          '<div class="empty-state"><h3>Error loading resources</h3></div>';
-      }
+    // Legacy alias for loadResources (no longer a separate function)
+    function loadResources() {
+      document.getElementById('source-type-filter').value = 'curated';
+      loadKnowledge();
     }
 
     // Edit resource modal
@@ -1700,10 +1717,11 @@
     }
 
     // Event listeners
+    document.getElementById('source-type-filter').addEventListener('change', loadKnowledge);
     document.getElementById('category-filter').addEventListener('change', loadKnowledge);
+    document.getElementById('fetch-status-filter').addEventListener('change', loadKnowledge);
     document.getElementById('flagged-only').addEventListener('change', loadInteractions);
     document.getElementById('unreviewed-only').addEventListener('change', loadInteractions);
-    document.getElementById('resource-status-filter').addEventListener('change', loadResources);
 
     // Close modal on outside click
     document.getElementById('knowledge-modal').addEventListener('click', (e) => {

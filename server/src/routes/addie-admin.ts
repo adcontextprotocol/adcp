@@ -56,10 +56,12 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   // GET /api/admin/addie/knowledge - List all knowledge documents
   apiRouter.get("/knowledge", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { category, active_only, limit, offset } = req.query;
+      const { category, active_only, source_type, status, limit, offset } = req.query;
 
       const documents = await addieDb.listKnowledge({
         category: category as string | undefined,
+        sourceType: source_type as string | undefined,
+        fetchStatus: status as string | undefined,
         activeOnly: active_only !== "false",
         limit: limit ? parseInt(limit as string, 10) : undefined,
         offset: offset ? parseInt(offset as string, 10) : undefined,
