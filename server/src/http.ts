@@ -226,9 +226,11 @@ export class HTTPServer {
     this.app.use((req, res, next) => {
       // Skip global JSON parser for routes that need raw body capture:
       // - Stripe webhooks: need raw body for webhook signature verification
+      // - Resend inbound webhooks: need raw body for Svix signature verification
       // - Slack routes: need raw body for Slack signature verification
       //   (both JSON for events and URL-encoded for commands)
       if (req.path === '/api/webhooks/stripe' ||
+          req.path === '/api/webhooks/resend-inbound' ||
           req.path.startsWith('/api/slack/')) {
         next();
       } else {
