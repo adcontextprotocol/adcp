@@ -885,6 +885,12 @@
       <div class="card">
         <div class="header-bar">
           <div class="filter-row">
+            <select id="source-type-filter">
+              <option value="">All Sources</option>
+              <option value="docs">Documentation</option>
+              <option value="curated">External Resources</option>
+              <option value="slack">Slack Messages</option>
+            </select>
             <select id="category-filter">
               <option value="">All Categories</option>
               <option value="docs">Documentation</option>
@@ -892,14 +898,71 @@
               <option value="faq">FAQ</option>
               <option value="perspective">Perspectives</option>
               <option value="guidelines">Guidelines</option>
+              <option value="industry">Industry</option>
+            </select>
+            <select id="fetch-status-filter" style="display: none;">
+              <option value="">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="success">Fetched</option>
+              <option value="failed">Failed</option>
             </select>
           </div>
           <button class="btn btn-primary" onclick="openKnowledgeModal()">Add Knowledge</button>
         </div>
+        <div class="knowledge-stats" id="knowledge-stats" style="margin-bottom: var(--space-4);"></div>
         <div class="knowledge-list" id="knowledge-list">
           <div class="empty-state">
             <h3>Loading...</h3>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Resource Edit Modal -->
+    <div class="modal-overlay" id="resource-modal">
+      <div class="modal" style="max-width: 800px;">
+        <h2 id="resource-modal-title">Edit Resource</h2>
+        <div id="resource-detail">
+          <div class="form-group">
+            <label>Title</label>
+            <div id="resource-title" style="padding: var(--space-2); background: var(--color-bg-subtle); border-radius: var(--radius);"></div>
+          </div>
+          <div class="form-group">
+            <label>URL</label>
+            <div id="resource-url" style="padding: var(--space-2); background: var(--color-bg-subtle); border-radius: var(--radius); word-break: break-all;"></div>
+          </div>
+          <div class="form-group">
+            <label>Summary</label>
+            <div id="resource-summary" style="padding: var(--space-2); background: var(--color-bg-subtle); border-radius: var(--radius); white-space: pre-wrap;"></div>
+          </div>
+          <div class="form-group">
+            <label>Key Insights</label>
+            <div id="resource-insights" style="padding: var(--space-2); background: var(--color-bg-subtle); border-radius: var(--radius);"></div>
+          </div>
+          <div class="form-group">
+            <label for="resource-addie-notes">Addie's Take (editable)</label>
+            <textarea id="resource-addie-notes" rows="4" placeholder="Why this matters for AdCP and what developers/marketers should learn from this..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="resource-quality">Quality Score (1-5)</label>
+            <select id="resource-quality">
+              <option value="1">1 - Low quality or not relevant</option>
+              <option value="2">2 - Limited relevance</option>
+              <option value="3">3 - Useful context</option>
+              <option value="4">4 - Good quality, relevant</option>
+              <option value="5">5 - Authoritative, highly relevant</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="resource-tags">Relevance Tags (comma-separated)</label>
+            <input type="text" id="resource-tags" placeholder="mcp, a2a, industry-trend, competitor">
+          </div>
+        </div>
+        <input type="hidden" id="resource-edit-id">
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeResourceModal()">Cancel</button>
+          <button type="button" class="btn btn-secondary" onclick="refetchResource()">Re-fetch</button>
+          <button type="button" class="btn btn-primary" onclick="saveResource()">Save Changes</button>
         </div>
       </div>
     </div>
@@ -1213,47 +1276,249 @@
       }
     }
 
-    // Load knowledge list
+    // Load unified knowledge list (docs, curated resources, slack messages)
     async function loadKnowledge() {
+      const sourceType = document.getElementById('source-type-filter').value;
       const category = document.getElementById('category-filter').value;
-      const url = category
-        ? `/api/admin/addie/knowledge?category=${category}`
-        : '/api/admin/addie/knowledge';
+      const fetchStatus = document.getElementById('fetch-status-filter').value;
+
+      // Show/hide fetch status filter based on source type
+      const fetchStatusFilter = document.getElementById('fetch-status-filter');
+      fetchStatusFilter.style.display = sourceType === 'curated' ? 'block' : 'none';
+
+      // Build URL with filters
+      const params = new URLSearchParams();
+      if (sourceType) params.append('source_type', sourceType);
+      if (category) params.append('category', category);
+      if (fetchStatus && sourceType === 'curated') params.append('status', fetchStatus);
+
+      const url = '/api/admin/addie/knowledge' + (params.toString() ? '?' + params.toString() : '');
 
       try {
+        // Load stats
+        const statsRes = await fetch('/api/admin/addie/resources/stats');
+        const stats = await statsRes.json();
+        document.getElementById('knowledge-stats').innerHTML = `
+          <div style="display: flex; gap: var(--space-4); flex-wrap: wrap;">
+            <span class="badge badge-info">Total: ${stats.total}</span>
+            ${sourceType === 'curated' || !sourceType ? `
+              <span class="badge badge-warning">Pending: ${stats.pending}</span>
+              <span class="badge badge-success">Fetched: ${stats.success}</span>
+              <span class="badge badge-error">Failed: ${stats.failed}</span>
+            ` : ''}
+          </div>
+        `;
+
         const response = await fetch(url);
         const data = await response.json();
 
         const list = document.getElementById('knowledge-list');
-        if (!data.documents || data.documents.length === 0) {
+        const docs = data.documents || [];
+
+        if (docs.length === 0) {
           list.innerHTML = '<div class="empty-state"><h3>No knowledge documents</h3><p>Add some knowledge to help Addie answer questions.</p></div>';
           return;
         }
 
-        list.innerHTML = data.documents.map(doc => `
-          <div class="knowledge-item">
-            <div class="knowledge-info">
-              <h3>${escapeHtml(doc.title)}</h3>
-              <div class="knowledge-meta">
-                <span class="badge badge-${doc.category}">${doc.category}</span>
-                <span class="badge ${doc.is_active ? 'badge-active' : 'badge-inactive'}">${doc.is_active ? 'Active' : 'Inactive'}</span>
-                ${doc.source_url ? `<a href="${escapeHtml(doc.source_url)}" target="_blank" style="color: var(--color-brand);">Source</a>` : ''}
-              </div>
-              <div class="knowledge-excerpt">${escapeHtml(doc.content.substring(0, 200))}...</div>
-            </div>
-            <div class="knowledge-actions">
+        list.innerHTML = docs.map(doc => {
+          const isCurated = doc.source_type === 'curated';
+          const isSlack = doc.source_type === 'slack';
+
+          // Quality stars for curated content
+          const qualityStars = doc.quality_score
+            ? '★'.repeat(doc.quality_score) + '☆'.repeat(5 - doc.quality_score)
+            : '';
+
+          // Tags for curated content
+          const tags = doc.relevance_tags?.length ? doc.relevance_tags.join(', ') : '';
+
+          // Fetch status badge for curated content
+          const statusBadge = isCurated && doc.fetch_status
+            ? `<span class="badge ${doc.fetch_status === 'pending' ? 'badge-warning' : doc.fetch_status === 'success' ? 'badge-success' : 'badge-error'}">${doc.fetch_status}</span>`
+            : '';
+
+          // Source type badge
+          const sourceTypeBadge = `<span class="badge badge-${doc.source_type || 'docs'}">${doc.source_type || 'docs'}</span>`;
+
+          // Slack-specific info
+          const slackInfo = isSlack && doc.slack_channel_name
+            ? `<span class="badge badge-info">#${doc.slack_channel_name}</span><span style="color: var(--color-text-muted);">@${doc.slack_username || 'unknown'}</span>`
+            : '';
+
+          // URL link
+          const urlLink = doc.source_url || doc.fetch_url || doc.slack_permalink;
+          const urlHtml = urlLink
+            ? `<a href="${escapeHtml(urlLink)}" target="_blank" onclick="event.stopPropagation();" style="color: var(--color-brand);">${isSlack ? 'View in Slack' : 'Source'}</a>`
+            : '';
+
+          // Content preview
+          const contentPreview = doc.summary
+            ? `<strong>Summary:</strong> ${escapeHtml(doc.summary)}`
+            : doc.content
+              ? escapeHtml(doc.content.substring(0, 200)) + '...'
+              : '';
+
+          // Addie's take for curated content
+          const addieNotes = isCurated && doc.addie_notes
+            ? `<div class="knowledge-excerpt" style="color: var(--color-primary-600);"><strong>Addie's Take:</strong> ${escapeHtml(doc.addie_notes)}</div>`
+            : '';
+
+          // Click handler and edit button depend on source type
+          const clickHandler = isCurated ? `onclick="editResource(${doc.id})"` : '';
+          const cursorStyle = isCurated ? 'cursor: pointer;' : '';
+
+          // Actions based on source type
+          let actions = '';
+          if (isCurated) {
+            const retryBtn = doc.fetch_status === 'failed' || doc.fetch_status === 'pending'
+              ? `<button class="btn btn-small btn-primary" onclick="retryFetch(${doc.id})">${doc.fetch_status === 'failed' ? 'Retry' : 'Fetch Now'}</button>`
+              : `<button class="btn btn-small btn-secondary" onclick="retryFetch(${doc.id})">Re-fetch</button>`;
+            actions = `
+              ${retryBtn}
+              <button class="btn btn-small btn-secondary" onclick="editResource(${doc.id})">Edit</button>
+              <button class="btn btn-small btn-danger" onclick="deleteResource(${doc.id})">Delete</button>
+            `;
+          } else if (!isSlack) {
+            actions = `
               <button class="btn btn-small btn-secondary" onclick="editKnowledge(${doc.id})">Edit</button>
               <button class="btn btn-small ${doc.is_active ? 'btn-secondary' : 'btn-primary'}" onclick="toggleKnowledgeActive(${doc.id}, ${!doc.is_active})">
                 ${doc.is_active ? 'Deactivate' : 'Activate'}
               </button>
               <button class="btn btn-small btn-danger" onclick="deleteKnowledge(${doc.id})">Delete</button>
+            `;
+          }
+
+          return `
+            <div class="knowledge-item" style="${cursorStyle}" ${clickHandler}>
+              <div class="knowledge-info">
+                <h3>${escapeHtml(doc.title)}</h3>
+                <div class="knowledge-meta">
+                  ${sourceTypeBadge}
+                  <span class="badge badge-${doc.category}">${doc.category}</span>
+                  ${statusBadge}
+                  ${slackInfo}
+                  ${qualityStars ? `<span title="Quality">${qualityStars}</span>` : ''}
+                  ${urlHtml}
+                </div>
+                ${contentPreview ? `<div class="knowledge-excerpt">${contentPreview}</div>` : ''}
+                ${addieNotes}
+                ${tags ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Tags: ${tags}</div>` : ''}
+              </div>
+              ${actions ? `<div class="knowledge-actions" onclick="event.stopPropagation();">${actions}</div>` : ''}
             </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
       } catch (error) {
         console.error('Error loading knowledge:', error);
         document.getElementById('knowledge-list').innerHTML =
           '<div class="empty-state"><h3>Error loading knowledge</h3></div>';
+      }
+    }
+
+    // Legacy alias for loadResources (no longer a separate function)
+    function loadResources() {
+      document.getElementById('source-type-filter').value = 'curated';
+      loadKnowledge();
+    }
+
+    // Edit resource modal
+    async function editResource(id) {
+      try {
+        const response = await fetch(`/api/admin/addie/resources/${id}`);
+        const r = await response.json();
+
+        document.getElementById('resource-edit-id').value = r.id;
+        document.getElementById('resource-title').textContent = r.title;
+        document.getElementById('resource-url').innerHTML = `<a href="${escapeHtml(r.source_url || r.fetch_url)}" target="_blank">${escapeHtml(r.source_url || r.fetch_url)}</a>`;
+        document.getElementById('resource-summary').textContent = r.summary || 'Not yet fetched';
+
+        // Display key insights
+        const insightsEl = document.getElementById('resource-insights');
+        if (r.key_insights && r.key_insights.length > 0) {
+          insightsEl.innerHTML = r.key_insights.map(i =>
+            `<div style="margin-bottom: var(--space-1);"><span class="badge badge-${i.importance === 'high' ? 'error' : i.importance === 'medium' ? 'warning' : 'info'}">${i.importance}</span> ${escapeHtml(i.insight)}</div>`
+          ).join('');
+        } else {
+          insightsEl.textContent = 'No insights yet';
+        }
+
+        document.getElementById('resource-addie-notes').value = r.addie_notes || '';
+        document.getElementById('resource-quality').value = r.quality_score || 3;
+        document.getElementById('resource-tags').value = r.relevance_tags?.join(', ') || '';
+
+        document.getElementById('resource-modal').style.display = 'flex';
+      } catch (error) {
+        console.error('Error loading resource:', error);
+        alert('Error loading resource');
+      }
+    }
+
+    function closeResourceModal() {
+      document.getElementById('resource-modal').style.display = 'none';
+    }
+
+    async function saveResource() {
+      const id = document.getElementById('resource-edit-id').value;
+      const addie_notes = document.getElementById('resource-addie-notes').value;
+      const quality_score = parseInt(document.getElementById('resource-quality').value, 10);
+      const tagsInput = document.getElementById('resource-tags').value;
+      const relevance_tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+
+      try {
+        await fetch(`/api/admin/addie/resources/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addie_notes, quality_score, relevance_tags })
+        });
+        closeResourceModal();
+        loadKnowledge();
+      } catch (error) {
+        console.error('Error saving resource:', error);
+        alert('Error saving resource');
+      }
+    }
+
+    async function refetchResource() {
+      const id = document.getElementById('resource-edit-id').value;
+      if (!confirm('This will re-fetch the content and regenerate the summary. Continue?')) return;
+
+      try {
+        await fetch(`/api/admin/addie/resources/${id}/refetch`, { method: 'POST' });
+        closeResourceModal();
+        loadKnowledge();
+        alert('Resource queued for refetch. Check back in a few minutes.');
+      } catch (error) {
+        console.error('Error refetching resource:', error);
+        alert('Error queueing refetch');
+      }
+    }
+
+    async function deleteResource(id) {
+      if (!confirm('Are you sure you want to delete this resource?')) return;
+
+      try {
+        await fetch(`/api/admin/addie/resources/${id}`, { method: 'DELETE' });
+        loadKnowledge();
+      } catch (error) {
+        console.error('Error deleting resource:', error);
+        alert('Error deleting resource');
+      }
+    }
+
+    // Retry/re-fetch a curated resource
+    async function retryFetch(id) {
+      try {
+        const response = await fetch(`/api/admin/addie/resources/${id}/refetch`, { method: 'POST' });
+        if (response.ok) {
+          alert('Resource queued for fetch. It will be processed within 5 minutes.');
+          loadKnowledge();
+        } else {
+          const data = await response.json();
+          alert('Error: ' + (data.message || 'Failed to queue resource'));
+        }
+      } catch (error) {
+        console.error('Error retrying fetch:', error);
+        alert('Error queuing resource for fetch');
       }
     }
 
@@ -1473,13 +1738,18 @@
     }
 
     // Event listeners
+    document.getElementById('source-type-filter').addEventListener('change', loadKnowledge);
     document.getElementById('category-filter').addEventListener('change', loadKnowledge);
+    document.getElementById('fetch-status-filter').addEventListener('change', loadKnowledge);
     document.getElementById('flagged-only').addEventListener('change', loadInteractions);
     document.getElementById('unreviewed-only').addEventListener('change', loadInteractions);
 
     // Close modal on outside click
     document.getElementById('knowledge-modal').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) closeKnowledgeModal();
+    });
+    document.getElementById('resource-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeResourceModal();
     });
 
     // =========================================================================

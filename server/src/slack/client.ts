@@ -310,6 +310,21 @@ export async function getSlackChannels(
 }
 
 /**
+ * Get channel info by ID
+ */
+export async function getChannelInfo(channelId: string): Promise<SlackChannel | null> {
+  try {
+    const response = await slackRequest<{ channel: SlackChannel }>('conversations.info', {
+      channel: channelId,
+    });
+    return response.channel;
+  } catch (error) {
+    logger.error({ error, channelId }, 'Failed to get channel info');
+    return null;
+  }
+}
+
+/**
  * Get members of a channel
  */
 export async function getChannelMembers(channelId: string): Promise<string[]> {
