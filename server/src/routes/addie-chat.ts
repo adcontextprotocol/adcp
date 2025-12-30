@@ -26,6 +26,10 @@ import {
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from "../addie/mcp/knowledge-search.js";
+import {
+  getWebMemberContext,
+  formatMemberContextForPrompt,
+} from "../addie/member-context.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,14 +81,15 @@ interface ConversationMessage {
 async function createConversation(
   userId: string | null,
   userName: string | null,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  impersonator?: { email: string; reason: string | null }
 ): Promise<string> {
   const pool = getPool();
   const result = await pool.query(
-    `INSERT INTO addie_conversations (user_id, user_name, channel, metadata)
-     VALUES ($1, $2, 'web', $3)
+    `INSERT INTO addie_conversations (user_id, user_name, channel, metadata, impersonator_email, impersonation_reason)
+     VALUES ($1, $2, 'web', $3, $4, $5)
      RETURNING conversation_id`,
-    [userId, userName, JSON.stringify(metadata || {})]
+    [userId, userName, JSON.stringify(metadata || {}), impersonator?.email || null, impersonator?.reason || null]
   );
   return result.rows[0].conversation_id;
 }
@@ -142,14 +147,15 @@ async function saveMessage(
     tokensOutput?: number;
     model?: string;
     latencyMs?: number;
+    impersonatorEmail?: string;
   }
 ): Promise<number> {
   const pool = getPool();
 
   // Insert message and return ID
   const result = await pool.query(
-    `INSERT INTO addie_messages (conversation_id, role, content, tool_use, tool_results, tokens_input, tokens_output, model, latency_ms)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO addie_messages (conversation_id, role, content, tool_use, tool_results, tokens_input, tokens_output, model, latency_ms, impersonator_email)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`,
     [
       conversationId,
@@ -161,6 +167,7 @@ async function saveMessage(
       options?.tokensOutput || null,
       options?.model || null,
       options?.latencyMs || null,
+      options?.impersonatorEmail || null,
     ]
   );
 
@@ -255,14 +262,28 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
 
       // Get or create conversation
       let conversationId = conversation_id;
+      const impersonator = req.user?.impersonator;
       if (!conversationId) {
         // Create new conversation
         const userId = req.user?.id || null;
         const displayName = user_name || req.user?.firstName || null;
-        conversationId = await createConversation(userId, displayName, {
-          user_agent: req.get("user-agent"),
-          ip_hash: hashIp(req.ip), // Store hashed IP for privacy
-        });
+        conversationId = await createConversation(
+          userId,
+          displayName,
+          {
+            user_agent: req.get("user-agent"),
+            ip_hash: hashIp(req.ip), // Store hashed IP for privacy
+          },
+          impersonator
+        );
+
+        // Log impersonated conversation creation
+        if (impersonator) {
+          logger.info(
+            { conversationId, userId, impersonatorEmail: impersonator.email, reason: impersonator.reason },
+            "Addie Chat: Created impersonated conversation"
+          );
+        }
       } else {
         // Validate conversation ID format
         if (!isValidConversationId(conversationId)) {
@@ -279,7 +300,9 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const history = await getConversationMessages(conversationId);
 
       // Save user message
-      await saveMessage(conversationId, "user", message);
+      await saveMessage(conversationId, "user", message, {
+        impersonatorEmail: impersonator?.email,
+      });
 
       // Build context from history (last N messages)
       const contextMessages = history.slice(-10).map((m) => ({
@@ -287,10 +310,29 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         text: m.content,
       }));
 
+      // Build message with member context for authenticated users
+      let messageToProcess = inputValidation.sanitized;
+      if (req.user?.id) {
+        try {
+          const memberContext = await getWebMemberContext(req.user.id);
+          const memberContextText = formatMemberContextForPrompt(memberContext);
+          if (memberContextText) {
+            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
+            logger.debug(
+              { userId: req.user.id, hasContext: true, orgName: memberContext.organization?.name },
+              "Addie Chat: Added member context to message"
+            );
+          }
+        } catch (error) {
+          logger.warn({ error, userId: req.user.id }, "Addie Chat: Failed to get member context");
+          // Continue without context - don't fail the request
+        }
+      }
+
       // Process with Claude
       let response;
       try {
-        response = await claudeClient.processMessage(inputValidation.sanitized, contextMessages);
+        response = await claudeClient.processMessage(messageToProcess, contextMessages);
       } catch (error) {
         logger.error({ error }, "Addie Chat: Error processing message");
         response = {
@@ -313,6 +355,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         toolResults: response.tool_executions.length > 0 ? response.tool_executions : undefined,
         model: process.env.ADDIE_ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
         latencyMs,
+        impersonatorEmail: impersonator?.email,
       });
 
       res.json({

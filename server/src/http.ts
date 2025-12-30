@@ -5188,7 +5188,8 @@ Disallow: /api/admin/
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
 
-        res.json({
+        // Build response with optional impersonation info
+        const response: Record<string, unknown> = {
           user: {
             id: user.id,
             email: user.email,
@@ -5197,7 +5198,18 @@ Disallow: /api/admin/
             isAdmin,
           },
           organizations,
-        });
+        };
+
+        // Include impersonation info if present
+        if (user.impersonator) {
+          response.impersonation = {
+            active: true,
+            impersonator_email: user.impersonator.email,
+            reason: user.impersonator.reason,
+          };
+        }
+
+        res.json(response);
       } catch (error) {
         logger.error({ err: error }, 'Get current user error:');
         res.status(500).json({
