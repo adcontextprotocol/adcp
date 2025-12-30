@@ -329,6 +329,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
 
     // Map WorkOS user to our WorkOSUser type (convert null to undefined)
+    // The result may include impersonator info if session is impersonated
+    const authenticatedResult = result as typeof result & {
+      impersonator?: { email: string; reason: string | null };
+    };
+
     const user: WorkOSUser = {
       id: result.user.id,
       email: result.user.email,
@@ -337,7 +342,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       emailVerified: result.user.emailVerified,
       createdAt: result.user.createdAt,
       updatedAt: result.user.updatedAt,
+      impersonator: authenticatedResult.impersonator,
     };
+
+    // Log impersonation for audit
+    if (user.impersonator) {
+      logger.info(
+        { userId: user.id, impersonatorEmail: user.impersonator.email, reason: user.impersonator.reason },
+        'Impersonation session detected'
+      );
+    }
 
     // Cache the validated session
     sessionCache.set(cacheKey, {
@@ -777,6 +791,11 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     }
 
     if (result.authenticated && 'user' in result && result.user) {
+      // The result may include impersonator info if session is impersonated
+      const authenticatedResult = result as typeof result & {
+        impersonator?: { email: string; reason: string | null };
+      };
+
       const user: WorkOSUser = {
         id: result.user.id,
         email: result.user.email,
@@ -785,7 +804,16 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         emailVerified: result.user.emailVerified,
         createdAt: result.user.createdAt,
         updatedAt: result.user.updatedAt,
+        impersonator: authenticatedResult.impersonator,
       };
+
+      // Log impersonation for audit
+      if (user.impersonator) {
+        logger.info(
+          { userId: user.id, impersonatorEmail: user.impersonator.email, reason: user.impersonator.reason },
+          'Impersonation session detected (optional auth)'
+        );
+      }
 
       // Cache the validated session
       sessionCache.set(cacheKey, {
