@@ -281,7 +281,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'draft_github_issue',
     description:
-      'Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. The user will click the link to create the issue from their own GitHub account. Infer the appropriate repo from context (channel name, conversation topic) - use "adcp" for protocol/docs issues, "aao-server" for website/community issues.',
+      'Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. IMPORTANT: Share the full tool output with the user - it contains the clickable link they need to create the issue. The user will click the link to create the issue from their own GitHub account. Infer the appropriate repo from context (channel name, conversation topic) - use "adcp" for protocol/docs issues, "aao-server" for website/community issues.',
     input_schema: {
       type: 'object',
       properties: {
