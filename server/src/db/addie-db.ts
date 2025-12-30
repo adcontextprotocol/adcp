@@ -1319,6 +1319,28 @@ export class AddieDatabase {
     return result.rows;
   }
 
+  /**
+   * Get a user's most recent Addie thread within a time window
+   * Used for sending proactive messages after account linking
+   */
+  async getUserRecentThread(
+    slackUserId: string,
+    maxAgeMinutes: number = 30
+  ): Promise<{ channel_id: string; thread_ts: string } | null> {
+    const result = await query<{ channel_id: string; thread_ts: string }>(
+      `SELECT channel_id, thread_ts
+       FROM addie_interactions
+       WHERE user_id = $1
+         AND thread_ts IS NOT NULL
+         AND event_type = 'assistant_thread'
+         AND created_at >= NOW() - $2::integer * INTERVAL '1 minute'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [slackUserId, maxAgeMinutes]
+    );
+    return result.rows[0] || null;
+  }
+
   // ============== Interaction Rating ==============
 
   /**

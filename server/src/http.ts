@@ -47,6 +47,7 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
+import { sendAccountLinkedMessage } from "./addie/index.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createAdminSlackRouter, createAdminEmailRouter } from "./routes/admin/index.js";
 import {
@@ -4952,6 +4953,12 @@ Disallow: /api/admin/
                 { slackUserId: slackUserIdToLink, workosUserId: user.id },
                 'Auto-linked Slack account after signup'
               );
+
+              // Send proactive Addie message if user has a recent conversation
+              const firstName = user.firstName || undefined;
+              sendAccountLinkedMessage(slackUserIdToLink, firstName).catch((err) => {
+                logger.warn({ error: err, slackUserId: slackUserIdToLink }, 'Failed to send Addie account linked message');
+              });
             } else if (!existingMapping) {
               logger.debug(
                 { slackUserId: slackUserIdToLink },

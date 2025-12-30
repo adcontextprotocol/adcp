@@ -26,6 +26,10 @@ import {
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from "../addie/mcp/knowledge-search.js";
+import {
+  MEMBER_TOOLS,
+  createMemberToolHandlers,
+} from "../addie/mcp/member-tools.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +61,16 @@ async function initializeChatClient(): Promise<void> {
   const knowledgeHandlers = createKnowledgeToolHandlers();
   for (const tool of KNOWLEDGE_TOOLS) {
     const handler = knowledgeHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register member tools with null context (for web chat, user-scoped tools will fail gracefully)
+  // This allows tools like draft_github_issue to work without user auth
+  const memberHandlers = createMemberToolHandlers(null);
+  for (const tool of MEMBER_TOOLS) {
+    const handler = memberHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }

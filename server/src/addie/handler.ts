@@ -20,9 +20,14 @@ import {
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from './mcp/knowledge-search.js';
+import {
+  MEMBER_TOOLS,
+  createMemberToolHandlers,
+} from './mcp/member-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
-import { getMemberContext, formatMemberContextForPrompt } from './member-context.js';
+import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
+import type { RequestTools } from './claude-client.js';
 import type {
   AssistantThreadStartedEvent,
   AppMentionEvent,
@@ -102,23 +107,104 @@ export function isAddieReady(): boolean {
  * Build message with member context prepended
  *
  * Fetches member context for the user and formats it as a prefix to the message.
+ * Also returns the member context for use in creating user-scoped tools.
  * Gracefully degrades to just the original message if context lookup fails.
  */
 async function buildMessageWithMemberContext(
   userId: string,
   sanitizedMessage: string
-): Promise<string> {
+): Promise<{ message: string; memberContext: MemberContext | null }> {
   try {
     const memberContext = await getMemberContext(userId);
     const memberContextText = formatMemberContextForPrompt(memberContext);
 
     if (memberContextText) {
-      return `${memberContextText}\n---\n\n${sanitizedMessage}`;
+      return {
+        message: `${memberContextText}\n---\n\n${sanitizedMessage}`,
+        memberContext,
+      };
     }
-    return sanitizedMessage;
+    return { message: sanitizedMessage, memberContext };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to get member context, continuing without it');
-    return sanitizedMessage;
+    return { message: sanitizedMessage, memberContext: null };
+  }
+}
+
+/**
+ * Create user-scoped member tools
+ * These tools are created per-request with the user's context
+ */
+function createUserScopedTools(memberContext: MemberContext | null): RequestTools {
+  const handlers = createMemberToolHandlers(memberContext);
+  return {
+    tools: MEMBER_TOOLS,
+    handlers,
+  };
+}
+
+/**
+ * Build dynamic suggested prompts based on user context
+ */
+async function buildDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
+  try {
+    const memberContext = await getMemberContext(userId);
+
+    // Not linked - prioritize account setup
+    if (!memberContext.workos_user?.workos_user_id) {
+      return [
+        {
+          title: 'Link my account',
+          message: 'Help me link my Slack account to AgenticAdvertising.org',
+        },
+        {
+          title: 'Learn about AdCP',
+          message: 'What is AdCP and how does it work?',
+        },
+        {
+          title: 'Why join AgenticAdvertising.org?',
+          message: 'What are the benefits of joining AgenticAdvertising.org?',
+        },
+      ];
+    }
+
+    // Linked but maybe not a member - suggest getting involved
+    const prompts: SuggestedPrompt[] = [];
+
+    // Personalized: Show working groups if they have some
+    if (memberContext.working_groups && memberContext.working_groups.length > 0) {
+      prompts.push({
+        title: 'My working groups',
+        message: 'What\'s happening in my working groups?',
+      });
+    } else {
+      prompts.push({
+        title: 'Find a working group',
+        message: 'What working groups can I join based on my interests?',
+      });
+    }
+
+    // Add agent testing prompt
+    prompts.push({
+      title: 'Test my agent',
+      message: 'Help me verify my AdCP agent is working correctly',
+    });
+
+    // Standard prompts
+    prompts.push({
+      title: 'Learn about AdCP',
+      message: 'What is AdCP and how does it work?',
+    });
+
+    prompts.push({
+      title: 'AdCP vs programmatic',
+      message: 'How is agentic advertising different from programmatic?',
+    });
+
+    return prompts.slice(0, 4); // Slack limits to 4 prompts
+  } catch (error) {
+    logger.warn({ error, userId }, 'Addie: Failed to build dynamic prompts, using defaults');
+    return SUGGESTED_PROMPTS;
   }
 }
 
@@ -138,9 +224,10 @@ export async function handleAssistantThreadStarted(
     'Addie: Assistant thread started'
   );
 
-  // Set suggested prompts
+  // Set dynamic suggested prompts based on user context
   try {
-    await setAssistantSuggestedPrompts(event.channel_id, SUGGESTED_PROMPTS);
+    const prompts = await buildDynamicSuggestedPrompts(event.assistant_thread.user_id);
+    await setAssistantSuggestedPrompts(event.channel_id, prompts);
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to set suggested prompts');
   }
@@ -172,20 +259,24 @@ export async function handleAssistantMessage(
   }
 
   // Build message with member context for personalization
-  const messageWithContext = await buildMessageWithMemberContext(
+  const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
     event.user,
     inputValidation.sanitized
   );
 
+  // Create user-scoped tools (these can only operate on behalf of this user)
+  const userTools = createUserScopedTools(memberContext);
+
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext);
+    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
   } catch (error) {
     logger.error({ error }, 'Addie: Error processing message');
     response = {
       text: "I'm sorry, I encountered an error. Please try again.",
       tools_used: [],
+      tool_executions: [],
       flagged: true,
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
     };
@@ -264,20 +355,24 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   const inputValidation = sanitizeInput(rawText);
 
   // Build message with member context for personalization
-  const messageWithContext = await buildMessageWithMemberContext(
+  const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
     event.user,
     inputValidation.sanitized
   );
 
+  // Create user-scoped tools (these can only operate on behalf of this user)
+  const userTools = createUserScopedTools(memberContext);
+
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext);
+    response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
   } catch (error) {
     logger.error({ error }, 'Addie: Error processing mention');
     response = {
       text: "I'm sorry, I encountered an error. Please try again.",
       tools_used: [],
+      tool_executions: [],
       flagged: true,
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
     };
@@ -382,5 +477,43 @@ async function setAssistantStatus(channelId: string, status: string): Promise<vo
   const data = await response.json() as { ok: boolean; error?: string };
   if (!data.ok && data.error !== 'not_in_channel') {
     logger.debug({ error: data.error }, 'Addie: Failed to set status');
+  }
+}
+
+/**
+ * Send a proactive message when a user links their account
+ * Called from the auth callback after successful account linking
+ */
+export async function sendAccountLinkedMessage(
+  slackUserId: string,
+  userName?: string
+): Promise<boolean> {
+  if (!initialized || !addieDb) {
+    logger.warn('Addie: Not initialized, cannot send account linked message');
+    return false;
+  }
+
+  // Find the user's most recent Addie thread (within 30 minutes)
+  const recentThread = await addieDb.getUserRecentThread(slackUserId, 30);
+  if (!recentThread) {
+    logger.debug({ slackUserId }, 'Addie: No recent thread found for account linked message');
+    return false;
+  }
+
+  // Build a personalized message
+  const greeting = userName ? `Thanks for linking your account, ${userName}!` : 'Thanks for linking your account!';
+  const message = `${greeting} 🎉\n\nI can now see your profile and help you get more involved with AgenticAdvertising.org. What would you like to do next?`;
+
+  // Send the message
+  try {
+    await sendChannelMessage(recentThread.channel_id, {
+      text: message,
+      thread_ts: recentThread.thread_ts,
+    }, true); // useAddieToken = true
+    logger.info({ slackUserId, channelId: recentThread.channel_id }, 'Addie: Sent account linked message');
+    return true;
+  } catch (error) {
+    logger.error({ error, slackUserId }, 'Addie: Failed to send account linked message');
+    return false;
   }
 }
