@@ -1532,6 +1532,8 @@ export class HTTPServer {
                       productName,
                       workosUserId: workosUser.id,
                       workosOrganizationId: org.workos_organization_id,
+                      isPersonal: org.is_personal || false,
+                      firstName: workosUser.firstName || undefined,
                     }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
 
                     // Record to org_activities for prospect tracking

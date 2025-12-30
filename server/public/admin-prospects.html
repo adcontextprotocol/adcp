@@ -819,8 +819,10 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         const engagementTooltip = prospect.engagement_reasons?.join(', ') || 'Cold';
         const engagementHtml = `<span class="engagement-fires" title="${engagementTooltip}">${fires}</span>`;
 
-        // Type
-        const typeHtml = prospect.company_type ? typeLabels[prospect.company_type] || prospect.company_type : '<span style="color: var(--color-text-muted);">-</span>';
+        // Type - show "Individual" for personal accounts
+        const typeHtml = prospect.is_personal
+          ? '<span style="color: var(--color-text-muted);">Individual</span>'
+          : (prospect.company_type ? typeLabels[prospect.company_type] || prospect.company_type : '<span style="color: var(--color-text-muted);">-</span>');
 
         // Owner
         const ownerHtml = prospect.prospect_owner || '<span style="color: var(--color-text-muted);">-</span>';
