@@ -46,6 +46,7 @@ import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
+import { queuePerspectiveLink, processPendingResources } from "./addie/services/content-curator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -171,6 +172,7 @@ export class HTTPServer {
   private publisherTracker: PublisherTracker;
   private propertiesService: PropertiesService;
   private adagentsManager: AdAgentsManager;
+  private contentCuratorIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -3377,7 +3379,22 @@ export class HTTPServer {
           ]
         );
 
-        res.json(result.rows[0]);
+        const perspective = result.rows[0];
+
+        // Queue external links for Addie's knowledge base when published
+        if (perspective.content_type === 'link' && perspective.status === 'published' && perspective.external_url) {
+          queuePerspectiveLink({
+            id: perspective.id,
+            title: perspective.title,
+            external_url: perspective.external_url,
+            category: perspective.category || 'perspective',
+            tags: perspective.tags,
+          }).catch(err => {
+            logger.warn({ err, perspectiveId: perspective.id }, 'Failed to queue perspective link for indexing');
+          });
+        }
+
+        res.json(perspective);
       } catch (error) {
         logger.error({ err: error }, 'Create perspective error:');
         // Check for unique constraint violation
@@ -3488,7 +3505,22 @@ export class HTTPServer {
           });
         }
 
-        res.json(result.rows[0]);
+        const perspective = result.rows[0];
+
+        // Queue external links for indexing when perspective is published
+        if (perspective.content_type === 'link' && perspective.status === 'published' && perspective.external_url) {
+          queuePerspectiveLink({
+            id: perspective.id,
+            title: perspective.title,
+            external_url: perspective.external_url,
+            category: perspective.category || 'perspective',
+            tags: perspective.tags,
+          }).catch(err => {
+            logger.warn({ err, perspectiveId: perspective.id }, 'Failed to queue perspective link for indexing');
+          });
+        }
+
+        res.json(perspective);
       } catch (error) {
         logger.error({ err: error }, 'Update perspective error:');
         // Check for unique constraint violation
@@ -10348,6 +10380,10 @@ Disallow: /api/admin/
       this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes
     }
 
+    // Start periodic content curator for Addie's knowledge base
+    // Process pending external resources (fetch content, generate summaries)
+    this.startContentCurator();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
@@ -10358,6 +10394,40 @@ Disallow: /api/admin/
 
     // Setup graceful shutdown handlers
     this.setupShutdownHandlers();
+  }
+
+  /**
+   * Start periodic content curator for Addie's knowledge base
+   * Processes pending external resources (fetch content, generate AI summaries)
+   */
+  private startContentCurator(): void {
+    const CURATOR_INTERVAL_MINUTES = 5;
+
+    // Process on startup after a short delay
+    setTimeout(async () => {
+      try {
+        const result = await processPendingResources({ limit: 5 });
+        if (result.processed > 0) {
+          logger.info(result, 'Content curator: processed pending resources');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Content curator: initial processing failed');
+      }
+    }, 30000); // 30 second delay to let other services start
+
+    // Then process periodically
+    this.contentCuratorIntervalId = setInterval(async () => {
+      try {
+        const result = await processPendingResources({ limit: 5 });
+        if (result.processed > 0) {
+          logger.info(result, 'Content curator: processed pending resources');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Content curator: periodic processing failed');
+      }
+    }, CURATOR_INTERVAL_MINUTES * 60 * 1000);
+
+    logger.info({ intervalMinutes: CURATOR_INTERVAL_MINUTES }, 'Content curator started');
   }
 
   /**
@@ -10379,6 +10449,13 @@ Disallow: /api/admin/
    */
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
+
+    // Stop content curator
+    if (this.contentCuratorIntervalId) {
+      clearInterval(this.contentCuratorIntervalId);
+      this.contentCuratorIntervalId = null;
+      logger.info('Content curator stopped');
+    }
 
     // Close HTTP server
     if (this.server) {

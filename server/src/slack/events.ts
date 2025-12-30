@@ -7,7 +7,9 @@
 
 import { logger } from '../logger.js';
 import { SlackDatabase } from '../db/slack-db.js';
+import { AddieDatabase } from '../db/addie-db.js';
 import type { SlackUser } from './types.js';
+import { getSlackUser, getChannelInfo } from './client.js';
 import {
   isAddieReady,
   handleAssistantThreadStarted,
@@ -19,6 +21,7 @@ import {
 } from '../addie/index.js';
 
 const slackDb = new SlackDatabase();
+const addieDb = new AddieDatabase();
 
 // Slack event types
 export interface SlackTeamJoinEvent {
@@ -183,6 +186,7 @@ export async function handleMemberJoinedChannel(event: SlackMemberJoinedChannelE
  * Handle message event
  * Records message activity for engagement tracking
  * Also routes DM messages to Addie for Assistant thread handling
+ * Indexes public channel messages for Addie's local search
  */
 export async function handleMessage(event: SlackMessageEvent): Promise<void> {
   // Skip bot messages, message edits/deletes, etc.
@@ -240,8 +244,60 @@ export async function handleMessage(event: SlackMessageEvent): Promise<void> {
         message_length: event.text?.length || 0,
       },
     });
+
+    // Index public channel messages for Addie's local search
+    // Skip DMs (im) and private channels - only index public messages
+    if (event.channel_type === 'channel' && event.text && event.text.length > 20) {
+      await indexMessageForSearch(event);
+    }
   } catch (error) {
     logger.error({ error, userId: event.user }, 'Failed to record message activity');
+  }
+}
+
+/**
+ * Index a Slack message for local full-text search
+ * Fetches user/channel info and stores in addie_knowledge
+ */
+async function indexMessageForSearch(event: SlackMessageEvent): Promise<void> {
+  try {
+    // Fetch user and channel info in parallel
+    const [user, channel] = await Promise.all([
+      getSlackUser(event.user!),
+      getChannelInfo(event.channel),
+    ]);
+
+    if (!user || !channel) {
+      logger.debug(
+        { userId: event.user, channelId: event.channel },
+        'Skipping message index: could not fetch user or channel info'
+      );
+      return;
+    }
+
+    // Construct permalink
+    // Format: https://workspace.slack.com/archives/CHANNEL_ID/pTIMESTAMP
+    // The timestamp needs dots removed
+    const tsForLink = event.ts.replace('.', '');
+    const permalink = `https://agenticads.slack.com/archives/${event.channel}/p${tsForLink}`;
+
+    await addieDb.indexSlackMessage({
+      channel_id: event.channel,
+      channel_name: channel.name || 'unknown',
+      user_id: event.user!,
+      username: user.profile?.display_name || user.profile?.real_name || user.name || 'unknown',
+      ts: event.ts,
+      text: event.text!,
+      permalink,
+    });
+
+    logger.debug(
+      { channelName: channel.name, username: user.name },
+      'Indexed Slack message for search'
+    );
+  } catch (error) {
+    // Don't fail the main event handler if indexing fails
+    logger.error({ error, channelId: event.channel }, 'Failed to index Slack message for search');
   }
 }
 

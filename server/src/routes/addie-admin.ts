@@ -958,6 +958,150 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // =========================================================================
+  // CURATED RESOURCES API (mounted at /api/admin/addie/resources)
+  // =========================================================================
+
+  // GET /api/admin/addie/resources - List curated resources
+  apiRouter.get("/resources", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { status, limit, offset } = req.query;
+
+      const resources = await addieDb.listCuratedResources({
+        status: status as string | undefined,
+        limit: limit ? parseInt(limit as string, 10) : 50,
+        offset: offset ? parseInt(offset as string, 10) : undefined,
+      });
+
+      res.json({
+        resources,
+        total: resources.length,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching curated resources");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch curated resources",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/resources/stats - Get curated resource statistics
+  apiRouter.get("/resources/stats", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stats = await addieDb.getCuratedResourceStats();
+      res.json(stats);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching resource stats");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch resource statistics",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/resources/:id - Get a specific resource
+  apiRouter.get("/resources/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const numericId = parseNumericId(req.params.id);
+      if (!numericId) {
+        return res.status(400).json({ error: "Invalid resource ID" });
+      }
+
+      const resource = await addieDb.getKnowledgeById(numericId);
+
+      if (!resource) {
+        return res.status(404).json({ error: "Resource not found" });
+      }
+
+      res.json(resource);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching resource");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch resource",
+      });
+    }
+  });
+
+  // PUT /api/admin/addie/resources/:id - Update resource (mainly for editing addie_notes)
+  apiRouter.put("/resources/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const numericId = parseNumericId(req.params.id);
+      if (!numericId) {
+        return res.status(400).json({ error: "Invalid resource ID" });
+      }
+
+      const { addie_notes, quality_score, relevance_tags } = req.body;
+
+      const resource = await addieDb.updateCuratedResource(numericId, {
+        addie_notes,
+        quality_score,
+        relevance_tags,
+      });
+
+      if (!resource) {
+        return res.status(404).json({ error: "Resource not found" });
+      }
+
+      logger.info({ resourceId: numericId }, "Updated curated resource");
+      res.json(resource);
+    } catch (error) {
+      logger.error({ err: error }, "Error updating resource");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to update resource",
+      });
+    }
+  });
+
+  // POST /api/admin/addie/resources/:id/refetch - Re-fetch and regenerate analysis
+  apiRouter.post("/resources/:id/refetch", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const numericId = parseNumericId(req.params.id);
+      if (!numericId) {
+        return res.status(400).json({ error: "Invalid resource ID" });
+      }
+
+      // Reset status to pending so it gets picked up by the content curator
+      await addieDb.resetResourceForRefetch(numericId);
+
+      logger.info({ resourceId: numericId }, "Queued resource for refetch");
+      res.json({ success: true, message: "Resource queued for refetch" });
+    } catch (error) {
+      logger.error({ err: error }, "Error queuing resource for refetch");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to queue resource for refetch",
+      });
+    }
+  });
+
+  // DELETE /api/admin/addie/resources/:id - Delete a resource
+  apiRouter.delete("/resources/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const numericId = parseNumericId(req.params.id);
+      if (!numericId) {
+        return res.status(400).json({ error: "Invalid resource ID" });
+      }
+
+      const deleted = await addieDb.deleteKnowledge(numericId);
+
+      if (!deleted) {
+        return res.status(404).json({ error: "Resource not found" });
+      }
+
+      logger.info({ resourceId: numericId }, "Deleted curated resource");
+      res.json({ success: true, id: numericId });
+    } catch (error) {
+      logger.error({ err: error }, "Error deleting resource");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to delete resource",
+      });
+    }
+  });
+
+  // =========================================================================
   // ANALYSIS API (mounted at /api/admin/addie/analysis)
   // =========================================================================
 
