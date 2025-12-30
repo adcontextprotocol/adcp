@@ -228,16 +228,23 @@ async function getOrCreateEmailContact(
   }
 
   // New contact - check if they match an existing org member
-  const memberResult = await pool.query(
-    `SELECT om.organization_id, om.workos_user_id
-     FROM organization_members om
-     WHERE om.email = $1
-     LIMIT 1`,
-    [email]
-  );
-
-  const organizationId = memberResult.rows[0]?.organization_id || null;
-  const workosUserId = memberResult.rows[0]?.workos_user_id || null;
+  // organization_memberships is synced from WorkOS and contains user-org mappings
+  let organizationId: string | null = null;
+  let workosUserId: string | null = null;
+  try {
+    const memberResult = await pool.query(
+      `SELECT om.workos_organization_id, om.workos_user_id
+       FROM organization_memberships om
+       WHERE om.email = $1
+       LIMIT 1`,
+      [email]
+    );
+    organizationId = memberResult.rows[0]?.workos_organization_id || null;
+    workosUserId = memberResult.rows[0]?.workos_user_id || null;
+  } catch (memberLookupError) {
+    // Table may not exist in all environments - proceed with unmapped contact
+    logger.debug({ error: memberLookupError, email }, 'Org member lookup failed, proceeding with unmapped contact');
+  }
   const mappingStatus = organizationId ? 'mapped' : 'unmapped';
   const mappingSource = organizationId ? 'email_auto' : null;
 
