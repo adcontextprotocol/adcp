@@ -227,13 +227,11 @@ export class HTTPServer {
       // Skip global JSON parser for routes that need raw body capture:
       // - Stripe webhooks: need raw body for webhook signature verification
       // - Resend inbound webhooks: need raw body for Svix signature verification
-      // - Slack commands: need raw body for Slack signature verification (URL-encoded)
-      // - Slack events: need raw body for Slack signature verification (JSON)
+      // - Slack routes: need raw body for Slack signature verification
+      //   (both JSON for events and URL-encoded for commands)
       if (req.path === '/api/webhooks/stripe' ||
           req.path === '/api/webhooks/resend-inbound' ||
-          req.path === '/api/slack/commands' ||
-          req.path === '/api/slack/events' ||
-          req.path === '/api/addie/slack/events') {
+          req.path.startsWith('/api/slack/')) {
         next();
       } else {
         express.json({ limit: '10mb' })(req, res, next);

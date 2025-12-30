@@ -359,6 +359,21 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
     }
   });
 
+  // GET /api/admin/addie/conversations/stats - Get conversation statistics
+  // NOTE: Must be defined BEFORE /conversations/:id to avoid matching "stats" as an ID
+  apiRouter.get("/conversations/stats", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stats = await addieDb.getWebConversationStats();
+      res.json(stats);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching conversation stats");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch conversation statistics",
+      });
+    }
+  });
+
   // GET /api/admin/addie/conversations/:id - Get a single conversation with messages
   apiRouter.get("/conversations/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
@@ -376,20 +391,6 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to fetch conversation",
-      });
-    }
-  });
-
-  // GET /api/admin/addie/conversations/stats - Get conversation statistics
-  apiRouter.get("/conversations/stats", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const stats = await addieDb.getWebConversationStats();
-      res.json(stats);
-    } catch (error) {
-      logger.error({ err: error }, "Error fetching conversation stats");
-      res.status(500).json({
-        error: "Internal server error",
-        message: "Unable to fetch conversation statistics",
       });
     }
   });
