@@ -128,7 +128,6 @@ export class AddieClaudeClient {
   registerTool(tool: AddieTool, handler: ToolHandler): void {
     this.tools.push(tool);
     this.toolHandlers.set(tool.name, handler);
-    logger.info({ toolName: tool.name }, 'Addie: Registered tool');
   }
 
   /**

@@ -35,6 +35,9 @@ tests/temp-snippet-*
 coverage/
 .env
 
+# Addie external repo cache
+.addie-repos/
+
 # Stripe webhook secret (dynamically generated)
 .stripe-webhook-secret
 test-results/
