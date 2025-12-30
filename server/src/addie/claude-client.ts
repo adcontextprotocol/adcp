@@ -15,6 +15,14 @@ import { AddieModelConfig } from '../config/models.js';
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
 /**
+ * Per-request tools that can be added dynamically
+ */
+export interface RequestTools {
+  tools: AddieTool[];
+  handlers: Map<string, ToolHandler>;
+}
+
+/**
  * Detailed record of a single tool execution
  */
 export interface ToolExecution {
@@ -126,10 +134,15 @@ export class AddieClaudeClient {
   /**
    * Process a message and return a response
    * Uses database-backed rules for the system prompt when available
+   *
+   * @param userMessage - The user's message
+   * @param threadContext - Optional thread history
+   * @param requestTools - Optional per-request tools (e.g., user-scoped member tools)
    */
   async processMessage(
     userMessage: string,
-    threadContext?: Array<{ user: string; text: string }>
+    threadContext?: Array<{ user: string; text: string }>,
+    requestTools?: RequestTools
   ): Promise<AddieResponse> {
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
@@ -155,11 +168,15 @@ export class AddieClaudeClient {
     let maxIterations = 10;
     let iteration = 0;
 
+    // Combine global tools with per-request tools
+    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+
     while (iteration < maxIterations) {
       iteration++;
 
-      // Build tools array: custom tools + optional web search
-      const customTools = this.tools.map(t => ({
+      // Build tools array: custom tools + request tools + optional web search
+      const customTools = allTools.map(t => ({
         name: t.name,
         description: t.description,
         input_schema: t.input_schema as Anthropic.Tool['input_schema'],
@@ -391,7 +408,7 @@ export class AddieClaudeClient {
           toolsUsed.push(toolName);
           executionSequence++;
 
-          const handler = this.toolHandlers.get(toolName);
+          const handler = allHandlers.get(toolName);
           if (!handler) {
             const durationMs = Date.now() - startTime;
             toolResults.push({

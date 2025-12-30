@@ -11,6 +11,8 @@ export {
   handleAssistantThreadStarted,
   handleAssistantMessage,
   handleAppMention,
+  sendAccountLinkedMessage,
+  invalidateAddieRulesCache,
 } from './handler.js';
 
 export { invalidateMemberContextCache } from './member-context.js';
