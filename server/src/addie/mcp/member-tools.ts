@@ -28,7 +28,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'validate_adagents',
     description:
-      'Validate an adagents.json file for a domain. Checks that the file exists at /.well-known/adagents.json, has valid structure, and optionally validates the agent cards. Use this when users ask about setting up or debugging their adagents.json configuration.',
+      'Validate an adagents.json file for a domain. Checks that the file exists at /.well-known/adagents.json, has valid structure, and optionally validates the agent cards. Use this when users ask about setting up or debugging their adagents.json configuration. Share the validation results with the user - they contain helpful error messages and links.',
     input_schema: {
       type: 'object',
       properties: {
@@ -214,7 +214,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'get_account_link',
     description:
-      'Get a link to connect the user\'s Slack account with their AgenticAdvertising.org account. Use this when a user\'s accounts are not linked and they want to access member features. The user clicks the link to sign in and their accounts are automatically connected.',
+      'Get a link to connect the user\'s Slack account with their AgenticAdvertising.org account. Use this when a user\'s accounts are not linked and they want to access member features. IMPORTANT: Share the full tool output with the user - it contains the clickable sign-in link they need. The user clicks the link to sign in and their accounts are automatically connected.',
     input_schema: {
       type: 'object',
       properties: {},
