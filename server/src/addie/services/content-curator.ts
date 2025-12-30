@@ -12,6 +12,8 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { Readability } from '@mozilla/readability';
+import { parseHTML } from 'linkedom';
 import { logger } from '../../logger.js';
 import { AddieDatabase, type KeyInsight } from '../../db/addie-db.js';
 
@@ -21,8 +23,8 @@ const addieDb = new AddieDatabase();
 const CURATOR_MODEL = process.env.ADDIE_MODEL || 'claude-sonnet-4-20250514';
 
 /**
- * Fetch URL content and convert to text
- * Uses a simple fetch + HTML to text conversion
+ * Fetch URL content and extract article text using Mozilla Readability
+ * This extracts just the main article content, removing navigation, ads, footers, etc.
  */
 async function fetchUrlContent(url: string): Promise<string> {
   const response = await fetch(url, {
@@ -39,24 +41,31 @@ async function fetchUrlContent(url: string): Promise<string> {
 
   const html = await response.text();
 
-  // Simple HTML to text conversion
-  // Remove scripts, styles, and HTML tags
-  const text = html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
-    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
-    .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
-    .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+  // Use Mozilla Readability to extract article content
+  // This removes nav, ads, footers, sidebars, etc. automatically
+  const { document } = parseHTML(html);
+  const reader = new Readability(document);
+  const article = reader.parse();
+
+  if (!article || !article.textContent) {
+    // Fallback to basic text extraction if Readability fails
+    logger.warn({ url }, 'Readability failed to parse article, using fallback');
+    const fallbackText = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const maxLength = 50000;
+    if (fallbackText.length > maxLength) {
+      return fallbackText.substring(0, maxLength) + '\n\n[Content truncated...]';
+    }
+    return fallbackText;
+  }
+
+  // Clean up the extracted text
+  const text = article.textContent.replace(/\s+/g, ' ').trim();
 
   // Limit content length to avoid token limits
   const maxLength = 50000;
@@ -79,7 +88,7 @@ async function generateAnalysis(
   key_insights: KeyInsight[];
   addie_notes: string;
   relevance_tags: string[];
-  quality_score: number;
+  quality_score: number | null;
 }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -157,17 +166,21 @@ Return ONLY the JSON, no markdown formatting.`,
       key_insights: parsed.key_insights || [],
       addie_notes: parsed.addie_notes || '',
       relevance_tags: parsed.relevance_tags || [],
-      quality_score: Math.min(5, Math.max(1, parsed.quality_score || 3)),
+      // Only use AI-provided score if valid, otherwise null (indicates needs human review)
+      quality_score: parsed.quality_score
+        ? Math.min(5, Math.max(1, parsed.quality_score))
+        : null,
     };
   } catch {
     // If JSON parsing fails, extract what we can
+    // quality_score is null to indicate it needs human review
     logger.warn({ responseText }, 'Failed to parse curator response as JSON');
     return {
       summary: responseText.substring(0, 500),
       key_insights: [],
       addie_notes: '',
       relevance_tags: [],
-      quality_score: 3,
+      quality_score: null,
     };
   }
 }

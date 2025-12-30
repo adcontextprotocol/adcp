@@ -1,4 +1,4 @@
--- Migration: 048_addie_curated_knowledge.sql
+-- Migration: 049_addie_curated_knowledge.sql
 -- Extend addie_knowledge for curated external content with Addie's analysis
 
 -- Add fields for curated/fetched content

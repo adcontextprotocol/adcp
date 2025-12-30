@@ -1,4 +1,4 @@
--- Migration: 047_addie_knowledge_slack.sql
+-- Migration: 048_addie_knowledge_slack.sql
 -- Extend addie_knowledge to store Slack messages for fast local search
 
 -- Add source_type to distinguish different content sources

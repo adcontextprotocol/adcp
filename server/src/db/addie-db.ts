@@ -705,7 +705,7 @@ export class AddieDatabase {
       key_insights?: KeyInsight[];
       addie_notes?: string;
       relevance_tags?: string[];
-      quality_score?: number;
+      quality_score?: number | null;
       fetch_status: 'success' | 'failed';
       error_message?: string;
     }
