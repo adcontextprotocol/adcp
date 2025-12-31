@@ -301,6 +301,30 @@
       color: var(--color-text-secondary);
       margin-top: var(--space-1);
     }
+    .article-summary {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-2);
+      padding: var(--space-2);
+      background: var(--color-bg-card);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--color-brand);
+      line-height: 1.5;
+    }
+    .article-title-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+    }
+    .pending-icon {
+      color: var(--color-warning-500);
+      font-size: var(--text-sm);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
     .error-details {
       margin-top: var(--space-2);
       padding: var(--space-2);
@@ -656,10 +680,18 @@
         articles.forEach(article => {
           const quality = article.quality_score ? `Quality: ${article.quality_score}/5` : '';
           const date = article.published_at ? formatDate(article.published_at) : '';
+          const isPending = !article.summary;
+          const pendingIcon = isPending ? '<span class="pending-icon" title="Pending AI analysis">&#9203;</span> ' : '';
+          const summary = article.summary
+            ? `<div class="article-summary">${escapeHtml(article.summary)}</div>`
+            : '';
           html += `
             <div class="article-item">
-              <a href="${escapeHtml(article.external_url)}" target="_blank">${escapeHtml(article.title)}</a>
+              <div class="article-title-row">
+                ${pendingIcon}<a href="${escapeHtml(article.external_url)}" target="_blank">${escapeHtml(article.title)}</a>
+              </div>
               <div class="article-meta">${date} ${quality}</div>
+              ${summary}
             </div>
           `;
         });
