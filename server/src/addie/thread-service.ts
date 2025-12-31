@@ -611,6 +611,250 @@ export class ThreadService {
   }
 
   // =====================================================
+  // PERFORMANCE METRICS
+  // =====================================================
+
+  /**
+   * Get performance metrics including per-tool timing
+   */
+  async getPerformanceMetrics(days = 7): Promise<{
+    period_days: number;
+    summary: {
+      total_messages: number;
+      total_assistant_messages: number;
+      avg_latency_ms: number | null;
+      p50_latency_ms: number | null;
+      p95_latency_ms: number | null;
+      max_latency_ms: number | null;
+      total_input_tokens: number;
+      total_output_tokens: number;
+      avg_input_tokens: number | null;
+      avg_output_tokens: number | null;
+    };
+    latency_distribution: Array<{
+      bucket: string;
+      count: number;
+    }>;
+    by_model: Array<{
+      model: string;
+      count: number;
+      avg_latency_ms: number;
+      p50_latency_ms: number | null;
+      total_input_tokens: number;
+      total_output_tokens: number;
+    }>;
+    by_tool: Array<{
+      tool_name: string;
+      call_count: number;
+      avg_duration_ms: number | null;
+      p50_duration_ms: number | null;
+      p95_duration_ms: number | null;
+      error_count: number;
+    }>;
+    by_channel: Array<{
+      channel: string;
+      message_count: number;
+      avg_latency_ms: number | null;
+    }>;
+    daily_trend: Array<{
+      date: string;
+      message_count: number;
+      avg_latency_ms: number | null;
+      total_tokens: number;
+    }>;
+  }> {
+    // Summary stats
+    const summaryResult = await query<{
+      total_messages: string;
+      total_assistant_messages: string;
+      avg_latency_ms: string | null;
+      p50_latency_ms: string | null;
+      p95_latency_ms: string | null;
+      max_latency_ms: string | null;
+      total_input_tokens: string;
+      total_output_tokens: string;
+      avg_input_tokens: string | null;
+      avg_output_tokens: string | null;
+    }>(
+      `SELECT
+        COUNT(*) as total_messages,
+        COUNT(*) FILTER (WHERE role = 'assistant') as total_assistant_messages,
+        ROUND(AVG(latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as avg_latency_ms,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as p50_latency_ms,
+        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as p95_latency_ms,
+        MAX(latency_ms) FILTER (WHERE role = 'assistant') as max_latency_ms,
+        COALESCE(SUM(tokens_input), 0) as total_input_tokens,
+        COALESCE(SUM(tokens_output), 0) as total_output_tokens,
+        ROUND(AVG(tokens_input) FILTER (WHERE tokens_input IS NOT NULL)::numeric, 0) as avg_input_tokens,
+        ROUND(AVG(tokens_output) FILTER (WHERE tokens_output IS NOT NULL)::numeric, 0) as avg_output_tokens
+      FROM addie_thread_messages
+      WHERE created_at > NOW() - make_interval(days => $1)`,
+      [days]
+    );
+
+    // Latency distribution
+    const latencyResult = await query<{ bucket: string; count: string }>(
+      `SELECT
+        CASE
+          WHEN latency_ms < 5000 THEN '0-5s'
+          WHEN latency_ms < 10000 THEN '5-10s'
+          WHEN latency_ms < 20000 THEN '10-20s'
+          WHEN latency_ms < 30000 THEN '20-30s'
+          WHEN latency_ms < 45000 THEN '30-45s'
+          ELSE '45s+'
+        END as bucket,
+        COUNT(*) as count
+      FROM addie_thread_messages
+      WHERE role = 'assistant'
+        AND latency_ms IS NOT NULL
+        AND created_at > NOW() - make_interval(days => $1)
+      GROUP BY 1
+      ORDER BY MIN(latency_ms)`,
+      [days]
+    );
+
+    // By model
+    const modelResult = await query<{
+      model: string;
+      count: string;
+      avg_latency_ms: string;
+      p50_latency_ms: string | null;
+      total_input_tokens: string;
+      total_output_tokens: string;
+    }>(
+      `SELECT
+        COALESCE(model, 'unknown') as model,
+        COUNT(*) as count,
+        ROUND(AVG(latency_ms)::numeric, 0) as avg_latency_ms,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms)::numeric, 0) as p50_latency_ms,
+        COALESCE(SUM(tokens_input), 0) as total_input_tokens,
+        COALESCE(SUM(tokens_output), 0) as total_output_tokens
+      FROM addie_thread_messages
+      WHERE role = 'assistant'
+        AND created_at > NOW() - make_interval(days => $1)
+      GROUP BY model
+      ORDER BY count DESC`,
+      [days]
+    );
+
+    // By tool (using JSONB)
+    const toolResult = await query<{
+      tool_name: string;
+      call_count: string;
+      avg_duration_ms: string | null;
+      p50_duration_ms: string | null;
+      p95_duration_ms: string | null;
+      error_count: string;
+    }>(
+      `WITH tool_calls AS (
+        SELECT
+          jsonb_array_elements(tool_calls) as tool
+        FROM addie_thread_messages
+        WHERE tool_calls IS NOT NULL
+          AND tool_calls != '[]'::jsonb
+          AND created_at > NOW() - make_interval(days => $1)
+      )
+      SELECT
+        tool->>'name' as tool_name,
+        COUNT(*) as call_count,
+        ROUND(AVG((tool->>'duration_ms')::numeric), 0) as avg_duration_ms,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (tool->>'duration_ms')::numeric), 0) as p50_duration_ms,
+        ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY (tool->>'duration_ms')::numeric), 0) as p95_duration_ms,
+        COUNT(*) FILTER (WHERE tool->>'is_error' = 'true') as error_count
+      FROM tool_calls
+      GROUP BY tool->>'name'
+      ORDER BY call_count DESC`,
+      [days]
+    );
+
+    // By channel
+    const channelResult = await query<{
+      channel: string;
+      message_count: string;
+      avg_latency_ms: string | null;
+    }>(
+      `SELECT
+        t.channel,
+        COUNT(m.message_id) as message_count,
+        ROUND(AVG(m.latency_ms) FILTER (WHERE m.role = 'assistant')::numeric, 0) as avg_latency_ms
+      FROM addie_threads t
+      JOIN addie_thread_messages m ON t.thread_id = m.thread_id
+      WHERE m.created_at > NOW() - make_interval(days => $1)
+      GROUP BY t.channel
+      ORDER BY message_count DESC`,
+      [days]
+    );
+
+    // Daily trend
+    const dailyResult = await query<{
+      date: string;
+      message_count: string;
+      avg_latency_ms: string | null;
+      total_tokens: string;
+    }>(
+      `SELECT
+        DATE_TRUNC('day', created_at)::date::text as date,
+        COUNT(*) as message_count,
+        ROUND(AVG(latency_ms) FILTER (WHERE role = 'assistant')::numeric, 0) as avg_latency_ms,
+        COALESCE(SUM(tokens_input), 0) + COALESCE(SUM(tokens_output), 0) as total_tokens
+      FROM addie_thread_messages
+      WHERE created_at > NOW() - make_interval(days => $1)
+      GROUP BY DATE_TRUNC('day', created_at)
+      ORDER BY date DESC`,
+      [days]
+    );
+
+    const summary = summaryResult.rows[0];
+
+    return {
+      period_days: days,
+      summary: {
+        total_messages: parseInt(summary.total_messages, 10) || 0,
+        total_assistant_messages: parseInt(summary.total_assistant_messages, 10) || 0,
+        avg_latency_ms: summary.avg_latency_ms ? parseInt(summary.avg_latency_ms, 10) : null,
+        p50_latency_ms: summary.p50_latency_ms ? parseInt(summary.p50_latency_ms, 10) : null,
+        p95_latency_ms: summary.p95_latency_ms ? parseInt(summary.p95_latency_ms, 10) : null,
+        max_latency_ms: summary.max_latency_ms ? parseInt(summary.max_latency_ms, 10) : null,
+        total_input_tokens: parseInt(summary.total_input_tokens, 10) || 0,
+        total_output_tokens: parseInt(summary.total_output_tokens, 10) || 0,
+        avg_input_tokens: summary.avg_input_tokens ? parseInt(summary.avg_input_tokens, 10) : null,
+        avg_output_tokens: summary.avg_output_tokens ? parseInt(summary.avg_output_tokens, 10) : null,
+      },
+      latency_distribution: latencyResult.rows.map(r => ({
+        bucket: r.bucket,
+        count: parseInt(r.count, 10) || 0,
+      })),
+      by_model: modelResult.rows.map(r => ({
+        model: r.model,
+        count: parseInt(r.count, 10) || 0,
+        avg_latency_ms: parseInt(r.avg_latency_ms, 10) || 0,
+        p50_latency_ms: r.p50_latency_ms ? parseInt(r.p50_latency_ms, 10) : null,
+        total_input_tokens: parseInt(r.total_input_tokens, 10) || 0,
+        total_output_tokens: parseInt(r.total_output_tokens, 10) || 0,
+      })),
+      by_tool: toolResult.rows.map(r => ({
+        tool_name: r.tool_name,
+        call_count: parseInt(r.call_count, 10) || 0,
+        avg_duration_ms: r.avg_duration_ms ? parseInt(r.avg_duration_ms, 10) : null,
+        p50_duration_ms: r.p50_duration_ms ? parseInt(r.p50_duration_ms, 10) : null,
+        p95_duration_ms: r.p95_duration_ms ? parseInt(r.p95_duration_ms, 10) : null,
+        error_count: parseInt(r.error_count, 10) || 0,
+      })),
+      by_channel: channelResult.rows.map(r => ({
+        channel: r.channel,
+        message_count: parseInt(r.message_count, 10) || 0,
+        avg_latency_ms: r.avg_latency_ms ? parseInt(r.avg_latency_ms, 10) : null,
+      })),
+      daily_trend: dailyResult.rows.map(r => ({
+        date: r.date,
+        message_count: parseInt(r.message_count, 10) || 0,
+        avg_latency_ms: r.avg_latency_ms ? parseInt(r.avg_latency_ms, 10) : null,
+        total_tokens: parseInt(r.total_tokens, 10) || 0,
+      })),
+    };
+  }
+
+  // =====================================================
   // CLEANUP
   // =====================================================
 

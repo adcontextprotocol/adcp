@@ -151,13 +151,13 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
   {
     name: 'search_docs',
     description:
-      'Search the official AdCP documentation at docs.adcontextprotocol.org. Use this for questions about the AdCP protocol, tasks, schemas, and implementation guides. Returns full content with source URLs for citation.',
+      'Search the official AdCP documentation. Returns excerpts with source URLs. IMPORTANT: Use ONE well-crafted search with specific keywords rather than multiple searches. For detailed content, use get_doc with the doc ID from results.',
     input_schema: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Search query - use relevant keywords from the question',
+          description: 'Search query - use specific keywords (e.g., "media buy workflow" not "how does buying work")',
         },
         category: {
           type: 'string',
@@ -165,10 +165,25 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
         limit: {
           type: 'number',
-          description: 'Maximum number of results (default 3)',
+          description: 'Maximum results (default 3, max 5). Use fewer results for simple questions.',
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'get_doc',
+    description:
+      'Get the full content of a specific documentation page by ID. Use this after search_docs when you need complete details from a document.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        doc_id: {
+          type: 'string',
+          description: 'The document ID from search_docs results',
+        },
+      },
+      required: ['doc_id'],
     },
   },
   {
@@ -268,6 +283,119 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
 ];
 
 /**
+ * Extract a smart excerpt that shows content around query matches
+ * instead of just the first N characters
+ */
+function extractSmartExcerpt(content: string, query: string, maxLength: number = 500): string {
+  // Clean content: remove frontmatter, code blocks, and normalize whitespace
+  let cleanContent = content
+    .replace(/^---[\s\S]*?---\n?/, '') // Remove frontmatter
+    .replace(/```[\s\S]*?```/g, '[code block]') // Collapse code blocks
+    .replace(/\n{3,}/g, '\n\n'); // Normalize whitespace
+
+  // Extract query terms (words > 2 chars, no common words)
+  const stopWords = new Set(['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had',
+    'her', 'was', 'one', 'our', 'out', 'has', 'have', 'been', 'were', 'they', 'this', 'that',
+    'with', 'will', 'from', 'what', 'when', 'make', 'like', 'how', 'does', 'work']);
+  const queryTerms = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(term => term.length > 2 && !stopWords.has(term));
+
+  if (queryTerms.length === 0) {
+    // No meaningful query terms, fall back to first paragraph after any heading
+    const firstParagraph = cleanContent
+      .replace(/^#.*$/gm, '')
+      .split(/\n\n+/)
+      .find(p => p.trim().length > 50);
+    if (firstParagraph) {
+      return firstParagraph.trim().substring(0, maxLength) + (firstParagraph.length > maxLength ? '...' : '');
+    }
+    return cleanContent.substring(0, maxLength) + '...';
+  }
+
+  // Split into paragraphs (including headings as context)
+  const paragraphs = cleanContent.split(/\n\n+/).filter(p => p.trim().length > 0);
+
+  // Score each paragraph by how many query terms it contains
+  const scoredParagraphs = paragraphs.map((para, index) => {
+    const lowerPara = para.toLowerCase();
+    let score = 0;
+    for (const term of queryTerms) {
+      // Count occurrences of each term
+      const regex = new RegExp(term, 'gi');
+      const matches = lowerPara.match(regex);
+      if (matches) {
+        score += matches.length;
+        // Bonus for exact word match (not substring)
+        const wordRegex = new RegExp(`\\b${term}\\b`, 'gi');
+        const wordMatches = lowerPara.match(wordRegex);
+        if (wordMatches) {
+          score += wordMatches.length * 2;
+        }
+      }
+    }
+    // Slight bonus for earlier paragraphs (they're often more relevant)
+    const positionBonus = Math.max(0, (10 - index) * 0.1);
+    return { para, score: score + positionBonus, index };
+  });
+
+  // Get best matching paragraphs
+  const bestParagraphs = scoredParagraphs
+    .filter(p => p.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  if (bestParagraphs.length === 0) {
+    // No matches found, return first substantive paragraph
+    const firstParagraph = paragraphs.find(p => p.trim().length > 50 && !p.startsWith('#'));
+    if (firstParagraph) {
+      return firstParagraph.trim().substring(0, maxLength) + (firstParagraph.length > maxLength ? '...' : '');
+    }
+    return cleanContent.substring(0, maxLength) + '...';
+  }
+
+  // Build excerpt from best paragraphs, respecting maxLength
+  let excerpt = '';
+  const usedIndices = new Set<number>();
+
+  for (const { para, index } of bestParagraphs) {
+    if (usedIndices.has(index)) continue;
+
+    // Include context: preceding heading if any
+    let section = '';
+    for (let i = index - 1; i >= 0; i--) {
+      if (paragraphs[i].startsWith('#')) {
+        section = paragraphs[i] + '\n\n';
+        usedIndices.add(i);
+        break;
+      }
+      if (paragraphs[i].trim().length > 20) break; // Stop if we hit another paragraph
+    }
+
+    const addition = section + para;
+    if (excerpt.length + addition.length > maxLength && excerpt.length > 0) {
+      break; // Would exceed limit
+    }
+    excerpt += (excerpt ? '\n\n' : '') + addition;
+    usedIndices.add(index);
+  }
+
+  // Truncate if still too long
+  if (excerpt.length > maxLength) {
+    excerpt = excerpt.substring(0, maxLength);
+    // Try to end at a sentence
+    const lastPeriod = excerpt.lastIndexOf('. ');
+    if (lastPeriod > maxLength * 0.6) {
+      excerpt = excerpt.substring(0, lastPeriod + 1);
+    }
+    excerpt += '...';
+  }
+
+  return excerpt || cleanContent.substring(0, maxLength) + '...';
+}
+
+/**
  * Tool handlers
  */
 export function createKnowledgeToolHandlers(): Map<
@@ -279,7 +407,7 @@ export function createKnowledgeToolHandlers(): Map<
   handlers.set('search_docs', async (input) => {
     const query = input.query as string;
     const category = input.category as string | undefined;
-    const limit = (input.limit as number) || 3;
+    const limit = Math.min((input.limit as number) || 3, 5);
 
     const results = searchDocsContent(query, { category, limit });
 
@@ -287,31 +415,56 @@ export function createKnowledgeToolHandlers(): Map<
       return `No documentation found for: "${query}"${category ? ` in category: ${category}` : ''}\n\nTry using web_search for external sources or search_slack for community discussions.`;
     }
 
-    // Return full content with source URLs for citation
+    // Return smart excerpts that focus on content matching the query
     const formatted = results
       .map((doc, i) => {
-        // Truncate content if too long
-        const maxContentLength = 2000;
-        let content = doc.content;
-        if (content.length > maxContentLength) {
-          content = content.substring(0, maxContentLength) + '\n\n... [truncated - see full doc at source URL]';
-        }
+        const excerpt = extractSmartExcerpt(doc.content, query, 500);
 
         return `## ${i + 1}. ${doc.title}
+**ID:** ${doc.id}
 **Category:** ${doc.category}
 **Source:** ${doc.sourceUrl}
 
-${content}`;
+${excerpt}
+
+[Use get_doc for full content]`;
       })
       .join('\n\n---\n\n');
 
-    return `Found ${results.length} documentation pages:\n\n${formatted}\n\n**Remember to cite the source URL when using this information.**`;
+    return `Found ${results.length} docs. Use get_doc with an ID for full content:\n\n${formatted}`;
+  });
+
+  handlers.set('get_doc', async (input) => {
+    const docId = input.doc_id as string;
+
+    if (!initialized || !isDocsIndexReady()) {
+      return 'Documentation index not ready.';
+    }
+
+    const doc = getDocById(docId);
+    if (!doc) {
+      return `Document not found: "${docId}". Use search_docs to find available documents.`;
+    }
+
+    // Return full content (but cap at 4000 chars to prevent massive responses)
+    const maxLength = 4000;
+    let content = doc.content;
+    if (content.length > maxLength) {
+      content = content.substring(0, maxLength) + '\n\n... [content truncated at 4000 chars]';
+    }
+
+    return `# ${doc.title}
+
+**Source:** ${doc.sourceUrl}
+**Category:** ${doc.category}
+
+${content}`;
   });
 
   handlers.set('search_repos', async (input) => {
     const query = input.query as string;
     const repoId = input.repo_id as string | undefined;
-    const limit = (input.limit as number) || 3;
+    const limit = Math.min((input.limit as number) || 3, 5);
 
     if (!isExternalReposReady()) {
       return 'External repositories are not yet indexed. Try search_docs for official documentation or web_search for external sources.';
@@ -325,26 +478,21 @@ ${content}`;
       return `No results found for: "${query}"${repoId ? ` in repo: ${repoId}` : ''}\n\nAvailable repos:\n${repoList}\n\nTry search_docs for official documentation or web_search for external sources.`;
     }
 
+    // Return smart excerpts that focus on content matching the query
     const formatted = results
       .map((doc, i) => {
-        // Truncate content if too long
-        const maxContentLength = 2000;
-        let content = doc.content;
-        if (content.length > maxContentLength) {
-          content =
-            content.substring(0, maxContentLength) + '\n\n... [truncated - see full doc at source URL]';
-        }
+        const excerpt = extractSmartExcerpt(doc.content, query, 500);
 
         return `## ${i + 1}. ${doc.title}
 **Repo:** ${doc.repoName}
 **Path:** ${doc.path}
 **Source:** ${doc.sourceUrl}
 
-${content}`;
+${excerpt}`;
       })
       .join('\n\n---\n\n');
 
-    return `Found ${results.length} documents from external repos:\n\n${formatted}\n\n**Remember to cite the source URL when using this information.**`;
+    return `Found ${results.length} repo docs:\n\n${formatted}`;
   });
 
   handlers.set('search_slack', async (input) => {
