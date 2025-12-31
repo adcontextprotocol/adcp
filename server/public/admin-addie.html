@@ -2444,6 +2444,7 @@
 
     // Current thread data for actions
     let currentThreadData = null;
+    let currentConversationData = null;
     let extractedLinks = [];
 
     async function viewThread(threadId) {
@@ -2451,6 +2452,7 @@
         const response = await fetch(`/api/admin/addie/threads/${threadId}`);
         const data = await response.json();
         currentThreadData = data;
+        currentConversationData = data;
 
         const channelLabel = data.channel.charAt(0).toUpperCase() + data.channel.slice(1);
         document.getElementById('conversation-modal-title').textContent =
@@ -2771,10 +2773,10 @@
             suggested_topic: topic,
             suggested_content: take || `Add Addie's take on this external resource.`,
             external_sources: [url],
-            reasoning: `Discovered during conversation ${currentConversationData?.conversation_id || 'unknown'}. External source found useful for answering user questions.`,
+            reasoning: `Discovered during thread ${currentConversationData?.thread_id || 'unknown'}. External source found useful for answering user questions.`,
             confidence: 0.7,
             expected_impact: 'Improves discoverability of useful external content for future queries.',
-            supporting_interactions: currentConversationData?.conversation_id ? [currentConversationData.conversation_id] : []
+            supporting_interactions: currentConversationData?.thread_id ? [currentConversationData.thread_id] : []
           })
         });
 
@@ -2811,10 +2813,10 @@
             suggested_name: title,
             suggested_topic: title,
             suggested_content: description + (location ? `\\n\\nSuggested location: ${location}` : ''),
-            reasoning: `Documentation gap identified from conversation ${currentConversationData?.conversation_id || 'unknown'}.`,
+            reasoning: `Documentation gap identified from thread ${currentConversationData?.thread_id || 'unknown'}.`,
             confidence: 0.6,
             expected_impact: 'Improves documentation coverage for common questions.',
-            supporting_interactions: currentConversationData?.conversation_id ? [currentConversationData.conversation_id] : []
+            supporting_interactions: currentConversationData?.thread_id ? [currentConversationData.thread_id] : []
           })
         });
 
@@ -2855,7 +2857,7 @@
             reasoning: reasoning,
             confidence: 0.5,
             expected_impact: 'Behavior change based on conversation review.',
-            supporting_interactions: currentConversationData?.conversation_id ? [currentConversationData.conversation_id] : []
+            supporting_interactions: currentConversationData?.thread_id ? [currentConversationData.thread_id] : []
           })
         });
 
