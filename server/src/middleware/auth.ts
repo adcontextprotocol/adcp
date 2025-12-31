@@ -255,17 +255,56 @@ function setSessionCookie(res: Response, sealedSession: string) {
   });
 }
 
+// Static admin API key for internal tooling (bypasses WorkOS)
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY;
+if (ADMIN_API_KEY) {
+  logger.info('Admin API key configured for programmatic access');
+}
+
+/**
+ * Check if request has a valid static admin API key
+ * Returns true if the Bearer token matches ADMIN_API_KEY
+ */
+function hasValidAdminApiKey(req: Request): boolean {
+  if (!ADMIN_API_KEY) return false;
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return false;
+  const token = authHeader.slice(7);
+  // Don't match WorkOS API keys - those are handled separately
+  if (token.startsWith('wos_api_key_')) return false;
+  return token === ADMIN_API_KEY;
+}
+
 /**
  * Middleware to require authentication
  * Checks for WorkOS session cookie and loads user info
  * Also accepts WorkOS API keys as Bearer token for programmatic access
+ * Also accepts static admin API key (ADMIN_API_KEY env var) for internal tooling
  * Uses in-memory cache to reduce WorkOS API calls for session refresh
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
 
-  // Check for WorkOS API key first (for programmatic access)
+  // Check for static admin API key first (for internal tooling)
+  if (hasValidAdminApiKey(req)) {
+    logger.debug({ path: req.path }, 'Authenticated via static admin API key');
+    req.user = {
+      id: 'admin_api_key',
+      email: 'admin-api-key@internal',
+      firstName: 'Admin',
+      lastName: 'API Key',
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    req.accessToken = 'admin-api-key';
+    // Mark this request as using the static admin API key for requireAdmin check
+    (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey = true;
+    return next();
+  }
+
+  // Check for WorkOS API key (for programmatic access)
   const apiKey = await validateWorkOSApiKey(req);
   if (apiKey) {
     logger.debug({ path: req.path, apiKeyId: apiKey.id }, 'Authenticated via WorkOS API key');
@@ -587,11 +626,18 @@ export function requireRole(...allowedRoles: Array<'owner' | 'admin' | 'member'>
 /**
  * Middleware to require admin access
  * Must be used after requireAuth
+ * Accepts static admin API key (ADMIN_API_KEY env var) for internal tooling
  * Accepts WorkOS API keys with 'admin:*' permission for programmatic access
  * Or checks if user's email is in ADMIN_EMAILS list
  */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+
+  // Check for static admin API key (set by requireAuth)
+  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
+    logger.debug({ path: req.path, method: req.method }, 'Admin access via static admin API key');
+    return next();
+  }
 
   // Check for WorkOS API key with admin permission
   const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
