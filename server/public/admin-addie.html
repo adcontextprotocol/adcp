@@ -799,6 +799,375 @@
       color: var(--color-text-muted);
       font-size: var(--text-2xs);
     }
+
+    /* Message feedback controls */
+    .message-feedback {
+      margin-top: var(--space-2);
+      padding-top: var(--space-2);
+      border-top: 1px solid var(--color-gray-200);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+    }
+    .rating-buttons {
+      display: flex;
+      gap: var(--space-1);
+    }
+    .rating-btn {
+      background: none;
+      border: 1px solid var(--color-gray-300);
+      border-radius: var(--radius-sm);
+      padding: var(--space-1) var(--space-2);
+      cursor: pointer;
+      font-size: var(--text-sm);
+      transition: var(--transition-all);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .rating-btn:hover {
+      background: var(--color-gray-100);
+      border-color: var(--color-gray-400);
+    }
+    .rating-btn.active, .rating-btn.selected {
+      background: var(--color-brand);
+      border-color: var(--color-brand);
+      color: white;
+    }
+    .rating-btn.thumbs-up.selected {
+      background: var(--color-success-500);
+      border-color: var(--color-success-500);
+    }
+    .rating-btn.thumbs-down.selected {
+      background: var(--color-error-500);
+      border-color: var(--color-error-500);
+    }
+    .star-rating {
+      display: flex;
+      gap: 2px;
+    }
+    .star-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: var(--text-lg);
+      color: var(--color-gray-300);
+      padding: 0;
+      transition: var(--transition-all);
+    }
+    .star-btn:hover, .star-btn.filled {
+      color: var(--color-warning-500);
+    }
+    .feedback-expand-btn {
+      background: none;
+      border: none;
+      color: var(--color-text-muted);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      padding: var(--space-1);
+    }
+    .feedback-expand-btn:hover {
+      color: var(--color-text-secondary);
+      text-decoration: underline;
+    }
+    .feedback-detail {
+      width: 100%;
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
+      display: none;
+    }
+    .feedback-detail.expanded {
+      display: block;
+    }
+    .feedback-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1);
+      margin-bottom: var(--space-2);
+    }
+    .feedback-tag {
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      border: 1px solid var(--color-gray-300);
+      background: var(--color-bg-card);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .feedback-tag:hover {
+      border-color: var(--color-brand);
+    }
+    .feedback-tag.selected {
+      background: var(--color-brand);
+      border-color: var(--color-brand);
+      color: white;
+    }
+    .feedback-notes {
+      width: 100%;
+      padding: var(--space-2);
+      border: 1px solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      resize: vertical;
+      min-height: 60px;
+      font-family: inherit;
+    }
+    .feedback-notes:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+    .feedback-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--space-2);
+      margin-top: var(--space-2);
+    }
+    .existing-feedback {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-gray-100);
+      border-radius: var(--radius-sm);
+    }
+    .existing-feedback .stars {
+      color: var(--color-warning-500);
+    }
+
+    /* Thread-level feedback panel */
+    .thread-feedback-panel {
+      margin-top: var(--space-4);
+      padding: var(--space-4);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-gray-200);
+    }
+    .thread-feedback-panel h4 {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .thread-overall-rating {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      margin-bottom: var(--space-3);
+    }
+    .thread-overall-rating label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .thread-feedback-textarea {
+      width: 100%;
+      padding: var(--space-3);
+      border: 1px solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      resize: vertical;
+      min-height: 100px;
+      font-family: inherit;
+      margin-bottom: var(--space-3);
+    }
+    .thread-feedback-textarea:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+
+    /* Execution diagnostics */
+    .execution-diagnostics {
+      margin-top: var(--space-2);
+      padding-top: var(--space-2);
+      border-top: 1px dashed var(--color-gray-200);
+    }
+    .diagnostics-toggle {
+      background: none;
+      border: none;
+      color: var(--color-text-muted);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      padding: var(--space-1) 0;
+      text-decoration: underline;
+    }
+    .diagnostics-toggle:hover {
+      color: var(--color-brand);
+    }
+    .diagnostics-content {
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
+      font-size: var(--text-xs);
+    }
+    .diagnostics-section {
+      margin-bottom: var(--space-3);
+    }
+    .diagnostics-section:last-child {
+      margin-bottom: 0;
+    }
+    .diagnostics-section strong {
+      display: block;
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+    .timing-bars {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .timing-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 2px var(--space-2);
+      background: var(--color-bg-card);
+      border-radius: var(--radius-sm);
+    }
+    .timing-row span:first-child {
+      color: var(--color-text-secondary);
+    }
+    .timing-row span:last-child {
+      font-family: var(--font-mono);
+      color: var(--color-text-heading);
+    }
+    .rule-ids {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1);
+    }
+    .rule-id-badge {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    /* Diagnosis panel */
+    .diagnosis-content {
+      background: var(--color-bg-subtle);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      line-height: 1.6;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .diagnosis-content h1, .diagnosis-content h2, .diagnosis-content h3,
+    .diagnosis-content h4, .diagnosis-content h5 {
+      font-size: var(--text-sm);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin: var(--space-3) 0 var(--space-2) 0;
+    }
+    .diagnosis-content h1:first-child, .diagnosis-content h2:first-child {
+      margin-top: 0;
+    }
+    .diagnosis-content ul, .diagnosis-content ol {
+      margin: var(--space-2) 0;
+      padding-left: var(--space-4);
+    }
+    .diagnosis-content li {
+      margin-bottom: var(--space-1);
+    }
+    .diagnosis-content strong {
+      color: var(--color-text-heading);
+    }
+    .diagnosis-loading {
+      text-align: center;
+      padding: var(--space-6);
+      color: var(--color-text-muted);
+    }
+
+    /* Evaluation dashboard */
+    .eval-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+    .eval-stat {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      text-align: center;
+    }
+    .eval-stat-value {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+    .eval-stat-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+    .eval-stat-value.positive { color: var(--color-success-600); }
+    .eval-stat-value.negative { color: var(--color-error-600); }
+    .eval-stat-value.warning { color: var(--color-warning-600); }
+    .tags-distribution {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-bottom: var(--space-4);
+    }
+    .tag-stat {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+    }
+    .tag-stat-count {
+      background: var(--color-brand);
+      color: white;
+      padding: 0 var(--space-1);
+      border-radius: var(--radius-sm);
+      font-weight: var(--font-semibold);
+    }
+    .low-rated-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .low-rated-item {
+      padding: var(--space-3);
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-200);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+    }
+    .low-rated-item:hover {
+      background: var(--color-error-100);
+    }
+    .low-rated-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-1);
+    }
+    .low-rated-rating {
+      color: var(--color-error-600);
+      font-weight: var(--font-bold);
+    }
+    .low-rated-content {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -841,6 +1210,7 @@
       <button class="tab" data-tab="suggestions">Suggestions</button>
       <button class="tab" data-tab="knowledge">Knowledge Base</button>
       <button class="tab" data-tab="threads">Threads</button>
+      <button class="tab" data-tab="evaluation">Evaluation</button>
       <button class="tab" data-tab="performance">Performance</button>
       <button class="tab" data-tab="queue">Approval Queue</button>
     </div>
@@ -1012,6 +1382,68 @@
       </div>
     </div>
 
+    <!-- Evaluation Tab -->
+    <div class="tab-content" id="tab-evaluation">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h2 style="margin: 0;">Evaluation Dashboard</h2>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
+              Training data and feedback metrics for evaluating rule changes
+            </p>
+          </div>
+          <div class="filter-row">
+            <select id="eval-days-filter" onchange="loadEvaluationData()">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+            <button class="btn btn-primary btn-small" onclick="loadEvaluationData()">Refresh</button>
+          </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="eval-stats-grid" id="eval-stats">
+          <div class="eval-stat">
+            <div class="eval-stat-value" id="eval-total">-</div>
+            <div class="eval-stat-label">Total Responses</div>
+          </div>
+          <div class="eval-stat">
+            <div class="eval-stat-value" id="eval-rated">-</div>
+            <div class="eval-stat-label">Rated</div>
+          </div>
+          <div class="eval-stat">
+            <div class="eval-stat-value" id="eval-avg-rating">-</div>
+            <div class="eval-stat-label">Avg Rating</div>
+          </div>
+          <div class="eval-stat">
+            <div class="eval-stat-value positive" id="eval-positive">-</div>
+            <div class="eval-stat-label">Positive (4-5)</div>
+          </div>
+          <div class="eval-stat">
+            <div class="eval-stat-value negative" id="eval-negative">-</div>
+            <div class="eval-stat-label">Negative (1-2)</div>
+          </div>
+          <div class="eval-stat">
+            <div class="eval-stat-value warning" id="eval-flagged">-</div>
+            <div class="eval-stat-label">Flagged</div>
+          </div>
+        </div>
+
+        <!-- Feedback Tags Distribution -->
+        <h3 style="font-size: var(--text-base); margin: var(--space-4) 0 var(--space-2) 0;">Feedback Tags</h3>
+        <div class="tags-distribution" id="eval-tags">
+          <span style="color: var(--color-text-muted);">No feedback tags yet</span>
+        </div>
+
+        <!-- Low Rated Threads -->
+        <h3 style="font-size: var(--text-base); margin: var(--space-4) 0 var(--space-2) 0;">Low-Rated Threads (for review)</h3>
+        <div class="low-rated-list" id="eval-low-rated">
+          <span style="color: var(--color-text-muted);">No low-rated threads</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Performance Tab -->
     <div class="tab-content" id="tab-performance">
       <div class="card">
@@ -1118,10 +1550,64 @@
       <div class="modal" style="max-width: 900px;">
         <h2 id="conversation-modal-title">Conversation</h2>
         <div id="conversation-detail"></div>
+        <!-- Thread Feedback Panel -->
+        <div id="thread-feedback-panel" class="thread-feedback-panel" style="display: none;">
+          <h4>Your Feedback on This Thread</h4>
+          <div class="thread-overall-rating">
+            <label>Overall:</label>
+            <div class="rating-buttons">
+              <button class="rating-btn thumbs-down" onclick="setThreadRating('negative')" id="thread-thumbs-down" title="Thumbs down">
+                <span>👎</span>
+              </button>
+              <button class="rating-btn thumbs-up" onclick="setThreadRating('positive')" id="thread-thumbs-up" title="Thumbs up">
+                <span>👍</span>
+              </button>
+            </div>
+            <div class="star-rating" id="thread-star-rating">
+              <button class="star-btn" onclick="setThreadStars(1)" data-star="1">★</button>
+              <button class="star-btn" onclick="setThreadStars(2)" data-star="2">★</button>
+              <button class="star-btn" onclick="setThreadStars(3)" data-star="3">★</button>
+              <button class="star-btn" onclick="setThreadStars(4)" data-star="4">★</button>
+              <button class="star-btn" onclick="setThreadStars(5)" data-star="5">★</button>
+            </div>
+          </div>
+          <textarea
+            id="thread-feedback-notes"
+            class="thread-feedback-textarea"
+            placeholder="What did you like? What could be better? Be specific about what Addie did well or poorly..."
+          ></textarea>
+          <div class="feedback-tags" id="thread-feedback-tags">
+            <span class="feedback-tag" data-tag="accurate" onclick="toggleThreadTag(this)">Accurate</span>
+            <span class="feedback-tag" data-tag="helpful" onclick="toggleThreadTag(this)">Helpful</span>
+            <span class="feedback-tag" data-tag="well_cited" onclick="toggleThreadTag(this)">Well cited</span>
+            <span class="feedback-tag" data-tag="good_tone" onclick="toggleThreadTag(this)">Good tone</span>
+            <span class="feedback-tag" data-tag="inaccurate" onclick="toggleThreadTag(this)">Inaccurate</span>
+            <span class="feedback-tag" data-tag="missing_info" onclick="toggleThreadTag(this)">Missing info</span>
+            <span class="feedback-tag" data-tag="wrong_source" onclick="toggleThreadTag(this)">Wrong source</span>
+            <span class="feedback-tag" data-tag="too_verbose" onclick="toggleThreadTag(this)">Too verbose</span>
+            <span class="feedback-tag" data-tag="too_brief" onclick="toggleThreadTag(this)">Too brief</span>
+            <span class="feedback-tag" data-tag="wrong_tone" onclick="toggleThreadTag(this)">Wrong tone</span>
+          </div>
+          <div class="feedback-actions">
+            <button class="btn btn-secondary btn-small" onclick="clearThreadFeedback()">Clear</button>
+            <button class="btn btn-primary btn-small" onclick="saveThreadFeedback()">Save Feedback</button>
+          </div>
+        </div>
+        <!-- Claude Diagnosis Panel -->
+        <div id="diagnosis-panel" class="action-form" style="display: none;">
+          <h4>Claude's Analysis</h4>
+          <div id="diagnosis-content" class="diagnosis-content"></div>
+          <div class="form-buttons">
+            <button class="btn btn-secondary" onclick="hideDiagnosisPanel()">Close</button>
+          </div>
+        </div>
         <!-- Conversation Actions -->
         <div id="conversation-actions" class="conversation-actions" style="display: none;">
           <h4>Actions</h4>
           <div class="action-buttons">
+            <button class="btn btn-primary" onclick="diagnoseThread()" id="btn-diagnose">
+              Diagnose with Claude
+            </button>
             <button class="btn btn-secondary" onclick="showPerspectivesForm()" id="btn-add-perspectives">
               📝 Add to Perspectives
             </button>
@@ -1381,6 +1867,7 @@
           loadedTabs.add(tabName);
           if (tabName === 'performance') loadPerformance();
           if (tabName === 'threads') loadThreads();
+          if (tabName === 'evaluation') loadEvaluationData();
           if (tabName === 'knowledge') loadKnowledge();
           if (tabName === 'queue') loadQueue();
           if (tabName === 'suggestions') loadSuggestions();
@@ -1721,7 +2208,7 @@
         }
 
         list.innerHTML = data.threads.map(thread => `
-          <div class="conversation-item ${thread.flagged ? 'flagged' : ''}" onclick="viewThread('${thread.thread_id}')">
+          <div class="conversation-item ${thread.flagged ? 'flagged' : ''}" onclick="viewThread('${escapeHtml(thread.thread_id)}')">
             <div class="conversation-header">
               <div>
                 <span class="badge badge-${thread.channel}">${thread.channel}</span>
@@ -1812,6 +2299,56 @@
 
       } catch (error) {
         console.error('Error loading performance:', error);
+      }
+    }
+
+    // Load evaluation dashboard data
+    async function loadEvaluationData() {
+      try {
+        const days = document.getElementById('eval-days-filter')?.value || '30';
+        const response = await fetch(`/api/admin/addie/feedback/summary?days=${days}`);
+        const data = await response.json();
+
+        // Update summary stats
+        const s = data.summary;
+        document.getElementById('eval-total').textContent = s.total_responses || '0';
+        document.getElementById('eval-rated').textContent = s.rated_responses || '0';
+        document.getElementById('eval-avg-rating').textContent = s.avg_rating ? `${s.avg_rating}/5` : '-';
+        document.getElementById('eval-positive').textContent = s.positive_count || '0';
+        document.getElementById('eval-negative').textContent = s.negative_count || '0';
+        document.getElementById('eval-flagged').textContent = s.flagged_count || '0';
+
+        // Update feedback tags
+        const tagsContainer = document.getElementById('eval-tags');
+        if (data.tags && data.tags.length > 0) {
+          tagsContainer.innerHTML = data.tags.map(t => `
+            <div class="tag-stat">
+              <span>${t.tag.replace('_', ' ')}</span>
+              <span class="tag-stat-count">${t.count}</span>
+            </div>
+          `).join('');
+        } else {
+          tagsContainer.innerHTML = '<span style="color: var(--color-text-muted);">No feedback tags yet</span>';
+        }
+
+        // Update low-rated threads
+        const lowRatedContainer = document.getElementById('eval-low-rated');
+        if (data.low_rated && data.low_rated.length > 0) {
+          lowRatedContainer.innerHTML = data.low_rated.map(lr => `
+            <div class="low-rated-item" onclick="viewThread('${escapeHtml(lr.thread_id)}')">
+              <div class="low-rated-header">
+                <span class="badge badge-${lr.channel}">${lr.channel}</span>
+                <span class="low-rated-rating">${lr.rating}/5</span>
+              </div>
+              <div class="low-rated-content">${escapeHtml(lr.content)}</div>
+              ${lr.rating_notes ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">"${escapeHtml(lr.rating_notes)}"</div>` : ''}
+            </div>
+          `).join('');
+        } else {
+          lowRatedContainer.innerHTML = '<span style="color: var(--color-text-muted);">No low-rated threads</span>';
+        }
+      } catch (error) {
+        console.error('Error loading evaluation data:', error);
       }
     }
 
@@ -2464,6 +3001,7 @@
 
     // Current thread data for actions
     let currentThreadData = null;
+    let currentConversationData = null;
     let extractedLinks = [];
 
     async function viewThread(threadId) {
@@ -2471,6 +3009,7 @@
         const response = await fetch(`/api/admin/addie/threads/${threadId}`);
         const data = await response.json();
         currentThreadData = data;
+        currentConversationData = data;
 
         const channelLabel = data.channel.charAt(0).toUpperCase() + data.channel.slice(1);
         document.getElementById('conversation-modal-title').textContent =
@@ -2504,6 +3043,10 @@
 
         // Extract links from thread
         extractedLinks = extractLinksFromThread(data);
+
+        // Show feedback panel and reset state
+        document.getElementById('thread-feedback-panel').style.display = 'block';
+        clearThreadFeedback();
 
         // Show actions panel
         const actionsEl = document.getElementById('conversation-actions');
@@ -2543,21 +3086,103 @@
       const hasToolCalls = msg.tool_calls && msg.tool_calls.length > 0;
       const hasToolsUsed = msg.tools_used && msg.tools_used.length > 0;
       const latencyDisplay = msg.latency_ms ? `<span class="message-latency">${msg.latency_ms}ms</span>` : '';
-      const ratingDisplay = msg.rating ? `<span class="message-rating" style="color: var(--color-warning-600);">★ ${msg.rating}/5</span>` : '';
       // Token display for assistant messages
       const tokensDisplay = (msg.role === 'assistant' && (msg.tokens_input || msg.tokens_output))
         ? `<span class="message-latency" title="Input / Output tokens">${msg.tokens_input || 0} / ${msg.tokens_output || 0} tok</span>`
         : '';
 
+      // Execution diagnostics for assistant messages
+      const hasTiming = msg.timing_system_prompt_ms || msg.timing_total_llm_ms || msg.timing_total_tool_ms;
+      const executionDiagnostics = (msg.role === 'assistant' && (hasTiming || msg.processing_iterations || msg.active_rule_ids)) ? `
+        <div class="execution-diagnostics">
+          <button class="diagnostics-toggle" onclick="toggleDiagnostics('${msg.message_id}')">
+            Execution Details
+          </button>
+          <div class="diagnostics-content" id="diagnostics-${msg.message_id}" style="display: none;">
+            ${hasTiming ? `
+              <div class="diagnostics-section">
+                <strong>Timing Breakdown</strong>
+                <div class="timing-bars">
+                  ${msg.timing_system_prompt_ms ? `<div class="timing-row"><span>System prompt:</span> <span>${msg.timing_system_prompt_ms}ms</span></div>` : ''}
+                  ${msg.timing_total_llm_ms ? `<div class="timing-row"><span>LLM processing:</span> <span>${msg.timing_total_llm_ms}ms</span></div>` : ''}
+                  ${msg.timing_total_tool_ms ? `<div class="timing-row"><span>Tool execution:</span> <span>${msg.timing_total_tool_ms}ms</span></div>` : ''}
+                  ${msg.processing_iterations ? `<div class="timing-row"><span>Iterations:</span> <span>${msg.processing_iterations}</span></div>` : ''}
+                </div>
+              </div>
+            ` : ''}
+            ${(msg.tokens_cache_creation || msg.tokens_cache_read) ? `
+              <div class="diagnostics-section">
+                <strong>Cache Performance</strong>
+                <div class="timing-bars">
+                  ${msg.tokens_cache_creation ? `<div class="timing-row"><span>Cache created:</span> <span>${msg.tokens_cache_creation} tokens</span></div>` : ''}
+                  ${msg.tokens_cache_read ? `<div class="timing-row"><span>Cache read:</span> <span>${msg.tokens_cache_read} tokens</span></div>` : ''}
+                </div>
+              </div>
+            ` : ''}
+            ${msg.active_rule_ids && msg.active_rule_ids.length > 0 ? `
+              <div class="diagnostics-section">
+                <strong>Active Rules</strong>
+                <div class="rule-ids">${msg.active_rule_ids.map(id => `<span class="rule-id-badge">#${id}</span>`).join(' ')}</div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      ` : '';
+
+      // Show existing feedback if any
+      const existingFeedback = msg.rating ? `
+        <div class="existing-feedback">
+          <span class="stars">${'★'.repeat(msg.rating)}${'☆'.repeat(5 - msg.rating)}</span>
+          ${msg.rating_notes ? `<span title="${escapeHtml(msg.rating_notes)}">"${escapeHtml(msg.rating_notes.substring(0, 30))}${msg.rating_notes.length > 30 ? '...' : ''}"</span>` : ''}
+          ${msg.feedback_tags && msg.feedback_tags.length > 0 ? `<span>[${msg.feedback_tags.join(', ')}]</span>` : ''}
+        </div>
+      ` : '';
+
+      // Only show rating controls for assistant messages
+      const feedbackControls = msg.role === 'assistant' ? `
+        <div class="message-feedback" data-message-id="${msg.message_id}">
+          <div class="star-rating" data-message-id="${msg.message_id}">
+            ${[1,2,3,4,5].map(n => `<button class="star-btn ${msg.rating >= n ? 'filled' : ''}" onclick="setMessageRating('${msg.message_id}', ${n})" data-star="${n}">★</button>`).join('')}
+          </div>
+          <button class="feedback-expand-btn" onclick="toggleMessageFeedback('${msg.message_id}')">
+            ${msg.rating_notes || (msg.feedback_tags && msg.feedback_tags.length > 0) ? 'Edit notes' : 'Add notes'}
+          </button>
+          <div class="feedback-detail" id="feedback-detail-${msg.message_id}">
+            <div class="feedback-tags">
+              ${['accurate', 'helpful', 'well_cited', 'inaccurate', 'missing_info', 'wrong_source', 'too_verbose', 'too_brief'].map(tag =>
+                `<span class="feedback-tag ${msg.feedback_tags && msg.feedback_tags.includes(tag) ? 'selected' : ''}"
+                      data-tag="${tag}"
+                      onclick="toggleMessageTag('${msg.message_id}', this)">${tag.replace('_', ' ')}</span>`
+              ).join('')}
+            </div>
+            <textarea class="feedback-notes"
+                      id="feedback-notes-${msg.message_id}"
+                      placeholder="What's good or bad about this response?">${msg.rating_notes || ''}</textarea>
+            <div class="feedback-actions">
+              <button class="btn btn-small btn-primary" onclick="saveMessageFeedback('${msg.message_id}')">Save</button>
+            </div>
+          </div>
+        </div>
+      ` : '';
+
       return `
         <div class="message-item ${msg.role}">
-          <div class="message-role">${roleLabel}${latencyDisplay}${tokensDisplay}${ratingDisplay}</div>
+          <div class="message-role">${roleLabel}${latencyDisplay}${tokensDisplay}${existingFeedback}</div>
           <div class="message-content">${renderMarkdown(msg.content)}</div>
           ${hasToolsUsed ? `<div class="tools-used" style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Tools: ${msg.tools_used.join(', ')}</div>` : ''}
           ${hasToolCalls ? renderToolCalls(msg.tool_calls, msg.latency_ms) : ''}
+          ${executionDiagnostics}
           ${msg.flagged ? `<div style="color: var(--color-warning-600); font-size: var(--text-sm); margin-top: var(--space-2);"><strong>Flagged:</strong> ${escapeHtml(msg.flag_reason || 'No reason')}</div>` : ''}
+          ${feedbackControls}
         </div>
       `;
+    }
+
+    function toggleDiagnostics(messageId) {
+      const el = document.getElementById(`diagnostics-${messageId}`);
+      if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+      }
     }
 
     function renderToolCalls(toolCalls, totalLatency) {
@@ -2727,6 +3352,7 @@
     function closeConversationModal() {
       document.getElementById('conversation-modal').style.display = 'none';
       document.getElementById('conversation-actions').style.display = 'none';
+      document.getElementById('thread-feedback-panel').style.display = 'none';
       hideActionForms();
       currentConversationData = null;
       extractedLinks = [];
@@ -2769,6 +3395,271 @@
       document.getElementById('rule-suggestion-form').style.display = 'block';
     }
 
+    // =========================================================================
+    // MESSAGE FEEDBACK HANDLERS
+    // =========================================================================
+
+    // Track pending feedback changes per message
+    const pendingMessageFeedback = {};
+
+    function setMessageRating(messageId, rating) {
+      // Update UI
+      const starContainer = document.querySelector(`.star-rating[data-message-id="${messageId}"]`);
+      if (starContainer) {
+        starContainer.querySelectorAll('.star-btn').forEach((btn, i) => {
+          btn.classList.toggle('filled', i < rating);
+        });
+      }
+
+      // Track pending feedback
+      if (!pendingMessageFeedback[messageId]) {
+        pendingMessageFeedback[messageId] = {};
+      }
+      pendingMessageFeedback[messageId].rating = rating;
+
+      // Auto-save rating immediately
+      saveMessageFeedback(messageId);
+    }
+
+    function toggleMessageFeedback(messageId) {
+      const detail = document.getElementById(`feedback-detail-${messageId}`);
+      if (detail) {
+        detail.classList.toggle('expanded');
+      }
+    }
+
+    function toggleMessageTag(messageId, element) {
+      element.classList.toggle('selected');
+
+      // Track pending feedback
+      if (!pendingMessageFeedback[messageId]) {
+        pendingMessageFeedback[messageId] = {};
+      }
+      const feedbackDetail = document.getElementById(`feedback-detail-${messageId}`);
+      const selectedTags = Array.from(feedbackDetail.querySelectorAll('.feedback-tag.selected')).map(el => el.dataset.tag);
+      pendingMessageFeedback[messageId].feedback_tags = selectedTags;
+    }
+
+    async function saveMessageFeedback(messageId) {
+      const feedback = pendingMessageFeedback[messageId] || {};
+
+      // Get rating from UI if not already set
+      if (!feedback.rating) {
+        const starContainer = document.querySelector(`.star-rating[data-message-id="${messageId}"]`);
+        if (starContainer) {
+          feedback.rating = starContainer.querySelectorAll('.star-btn.filled').length || 3;
+        }
+      }
+
+      // Get notes from textarea
+      const notesEl = document.getElementById(`feedback-notes-${messageId}`);
+      if (notesEl) {
+        feedback.rating_notes = notesEl.value;
+      }
+
+      // Get selected tags
+      const feedbackDetail = document.getElementById(`feedback-detail-${messageId}`);
+      if (feedbackDetail) {
+        const selectedTags = Array.from(feedbackDetail.querySelectorAll('.feedback-tag.selected')).map(el => el.dataset.tag);
+        if (selectedTags.length > 0) {
+          feedback.feedback_tags = selectedTags;
+        }
+      }
+
+      // Need at least a rating
+      if (!feedback.rating) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/admin/addie/threads/messages/${messageId}/feedback`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(feedback)
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to save feedback');
+        }
+
+        // Update the message in currentThreadData to reflect the change
+        if (currentThreadData && currentThreadData.messages) {
+          const msg = currentThreadData.messages.find(m => m.message_id === messageId);
+          if (msg) {
+            msg.rating = feedback.rating;
+            msg.rating_notes = feedback.rating_notes;
+            msg.feedback_tags = feedback.feedback_tags;
+          }
+        }
+
+        // Clear pending feedback for this message
+        delete pendingMessageFeedback[messageId];
+
+        // Show brief success indicator
+        const feedbackEl = document.querySelector(`.message-feedback[data-message-id="${messageId}"]`);
+        if (feedbackEl) {
+          const savedIndicator = document.createElement('span');
+          savedIndicator.textContent = 'Saved';
+          savedIndicator.style.cssText = 'color: var(--color-success-600); font-size: var(--text-xs); margin-left: var(--space-2);';
+          feedbackEl.appendChild(savedIndicator);
+          setTimeout(() => savedIndicator.remove(), 2000);
+        }
+      } catch (error) {
+        console.error('Error saving message feedback:', error);
+        alert('Error saving feedback');
+      }
+    }
+
+    // =========================================================================
+    // THREAD-LEVEL FEEDBACK HANDLERS
+    // =========================================================================
+
+    let threadFeedbackState = {
+      sentiment: null,
+      rating: null,
+      tags: [],
+      notes: ''
+    };
+
+    function setThreadRating(sentiment) {
+      threadFeedbackState.sentiment = sentiment;
+
+      // Update UI
+      document.getElementById('thread-thumbs-up').classList.toggle('selected', sentiment === 'positive');
+      document.getElementById('thread-thumbs-down').classList.toggle('selected', sentiment === 'negative');
+    }
+
+    function setThreadStars(rating) {
+      threadFeedbackState.rating = rating;
+
+      // Update UI
+      document.querySelectorAll('#thread-star-rating .star-btn').forEach((btn, i) => {
+        btn.classList.toggle('filled', i < rating);
+      });
+    }
+
+    function toggleThreadTag(element) {
+      element.classList.toggle('selected');
+
+      // Update state
+      const tag = element.dataset.tag;
+      if (element.classList.contains('selected')) {
+        if (!threadFeedbackState.tags.includes(tag)) {
+          threadFeedbackState.tags.push(tag);
+        }
+      } else {
+        threadFeedbackState.tags = threadFeedbackState.tags.filter(t => t !== tag);
+      }
+    }
+
+    function clearThreadFeedback() {
+      threadFeedbackState = { sentiment: null, rating: null, tags: [], notes: '' };
+
+      // Reset UI
+      document.getElementById('thread-thumbs-up').classList.remove('selected');
+      document.getElementById('thread-thumbs-down').classList.remove('selected');
+      document.querySelectorAll('#thread-star-rating .star-btn').forEach(btn => btn.classList.remove('filled'));
+      document.querySelectorAll('#thread-feedback-tags .feedback-tag').forEach(tag => tag.classList.remove('selected'));
+      document.getElementById('thread-feedback-notes').value = '';
+    }
+
+    async function saveThreadFeedback() {
+      const notes = document.getElementById('thread-feedback-notes').value;
+      threadFeedbackState.notes = notes;
+
+      if (!currentThreadData) {
+        alert('No thread selected');
+        return;
+      }
+
+      // Find the last assistant message to attach feedback to
+      const lastAssistantMsg = [...currentThreadData.messages].reverse().find(m => m.role === 'assistant');
+      if (!lastAssistantMsg) {
+        alert('No assistant message to rate');
+        return;
+      }
+
+      // Use the star rating if set, otherwise derive from sentiment
+      let rating = threadFeedbackState.rating;
+      if (!rating && threadFeedbackState.sentiment) {
+        rating = threadFeedbackState.sentiment === 'positive' ? 4 : 2;
+      }
+      if (!rating) {
+        alert('Please select a rating (stars or thumbs)');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/admin/addie/threads/messages/${lastAssistantMsg.message_id}/feedback`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rating: rating,
+            rating_notes: notes,
+            feedback_tags: threadFeedbackState.tags
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to save feedback');
+        }
+
+        alert('Thread feedback saved!');
+        clearThreadFeedback();
+
+        // Optionally mark as reviewed
+        if (!currentThreadData.reviewed) {
+          await markThreadReviewed(currentThreadData.thread_id);
+        }
+      } catch (error) {
+        console.error('Error saving thread feedback:', error);
+        alert('Error saving feedback');
+      }
+    }
+
+    // =========================================================================
+    // CLAUDE DIAGNOSIS
+    // =========================================================================
+
+    async function diagnoseThread() {
+      if (!currentThreadData) {
+        alert('No thread selected');
+        return;
+      }
+
+      const diagnosisPanel = document.getElementById('diagnosis-panel');
+      const diagnosisContent = document.getElementById('diagnosis-content');
+
+      // Show loading state
+      diagnosisPanel.style.display = 'block';
+      diagnosisContent.innerHTML = '<div class="diagnosis-loading">Analyzing conversation with Claude...</div>';
+
+      // Get any feedback notes as context
+      const feedbackNotes = document.getElementById('thread-feedback-notes').value;
+
+      try {
+        const response = await fetch(`/api/admin/addie/threads/${currentThreadData.thread_id}/diagnose`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feedback: feedbackNotes || undefined })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to get diagnosis');
+        }
+
+        const data = await response.json();
+        diagnosisContent.innerHTML = renderMarkdown(data.analysis);
+      } catch (error) {
+        console.error('Error getting diagnosis:', error);
+        diagnosisContent.innerHTML = '<div style="color: var(--color-error-600);">Error getting diagnosis. Please try again.</div>';
+      }
+    }
+
+    function hideDiagnosisPanel() {
+      document.getElementById('diagnosis-panel').style.display = 'none';
+    }
+
     async function submitPerspectivesEntry() {
       const url = document.getElementById('perspectives-url').value ||
                   document.getElementById('perspectives-url-custom').value;
@@ -2791,10 +3682,10 @@
             suggested_topic: topic,
             suggested_content: take || `Add Addie's take on this external resource.`,
             external_sources: [url],
-            reasoning: `Discovered during conversation ${currentConversationData?.conversation_id || 'unknown'}. External source found useful for answering user questions.`,
+            reasoning: `Discovered during thread ${currentConversationData?.thread_id || 'unknown'}. External source found useful for answering user questions.`,
             confidence: 0.7,
             expected_impact: 'Improves discoverability of useful external content for future queries.',
-            supporting_interactions: currentConversationData?.conversation_id ? [currentConversationData.conversation_id] : []
+            supporting_interactions: currentConversationData?.thread_id ? [currentConversationData.thread_id] : []
           })
         });
 
@@ -2831,10 +3722,10 @@
             suggested_name: title,
             suggested_topic: title,
             suggested_content: description + (location ? `\\n\\nSuggested location: ${location}` : ''),
-            reasoning: `Documentation gap identified from conversation ${currentConversationData?.conversation_id || 'unknown'}.`,
+            reasoning: `Documentation gap identified from thread ${currentConversationData?.thread_id || 'unknown'}.`,
             confidence: 0.6,
             expected_impact: 'Improves documentation coverage for common questions.',
-            supporting_interactions: currentConversationData?.conversation_id ? [currentConversationData.conversation_id] : []
+            supporting_interactions: currentConversationData?.thread_id ? [currentConversationData.thread_id] : []
           })
         });
 
@@ -2875,7 +3766,7 @@
             reasoning: reasoning,
             confidence: 0.5,
             expected_impact: 'Behavior change based on conversation review.',
-            supporting_interactions: currentConversationData?.conversation_id ? [currentConversationData.conversation_id] : []
+            supporting_interactions: currentConversationData?.thread_id ? [currentConversationData.thread_id] : []
           })
         });
 

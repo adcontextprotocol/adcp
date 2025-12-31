@@ -643,6 +643,7 @@ async function handleUserMessage({
       input: exec.parameters,
       result: exec.result,
       duration_ms: exec.duration_ms,
+      is_error: exec.is_error,
     })),
     model: AddieModelConfig.chat,
     latency_ms: Date.now() - startTime,
@@ -650,6 +651,16 @@ async function handleUserMessage({
     tokens_output: response.usage?.output_tokens,
     flagged: assistantFlagged,
     flag_reason: flagReason || undefined,
+    // Enhanced execution metadata
+    timing: response.timing ? {
+      system_prompt_ms: response.timing.system_prompt_ms,
+      total_llm_ms: response.timing.total_llm_ms,
+      total_tool_ms: response.timing.total_tool_execution_ms,
+      iterations: response.timing.iterations,
+    } : undefined,
+    tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+    tokens_cache_read: response.usage?.cache_read_input_tokens,
+    active_rule_ids: response.active_rule_ids,
   });
 
   // Flag the thread if any message was flagged
@@ -866,11 +877,24 @@ async function handleAppMention({
       input: exec.parameters,
       result: exec.result,
       duration_ms: exec.duration_ms,
+      is_error: exec.is_error,
     })),
     model: AddieModelConfig.chat,
     latency_ms: Date.now() - startTime,
+    tokens_input: response.usage?.input_tokens,
+    tokens_output: response.usage?.output_tokens,
     flagged: assistantFlagged,
     flag_reason: flagReason || undefined,
+    // Enhanced execution metadata
+    timing: response.timing ? {
+      system_prompt_ms: response.timing.system_prompt_ms,
+      total_llm_ms: response.timing.total_llm_ms,
+      total_tool_ms: response.timing.total_tool_execution_ms,
+      iterations: response.timing.iterations,
+    } : undefined,
+    tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+    tokens_cache_read: response.usage?.cache_read_input_tokens,
+    active_rule_ids: response.active_rule_ids,
   });
 
   // Flag the thread if any message was flagged
