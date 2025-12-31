@@ -50,6 +50,7 @@ import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache } from "./addie/index.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
+import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
 import { createAdminSlackRouter, createAdminEmailRouter } from "./routes/admin/index.js";
 import {
   getUnifiedUsersCache,
@@ -315,9 +316,11 @@ export class HTTPServer {
     const adminEmailRouter = createAdminEmailRouter();
     this.app.use('/api/admin/email', adminEmailRouter); // Admin Email: /api/admin/email/*
 
-    // Mount webhook routes (external services like Resend)
+    // Mount webhook routes (external services like Resend, WorkOS)
     const webhooksRouter = createWebhooksRouter();
     this.app.use('/api/webhooks', webhooksRouter);      // Webhooks: /api/webhooks/resend-inbound
+    const workosWebhooksRouter = createWorkOSWebhooksRouter();
+    this.app.use('/api/webhooks', workosWebhooksRouter); // WorkOS: /api/webhooks/workos
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
@@ -3632,6 +3635,11 @@ export class HTTPServer {
 
     // GET /api/admin/working-groups/search-users - Search users for leadership selection
     // IMPORTANT: This route must come BEFORE parameterized routes like /:id
+    //
+    // Performance strategy:
+    // 1. Query local organization_memberships table (synced from WorkOS via webhooks)
+    // 2. If table is empty, show helpful message to run backfill
+    // This is instant - no WorkOS API calls needed
     this.app.get('/api/admin/working-groups/search-users', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { q } = req.query;
@@ -3639,75 +3647,24 @@ export class HTTPServer {
           return res.json([]);
         }
 
-        if (!workos) {
-          return res.status(503).json({ error: 'Authentication not configured' });
-        }
-
-        // Search for users by iterating through member organizations
-        const searchTerm = q.toLowerCase();
-        const matchingUsers: Array<{
-          user_id: string;
-          email: string;
-          name: string;
-          org_id: string;
-          org_name: string;
-        }> = [];
-        const seenUserIds = new Set<string>();
-
-        // Get all member organizations from our database
-        const orgDatabase = new OrganizationDatabase();
-        const orgs = await orgDatabase.listOrganizations();
-
-        // For each org, get their memberships from WorkOS and filter
-        for (const org of orgs) {
-          if (matchingUsers.length >= 20) break;
-
-          try {
-            const memberships = await workos.userManagement.listOrganizationMemberships({
-              organizationId: org.workos_organization_id,
-            });
-
-            for (const membership of memberships.data) {
-              if (matchingUsers.length >= 20) break;
-              if (seenUserIds.has(membership.userId)) continue;
-
-              // Get user details
-              try {
-                const user = await workos.userManagement.getUser(membership.userId);
-                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-
-                // Check if user matches search term
-                if (
-                  user.email.toLowerCase().includes(searchTerm) ||
-                  fullName.toLowerCase().includes(searchTerm) ||
-                  org.name.toLowerCase().includes(searchTerm)
-                ) {
-                  seenUserIds.add(user.id);
-                  matchingUsers.push({
-                    user_id: user.id,
-                    email: user.email,
-                    name: fullName,
-                    org_id: org.workos_organization_id,
-                    org_name: org.name,
-                  });
-                }
-              } catch (userErr) {
-                // Skip users we can't fetch
-                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
-              }
-            }
-          } catch (orgErr) {
-            // Skip orgs we can't fetch memberships for
-            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
-          }
-        }
-
-        res.json(matchingUsers);
+        // Use the existing WorkingGroupDatabase method which queries local DB
+        const results = await workingGroupDb.searchUsersForLeadership(q, 20);
+        res.json(results);
       } catch (error) {
+        // Check if it's a "table doesn't exist" error
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage.includes('organization_memberships') && errorMessage.includes('does not exist')) {
+          logger.warn('organization_memberships table not found - run migrations and backfill');
+          return res.status(503).json({
+            error: 'User search not yet configured',
+            message: 'Run database migrations and then call POST /api/admin/backfill-memberships to populate user data',
+          });
+        }
+
         logger.error({ err: error }, 'Search users error:');
         res.status(500).json({
           error: 'Failed to search users',
-          message: error instanceof Error ? error.message : 'Unknown error',
+          message: errorMessage,
         });
       }
     });
@@ -3971,6 +3928,28 @@ export class HTTPServer {
         logger.error({ err: error }, 'Sync all working groups from Slack error:');
         res.status(500).json({
           error: 'Failed to sync working groups',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/backfill-memberships - Backfill organization_memberships table from WorkOS
+    // Call this once after setting up the webhook to populate existing data
+    this.app.post('/api/admin/backfill-memberships', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { backfillOrganizationMemberships } = await import('./routes/workos-webhooks.js');
+        const result = await backfillOrganizationMemberships();
+
+        res.json({
+          success: result.errors.length === 0,
+          orgs_processed: result.orgsProcessed,
+          memberships_created: result.membershipsCreated,
+          errors: result.errors,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Backfill memberships error:');
+        res.status(500).json({
+          error: 'Failed to backfill memberships',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
