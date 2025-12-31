@@ -37,9 +37,27 @@ interface FeedItem {
 }
 
 /**
+ * Check if a feed URL is an HTTP/HTTPS URL that can be fetched as RSS
+ */
+function isRssFetchable(feedUrl: string): boolean {
+  try {
+    const url = new URL(feedUrl);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fetch and parse a single RSS feed
  */
 async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
+  // Skip email-only feeds (those with non-HTTP URLs like email://)
+  if (!isRssFetchable(feed.feed_url)) {
+    logger.debug({ feedId: feed.id, name: feed.name, url: feed.feed_url }, 'Skipping non-HTTP feed');
+    return [];
+  }
+
   logger.info({ feedId: feed.id, name: feed.name, url: feed.feed_url }, 'Fetching RSS feed');
 
   const parsed = await parser.parseURL(feed.feed_url);
@@ -161,6 +179,15 @@ export async function fetchSingleFeed(feedId: number): Promise<{
 
   if (!feed) {
     return { success: false, newPerspectives: 0, error: 'Feed not found' };
+  }
+
+  // Email-only feeds cannot be fetched via RSS
+  if (!isRssFetchable(feed.feed_url)) {
+    return {
+      success: false,
+      newPerspectives: 0,
+      error: 'This feed receives content via email only, not RSS',
+    };
   }
 
   try {
