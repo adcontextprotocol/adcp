@@ -52,13 +52,40 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
-import { getThreadReplies, getSlackUserWithAddieToken } from '../slack/client.js';
+import { getThreadReplies, getSlackUserWithAddieToken, getChannelInfo } from '../slack/client.js';
 import { AddieRouter, type RoutingContext } from './router.js';
 
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let expressReceiver: any = null;
 let claudeClient: AddieClaudeClient | null = null;
+
+/**
+ * Fetch channel info and build a partial ThreadContext with channel details
+ */
+async function buildChannelContext(channelId: string): Promise<Partial<ThreadContext>> {
+  const context: Partial<ThreadContext> = {
+    viewing_channel_id: channelId,
+  };
+
+  try {
+    const channelInfo = await getChannelInfo(channelId);
+    if (channelInfo) {
+      context.viewing_channel_name = channelInfo.name;
+      if (channelInfo.purpose?.value) {
+        context.viewing_channel_description = channelInfo.purpose.value;
+      }
+      if (channelInfo.topic?.value) {
+        context.viewing_channel_topic = channelInfo.topic.value;
+      }
+    }
+  } catch (error) {
+    logger.debug({ error, channelId }, 'Could not fetch channel info');
+  }
+
+  return context;
+}
+
 let addieDb: AddieDatabase | null = null;
 let addieRouter: AddieRouter | null = null;
 let threadContextStore: DatabaseThreadContextStore | null = null;
@@ -250,15 +277,31 @@ async function buildDynamicSuggestedPrompts(userId: string): Promise<SuggestedPr
  */
 async function buildMessageWithMemberContext(
   userId: string,
-  sanitizedMessage: string
+  sanitizedMessage: string,
+  threadContext?: ThreadContext
 ): Promise<{ message: string; memberContext: MemberContext | null }> {
   try {
     const memberContext = await getMemberContext(userId);
     const memberContextText = formatMemberContextForPrompt(memberContext);
 
-    if (memberContextText) {
+    // Build channel context if available
+    let channelContextText = '';
+    if (threadContext?.viewing_channel_name) {
+      const channelLines: string[] = [];
+      channelLines.push(`\n## Channel Context`);
+      channelLines.push(`User is viewing **#${threadContext.viewing_channel_name}**`);
+      if (threadContext.viewing_channel_description) {
+        channelLines.push(`Channel description: ${threadContext.viewing_channel_description}`);
+      }
+      if (threadContext.viewing_channel_topic) {
+        channelLines.push(`Channel topic: ${threadContext.viewing_channel_topic}`);
+      }
+      channelContextText = channelLines.join('\n');
+    }
+
+    if (memberContextText || channelContextText) {
       return {
-        message: `${memberContextText}\n---\n\n${sanitizedMessage}`,
+        message: `${memberContextText || ''}${channelContextText}\n---\n\n${sanitizedMessage}`,
         memberContext,
       };
     }
@@ -403,12 +446,13 @@ async function handleUserMessage({
   try {
     const boltContext = await getThreadContext();
     if (boltContext?.channel_id) {
+      const channelContext = await buildChannelContext(boltContext.channel_id);
       slackThreadContext = {
-        viewing_channel_id: boltContext.channel_id,
+        ...channelContext,
         team_id: boltContext.team_id,
         enterprise_id: boltContext.enterprise_id || undefined,
       };
-      logger.debug({ viewingChannel: boltContext.channel_id }, 'Addie Bolt: User is viewing channel');
+      logger.debug({ viewingChannel: boltContext.channel_id, channelName: channelContext.viewing_channel_name }, 'Addie Bolt: User is viewing channel');
     }
   } catch (error) {
     logger.debug({ error }, 'Addie Bolt: Could not get thread context');
@@ -426,7 +470,8 @@ async function handleUserMessage({
   // Build message with member context
   const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
     userId,
-    inputValidation.sanitized
+    inputValidation.sanitized,
+    slackThreadContext
   );
 
   // Log user message to unified thread
@@ -672,6 +717,9 @@ async function handleAppMention({
   // Sanitize input
   const inputValidation = sanitizeInput(rawText);
 
+  // Fetch channel info for context
+  const mentionChannelContext = await buildChannelContext(channelId) as ThreadContext;
+
   // Fetch thread context if this mention is in a thread
   const MAX_THREAD_CONTEXT_MESSAGES = 25;
   let threadContext = '';
@@ -750,10 +798,11 @@ async function handleAppMention({
     },
   });
 
-  // Build message with member context and thread context
+  // Build message with member context and channel context
   const { message: messageWithMemberContext, memberContext } = await buildMessageWithMemberContext(
     userId,
-    inputValidation.sanitized
+    inputValidation.sanitized,
+    mentionChannelContext
   );
 
   // Prepend thread context if available (member context already includes the user's message)

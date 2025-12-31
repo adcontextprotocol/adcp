@@ -243,7 +243,7 @@ export async function createRssPerspectivesBatch(articles: RssArticleInput[]): P
 
 /**
  * Get RSS perspectives that need content processing
- * (published but not yet in knowledge base)
+ * (published but not yet in knowledge base, excluding failed ones)
  */
 export async function getPendingRssPerspectives(limit: number = 10): Promise<RssPerspective[]> {
   const result = await query<RssPerspective & { feed_name: string }>(
@@ -255,7 +255,7 @@ export async function getPendingRssPerspectives(limit: number = 10): Promise<Rss
        AND NOT EXISTS (
          SELECT 1 FROM addie_knowledge k
          WHERE k.source_url = p.external_url
-           AND k.fetch_status = 'success'
+           AND k.fetch_status IN ('success', 'failed')
        )
      ORDER BY p.published_at DESC NULLS LAST
      LIMIT $1`,
@@ -372,6 +372,8 @@ export interface FeedStats {
   total_rss_perspectives: number;
   rss_perspectives_today: number;
   pending_processing: number;
+  processed_success: number;
+  processed_failed: number;
   alerts_sent_today: number;
 }
 
@@ -383,9 +385,21 @@ export async function getFeedStats(): Promise<FeedStats> {
        (SELECT COUNT(*) FROM perspectives WHERE source_type = 'rss') as total_rss_perspectives,
        (SELECT COUNT(*) FROM perspectives WHERE source_type = 'rss' AND created_at > NOW() - INTERVAL '24 hours') as rss_perspectives_today,
        (SELECT COUNT(*) FROM perspectives p
+        JOIN industry_feeds f ON p.feed_id = f.id
         WHERE p.source_type = 'rss'
-          AND NOT EXISTS (SELECT 1 FROM addie_knowledge k WHERE k.source_url = p.external_url AND k.fetch_status = 'success')
+          AND p.status = 'published'
+          AND NOT EXISTS (SELECT 1 FROM addie_knowledge k WHERE k.source_url = p.external_url AND k.fetch_status IN ('success', 'failed'))
        ) as pending_processing,
+       (SELECT COUNT(*) FROM perspectives p
+        JOIN addie_knowledge k ON k.source_url = p.external_url
+        WHERE p.source_type = 'rss'
+          AND k.fetch_status = 'success'
+       ) as processed_success,
+       (SELECT COUNT(*) FROM perspectives p
+        JOIN addie_knowledge k ON k.source_url = p.external_url
+        WHERE p.source_type = 'rss'
+          AND k.fetch_status = 'failed'
+       ) as processed_failed,
        (SELECT COUNT(*) FROM industry_alerts WHERE sent_at > NOW() - INTERVAL '24 hours') as alerts_sent_today`
   );
   return result.rows[0];

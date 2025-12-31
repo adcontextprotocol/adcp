@@ -20,10 +20,16 @@ const workos =
 
 const logger = createLogger('prospect-service');
 
+const VALID_PROSPECT_STATUSES = [
+  'prospect', 'contacted', 'responded', 'interested',
+  'negotiating', 'joined', 'declined'
+] as const;
+
 export interface CreateProspectInput {
   name: string;
   domain?: string;
   company_type?: string;
+  prospect_status?: string;
   prospect_source?: string;
   prospect_notes?: string;
   prospect_contact_name?: string;
@@ -68,6 +74,17 @@ export async function createProspect(
 
   const name = input.name.trim();
 
+  // Validate prospect_status if provided
+  if (input.prospect_status && !VALID_PROSPECT_STATUSES.includes(input.prospect_status as typeof VALID_PROSPECT_STATUSES[number])) {
+    return {
+      success: false,
+      error: `Invalid prospect_status. Must be one of: ${VALID_PROSPECT_STATUSES.join(', ')}`,
+    };
+  }
+
+  // Normalize domain to lowercase
+  const normalizedDomain = input.domain?.trim().toLowerCase() || null;
+
   // Check for existing organization with same name
   const existing = await pool.query(
     `SELECT workos_organization_id, name FROM organizations
@@ -88,13 +105,13 @@ export async function createProspect(
     // Create organization in WorkOS
     const workosOrg = await workos.organizations.createOrganization({
       name,
-      domainData: input.domain
-        ? [{ domain: input.domain.trim(), state: DomainDataState.Verified }]
+      domainData: normalizedDomain
+        ? [{ domain: normalizedDomain, state: DomainDataState.Verified }]
         : undefined,
     });
 
     logger.info(
-      { orgId: workosOrg.id, name, domain: input.domain },
+      { orgId: workosOrg.id, name, domain: normalizedDomain },
       'Created WorkOS organization for prospect'
     );
 
@@ -124,8 +141,8 @@ export async function createProspect(
         workosOrg.id,
         name,
         input.company_type || null,
-        input.domain?.trim() || null,
-        'prospect',
+        normalizedDomain,
+        input.prospect_status || 'prospect',
         input.prospect_source || 'manual',
         input.prospect_notes || null,
         input.prospect_contact_name || null,
@@ -140,11 +157,22 @@ export async function createProspect(
 
     const org = result.rows[0];
 
-    // Auto-enrich in background if domain provided
-    if (input.domain) {
-      enrichOrganization(workosOrg.id, input.domain.trim()).catch((err) => {
+    // Also insert into organization_domains if domain provided
+    if (normalizedDomain) {
+      await pool.query(
+        `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+         VALUES ($1, $2, true, true, 'import')
+         ON CONFLICT (domain) DO UPDATE SET
+           workos_organization_id = EXCLUDED.workos_organization_id,
+           is_primary = true,
+           updated_at = NOW()`,
+        [workosOrg.id, normalizedDomain]
+      );
+
+      // Auto-enrich in background
+      enrichOrganization(workosOrg.id, normalizedDomain).catch((err) => {
         logger.warn(
-          { err, domain: input.domain, orgId: workosOrg.id },
+          { err, domain: normalizedDomain, orgId: workosOrg.id },
           'Background enrichment failed for new prospect'
         );
       });

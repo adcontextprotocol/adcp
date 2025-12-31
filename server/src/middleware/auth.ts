@@ -78,6 +78,52 @@ const companyDb = new CompanyDatabase();
 // Allow insecure cookies for local Docker development
 const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
 
+/**
+ * WorkOS API Key validation result
+ */
+export interface ValidatedApiKey {
+  id: string;
+  organizationId: string;
+  name: string;
+  permissions: string[];
+}
+
+/**
+ * Validate a WorkOS API key from the Authorization header
+ * Returns the validated API key info or null if invalid
+ */
+async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKey | null> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+
+  const token = authHeader.slice(7); // Remove 'Bearer ' prefix
+
+  // WorkOS API keys start with 'wos_api_key_'
+  if (!token.startsWith('wos_api_key_')) return null;
+
+  try {
+    const result = await workos.apiKeys.validateApiKey({ value: token });
+    if (!result.apiKey) return null;
+
+    return {
+      id: result.apiKey.id,
+      organizationId: result.apiKey.owner.id,
+      name: result.apiKey.name,
+      permissions: result.apiKey.permissions,
+    };
+  } catch (error) {
+    logger.debug({ err: error }, 'API key validation failed');
+    return null;
+  }
+}
+
+/**
+ * Check if validated API key has a specific permission
+ */
+function apiKeyHasPermission(apiKey: ValidatedApiKey, permission: string): boolean {
+  return apiKey.permissions.includes(permission);
+}
+
 // Dev mode: bypass auth with mock users for local testing
 // Set DEV_USER_EMAIL and DEV_USER_ID in .env.local to enable
 const DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
@@ -212,11 +258,32 @@ function setSessionCookie(res: Response, sealedSession: string) {
 /**
  * Middleware to require authentication
  * Checks for WorkOS session cookie and loads user info
+ * Also accepts WorkOS API keys as Bearer token for programmatic access
  * Uses in-memory cache to reduce WorkOS API calls for session refresh
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+
+  // Check for WorkOS API key first (for programmatic access)
+  const apiKey = await validateWorkOSApiKey(req);
+  if (apiKey) {
+    logger.debug({ path: req.path, apiKeyId: apiKey.id }, 'Authenticated via WorkOS API key');
+    // Create a synthetic user for API key auth - the organization owns the key
+    req.user = {
+      id: `api_key_${apiKey.id}`,
+      email: `api-key@org-${apiKey.organizationId}`,
+      firstName: 'API',
+      lastName: apiKey.name,
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    req.accessToken = 'workos-api-key';
+    // Store API key info for permission checks
+    (req as Request & { apiKey?: ValidatedApiKey }).apiKey = apiKey;
+    return next();
+  }
 
   // Dev mode: check for dev-session cookie
   if (DEV_MODE_ENABLED) {
@@ -520,10 +587,38 @@ export function requireRole(...allowedRoles: Array<'owner' | 'admin' | 'member'>
 /**
  * Middleware to require admin access
  * Must be used after requireAuth
- * Checks if user's email is from @agenticadvertising.org domain
+ * Accepts WorkOS API keys with 'admin:*' permission for programmatic access
+ * Or checks if user's email is in ADMIN_EMAILS list
  */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const isHtmlRequest = req.accepts('html') && !req.path.startsWith('/api/');
+
+  // Check for WorkOS API key with admin permission
+  const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
+  if (apiKey) {
+    const isReadOnlyRequest = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+
+    // admin:* grants full access (read and write)
+    if (apiKeyHasPermission(apiKey, 'admin:*')) {
+      logger.debug({ path: req.path, method: req.method, apiKeyId: apiKey.id }, 'Full admin access via WorkOS API key');
+      return next();
+    }
+
+    // admin:read only grants access to read operations
+    if (apiKeyHasPermission(apiKey, 'admin:read') && isReadOnlyRequest) {
+      logger.debug({ path: req.path, method: req.method, apiKeyId: apiKey.id }, 'Read-only admin access via WorkOS API key');
+      return next();
+    }
+
+    // API key exists but doesn't have sufficient permission
+    return res.status(403).json({
+      error: 'Insufficient permissions',
+      message: isReadOnlyRequest
+        ? 'This API key does not have admin access. Required permission: admin:* or admin:read'
+        : 'This API key does not have write access. Required permission: admin:*',
+      api_key_permissions: apiKey.permissions,
+    });
+  }
 
   // Dev mode: check if dev user has admin flag
   if (DEV_MODE_ENABLED) {
