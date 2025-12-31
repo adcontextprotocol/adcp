@@ -1,5 +1,6 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import * as fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WorkOS, DomainDataState } from "@workos-inc/node";
@@ -317,7 +318,6 @@ export class HTTPServer {
       }
 
       const filePath = path.join(publicPath, urlPath);
-      const fs = await import('fs/promises');
 
       try {
         // Check if file exists
@@ -385,6 +385,77 @@ export class HTTPServer {
   private isAdcpDomain(req: express.Request): boolean {
     const hostname = req.hostname || '';
     return hostname.includes('adcontextprotocol') && !hostname.includes('localhost');
+  }
+
+  /**
+   * Serve an HTML file with APP_CONFIG injected.
+   * This ensures clean URL routes (like /membership) get the same config injection
+   * as .html file requests handled by the middleware.
+   */
+  private async serveHtmlWithConfig(req: express.Request, res: express.Response, htmlFile: string): Promise<void> {
+    const publicPath = process.env.NODE_ENV === 'production'
+      ? path.join(__dirname, "../server/public")
+      : path.join(__dirname, "../public");
+    const filePath = path.join(publicPath, htmlFile);
+
+    try {
+      // Get user from session (if authenticated)
+      let user = null;
+      const sessionCookie = req.cookies?.['wos-session'];
+
+      // Check dev mode first
+      if (isDevModeEnabled()) {
+        const devUser = getDevUser(req);
+        if (devUser) {
+          user = devUser;
+        }
+      }
+
+      // Then check WorkOS session
+      if (!user && sessionCookie && AUTH_ENABLED && workos) {
+        try {
+          const session = await workos.userManagement.loadSealedSession({
+            sessionData: sessionCookie,
+            cookiePassword: WORKOS_COOKIE_PASSWORD,
+          });
+          if (session) {
+            const authResult = await session.authenticate();
+            if (authResult.authenticated && authResult.user) {
+              user = authResult.user;
+            }
+          }
+        } catch {
+          // Session invalid or expired - continue without user
+        }
+      }
+
+      // Read and inject config
+      let html = await fs.readFile(filePath, 'utf-8');
+      const configScript = getAppConfigScript(user);
+
+      // Inject before </head>
+      if (html.includes('</head>')) {
+        html = html.replace('</head>', `${configScript}\n</head>`);
+      } else {
+        // Fallback: inject at start of body
+        html = html.replace('<body', `${configScript}\n<body`);
+      }
+
+      res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.send(html);
+    } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError.code === 'ENOENT') {
+        logger.warn({ htmlFile }, 'HTML file not found');
+        res.status(404).send('Not Found');
+      } else {
+        logger.error({ error, htmlFile }, 'Failed to serve HTML with config');
+        res.status(500).send('Internal Server Error');
+      }
+    }
   }
 
   private setupRoutes(): void {
@@ -1158,7 +1229,7 @@ export class HTTPServer {
     // Homepage route - serve different homepage based on host
     // agenticadvertising.org (beta): Org-focused homepage
     // adcontextprotocol.org (production): Protocol-focused homepage
-    this.app.get("/", (req, res) => {
+    this.app.get("/", async (req, res) => {
       const hostname = req.hostname || '';
       const betaOverride = req.query.beta;
 
@@ -1174,114 +1245,74 @@ export class HTTPServer {
                      hostname === '127.0.0.1';
       }
 
-      const publicDir = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public")
-        : path.join(__dirname, "../public");
-
       // Beta site gets org-focused homepage, production gets protocol homepage
       const homepageFile = isBetaSite ? 'org-index.html' : 'index.html';
-      res.sendFile(path.join(publicDir, homepageFile));
+      await this.serveHtmlWithConfig(req, res, homepageFile);
     });
 
     // Registry UI route - serve registry.html at /registry
-    this.app.get("/registry", (req, res) => {
-      const registryPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/registry.html")
-        : path.join(__dirname, "../public/registry.html");
-      res.sendFile(registryPath);
+    this.app.get("/registry", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'registry.html');
     });
 
     // AdAgents Manager UI route - serve adagents.html at /adagents
-    this.app.get("/adagents", (req, res) => {
-      const adagentsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/adagents.html")
-        : path.join(__dirname, "../public/adagents.html");
-      res.sendFile(adagentsPath);
+    this.app.get("/adagents", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'adagents.html');
     });
 
     // Member Profile UI route - serve member-profile.html at /member-profile
-    this.app.get("/member-profile", (req, res) => {
+    this.app.get("/member-profile", async (req, res) => {
       // Redirect to AAO for auth-requiring pages when on AdCP domain
       if (this.isAdcpDomain(req)) {
         const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
         return res.redirect(`https://agenticadvertising.org/member-profile${queryString}`);
       }
-      const memberProfilePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/member-profile.html")
-        : path.join(__dirname, "../public/member-profile.html");
-      res.sendFile(memberProfilePath);
+      await this.serveHtmlWithConfig(req, res, 'member-profile.html');
     });
 
     // Member Directory UI route - serve members.html at /members
-    this.app.get("/members", (req, res) => {
-      const membersPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/members.html")
-        : path.join(__dirname, "../public/members.html");
-      res.sendFile(membersPath);
+    this.app.get("/members", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'members.html');
     });
 
     // Individual member profile page
-    this.app.get("/members/:slug", (req, res) => {
-      const membersPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/members.html")
-        : path.join(__dirname, "../public/members.html");
-      res.sendFile(membersPath);
+    this.app.get("/members/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'members.html');
     });
 
     // Publishers registry page
-    this.app.get("/publishers", (req, res) => {
-      const publishersPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/publishers.html")
-        : path.join(__dirname, "../public/publishers.html");
-      res.sendFile(publishersPath);
+    this.app.get("/publishers", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'publishers.html');
     });
 
     // Properties registry page
-    this.app.get("/properties", (req, res) => {
-      const propertiesPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/properties.html")
-        : path.join(__dirname, "../public/properties.html");
-      res.sendFile(propertiesPath);
+    this.app.get("/properties", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'properties.html');
     });
 
     // About AAO page - serve about.html at /about
-    this.app.get("/about", (req, res) => {
-      const aboutPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/about.html")
-        : path.join(__dirname, "../public/about.html");
-      res.sendFile(aboutPath);
+    this.app.get("/about", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'about.html');
     });
 
 // Membership page - serve membership.html at /membership
-    this.app.get("/membership", (req, res) => {
-      const membershipPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/membership.html")
-        : path.join(__dirname, "../public/membership.html");
-      res.sendFile(membershipPath);
+    this.app.get("/membership", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'membership.html');
     });
 
     // Governance page - serve governance.html at /governance
-    this.app.get("/governance", (req, res) => {
-      const governancePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/governance.html")
-        : path.join(__dirname, "../public/governance.html");
-      res.sendFile(governancePath);
+    this.app.get("/governance", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'governance.html');
     });
 
     // Perspectives section
-    this.app.get("/perspectives", (req, res) => {
-      const perspectivesPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/perspectives/index.html")
-        : path.join(__dirname, "../public/perspectives/index.html");
-      res.sendFile(perspectivesPath);
+    this.app.get("/perspectives", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'perspectives/index.html');
     });
 
     // Dynamic article route - serves article.html which loads content from API
-    this.app.get("/perspectives/:slug", (req, res) => {
-      const articlePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/perspectives/article.html")
-        : path.join(__dirname, "../public/perspectives/article.html");
-      res.sendFile(articlePath);
+    this.app.get("/perspectives/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'perspectives/article.html');
     });
 
     // Legacy redirect from /insights to /perspectives
@@ -1293,26 +1324,17 @@ export class HTTPServer {
     });
 
     // Working Groups pages - public list, detail pages handled by single HTML
-    this.app.get("/working-groups", (req, res) => {
-      const workingGroupsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/working-groups.html")
-        : path.join(__dirname, "../public/working-groups.html");
-      res.sendFile(workingGroupsPath);
+    this.app.get("/working-groups", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'working-groups.html');
     });
 
-    this.app.get("/working-groups/:slug", (req, res) => {
-      const workingGroupDetailPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/working-groups/detail.html")
-        : path.join(__dirname, "../public/working-groups/detail.html");
-      res.sendFile(workingGroupDetailPath);
+    this.app.get("/working-groups/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'working-groups/detail.html');
     });
 
     // Working group management page (leaders only - auth check happens client-side via API)
-    this.app.get("/working-groups/:slug/manage", (req, res) => {
-      const managePath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, "../server/public/working-groups/manage.html")
-        : path.join(__dirname, "../public/working-groups/manage.html");
-      res.sendFile(managePath);
+    this.app.get("/working-groups/:slug/manage", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'working-groups/manage.html');
     });
 
     // AdAgents API Routes
@@ -2361,11 +2383,8 @@ export class HTTPServer {
 
     // Admin routes
     // GET /admin - Admin landing page
-    this.app.get('/admin', requireAuth, requireAdmin, (req, res) => {
-      const adminPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin.html')
-        : path.join(__dirname, '../public/admin.html');
-      res.sendFile(adminPath);
+    this.app.get('/admin', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin.html');
     });
 
 
@@ -4349,67 +4368,40 @@ Disallow: /api/admin/
     // Serve admin pages
     // Note: /admin/prospects route is now in routes/admin.ts
 
-    this.app.get('/admin/members', requireAuth, requireAdmin, (req, res) => {
-      const membersPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-members.html')
-        : path.join(__dirname, '../public/admin-members.html');
-      res.sendFile(membersPath);
+    this.app.get('/admin/members', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-members.html');
     });
 
-    this.app.get('/admin/agreements', requireAuth, requireAdmin, (req, res) => {
-      const agreementsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-agreements.html')
-        : path.join(__dirname, '../public/admin-agreements.html');
-      res.sendFile(agreementsPath);
+    this.app.get('/admin/agreements', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-agreements.html');
     });
 
-    this.app.get('/admin/analytics', requireAuth, requireAdmin, (req, res) => {
-      const analyticsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-analytics.html')
-        : path.join(__dirname, '../public/admin-analytics.html');
-      res.sendFile(analyticsPath);
+    this.app.get('/admin/analytics', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-analytics.html');
     });
 
-    this.app.get('/admin/audit', requireAuth, requireAdmin, (req, res) => {
-      const auditPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-audit.html')
-        : path.join(__dirname, '../public/admin-audit.html');
-      res.sendFile(auditPath);
+    this.app.get('/admin/audit', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-audit.html');
     });
 
-    this.app.get('/admin/perspectives', requireAuth, requireAdmin, (req, res) => {
-      const perspectivesPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-perspectives.html')
-        : path.join(__dirname, '../public/admin-perspectives.html');
-      res.sendFile(perspectivesPath);
+    this.app.get('/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-perspectives.html');
     });
 
-    this.app.get('/admin/working-groups', requireAuth, requireAdmin, (req, res) => {
-      const workingGroupsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-working-groups.html')
-        : path.join(__dirname, '../public/admin-working-groups.html');
-      res.sendFile(workingGroupsPath);
+    this.app.get('/admin/working-groups', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-working-groups.html');
     });
 
-    this.app.get('/admin/users', requireAuth, requireAdmin, (req, res) => {
-      const usersPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-users.html')
-        : path.join(__dirname, '../public/admin-users.html');
-      res.sendFile(usersPath);
+    this.app.get('/admin/users', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-users.html');
     });
 
-    this.app.get('/admin/email', requireAuth, requireAdmin, (req, res) => {
-      const emailPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-email.html')
-        : path.join(__dirname, '../public/admin-email.html');
-      res.sendFile(emailPath);
+    this.app.get('/admin/email', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-email.html');
     });
 
-    this.app.get('/admin/feeds', requireAuth, requireAdmin, (req, res) => {
-      const feedsPath = process.env.NODE_ENV === 'production'
-        ? path.join(__dirname, '../server/public/admin-feeds.html')
-        : path.join(__dirname, '../public/admin-feeds.html');
-      res.sendFile(feedsPath);
+    this.app.get('/admin/feeds', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-feeds.html');
     });
 
     // Registry API endpoints (consolidated agents, publishers, lookups)

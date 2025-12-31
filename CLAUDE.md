@@ -96,6 +96,7 @@ Types: `patch` (fixes), `minor` (new features), `major` (breaking), `--empty` (n
 docker compose up --build  # Start postgres + app with auto-migrations
 docker compose down -v     # Reset database
 ```
+**Note:** Docker maps to `$CONDUCTOR_PORT` (from `.env.local`), not port 3000. Check `docker compose ps` for the actual port.
 
 ### Without Docker
 ```bash
