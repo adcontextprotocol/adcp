@@ -26,6 +26,8 @@ export interface ThreadContext {
   // Slack-specific
   viewing_channel_id?: string;
   viewing_channel_name?: string;
+  viewing_channel_description?: string;
+  viewing_channel_topic?: string;
   team_id?: string;
   enterprise_id?: string;
 
