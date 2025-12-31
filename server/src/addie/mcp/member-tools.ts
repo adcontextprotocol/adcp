@@ -1009,9 +1009,7 @@ export function createMemberToolHandlers(
     const URL_LENGTH_MAX = 8000;
 
     // Build response with the draft details and link
-    // IMPORTANT: This output must be copied verbatim into the response - the user cannot see tool outputs directly
-    let response = `<!-- ADDIE INSTRUCTION: Copy EVERYTHING below to your response. Users cannot see tool outputs - if you don't copy the link, they won't see it! -->\n\n`;
-    response += `## GitHub Issue Draft\n\n`;
+    let response = `## GitHub Issue Draft\n\n`;
 
     if (urlLength > URL_LENGTH_MAX) {
       // URL too long - provide manual instructions instead

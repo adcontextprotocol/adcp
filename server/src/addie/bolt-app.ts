@@ -58,6 +58,33 @@ let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let expressReceiver: any = null;
 let claudeClient: AddieClaudeClient | null = null;
+
+/**
+ * Fetch channel info and build a partial ThreadContext with channel details
+ */
+async function buildChannelContext(channelId: string): Promise<Partial<ThreadContext>> {
+  const context: Partial<ThreadContext> = {
+    viewing_channel_id: channelId,
+  };
+
+  try {
+    const channelInfo = await getChannelInfo(channelId);
+    if (channelInfo) {
+      context.viewing_channel_name = channelInfo.name;
+      if (channelInfo.purpose?.value) {
+        context.viewing_channel_description = channelInfo.purpose.value;
+      }
+      if (channelInfo.topic?.value) {
+        context.viewing_channel_topic = channelInfo.topic.value;
+      }
+    }
+  } catch (error) {
+    logger.debug({ error, channelId }, 'Could not fetch channel info');
+  }
+
+  return context;
+}
+
 let addieDb: AddieDatabase | null = null;
 let threadContextStore: DatabaseThreadContextStore | null = null;
 let initialized = false;
@@ -411,25 +438,13 @@ async function handleUserMessage({
   try {
     const boltContext = await getThreadContext();
     if (boltContext?.channel_id) {
+      const channelContext = await buildChannelContext(boltContext.channel_id);
       slackThreadContext = {
-        viewing_channel_id: boltContext.channel_id,
+        ...channelContext,
         team_id: boltContext.team_id,
         enterprise_id: boltContext.enterprise_id || undefined,
       };
-
-      // Fetch channel details (name, description, topic)
-      const channelInfo = await getChannelInfo(boltContext.channel_id);
-      if (channelInfo) {
-        slackThreadContext.viewing_channel_name = channelInfo.name;
-        if (channelInfo.purpose?.value) {
-          slackThreadContext.viewing_channel_description = channelInfo.purpose.value;
-        }
-        if (channelInfo.topic?.value) {
-          slackThreadContext.viewing_channel_topic = channelInfo.topic.value;
-        }
-      }
-
-      logger.debug({ viewingChannel: boltContext.channel_id, channelName: channelInfo?.name }, 'Addie Bolt: User is viewing channel');
+      logger.debug({ viewingChannel: boltContext.channel_id, channelName: channelContext.viewing_channel_name }, 'Addie Bolt: User is viewing channel');
     }
   } catch (error) {
     logger.debug({ error }, 'Addie Bolt: Could not get thread context');
@@ -695,23 +710,7 @@ async function handleAppMention({
   const inputValidation = sanitizeInput(rawText);
 
   // Fetch channel info for context
-  let mentionChannelContext: ThreadContext = {
-    viewing_channel_id: channelId,
-  };
-  try {
-    const channelInfo = await getChannelInfo(channelId);
-    if (channelInfo) {
-      mentionChannelContext.viewing_channel_name = channelInfo.name;
-      if (channelInfo.purpose?.value) {
-        mentionChannelContext.viewing_channel_description = channelInfo.purpose.value;
-      }
-      if (channelInfo.topic?.value) {
-        mentionChannelContext.viewing_channel_topic = channelInfo.topic.value;
-      }
-    }
-  } catch (error) {
-    logger.debug({ error, channelId }, 'Addie Bolt: Could not fetch channel info for mention');
-  }
+  const mentionChannelContext = await buildChannelContext(channelId) as ThreadContext;
 
   // Fetch thread context if this mention is in a thread
   const MAX_THREAD_CONTEXT_MESSAGES = 25;
