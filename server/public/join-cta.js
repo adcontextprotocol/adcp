@@ -656,18 +656,18 @@ async function submitInvoiceRequest(event) {
     const modalBody = document.querySelector('.invoice-modal-body');
     const modalFooter = document.querySelector('.invoice-modal-footer');
 
-    modalBody.innerHTML = \`
+    modalBody.innerHTML = `
       <div class="invoice-success">
         <div class="invoice-success-icon">&#9989;</div>
         <h3>Invoice Sent!</h3>
-        <p>We've sent an invoice to <strong>\${requestData.contactEmail}</strong>. Please check your email for payment instructions.</p>
+        <p>We've sent an invoice to <strong>${requestData.contactEmail}</strong>. Please check your email for payment instructions.</p>
         <p style="font-size: var(--text-sm);">The invoice is due within 30 days. You can pay online via the link in the email.</p>
       </div>
-    \`;
+    `;
 
-    modalFooter.innerHTML = \`
+    modalFooter.innerHTML = `
       <button type="button" class="btn btn-primary" onclick="closeInvoiceRequestModal()">Done</button>
-    \`;
+    `;
 
   } catch (error) {
     // Show error
