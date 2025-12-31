@@ -463,15 +463,18 @@ export class WorkingGroupDatabase {
    * Get leaders for a working group
    */
   async getLeaders(workingGroupId: string): Promise<WorkingGroupLeader[]> {
-    // Get leaders with user details from working_group_memberships (where user info is stored)
+    // Get leaders with user details from working_group_memberships (if they're a member),
+    // falling back to organization_memberships (the canonical source from WorkOS)
     const result = await query<WorkingGroupLeader>(
       `SELECT
          wgl.user_id,
-         wgm.user_name AS name,
-         wgm.user_org_name AS org_name,
+         COALESCE(wgm.user_name, TRIM(CONCAT(om.first_name, ' ', om.last_name))) AS name,
+         COALESCE(wgm.user_org_name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
+       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_id
        WHERE wgl.working_group_id = $1
        ORDER BY wgl.created_at`,
       [workingGroupId]
@@ -492,11 +495,13 @@ export class WorkingGroupDatabase {
       `SELECT
          wgl.working_group_id,
          wgl.user_id,
-         wgm.user_name AS name,
-         wgm.user_org_name AS org_name,
+         COALESCE(wgm.user_name, TRIM(CONCAT(om.first_name, ' ', om.last_name))) AS name,
+         COALESCE(wgm.user_org_name, org.name) AS org_name,
          wgl.created_at
        FROM working_group_leaders wgl
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
+       LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
+       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_id
        WHERE wgl.working_group_id = ANY($1)
        ORDER BY wgl.created_at`,
       [workingGroupIds]
