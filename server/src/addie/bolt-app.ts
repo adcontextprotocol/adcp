@@ -52,6 +52,7 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
+import { getThreadReplies } from '../slack/client.js';
 
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -654,12 +655,45 @@ async function handleAppMention({
 
   const channelId = event.channel;
   const threadTs = event.thread_ts || event.ts;
+  const isInThread = Boolean(event.thread_ts);
 
   // Build external ID for Slack mentions: channel_id:thread_ts (or ts if no thread)
   const externalId = `${channelId}:${threadTs}`;
 
   // Sanitize input
   const inputValidation = sanitizeInput(rawText);
+
+  // Fetch thread context if this mention is in a thread
+  const MAX_THREAD_CONTEXT_MESSAGES = 25;
+  let threadContext = '';
+  if (isInThread && event.thread_ts) {
+    try {
+      const threadMessages = await getThreadReplies(channelId, event.thread_ts, true);
+      if (threadMessages.length > 0) {
+        // Filter out Addie's own messages and format the thread history
+        const contextMessages = threadMessages
+          .filter(msg => msg.user !== context.botUserId) // Exclude Addie's own messages
+          .filter(msg => msg.ts !== event.ts) // Exclude the current mention message
+          .filter(msg => (msg.text || '').trim().length > 0) // Filter out empty messages
+          .slice(-MAX_THREAD_CONTEXT_MESSAGES)
+          .map(msg => {
+            // Strip any bot mentions from historical messages too
+            let text = msg.text || '';
+            if (context.botUserId) {
+              text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
+            }
+            return `- ${text}`;
+          });
+
+        if (contextMessages.length > 0) {
+          threadContext = `\n\n## Thread Context\nThe user is replying in a Slack thread. Here are the previous messages in this thread for context:\n${contextMessages.join('\n')}\n\n---\n`;
+          logger.debug({ messageCount: contextMessages.length }, 'Addie Bolt: Fetched thread context for mention');
+        }
+      }
+    } catch (error) {
+      logger.warn({ error, channelId, threadTs: event.thread_ts }, 'Addie Bolt: Failed to fetch thread context');
+    }
+  }
 
   // Get or create unified thread for this mention
   const thread = await threadService.getOrCreateThread({
@@ -673,11 +707,16 @@ async function handleAppMention({
     },
   });
 
-  // Build message with member context
-  const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
+  // Build message with member context and thread context
+  const { message: messageWithMemberContext, memberContext } = await buildMessageWithMemberContext(
     userId,
     inputValidation.sanitized
   );
+
+  // Prepend thread context if available (member context already includes the user's message)
+  const messageWithContext = threadContext
+    ? `${threadContext}${messageWithMemberContext}`
+    : messageWithMemberContext;
 
   // Log user message to unified thread
   const userMessageFlagged = inputValidation.flagged;
@@ -711,9 +750,12 @@ async function handleAppMention({
   // Validate output
   const outputValidation = validateOutput(response.text);
 
-  // Send response in thread
+  // Send response in thread (must explicitly pass thread_ts for app_mention events)
   try {
-    await say(outputValidation.sanitized);
+    await say({
+      text: outputValidation.sanitized,
+      thread_ts: threadTs,
+    });
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Failed to send mention response');
   }

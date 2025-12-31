@@ -403,6 +403,74 @@ export async function searchSlackMessages(
 }
 
 /**
+ * Message from conversations.replies
+ */
+export interface SlackThreadMessage {
+  type: string;
+  user?: string;
+  text: string;
+  ts: string;
+  thread_ts?: string;
+  reply_count?: number;
+  parent_user_id?: string;
+}
+
+/**
+ * Get thread replies (conversations.replies)
+ * Returns all messages in a thread, including the parent message
+ * @param useAddieToken - If true, uses ADDIE_BOT_TOKEN
+ */
+export async function getThreadReplies(
+  channelId: string,
+  threadTs: string,
+  useAddieToken = false
+): Promise<SlackThreadMessage[]> {
+  let token: string | undefined;
+  if (useAddieToken) {
+    if (!ADDIE_BOT_TOKEN) {
+      throw new Error('ADDIE_BOT_TOKEN is not configured');
+    }
+    token = ADDIE_BOT_TOKEN;
+  } else {
+    if (!SLACK_BOT_TOKEN) {
+      throw new Error('SLACK_BOT_TOKEN is not configured');
+    }
+    token = SLACK_BOT_TOKEN;
+  }
+
+  try {
+    const url = new URL(`${SLACK_API_BASE}/conversations.replies`);
+    url.searchParams.set('channel', channelId);
+    url.searchParams.set('ts', threadTs);
+    url.searchParams.set('limit', '100'); // Get up to 100 messages in thread
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    const data = await response.json() as {
+      ok: boolean;
+      messages?: SlackThreadMessage[];
+      error?: string;
+    };
+
+    if (!data.ok) {
+      logger.warn({ error: data.error, channelId, threadTs }, 'Failed to get thread replies');
+      return [];
+    }
+
+    return data.messages || [];
+  } catch (error) {
+    logger.error({ error, channelId, threadTs }, 'Error fetching thread replies');
+    return [];
+  }
+}
+
+/**
  * Test the Slack connection (auth.test)
  */
 export async function testSlackConnection(): Promise<{
