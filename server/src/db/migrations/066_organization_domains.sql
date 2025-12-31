@@ -24,12 +24,9 @@ CREATE TABLE IF NOT EXISTS organization_domains (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 
-  -- Each domain can only belong to one org
+  -- Each domain can only belong to one org (also creates implicit index)
   UNIQUE(domain)
 );
-
--- Index for looking up org by domain (user routing)
-CREATE INDEX IF NOT EXISTS idx_organization_domains_domain ON organization_domains(domain);
 
 -- Index for looking up domains by org
 CREATE INDEX IF NOT EXISTS idx_organization_domains_org ON organization_domains(workos_organization_id);

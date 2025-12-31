@@ -102,6 +102,13 @@ function verifyWorkOSWebhook(
   }
 
   try {
+    // Validate timestamp is recent (within 5 minutes) to prevent replay attacks
+    const timestampAge = Math.abs(Date.now() / 1000 - parseInt(timestamp, 10));
+    if (timestampAge > 300) {
+      logger.warn({ timestampAge }, 'WorkOS webhook timestamp too old (potential replay attack)');
+      return false;
+    }
+
     // WorkOS signature format: t=timestamp,v1=signature
     const expectedSignature = crypto
       .createHmac('sha256', WORKOS_WEBHOOK_SECRET)
@@ -365,114 +372,156 @@ async function deleteOrganizationDomains(orgId: string): Promise<void> {
 
 /**
  * Upsert a single organization domain from organization_domain.* events
+ * Uses transaction to prevent race conditions when setting primary domain
  */
 async function upsertOrganizationDomain(domainData: OrganizationDomainEventData): Promise<void> {
   const pool = getPool();
+  const client = await pool.connect();
 
-  // First check if the organization exists in our database
-  const orgCheck = await pool.query(
-    `SELECT workos_organization_id FROM organizations WHERE workos_organization_id = $1`,
-    [domainData.organization_id]
-  );
+  try {
+    await client.query('BEGIN');
 
-  if (orgCheck.rows.length === 0) {
-    logger.debug(
-      { orgId: domainData.organization_id, domain: domainData.domain },
-      'Organization not in our database, skipping domain upsert'
-    );
-    return;
-  }
-
-  await pool.query(
-    `INSERT INTO organization_domains (
-      workos_organization_id, domain, verified, source
-    ) VALUES ($1, $2, $3, 'workos')
-    ON CONFLICT (domain) DO UPDATE SET
-      workos_organization_id = EXCLUDED.workos_organization_id,
-      verified = EXCLUDED.verified,
-      source = 'workos',
-      updated_at = NOW()`,
-    [
-      domainData.organization_id,
-      domainData.domain,
-      domainData.state === 'verified',
-    ]
-  );
-
-  // If this is verified and there's no primary domain yet, make it primary
-  if (domainData.state === 'verified') {
-    const primaryCheck = await pool.query(
-      `SELECT domain FROM organization_domains
-       WHERE workos_organization_id = $1 AND is_primary = true`,
+    // Check if org exists (with lock to prevent races)
+    const orgCheck = await client.query(
+      `SELECT workos_organization_id FROM organizations
+       WHERE workos_organization_id = $1 FOR UPDATE`,
       [domainData.organization_id]
     );
 
-    if (primaryCheck.rows.length === 0) {
-      await pool.query(
-        `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-         WHERE workos_organization_id = $1 AND domain = $2`,
-        [domainData.organization_id, domainData.domain]
+    if (orgCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      logger.debug(
+        { orgId: domainData.organization_id, domain: domainData.domain },
+        'Organization not in our database, skipping domain upsert'
       );
-
-      // Also update the email_domain column
-      await pool.query(
-        `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-         WHERE workos_organization_id = $2`,
-        [domainData.domain, domainData.organization_id]
-      );
+      return;
     }
-  }
 
-  logger.info({
-    orgId: domainData.organization_id,
-    domain: domainData.domain,
-    verified: domainData.state === 'verified',
-  }, 'Upserted organization domain');
+    // Normalize domain to lowercase
+    const normalizedDomain = domainData.domain.toLowerCase();
+
+    await client.query(
+      `INSERT INTO organization_domains (
+        workos_organization_id, domain, verified, source
+      ) VALUES ($1, $2, $3, 'workos')
+      ON CONFLICT (domain) DO UPDATE SET
+        workos_organization_id = EXCLUDED.workos_organization_id,
+        verified = EXCLUDED.verified,
+        source = 'workos',
+        updated_at = NOW()`,
+      [
+        domainData.organization_id,
+        normalizedDomain,
+        domainData.state === 'verified',
+      ]
+    );
+
+    // If this is verified and there's no primary domain yet, make it primary (atomic)
+    if (domainData.state === 'verified') {
+      const updated = await client.query(
+        `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+         WHERE workos_organization_id = $1 AND domain = $2
+         AND NOT EXISTS (
+           SELECT 1 FROM organization_domains
+           WHERE workos_organization_id = $1 AND is_primary = true AND domain != $2
+         )
+         RETURNING domain`,
+        [domainData.organization_id, normalizedDomain]
+      );
+
+      // If we set this as primary, also update the email_domain column
+      if (updated.rows.length > 0) {
+        await client.query(
+          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+           WHERE workos_organization_id = $2`,
+          [normalizedDomain, domainData.organization_id]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    logger.info({
+      orgId: domainData.organization_id,
+      domain: normalizedDomain,
+      verified: domainData.state === 'verified',
+    }, 'Upserted organization domain');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**
  * Delete a single organization domain
+ * Uses transaction to prevent race conditions when selecting new primary
  */
 async function deleteSingleOrganizationDomain(domainData: OrganizationDomainEventData): Promise<void> {
   const pool = getPool();
+  const client = await pool.connect();
 
-  const result = await pool.query(
-    `DELETE FROM organization_domains
-     WHERE workos_organization_id = $1 AND domain = $2 AND source = 'workos'`,
-    [domainData.organization_id, domainData.domain]
-  );
+  try {
+    await client.query('BEGIN');
 
-  if (result.rowCount && result.rowCount > 0) {
-    // If we deleted the primary domain, clear email_domain or pick another
-    const remaining = await pool.query(
-      `SELECT domain FROM organization_domains
-       WHERE workos_organization_id = $1 AND verified = true
-       ORDER BY is_primary DESC, created_at ASC
-       LIMIT 1`,
-      [domainData.organization_id]
+    // Normalize domain to lowercase
+    const normalizedDomain = domainData.domain.toLowerCase();
+
+    const result = await client.query(
+      `DELETE FROM organization_domains
+       WHERE workos_organization_id = $1 AND domain = $2 AND source = 'workos'
+       RETURNING is_primary`,
+      [domainData.organization_id, normalizedDomain]
     );
 
-    const newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
+    if (result.rowCount && result.rowCount > 0) {
+      const wasPrimary = result.rows[0]?.is_primary;
 
-    await pool.query(
-      `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-       WHERE workos_organization_id = $2`,
-      [newPrimary, domainData.organization_id]
-    );
+      // If we deleted the primary domain, pick a new one
+      let newPrimary: string | null = null;
+      if (wasPrimary) {
+        const remaining = await client.query(
+          `SELECT domain FROM organization_domains
+           WHERE workos_organization_id = $1 AND verified = true
+           ORDER BY created_at ASC
+           LIMIT 1`,
+          [domainData.organization_id]
+        );
 
-    if (newPrimary) {
-      await pool.query(
-        `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-         WHERE workos_organization_id = $1 AND domain = $2`,
-        [domainData.organization_id, newPrimary]
-      );
+        newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
+
+        if (newPrimary) {
+          await client.query(
+            `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+             WHERE workos_organization_id = $1 AND domain = $2`,
+            [domainData.organization_id, newPrimary]
+          );
+        }
+
+        await client.query(
+          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+           WHERE workos_organization_id = $2`,
+          [newPrimary, domainData.organization_id]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      logger.info({
+        orgId: domainData.organization_id,
+        domain: normalizedDomain,
+        wasPrimary,
+        newPrimary,
+      }, 'Deleted organization domain');
+    } else {
+      await client.query('COMMIT');
     }
-
-    logger.info({
-      orgId: domainData.organization_id,
-      domain: domainData.domain,
-      newPrimary,
-    }, 'Deleted organization domain');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
