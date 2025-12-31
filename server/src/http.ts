@@ -63,7 +63,7 @@ import { createBillingRouter } from "./routes/billing.js";
 import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
-import { queuePerspectiveLink, processPendingResources } from "./addie/services/content-curator.js";
+import { queuePerspectiveLink, processPendingResources, processRssPerspectives } from "./addie/services/content-curator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10467,9 +10467,15 @@ Disallow: /api/admin/
     // Process on startup after a short delay
     setTimeout(async () => {
       try {
+        // Process manually queued resources
         const result = await processPendingResources({ limit: 5 });
         if (result.processed > 0) {
           logger.info(result, 'Content curator: processed pending resources');
+        }
+        // Process RSS perspectives
+        const rssResult = await processRssPerspectives({ limit: 5 });
+        if (rssResult.processed > 0) {
+          logger.info(rssResult, 'Content curator: processed RSS perspectives');
         }
       } catch (err) {
         logger.error({ err }, 'Content curator: initial processing failed');
@@ -10479,9 +10485,15 @@ Disallow: /api/admin/
     // Then process periodically
     this.contentCuratorIntervalId = setInterval(async () => {
       try {
+        // Process manually queued resources
         const result = await processPendingResources({ limit: 5 });
         if (result.processed > 0) {
           logger.info(result, 'Content curator: processed pending resources');
+        }
+        // Process RSS perspectives
+        const rssResult = await processRssPerspectives({ limit: 5 });
+        if (rssResult.processed > 0) {
+          logger.info(rssResult, 'Content curator: processed RSS perspectives');
         }
       } catch (err) {
         logger.error({ err }, 'Content curator: periodic processing failed');
