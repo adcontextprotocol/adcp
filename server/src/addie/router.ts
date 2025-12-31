@@ -48,30 +48,6 @@ export interface RoutingContext {
 }
 
 /**
- * Tool definitions for routing
- * These must match the actual registered tools in claude-client
- */
-export const AVAILABLE_TOOLS = {
-  // Knowledge tools
-  search_docs: 'Search AdCP documentation',
-  search_repos: 'Search code repositories (salesagent, clients)',
-  search_slack: 'Search Slack discussions',
-  search_resources: 'Search external resources and news',
-  validate_adagents: 'Validate adagents.json files',
-
-  // Member tools
-  get_my_profile: 'Get user profile information',
-  update_my_profile: 'Update user profile',
-  list_working_groups: 'List available working groups',
-  join_working_group: 'Join a working group',
-
-  // Built-in
-  web_search: 'Search the web for external information',
-} as const;
-
-export type ToolName = keyof typeof AVAILABLE_TOOLS;
-
-/**
  * Routing rules - code-managed, not user-editable
  *
  * These rules define when Addie should respond and what tools to use.
@@ -270,11 +246,8 @@ function parseRouterResponse(response: string): ExecutionPlan {
       };
     }
     if (parsed.action === 'respond') {
-      // Validate tool names
-      const validTools = Object.keys(AVAILABLE_TOOLS);
-      const tools = Array.isArray(parsed.tools)
-        ? parsed.tools.filter((t: string) => validTools.includes(t))
-        : [];
+      // Accept tool names as-is - they come from ROUTING_RULES.expertise
+      const tools = Array.isArray(parsed.tools) ? parsed.tools : [];
       return {
         action: 'respond',
         tools,
