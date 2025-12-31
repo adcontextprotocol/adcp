@@ -212,6 +212,44 @@
     .status-prospect { background: var(--color-warning-100); color: var(--color-warning-700); }
     .status-cold { background: var(--color-gray-200); color: var(--color-text-secondary); }
 
+    /* Source badges for domain discovery */
+    .source-badge {
+      display: inline-block;
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .source-slack {
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+    }
+    .source-email {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+
+    /* Source filter buttons */
+    .source-filter-btn {
+      padding: var(--space-1) var(--space-2.5);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .source-filter-btn:hover {
+      background: var(--color-gray-50);
+      border-color: var(--color-gray-300);
+    }
+    .source-filter-btn.active {
+      background: var(--color-brand);
+      color: white;
+      border-color: var(--color-brand);
+    }
+
     /* Priority indicators */
     .priority-high {
       color: var(--color-error-600);
@@ -359,27 +397,6 @@
       border-top: var(--border-1) solid var(--color-gray-200);
     }
 
-    /* Bulk import */
-    .bulk-textarea {
-      width: 100%;
-      min-height: 200px;
-      font-family: monospace;
-      font-size: var(--text-sm);
-      padding: var(--space-3);
-      border: var(--border-1) solid var(--color-gray-200);
-      border-radius: var(--radius-md);
-    }
-    .import-results {
-      margin-top: var(--space-4);
-      padding: var(--space-4);
-      background: var(--color-gray-50);
-      border-radius: var(--radius-md);
-      max-height: 300px;
-      overflow-y: auto;
-    }
-    .import-success { color: var(--color-success-600); }
-    .import-error { color: var(--color-error-600); }
-
     /* Date badges */
     .date-overdue {
       color: var(--color-error-600);
@@ -408,7 +425,6 @@
             <p class="subtitle">Track and manage organization relationships</p>
           </div>
           <div class="actions">
-            <button class="btn btn-secondary btn-sm" onclick="openBulkImportModal()">Bulk Import</button>
             <button class="btn btn-primary btn-sm" onclick="openAddProspectModal()">+ Add Prospect</button>
           </div>
         </div>
@@ -445,6 +461,17 @@
           </button>
           <button class="view-tab active" data-view="all" onclick="switchView('all')">
             All
+          </button>
+          <button class="view-tab" data-view="domain_discovery" onclick="switchView('domain_discovery')" style="margin-left: auto; background: var(--color-info-50); border-color: var(--color-info-200);">
+            Domain Discovery
+            <span class="badge" id="count-domain_discovery" style="background: var(--color-info-200);">0</span>
+          </button>
+          <button class="view-tab" data-view="prospect_search" onclick="switchView('prospect_search')" style="background: var(--color-success-50); border-color: var(--color-success-200);">
+            Prospect Search
+          </button>
+          <button class="view-tab" data-view="data_cleanup" onclick="switchView('data_cleanup')" style="background: var(--color-warning-50); border-color: var(--color-warning-200);">
+            Data Cleanup
+            <span class="badge" id="count-data_cleanup" style="background: var(--color-warning-200);">0</span>
           </button>
         </div>
 
@@ -630,34 +657,6 @@
     </div>
   </div>
 
-  <!-- Bulk Import Modal -->
-  <div id="bulkModal" class="modal">
-    <div class="modal-content" style="max-width: 700px;">
-      <div class="modal-header">
-        <h2>Bulk Import Prospects</h2>
-        <button class="modal-close" onclick="closeBulkImportModal()">&times;</button>
-      </div>
-
-      <p style="margin-bottom: var(--space-4); color: var(--color-text-secondary);">
-        Paste CSV data. If first row contains headers, they'll be auto-detected.
-      </p>
-      <p style="margin-bottom: var(--space-4); color: var(--color-text-muted); font-size: var(--text-sm);">
-        Supported columns: <code>Company, Category, Who Owns Outreach, Steerco - names, Description</code><br>
-        Or basic format: <code>name, domain, company_type, prospect_owner, prospect_contact_name, prospect_notes</code>
-      </p>
-
-      <textarea id="bulkCsvData" class="bulk-textarea" placeholder="Company,Category,Who Owns Outreach,Steerco - names,Description
-Acme Corp,Ad Tech,Brian,John Smith,Leading SSP provider
-Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
-
-      <div id="importResults" class="import-results" style="display: none;"></div>
-
-      <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" onclick="closeBulkImportModal()">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="runBulkImport()" id="runImportBtn">Import</button>
-      </div>
-    </div>
-  </div>
 
   <script>
     let allProspects = [];
@@ -665,6 +664,18 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
     let allOrganizations = [];
     let currentView = 'all';
     let viewCounts = {};
+    let discoveredDomains = [];
+    let slackDomains = [];
+    let emailDomains = [];
+    let currentDomainSource = 'all'; // 'all', 'slack', 'email'
+    let enrichmentCache = {}; // Cache enrichment results by domain
+    let enrichmentConfigured = false; // Whether Lusha API is configured
+
+    // Prospect search state
+    let prospectSearchFilters = null;
+    let prospectSearchResults = [];
+    let prospectSearchPage = 1;
+    let prospectSearchTotal = 0;
 
     const viewDescriptions = {
       needs_followup: 'Organizations with pending follow-up actions due within 7 days',
@@ -674,8 +685,16 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       renewals: 'Active members with subscriptions ending in the next 60 days',
       low_engagement: 'Active members with low engagement (2 fires or less) - retention risk',
       my_accounts: 'Organizations where you are listed as owner or connected',
-      all: 'All organizations in the system'
+      all: 'All organizations in the system',
+      domain_discovery: 'Email domains from Slack and Email contacts not yet associated with organizations - potential prospects to add',
+      prospect_search: 'Search Lusha database for companies matching your ideal customer profile - find new prospects by industry, size, and location',
+      data_cleanup: 'AI-powered data quality analysis - find missing info, duplicates, and stale prospects'
     };
+
+    // Data cleanup state
+    let cleanupConfigured = false;
+    let cleanupReport = null;
+    let cleanupInProgress = false;
 
     async function loadData() {
       try {
@@ -684,6 +703,49 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         if (countsRes.ok) {
           viewCounts = await countsRes.json();
           updateViewCounts();
+        }
+
+        // Check if enrichment and cleanup are configured
+        try {
+          const [enrichStatusRes, cleanupStatusRes] = await Promise.all([
+            fetch('/api/admin/enrichment/status').catch(() => null),
+            fetch('/api/admin/cleanup/status').catch(() => null)
+          ]);
+
+          if (enrichStatusRes && enrichStatusRes.ok) {
+            const status = await enrichStatusRes.json();
+            enrichmentConfigured = status.configured;
+          }
+
+          if (cleanupStatusRes && cleanupStatusRes.ok) {
+            const status = await cleanupStatusRes.json();
+            cleanupConfigured = status.configured;
+          }
+        } catch (e) {
+          console.log('Status check failed:', e);
+        }
+
+        // Load domain discovery counts for badge (both Slack and Email sources)
+        try {
+          const [slackRes, emailRes] = await Promise.all([
+            fetch('/api/admin/slack/domains?min_users=1&limit=100').catch(() => null),
+            fetch('/api/admin/email/domains?min_users=1&limit=100').catch(() => null)
+          ]);
+
+          // Merge and count unique new prospect domains
+          const domainSet = new Set();
+          if (slackRes && slackRes.ok) {
+            const data = await slackRes.json();
+            data.filter(d => d.is_new_prospect).forEach(d => domainSet.add(d.domain));
+          }
+          if (emailRes && emailRes.ok) {
+            const data = await emailRes.json();
+            data.filter(d => d.is_new_prospect).forEach(d => domainSet.add(d.domain));
+          }
+          document.getElementById('count-domain_discovery').textContent = domainSet.size;
+        } catch (e) {
+          // Domain discovery may not be available, that's ok
+          console.log('Domain discovery not available:', e);
         }
 
         // Load organizations for dropdown
@@ -725,6 +787,28 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       // Update description
       document.getElementById('viewDescription').textContent = viewDescriptions[view] || '';
 
+      // Handle domain discovery view separately
+      if (view === 'domain_discovery') {
+        await loadDomainDiscovery();
+        return;
+      }
+
+      // Handle prospect search view separately
+      if (view === 'prospect_search') {
+        await loadProspectSearch();
+        return;
+      }
+
+      // Handle data cleanup view separately
+      if (view === 'data_cleanup') {
+        await loadDataCleanup();
+        return;
+      }
+
+      // Show filters (hidden for domain discovery, prospect search, and cleanup)
+      document.querySelector('.filters').style.display = 'flex';
+      updateTableHeaders(false);
+
       // Fetch data for view
       const viewParam = view === 'all' ? '' : `?view=${view}`;
       const response = await fetch(`/api/admin/prospects${viewParam}`);
@@ -742,8 +826,1059 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       applyFilters();
     }
 
+    async function loadDomainDiscovery() {
+      // Hide standard filters, show domain source filter
+      document.querySelector('.filters').style.display = 'none';
+      updateTableHeaders(true);
+
+      try {
+        // Load both Slack and Email domains in parallel
+        const [slackRes, emailRes] = await Promise.all([
+          fetch('/api/admin/slack/domains?min_users=1&limit=100').catch(() => null),
+          fetch('/api/admin/email/domains?min_users=1&limit=100').catch(() => null)
+        ]);
+
+        slackDomains = [];
+        emailDomains = [];
+
+        if (slackRes && slackRes.ok) {
+          const data = await slackRes.json();
+          slackDomains = data.map(d => ({ ...d, source: 'slack' }));
+        }
+
+        if (emailRes && emailRes.ok) {
+          const data = await emailRes.json();
+          emailDomains = data.map(d => ({ ...d, source: 'email' }));
+        }
+
+        // Merge domains, combining those that appear in both sources
+        const domainMap = new Map();
+
+        slackDomains.forEach(d => {
+          domainMap.set(d.domain, {
+            ...d,
+            sources: ['slack'],
+            slack_users: d.users,
+            email_contacts: [],
+            total_users: d.user_count
+          });
+        });
+
+        emailDomains.forEach(d => {
+          if (domainMap.has(d.domain)) {
+            const existing = domainMap.get(d.domain);
+            existing.sources.push('email');
+            existing.email_contacts = d.users;
+            existing.total_users += d.user_count;
+            // Keep the existing_org if either source found one
+            if (d.existing_org && !existing.existing_org) {
+              existing.existing_org = d.existing_org;
+              existing.is_new_prospect = false;
+            }
+          } else {
+            domainMap.set(d.domain, {
+              ...d,
+              sources: ['email'],
+              slack_users: [],
+              email_contacts: d.users,
+              total_users: d.user_count
+            });
+          }
+        });
+
+        discoveredDomains = Array.from(domainMap.values());
+
+        // Update the badge count (new prospects only)
+        const newProspectCount = discoveredDomains.filter(d => d.is_new_prospect).length;
+        document.getElementById('count-domain_discovery').textContent = newProspectCount;
+
+        renderDomainDiscovery();
+
+        // Auto-enrich new prospect domains in the background
+        if (enrichmentConfigured) {
+          autoEnrichDiscoveredDomains();
+        }
+      } catch (error) {
+        console.error('Error loading domain discovery:', error);
+        document.getElementById('prospectsTableBody').innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>Error loading domain data</h3>
+              <p>${error.message}</p>
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    // Auto-enrich discovered domains in the background
+    async function autoEnrichDiscoveredDomains() {
+      // Get domains that need enrichment (new prospects without cached enrichment)
+      const domainsToEnrich = discoveredDomains
+        .filter(d => d.is_new_prospect && !enrichmentCache[d.domain])
+        .map(d => d.domain)
+        .slice(0, 20); // Max 20 per load
+
+      if (domainsToEnrich.length === 0) return;
+
+      console.log(`Auto-enriching ${domainsToEnrich.length} domains in background...`);
+
+      try {
+        const response = await fetch('/api/admin/enrichment/auto-enrich-domains', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domains: domainsToEnrich })
+        });
+
+        if (!response.ok) {
+          console.log('Auto-enrichment failed:', response.status);
+          return;
+        }
+
+        const result = await response.json();
+
+        // Cache the results
+        result.results.forEach(r => {
+          if (r.success && r.data) {
+            enrichmentCache[r.domain] = {
+              success: true,
+              enrichment: r.data,
+              suggested: { companyType: r.data.suggestedCompanyType }
+            };
+          } else {
+            enrichmentCache[r.domain] = { success: false, error: r.error || 'No data' };
+          }
+        });
+
+        console.log(`Auto-enriched ${result.successful} of ${result.total} domains`);
+
+        // Re-render to show the enrichment data
+        if (currentView === 'domain_discovery') {
+          renderDomainDiscovery();
+        }
+      } catch (error) {
+        console.log('Auto-enrichment error:', error);
+      }
+    }
+
+    function filterDomainsBySource(source) {
+      currentDomainSource = source;
+      // Update source filter buttons
+      document.querySelectorAll('.source-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.source === source);
+      });
+      renderDomainDiscovery();
+    }
+
+    function updateTableHeaders(viewType) {
+      const header = document.getElementById('tableHeader');
+      if (viewType === true || viewType === 'domain_discovery') {
+        // Domain discovery view
+        header.innerHTML = `
+          <tr>
+            <th>Domain</th>
+            <th>Source</th>
+            <th>Users</th>
+            <th>Company Info</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        `;
+      } else if (viewType === 'prospect_search') {
+        // Prospect search view
+        header.innerHTML = `
+          <tr>
+            <th>Company</th>
+            <th>Details</th>
+            <th>Location</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        `;
+      } else {
+        // Default prospects view
+        header.innerHTML = `
+          <tr>
+            <th>Company</th>
+            <th>Engagement</th>
+            <th>Type</th>
+            <th>Owner</th>
+            <th>Action Needed</th>
+            <th></th>
+          </tr>
+        `;
+      }
+    }
+
+    function renderDomainDiscovery() {
+      const tbody = document.getElementById('prospectsTableBody');
+      const countDiv = document.getElementById('prospectsCount');
+
+      // Filter by source if needed
+      let domainsToShow = discoveredDomains;
+      if (currentDomainSource === 'slack') {
+        domainsToShow = discoveredDomains.filter(d => d.sources.includes('slack'));
+      } else if (currentDomainSource === 'email') {
+        domainsToShow = discoveredDomains.filter(d => d.sources.includes('email'));
+      }
+
+      const newProspects = domainsToShow.filter(d => d.is_new_prospect);
+      const existingOrgs = domainsToShow.filter(d => !d.is_new_prospect);
+
+      // Show source filter buttons
+      const slackCount = discoveredDomains.filter(d => d.sources.includes('slack') && d.is_new_prospect).length;
+      const emailCount = discoveredDomains.filter(d => d.sources.includes('email') && d.is_new_prospect).length;
+
+      const unenrichedCount = discoveredDomains.filter(d => d.is_new_prospect && !enrichmentCache[d.domain]).length;
+
+      countDiv.innerHTML = `
+        <div style="display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;">
+          <span>Showing ${domainsToShow.length} domains (${newProspects.length} new prospects)</span>
+          <div style="display: flex; gap: var(--space-2);">
+            <button class="source-filter-btn ${currentDomainSource === 'all' ? 'active' : ''}" data-source="all" onclick="filterDomainsBySource('all')">
+              All
+            </button>
+            <button class="source-filter-btn ${currentDomainSource === 'slack' ? 'active' : ''}" data-source="slack" onclick="filterDomainsBySource('slack')">
+              Slack (${slackCount})
+            </button>
+            <button class="source-filter-btn ${currentDomainSource === 'email' ? 'active' : ''}" data-source="email" onclick="filterDomainsBySource('email')">
+              Email (${emailCount})
+            </button>
+          </div>
+          ${enrichmentConfigured && unenrichedCount > 0 ? `
+            <button class="btn btn-secondary btn-sm" onclick="enrichAllNewDomains()" style="margin-left: auto;">
+              Research All (${Math.min(unenrichedCount, 25)})
+            </button>
+          ` : ''}
+        </div>
+      `;
+
+      if (domainsToShow.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>No unmapped domains found</h3>
+              <p>No contacts from this source need organization mapping.</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Sort: new prospects first, then by total user count descending
+      const sortedDomains = [...domainsToShow].sort((a, b) => {
+        if (a.is_new_prospect !== b.is_new_prospect) {
+          return a.is_new_prospect ? -1 : 1;
+        }
+        return b.total_users - a.total_users;
+      });
+
+      tbody.innerHTML = sortedDomains.map(domain => {
+        // Source badges
+        const sourceBadges = domain.sources.map(s => {
+          if (s === 'slack') {
+            return `<span class="source-badge source-slack" title="Found in Slack">Slack</span>`;
+          } else {
+            return `<span class="source-badge source-email" title="Found via Email">Email</span>`;
+          }
+        }).join(' ');
+
+        // Company info - show enrichment data if available, otherwise show enrich button
+        const enrichment = enrichmentCache[domain.domain];
+        let companyInfoHtml;
+        if (enrichment && enrichment.success) {
+          const e = enrichment.enrichment;
+          const parts = [];
+          if (e.companyName) parts.push(`<strong>${e.companyName}</strong>`);
+          if (e.industry) parts.push(`<span class="source-badge" style="background: var(--color-gray-100); color: var(--color-text-secondary);">${e.industry}</span>`);
+          if (e.employeeCountRange || e.employeeCount) parts.push(`${e.employeeCountRange || e.employeeCount + ' employees'}`);
+          if (e.revenueRange) parts.push(`${e.revenueRange}`);
+          if (enrichment.suggested?.companyType) {
+            const typeLabels = { adtech: 'Ad Tech', agency: 'Agency', brand: 'Brand', publisher: 'Publisher' };
+            parts.push(`<span class="source-badge" style="background: var(--color-success-100); color: var(--color-success-700);">${typeLabels[enrichment.suggested.companyType] || enrichment.suggested.companyType}</span>`);
+          }
+          companyInfoHtml = parts.join('<br>') || '<span style="color: var(--color-text-muted);">No data</span>';
+        } else if (enrichment && enrichment.error) {
+          companyInfoHtml = `<span style="color: var(--color-text-muted);">${enrichment.error}</span>`;
+        } else if (enrichmentConfigured && domain.is_new_prospect) {
+          companyInfoHtml = `<button class="btn btn-secondary btn-sm" onclick="enrichDomain('${domain.domain}')" id="enrich-btn-${domain.domain.replace(/\./g, '-')}">Research</button>`;
+        } else if (!enrichmentConfigured) {
+          companyInfoHtml = '<span style="color: var(--color-text-muted);">-</span>';
+        } else {
+          companyInfoHtml = '<span style="color: var(--color-text-muted);">-</span>';
+        }
+
+        // Status badge
+        let statusHtml;
+        if (domain.existing_org) {
+          statusHtml = `<a href="/admin/organizations/${domain.existing_org.id}" class="status-badge status-member">${domain.existing_org.name}</a>`;
+        } else {
+          statusHtml = '<span class="status-badge status-prospect">New Prospect</span>';
+        }
+
+        // Action button - use primary source for create
+        const primarySource = domain.sources.includes('slack') ? 'slack' : 'email';
+        let actionHtml;
+        if (domain.is_new_prospect) {
+          actionHtml = `<button class="btn btn-primary btn-sm" onclick="createProspectFromDomain('${domain.domain}', '${primarySource}')">Create Prospect</button>`;
+        } else {
+          actionHtml = `<a href="/admin/organizations/${domain.existing_org.id}" class="btn btn-secondary btn-sm">View Org</a>`;
+        }
+
+        return `
+          <tr${domain.is_new_prospect ? '' : ' style="opacity: 0.6;"'}>
+            <td><strong>${domain.domain}</strong></td>
+            <td>${sourceBadges}</td>
+            <td><span title="${domain.total_users} total users">${domain.total_users}</span></td>
+            <td style="max-width: 250px; font-size: var(--text-sm);">${companyInfoHtml}</td>
+            <td>${statusHtml}</td>
+            <td>${actionHtml}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function enrichDomain(domain) {
+      const btnId = `enrich-btn-${domain.replace(/\./g, '-')}`;
+      const btn = document.getElementById(btnId);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Loading...';
+      }
+
+      try {
+        const response = await fetch(`/api/admin/enrichment/domain/${encodeURIComponent(domain)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          const error = await response.json();
+          enrichmentCache[domain] = { success: false, error: error.error || 'Failed' };
+        } else {
+          const result = await response.json();
+          enrichmentCache[domain] = result;
+        }
+
+        // Re-render to show the enrichment data
+        renderDomainDiscovery();
+      } catch (error) {
+        enrichmentCache[domain] = { success: false, error: 'Network error' };
+        renderDomainDiscovery();
+      }
+    }
+
+    async function enrichAllNewDomains() {
+      const newDomains = discoveredDomains
+        .filter(d => d.is_new_prospect && !enrichmentCache[d.domain])
+        .map(d => d.domain)
+        .slice(0, 25); // Max 25 at a time
+
+      if (newDomains.length === 0) {
+        alert('No new domains to enrich');
+        return;
+      }
+
+      if (!confirm(`Enrich ${newDomains.length} domains? This will use Lusha API credits.`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/admin/enrichment/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domains: newDomains })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          throw new Error('Bulk enrichment failed');
+        }
+
+        const result = await response.json();
+
+        // Cache the results
+        result.results.forEach(r => {
+          enrichmentCache[r.domain] = r.success
+            ? { success: true, enrichment: r.enrichment, suggested: { companyType: r.suggestedCompanyType } }
+            : { success: false, error: r.error };
+        });
+
+        alert(`Enriched ${result.successful} of ${result.total} domains`);
+        renderDomainDiscovery();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function createProspectFromDomain(domain, source = 'slack') {
+      if (!confirm(`Create prospect for domain "${domain}"?`)) return;
+
+      try {
+        // Use the appropriate endpoint based on source
+        const endpoint = source === 'email'
+          ? `/api/admin/email/domains/${domain}/create-prospect`
+          : `/api/admin/slack/domains/${domain}/create-prospect`;
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to create prospect');
+        }
+
+        const result = await response.json();
+        alert(`Created prospect: ${result.name}`);
+
+        // Refresh domain discovery view
+        await loadDomainDiscovery();
+        // Also refresh view counts
+        const countsRes = await fetch('/api/admin/prospects/view-counts');
+        if (countsRes.ok) {
+          viewCounts = await countsRes.json();
+          updateViewCounts();
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // =========================================================================
+    // PROSPECT SEARCH FUNCTIONS
+    // =========================================================================
+
+    async function loadProspectSearch() {
+      document.querySelector('.filters').style.display = 'none';
+      updateTableHeaders('prospect_search');
+
+      const tbody = document.getElementById('prospectsTableBody');
+      const countDiv = document.getElementById('prospectsCount');
+
+      // Check if Lusha is configured
+      if (!enrichmentConfigured) {
+        countDiv.innerHTML = '';
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>Lusha API Not Configured</h3>
+              <p>Set LUSHA_API_KEY environment variable to enable prospect search.</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Load filters if not already loaded
+      if (!prospectSearchFilters) {
+        countDiv.innerHTML = '<span>Loading filters...</span>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-8);">Loading...</td></tr>';
+
+        try {
+          const filtersRes = await fetch('/api/admin/prospecting/filters');
+          if (filtersRes.ok) {
+            prospectSearchFilters = await filtersRes.json();
+          }
+        } catch (e) {
+          console.error('Failed to load prospect filters:', e);
+        }
+      }
+
+      renderProspectSearchUI();
+    }
+
+    function renderProspectSearchUI() {
+      const tbody = document.getElementById('prospectsTableBody');
+      const countDiv = document.getElementById('prospectsCount');
+
+      // Build the search UI
+      const presets = prospectSearchFilters?.presets || {};
+      const industries = prospectSearchFilters?.industries || [];
+      const sizes = prospectSearchFilters?.sizes || [];
+      const revenues = prospectSearchFilters?.revenues || [];
+
+      countDiv.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: var(--space-4);">
+          <!-- Preset Quick Filters -->
+          <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
+            <span style="font-weight: var(--font-medium);">Quick Filters:</span>
+            ${Object.entries(presets).map(([key, preset]) => `
+              <button class="source-filter-btn" onclick="searchByPreset('${key}')" title="${preset.description}">
+                ${preset.label}
+              </button>
+            `).join('')}
+          </div>
+
+          <!-- Advanced Search Form -->
+          <div style="display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: flex-end;">
+            <div class="filter-group" style="flex: 1; min-width: 200px;">
+              <label>Keywords</label>
+              <input type="text" id="prospectKeywords" placeholder="e.g., programmatic, DSP, SSP..." style="width: 100%;">
+            </div>
+            <div class="filter-group">
+              <label>Min Employees</label>
+              <select id="prospectMinEmployees">
+                <option value="">Any</option>
+                <option value="11">11+</option>
+                <option value="51">51+</option>
+                <option value="201">201+</option>
+                <option value="501">501+</option>
+                <option value="1001">1001+</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Max Employees</label>
+              <select id="prospectMaxEmployees">
+                <option value="">Any</option>
+                <option value="50">Up to 50</option>
+                <option value="200">Up to 200</option>
+                <option value="500">Up to 500</option>
+                <option value="1000">Up to 1000</option>
+                <option value="5000">Up to 5000</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Country</label>
+              <select id="prospectCountry">
+                <option value="">Any</option>
+                <option value="US">United States</option>
+                <option value="UK">United Kingdom</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="CA">Canada</option>
+                <option value="AU">Australia</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="runProspectSearch()">Search</button>
+          </div>
+        </div>
+      `;
+
+      // Render results or empty state
+      if (prospectSearchResults.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>Search for Companies</h3>
+              <p>Use the filters above to find potential prospects from Lusha's database of 60+ million companies.</p>
+              <p style="font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-2);">
+                Try a quick filter like "Ad Tech" or enter custom keywords.
+              </p>
+            </td>
+          </tr>
+        `;
+      } else {
+        renderProspectSearchResults();
+      }
+    }
+
+    async function searchByPreset(presetKey) {
+      const presets = prospectSearchFilters?.presets || {};
+      const preset = presets[presetKey];
+      if (!preset) return;
+
+      // Set keywords from preset
+      document.getElementById('prospectKeywords').value = preset.industryKeywords.join(', ');
+      await runProspectSearch();
+    }
+
+    async function runProspectSearch() {
+      const tbody = document.getElementById('prospectsTableBody');
+
+      const keywords = document.getElementById('prospectKeywords').value
+        .split(',')
+        .map(k => k.trim())
+        .filter(k => k);
+
+      const minEmployees = document.getElementById('prospectMinEmployees').value;
+      const maxEmployees = document.getElementById('prospectMaxEmployees').value;
+      const country = document.getElementById('prospectCountry').value;
+
+      if (keywords.length === 0 && !minEmployees && !maxEmployees && !country) {
+        alert('Please enter at least one search criteria');
+        return;
+      }
+
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-8);">Searching...</td></tr>';
+
+      try {
+        const searchParams = {
+          keywords: keywords.length > 0 ? keywords : undefined,
+          minEmployees: minEmployees ? parseInt(minEmployees) : undefined,
+          maxEmployees: maxEmployees ? parseInt(maxEmployees) : undefined,
+          countries: country ? [country] : undefined,
+          page: prospectSearchPage,
+          pageSize: 25
+        };
+
+        const response = await fetch('/api/admin/prospecting/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(searchParams)
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          const error = await response.json();
+          throw new Error(error.error || 'Search failed');
+        }
+
+        const result = await response.json();
+        prospectSearchResults = result.companies;
+        prospectSearchTotal = result.total;
+
+        renderProspectSearchResults();
+      } catch (error) {
+        console.error('Prospect search error:', error);
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>Search Error</h3>
+              <p>${error.message}</p>
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    function renderProspectSearchResults() {
+      const tbody = document.getElementById('prospectsTableBody');
+
+      if (prospectSearchResults.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>No Results Found</h3>
+              <p>Try adjusting your search criteria.</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      const typeLabels = { adtech: 'Ad Tech', agency: 'Agency', brand: 'Brand', publisher: 'Publisher' };
+
+      tbody.innerHTML = prospectSearchResults.map(company => {
+        // Company info
+        const parts = [];
+        if (company.mainIndustry) parts.push(`<span class="source-badge" style="background: var(--color-gray-100); color: var(--color-text-secondary);">${company.mainIndustry}</span>`);
+        if (company.employeeCountRange || company.employeeCount) parts.push(`${company.employeeCountRange || company.employeeCount + ' employees'}`);
+        if (company.suggestedRevenueRange) parts.push(`${company.suggestedRevenueRange}`);
+        if (company.suggestedCompanyType) {
+          parts.push(`<span class="source-badge" style="background: var(--color-success-100); color: var(--color-success-700);">${typeLabels[company.suggestedCompanyType] || company.suggestedCompanyType}</span>`);
+        }
+        const infoHtml = parts.join('<br>') || '<span style="color: var(--color-text-muted);">-</span>';
+
+        // Location
+        const location = [company.city, company.country].filter(Boolean).join(', ') || '-';
+
+        // Status
+        let statusHtml;
+        if (company.existingOrg) {
+          statusHtml = `<span class="status-badge status-member" title="Already in database">${company.existingOrg.name}</span>`;
+        } else {
+          statusHtml = '<span class="status-badge status-prospect">New</span>';
+        }
+
+        // Action
+        let actionHtml;
+        if (company.isNewProspect) {
+          actionHtml = `<button class="btn btn-primary btn-sm" onclick='importProspect(${JSON.stringify(company).replace(/'/g, "\\'")})'>Import</button>`;
+        } else {
+          actionHtml = `<span style="color: var(--color-text-muted);">Already exists</span>`;
+        }
+
+        return `
+          <tr${!company.isNewProspect ? ' style="opacity: 0.6;"' : ''}>
+            <td>
+              <strong>${company.companyName || company.domain}</strong>
+              ${company.domain ? `<br><a href="https://${company.domain}" target="_blank" style="font-size: var(--text-xs); color: var(--color-text-secondary);">${company.domain}</a>` : ''}
+            </td>
+            <td style="max-width: 200px; font-size: var(--text-sm);">${infoHtml}</td>
+            <td>${location}</td>
+            <td>${statusHtml}</td>
+            <td>${actionHtml}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Add pagination info
+      const viewDesc = document.getElementById('viewDescription');
+      viewDesc.innerHTML = `${viewDescriptions.prospect_search}<br><span style="font-size: var(--text-sm); color: var(--color-text-muted);">Found ${prospectSearchTotal} companies (showing ${prospectSearchResults.length})</span>`;
+    }
+
+    async function importProspect(company) {
+      if (!confirm(`Import "${company.companyName || company.domain}" as a prospect?`)) return;
+
+      try {
+        const response = await fetch('/api/admin/prospecting/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company, autoAssignOwner: true })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          if (response.status === 409) {
+            alert('This organization already exists in the database.');
+            return;
+          }
+          const error = await response.json();
+          throw new Error(error.error || 'Import failed');
+        }
+
+        const result = await response.json();
+        alert(`Imported: ${result.organization.name}`);
+
+        // Remove from results
+        prospectSearchResults = prospectSearchResults.filter(c => c.domain !== company.domain);
+        renderProspectSearchResults();
+
+        // Refresh view counts
+        const countsRes = await fetch('/api/admin/prospects/view-counts');
+        if (countsRes.ok) {
+          viewCounts = await countsRes.json();
+          updateViewCounts();
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
     function switchView(view) {
       loadView(view);
+    }
+
+    // =========================================================================
+    // DATA CLEANUP FUNCTIONS
+    // =========================================================================
+
+    async function loadDataCleanup() {
+      // Hide standard filters
+      document.querySelector('.filters').style.display = 'none';
+
+      document.getElementById('prospectsTableBody').innerHTML = `
+        <tr>
+          <td colspan="6" class="empty-state">
+            <div class="loading-dots">Loading cleanup analysis...</div>
+          </td>
+        </tr>
+      `;
+
+      if (!cleanupConfigured) {
+        renderCleanupNotConfigured();
+        return;
+      }
+
+      try {
+        // Analyze prospects for issues
+        const response = await fetch('/api/admin/cleanup/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limit: 100, onlyProblematic: true })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to analyze prospects');
+        }
+
+        cleanupReport = await response.json();
+        document.getElementById('count-data_cleanup').textContent = cleanupReport.issues_found;
+        renderDataCleanup();
+      } catch (error) {
+        console.error('Error loading cleanup:', error);
+        document.getElementById('prospectsTableBody').innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>Error loading cleanup analysis</h3>
+              <p>${error.message}</p>
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    function renderCleanupNotConfigured() {
+      document.getElementById('prospectsTableBody').innerHTML = `
+        <tr>
+          <td colspan="6" class="empty-state">
+            <h3>Data Cleanup Not Configured</h3>
+            <p>ANTHROPIC_API_KEY is required for intelligent cleanup analysis.</p>
+            <p style="margin-top: var(--space-2); color: var(--color-text-muted);">
+              Add ANTHROPIC_API_KEY to your environment to enable AI-powered data cleanup.
+            </p>
+          </td>
+        </tr>
+      `;
+    }
+
+    function renderDataCleanup() {
+      if (!cleanupReport || cleanupReport.analyses.length === 0) {
+        document.getElementById('prospectsTableBody').innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>No Issues Found</h3>
+              <p>All prospects have complete data. Great job!</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Show summary header and action buttons
+      const summaryHtml = `
+        <tr>
+          <td colspan="6" style="padding: var(--space-4); background: var(--color-bg-subtle);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3);">
+              <div>
+                <strong>${cleanupReport.total_analyzed}</strong> prospects analyzed,
+                <strong style="color: var(--color-warning-600);">${cleanupReport.issues_found}</strong> issues found,
+                <strong style="color: var(--color-success-600);">${cleanupReport.auto_fixable}</strong> auto-fixable
+              </div>
+              <div style="display: flex; gap: var(--space-2);">
+                ${cleanupReport.auto_fixable > 0 ? `
+                  <button class="button" onclick="autoFixAll()" ${cleanupInProgress ? 'disabled' : ''}>
+                    Auto-Fix All (${cleanupReport.auto_fixable})
+                  </button>
+                ` : ''}
+                <button class="button button-secondary" onclick="loadDataCleanup()" ${cleanupInProgress ? 'disabled' : ''}>
+                  Refresh Analysis
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      `;
+
+      // Render each problematic prospect
+      const rowsHtml = cleanupReport.analyses.map(analysis => {
+        const severityColors = {
+          high: 'var(--color-error-500)',
+          medium: 'var(--color-warning-500)',
+          low: 'var(--color-gray-400)'
+        };
+
+        const issuesHtml = analysis.issues.map(issue => {
+          const icon = issue.auto_fixable ? '🔧' : '⚠️';
+          return `
+            <div style="margin: var(--space-1) 0; padding: var(--space-1) var(--space-2); background: var(--color-bg-card); border-left: 3px solid ${severityColors[issue.severity]}; border-radius: var(--radius-sm);">
+              <span title="${issue.severity} severity">${icon}</span>
+              <strong>${issue.type.replace(/_/g, ' ')}</strong>: ${issue.description}
+              ${issue.suggestion ? `<br><small style="color: var(--color-text-muted);">→ ${issue.suggestion}</small>` : ''}
+            </div>
+          `;
+        }).join('');
+
+        const actionsHtml = analysis.suggested_actions.map(action =>
+          `<li style="margin-left: var(--space-4);">${action}</li>`
+        ).join('');
+
+        return `
+          <tr style="vertical-align: top;">
+            <td>
+              <a href="/admin/member.html?org=${analysis.org_id}" target="_blank">
+                <strong>${analysis.org_name}</strong>
+              </a>
+            </td>
+            <td>${issuesHtml}</td>
+            <td>
+              ${actionsHtml ? `<ul style="margin: 0; padding: 0; list-style: disc;">${actionsHtml}</ul>` : '-'}
+            </td>
+            <td style="text-align: center;">
+              ${analysis.can_auto_fix ? `
+                <button class="button button-sm" onclick="autoFixSingle('${analysis.org_id}')" ${cleanupInProgress ? 'disabled' : ''}>
+                  Auto-Fix
+                </button>
+              ` : ''}
+              <button class="button button-sm button-secondary" onclick="analyzeWithAI('${analysis.org_id}')" ${cleanupInProgress ? 'disabled' : ''} style="margin-top: var(--space-1);">
+                AI Analyze
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Update table headers for cleanup view
+      document.querySelector('thead tr').innerHTML = `
+        <th>Organization</th>
+        <th>Issues</th>
+        <th>Suggested Actions</th>
+        <th style="width: 120px;">Actions</th>
+      `;
+
+      document.getElementById('prospectsTableBody').innerHTML = summaryHtml + rowsHtml;
+    }
+
+    async function autoFixAll() {
+      if (!cleanupReport || cleanupReport.auto_fixable === 0) return;
+      if (!confirm(`Auto-fix ${cleanupReport.auto_fixable} issues across ${cleanupReport.analyses.filter(a => a.can_auto_fix).length} organizations?`)) {
+        return;
+      }
+
+      cleanupInProgress = true;
+      renderDataCleanup();
+
+      try {
+        const analysesToFix = cleanupReport.analyses.filter(a => a.can_auto_fix);
+        const response = await fetch('/api/admin/cleanup/auto-fix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ analyses: analysesToFix })
+        });
+
+        if (!response.ok) {
+          throw new Error('Auto-fix failed');
+        }
+
+        const result = await response.json();
+        alert(`Fixed ${result.successful} of ${result.total} issues.`);
+
+        // Reload cleanup analysis
+        await loadDataCleanup();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        cleanupInProgress = false;
+        renderDataCleanup();
+      }
+    }
+
+    async function autoFixSingle(orgId) {
+      const analysis = cleanupReport?.analyses.find(a => a.org_id === orgId);
+      if (!analysis || !analysis.can_auto_fix) return;
+
+      cleanupInProgress = true;
+      renderDataCleanup();
+
+      try {
+        const response = await fetch('/api/admin/cleanup/auto-fix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ analyses: [analysis] })
+        });
+
+        if (!response.ok) {
+          throw new Error('Auto-fix failed');
+        }
+
+        const result = await response.json();
+
+        // Reload cleanup analysis
+        await loadDataCleanup();
+
+        if (result.successful > 0) {
+          alert(`Fixed ${result.successful} issue(s) for ${analysis.org_name}.`);
+        } else {
+          alert('No issues were fixed. They may require manual attention.');
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        cleanupInProgress = false;
+      }
+    }
+
+    async function analyzeWithAI(orgId) {
+      const analysis = cleanupReport?.analyses.find(a => a.org_id === orgId);
+      const orgName = analysis?.org_name || orgId;
+
+      // Show loading state
+      const modal = document.createElement('div');
+      modal.id = 'aiAnalysisModal';
+      modal.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 800px; width: 90%; max-height: 80vh; overflow: auto; box-shadow: var(--shadow-lg);">
+            <h3 style="margin-bottom: var(--space-4);">AI Analysis: ${orgName}</h3>
+            <div class="loading-dots">Analyzing with Claude... (may take 30-60 seconds)</div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      try {
+        const response = await fetch(`/api/admin/cleanup/analyze-with-ai/${orgId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          throw new Error('AI analysis failed');
+        }
+
+        const result = await response.json();
+
+        // Show results
+        const toolCallsHtml = result.tool_calls.length > 0 ? `
+          <details style="margin-top: var(--space-4);">
+            <summary style="cursor: pointer; color: var(--color-text-secondary);">Tool calls (${result.tool_calls.length})</summary>
+            <div style="margin-top: var(--space-2); font-size: 0.85em; background: var(--color-bg-subtle); padding: var(--space-2); border-radius: var(--radius-sm); max-height: 200px; overflow: auto;">
+              ${result.tool_calls.map(tc => `
+                <div style="margin-bottom: var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border);">
+                  <strong>${tc.tool}</strong>
+                  <pre style="margin: var(--space-1) 0; white-space: pre-wrap; font-size: 0.9em;">${JSON.stringify(tc.input, null, 2)}</pre>
+                </div>
+              `).join('')}
+            </div>
+          </details>
+        ` : '';
+
+        const actionsHtml = result.suggested_actions.length > 0 ? `
+          <div style="margin-top: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-md);">
+            <strong>Actions Taken:</strong>
+            <ul style="margin: var(--space-2) 0 0 var(--space-4);">
+              ${result.suggested_actions.map(a => `<li>${a.action}: ${JSON.stringify(a.details)}</li>`).join('')}
+            </ul>
+          </div>
+        ` : '';
+
+        modal.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 800px; width: 90%; max-height: 80vh; overflow: auto; box-shadow: var(--shadow-lg);">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4);">
+                <h3>AI Analysis: ${orgName}</h3>
+                <button onclick="document.getElementById('aiAnalysisModal').remove()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
+              </div>
+              <div style="white-space: pre-wrap; line-height: 1.6;">${result.analysis}</div>
+              ${actionsHtml}
+              ${toolCallsHtml}
+              <div style="margin-top: var(--space-4); text-align: right;">
+                <button class="button" onclick="document.getElementById('aiAnalysisModal').remove(); loadDataCleanup();">Done</button>
+              </div>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        modal.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+              <h3 style="color: var(--color-error-600); margin-bottom: var(--space-4);">Analysis Failed</h3>
+              <p>${error.message}</p>
+              <div style="margin-top: var(--space-4); text-align: right;">
+                <button class="button" onclick="document.getElementById('aiAnalysisModal').remove();">Close</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
     }
 
     function populateParentDropdown() {
@@ -971,181 +2106,6 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       } finally {
         btn.disabled = false;
         btn.textContent = 'Save Prospect';
-      }
-    }
-
-    // Bulk import
-    function openBulkImportModal() {
-      document.getElementById('bulkCsvData').value = '';
-      document.getElementById('importResults').style.display = 'none';
-      document.getElementById('bulkModal').style.display = 'block';
-    }
-
-    function closeBulkImportModal() {
-      document.getElementById('bulkModal').style.display = 'none';
-    }
-
-    // Parse CSV line handling quoted fields
-    function parseCSVLine(line) {
-      const result = [];
-      let current = '';
-      let inQuotes = false;
-
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          result.push(current.trim());
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      result.push(current.trim());
-      return result;
-    }
-
-    // Map category to company_type
-    function mapCategoryToType(category) {
-      if (!category) return null;
-      const cat = category.toLowerCase();
-      if (cat.includes('ad tech') || cat.includes('adtech')) return 'adtech';
-      if (cat.includes('agency')) return 'agency';
-      if (cat.includes('brand')) return 'brand';
-      if (cat.includes('publisher')) return 'publisher';
-      return null;
-    }
-
-    async function runBulkImport() {
-      const csvData = document.getElementById('bulkCsvData').value.trim();
-      if (!csvData) {
-        alert('Please paste CSV data');
-        return;
-      }
-
-      const lines = csvData.split('\n').filter(line => line.trim());
-      if (lines.length === 0) {
-        alert('No data to import');
-        return;
-      }
-
-      // Check if first line is a header row
-      const firstLine = lines[0].toLowerCase();
-      const hasHeader = firstLine.includes('company') || firstLine.includes('name') || firstLine.includes('category');
-      let headers = null;
-      let dataLines = lines;
-
-      if (hasHeader) {
-        headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
-        dataLines = lines.slice(1);
-      }
-
-      // Column mapping for your specific CSV format
-      const columnMap = {
-        'company': 'name',
-        'name': 'name',
-        'category': 'company_type',
-        'company_type': 'company_type',
-        'type': 'company_type',
-        'who owns outreach': 'prospect_owner',
-        'owner': 'prospect_owner',
-        'prospect_owner': 'prospect_owner',
-        'steerco - names': 'prospect_contact_name',
-        'contact': 'prospect_contact_name',
-        'prospect_contact_name': 'prospect_contact_name',
-        'description': 'prospect_notes',
-        'notes': 'prospect_notes',
-        'prospect_notes': 'prospect_notes',
-        'domain': 'domain',
-        'source': 'prospect_source',
-        'prospect_source': 'prospect_source'
-      };
-
-      const prospects = dataLines.map(line => {
-        const parts = parseCSVLine(line);
-
-        if (headers) {
-          // Map by header names
-          const prospect = {
-            prospect_source: 'aao_launch_list'
-          };
-          headers.forEach((header, idx) => {
-            const field = columnMap[header];
-            if (field && parts[idx]) {
-              if (field === 'company_type') {
-                prospect[field] = mapCategoryToType(parts[idx]);
-              } else {
-                prospect[field] = parts[idx];
-              }
-            }
-          });
-          return prospect;
-        } else {
-          // Basic format: name, domain, company_type, prospect_owner, prospect_contact_name, prospect_notes
-          return {
-            name: parts[0],
-            domain: parts[1] || null,
-            company_type: mapCategoryToType(parts[2]),
-            prospect_owner: parts[3] || null,
-            prospect_contact_name: parts[4] || null,
-            prospect_notes: parts[5] || null,
-            prospect_source: 'aao_launch_list'
-          };
-        }
-      }).filter(p => p.name); // Filter out rows without names
-
-      const btn = document.getElementById('runImportBtn');
-      btn.disabled = true;
-      btn.textContent = 'Importing...';
-
-      try {
-        const response = await fetch('/api/admin/prospects/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prospects })
-        });
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            window.AdminNav.redirectToLogin();
-            return;
-          }
-          throw new Error('Import failed');
-        }
-
-        const result = await response.json();
-
-        // Show results
-        const resultsDiv = document.getElementById('importResults');
-        let html = `<strong>Imported: ${result.created}</strong> | Failed: ${result.failed}<br><br>`;
-
-        if (result.results.success.length > 0) {
-          html += '<div class="import-success">Success:<br>';
-          result.results.success.forEach(s => {
-            html += `&nbsp;&nbsp;${s.name}${s.domain ? ` (${s.domain})` : ''}<br>`;
-          });
-          html += '</div>';
-        }
-
-        if (result.results.errors.length > 0) {
-          html += '<div class="import-error" style="margin-top: var(--space-2);">Errors:<br>';
-          result.results.errors.forEach(e => {
-            html += `&nbsp;&nbsp;${e.name}: ${e.error}<br>`;
-          });
-          html += '</div>';
-        }
-
-        resultsDiv.innerHTML = html;
-        resultsDiv.style.display = 'block';
-
-        // Refresh data
-        loadData();
-      } catch (error) {
-        alert('Error: ' + error.message);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Import';
       }
     }
 
