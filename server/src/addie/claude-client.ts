@@ -10,7 +10,7 @@ import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
 import { ADDIE_SYSTEM_PROMPT, buildContextWithThread } from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';
-import { AddieModelConfig } from '../config/models.js';
+import { AddieModelConfig, ModelConfig } from '../config/models.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -137,6 +137,34 @@ export class AddieClaudeClient {
     this.cachedSystemPrompt = null;
     this.cachedRuleIds = [];
     this.cacheExpiry = 0;
+  }
+
+  /**
+   * Quick evaluation using Haiku for simple yes/no decisions
+   * Used for determining if Addie should respond to channel messages
+   *
+   * @param prompt - The evaluation prompt
+   * @returns 'yes', 'no', or 'react' (for emoji reaction only)
+   */
+  async quickEvaluate(prompt: string): Promise<'yes' | 'no' | 'react'> {
+    try {
+      const response = await this.client.messages.create({
+        model: ModelConfig.fast,
+        max_tokens: 10,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const text = response.content[0].type === 'text'
+        ? response.content[0].text.toLowerCase().trim()
+        : '';
+
+      if (text === 'react') return 'react';
+      if (text === 'yes') return 'yes';
+      return 'no';
+    } catch (error) {
+      logger.error({ error }, 'Addie: Quick evaluation failed');
+      return 'no';
+    }
   }
 
   /**

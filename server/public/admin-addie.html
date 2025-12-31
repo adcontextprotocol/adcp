@@ -508,6 +508,7 @@
     .badge-knowledge { background: var(--color-success-100); color: var(--color-success-700); }
     .badge-constraint { background: var(--color-error-100); color: var(--color-error-700); }
     .badge-response_style { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .badge-engagement { background: #fef3c7; color: #92400e; }
 
     /* Suggestions list */
     .suggestions-list {
@@ -852,6 +853,7 @@
               <option value="knowledge">Knowledge</option>
               <option value="constraint">Constraint</option>
               <option value="response_style">Response Style</option>
+              <option value="engagement">Engagement</option>
             </select>
             <label><input type="checkbox" id="active-rules-only" checked> Active only</label>
           </div>
@@ -1203,6 +1205,7 @@
               <option value="response_style">Response Style</option>
               <option value="constraint">Constraint</option>
               <option value="knowledge">Knowledge</option>
+              <option value="engagement">Engagement</option>
             </select>
           </div>
           <div class="form-group">
@@ -1254,13 +1257,15 @@
             <option value="knowledge">Knowledge</option>
             <option value="constraint">Constraint</option>
             <option value="response_style">Response Style</option>
+            <option value="engagement">Engagement</option>
           </select>
           <small>
             <strong>System Prompt:</strong> Core identity and personality |
             <strong>Behavior:</strong> Specific actions to take |
             <strong>Knowledge:</strong> Domain facts |
             <strong>Constraint:</strong> Things NOT to do |
-            <strong>Response Style:</strong> Formatting preferences
+            <strong>Response Style:</strong> Formatting preferences |
+            <strong>Engagement:</strong> When to respond in channels
           </small>
         </div>
         <div class="form-group">

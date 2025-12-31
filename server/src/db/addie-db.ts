@@ -204,7 +204,7 @@ export interface WebConversationStats {
 
 // ============== Rules Types ==============
 
-export type RuleType = 'system_prompt' | 'behavior' | 'knowledge' | 'constraint' | 'response_style';
+export type RuleType = 'system_prompt' | 'behavior' | 'knowledge' | 'constraint' | 'response_style' | 'engagement';
 
 export interface AddieRule {
   id: number;
@@ -1407,6 +1407,7 @@ export class AddieDatabase {
       knowledge: [],
       constraint: [],
       response_style: [],
+      engagement: [],
     };
 
     for (const rule of rules) {

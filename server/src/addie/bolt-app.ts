@@ -999,35 +999,58 @@ async function handleChannelMessage({
   logger.debug({ channelId, userId, hasThread: !!('thread_ts' in event && event.thread_ts) },
     'Addie Bolt: Evaluating channel message for potential response');
 
-  // First, ask Claude if this message warrants a response from Addie
-  // This is a quick evaluation to avoid generating full responses for every message
-  const evaluationPrompt = `You are Addie, an AI assistant for AgenticAdvertising.org. A message was posted in a Slack channel you're in.
+  try {
+    // Load engagement rules from database
+    const engagementRules = await addieDb.getRulesByType('engagement');
+    const rulesContext = engagementRules.length > 0
+      ? engagementRules.map(r => r.content).join('\n\n')
+      : `Respond to:
+- Questions about AdCP, agentic advertising, or AgenticAdvertising.org
+- Requests for help that Addie can assist with
+- Discussions where Addie has relevant knowledge
 
-Evaluate if this message is something you should respond to. You should respond if:
-- It's a question about AdCP, agentic advertising, or AgenticAdvertising.org
-- It's a request for help that you can assist with
-- It's a discussion where you have relevant knowledge to contribute
-- Someone is confused or asking for clarification about topics you know about
+React with emoji (👋) to:
+- Greetings like "hi", "hello", "hey everyone"
+- New members introducing themselves
+- Welcomes and friendly messages
 
-You should NOT respond if:
-- It's casual conversation or social chat
-- It's an internal team discussion not related to AdCP
-- It's a message that doesn't need your input
-- Someone else is clearly handling the question
-- It's a simple acknowledgment or emoji reaction
+Do NOT respond to:
+- Casual conversation or social chat
+- Internal team discussions not related to AdCP
+- Messages that don't need Addie's input
+- Simple acknowledgments or emoji reactions`;
+
+    // Use Haiku for fast yes/no/react evaluation
+    const evaluationPrompt = `You are Addie, an AI assistant for AgenticAdvertising.org. A message was posted in a Slack channel.
+
+${rulesContext}
 
 Message: "${messageText.substring(0, 500)}"
 
-Respond with ONLY "yes" or "no" - nothing else.`;
+Respond with ONLY one word:
+- "yes" if you should respond with a full message
+- "react" if you should just add a friendly emoji reaction (👋)
+- "no" if you should ignore this message`;
 
-  try {
-    // Use empty tools object for evaluation - just need a yes/no
-    const emptyTools: RequestTools = { tools: [], handlers: new Map() };
-    const evaluation = await claudeClient.processMessage(evaluationPrompt, undefined, emptyTools);
-    const shouldRespond = evaluation.text?.toLowerCase().trim() === 'yes';
+    const decision = await claudeClient.quickEvaluate(evaluationPrompt);
 
-    if (!shouldRespond) {
+    if (decision === 'no') {
       logger.debug({ channelId }, 'Addie Bolt: Message does not warrant response');
+      return;
+    }
+
+    // Handle emoji reaction
+    if (decision === 'react') {
+      try {
+        await boltApp?.client.reactions.add({
+          channel: channelId,
+          timestamp: event.ts,
+          name: 'wave', // 👋
+        });
+        logger.info({ channelId, userId }, 'Addie Bolt: Added wave reaction to greeting');
+      } catch (reactionError) {
+        logger.debug({ error: reactionError, channelId }, 'Addie Bolt: Could not add reaction (may already exist)');
+      }
       return;
     }
 
