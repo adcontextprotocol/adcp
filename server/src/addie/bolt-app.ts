@@ -135,6 +135,9 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Register app_mention handler
   boltApp.event('app_mention', handleAppMention);
 
+  // Register channel message handler (for HITL proposed responses)
+  boltApp.event('message', handleChannelMessage);
+
   // Register feedback button handler
   boltApp.action('addie_feedback', handleFeedbackAction);
 
@@ -946,6 +949,134 @@ function buildFeedbackBlock(): {
       },
     ],
   };
+}
+
+/**
+ * Handle channel messages (not mentions) for HITL proposed responses
+ *
+ * When Addie sees a message in a channel it's in, it evaluates whether
+ * it could provide a helpful response. If so, it queues a proposed response
+ * for admin approval before sending.
+ */
+async function handleChannelMessage({
+  event,
+  context,
+}: SlackEventMiddlewareArgs<'message'> & { context: { botUserId?: string } }): Promise<void> {
+  // Skip if not initialized
+  if (!claudeClient || !addieDb) {
+    return;
+  }
+
+  // Type guard for message events - skip subtypes (edits, deletes, etc.)
+  if (!('text' in event) || !event.text || ('subtype' in event && event.subtype)) {
+    return;
+  }
+
+  // Skip bot messages (including our own)
+  if ('bot_id' in event && event.bot_id) {
+    return;
+  }
+
+  // Skip if this is a mention (handled by handleAppMention)
+  if (context.botUserId && event.text.includes(`<@${context.botUserId}>`)) {
+    return;
+  }
+
+  // Skip DMs - this is for channel messages only
+  if (event.channel_type === 'im') {
+    return;
+  }
+
+  const userId = 'user' in event ? event.user : undefined;
+  if (!userId) {
+    return;
+  }
+
+  const channelId = event.channel;
+  const messageText = event.text;
+  const threadTs = ('thread_ts' in event ? event.thread_ts : undefined) || event.ts;
+
+  logger.debug({ channelId, userId, hasThread: !!('thread_ts' in event && event.thread_ts) },
+    'Addie Bolt: Evaluating channel message for potential response');
+
+  // First, ask Claude if this message warrants a response from Addie
+  // This is a quick evaluation to avoid generating full responses for every message
+  const evaluationPrompt = `You are Addie, an AI assistant for AgenticAdvertising.org. A message was posted in a Slack channel you're in.
+
+Evaluate if this message is something you should respond to. You should respond if:
+- It's a question about AdCP, agentic advertising, or AgenticAdvertising.org
+- It's a request for help that you can assist with
+- It's a discussion where you have relevant knowledge to contribute
+- Someone is confused or asking for clarification about topics you know about
+
+You should NOT respond if:
+- It's casual conversation or social chat
+- It's an internal team discussion not related to AdCP
+- It's a message that doesn't need your input
+- Someone else is clearly handling the question
+- It's a simple acknowledgment or emoji reaction
+
+Message: "${messageText.substring(0, 500)}"
+
+Respond with ONLY "yes" or "no" - nothing else.`;
+
+  try {
+    // Use empty tools object for evaluation - just need a yes/no
+    const emptyTools: RequestTools = { tools: [], handlers: new Map() };
+    const evaluation = await claudeClient.processMessage(evaluationPrompt, undefined, emptyTools);
+    const shouldRespond = evaluation.text?.toLowerCase().trim() === 'yes';
+
+    if (!shouldRespond) {
+      logger.debug({ channelId }, 'Addie Bolt: Message does not warrant response');
+      return;
+    }
+
+    logger.info({ channelId, userId }, 'Addie Bolt: Generating proposed response for channel message');
+
+    // Get member context for the user
+    const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
+      userId,
+      messageText
+    );
+
+    // Generate a response
+    const userTools = createUserScopedTools(memberContext);
+    const response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+
+    if (!response.text || response.text.trim().length === 0) {
+      logger.debug({ channelId }, 'Addie Bolt: No response generated');
+      return;
+    }
+
+    // Validate the output
+    const outputValidation = validateOutput(response.text);
+    if (outputValidation.flagged) {
+      logger.warn({ channelId, reason: outputValidation.reason }, 'Addie Bolt: Proposed response flagged');
+      return;
+    }
+
+    // Queue the response for admin approval
+    await addieDb.queueForApproval({
+      action_type: 'reply',
+      target_channel_id: channelId,
+      target_thread_ts: threadTs,
+      proposed_content: outputValidation.sanitized,
+      trigger_type: 'channel_message',
+      trigger_context: {
+        original_message: messageText.substring(0, 1000),
+        user_id: userId,
+        user_display_name: memberContext?.slack_user?.display_name || undefined,
+        tools_used: response.tools_used,
+      },
+      // Expire after 24 hours - old responses become stale
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+
+    logger.info({ channelId, userId }, 'Addie Bolt: Proposed response queued for approval');
+
+  } catch (error) {
+    logger.error({ error, channelId }, 'Addie Bolt: Error processing channel message');
+  }
 }
 
 /**
