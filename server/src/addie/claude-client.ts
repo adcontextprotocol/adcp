@@ -10,7 +10,7 @@ import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
 import { ADDIE_SYSTEM_PROMPT, buildContextWithThread } from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';
-import { AddieModelConfig } from '../config/models.js';
+import { AddieModelConfig, ModelConfig } from '../config/models.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
