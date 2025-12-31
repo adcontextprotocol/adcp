@@ -336,12 +336,13 @@ function injectJoinCtaStyles() {
 
 /**
  * Render the unified join CTA component
+ * Fetches pricing from Stripe via API for single source of truth
  * @param {Object} options - Configuration options
  * @param {string} options.containerId - ID of the container element
  * @param {boolean} options.showFoundingNote - Whether to show founding member note (default: true)
  * @param {boolean} options.showContactLine - Whether to show contact email (default: true)
  */
-function renderJoinCta(options = {}) {
+async function renderJoinCta(options = {}) {
   const {
     containerId = 'join-cta-container',
     showFoundingNote = true,
@@ -355,6 +356,21 @@ function renderJoinCta(options = {}) {
   }
 
   injectJoinCtaStyles();
+
+  // Fetch pricing from Stripe
+  const products = await fetchBillingProducts();
+
+  // Find specific products by lookup key (subscription versions for display)
+  const corporate5m = products.find(p => p.lookup_key === 'aao_membership_corporate_5m');
+  const corporateUnder5m = products.find(p => p.lookup_key === 'aao_membership_corporate_under5m');
+  const individual = products.find(p => p.lookup_key === 'aao_membership_individual');
+  const individualDiscounted = products.find(p => p.lookup_key === 'aao_membership_individual_discounted');
+
+  // Format prices (fallback to defaults if API fails)
+  const price5m = corporate5m ? formatCurrency(corporate5m.amount_cents, corporate5m.currency) : '$10,000';
+  const priceUnder5m = corporateUnder5m ? formatCurrency(corporateUnder5m.amount_cents, corporateUnder5m.currency) : '$2,500';
+  const priceIndividual = individual ? formatCurrency(individual.amount_cents, individual.currency) : '$250';
+  const priceDiscounted = individualDiscounted ? formatCurrency(individualDiscounted.amount_cents, individualDiscounted.currency) : '$50';
 
   const companyBenefits = [
     'Eligibility to serve on Board',
@@ -385,11 +401,11 @@ function renderJoinCta(options = {}) {
         </div>
         <div class="join-cta-pricing-tier">
           <div class="join-cta-pricing-label">$5M+ annual revenue</div>
-          <div class="join-cta-pricing-amount"><span class="currency">$</span>10,000<span class="join-cta-pricing-period">/year</span></div>
+          <div class="join-cta-pricing-amount">${price5m}<span class="join-cta-pricing-period">/year</span></div>
         </div>
         <div class="join-cta-pricing-secondary">
           <div class="join-cta-pricing-secondary-label">Under $5M annual revenue</div>
-          <div class="join-cta-pricing-secondary-amount">$2,500<span class="join-cta-pricing-period">/year</span></div>
+          <div class="join-cta-pricing-secondary-amount">${priceUnder5m}<span class="join-cta-pricing-period">/year</span></div>
         </div>
 
         <div class="join-cta-benefits-header">Company Membership Benefits</div>
@@ -413,11 +429,11 @@ function renderJoinCta(options = {}) {
         </div>
         <div class="join-cta-pricing-tier">
           <div class="join-cta-pricing-label">Industry professionals</div>
-          <div class="join-cta-pricing-amount"><span class="currency">$</span>250<span class="join-cta-pricing-period">/year</span></div>
+          <div class="join-cta-pricing-amount">${priceIndividual}<span class="join-cta-pricing-period">/year</span></div>
         </div>
         <div class="join-cta-pricing-secondary">
           <div class="join-cta-pricing-secondary-label">Students, academics & non-profits</div>
-          <div class="join-cta-pricing-secondary-amount">$50<span class="join-cta-pricing-period">/year</span></div>
+          <div class="join-cta-pricing-secondary-amount">${priceDiscounted}<span class="join-cta-pricing-period">/year</span></div>
         </div>
 
         <div class="join-cta-benefits-header">Individual Membership Benefits</div>
