@@ -31,8 +31,8 @@ const logger = createLogger('slack-routes');
  */
 export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRouter: Router; addieRouter: Router } {
   const aaobotRouter = Router();
-  // Use Bolt router if available, otherwise create fallback router
-  const addieRouter = addieBoltRouter || Router();
+  // Create wrapper router for Addie that handles URL verification first
+  const addieRouter = Router();
 
   // =========================================================================
   // MAIN AAO BOT ROUTES (mounted at /api/slack/aaobot)
@@ -119,19 +119,45 @@ export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRout
   // If Bolt is not initialized (no credentials), we add a fallback handler
   // that returns 503 Service Unavailable.
 
-  if (!addieBoltRouter) {
-    // Fallback handler when Bolt is not available
-    addieRouter.post('/events', slackJsonParser(), async (req, res) => {
-      // Still handle URL verification for initial setup
-      if (handleUrlVerification(req, res)) {
-        return;
+  // Handle URL verification separately (before Bolt)
+  // URL verification requests don't have signatures, so we need to handle them first
+  // We use a custom parser that peeks at the body without consuming it for non-verification requests
+  addieRouter.post('/events', (req, res, next) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk: string) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed.type === 'url_verification') {
+          logger.info('Addie: Handling URL verification challenge');
+          return res.json({ challenge: parsed.challenge });
+        }
+        // Not URL verification - let Bolt handle it
+        // We need to "replay" the body for Bolt since we consumed it
+        // Store raw body and parsed body on request
+        (req as any).rawBody = body;
+        req.body = parsed;
+        next();
+      } catch {
+        logger.warn('Addie: Invalid JSON in request');
+        res.status(400).json({ error: 'Invalid JSON' });
       }
+    });
+  });
 
+  if (addieBoltRouter) {
+    // Mount Bolt router to handle real events at /events
+    // Note: We've already parsed the body above, but Bolt's ExpressReceiver
+    // will use req.rawBody for signature verification
+    addieRouter.use(addieBoltRouter);
+  } else {
+    // Fallback handler when Bolt is not available
+    addieRouter.post('/events', slackJsonParser(), async (_req, res) => {
       logger.warn('Addie Slack event received but Bolt is not initialized');
       res.status(503).json({ error: 'Addie is not available' });
     });
   }
-  // When Bolt IS initialized, its router already handles /events at the configured endpoint
 
   return { aaobotRouter, addieRouter };
 }

@@ -29,8 +29,6 @@ import { SlackDatabase } from "./db/slack-db.js";
 import { syncSlackUsers, getSyncStatus, syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
-import { verifySlackSignature, isSlackSigningConfigured, isAddieSigningConfigured } from "./slack/verify.js";
-import { handleSlackEvent } from "./slack/events.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, createRequireWorkingGroupLeader, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
@@ -10149,65 +10147,8 @@ Disallow: /api/admin/
     });
 
     // Note: Slack Public routes have been moved to routes/slack.ts
-    // Routes: POST /api/slack/commands, /api/slack/events
-
-    // POST /api/addie/slack/events - Handle Slack Events API for Addie (separate Slack app)
-    // Uses ADDIE_SIGNING_SECRET for verification (separate from main AAO bot)
-    this.app.post('/api/addie/slack/events', express.json({
-      verify: (req, _res, buf) => {
-        // Store raw body on request for signature verification
-        (req as any).rawBody = buf.toString('utf8');
-      }
-    }), async (req, res) => {
-      try {
-        // Handle URL verification challenge
-        if (req.body.type === 'url_verification') {
-          return res.json({ challenge: req.body.challenge });
-        }
-
-        // Verify the request is from Slack using Addie's signing secret
-        if (isAddieSigningConfigured()) {
-          const signature = req.headers['x-slack-signature'] as string;
-          const timestamp = req.headers['x-slack-request-timestamp'] as string;
-
-          if (!signature || !timestamp) {
-            logger.warn('Missing Slack signature headers for Addie');
-            return res.status(401).json({ error: 'Missing signature headers' });
-          }
-
-          // Use the raw body captured by the verify callback
-          const rawBody = (req as any).rawBody;
-          if (!rawBody) {
-            logger.warn('Raw body not captured for Addie Slack signature verification');
-            return res.status(500).json({ error: 'Internal error' });
-          }
-
-          const isValid = verifySlackSignature(
-            process.env.ADDIE_SIGNING_SECRET || '',
-            signature,
-            timestamp,
-            rawBody
-          );
-
-          if (!isValid) {
-            logger.warn('Invalid Slack signature for Addie event');
-            return res.status(401).json({ error: 'Invalid signature' });
-          }
-        }
-
-        // Handle events asynchronously (don't block response)
-        // Slack requires response within 3 seconds
-        handleSlackEvent(req.body).catch(err => {
-          logger.error({ err }, 'Error handling Addie Slack event');
-        });
-
-        // Always respond with 200 immediately to acknowledge receipt
-        res.status(200).send();
-      } catch (error) {
-        logger.error({ err: error }, 'Addie Slack event error');
-        res.status(500).json({ error: 'Internal error' });
-      }
-    });
+    // AAO Bot: POST /api/slack/aaobot/commands, /api/slack/aaobot/events
+    // Addie: POST /api/slack/addie/events (Bolt SDK)
 
     // Utility: Check slug availability
     this.app.get('/api/members/check-slug/:slug', async (req, res) => {

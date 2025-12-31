@@ -112,7 +112,7 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   });
 
   // Create ExpressReceiver - we'll mount its router on our Express app
-  // Set endpoints to '/' since we'll mount at /api/slack/addie/events
+  // Our wrapper router handles URL verification at /events before passing to Bolt
   expressReceiver = new ExpressReceiver({
     signingSecret,
     endpoints: '/events',
