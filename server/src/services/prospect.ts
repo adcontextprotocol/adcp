@@ -24,6 +24,7 @@ export interface CreateProspectInput {
   name: string;
   domain?: string;
   company_type?: string;
+  prospect_status?: string;
   prospect_source?: string;
   prospect_notes?: string;
   prospect_contact_name?: string;
@@ -125,7 +126,7 @@ export async function createProspect(
         name,
         input.company_type || null,
         input.domain?.trim() || null,
-        'prospect',
+        input.prospect_status || 'prospect',
         input.prospect_source || 'manual',
         input.prospect_notes || null,
         input.prospect_contact_name || null,
@@ -140,8 +141,19 @@ export async function createProspect(
 
     const org = result.rows[0];
 
-    // Auto-enrich in background if domain provided
+    // Also insert into organization_domains if domain provided
     if (input.domain) {
+      await pool.query(
+        `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+         VALUES ($1, $2, true, true, 'import')
+         ON CONFLICT (domain) DO UPDATE SET
+           workos_organization_id = EXCLUDED.workos_organization_id,
+           is_primary = true,
+           updated_at = NOW()`,
+        [workosOrg.id, input.domain.trim()]
+      );
+
+      // Auto-enrich in background
       enrichOrganization(workosOrg.id, input.domain.trim()).catch((err) => {
         logger.warn(
           { err, domain: input.domain, orgId: workosOrg.id },
