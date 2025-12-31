@@ -11,6 +11,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
 import { ModelConfig } from '../config/models.js';
+import {
+  getFeedByEmailSlug,
+  createEmailPerspective,
+} from '../db/industry-feeds-db.js';
 
 const logger = createLogger('webhooks');
 
@@ -55,19 +59,23 @@ interface ResendInboundPayload {
 /**
  * Addie email context types
  * Parsed from subaddressing like addie+prospect@agenticadvertising.org
+ * or feed-<slug>@updates.agenticadvertising.org for newsletter subscriptions
  */
 type AddieContext =
   | { type: 'prospect' }
   | { type: 'working-group'; groupId: string }
+  | { type: 'feed'; slug: string }
   | { type: 'unrouted' };
 
 /**
  * Parse Addie context from email addresses
  * Looks for addie+context@agenticadvertising.org patterns in TO/CC
+ * or feed-<slug>@updates.agenticadvertising.org for newsletter subscriptions
  *
  * Examples:
  *   addie+prospect@agenticadvertising.org → { type: 'prospect' }
  *   addie+wg-governance@agenticadvertising.org → { type: 'working-group', groupId: 'governance' }
+ *   feed-adexchanger@updates.agenticadvertising.org → { type: 'feed', slug: 'feed-adexchanger' }
  *   addie@agenticadvertising.org → { type: 'unrouted' }
  */
 function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): AddieContext {
@@ -75,6 +83,14 @@ function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): A
 
   for (const addr of allAddresses) {
     const { email } = parseEmailAddress(addr);
+
+    // Check for feed subscription emails (feed-*@updates.agenticadvertising.org)
+    if (email.endsWith('@updates.agenticadvertising.org')) {
+      const localPart = email.split('@')[0];
+      if (localPart.startsWith('feed-')) {
+        return { type: 'feed', slug: localPart };
+      }
+    }
 
     // Check if this is an addie address (either domain)
     if (!email.endsWith('@agenticadvertising.org') && !email.endsWith('@updates.agenticadvertising.org')) continue;
@@ -695,6 +711,80 @@ async function handleProspectEmail(data: ResendInboundPayload['data']): Promise<
 }
 
 /**
+ * Handle feed subscription emails (newsletters forwarded to feed-*@updates.agenticadvertising.org)
+ *
+ * Extracts article links from the email and creates perspectives from them.
+ */
+async function handleFeedEmail(
+  data: ResendInboundPayload['data'],
+  slug: string
+): Promise<{ perspectiveId: string | null; feedId: number | null }> {
+  // Look up the feed by email slug
+  const feed = await getFeedByEmailSlug(slug);
+
+  if (!feed) {
+    logger.warn({ slug, to: data.to }, 'No matching feed found for inbound email');
+    return { perspectiveId: null, feedId: null };
+  }
+
+  // Extract links from HTML content for processing
+  const links: { url: string; text?: string }[] = [];
+
+  // Fetch the email body to get HTML content
+  const emailBody = await fetchEmailBody(data.email_id);
+
+  if (emailBody?.html) {
+    // Simple regex to extract links from HTML
+    const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([^<]*)</gi;
+    let linkMatch;
+    while ((linkMatch = linkRegex.exec(emailBody.html)) !== null) {
+      const url = linkMatch[1];
+      // Filter out unsubscribe/tracking links
+      if (!url.includes('unsubscribe') &&
+          !url.includes('list-manage') &&
+          !url.includes('track.') &&
+          url.startsWith('http')) {
+        links.push({ url, text: linkMatch[2] || undefined });
+      }
+    }
+  }
+
+  // Parse sender info
+  const senderParsed = parseEmailAddress(data.from);
+
+  // Create perspective from the email
+  const perspectiveId = await createEmailPerspective({
+    feed_id: feed.id,
+    feed_name: feed.name,
+    message_id: data.message_id || data.email_id || `resend-${Date.now()}`,
+    subject: data.subject || 'No subject',
+    from_email: senderParsed.email,
+    from_name: senderParsed.displayName || undefined,
+    received_at: new Date(data.created_at || Date.now()),
+    html_content: emailBody?.html,
+    text_content: emailBody?.text,
+    links,
+  });
+
+  if (perspectiveId) {
+    logger.info({
+      feedId: feed.id,
+      feedName: feed.name,
+      perspectiveId,
+      subject: data.subject,
+      linkCount: links.length,
+    }, 'Created perspective from inbound email');
+  } else {
+    logger.debug({
+      feedId: feed.id,
+      subject: data.subject,
+    }, 'Email already processed (duplicate message_id)');
+  }
+
+  return { perspectiveId, feedId: feed.id };
+}
+
+/**
  * Handle unrouted emails (plain addie@ or unknown context)
  *
  * Logs the email but doesn't process it - for monitoring what comes in
@@ -816,6 +906,25 @@ export function createWebhooksRouter(): Router {
               emailId: data.email_id,
             }, 'Working group email context not yet implemented');
             return res.status(200).json({ ok: true, context: 'working-group', notImplemented: true });
+          }
+
+          case 'feed': {
+            const result = await handleFeedEmail(data, context.slug);
+            const totalDurationMs = Date.now() - requestStartTime;
+
+            logger.info({
+              feedId: result.feedId,
+              perspectiveId: result.perspectiveId,
+              slug: context.slug,
+              totalDurationMs,
+            }, 'Processed feed email');
+
+            return res.status(200).json({
+              ok: true,
+              context: 'feed',
+              feedId: result.feedId,
+              perspectiveId: result.perspectiveId,
+            });
           }
 
           case 'unrouted':
