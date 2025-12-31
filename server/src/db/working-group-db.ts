@@ -474,7 +474,7 @@ export class WorkingGroupDatabase {
        FROM working_group_leaders wgl
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
        LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
-       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_id
+       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
        WHERE wgl.working_group_id = $1
        ORDER BY wgl.created_at`,
       [workingGroupId]
@@ -501,7 +501,7 @@ export class WorkingGroupDatabase {
        FROM working_group_leaders wgl
        LEFT JOIN working_group_memberships wgm ON wgl.user_id = wgm.workos_user_id AND wgm.working_group_id = wgl.working_group_id
        LEFT JOIN organization_memberships om ON wgl.user_id = om.workos_user_id
-       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_id
+       LEFT JOIN organizations org ON om.workos_organization_id = org.workos_organization_id
        WHERE wgl.working_group_id = ANY($1)
        ORDER BY wgl.created_at`,
       [workingGroupIds]
