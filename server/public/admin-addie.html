@@ -836,6 +836,7 @@
       <button class="tab" data-tab="suggestions">Suggestions</button>
       <button class="tab" data-tab="knowledge">Knowledge Base</button>
       <button class="tab" data-tab="threads">Threads</button>
+      <button class="tab" data-tab="performance">Performance</button>
       <button class="tab" data-tab="queue">Approval Queue</button>
     </div>
 
@@ -1002,6 +1003,107 @@
           <div class="empty-state">
             <h3>Loading...</h3>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Performance Tab -->
+    <div class="tab-content" id="tab-performance">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h2 style="margin: 0;">Performance Metrics</h2>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
+              Latency, token usage, and tool performance analysis
+            </p>
+          </div>
+          <div class="filter-row">
+            <select id="perf-days-filter" onchange="loadPerformance()">
+              <option value="1">Last 24 hours</option>
+              <option value="7" selected>Last 7 days</option>
+              <option value="30">Last 30 days</option>
+            </select>
+            <button class="btn btn-secondary" onclick="loadPerformance()">Refresh</button>
+          </div>
+        </div>
+
+        <!-- Performance Summary Cards -->
+        <div class="perf-summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-5);">
+          <div class="stat-card">
+            <div class="stat-value" id="perf-total-messages">-</div>
+            <div class="stat-label">Total Messages</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="perf-p50-latency">-</div>
+            <div class="stat-label">P50 Latency</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="perf-p95-latency">-</div>
+            <div class="stat-label">P95 Latency</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="perf-avg-tokens">-</div>
+            <div class="stat-label">Avg Tokens/Msg</div>
+          </div>
+        </div>
+
+        <!-- Latency Distribution -->
+        <div style="margin-bottom: var(--space-5);">
+          <h3 style="margin-bottom: var(--space-3);">Latency Distribution</h3>
+          <div id="latency-chart" style="display: flex; gap: var(--space-2); align-items: flex-end; height: 150px;"></div>
+        </div>
+
+        <!-- Performance by Model -->
+        <div style="margin-bottom: var(--space-5);">
+          <h3 style="margin-bottom: var(--space-3);">By Model</h3>
+          <table class="perf-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: var(--border-1) solid var(--color-gray-200);">
+                <th style="text-align: left; padding: var(--space-2);">Model</th>
+                <th style="text-align: right; padding: var(--space-2);">Count</th>
+                <th style="text-align: right; padding: var(--space-2);">Avg Latency</th>
+                <th style="text-align: right; padding: var(--space-2);">P50 Latency</th>
+                <th style="text-align: right; padding: var(--space-2);">Tokens (In/Out)</th>
+              </tr>
+            </thead>
+            <tbody id="perf-by-model"></tbody>
+          </table>
+        </div>
+
+        <!-- Performance by Tool -->
+        <div style="margin-bottom: var(--space-5);">
+          <h3 style="margin-bottom: var(--space-3);">By Tool</h3>
+          <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-2);">
+            Tool-level timing requires data collected after deployment. Historical data may show "-" for duration.
+          </p>
+          <table class="perf-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: var(--border-1) solid var(--color-gray-200);">
+                <th style="text-align: left; padding: var(--space-2);">Tool</th>
+                <th style="text-align: right; padding: var(--space-2);">Calls</th>
+                <th style="text-align: right; padding: var(--space-2);">Avg Duration</th>
+                <th style="text-align: right; padding: var(--space-2);">P50 Duration</th>
+                <th style="text-align: right; padding: var(--space-2);">P95 Duration</th>
+                <th style="text-align: right; padding: var(--space-2);">Errors</th>
+              </tr>
+            </thead>
+            <tbody id="perf-by-tool"></tbody>
+          </table>
+        </div>
+
+        <!-- Performance by Channel -->
+        <div>
+          <h3 style="margin-bottom: var(--space-3);">By Channel</h3>
+          <table class="perf-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="border-bottom: var(--border-1) solid var(--color-gray-200);">
+                <th style="text-align: left; padding: var(--space-2);">Channel</th>
+                <th style="text-align: right; padding: var(--space-2);">Messages</th>
+                <th style="text-align: right; padding: var(--space-2);">Avg Latency</th>
+              </tr>
+            </thead>
+            <tbody id="perf-by-channel"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -1244,13 +1346,25 @@
   </div>
 
   <script>
-    // Tab switching
+    // Tab switching with lazy loading
+    const loadedTabs = new Set(['rules']); // Track which tabs have been loaded
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
         tab.classList.add('active');
         document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+
+        // Lazy load tab data
+        const tabName = tab.dataset.tab;
+        if (!loadedTabs.has(tabName)) {
+          loadedTabs.add(tabName);
+          if (tabName === 'performance') loadPerformance();
+          if (tabName === 'threads') loadThreads();
+          if (tabName === 'knowledge') loadKnowledge();
+          if (tabName === 'queue') loadQueue();
+          if (tabName === 'suggestions') loadSuggestions();
+        }
       });
     });
 
@@ -1609,6 +1723,75 @@
         console.error('Error loading threads:', error);
         document.getElementById('threads-list').innerHTML =
           '<div class="empty-state"><h3>Error loading threads</h3></div>';
+      }
+    }
+
+    // Load performance metrics
+    async function loadPerformance() {
+      try {
+        const days = document.getElementById('perf-days-filter')?.value || '7';
+        const response = await fetch(`/api/admin/addie/threads/performance?days=${days}`);
+        const data = await response.json();
+
+        // Update summary cards
+        const s = data.summary;
+        document.getElementById('perf-total-messages').textContent = s.total_assistant_messages || '0';
+        document.getElementById('perf-p50-latency').textContent = s.p50_latency_ms ? `${(s.p50_latency_ms / 1000).toFixed(1)}s` : '-';
+        document.getElementById('perf-p95-latency').textContent = s.p95_latency_ms ? `${(s.p95_latency_ms / 1000).toFixed(1)}s` : '-';
+        const avgTokens = s.avg_input_tokens && s.avg_output_tokens ? s.avg_input_tokens + s.avg_output_tokens : null;
+        document.getElementById('perf-avg-tokens').textContent = avgTokens ? avgTokens.toLocaleString() : '-';
+
+        // Latency distribution chart (simple bar chart)
+        const chartContainer = document.getElementById('latency-chart');
+        const maxCount = Math.max(...data.latency_distribution.map(d => d.count), 1);
+        chartContainer.innerHTML = data.latency_distribution.map(d => {
+          const height = Math.max(5, (d.count / maxCount) * 100);
+          return `
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center;">
+              <div style="width: 100%; max-width: 60px; background: var(--color-brand); border-radius: var(--radius-sm); height: ${height}%;"></div>
+              <div style="font-size: var(--text-xs); margin-top: var(--space-1); color: var(--color-text-secondary);">${d.bucket}</div>
+              <div style="font-size: var(--text-xs); color: var(--color-text-muted);">${d.count}</div>
+            </div>
+          `;
+        }).join('');
+
+        // By model table
+        const modelBody = document.getElementById('perf-by-model');
+        modelBody.innerHTML = data.by_model.map(m => `
+          <tr style="border-bottom: var(--border-1) solid var(--color-gray-100);">
+            <td style="padding: var(--space-2);"><code>${m.model}</code></td>
+            <td style="text-align: right; padding: var(--space-2);">${m.count}</td>
+            <td style="text-align: right; padding: var(--space-2);">${(m.avg_latency_ms / 1000).toFixed(1)}s</td>
+            <td style="text-align: right; padding: var(--space-2);">${m.p50_latency_ms ? (m.p50_latency_ms / 1000).toFixed(1) + 's' : '-'}</td>
+            <td style="text-align: right; padding: var(--space-2);">${m.total_input_tokens.toLocaleString()} / ${m.total_output_tokens.toLocaleString()}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="5" style="text-align: center; padding: var(--space-4);">No data</td></tr>';
+
+        // By tool table
+        const toolBody = document.getElementById('perf-by-tool');
+        toolBody.innerHTML = data.by_tool.map(t => `
+          <tr style="border-bottom: var(--border-1) solid var(--color-gray-100);">
+            <td style="padding: var(--space-2);"><code>${t.tool_name}</code></td>
+            <td style="text-align: right; padding: var(--space-2);">${t.call_count}</td>
+            <td style="text-align: right; padding: var(--space-2);">${t.avg_duration_ms ? (t.avg_duration_ms / 1000).toFixed(2) + 's' : '-'}</td>
+            <td style="text-align: right; padding: var(--space-2);">${t.p50_duration_ms ? (t.p50_duration_ms / 1000).toFixed(2) + 's' : '-'}</td>
+            <td style="text-align: right; padding: var(--space-2);">${t.p95_duration_ms ? (t.p95_duration_ms / 1000).toFixed(2) + 's' : '-'}</td>
+            <td style="text-align: right; padding: var(--space-2);">${t.error_count > 0 ? `<span style="color: var(--color-error-500);">${t.error_count}</span>` : '0'}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="6" style="text-align: center; padding: var(--space-4);">No tool data yet</td></tr>';
+
+        // By channel table
+        const channelBody = document.getElementById('perf-by-channel');
+        channelBody.innerHTML = data.by_channel.map(c => `
+          <tr style="border-bottom: var(--border-1) solid var(--color-gray-100);">
+            <td style="padding: var(--space-2);"><span class="badge">${c.channel}</span></td>
+            <td style="text-align: right; padding: var(--space-2);">${c.message_count}</td>
+            <td style="text-align: right; padding: var(--space-2);">${c.avg_latency_ms ? (c.avg_latency_ms / 1000).toFixed(1) + 's' : '-'}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="3" style="text-align: center; padding: var(--space-4);">No data</td></tr>';
+
+      } catch (error) {
+        console.error('Error loading performance:', error);
       }
     }
 

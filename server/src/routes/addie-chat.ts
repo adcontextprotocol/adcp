@@ -318,6 +318,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
               name: exec.tool_name,
               input: exec.parameters,
               result: exec.result,
+              duration_ms: exec.duration_ms,
             }))
           : undefined,
         model: AddieModelConfig.chat,
@@ -503,7 +504,6 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       let fullText = '';
       let response;
       const toolsUsed: string[] = [];
-      const toolExecutions: Array<{ name: string; input: Record<string, unknown>; result: string }> = [];
 
       for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages)) {
         // Break early if client disconnected (still save partial response below)
@@ -519,11 +519,6 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           toolsUsed.push(event.tool_name);
           sendEvent("tool_start", { tool_name: event.tool_name });
         } else if (event.type === 'tool_end') {
-          toolExecutions.push({
-            name: event.tool_name,
-            input: {},
-            result: event.result,
-          });
           sendEvent("tool_end", { tool_name: event.tool_name, is_error: event.is_error });
         } else if (event.type === 'done') {
           response = event.response;
@@ -538,13 +533,20 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const outputValidation = validateOutput(fullText);
       const latencyMs = Date.now() - startTime;
 
-      // Save assistant response
+      // Save assistant response - use tool_executions from response which has duration_ms
       const assistantMessage = await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'assistant',
         content: outputValidation.sanitized,
         tools_used: toolsUsed.length > 0 ? toolsUsed : undefined,
-        tool_calls: toolExecutions.length > 0 ? toolExecutions : undefined,
+        tool_calls: response?.tool_executions && response.tool_executions.length > 0
+          ? response.tool_executions.map((exec) => ({
+              name: exec.tool_name,
+              input: exec.parameters,
+              result: exec.result,
+              duration_ms: exec.duration_ms,
+            }))
+          : undefined,
         model: AddieModelConfig.chat,
         latency_ms: latencyMs,
         tokens_input: response?.usage?.input_tokens,

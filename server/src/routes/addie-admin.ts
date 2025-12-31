@@ -390,6 +390,25 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
     }
   });
 
+  // GET /api/admin/addie/threads/performance - Get tool performance metrics
+  // NOTE: Must be defined BEFORE /threads/:id to avoid matching "performance" as an ID
+  apiRouter.get("/threads/performance", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const { days } = req.query;
+      const daysNum = days ? parseInt(days as string, 10) : 7;
+
+      const performance = await threadService.getPerformanceMetrics(daysNum);
+      res.json(performance);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching performance metrics");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch performance metrics",
+      });
+    }
+  });
+
   // GET /api/admin/addie/threads/:id - Get a single thread with messages
   apiRouter.get("/threads/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
