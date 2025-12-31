@@ -27,6 +27,10 @@ ALTER TABLE addie_thread_messages
 -- Create index for analyzing messages by rule
 CREATE INDEX IF NOT EXISTS idx_addie_messages_rule_ids ON addie_thread_messages USING GIN (active_rule_ids);
 
+-- Drop and recreate views (they're being replaced with more comprehensive versions)
+DROP VIEW IF EXISTS addie_feedback_summary CASCADE;
+DROP VIEW IF EXISTS addie_execution_analysis CASCADE;
+
 -- Create view for execution analysis
 CREATE OR REPLACE VIEW addie_execution_analysis AS
 SELECT
@@ -74,7 +78,7 @@ SELECT
   ARRAY_AGG(DISTINCT tag) FILTER (WHERE tag IS NOT NULL) as all_tags
 FROM addie_thread_messages m
 JOIN addie_threads t ON m.thread_id = t.thread_id
-LEFT JOIN LATERAL unnest(m.feedback_tags) as tag ON true
+LEFT JOIN LATERAL jsonb_array_elements_text(COALESCE(m.feedback_tags, '[]'::jsonb)) as tag ON true
 WHERE m.role = 'assistant'
   AND m.created_at > NOW() - INTERVAL '90 days'
 GROUP BY DATE_TRUNC('day', m.created_at), t.channel

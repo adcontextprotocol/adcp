@@ -2188,7 +2188,7 @@
         }
 
         list.innerHTML = data.threads.map(thread => `
-          <div class="conversation-item ${thread.flagged ? 'flagged' : ''}" onclick="viewThread('${thread.thread_id}')">
+          <div class="conversation-item ${thread.flagged ? 'flagged' : ''}" onclick="viewThread('${escapeHtml(thread.thread_id)}')">
             <div class="conversation-header">
               <div>
                 <span class="badge badge-${thread.channel}">${thread.channel}</span>
@@ -2315,7 +2315,7 @@
         const lowRatedContainer = document.getElementById('eval-low-rated');
         if (data.low_rated && data.low_rated.length > 0) {
           lowRatedContainer.innerHTML = data.low_rated.map(lr => `
-            <div class="low-rated-item" onclick="viewThread('${lr.thread_id}')">
+            <div class="low-rated-item" onclick="viewThread('${escapeHtml(lr.thread_id)}')">
               <div class="low-rated-header">
                 <span class="badge badge-${lr.channel}">${lr.channel}</span>
                 <span class="low-rated-rating">${lr.rating}/5</span>

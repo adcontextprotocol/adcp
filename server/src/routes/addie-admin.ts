@@ -18,6 +18,7 @@ import {
   getThreadService,
   type ThreadChannel,
 } from "../addie/thread-service.js";
+import Anthropic from "@anthropic-ai/sdk";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -578,9 +579,24 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   // POST /api/admin/addie/threads/:id/diagnose - Get Claude's analysis of a thread
   apiRouter.post("/threads/:id/diagnose", requireAuth, requireAdmin, async (req, res) => {
     try {
+      // Verify API key is configured
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        logger.warn("ANTHROPIC_API_KEY not configured for diagnosis endpoint");
+        return res.status(500).json({
+          error: "Configuration error",
+          message: "Claude API not configured",
+        });
+      }
+
       const threadService = getThreadService();
       const { id } = req.params;
       const { feedback } = req.body;
+
+      // Sanitize feedback input - limit length and escape special chars
+      const sanitizedFeedback = feedback
+        ? String(feedback).substring(0, 1000).replace(/["\n\r]/g, ' ').trim()
+        : '';
 
       // Get thread with messages
       const thread = await threadService.getThreadWithMessages(id);
@@ -608,8 +624,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       }).join('\n\n');
 
       // Call Claude for diagnosis
-      const Anthropic = (await import('@anthropic-ai/sdk')).default;
-      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+      const client = new Anthropic({ apiKey });
 
       const diagnosisPrompt = `You are analyzing an Addie conversation to help improve our AI assistant. Addie is an AI assistant for the AgenticAdvertising.org community that helps with questions about AdCP (Advertising Context Protocol) and agentic advertising.
 
@@ -618,7 +633,7 @@ Here is the conversation:
 ${messagesContext}
 ---
 
-${feedback ? `Admin feedback on this conversation: "${feedback}"` : ''}
+${sanitizedFeedback ? `Admin provided this optional context: ${sanitizedFeedback}` : ''}
 
 Please analyze this conversation and provide:
 
@@ -657,6 +672,16 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         tokens_used: response.usage.input_tokens + response.usage.output_tokens,
       });
     } catch (error) {
+      // Handle Claude API specific errors
+      if (error instanceof Anthropic.APIError) {
+        logger.error({ err: error, status: error.status }, "Claude API error in diagnosis");
+        if (error.status === 429) {
+          return res.status(429).json({
+            error: "Rate limited",
+            message: "Too many requests, please try again later",
+          });
+        }
+      }
       logger.error({ err: error }, "Error generating thread diagnosis");
       res.status(500).json({
         error: "Internal server error",
@@ -669,7 +694,8 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   apiRouter.get("/feedback/summary", requireAuth, requireAdmin, async (req, res) => {
     try {
       const { days = '30' } = req.query;
-      const daysInt = parseInt(days as string, 10);
+      // Validate and clamp days to reasonable range (1-365)
+      const daysInt = Math.min(Math.max(parseInt(days as string, 10) || 30, 1), 365);
 
       // Get summary stats
       const summaryResult = await query<{
@@ -698,7 +724,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const tagsResult = await query<{ tag: string; count: string }>(`
         SELECT tag, COUNT(*) as count
         FROM addie_thread_messages,
-             LATERAL unnest(feedback_tags) as tag
+             LATERAL jsonb_array_elements_text(COALESCE(feedback_tags, '[]'::jsonb)) as tag
         WHERE role = 'assistant'
           AND created_at > NOW() - make_interval(days => $1)
         GROUP BY tag
