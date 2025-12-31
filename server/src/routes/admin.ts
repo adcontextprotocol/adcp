@@ -23,6 +23,22 @@ import {
   createAndSendInvoice,
 } from "../billing/stripe-client.js";
 import { getMemberContext, getWebMemberContext } from "../addie/member-context.js";
+import {
+  getLushaClient,
+  isLushaConfigured,
+  mapIndustryToCompanyType,
+  formatRevenueRange,
+} from "../services/lusha.js";
+import {
+  enrichOrganization,
+  enrichDomainsInBatch,
+  autoEnrichOrganization,
+} from "../services/enrichment.js";
+import { createProspect } from "../services/prospect.js";
+import {
+  getCleanupService,
+  isCleanupConfigured,
+} from "../services/prospect-cleanup.js";
 
 const slackDb = new SlackDatabase();
 const orgDb = new OrganizationDatabase();
@@ -385,6 +401,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
       const {
         name,
         domain,
+        company_type,
         prospect_source,
         prospect_notes,
         prospect_contact_name,
@@ -392,6 +409,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         prospect_contact_title,
         prospect_next_action,
         prospect_next_action_date,
+        prospect_owner,
         parent_organization_id,
       } = req.body;
 
@@ -399,204 +417,45 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         return res.status(400).json({ error: "Company name is required" });
       }
 
-      if (!workos) {
-        return res.status(500).json({ error: "WorkOS not configured" });
-      }
-
-      // Create organization in WorkOS with domain (if provided)
-      const workosOrg = await workos.organizations.createOrganization({
-        name: name.trim(),
-        domainData: domain
-          ? [{ domain: domain.trim(), state: DomainDataState.Verified }]
-          : undefined,
+      // Use centralized prospect service
+      const result = await createProspect({
+        name,
+        domain,
+        company_type,
+        prospect_source: prospect_source || "aao_launch_list",
+        prospect_notes,
+        prospect_contact_name,
+        prospect_contact_email,
+        prospect_contact_title,
+        prospect_next_action,
+        prospect_next_action_date,
+        prospect_owner,
+        parent_organization_id,
       });
 
-      logger.info(
-        { orgId: workosOrg.id, name, domain },
-        "Created WorkOS organization for prospect"
-      );
-
-      // Create local record with prospect tracking fields
-      const pool = getPool();
-      const result = await pool.query(
-        `INSERT INTO organizations (
-          workos_organization_id,
-          name,
-          prospect_status,
-          prospect_source,
-          prospect_notes,
-          prospect_contact_name,
-          prospect_contact_email,
-          prospect_contact_title,
-          prospect_next_action,
-          prospect_next_action_date,
-          parent_organization_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        RETURNING *`,
-        [
-          workosOrg.id,
-          name.trim(),
-          "prospect", // Initial status
-          prospect_source || "aao_launch_list",
-          prospect_notes || null,
-          prospect_contact_name || null,
-          prospect_contact_email || null,
-          prospect_contact_title || null,
-          prospect_next_action || null,
-          prospect_next_action_date || null,
-          parent_organization_id || null,
-        ]
-      );
-
-      res.status(201).json({
-        ...result.rows[0],
-        domain: domain || null,
-        workos_org: {
-          id: workosOrg.id,
-          domains: workosOrg.domains,
-        },
-      });
-    } catch (error) {
-      logger.error({ err: error }, "Error creating prospect");
-
-      // Handle WorkOS-specific errors
-      if (error instanceof Error && error.message.includes("domain")) {
+      if (!result.success) {
+        if (result.alreadyExists) {
+          return res.status(409).json({
+            error: "Organization already exists",
+            message: result.error,
+            organization: result.organization,
+          });
+        }
         return res.status(400).json({
-          error: "Domain error",
-          message: error.message,
+          error: "Failed to create prospect",
+          message: result.error,
         });
       }
 
+      res.status(201).json(result.organization);
+    } catch (error) {
+      logger.error({ err: error }, "Error creating prospect");
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to create prospect",
       });
     }
   });
-
-  // POST /api/admin/prospects/bulk - Bulk import prospects
-  apiRouter.post(
-    "/prospects/bulk",
-    requireAuth,
-    requireAdmin,
-    async (req, res) => {
-      try {
-        const { prospects } = req.body;
-
-        if (!Array.isArray(prospects) || prospects.length === 0) {
-          return res
-            .status(400)
-            .json({ error: "prospects array is required and cannot be empty" });
-        }
-
-        if (!workos) {
-          return res.status(500).json({ error: "WorkOS not configured" });
-        }
-
-        const results: {
-          success: any[];
-          errors: { name: string; error: string }[];
-        } = {
-          success: [],
-          errors: [],
-        };
-
-        const pool = getPool();
-
-        for (const prospect of prospects) {
-          try {
-            const {
-              name,
-              domain,
-              prospect_source,
-              prospect_notes,
-              prospect_contact_name,
-              prospect_contact_email,
-              prospect_contact_title,
-              prospect_next_action,
-              prospect_next_action_date,
-              parent_organization_id,
-              company_type,
-              prospect_owner,
-            } = prospect;
-
-            if (!name || typeof name !== "string") {
-              results.errors.push({
-                name: name || "unknown",
-                error: "Company name is required",
-              });
-              continue;
-            }
-
-            // Create organization in WorkOS
-            const workosOrg = await workos.organizations.createOrganization({
-              name: name.trim(),
-              domainData: domain
-                ? [{ domain: domain.trim(), state: DomainDataState.Verified }]
-                : undefined,
-            });
-
-            // Create local record
-            const result = await pool.query(
-              `INSERT INTO organizations (
-              workos_organization_id,
-              name,
-              prospect_status,
-              prospect_source,
-              prospect_notes,
-              prospect_contact_name,
-              prospect_contact_email,
-              prospect_contact_title,
-              prospect_next_action,
-              prospect_next_action_date,
-              parent_organization_id,
-              company_type,
-              prospect_owner
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING *`,
-              [
-                workosOrg.id,
-                name.trim(),
-                "prospect",
-                prospect_source || "aao_launch_list",
-                prospect_notes || null,
-                prospect_contact_name || null,
-                prospect_contact_email || null,
-                prospect_contact_title || null,
-                prospect_next_action || null,
-                prospect_next_action_date || null,
-                parent_organization_id || null,
-                company_type || null,
-                prospect_owner || null,
-              ]
-            );
-
-            results.success.push({
-              ...result.rows[0],
-              domain: domain || null,
-            });
-          } catch (error) {
-            results.errors.push({
-              name: prospect.name || "unknown",
-              error: error instanceof Error ? error.message : "Unknown error",
-            });
-          }
-        }
-
-        res.status(201).json({
-          created: results.success.length,
-          failed: results.errors.length,
-          results,
-        });
-      } catch (error) {
-        logger.error({ err: error }, "Error bulk creating prospects");
-        res.status(500).json({
-          error: "Internal server error",
-          message: "Unable to bulk create prospects",
-        });
-      }
-    }
-  );
 
   // PUT /api/admin/prospects/:orgId - Update prospect
   apiRouter.put(
@@ -1626,6 +1485,12 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           [workosOrg.id, orgName, "prospect", "slack_discovery", notes]
         );
 
+        // Auto-enrich the new organization in the background
+        // Don't await - let it run asynchronously
+        enrichOrganization(workosOrg.id, domain).catch((err) => {
+          logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
+        });
+
         res.status(201).json({
           ...result.rows[0],
           domain,
@@ -1648,6 +1513,728 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to create prospect",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // EMAIL CONTACT DOMAIN DISCOVERY
+  // =========================================================================
+
+  // GET /api/admin/email/domains - Get email domains from unmapped email contacts
+  // These are potential organizations to add as prospects (similar to Slack discovery)
+  apiRouter.get(
+    "/email/domains",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { min_users, limit, include_free } = req.query;
+        const excludeFree = include_free !== "true";
+        const minUsers = min_users ? parseInt(min_users as string, 10) : 1;
+        const resultLimit = limit ? parseInt(limit as string, 10) : 100;
+
+        // Common free email providers to exclude
+        const freeEmailDomains = [
+          'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
+          'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
+          'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
+          'yandex.com', 'gmx.com', 'gmx.net', 'fastmail.com', 'tutanota.com',
+        ];
+
+        const pool = getPool();
+
+        // Build the exclude clause for free email providers
+        let domainExcludeClause = '';
+        const params: (string | number)[] = [];
+        if (excludeFree) {
+          const placeholders = freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ');
+          domainExcludeClause = `AND LOWER(domain) NOT IN (${placeholders})`;
+          params.push(...freeEmailDomains);
+        }
+
+        // Query unmapped email contacts grouped by domain
+        const domainQuery = `
+          SELECT
+            LOWER(domain) as domain,
+            COUNT(*) as user_count,
+            json_agg(json_build_object(
+              'email', email,
+              'display_name', display_name,
+              'email_count', email_count,
+              'last_seen_at', last_seen_at
+            ) ORDER BY email_count DESC) as users
+          FROM email_contacts
+          WHERE mapping_status = 'unmapped'
+            AND domain IS NOT NULL
+            ${domainExcludeClause}
+          GROUP BY LOWER(domain)
+          HAVING COUNT(*) >= $${params.length + 1}
+          ORDER BY COUNT(*) DESC
+          LIMIT $${params.length + 2}
+        `;
+
+        params.push(minUsers, resultLimit);
+        const domainsResult = await pool.query(domainQuery, params);
+
+        // Check which domains already have organizations
+        const enrichedDomains = await Promise.all(
+          domainsResult.rows.map(async (domain) => {
+            let existingOrg = null;
+            try {
+              if (workos) {
+                const orgs = await workos.organizations.listOrganizations({
+                  limit: 1,
+                  domains: [domain.domain],
+                });
+                if (orgs.data.length > 0) {
+                  const orgResult = await pool.query(
+                    `SELECT name, workos_organization_id FROM organizations WHERE workos_organization_id = $1`,
+                    [orgs.data[0].id]
+                  );
+                  if (orgResult.rows.length > 0) {
+                    existingOrg = {
+                      id: orgs.data[0].id,
+                      name: orgResult.rows[0].name,
+                    };
+                  }
+                }
+              }
+            } catch {
+              // Ignore lookup errors
+            }
+
+            return {
+              domain: domain.domain,
+              user_count: parseInt(domain.user_count, 10),
+              users: domain.users,
+              existing_org: existingOrg,
+              is_new_prospect: !existingOrg,
+              source: 'email' as const,
+            };
+          })
+        );
+
+        res.json(enrichedDomains);
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching email domains");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch email domains",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/email/domains/:domain/create-prospect - Create a prospect from an email domain
+  apiRouter.post(
+    "/email/domains/:domain/create-prospect",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domain } = req.params;
+        const { name, prospect_notes } = req.body;
+
+        if (!workos) {
+          return res.status(500).json({ error: "WorkOS not configured" });
+        }
+
+        const pool = getPool();
+
+        // Get the contacts from this domain for context
+        const contactsResult = await pool.query(
+          `SELECT email, display_name, email_count, last_seen_at
+           FROM email_contacts
+           WHERE mapping_status = 'unmapped'
+             AND LOWER(domain) = LOWER($1)
+           ORDER BY email_count DESC
+           LIMIT 10`,
+          [domain]
+        );
+
+        if (contactsResult.rows.length === 0) {
+          return res.status(404).json({
+            error: "Domain not found in unmapped email contacts",
+          });
+        }
+
+        // Generate a name if not provided
+        const orgName =
+          name ||
+          domain
+            .split(".")
+            .slice(0, -1)
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(" ");
+
+        // Create organization in WorkOS with the domain
+        const workosOrg = await workos.organizations.createOrganization({
+          name: orgName,
+          domainData: [{ domain: domain, state: DomainDataState.Verified }],
+        });
+
+        logger.info(
+          { orgId: workosOrg.id, name: orgName, domain },
+          "Created WorkOS organization from email domain"
+        );
+
+        // Create local record
+        const contactNames = contactsResult.rows
+          .map((c) => c.display_name || c.email.split("@")[0])
+          .filter(Boolean)
+          .slice(0, 5)
+          .join(", ");
+
+        const notes =
+          prospect_notes ||
+          `Discovered via email contacts. ${contactsResult.rows.length} contact(s): ${contactNames}`;
+
+        const result = await pool.query(
+          `INSERT INTO organizations (
+            workos_organization_id,
+            name,
+            prospect_status,
+            prospect_source,
+            prospect_notes
+          ) VALUES ($1, $2, $3, $4, $5)
+          RETURNING *`,
+          [workosOrg.id, orgName, "prospect", "email_discovery", notes]
+        );
+
+        // Auto-enrich the new organization in the background
+        enrichOrganization(workosOrg.id, domain).catch((err) => {
+          logger.warn({ err, domain, orgId: workosOrg.id }, "Background enrichment failed");
+        });
+
+        res.status(201).json({
+          ...result.rows[0],
+          domain,
+          email_contacts: contactsResult.rows,
+          workos_org: {
+            id: workosOrg.id,
+            domains: workosOrg.domains,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error creating prospect from email domain");
+
+        if (error instanceof Error && error.message.includes("domain")) {
+          return res.status(400).json({
+            error: "Domain error",
+            message: error.message,
+          });
+        }
+
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to create prospect",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // COMPANY ENRICHMENT (Lusha API)
+  // =========================================================================
+
+  // GET /api/admin/enrichment/status - Check if enrichment is configured
+  apiRouter.get(
+    "/enrichment/status",
+    requireAuth,
+    requireAdmin,
+    async (_req, res) => {
+      res.json({
+        configured: isLushaConfigured(),
+        provider: isLushaConfigured() ? "lusha" : null,
+      });
+    }
+  );
+
+  // POST /api/admin/enrichment/domain/:domain - Enrich a domain with company data
+  apiRouter.post(
+    "/enrichment/domain/:domain",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domain } = req.params;
+        const { save_to_org_id } = req.body;
+
+        const lusha = getLushaClient();
+        if (!lusha) {
+          return res.status(503).json({
+            error: "Enrichment not configured",
+            message: "LUSHA_API_KEY environment variable not set",
+          });
+        }
+
+        const result = await lusha.enrichCompanyByDomain(domain);
+
+        if (!result.success || !result.data) {
+          return res.status(result.error === "Company not found" ? 404 : 500).json({
+            error: result.error || "Enrichment failed",
+          });
+        }
+
+        const enrichmentData = result.data;
+
+        // Map to our company type
+        const suggestedCompanyType = mapIndustryToCompanyType(
+          enrichmentData.mainIndustry,
+          enrichmentData.subIndustry
+        );
+
+        // Format revenue range if we have raw revenue
+        const revenueRange =
+          enrichmentData.revenueRange || formatRevenueRange(enrichmentData.revenue);
+
+        // If save_to_org_id is provided, save the enrichment data to that org
+        if (save_to_org_id) {
+          const pool = getPool();
+          await pool.query(
+            `UPDATE organizations SET
+              enrichment_data = $1,
+              enrichment_source = 'lusha',
+              enrichment_at = NOW(),
+              enrichment_revenue = $2,
+              enrichment_revenue_range = $3,
+              enrichment_employee_count = $4,
+              enrichment_employee_count_range = $5,
+              enrichment_industry = $6,
+              enrichment_sub_industry = $7,
+              enrichment_founded_year = $8,
+              enrichment_country = $9,
+              enrichment_city = $10,
+              enrichment_linkedin_url = $11,
+              enrichment_description = $12,
+              company_type = COALESCE(company_type, $13),
+              updated_at = NOW()
+            WHERE workos_organization_id = $14`,
+            [
+              JSON.stringify(enrichmentData),
+              enrichmentData.revenue || null,
+              revenueRange,
+              enrichmentData.employeeCount || null,
+              enrichmentData.employeeCountRange || null,
+              enrichmentData.mainIndustry || null,
+              enrichmentData.subIndustry || null,
+              enrichmentData.foundedYear || null,
+              enrichmentData.country || null,
+              enrichmentData.city || null,
+              enrichmentData.linkedinUrl || null,
+              enrichmentData.description || null,
+              suggestedCompanyType,
+              save_to_org_id,
+            ]
+          );
+
+          logger.info(
+            { domain, orgId: save_to_org_id },
+            "Saved enrichment data to organization"
+          );
+        }
+
+        res.json({
+          success: true,
+          domain,
+          enrichment: {
+            companyName: enrichmentData.companyName,
+            description: enrichmentData.description,
+            employeeCount: enrichmentData.employeeCount,
+            employeeCountRange: enrichmentData.employeeCountRange,
+            revenue: enrichmentData.revenue,
+            revenueRange: revenueRange,
+            industry: enrichmentData.mainIndustry,
+            subIndustry: enrichmentData.subIndustry,
+            foundedYear: enrichmentData.foundedYear,
+            country: enrichmentData.country,
+            city: enrichmentData.city,
+            linkedinUrl: enrichmentData.linkedinUrl,
+          },
+          suggested: {
+            companyType: suggestedCompanyType,
+            companyName: enrichmentData.companyName,
+          },
+          creditsUsed: result.creditsUsed,
+          saved: !!save_to_org_id,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error enriching domain");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to enrich domain",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/enrichment/bulk - Enrich multiple domains
+  apiRouter.post(
+    "/enrichment/bulk",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domains } = req.body;
+
+        if (!Array.isArray(domains) || domains.length === 0) {
+          return res.status(400).json({
+            error: "domains array required",
+          });
+        }
+
+        if (domains.length > 25) {
+          return res.status(400).json({
+            error: "Maximum 25 domains per bulk request",
+          });
+        }
+
+        const lusha = getLushaClient();
+        if (!lusha) {
+          return res.status(503).json({
+            error: "Enrichment not configured",
+            message: "LUSHA_API_KEY environment variable not set",
+          });
+        }
+
+        const results = await lusha.enrichCompaniesInBulk(domains);
+
+        const enrichments: Array<{
+          domain: string;
+          success: boolean;
+          enrichment?: {
+            companyName: string;
+            employeeCount?: number;
+            revenue?: number;
+            industry?: string;
+          };
+          suggestedCompanyType?: string | null;
+          error?: string;
+        }> = [];
+
+        for (const [domain, result] of results) {
+          if (result.success && result.data) {
+            enrichments.push({
+              domain,
+              success: true,
+              enrichment: {
+                companyName: result.data.companyName,
+                employeeCount: result.data.employeeCount,
+                revenue: result.data.revenue,
+                industry: result.data.mainIndustry,
+              },
+              suggestedCompanyType: mapIndustryToCompanyType(
+                result.data.mainIndustry,
+                result.data.subIndustry
+              ),
+            });
+          } else {
+            enrichments.push({
+              domain,
+              success: false,
+              error: result.error,
+            });
+          }
+        }
+
+        res.json({
+          total: domains.length,
+          successful: enrichments.filter((e) => e.success).length,
+          failed: enrichments.filter((e) => !e.success).length,
+          results: enrichments,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error bulk enriching domains");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to bulk enrich domains",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // LUSHA COMPANY PROSPECTING / SEARCH
+  // =========================================================================
+
+  // GET /api/admin/prospecting/filters - Get available filter options
+  apiRouter.get(
+    "/prospecting/filters",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const lusha = getLushaClient();
+        if (!lusha) {
+          return res.status(503).json({
+            error: "Lusha API not configured",
+            message: "Set LUSHA_API_KEY environment variable",
+          });
+        }
+
+        // Fetch all filter options in parallel
+        const [industries, sizes, revenues] = await Promise.all([
+          lusha.getIndustryFilters(),
+          lusha.getCompanySizeFilters(),
+          lusha.getRevenueFilters(),
+        ]);
+
+        res.json({
+          industries,
+          sizes,
+          revenues,
+          // Provide some preset industry groups for ad tech prospecting
+          presets: {
+            adtech: {
+              label: "Ad Tech",
+              description: "Advertising technology, programmatic, DSPs, SSPs",
+              industryKeywords: ["advertising", "marketing", "programmatic"],
+            },
+            agencies: {
+              label: "Agencies",
+              description: "Media agencies, creative agencies, marketing services",
+              industryKeywords: ["agency", "media buying", "creative"],
+            },
+            publishers: {
+              label: "Publishers",
+              description: "Media companies, content publishers, broadcasters",
+              industryKeywords: ["media", "publishing", "broadcasting", "entertainment"],
+            },
+            brands: {
+              label: "Brands",
+              description: "Consumer brands, retail, CPG companies",
+              industryKeywords: ["retail", "consumer", "food", "beverage", "automotive"],
+            },
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching prospecting filters");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch prospecting filters",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/prospecting/search - Search for companies by criteria
+  apiRouter.post(
+    "/prospecting/search",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const lusha = getLushaClient();
+        if (!lusha) {
+          return res.status(503).json({
+            error: "Lusha API not configured",
+            message: "Set LUSHA_API_KEY environment variable",
+          });
+        }
+
+        const {
+          industryIds,
+          minEmployees,
+          maxEmployees,
+          companySizeIds,
+          revenueIds,
+          countries,
+          states,
+          cities,
+          keywords,
+          page = 1,
+          pageSize = 25,
+        } = req.body;
+
+        const result = await lusha.searchCompanies(
+          {
+            industryIds,
+            minEmployees,
+            maxEmployees,
+            companySizeIds,
+            revenueIds,
+            countries,
+            states,
+            cities,
+            keywords,
+          },
+          page,
+          pageSize
+        );
+
+        if (!result.success) {
+          return res.status(400).json({
+            error: result.error || "Search failed",
+          });
+        }
+
+        // Cross-reference with existing organizations to mark duplicates
+        const pool = getPool();
+        const domains = result.companies
+          .map((c) => c.domain)
+          .filter((d) => d);
+
+        let existingOrgs: Map<string, string> = new Map();
+        if (domains.length > 0) {
+          const existingResult = await pool.query(
+            `SELECT email_domain, name FROM organizations WHERE email_domain = ANY($1)`,
+            [domains]
+          );
+          existingOrgs = new Map(
+            existingResult.rows.map((r) => [r.email_domain, r.name])
+          );
+        }
+
+        // Enrich companies with our classification and existing org status
+        const companies = result.companies.map((company) => {
+          const existingOrgName = company.domain
+            ? existingOrgs.get(company.domain)
+            : null;
+          const suggestedType = mapIndustryToCompanyType(
+            company.mainIndustry,
+            company.subIndustry
+          );
+          const suggestedRevenueRange =
+            company.revenueRange || formatRevenueRange(company.revenue);
+
+          return {
+            ...company,
+            suggestedCompanyType: suggestedType,
+            suggestedRevenueRange,
+            existingOrg: existingOrgName
+              ? { name: existingOrgName, domain: company.domain }
+              : null,
+            isNewProspect: !existingOrgName,
+          };
+        });
+
+        res.json({
+          success: true,
+          companies,
+          total: result.total,
+          page: result.page,
+          pageSize: result.pageSize,
+          hasMore: result.page * result.pageSize < result.total,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error searching companies");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to search companies",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/prospecting/import - Import a company as a prospect
+  apiRouter.post(
+    "/prospecting/import",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { company, autoAssignOwner } = req.body;
+
+        if (!company || !company.domain) {
+          return res.status(400).json({
+            error: "Missing required fields",
+            message: "Company with domain is required",
+          });
+        }
+
+        // Determine company type from industry
+        const companyType = mapIndustryToCompanyType(
+          company.mainIndustry,
+          company.subIndustry
+        );
+
+        // Determine owner (current user if autoAssign)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const currentUserId = autoAssignOwner ? (req as any).user?.id : null;
+
+        // Use centralized prospect service to create real WorkOS org
+        const result = await createProspect({
+          name: company.companyName || company.domain,
+          domain: company.domain,
+          company_type: companyType || undefined,
+          prospect_source: "lusha_prospect",
+          prospect_notes: "Imported from Lusha prospecting search",
+          prospect_owner: currentUserId || undefined,
+        });
+
+        if (!result.success) {
+          if (result.alreadyExists) {
+            return res.status(409).json({
+              error: "Organization already exists",
+              existing: result.organization,
+            });
+          }
+          return res.status(400).json({
+            error: "Failed to create prospect",
+            message: result.error,
+          });
+        }
+
+        const orgId = result.organization!.workos_organization_id;
+
+        // Update with enrichment data we already have from Lusha search
+        // (avoids calling Lusha API again since we have the data)
+        const pool = getPool();
+        await pool.query(
+          `UPDATE organizations SET
+            enrichment_data = $1,
+            enrichment_source = 'lusha',
+            enrichment_at = NOW(),
+            enrichment_revenue = $2,
+            enrichment_revenue_range = $3,
+            enrichment_employee_count = $4,
+            enrichment_employee_count_range = $5,
+            enrichment_industry = $6,
+            enrichment_sub_industry = $7,
+            enrichment_founded_year = $8,
+            enrichment_country = $9,
+            enrichment_city = $10,
+            enrichment_linkedin_url = $11,
+            enrichment_description = $12,
+            updated_at = NOW()
+          WHERE workos_organization_id = $13`,
+          [
+            JSON.stringify(company),
+            company.revenue || null,
+            company.revenueRange || formatRevenueRange(company.revenue) || null,
+            company.employeeCount || null,
+            company.employeeCountRange || null,
+            company.mainIndustry || null,
+            company.subIndustry || null,
+            company.foundedYear || null,
+            company.country || null,
+            company.city || null,
+            company.linkedinUrl || null,
+            company.description || null,
+            orgId,
+          ]
+        );
+
+        logger.info(
+          {
+            domain: company.domain,
+            name: company.companyName,
+            orgId,
+          },
+          "Imported prospect from Lusha search"
+        );
+
+        res.json({
+          success: true,
+          organization: result.organization,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error importing prospect");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to import prospect",
         });
       }
     }
@@ -2146,6 +2733,253 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to send invoice",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // AUTOMATIC ENRICHMENT ENDPOINTS
+  // =========================================================================
+
+  // POST /api/admin/enrichment/auto-enrich-domains - Auto-enrich discovered domains
+  // This endpoint enriches domains in batch for the Domain Discovery page
+  apiRouter.post(
+    "/enrichment/auto-enrich-domains",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domains } = req.body;
+
+        if (!Array.isArray(domains) || domains.length === 0) {
+          return res.json({ results: [] });
+        }
+
+        // Limit to avoid abuse
+        const domainsToEnrich = domains.slice(0, 20);
+
+        const results = await enrichDomainsInBatch(domainsToEnrich);
+
+        // Convert Map to array for JSON response
+        const enrichmentResults = Array.from(results.entries()).map(
+          ([domain, result]) => ({
+            domain,
+            success: result.success,
+            cached: result.cached,
+            data: result.data,
+            error: result.error,
+          })
+        );
+
+        res.json({
+          results: enrichmentResults,
+          total: enrichmentResults.length,
+          successful: enrichmentResults.filter((r) => r.success).length,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error auto-enriching domains");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to auto-enrich domains",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/enrichment/auto-enrich-org/:orgId - Auto-enrich a single organization
+  apiRouter.post(
+    "/enrichment/auto-enrich-org/:orgId",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+
+        const result = await autoEnrichOrganization(orgId);
+
+        if (!result) {
+          return res.status(404).json({
+            error: "No domain found",
+            message: "Organization does not have a domain to enrich",
+          });
+        }
+
+        res.json({
+          success: result.success,
+          cached: result.cached,
+          data: result.data,
+          error: result.error,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error auto-enriching organization");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to auto-enrich organization",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // PROSPECT CLEANUP ENDPOINTS
+  // =========================================================================
+
+  // GET /api/admin/cleanup/status - Check if cleanup is configured
+  apiRouter.get("/cleanup/status", requireAuth, requireAdmin, async (_req, res) => {
+    res.json({
+      configured: isCleanupConfigured(),
+      enrichment_configured: isLushaConfigured(),
+    });
+  });
+
+  // POST /api/admin/cleanup/analyze - Analyze prospects for issues
+  apiRouter.post(
+    "/cleanup/analyze",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const cleanupService = getCleanupService();
+        if (!cleanupService) {
+          return res.status(503).json({
+            error: "Cleanup not configured",
+            message: "ANTHROPIC_API_KEY is required for intelligent cleanup",
+          });
+        }
+
+        const { limit, onlyProblematic, orgIds } = req.body;
+
+        const report = await cleanupService.analyzeProspects({
+          limit: limit || 50,
+          onlyProblematic: onlyProblematic !== false, // Default true
+          orgIds,
+        });
+
+        res.json(report);
+      } catch (error) {
+        logger.error({ err: error }, "Error analyzing prospects");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to analyze prospects",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/cleanup/auto-fix - Auto-fix issues that can be resolved automatically
+  apiRouter.post(
+    "/cleanup/auto-fix",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const cleanupService = getCleanupService();
+        if (!cleanupService) {
+          return res.status(503).json({
+            error: "Cleanup not configured",
+            message: "ANTHROPIC_API_KEY is required for intelligent cleanup",
+          });
+        }
+
+        const { analyses } = req.body;
+
+        if (!Array.isArray(analyses) || analyses.length === 0) {
+          return res.status(400).json({
+            error: "Invalid request",
+            message: "analyses array is required",
+          });
+        }
+
+        const results = await cleanupService.autoFixIssues(analyses);
+
+        res.json({
+          total: results.length,
+          successful: results.filter((r) => r.success).length,
+          results,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error auto-fixing prospects");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to auto-fix prospects",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/cleanup/analyze-with-ai/:orgId - Use Claude to analyze a specific prospect
+  apiRouter.post(
+    "/cleanup/analyze-with-ai/:orgId",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const cleanupService = getCleanupService();
+        if (!cleanupService) {
+          return res.status(503).json({
+            error: "Cleanup not configured",
+            message: "ANTHROPIC_API_KEY is required for intelligent cleanup",
+          });
+        }
+
+        const { orgId } = req.params;
+
+        logger.info({ orgId }, "Starting AI analysis for prospect");
+
+        const result = await cleanupService.analyzeWithClaude(orgId);
+
+        res.json(result);
+      } catch (error) {
+        logger.error({ err: error }, "Error in AI analysis");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to analyze prospect with AI",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/cleanup/batch-analyze-ai - Use Claude to analyze multiple prospects
+  apiRouter.post(
+    "/cleanup/batch-analyze-ai",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const cleanupService = getCleanupService();
+        if (!cleanupService) {
+          return res.status(503).json({
+            error: "Cleanup not configured",
+            message: "ANTHROPIC_API_KEY is required for intelligent cleanup",
+          });
+        }
+
+        const { orgIds } = req.body;
+
+        if (!Array.isArray(orgIds) || orgIds.length === 0) {
+          return res.status(400).json({
+            error: "Invalid request",
+            message: "orgIds array is required",
+          });
+        }
+
+        // Limit batch size
+        const limitedOrgIds = orgIds.slice(0, 10);
+
+        logger.info(
+          { count: limitedOrgIds.length },
+          "Starting batch AI analysis"
+        );
+
+        const result = await cleanupService.batchAnalyzeWithClaude(limitedOrgIds);
+
+        res.json(result);
+      } catch (error) {
+        logger.error({ err: error }, "Error in batch AI analysis");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to batch analyze prospects with AI",
         });
       }
     }

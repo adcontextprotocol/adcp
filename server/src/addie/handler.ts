@@ -28,6 +28,7 @@ import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
   isSlackUserAdmin,
+  isAdmin,
 } from './mcp/admin-tools.js';
 import {
   MEMBER_TOOLS,
@@ -169,12 +170,26 @@ async function buildMessageWithMemberContext(
 /**
  * Create user-scoped member tools
  * These tools are created per-request with the user's context
+ * Admin users also get access to admin tools
  */
 function createUserScopedTools(memberContext: MemberContext | null): RequestTools {
-  const handlers = createMemberToolHandlers(memberContext);
+  const memberHandlers = createMemberToolHandlers(memberContext);
+  const allTools = [...MEMBER_TOOLS];
+  const allHandlers = new Map(memberHandlers);
+
+  // Add admin tools if user is admin
+  if (isAdmin(memberContext)) {
+    const adminHandlers = createAdminToolHandlers(memberContext);
+    allTools.push(...ADMIN_TOOLS);
+    for (const [name, handler] of adminHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie: Admin tools enabled for this user');
+  }
+
   return {
-    tools: MEMBER_TOOLS,
-    handlers,
+    tools: allTools,
+    handlers: allHandlers,
   };
 }
 

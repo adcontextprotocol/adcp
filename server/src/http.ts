@@ -51,7 +51,9 @@ import { sendAccountLinkedMessage, invalidateMemberContextCache } from "./addie/
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
-import { createAdminSlackRouter, createAdminEmailRouter } from "./routes/admin/index.js";
+import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter } from "./routes/admin/index.js";
+import { processFeedsToFetch } from "./addie/services/feed-fetcher.js";
+import { processAlerts, sendDailyDigest } from "./addie/services/industry-alerts.js";
 import {
   getUnifiedUsersCache,
   setUnifiedUsersCache,
@@ -219,6 +221,11 @@ export class HTTPServer {
   private propertiesService: PropertiesService;
   private adagentsManager: AdAgentsManager;
   private contentCuratorIntervalId: NodeJS.Timeout | null = null;
+  private feedFetcherIntervalId: NodeJS.Timeout | null = null;
+  private feedFetcherInitialTimeoutId: NodeJS.Timeout | null = null;
+  private alertProcessorIntervalId: NodeJS.Timeout | null = null;
+  private alertProcessorInitialTimeoutId: NodeJS.Timeout | null = null;
+  private dailyDigestTimeoutId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -412,11 +419,13 @@ export class HTTPServer {
     this.app.use('/api/slack/aaobot', aaobotRouter);    // AAO bot: /api/slack/aaobot/commands, /api/slack/aaobot/events
     this.app.use('/api/slack/addie', slackAddieRouter); // Addie bot: /api/slack/addie/events
 
-    // Mount admin Slack and Email routes
+    // Mount admin Slack, Email, and Feeds routes
     const adminSlackRouter = createAdminSlackRouter();
     this.app.use('/api/admin/slack', adminSlackRouter); // Admin Slack: /api/admin/slack/*
     const adminEmailRouter = createAdminEmailRouter();
     this.app.use('/api/admin/email', adminEmailRouter); // Admin Email: /api/admin/email/*
+    const adminFeedsRouter = createAdminFeedsRouter();
+    this.app.use('/api/admin/feeds', adminFeedsRouter); // Admin Feeds: /api/admin/feeds/*
 
     // Mount billing routes (admin)
     const { pageRouter: billingPageRouter, apiRouter: billingApiRouter } = createBillingRouter();
@@ -4394,6 +4403,13 @@ Disallow: /api/admin/
         ? path.join(__dirname, '../server/public/admin-email.html')
         : path.join(__dirname, '../public/admin-email.html');
       res.sendFile(emailPath);
+    });
+
+    this.app.get('/admin/feeds', requireAuth, requireAdmin, (req, res) => {
+      const feedsPath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/admin-feeds.html')
+        : path.join(__dirname, '../public/admin-feeds.html');
+      res.sendFile(feedsPath);
     });
 
     // Registry API endpoints (consolidated agents, publishers, lookups)
@@ -10496,6 +10512,10 @@ Disallow: /api/admin/
     // Process pending external resources (fetch content, generate summaries)
     this.startContentCurator();
 
+    // Start industry feed monitoring
+    // Fetches RSS feeds, processes articles, sends Slack alerts
+    this.startIndustryMonitor();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
@@ -10543,6 +10563,106 @@ Disallow: /api/admin/
   }
 
   /**
+   * Start industry feed monitoring system
+   * Fetches RSS feeds from ad tech publications, processes articles,
+   * and sends Slack alerts for high-priority content
+   */
+  private startIndustryMonitor(): void {
+    const FEED_FETCH_INTERVAL_MINUTES = 30;
+    const ALERT_CHECK_INTERVAL_MINUTES = 5;
+
+    // Feed fetcher - check feeds every 30 minutes
+    // Creates perspectives from RSS articles, which are then processed by the content curator
+    this.feedFetcherInitialTimeoutId = setTimeout(async () => {
+      this.feedFetcherInitialTimeoutId = null;
+      try {
+        const result = await processFeedsToFetch();
+        if (result.feedsProcessed > 0) {
+          logger.info(result, 'Industry monitor: fetched RSS feeds');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Industry monitor: initial feed fetch failed');
+      }
+    }, 60000); // 1 minute delay to let other services start
+
+    this.feedFetcherIntervalId = setInterval(async () => {
+      try {
+        const result = await processFeedsToFetch();
+        if (result.feedsProcessed > 0) {
+          logger.info(result, 'Industry monitor: fetched RSS feeds');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Industry monitor: periodic feed fetch failed');
+      }
+    }, FEED_FETCH_INTERVAL_MINUTES * 60 * 1000);
+
+    // Alert processor - check for alerts every 5 minutes
+    this.alertProcessorInitialTimeoutId = setTimeout(async () => {
+      this.alertProcessorInitialTimeoutId = null;
+      try {
+        const result = await processAlerts();
+        if (result.alerted > 0) {
+          logger.info(result, 'Industry monitor: sent alerts');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Industry monitor: initial alert processing failed');
+      }
+    }, 120000); // 2 minute delay
+
+    this.alertProcessorIntervalId = setInterval(async () => {
+      try {
+        const result = await processAlerts();
+        if (result.alerted > 0) {
+          logger.info(result, 'Industry monitor: sent alerts');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Industry monitor: periodic alert processing failed');
+      }
+    }, ALERT_CHECK_INTERVAL_MINUTES * 60 * 1000);
+
+    // Daily digest - schedule for 9am local time
+    this.scheduleDailyDigest();
+
+    logger.info({
+      feedFetchIntervalMinutes: FEED_FETCH_INTERVAL_MINUTES,
+      alertCheckIntervalMinutes: ALERT_CHECK_INTERVAL_MINUTES,
+    }, 'Industry monitor started');
+  }
+
+  /**
+   * Schedule daily digest to run at 9am local time
+   */
+  private scheduleDailyDigest(): void {
+    const now = new Date();
+    const targetHour = 9; // 9am local time
+
+    // Calculate next 9am
+    const nextRun = new Date(now);
+    nextRun.setHours(targetHour, 0, 0, 0);
+
+    // If it's past 9am today, schedule for tomorrow
+    if (now >= nextRun) {
+      nextRun.setDate(nextRun.getDate() + 1);
+    }
+
+    const msUntilNextRun = nextRun.getTime() - now.getTime();
+
+    logger.info({ nextRun: nextRun.toISOString(), msUntilNextRun }, 'Daily digest scheduled');
+
+    this.dailyDigestTimeoutId = setTimeout(async () => {
+      try {
+        await sendDailyDigest();
+        logger.info('Industry monitor: sent daily digest');
+      } catch (err) {
+        logger.error({ err }, 'Industry monitor: daily digest failed');
+      }
+
+      // Schedule next day's digest
+      this.scheduleDailyDigest();
+    }, msUntilNextRun);
+  }
+
+  /**
    * Setup graceful shutdown handlers for SIGTERM and SIGINT
    */
   private setupShutdownHandlers(): void {
@@ -10568,6 +10688,29 @@ Disallow: /api/admin/
       this.contentCuratorIntervalId = null;
       logger.info('Content curator stopped');
     }
+
+    // Stop industry monitor jobs
+    if (this.feedFetcherInitialTimeoutId) {
+      clearTimeout(this.feedFetcherInitialTimeoutId);
+      this.feedFetcherInitialTimeoutId = null;
+    }
+    if (this.feedFetcherIntervalId) {
+      clearInterval(this.feedFetcherIntervalId);
+      this.feedFetcherIntervalId = null;
+    }
+    if (this.alertProcessorInitialTimeoutId) {
+      clearTimeout(this.alertProcessorInitialTimeoutId);
+      this.alertProcessorInitialTimeoutId = null;
+    }
+    if (this.alertProcessorIntervalId) {
+      clearInterval(this.alertProcessorIntervalId);
+      this.alertProcessorIntervalId = null;
+    }
+    if (this.dailyDigestTimeoutId) {
+      clearTimeout(this.dailyDigestTimeoutId);
+      this.dailyDigestTimeoutId = null;
+    }
+    logger.info('Industry monitor stopped');
 
     // Close HTTP server
     if (this.server) {

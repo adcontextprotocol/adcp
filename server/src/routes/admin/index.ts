@@ -6,3 +6,4 @@
 
 export { createAdminSlackRouter } from './slack.js';
 export { createAdminEmailRouter } from './email.js';
+export { createAdminFeedsRouter } from './feeds.js';

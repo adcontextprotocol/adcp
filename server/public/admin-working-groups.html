@@ -391,12 +391,7 @@
     <div class="modal">
       <h2 id="modalTitle">Add Working Group</h2>
 
-      <div class="tabs">
-        <div class="tab active" onclick="showTab('details')">Details</div>
-        <div class="tab" onclick="showTab('members')" id="membersTab" style="display: none;">Members</div>
-      </div>
-
-      <div id="detailsTab" class="tab-content active">
+      <div id="detailsTab">
         <form id="groupForm" onsubmit="saveGroup(event)" autocomplete="off">
           <input type="hidden" id="groupId">
 
@@ -457,45 +452,41 @@
             </div>
           </div>
 
+          <!-- Members Section (only visible when editing) -->
+          <div id="membersSection" style="display: none;">
+            <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-4); font-size: var(--text-base);">Members (<span id="memberCount">0</span>)</h3>
+
+            <!-- Slack Sync Section -->
+            <div id="slackSyncSection" style="margin-bottom: var(--space-4); padding: var(--space-4); background: var(--color-bg-subtle); border-radius: var(--rounded);">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                  <strong>Sync from Slack</strong>
+                  <p style="margin: var(--space-1) 0 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
+                    Import members from the linked Slack channel
+                  </p>
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="syncFromSlack()" id="syncSlackBtn">
+                  Sync Members
+                </button>
+              </div>
+              <div id="syncResult" style="margin-top: var(--space-3); display: none;"></div>
+            </div>
+
+            <div class="form-group">
+              <label>Add Member</label>
+              <div class="user-search">
+                <input type="search" id="memberSearch" placeholder="Search for a user to add..." oninput="searchUsers('member')" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" name="wg-member-search-field" role="combobox" aria-autocomplete="list">
+                <div id="memberResults" class="user-search-results"></div>
+              </div>
+            </div>
+            <div id="membersList" class="members-list"></div>
+          </div>
+
           <div class="modal-buttons">
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
             <button type="submit" class="btn btn-primary" id="saveBtn">Save</button>
           </div>
         </form>
-      </div>
-
-      <div id="membersTab-content" class="tab-content">
-        <div class="members-section">
-          <h3>Members (<span id="memberCount">0</span>)</h3>
-
-          <!-- Slack Sync Section -->
-          <div id="slackSyncSection" style="margin: var(--space-4) 0; padding: var(--space-4); background: var(--color-bg-subtle); border-radius: var(--rounded);">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-              <div>
-                <strong>Sync from Slack</strong>
-                <p style="margin: var(--space-1) 0 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
-                  Import members from the linked Slack channel
-                </p>
-              </div>
-              <button type="button" class="btn btn-secondary" onclick="syncFromSlack()" id="syncSlackBtn">
-                Sync Members
-              </button>
-            </div>
-            <div id="syncResult" style="margin-top: var(--space-3); display: none;"></div>
-          </div>
-
-          <div class="form-group" style="margin-top: var(--space-4);">
-            <label>Add Member</label>
-            <div class="user-search">
-              <input type="search" id="memberSearch" placeholder="Search for a user to add..." oninput="searchUsers('member')" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" name="wg-member-search-field" role="combobox" aria-autocomplete="list">
-              <div id="memberResults" class="user-search-results"></div>
-            </div>
-          </div>
-          <div id="membersList" class="members-list"></div>
-        </div>
-        <div class="modal-buttons">
-          <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
-        </div>
       </div>
     </div>
   </div>
@@ -709,17 +700,10 @@
     }
 
     // Show tabs
-    function showTab(tabName) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-
-      if (tabName === 'details') {
-        document.querySelector('.tab:first-child').classList.add('active');
-        document.getElementById('detailsTab').classList.add('active');
-      } else {
-        document.getElementById('membersTab').classList.add('active');
-        document.getElementById('membersTab-content').classList.add('active');
-      }
+    // Show/hide members section based on whether we're editing an existing group
+    function updateMembersSectionVisibility() {
+      const membersSection = document.getElementById('membersSection');
+      membersSection.style.display = editingGroup ? 'block' : 'none';
     }
 
     // Current leaders in the form
@@ -965,10 +949,9 @@
       document.getElementById('modalTitle').textContent = 'Add Working Group';
       document.getElementById('groupForm').reset();
       document.getElementById('groupId').value = '';
-      document.getElementById('membersTab').style.display = 'none';
       clearLeaders();
       validateSlackUrl(); // Reset status message
-      showTab('details');
+      updateMembersSectionVisibility(); // Hide members section for new groups
       document.getElementById('groupModal').style.display = 'flex';
     }
 
@@ -999,11 +982,10 @@
         }));
         renderLeadersList();
 
-        // Show members tab for existing groups
-        document.getElementById('membersTab').style.display = 'block';
+        // Show members section for existing groups
+        updateMembersSectionVisibility();
         await loadMembers(id);
 
-        showTab('details');
         document.getElementById('groupModal').style.display = 'flex';
       } catch (error) {
         console.error('Error loading group:', error);
