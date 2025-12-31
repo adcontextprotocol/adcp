@@ -185,6 +185,7 @@ export class LushaClient {
   async enrichCompanyByDomain(domain: string): Promise<CompanyEnrichmentResult> {
     try {
       // Use the v2 bulk API with a single company
+      // Each company needs a unique `id` string to correlate request/response
       const response = await fetch(`${LUSHA_API_BASE}/bulk/company/v2`, {
         method: 'POST',
         headers: {
@@ -192,8 +193,7 @@ export class LushaClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          requestId: `enrich-${domain}-${Date.now()}`,
-          companies: [{ domain }],
+          companies: [{ id: '1', domain }],
         }),
       });
 
