@@ -35,6 +35,7 @@
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
           { href: '/admin/email', label: 'Email', icon: '📧' },
           { href: '/admin/addie', label: 'Addie', icon: '🤖' },
+          { href: '/admin/feeds', label: 'Industry Feeds', icon: '📰' },
           { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
           { href: '/admin/audit', label: 'Audit Log', icon: '📜' },
         ]
