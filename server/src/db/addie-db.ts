@@ -2205,4 +2205,88 @@ export class AddieDatabase {
       tool_usage: toolUsage,
     };
   }
+
+  // ============== Routing Rules ==============
+
+  /**
+   * Sync routing rules from code to database
+   * Called on server startup to keep database in sync with code
+   */
+  async syncRoutingRules(rules: Array<{
+    rule_type: string;
+    rule_key: string;
+    description: string;
+    patterns: string[];
+    tools?: string[];
+    emoji?: string;
+    code_version?: string;
+  }>): Promise<void> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Clear existing rules
+      await client.query('DELETE FROM addie_routing_rules');
+
+      // Insert new rules
+      for (const rule of rules) {
+        await client.query(
+          `INSERT INTO addie_routing_rules
+           (rule_type, rule_key, description, patterns, tools, emoji, code_version, synced_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+          [
+            rule.rule_type,
+            rule.rule_key,
+            rule.description,
+            JSON.stringify(rule.patterns),
+            JSON.stringify(rule.tools || []),
+            rule.emoji || null,
+            rule.code_version || null,
+          ]
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Get all routing rules for admin display
+   */
+  async getRoutingRules(): Promise<Array<{
+    id: number;
+    rule_type: string;
+    rule_key: string;
+    description: string;
+    patterns: string[];
+    tools: string[];
+    emoji: string | null;
+    code_version: string | null;
+    synced_at: Date;
+  }>> {
+    const result = await query<{
+      id: number;
+      rule_type: string;
+      rule_key: string;
+      description: string;
+      patterns: string;
+      tools: string;
+      emoji: string | null;
+      code_version: string | null;
+      synced_at: Date;
+    }>(
+      `SELECT * FROM addie_routing_rules ORDER BY rule_type, rule_key`
+    );
+
+    return result.rows.map(row => ({
+      ...row,
+      patterns: JSON.parse(row.patterns),
+      tools: JSON.parse(row.tools),
+    }));
+  }
 }

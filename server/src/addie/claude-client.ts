@@ -140,34 +140,6 @@ export class AddieClaudeClient {
   }
 
   /**
-   * Quick evaluation using Haiku for simple yes/no decisions
-   * Used for determining if Addie should respond to channel messages
-   *
-   * @param prompt - The evaluation prompt
-   * @returns 'yes', 'no', or 'react' (for emoji reaction only)
-   */
-  async quickEvaluate(prompt: string): Promise<'yes' | 'no' | 'react'> {
-    try {
-      const response = await this.client.messages.create({
-        model: ModelConfig.fast,
-        max_tokens: 10,
-        messages: [{ role: 'user', content: prompt }],
-      });
-
-      const text = response.content[0].type === 'text'
-        ? response.content[0].text.toLowerCase().trim()
-        : '';
-
-      if (text === 'react') return 'react';
-      if (text === 'yes') return 'yes';
-      return 'no';
-    } catch (error) {
-      logger.error({ error }, 'Addie: Quick evaluation failed');
-      return 'no';
-    }
-  }
-
-  /**
    * Register a tool
    */
   registerTool(tool: AddieTool, handler: ToolHandler): void {

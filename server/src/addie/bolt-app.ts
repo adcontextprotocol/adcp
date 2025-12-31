@@ -53,12 +53,14 @@ import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
 import { getThreadReplies, getSlackUserWithAddieToken } from '../slack/client.js';
+import { AddieRouter, type ExecutionPlan, type RoutingContext, getRoutingRulesForSync } from './router.js';
 
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let expressReceiver: any = null;
 let claudeClient: AddieClaudeClient | null = null;
 let addieDb: AddieDatabase | null = null;
+let addieRouter: AddieRouter | null = null;
 let threadContextStore: DatabaseThreadContextStore | null = null;
 let initialized = false;
 
@@ -86,6 +88,9 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Initialize Claude client
   claudeClient = new AddieClaudeClient(anthropicKey, AddieModelConfig.chat);
 
+  // Initialize router (uses Haiku for fast classification)
+  addieRouter = new AddieRouter(anthropicKey);
+
   // Initialize database access
   addieDb = new AddieDatabase();
 
@@ -94,6 +99,15 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   // Initialize knowledge search
   await initializeKnowledgeSearch();
+
+  // Sync routing rules to database for admin visibility
+  try {
+    const routingRules = getRoutingRulesForSync();
+    await addieDb.syncRoutingRules(routingRules);
+    logger.info({ ruleCount: routingRules.length }, 'Addie Bolt: Routing rules synced to database');
+  } catch (error) {
+    logger.warn({ error }, 'Addie Bolt: Failed to sync routing rules (non-fatal)');
+  }
 
   // Register knowledge tools
   const knowledgeHandlers = createKnowledgeToolHandlers();
@@ -954,16 +968,15 @@ function buildFeedbackBlock(): {
 /**
  * Handle channel messages (not mentions) for HITL proposed responses
  *
- * When Addie sees a message in a channel it's in, it evaluates whether
- * it could provide a helpful response. If so, it queues a proposed response
- * for admin approval before sending.
+ * When Addie sees a message in a channel it's in, it uses the router to
+ * determine if/how to respond. Responses are queued for admin approval.
  */
 async function handleChannelMessage({
   event,
   context,
 }: SlackEventMiddlewareArgs<'message'> & { context: { botUserId?: string } }): Promise<void> {
   // Skip if not initialized
-  if (!claudeClient || !addieDb) {
+  if (!claudeClient || !addieDb || !addieRouter) {
     return;
   }
 
@@ -995,74 +1008,85 @@ async function handleChannelMessage({
   const channelId = event.channel;
   const messageText = event.text;
   const threadTs = ('thread_ts' in event ? event.thread_ts : undefined) || event.ts;
+  const isInThread = !!('thread_ts' in event && event.thread_ts);
 
-  logger.debug({ channelId, userId, hasThread: !!('thread_ts' in event && event.thread_ts) },
+  logger.debug({ channelId, userId, isInThread },
     'Addie Bolt: Evaluating channel message for potential response');
 
   try {
-    // Load engagement rules from database (rules with context = 'engagement')
-    const engagementRules = await addieDb.getRulesByContext('engagement');
-    const rulesContext = engagementRules.length > 0
-      ? engagementRules.map(r => r.content).join('\n\n')
-      : `Respond to:
-- Questions about AdCP, agentic advertising, or AgenticAdvertising.org
-- Requests for help that Addie can assist with
-- Discussions where Addie has relevant knowledge
+    // Get member context for routing decisions
+    const memberContext = await getMemberContext(userId);
 
-React with emoji (👋) to:
-- Greetings like "hi", "hello", "hey everyone"
-- New members introducing themselves
-- Welcomes and friendly messages
+    // Build routing context
+    const routingCtx: RoutingContext = {
+      message: messageText,
+      source: 'channel',
+      memberContext,
+      isThread: isInThread,
+    };
 
-Do NOT respond to:
-- Casual conversation or social chat
-- Internal team discussions not related to AdCP
-- Messages that don't need Addie's input
-- Simple acknowledgments or emoji reactions`;
+    // Quick match first (no API call for obvious cases)
+    let plan = addieRouter.quickMatch(routingCtx);
 
-    // Use Haiku for fast yes/no/react evaluation
-    const evaluationPrompt = `You are Addie, an AI assistant for AgenticAdvertising.org. A message was posted in a Slack channel.
+    // If no quick match, use the full router
+    if (!plan) {
+      plan = await addieRouter.route(routingCtx);
+    }
 
-${rulesContext}
+    logger.debug({ channelId, action: plan.action, reason: plan.reason },
+      'Addie Bolt: Router decision for channel message');
 
-Message: "${messageText.substring(0, 500)}"
-
-Respond with ONLY one word:
-- "yes" if you should respond with a full message
-- "react" if you should just add a friendly emoji reaction (👋)
-- "no" if you should ignore this message`;
-
-    const decision = await claudeClient.quickEvaluate(evaluationPrompt);
-
-    if (decision === 'no') {
-      logger.debug({ channelId }, 'Addie Bolt: Message does not warrant response');
+    // Handle based on execution plan
+    if (plan.action === 'ignore') {
       return;
     }
 
-    // Handle emoji reaction
-    if (decision === 'react') {
+    if (plan.action === 'react') {
       try {
         await boltApp?.client.reactions.add({
           channel: channelId,
           timestamp: event.ts,
-          name: 'wave', // 👋
+          name: plan.emoji,
         });
-        logger.info({ channelId, userId }, 'Addie Bolt: Added wave reaction to greeting');
+        logger.info({ channelId, userId, emoji: plan.emoji }, 'Addie Bolt: Added reaction');
       } catch (reactionError) {
         logger.debug({ error: reactionError, channelId }, 'Addie Bolt: Could not add reaction (may already exist)');
       }
       return;
     }
 
-    logger.info({ channelId, userId }, 'Addie Bolt: Generating proposed response for channel message');
+    if (plan.action === 'clarify') {
+      // Queue clarifying question for approval
+      await addieDb.queueForApproval({
+        action_type: 'reply',
+        target_channel_id: channelId,
+        target_thread_ts: threadTs,
+        proposed_content: plan.question,
+        trigger_type: 'channel_message',
+        trigger_context: {
+          original_message: messageText.substring(0, 1000),
+          user_id: userId,
+          user_display_name: memberContext?.slack_user?.display_name || undefined,
+          is_clarifying_question: true,
+          router_reason: plan.reason,
+        },
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
+      logger.info({ channelId, userId }, 'Addie Bolt: Clarifying question queued for approval');
+      return;
+    }
 
-    // Get member context for the user
-    const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
+    // action === 'respond'
+    logger.info({ channelId, userId, tools: plan.tools },
+      'Addie Bolt: Generating proposed response for channel message');
+
+    // Build message with member context
+    const { message: messageWithContext } = await buildMessageWithMemberContext(
       userId,
       messageText
     );
 
-    // Generate a response
+    // Generate a response with the specified tools
     const userTools = createUserScopedTools(memberContext);
     const response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
 
@@ -1090,8 +1114,9 @@ Respond with ONLY one word:
         user_id: userId,
         user_display_name: memberContext?.slack_user?.display_name || undefined,
         tools_used: response.tools_used,
+        router_tools: plan.tools,
+        router_reason: plan.reason,
       },
-      // Expire after 24 hours - old responses become stale
       expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
 
