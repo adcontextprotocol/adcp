@@ -24,6 +24,11 @@ import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
 } from './mcp/member-tools.js';
+import {
+  ADMIN_TOOLS,
+  createAdminToolHandlers,
+  isAdmin,
+} from './mcp/admin-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -133,12 +138,26 @@ async function buildMessageWithMemberContext(
 /**
  * Create user-scoped member tools
  * These tools are created per-request with the user's context
+ * Admin users also get access to admin tools
  */
 function createUserScopedTools(memberContext: MemberContext | null): RequestTools {
-  const handlers = createMemberToolHandlers(memberContext);
+  const memberHandlers = createMemberToolHandlers(memberContext);
+  const allTools = [...MEMBER_TOOLS];
+  const allHandlers = new Map(memberHandlers);
+
+  // Add admin tools if user is admin
+  if (isAdmin(memberContext)) {
+    const adminHandlers = createAdminToolHandlers(memberContext);
+    allTools.push(...ADMIN_TOOLS);
+    for (const [name, handler] of adminHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie: Admin tools enabled for this user');
+  }
+
   return {
-    tools: MEMBER_TOOLS,
-    handlers,
+    tools: allTools,
+    handlers: allHandlers,
   };
 }
 
