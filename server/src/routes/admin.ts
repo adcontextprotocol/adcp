@@ -22,6 +22,7 @@ import {
   getPendingInvoices,
   createAndSendInvoice,
 } from "../billing/stripe-client.js";
+import { getMemberContext, getWebMemberContext } from "../addie/member-context.js";
 
 const slackDb = new SlackDatabase();
 const orgDb = new OrganizationDatabase();
@@ -515,6 +516,8 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               prospect_next_action,
               prospect_next_action_date,
               parent_organization_id,
+              company_type,
+              prospect_owner,
             } = prospect;
 
             if (!name || typeof name !== "string") {
@@ -546,8 +549,10 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               prospect_contact_title,
               prospect_next_action,
               prospect_next_action_date,
-              parent_organization_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+              parent_organization_id,
+              company_type,
+              prospect_owner
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING *`,
               [
                 workosOrg.id,
@@ -561,6 +566,8 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 prospect_next_action || null,
                 prospect_next_action_date || null,
                 parent_organization_id || null,
+                company_type || null,
+                prospect_owner || null,
               ]
             );
 
@@ -1747,6 +1754,65 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch organization Slack activity",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // USER CONTEXT API (for viewing member context like Addie sees it)
+  // =========================================================================
+
+  // GET /api/admin/users/:userId/context - Get member context for a user
+  // Accepts either a WorkOS user ID or Slack user ID
+  apiRouter.get(
+    "/users/:userId/context",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { userId } = req.params;
+        const { type } = req.query; // 'workos' or 'slack' - defaults to auto-detect
+
+        let context;
+
+        // Auto-detect or use specified type
+        if (type === "slack" || (!type && userId.startsWith("U"))) {
+          // Slack user ID (starts with U)
+          context = await getMemberContext(userId);
+        } else if (type === "workos" || (!type && userId.startsWith("user_"))) {
+          // WorkOS user ID (starts with user_)
+          context = await getWebMemberContext(userId);
+        } else {
+          // Try both - first check if it's a WorkOS ID
+          try {
+            context = await getWebMemberContext(userId);
+            // If the context came back with meaningful data, use it
+            if (context.workos_user || context.organization) {
+              // Good, we found the user
+            } else {
+              // Try as Slack ID
+              context = await getMemberContext(userId);
+            }
+          } catch {
+            // Fall back to Slack lookup
+            context = await getMemberContext(userId);
+          }
+        }
+
+        if (!context.is_mapped && !context.slack_user && !context.workos_user) {
+          return res.status(404).json({
+            error: "User not found",
+            message: "Could not find context for this user ID",
+          });
+        }
+
+        res.json(context);
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching user context");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch user context",
         });
       }
     }

@@ -112,6 +112,8 @@ export async function sendWelcomeEmail(data: {
   productName?: string;
   workosUserId?: string;
   workosOrganizationId?: string;
+  isPersonal?: boolean;
+  firstName?: string;
 }): Promise<boolean> {
   if (!resend) {
     logger.debug('Resend not configured, skipping welcome email');
@@ -121,6 +123,24 @@ export async function sendWelcomeEmail(data: {
   const emailType: EmailType = 'welcome_member';
   const subject = 'Welcome to AgenticAdvertising.org!';
 
+  // Escape HTML entities to prevent XSS
+  const escapeHtml = (str: string): string =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  // Personalize greeting based on account type (guard against empty strings and XSS)
+  const safeName = data.firstName?.trim() ? escapeHtml(data.firstName.trim()) : null;
+  const greeting = safeName ? `Hi ${safeName},` : 'Hi there,';
+
+  // For individual accounts, use personal language instead of organization name
+  const welcomeMessage = data.isPersonal
+    ? "We're excited to have you join us."
+    : `We're excited to have ${data.organizationName} join us.`;
+
+  // For individual accounts, adjust "your organization" references
+  const profileDescription = data.isPersonal
+    ? 'Showcase your work and interests'
+    : "Showcase your organization's capabilities";
+
   try {
     // Create tracking record first
     const emailEvent = await emailDb.createEmailEvent({
@@ -129,7 +149,7 @@ export async function sendWelcomeEmail(data: {
       subject,
       workos_user_id: data.workosUserId,
       workos_organization_id: data.workosOrganizationId,
-      metadata: { organizationName: data.organizationName, productName: data.productName },
+      metadata: { organizationName: data.organizationName, productName: data.productName, isPersonal: data.isPersonal },
     });
 
     const trackingId = emailEvent.tracking_id;
@@ -158,16 +178,16 @@ export async function sendWelcomeEmail(data: {
     <h1 style="color: #1a1a1a; font-size: 24px; margin: 0;">Welcome to AgenticAdvertising.org!</h1>
   </div>
 
-  <p>Hi there,</p>
+  <p>${greeting}</p>
 
-  <p>Thank you for becoming a member of <strong>AgenticAdvertising.org</strong>! We're excited to have ${data.organizationName} join us.</p>
+  <p>Thank you for becoming a member of <strong>AgenticAdvertising.org</strong>! ${welcomeMessage}</p>
 
   <p>As a member, you now have access to:</p>
 
   <ul style="padding-left: 20px;">
     <li><strong>Member Directory</strong> - Connect with other members working on agentic advertising</li>
     <li><strong>Working Groups</strong> - Participate in shaping the future of AdCP</li>
-    <li><strong>Member Profile</strong> - Showcase your organization's capabilities</li>
+    <li><strong>Member Profile</strong> - ${profileDescription}</li>
   </ul>
 
   <p>To get started, visit your dashboard to set up your member profile:</p>
@@ -189,14 +209,14 @@ export async function sendWelcomeEmail(data: {
       text: `
 Welcome to AgenticAdvertising.org!
 
-Hi there,
+${greeting}
 
-Thank you for becoming a member of AgenticAdvertising.org! We're excited to have ${data.organizationName} join us.
+Thank you for becoming a member of AgenticAdvertising.org! ${welcomeMessage}
 
 As a member, you now have access to:
 - Member Directory - Connect with other members working on agentic advertising
 - Working Groups - Participate in shaping the future of AdCP
-- Member Profile - Showcase your organization's capabilities
+- Member Profile - ${profileDescription}
 
 To get started, visit your dashboard to set up your member profile:
 https://agenticadvertising.org/dashboard
@@ -218,7 +238,7 @@ ${footerText}
     // Mark as sent with Resend's email ID
     await emailDb.markEmailSent(trackingId, sendData?.id);
 
-    logger.info({ to: data.to, organization: data.organizationName, trackingId }, 'Welcome email sent');
+    logger.info({ to: data.to, organization: data.organizationName, isPersonal: data.isPersonal || false, trackingId }, 'Welcome email sent');
     return true;
   } catch (error) {
     logger.error({ error, to: data.to }, 'Error sending welcome email');

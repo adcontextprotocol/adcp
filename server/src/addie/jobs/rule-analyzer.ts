@@ -15,6 +15,7 @@ import {
   type AnalysisType,
 } from '../../db/addie-db.js';
 import { randomUUID } from 'crypto';
+import { ModelConfig } from '../../config/models.js';
 
 const logger = createLogger('addie-rule-analyzer');
 
@@ -111,7 +112,7 @@ export async function analyzeInteractions(options: {
     const anthropic = new Anthropic({ apiKey: anthropicApiKey });
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: ModelConfig.primary,
       max_tokens: 4096,
       system: `You are an expert at analyzing AI agent interactions and improving agent behavior.
 
@@ -201,7 +202,7 @@ Output your analysis as JSON matching the specified schema.`,
       suggestions_generated: suggestions.length,
       patterns_found: patterns,
       summary: analysis.summary,
-      model_used: 'claude-sonnet-4-20250514',
+      model_used: ModelConfig.primary,
       tokens_used: tokensUsed,
     });
 
@@ -357,7 +358,7 @@ export async function previewRuleChange(options: {
 
   for (const interaction of interactions.slice(0, 5)) {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: ModelConfig.primary,
       max_tokens: 1024,
       system: `You are evaluating how a change in operating rules would affect an AI assistant's response.
 
@@ -416,7 +417,7 @@ Predict how the response would change under these rules. Output JSON:
 
   // Generate overall assessment
   const assessmentResponse = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: ModelConfig.primary,
     max_tokens: 512,
     messages: [
       {

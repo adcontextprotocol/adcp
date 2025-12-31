@@ -10,8 +10,17 @@ import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
 import { ADDIE_SYSTEM_PROMPT, buildContextWithThread } from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';
+import { AddieModelConfig } from '../config/models.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+
+/**
+ * Per-request tools that can be added dynamically
+ */
+export interface RequestTools {
+  tools: AddieTool[];
+  handlers: Map<string, ToolHandler>;
+}
 
 /**
  * Detailed record of a single tool execution
@@ -56,7 +65,7 @@ export class AddieClaudeClient {
   private readonly CACHE_TTL_MS = 300000; // Cache rules for 5 minutes (rules change rarely)
   private webSearchEnabled: boolean = true; // Enable web search for external questions
 
-  constructor(apiKey: string, model: string = 'claude-sonnet-4-5') {
+  constructor(apiKey: string, model: string = AddieModelConfig.chat) {
     this.client = new Anthropic({ apiKey });
     this.model = model;
     this.addieDb = new AddieDatabase();
@@ -119,16 +128,20 @@ export class AddieClaudeClient {
   registerTool(tool: AddieTool, handler: ToolHandler): void {
     this.tools.push(tool);
     this.toolHandlers.set(tool.name, handler);
-    logger.info({ toolName: tool.name }, 'Addie: Registered tool');
   }
 
   /**
    * Process a message and return a response
    * Uses database-backed rules for the system prompt when available
+   *
+   * @param userMessage - The user's message
+   * @param threadContext - Optional thread history
+   * @param requestTools - Optional per-request tools (e.g., user-scoped member tools)
    */
   async processMessage(
     userMessage: string,
-    threadContext?: Array<{ user: string; text: string }>
+    threadContext?: Array<{ user: string; text: string }>,
+    requestTools?: RequestTools
   ): Promise<AddieResponse> {
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
@@ -154,11 +167,15 @@ export class AddieClaudeClient {
     let maxIterations = 10;
     let iteration = 0;
 
+    // Combine global tools with per-request tools
+    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+
     while (iteration < maxIterations) {
       iteration++;
 
-      // Build tools array: custom tools + optional web search
-      const customTools = this.tools.map(t => ({
+      // Build tools array: custom tools + request tools + optional web search
+      const customTools = allTools.map(t => ({
         name: t.name,
         description: t.description,
         input_schema: t.input_schema as Anthropic.Tool['input_schema'],
@@ -390,7 +407,7 @@ export class AddieClaudeClient {
           toolsUsed.push(toolName);
           executionSequence++;
 
-          const handler = this.toolHandlers.get(toolName);
+          const handler = allHandlers.get(toolName);
           if (!handler) {
             const durationMs = Date.now() - startTime;
             toolResults.push({

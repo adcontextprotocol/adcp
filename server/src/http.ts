@@ -47,7 +47,10 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
+import { sendAccountLinkedMessage, invalidateMemberContextCache } from "./addie/index.js";
 import { createSlackRouter } from "./routes/slack.js";
+import { createWebhooksRouter } from "./routes/webhooks.js";
+import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
 import { createAdminSlackRouter, createAdminEmailRouter } from "./routes/admin/index.js";
 import {
   getUnifiedUsersCache,
@@ -58,6 +61,7 @@ import {
 import { createBillingRouter } from "./routes/billing.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
+import { queuePerspectiveLink, processPendingResources } from "./addie/services/content-curator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -213,6 +217,7 @@ export class HTTPServer {
   private publisherTracker: PublisherTracker;
   private propertiesService: PropertiesService;
   private adagentsManager: AdAgentsManager;
+  private contentCuratorIntervalId: NodeJS.Timeout | null = null;
 
   constructor() {
     this.app = express();
@@ -253,12 +258,12 @@ export class HTTPServer {
     this.app.use((req, res, next) => {
       // Skip global JSON parser for routes that need raw body capture:
       // - Stripe webhooks: need raw body for webhook signature verification
-      // - Slack commands: need raw body for Slack signature verification (URL-encoded)
-      // - Slack events: need raw body for Slack signature verification (JSON)
+      // - Resend inbound webhooks: need raw body for Svix signature verification
+      // - Slack routes: need raw body for Slack signature verification
+      //   (both JSON for events and URL-encoded for commands)
       if (req.path === '/api/webhooks/stripe' ||
-          req.path === '/api/slack/commands' ||
-          req.path === '/api/slack/events' ||
-          req.path === '/api/addie/slack/events') {
+          req.path === '/api/webhooks/resend-inbound' ||
+          req.path.startsWith('/api/slack/')) {
         next();
       } else {
         express.json({ limit: '10mb' })(req, res, next);
@@ -416,6 +421,12 @@ export class HTTPServer {
     const { pageRouter: billingPageRouter, apiRouter: billingApiRouter } = createBillingRouter();
     this.app.use('/admin', billingPageRouter);          // Page routes: /admin/products
     this.app.use('/api/admin', billingApiRouter);       // API routes: /api/admin/products
+
+    // Mount webhook routes (external services like Resend, WorkOS)
+    const webhooksRouter = createWebhooksRouter();
+    this.app.use('/api/webhooks', webhooksRouter);      // Webhooks: /api/webhooks/resend-inbound
+    const workosWebhooksRouter = createWorkOSWebhooksRouter();
+    this.app.use('/api/webhooks', workosWebhooksRouter); // WorkOS: /api/webhooks/workos
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
@@ -656,6 +667,9 @@ export class HTTPServer {
           enabled,
         });
 
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         logger.info({ userId: prefs.workos_user_id, category_id, enabled }, 'Category preference updated');
         res.json({ success: true });
       } catch (error) {
@@ -679,6 +693,10 @@ export class HTTPServer {
         }
 
         await emailPrefsDb.resubscribe(prefs.workos_user_id);
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         logger.info({ userId: prefs.workos_user_id }, 'User resubscribed');
         res.json({ success: true });
       } catch (error) {
@@ -768,6 +786,9 @@ export class HTTPServer {
           enabled,
         });
 
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         res.json({ success: true });
       } catch (error) {
         logger.error({ error }, 'Error updating preferences');
@@ -781,6 +802,10 @@ export class HTTPServer {
         const userId = (req as any).user.id;
 
         await emailPrefsDb.resubscribe(userId);
+
+        // Invalidate Addie's member context cache - email preferences changed
+        invalidateMemberContextCache();
+
         logger.info({ userId }, 'User resubscribed via dashboard');
         res.json({ success: true });
       } catch (error) {
@@ -1621,6 +1646,8 @@ export class HTTPServer {
                       productName,
                       workosUserId: workosUser.id,
                       workosOrganizationId: org.workos_organization_id,
+                      isPersonal: org.is_personal || false,
+                      firstName: workosUser.firstName || undefined,
                     }).catch(err => logger.error({ err }, 'Failed to send welcome email'));
 
                     // Record to org_activities for prospect tracking
@@ -1712,6 +1739,10 @@ export class HTTPServer {
                   currency,
                   interval,
                 }, 'Subscription data synced to database');
+
+                // Invalidate member context cache for all users in this org
+                // (subscription status affects is_member and subscription fields)
+                invalidateMemberContextCache();
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
@@ -3502,7 +3533,22 @@ export class HTTPServer {
           ]
         );
 
-        res.json(result.rows[0]);
+        const perspective = result.rows[0];
+
+        // Queue external links for Addie's knowledge base when published
+        if (perspective.content_type === 'link' && perspective.status === 'published' && perspective.external_url) {
+          queuePerspectiveLink({
+            id: perspective.id,
+            title: perspective.title,
+            external_url: perspective.external_url,
+            category: perspective.category || 'perspective',
+            tags: perspective.tags,
+          }).catch(err => {
+            logger.warn({ err, perspectiveId: perspective.id }, 'Failed to queue perspective link for indexing');
+          });
+        }
+
+        res.json(perspective);
       } catch (error) {
         logger.error({ err: error }, 'Create perspective error:');
         // Check for unique constraint violation
@@ -3613,7 +3659,22 @@ export class HTTPServer {
           });
         }
 
-        res.json(result.rows[0]);
+        const perspective = result.rows[0];
+
+        // Queue external links for indexing when perspective is published
+        if (perspective.content_type === 'link' && perspective.status === 'published' && perspective.external_url) {
+          queuePerspectiveLink({
+            id: perspective.id,
+            title: perspective.title,
+            external_url: perspective.external_url,
+            category: perspective.category || 'perspective',
+            tags: perspective.tags,
+          }).catch(err => {
+            logger.warn({ err, perspectiveId: perspective.id }, 'Failed to queue perspective link for indexing');
+          });
+        }
+
+        res.json(perspective);
       } catch (error) {
         logger.error({ err: error }, 'Update perspective error:');
         // Check for unique constraint violation
@@ -3680,6 +3741,11 @@ export class HTTPServer {
 
     // GET /api/admin/working-groups/search-users - Search users for leadership selection
     // IMPORTANT: This route must come BEFORE parameterized routes like /:id
+    //
+    // Performance strategy:
+    // 1. Query local organization_memberships table (synced from WorkOS via webhooks)
+    // 2. If table is empty, show helpful message to run backfill
+    // This is instant - no WorkOS API calls needed
     this.app.get('/api/admin/working-groups/search-users', requireAuth, requireAdmin, async (req, res) => {
       try {
         const { q } = req.query;
@@ -3687,75 +3753,24 @@ export class HTTPServer {
           return res.json([]);
         }
 
-        if (!workos) {
-          return res.status(503).json({ error: 'Authentication not configured' });
-        }
-
-        // Search for users by iterating through member organizations
-        const searchTerm = q.toLowerCase();
-        const matchingUsers: Array<{
-          user_id: string;
-          email: string;
-          name: string;
-          org_id: string;
-          org_name: string;
-        }> = [];
-        const seenUserIds = new Set<string>();
-
-        // Get all member organizations from our database
-        const orgDatabase = new OrganizationDatabase();
-        const orgs = await orgDatabase.listOrganizations();
-
-        // For each org, get their memberships from WorkOS and filter
-        for (const org of orgs) {
-          if (matchingUsers.length >= 20) break;
-
-          try {
-            const memberships = await workos.userManagement.listOrganizationMemberships({
-              organizationId: org.workos_organization_id,
-            });
-
-            for (const membership of memberships.data) {
-              if (matchingUsers.length >= 20) break;
-              if (seenUserIds.has(membership.userId)) continue;
-
-              // Get user details
-              try {
-                const user = await workos.userManagement.getUser(membership.userId);
-                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-
-                // Check if user matches search term
-                if (
-                  user.email.toLowerCase().includes(searchTerm) ||
-                  fullName.toLowerCase().includes(searchTerm) ||
-                  org.name.toLowerCase().includes(searchTerm)
-                ) {
-                  seenUserIds.add(user.id);
-                  matchingUsers.push({
-                    user_id: user.id,
-                    email: user.email,
-                    name: fullName,
-                    org_id: org.workos_organization_id,
-                    org_name: org.name,
-                  });
-                }
-              } catch (userErr) {
-                // Skip users we can't fetch
-                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
-              }
-            }
-          } catch (orgErr) {
-            // Skip orgs we can't fetch memberships for
-            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
-          }
-        }
-
-        res.json(matchingUsers);
+        // Use the existing WorkingGroupDatabase method which queries local DB
+        const results = await workingGroupDb.searchUsersForLeadership(q, 20);
+        res.json(results);
       } catch (error) {
+        // Check if it's a "table doesn't exist" error
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage.includes('organization_memberships') && errorMessage.includes('does not exist')) {
+          logger.warn('organization_memberships table not found - run migrations and backfill');
+          return res.status(503).json({
+            error: 'User search not yet configured',
+            message: 'Run database migrations and then call POST /api/admin/backfill-memberships to populate user data',
+          });
+        }
+
         logger.error({ err: error }, 'Search users error:');
         res.status(500).json({
           error: 'Failed to search users',
-          message: error instanceof Error ? error.message : 'Unknown error',
+          message: errorMessage,
         });
       }
     });
@@ -3916,6 +3931,9 @@ export class HTTPServer {
           added_by_user_id: user.id,
         });
 
+        // Invalidate member context cache (working_groups field changed)
+        invalidateMemberContextCache();
+
         res.status(201).json(membership);
       } catch (error) {
         logger.error({ err: error }, 'Add working group member error:');
@@ -3938,6 +3956,9 @@ export class HTTPServer {
             message: 'User is not a member of this working group'
           });
         }
+
+        // Invalidate member context cache (working_groups field changed)
+        invalidateMemberContextCache();
 
         res.json({ success: true });
       } catch (error) {
@@ -3974,6 +3995,11 @@ export class HTTPServer {
           });
         }
 
+        // Invalidate member context cache if any members were added
+        if (result.members_added > 0) {
+          invalidateMemberContextCache();
+        }
+
         res.json({
           success: true,
           result
@@ -4008,6 +4034,28 @@ export class HTTPServer {
         logger.error({ err: error }, 'Sync all working groups from Slack error:');
         res.status(500).json({
           error: 'Failed to sync working groups',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/admin/backfill-memberships - Backfill organization_memberships table from WorkOS
+    // Call this once after setting up the webhook to populate existing data
+    this.app.post('/api/admin/backfill-memberships', requireAuth, requireAdmin, async (req, res) => {
+      try {
+        const { backfillOrganizationMemberships } = await import('./routes/workos-webhooks.js');
+        const result = await backfillOrganizationMemberships();
+
+        res.json({
+          success: result.errors.length === 0,
+          orgs_processed: result.orgsProcessed,
+          memberships_created: result.membershipsCreated,
+          errors: result.errors,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Backfill memberships error:');
+        res.status(500).json({
+          error: 'Failed to backfill memberships',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -5058,6 +5106,12 @@ Disallow: /api/admin/
                 { slackUserId: slackUserIdToLink, workosUserId: user.id },
                 'Auto-linked Slack account after signup'
               );
+
+              // Send proactive Addie message if user has a recent conversation
+              const firstName = user.firstName || undefined;
+              sendAccountLinkedMessage(slackUserIdToLink, firstName).catch((err) => {
+                logger.warn({ error: err, slackUserId: slackUserIdToLink }, 'Failed to send Addie account linked message');
+              });
             } else if (!existingMapping) {
               logger.debug(
                 { slackUserId: slackUserIdToLink },
@@ -5232,7 +5286,8 @@ Disallow: /api/admin/
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
 
-        res.json({
+        // Build response with optional impersonation info
+        const response: Record<string, unknown> = {
           user: {
             id: user.id,
             email: user.email,
@@ -5241,7 +5296,18 @@ Disallow: /api/admin/
             isAdmin,
           },
           organizations,
-        });
+        };
+
+        // Include impersonation info if present
+        if (user.impersonator) {
+          response.impersonation = {
+            active: true,
+            impersonator_email: user.impersonator.email,
+            reason: user.impersonator.reason,
+          };
+        }
+
+        res.json(response);
       } catch (error) {
         logger.error({ err: error }, 'Get current user error:');
         res.status(500).json({
@@ -8609,6 +8675,9 @@ Disallow: /api/admin/
           added_by_user_id: user.id, // Self-join
         });
 
+        // Invalidate Addie's member context cache - working group membership changed
+        invalidateMemberContextCache();
+
         res.status(201).json({ success: true, membership });
       } catch (error) {
         logger.error({ err: error }, 'Join working group error');
@@ -8652,6 +8721,9 @@ Disallow: /api/admin/
             message: 'You are not a member of this working group',
           });
         }
+
+        // Invalidate Addie's member context cache - working group membership changed
+        invalidateMemberContextCache();
 
         res.json({ success: true });
       } catch (error) {
@@ -10046,6 +10118,9 @@ Disallow: /api/admin/
           show_in_carousel: show_in_carousel ?? false,
         });
 
+        // Invalidate Addie's member context cache - organization profile created
+        invalidateMemberContextCache();
+
         logger.info({ profileId: profile.id, orgId: targetOrgId, slug, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile completed');
 
         res.status(201).json({ profile });
@@ -10141,6 +10216,9 @@ Disallow: /api/admin/
         delete updates.featured; // Only admins can set featured
 
         const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
+
+        // Invalidate Addie's member context cache - organization profile updated
+        invalidateMemberContextCache();
 
         const duration = Date.now() - startTime;
         logger.info({ profileId: profile?.id, orgId: targetOrgId, durationMs: duration }, 'Member profile updated');
@@ -10241,6 +10319,9 @@ Disallow: /api/admin/
           show_in_carousel: show_in_carousel ?? is_public, // Default to match is_public
         });
 
+        // Invalidate Addie's member context cache - organization profile visibility changed
+        invalidateMemberContextCache();
+
         logger.info({ profileId: profile?.id, orgId: targetOrgId, is_public }, 'Member profile visibility updated');
 
         res.json({ profile });
@@ -10316,6 +10397,9 @@ Disallow: /api/admin/
 
         await memberDb.deleteProfile(existingProfile.id);
 
+        // Invalidate Addie's member context cache - organization profile deleted
+        invalidateMemberContextCache();
+
         logger.info({ profileId: existingProfile.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'DELETE /api/me/member-profile completed');
 
         res.json({ success: true });
@@ -10372,6 +10456,9 @@ Disallow: /api/admin/
           });
         }
 
+        // Invalidate Addie's member context cache - organization profile updated by admin
+        invalidateMemberContextCache();
+
         logger.info({ profileId: id, adminUpdate: true }, 'Member profile updated by admin');
 
         res.json({ profile });
@@ -10397,6 +10484,9 @@ Disallow: /api/admin/
             message: `No member profile found with ID: ${id}`,
           });
         }
+
+        // Invalidate Addie's member context cache - organization profile deleted by admin
+        invalidateMemberContextCache();
 
         logger.info({ profileId: id, adminDelete: true }, 'Member profile deleted by admin');
 
@@ -10879,6 +10969,10 @@ Disallow: /api/admin/
       this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes
     }
 
+    // Start periodic content curator for Addie's knowledge base
+    // Process pending external resources (fetch content, generate summaries)
+    this.startContentCurator();
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
@@ -10889,6 +10983,40 @@ Disallow: /api/admin/
 
     // Setup graceful shutdown handlers
     this.setupShutdownHandlers();
+  }
+
+  /**
+   * Start periodic content curator for Addie's knowledge base
+   * Processes pending external resources (fetch content, generate AI summaries)
+   */
+  private startContentCurator(): void {
+    const CURATOR_INTERVAL_MINUTES = 5;
+
+    // Process on startup after a short delay
+    setTimeout(async () => {
+      try {
+        const result = await processPendingResources({ limit: 5 });
+        if (result.processed > 0) {
+          logger.info(result, 'Content curator: processed pending resources');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Content curator: initial processing failed');
+      }
+    }, 30000); // 30 second delay to let other services start
+
+    // Then process periodically
+    this.contentCuratorIntervalId = setInterval(async () => {
+      try {
+        const result = await processPendingResources({ limit: 5 });
+        if (result.processed > 0) {
+          logger.info(result, 'Content curator: processed pending resources');
+        }
+      } catch (err) {
+        logger.error({ err }, 'Content curator: periodic processing failed');
+      }
+    }, CURATOR_INTERVAL_MINUTES * 60 * 1000);
+
+    logger.info({ intervalMinutes: CURATOR_INTERVAL_MINUTES }, 'Content curator started');
   }
 
   /**
@@ -10910,6 +11038,13 @@ Disallow: /api/admin/
    */
   async stop(): Promise<void> {
     logger.info('Stopping HTTP server');
+
+    // Stop content curator
+    if (this.contentCuratorIntervalId) {
+      clearInterval(this.contentCuratorIntervalId);
+      this.contentCuratorIntervalId = null;
+      logger.info('Content curator stopped');
+    }
 
     // Close HTTP server
     if (this.server) {

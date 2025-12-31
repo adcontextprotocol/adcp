@@ -712,6 +712,25 @@
       document.getElementById('orgName').textContent = org.name;
       document.getElementById('orgRole').textContent = `Your role: ${org.role || 'member'}`;
 
+      // Update section descriptions based on account type
+      const profileDesc = document.querySelector('#profile .section-header p');
+      const teamDesc = document.querySelector('#team .section-header p');
+      const teamHeading = document.querySelector('#team .section-header h2');
+      if (profileDesc) {
+        profileDesc.textContent = isPersonal
+          ? 'How you appear in the member directory'
+          : 'How your organization appears in the member directory';
+      }
+      if (teamHeading && teamDesc) {
+        if (isPersonal) {
+          teamHeading.textContent = 'Teammates';
+          teamDesc.textContent = 'Invite others to collaborate on your workspace';
+        } else {
+          teamHeading.textContent = 'Team';
+          teamDesc.textContent = "Manage your organization's members";
+        }
+      }
+
       // ===== PROFILE CARD =====
       renderProfileCard(org.id, hasSubscription);
 

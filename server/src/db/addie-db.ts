@@ -39,6 +39,30 @@ export interface AddieKnowledge {
   created_by: string | null;
   created_at: Date;
   updated_at: Date;
+  // Slack-specific fields
+  source_type: string;
+  slack_channel_id: string | null;
+  slack_channel_name: string | null;
+  slack_user_id: string | null;
+  slack_username: string | null;
+  slack_ts: string | null;
+  slack_permalink: string | null;
+  // Curated content fields
+  fetch_url: string | null;
+  last_fetched_at: Date | null;
+  fetch_status: string | null;
+  summary: string | null;
+  key_insights: KeyInsight[] | null;
+  addie_notes: string | null;
+  relevance_tags: string[] | null;
+  quality_score: number | null;
+  discovery_source: string | null;
+  discovery_context: Record<string, unknown> | null;
+}
+
+export interface KeyInsight {
+  insight: string;
+  importance: 'high' | 'medium' | 'low';
 }
 
 export interface AddieKnowledgeInput {
@@ -49,12 +73,53 @@ export interface AddieKnowledgeInput {
   created_by?: string;
 }
 
+export interface SlackMessageInput {
+  channel_id: string;
+  channel_name: string;
+  user_id: string;
+  username: string;
+  ts: string;
+  text: string;
+  permalink: string;
+}
+
 export interface AddieSearchResult {
   id: number;
   title: string;
   category: string;
   source_url: string | null;
   content: string;
+  rank: number;
+  headline: string;
+}
+
+export interface SlackSearchResult {
+  id: number;
+  text: string;
+  channel_name: string;
+  username: string;
+  permalink: string;
+  rank: number;
+  headline: string;
+}
+
+export interface CuratedResourceInput {
+  url: string;
+  title: string;
+  category: string;
+  discovery_source: 'perspective_publish' | 'web_search' | 'slack_link' | 'manual';
+  discovery_context?: Record<string, unknown>;
+  relevance_tags?: string[];
+}
+
+export interface CuratedResourceSearchResult {
+  id: number;
+  title: string;
+  source_url: string;
+  summary: string | null;
+  addie_notes: string | null;
+  relevance_tags: string[] | null;
+  quality_score: number | null;
   rank: number;
   headline: string;
 }
@@ -366,6 +431,8 @@ export class AddieDatabase {
    */
   async listKnowledge(options: {
     category?: string;
+    sourceType?: string;
+    fetchStatus?: string;
     activeOnly?: boolean;
     limit?: number;
     offset?: number;
@@ -379,6 +446,16 @@ export class AddieDatabase {
       params.push(options.category);
     }
 
+    if (options.sourceType) {
+      conditions.push(`source_type = $${paramIndex++}`);
+      params.push(options.sourceType);
+    }
+
+    if (options.fetchStatus) {
+      conditions.push(`fetch_status = $${paramIndex++}`);
+      params.push(options.fetchStatus);
+    }
+
     if (options.activeOnly !== false) {
       conditions.push('is_active = TRUE');
     }
@@ -388,7 +465,11 @@ export class AddieDatabase {
     let sql = `
       SELECT * FROM addie_knowledge
       ${whereClause}
-      ORDER BY category, title
+      ORDER BY
+        CASE WHEN source_type = 'curated' AND fetch_status = 'pending' THEN 0 ELSE 1 END,
+        updated_at DESC,
+        category,
+        title
     `;
 
     if (options.limit) {
@@ -477,6 +558,399 @@ export class AddieDatabase {
       category: row.category,
       count: parseInt(row.count, 10),
     }));
+  }
+
+  // ============== Slack Message Indexing ==============
+
+  /**
+   * Store a Slack message for local search
+   * Uses upsert to avoid duplicates based on channel_id + ts
+   */
+  async indexSlackMessage(input: SlackMessageInput): Promise<void> {
+    // Create a title from the first 100 chars of the message
+    const title = input.text.substring(0, 100) + (input.text.length > 100 ? '...' : '');
+
+    await query(
+      `INSERT INTO addie_knowledge (
+        title, category, content, source_url, source_type,
+        slack_channel_id, slack_channel_name, slack_user_id, slack_username, slack_ts, slack_permalink,
+        created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ON CONFLICT (slack_channel_id, slack_ts) WHERE source_type = 'slack'
+      DO UPDATE SET
+        content = EXCLUDED.content,
+        title = EXCLUDED.title,
+        slack_username = EXCLUDED.slack_username,
+        updated_at = NOW()`,
+      [
+        title,
+        'slack',
+        input.text,
+        input.permalink,
+        'slack',
+        input.channel_id,
+        input.channel_name,
+        input.user_id,
+        input.username,
+        input.ts,
+        input.permalink,
+        'system',
+      ]
+    );
+  }
+
+  /**
+   * Search Slack messages stored locally using PostgreSQL full-text search
+   */
+  async searchSlackMessages(searchQuery: string, options: {
+    limit?: number;
+  } = {}): Promise<SlackSearchResult[]> {
+    const limit = options.limit ?? 10;
+
+    const result = await query<SlackSearchResult>(
+      `SELECT
+        id,
+        content as text,
+        slack_channel_name as channel_name,
+        slack_username as username,
+        slack_permalink as permalink,
+        ts_rank(search_vector, websearch_to_tsquery('english', $1)) as rank,
+        ts_headline('english', content, websearch_to_tsquery('english', $1),
+          'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') as headline
+       FROM addie_knowledge
+       WHERE is_active = TRUE
+         AND source_type = 'slack'
+         AND search_vector @@ websearch_to_tsquery('english', $1)
+       ORDER BY rank DESC
+       LIMIT $2`,
+      [searchQuery, limit]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get count of indexed Slack messages
+   */
+  async getSlackMessageCount(): Promise<number> {
+    const result = await query<{ count: string }>(
+      `SELECT COUNT(*)::text as count FROM addie_knowledge WHERE source_type = 'slack' AND is_active = TRUE`
+    );
+    return parseInt(result.rows[0]?.count ?? '0', 10);
+  }
+
+  // ============== Curated Resource Indexing ==============
+
+  /**
+   * Queue a URL for fetching and indexing
+   * Creates a pending record that will be processed by the content fetcher
+   */
+  async queueResourceForIndexing(input: CuratedResourceInput): Promise<number> {
+    const result = await query<{ id: number }>(
+      `INSERT INTO addie_knowledge (
+        title, category, content, source_url, fetch_url, source_type,
+        fetch_status, discovery_source, discovery_context, relevance_tags,
+        created_by
+      ) VALUES ($1, $2, '', $3, $3, $4, 'pending', $5, $6, $7, 'system')
+      ON CONFLICT DO NOTHING
+      RETURNING id`,
+      [
+        input.title,
+        input.category,
+        input.url,
+        'curated',
+        input.discovery_source,
+        input.discovery_context ? JSON.stringify(input.discovery_context) : null,
+        input.relevance_tags || null,
+      ]
+    );
+    return result.rows[0]?.id ?? 0;
+  }
+
+  /**
+   * Get resources that need fetching (pending or stale)
+   */
+  async getResourcesNeedingFetch(options: {
+    limit?: number;
+    staleAfterDays?: number;
+  } = {}): Promise<Array<{ id: number; fetch_url: string; title: string }>> {
+    const limit = options.limit ?? 10;
+    const staleAfterDays = options.staleAfterDays ?? 7;
+
+    const result = await query<{ id: number; fetch_url: string; title: string }>(
+      `SELECT id, fetch_url, title
+       FROM addie_knowledge
+       WHERE source_type IN ('curated', 'perspective_link', 'web_search')
+         AND is_active = TRUE
+         AND (
+           fetch_status = 'pending'
+           OR (fetch_status = 'success' AND last_fetched_at < NOW() - $1::integer * INTERVAL '1 day')
+         )
+       ORDER BY
+         CASE WHEN fetch_status = 'pending' THEN 0 ELSE 1 END,
+         last_fetched_at ASC NULLS FIRST
+       LIMIT $2`,
+      [staleAfterDays, limit]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Update a resource after fetching content
+   */
+  async updateFetchedResource(
+    id: number,
+    data: {
+      content: string;
+      summary?: string;
+      key_insights?: KeyInsight[];
+      addie_notes?: string;
+      relevance_tags?: string[];
+      quality_score?: number | null;
+      fetch_status: 'success' | 'failed';
+      error_message?: string;
+    }
+  ): Promise<void> {
+    if (data.fetch_status === 'failed') {
+      await query(
+        `UPDATE addie_knowledge
+         SET fetch_status = 'failed',
+             last_fetched_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [id]
+      );
+      return;
+    }
+
+    await query(
+      `UPDATE addie_knowledge
+       SET content = $1,
+           summary = $2,
+           key_insights = $3,
+           addie_notes = $4,
+           relevance_tags = COALESCE($5, relevance_tags),
+           quality_score = $6,
+           fetch_status = 'success',
+           last_fetched_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $7`,
+      [
+        data.content,
+        data.summary || null,
+        data.key_insights ? JSON.stringify(data.key_insights) : null,
+        data.addie_notes || null,
+        data.relevance_tags || null,
+        data.quality_score || null,
+        id,
+      ]
+    );
+  }
+
+  /**
+   * Search curated resources (with summaries and notes)
+   */
+  async searchCuratedResources(searchQuery: string, options: {
+    limit?: number;
+    minQuality?: number;
+    tags?: string[];
+  } = {}): Promise<CuratedResourceSearchResult[]> {
+    const limit = options.limit ?? 10;
+    const conditions: string[] = [
+      'is_active = TRUE',
+      "source_type IN ('curated', 'perspective_link', 'web_search')",
+      "fetch_status = 'success'",
+      "search_vector @@ websearch_to_tsquery('english', $1)",
+    ];
+    const params: unknown[] = [searchQuery];
+    let paramIndex = 2;
+
+    if (options.minQuality) {
+      conditions.push(`quality_score >= $${paramIndex++}`);
+      params.push(options.minQuality);
+    }
+
+    if (options.tags && options.tags.length > 0) {
+      conditions.push(`relevance_tags && $${paramIndex++}`);
+      params.push(options.tags);
+    }
+
+    params.push(limit);
+
+    const result = await query<CuratedResourceSearchResult>(
+      `SELECT
+        id,
+        title,
+        source_url,
+        summary,
+        addie_notes,
+        relevance_tags,
+        quality_score,
+        ts_rank(search_vector, websearch_to_tsquery('english', $1)) as rank,
+        ts_headline('english', COALESCE(summary, content), websearch_to_tsquery('english', $1),
+          'StartSel=**, StopSel=**, MaxWords=50, MinWords=20') as headline
+       FROM addie_knowledge
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY quality_score DESC NULLS LAST, rank DESC
+       LIMIT $${paramIndex}`,
+      params
+    );
+    return result.rows;
+  }
+
+  /**
+   * Check if a URL is already indexed
+   */
+  async isUrlIndexed(url: string): Promise<boolean> {
+    const result = await query<{ count: string }>(
+      `SELECT COUNT(*)::text as count FROM addie_knowledge
+       WHERE (source_url = $1 OR fetch_url = $1) AND is_active = TRUE`,
+      [url]
+    );
+    return parseInt(result.rows[0]?.count ?? '0', 10) > 0;
+  }
+
+  /**
+   * Get curated resource stats
+   */
+  async getCuratedResourceStats(): Promise<{
+    total: number;
+    pending: number;
+    success: number;
+    failed: number;
+    by_source: Record<string, number>;
+  }> {
+    const result = await query<{
+      total: string;
+      pending: string;
+      success: string;
+      failed: string;
+    }>(
+      `SELECT
+        COUNT(*)::text as total,
+        COUNT(*) FILTER (WHERE fetch_status = 'pending')::text as pending,
+        COUNT(*) FILTER (WHERE fetch_status = 'success')::text as success,
+        COUNT(*) FILTER (WHERE fetch_status = 'failed')::text as failed
+       FROM addie_knowledge
+       WHERE source_type IN ('curated', 'perspective_link', 'web_search')
+         AND is_active = TRUE`
+    );
+
+    const bySourceResult = await query<{ discovery_source: string; count: string }>(
+      `SELECT discovery_source, COUNT(*)::text as count
+       FROM addie_knowledge
+       WHERE source_type IN ('curated', 'perspective_link', 'web_search')
+         AND is_active = TRUE
+         AND discovery_source IS NOT NULL
+       GROUP BY discovery_source`
+    );
+
+    const row = result.rows[0];
+    const bySource: Record<string, number> = {};
+    for (const sourceRow of bySourceResult.rows) {
+      bySource[sourceRow.discovery_source] = parseInt(sourceRow.count, 10);
+    }
+
+    return {
+      total: parseInt(row.total, 10),
+      pending: parseInt(row.pending, 10),
+      success: parseInt(row.success, 10),
+      failed: parseInt(row.failed, 10),
+      by_source: bySource,
+    };
+  }
+
+  /**
+   * List curated resources for admin view
+   */
+  async listCuratedResources(options: {
+    status?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<AddieKnowledge[]> {
+    const limit = options.limit ?? 50;
+    const offset = options.offset ?? 0;
+
+    const conditions: string[] = [
+      "source_type IN ('curated', 'perspective_link', 'web_search')",
+      'is_active = TRUE',
+    ];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    if (options.status) {
+      conditions.push(`fetch_status = $${paramIndex++}`);
+      params.push(options.status);
+    }
+
+    params.push(limit, offset);
+
+    const result = await query<AddieKnowledge>(
+      `SELECT *
+       FROM addie_knowledge
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY
+         CASE WHEN fetch_status = 'pending' THEN 0 ELSE 1 END,
+         updated_at DESC
+       LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+      params
+    );
+    return result.rows;
+  }
+
+  /**
+   * Update a curated resource (for editing addie_notes, quality_score, tags)
+   */
+  async updateCuratedResource(
+    id: number,
+    data: {
+      addie_notes?: string;
+      quality_score?: number;
+      relevance_tags?: string[];
+    }
+  ): Promise<AddieKnowledge | null> {
+    const updates: string[] = ['updated_at = NOW()'];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    if (data.addie_notes !== undefined) {
+      updates.push(`addie_notes = $${paramIndex++}`);
+      params.push(data.addie_notes);
+    }
+
+    if (data.quality_score !== undefined) {
+      updates.push(`quality_score = $${paramIndex++}`);
+      params.push(data.quality_score);
+    }
+
+    if (data.relevance_tags !== undefined) {
+      updates.push(`relevance_tags = $${paramIndex++}`);
+      params.push(data.relevance_tags);
+    }
+
+    params.push(id);
+
+    const result = await query<AddieKnowledge>(
+      `UPDATE addie_knowledge
+       SET ${updates.join(', ')}
+       WHERE id = $${paramIndex}
+       RETURNING *`,
+      params
+    );
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Reset a resource for refetching
+   */
+  async resetResourceForRefetch(id: number): Promise<void> {
+    await query(
+      `UPDATE addie_knowledge
+       SET fetch_status = 'pending',
+           updated_at = NOW()
+       WHERE id = $1`,
+      [id]
+    );
   }
 
   // ============== Interaction Logging ==============
@@ -1317,6 +1791,28 @@ export class AddieDatabase {
       [limit]
     );
     return result.rows;
+  }
+
+  /**
+   * Get a user's most recent Addie thread within a time window
+   * Used for sending proactive messages after account linking
+   */
+  async getUserRecentThread(
+    slackUserId: string,
+    maxAgeMinutes: number = 30
+  ): Promise<{ channel_id: string; thread_ts: string } | null> {
+    const result = await query<{ channel_id: string; thread_ts: string }>(
+      `SELECT channel_id, thread_ts
+       FROM addie_interactions
+       WHERE user_id = $1
+         AND thread_ts IS NOT NULL
+         AND event_type = 'assistant_thread'
+         AND created_at >= NOW() - $2::integer * INTERVAL '1 minute'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [slackUserId, maxAgeMinutes]
+    );
+    return result.rows[0] || null;
   }
 
   // ============== Interaction Rating ==============

@@ -1,0 +1,44 @@
+# fly.toml for AdCP Test Sales Agent
+# Deploy with: fly deploy -c fly.test-agent.toml
+#
+# This deploys the official AdCP test sales agent at testing.adcontextprotocol.org
+# using a published Docker image from the salesagent repository.
+
+app = "adcp-test-agent"
+primary_region = "iad"
+
+[build]
+  image = "ghcr.io/adcontextprotocol/salesagent:latest"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+  [[http_service.checks]]
+    interval = "30s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/health"
+    timeout = "10s"
+
+[vm]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[env]
+  PRODUCTION = "true"
+  ADCP_UNIFIED_MODE = "true"
+  ADCP_SALES_PORT = "8080"
+  ADMIN_UI_PORT = "8001"
+  ADK_WEB_PORT = "8091"
+  A2A_PORT = "8091"
+  DB_TYPE = "postgresql"

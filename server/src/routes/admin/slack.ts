@@ -24,6 +24,7 @@ import {
   invalidateUnifiedUsersCache,
   type WorkOSUserInfo,
 } from '../../cache/unified-users.js';
+import { invalidateMemberContextCache } from '../../addie/index.js';
 
 const logger = createLogger('admin-slack-routes');
 
@@ -137,8 +138,9 @@ export function createAdminSlackRouter(): Router {
     try {
       const result = await syncSlackUsers();
       logger.info(result, 'Slack user sync completed');
-      // Invalidate cache since mappings may have changed
+      // Invalidate caches since mappings may have changed
       invalidateUnifiedUsersCache();
+      invalidateMemberContextCache(); // Clear all - bulk sync affects many users
       res.json(result);
     } catch (error) {
       logger.error({ err: error }, 'Slack sync error');
@@ -221,6 +223,7 @@ export function createAdminSlackRouter(): Router {
       );
 
       invalidateUnifiedUsersCache();
+      invalidateMemberContextCache(slackUserId);
 
       res.json({ mapping: updated });
     } catch (error) {
@@ -261,6 +264,7 @@ export function createAdminSlackRouter(): Router {
       );
 
       invalidateUnifiedUsersCache();
+      invalidateMemberContextCache(slackUserId);
 
       res.json({ mapping: updated });
     } catch (error) {
@@ -668,6 +672,7 @@ export function createAdminSlackRouter(): Router {
 
       if (linked > 0) {
         invalidateUnifiedUsersCache();
+        invalidateMemberContextCache(); // Clear all - bulk operation affects many users
       }
 
       res.json({

@@ -340,6 +340,30 @@
       to { opacity: 1; transform: translate(-50%, 0); }
     }
 
+    /* Impersonation banner */
+    .impersonation-banner {
+      background: var(--color-warning-100);
+      border-bottom: 2px solid var(--color-warning-500);
+      padding: 12px 16px;
+      text-align: center;
+      font-size: 14px;
+      color: var(--color-warning-800);
+      display: none;
+    }
+
+    .impersonation-banner.active {
+      display: block;
+    }
+
+    .impersonation-banner strong {
+      font-weight: 600;
+    }
+
+    .impersonation-banner .reason {
+      font-style: italic;
+      color: var(--color-warning-700);
+    }
+
     /* Status indicator */
     .status-indicator {
       display: flex;
@@ -534,6 +558,7 @@
   </style>
 </head>
 <body>
+  <div id="impersonation-banner" class="impersonation-banner"></div>
   <div id="adcp-nav"></div>
 
   <div class="chat-container">
@@ -597,6 +622,32 @@
       let conversationId = null;
       let isLoading = false;
       let isReady = false;
+      let impersonationInfo = null;
+
+      // Check for impersonation
+      async function checkImpersonation() {
+        try {
+          const response = await fetch('/api/me');
+          if (!response.ok) return; // Not authenticated
+
+          const data = await response.json();
+          if (data.impersonation && data.impersonation.active) {
+            impersonationInfo = data.impersonation;
+            const banner = document.getElementById('impersonation-banner');
+            const reason = impersonationInfo.reason
+              ? ` <span class="reason">"${impersonationInfo.reason}"</span>`
+              : '';
+            banner.innerHTML = `
+              <strong>Impersonation Active</strong> -
+              Viewing as <strong>${data.user.email}</strong>
+              (impersonated by ${impersonationInfo.impersonator_email})${reason}
+            `;
+            banner.classList.add('active');
+          }
+        } catch (error) {
+          // Silently ignore - user may not be authenticated
+        }
+      }
 
       // Check Addie status
       async function checkStatus() {
@@ -943,6 +994,7 @@
 
       // Initialize
       checkStatus();
+      checkImpersonation();
       // Check status periodically
       setInterval(checkStatus, 30000);
 

@@ -11,9 +11,13 @@ export {
   handleAssistantThreadStarted,
   handleAssistantMessage,
   handleAppMention,
+  sendAccountLinkedMessage,
+  invalidateAddieRulesCache,
 } from './handler.js';
 
 export { isSlackUserAdmin } from './mcp/admin-tools.js';
+
+export { invalidateMemberContextCache } from './member-context.js';
 
 export type {
   AssistantThreadStartedEvent,
