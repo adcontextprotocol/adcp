@@ -52,7 +52,7 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
-import { getThreadReplies } from '../slack/client.js';
+import { getThreadReplies, getSlackUserWithAddieToken } from '../slack/client.js';
 
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -672,23 +672,57 @@ async function handleAppMention({
       const threadMessages = await getThreadReplies(channelId, event.thread_ts, true);
       if (threadMessages.length > 0) {
         // Filter out Addie's own messages and format the thread history
-        const contextMessages = threadMessages
+        const filteredMessages = threadMessages
           .filter(msg => msg.user !== context.botUserId) // Exclude Addie's own messages
           .filter(msg => msg.ts !== event.ts) // Exclude the current mention message
           .filter(msg => (msg.text || '').trim().length > 0) // Filter out empty messages
-          .slice(-MAX_THREAD_CONTEXT_MESSAGES)
-          .map(msg => {
-            // Strip any bot mentions from historical messages too
-            let text = msg.text || '';
-            if (context.botUserId) {
-              text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
+          .slice(-MAX_THREAD_CONTEXT_MESSAGES);
+
+        // Collect all unique user IDs mentioned in the thread
+        const mentionedUserIds = new Set<string>();
+        for (const msg of filteredMessages) {
+          const mentions = (msg.text || '').matchAll(/<@(U[A-Z0-9]+)>/gi);
+          for (const match of mentions) {
+            if (match[1] !== context.botUserId) {
+              mentionedUserIds.add(match[1]);
             }
-            return `- ${text}`;
+          }
+        }
+
+        // Look up display names for mentioned users (in parallel)
+        const userNameMap = new Map<string, string>();
+        if (mentionedUserIds.size > 0) {
+          const lookups = await Promise.all(
+            Array.from(mentionedUserIds).map(async (uid) => {
+              const user = await getSlackUserWithAddieToken(uid);
+              return { uid, name: user?.profile?.display_name || user?.real_name || user?.name || null };
+            })
+          );
+          for (const { uid, name } of lookups) {
+            if (name) {
+              userNameMap.set(uid, name);
+            }
+          }
+        }
+
+        // Format messages, replacing user IDs with display names
+        const contextMessages = filteredMessages.map(msg => {
+          let text = msg.text || '';
+          // Strip Addie's mentions entirely (they're noise)
+          if (context.botUserId) {
+            text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
+          }
+          // Replace user mentions with display names or fallback to [someone]
+          text = text.replace(/<@(U[A-Z0-9]+)>/gi, (match, uid) => {
+            const name = userNameMap.get(uid);
+            return name ? `@${name}` : '[someone]';
           });
+          return `- ${text}`;
+        });
 
         if (contextMessages.length > 0) {
           threadContext = `\n\n## Thread Context\nThe user is replying in a Slack thread. Here are the previous messages in this thread for context:\n${contextMessages.join('\n')}\n\n---\n`;
-          logger.debug({ messageCount: contextMessages.length }, 'Addie Bolt: Fetched thread context for mention');
+          logger.debug({ messageCount: contextMessages.length, resolvedUsers: userNameMap.size }, 'Addie Bolt: Fetched thread context for mention');
         }
       }
     } catch (error) {
