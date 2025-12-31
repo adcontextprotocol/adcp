@@ -1,5 +1,6 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import * as fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WorkOS, DomainDataState } from "@workos-inc/node";
@@ -319,7 +320,6 @@ export class HTTPServer {
       }
 
       const filePath = path.join(publicPath, urlPath);
-      const fs = await import('fs/promises');
 
       try {
         // Check if file exists
@@ -399,7 +399,6 @@ export class HTTPServer {
       ? path.join(__dirname, "../server/public")
       : path.join(__dirname, "../public");
     const filePath = path.join(publicPath, htmlFile);
-    const fs = await import('fs/promises');
 
     try {
       // Get user from session (if authenticated)
@@ -450,8 +449,14 @@ export class HTTPServer {
       res.setHeader('Expires', '0');
       res.send(html);
     } catch (error) {
-      logger.error({ error, htmlFile }, 'Failed to serve HTML with config');
-      res.status(500).send('Internal Server Error');
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError.code === 'ENOENT') {
+        logger.warn({ htmlFile }, 'HTML file not found');
+        res.status(404).send('Not Found');
+      } else {
+        logger.error({ error, htmlFile }, 'Failed to serve HTML with config');
+        res.status(500).send('Internal Server Error');
+      }
     }
   }
 
