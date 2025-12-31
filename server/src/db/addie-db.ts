@@ -206,16 +206,6 @@ export interface WebConversationStats {
 
 export type RuleType = 'system_prompt' | 'behavior' | 'knowledge' | 'constraint' | 'response_style';
 
-/**
- * Context determines when a rule is applied:
- * - null/undefined: Always included in main system prompt
- * - 'engagement': Only for "should I respond?" channel evaluation
- * - 'admin': Only when talking to admin users
- * - 'member': Only when talking to organization members
- * - 'anonymous': Only when talking to anonymous/unlinked users
- */
-export type RuleContext = 'engagement' | 'admin' | 'member' | 'anonymous' | null;
-
 export interface AddieRule {
   id: number;
   rule_type: RuleType;
@@ -233,8 +223,6 @@ export interface AddieRule {
   created_by: string | null;
   created_at: Date;
   updated_at: Date;
-  /** Context where this rule applies (null = always in main prompt) */
-  context: RuleContext;
 }
 
 export interface AddieRuleInput {
@@ -244,8 +232,6 @@ export interface AddieRuleInput {
   content: string;
   priority?: number;
   created_by?: string;
-  /** Context where this rule applies (null = always in main prompt) */
-  context?: RuleContext;
 }
 
 // ============== Suggestions Types ==============
@@ -1410,26 +1396,10 @@ export class AddieDatabase {
   }
 
   /**
-   * Get active rules by context
-   * @param context - The context to filter by (null for default/main prompt rules)
-   */
-  async getRulesByContext(context: RuleContext): Promise<AddieRule[]> {
-    const result = await query<AddieRule>(
-      context === null
-        ? `SELECT * FROM addie_rules WHERE is_active = TRUE AND context IS NULL ORDER BY priority DESC, rule_type, name`
-        : `SELECT * FROM addie_rules WHERE is_active = TRUE AND context = $1 ORDER BY priority DESC, rule_type, name`,
-      context === null ? [] : [context]
-    );
-    return result.rows;
-  }
-
-  /**
    * Build system prompt from active rules
-   * Only includes rules with context = NULL (default rules)
    */
   async buildSystemPrompt(): Promise<string> {
-    // Only get rules without a specific context (main prompt rules)
-    const rules = await this.getRulesByContext(null);
+    const rules = await this.getActiveRules();
 
     const sections: Record<RuleType, string[]> = {
       system_prompt: [],
@@ -2204,89 +2174,5 @@ export class AddieDatabase {
       avg_latency_ms: parseInt(stats.avg_latency_ms, 10) || 0,
       tool_usage: toolUsage,
     };
-  }
-
-  // ============== Routing Rules ==============
-
-  /**
-   * Sync routing rules from code to database
-   * Called on server startup to keep database in sync with code
-   */
-  async syncRoutingRules(rules: Array<{
-    rule_type: string;
-    rule_key: string;
-    description: string;
-    patterns: string[];
-    tools?: string[];
-    emoji?: string;
-    code_version?: string;
-  }>): Promise<void> {
-    const client = await getClient();
-    try {
-      await client.query('BEGIN');
-
-      // Clear existing rules
-      await client.query('DELETE FROM addie_routing_rules');
-
-      // Insert new rules
-      for (const rule of rules) {
-        await client.query(
-          `INSERT INTO addie_routing_rules
-           (rule_type, rule_key, description, patterns, tools, emoji, code_version, synced_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-          [
-            rule.rule_type,
-            rule.rule_key,
-            rule.description,
-            JSON.stringify(rule.patterns),
-            JSON.stringify(rule.tools || []),
-            rule.emoji || null,
-            rule.code_version || null,
-          ]
-        );
-      }
-
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  /**
-   * Get all routing rules for admin display
-   */
-  async getRoutingRules(): Promise<Array<{
-    id: number;
-    rule_type: string;
-    rule_key: string;
-    description: string;
-    patterns: string[];
-    tools: string[];
-    emoji: string | null;
-    code_version: string | null;
-    synced_at: Date;
-  }>> {
-    const result = await query<{
-      id: number;
-      rule_type: string;
-      rule_key: string;
-      description: string;
-      patterns: string;
-      tools: string;
-      emoji: string | null;
-      code_version: string | null;
-      synced_at: Date;
-    }>(
-      `SELECT * FROM addie_routing_rules ORDER BY rule_type, rule_key`
-    );
-
-    return result.rows.map(row => ({
-      ...row,
-      patterns: JSON.parse(row.patterns),
-      tools: JSON.parse(row.tools),
-    }));
   }
 }

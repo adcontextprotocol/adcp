@@ -53,7 +53,7 @@ import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
 import { getThreadReplies, getSlackUserWithAddieToken } from '../slack/client.js';
-import { AddieRouter, type ExecutionPlan, type RoutingContext, getRoutingRulesForSync } from './router.js';
+import { AddieRouter, type RoutingContext } from './router.js';
 
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,15 +99,6 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   // Initialize knowledge search
   await initializeKnowledgeSearch();
-
-  // Sync routing rules to database for admin visibility
-  try {
-    const routingRules = getRoutingRulesForSync();
-    await addieDb.syncRoutingRules(routingRules);
-    logger.info({ ruleCount: routingRules.length }, 'Addie Bolt: Routing rules synced to database');
-  } catch (error) {
-    logger.warn({ error }, 'Addie Bolt: Failed to sync routing rules (non-fatal)');
-  }
 
   // Register knowledge tools
   const knowledgeHandlers = createKnowledgeToolHandlers();

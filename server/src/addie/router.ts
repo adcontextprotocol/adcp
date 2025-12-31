@@ -297,59 +297,6 @@ function parseRouterResponse(response: string): ExecutionPlan {
  *
  * Uses Claude Haiku for fast routing decisions
  */
-/**
- * Export routing rules in a format suitable for database sync
- */
-export function getRoutingRulesForSync(): Array<{
-  rule_type: string;
-  rule_key: string;
-  description: string;
-  patterns: string[];
-  tools?: string[];
-  emoji?: string;
-}> {
-  const rules: Array<{
-    rule_type: string;
-    rule_key: string;
-    description: string;
-    patterns: string[];
-    tools?: string[];
-    emoji?: string;
-  }> = [];
-
-  // Export expertise rules
-  for (const [key, rule] of Object.entries(ROUTING_RULES.expertise)) {
-    rules.push({
-      rule_type: 'expertise',
-      rule_key: key,
-      description: rule.description,
-      patterns: [...rule.patterns],
-      tools: [...rule.tools],
-    });
-  }
-
-  // Export react rules
-  for (const [key, rule] of Object.entries(ROUTING_RULES.reactWith)) {
-    rules.push({
-      rule_type: 'react',
-      rule_key: key,
-      description: `React with ${rule.emoji} emoji`,
-      patterns: [...rule.patterns],
-      emoji: rule.emoji,
-    });
-  }
-
-  // Export ignore patterns
-  rules.push({
-    rule_type: 'ignore',
-    rule_key: 'acknowledgments',
-    description: 'Simple acknowledgments and casual responses',
-    patterns: [...ROUTING_RULES.ignore.patterns],
-  });
-
-  return rules;
-}
-
 export class AddieRouter {
   private client: Anthropic;
 
