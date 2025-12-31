@@ -17,6 +17,7 @@ server/node_modules
 
 # Misc
 .DS_Store
+.conductor_port
 .env.local
 .env.development.local
 .env.test.local
