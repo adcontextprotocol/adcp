@@ -2127,21 +2127,6 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           });
         }
 
-        const pool = getPool();
-
-        // Check if org already exists
-        const existingResult = await pool.query(
-          `SELECT workos_organization_id, name FROM organizations WHERE email_domain = $1`,
-          [company.domain]
-        );
-
-        if (existingResult.rows.length > 0) {
-          return res.status(409).json({
-            error: "Organization already exists",
-            existing: existingResult.rows[0],
-          });
-        }
-
         // Determine company type from industry
         const companyType = mapIndustryToCompanyType(
           company.mainIndustry,
@@ -2152,46 +2137,53 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const currentUserId = autoAssignOwner ? (req as any).user?.id : null;
 
-        // Create the organization
-        const orgResult = await pool.query(
-          `INSERT INTO organizations (
-            workos_organization_id,
-            name,
-            email_domain,
-            company_type,
-            prospect_status,
-            prospect_source,
-            prospect_owner,
-            prospect_notes,
-            enrichment_data,
-            enrichment_source,
-            enrichment_at,
-            enrichment_revenue,
-            enrichment_revenue_range,
-            enrichment_employee_count,
-            enrichment_employee_count_range,
-            enrichment_industry,
-            enrichment_sub_industry,
-            enrichment_founded_year,
-            enrichment_country,
-            enrichment_city,
-            enrichment_linkedin_url,
-            enrichment_description,
-            created_at,
-            updated_at
-          ) VALUES (
-            $1, $2, $3, $4, 'cold', 'lusha_prospect', $5, $6,
-            $7, 'lusha', NOW(),
-            $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-            NOW(), NOW()
-          ) RETURNING workos_organization_id, name`,
+        // Use centralized prospect service to create real WorkOS org
+        const result = await createProspect({
+          name: company.companyName || company.domain,
+          domain: company.domain,
+          company_type: companyType || undefined,
+          prospect_source: "lusha_prospect",
+          prospect_notes: "Imported from Lusha prospecting search",
+          prospect_owner: currentUserId || undefined,
+        });
+
+        if (!result.success) {
+          if (result.alreadyExists) {
+            return res.status(409).json({
+              error: "Organization already exists",
+              existing: result.organization,
+            });
+          }
+          return res.status(400).json({
+            error: "Failed to create prospect",
+            message: result.error,
+          });
+        }
+
+        const orgId = result.organization!.workos_organization_id;
+
+        // Update with enrichment data we already have from Lusha search
+        // (avoids calling Lusha API again since we have the data)
+        const pool = getPool();
+        await pool.query(
+          `UPDATE organizations SET
+            enrichment_data = $1,
+            enrichment_source = 'lusha',
+            enrichment_at = NOW(),
+            enrichment_revenue = $2,
+            enrichment_revenue_range = $3,
+            enrichment_employee_count = $4,
+            enrichment_employee_count_range = $5,
+            enrichment_industry = $6,
+            enrichment_sub_industry = $7,
+            enrichment_founded_year = $8,
+            enrichment_country = $9,
+            enrichment_city = $10,
+            enrichment_linkedin_url = $11,
+            enrichment_description = $12,
+            updated_at = NOW()
+          WHERE workos_organization_id = $13`,
           [
-            `lusha_${company.companyId || company.domain}`,
-            company.companyName || company.domain,
-            company.domain,
-            companyType,
-            currentUserId,
-            `Imported from Lusha prospecting search`,
             JSON.stringify(company),
             company.revenue || null,
             company.revenueRange || formatRevenueRange(company.revenue) || null,
@@ -2204,6 +2196,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
             company.city || null,
             company.linkedinUrl || null,
             company.description || null,
+            orgId,
           ]
         );
 
@@ -2211,14 +2204,14 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           {
             domain: company.domain,
             name: company.companyName,
-            orgId: orgResult.rows[0].workos_organization_id,
+            orgId,
           },
           "Imported prospect from Lusha search"
         );
 
         res.json({
           success: true,
-          organization: orgResult.rows[0],
+          organization: result.organization,
         });
       } catch (error) {
         logger.error({ err: error }, "Error importing prospect");
