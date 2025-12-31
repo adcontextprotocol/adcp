@@ -537,6 +537,14 @@
           <div class="stat-label">Pending</div>
         </div>
         <div class="stat-card">
+          <div class="stat-value">${stats.processed_success || 0}</div>
+          <div class="stat-label">Processed</div>
+        </div>
+        <div class="stat-card" ${(stats.processed_failed || 0) > 0 ? 'style="border-color: var(--color-error);"' : ''}>
+          <div class="stat-value" ${(stats.processed_failed || 0) > 0 ? 'style="color: var(--color-error);"' : ''}>${stats.processed_failed || 0}</div>
+          <div class="stat-label">Failed</div>
+        </div>
+        <div class="stat-card">
           <div class="stat-value">${stats.alerts_sent_today || 0}</div>
           <div class="stat-label">Alerts Today</div>
         </div>

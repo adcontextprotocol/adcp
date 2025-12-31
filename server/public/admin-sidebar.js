@@ -42,6 +42,7 @@
           { href: '/admin/email', label: 'Email', icon: '📧' },
           { href: '/admin/addie', label: 'Addie', icon: '🤖' },
           { href: '/admin/feeds', label: 'Industry Feeds', icon: '📰' },
+          { href: '/admin/api-keys', label: 'API Keys', icon: '🔑' },
           { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
           { href: '/admin/audit', label: 'Audit Log', icon: '📜' },
         ]

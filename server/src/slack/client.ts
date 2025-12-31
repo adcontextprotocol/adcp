@@ -198,6 +198,42 @@ export async function getSlackUser(userId: string): Promise<SlackUser | null> {
 }
 
 /**
+ * Get a single user by ID using Addie's bot token
+ * Use this when Addie needs to look up users in channels it has access to
+ */
+export async function getSlackUserWithAddieToken(userId: string): Promise<SlackUser | null> {
+  if (!ADDIE_BOT_TOKEN) {
+    logger.warn('ADDIE_BOT_TOKEN not configured, cannot look up user');
+    return null;
+  }
+
+  try {
+    const url = new URL(`${SLACK_API_BASE}/users.info`);
+    url.searchParams.set('user', userId);
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${ADDIE_BOT_TOKEN}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    const data = await response.json() as { ok: boolean; user?: SlackUser; error?: string };
+
+    if (!data.ok) {
+      logger.warn({ error: data.error, userId }, 'Failed to get Slack user with Addie token');
+      return null;
+    }
+
+    return data.user || null;
+  } catch (error) {
+    logger.error({ error, userId }, 'Error fetching Slack user with Addie token');
+    return null;
+  }
+}
+
+/**
  * Look up a user by email address
  */
 export async function lookupSlackUserByEmail(email: string): Promise<SlackUser | null> {

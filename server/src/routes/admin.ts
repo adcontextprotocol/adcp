@@ -82,6 +82,14 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     res.sendFile(prospectsPath);
   });
 
+  pageRouter.get("/api-keys", requireAuth, requireAdmin, (req, res) => {
+    const apiKeysPath =
+      process.env.NODE_ENV === "production"
+        ? path.join(__dirname, "../../server/public/admin-api-keys.html")
+        : path.join(__dirname, "../../public/admin-api-keys.html");
+    res.sendFile(apiKeysPath);
+  });
+
   // =========================================================================
   // PROSPECT MANAGEMENT API (mounted at /api/admin)
   // =========================================================================
@@ -402,6 +410,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         name,
         domain,
         company_type,
+        prospect_status,
         prospect_source,
         prospect_notes,
         prospect_contact_name,
@@ -422,6 +431,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         name,
         domain,
         company_type,
+        prospect_status,
         prospect_source: prospect_source || "aao_launch_list",
         prospect_notes,
         prospect_contact_name,
@@ -2980,6 +2990,80 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to batch analyze prospects with AI",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // WORKOS WIDGET TOKEN API (mounted at /api/admin)
+  // =========================================================================
+
+  // POST /api/admin/widgets/token - Generate a widget token for API keys management
+  apiRouter.post(
+    "/widgets/token",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        if (!workos) {
+          return res.status(500).json({
+            error: "Authentication not configured",
+            message: "WorkOS is not configured on this server",
+          });
+        }
+
+        const { organizationId, scope } = req.body;
+
+        if (!organizationId) {
+          return res.status(400).json({
+            error: "Invalid request",
+            message: "organizationId is required",
+          });
+        }
+
+        // Validate user ID is present
+        if (!req.user?.id) {
+          return res.status(401).json({
+            error: "Authentication required",
+            message: "User ID not found in session",
+          });
+        }
+
+        // Validate scope
+        const validScopes = [
+          "widgets:api-keys:manage",
+          "widgets:users-table:manage",
+          "widgets:sso:manage",
+          "widgets:domain-verification:manage",
+        ] as const;
+
+        const requestedScope = scope || "widgets:api-keys:manage";
+        if (!validScopes.includes(requestedScope)) {
+          return res.status(400).json({
+            error: "Invalid scope",
+            message: `Valid scopes are: ${validScopes.join(", ")}`,
+          });
+        }
+
+        // Generate widget token
+        const token = await workos.widgets.getToken({
+          organizationId,
+          userId: req.user.id,
+          scopes: [requestedScope],
+        });
+
+        logger.info(
+          { userId: req.user?.id, organizationId, scope: requestedScope },
+          "Generated widget token"
+        );
+
+        res.json({ token });
+      } catch (error) {
+        logger.error({ err: error }, "Error generating widget token");
+        res.status(500).json({
+          error: "Internal server error",
+          message: error instanceof Error ? error.message : "Unable to generate widget token",
         });
       }
     }

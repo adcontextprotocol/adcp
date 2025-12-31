@@ -19,6 +19,7 @@ import {
   type ThreadChannel,
 } from "../addie/thread-service.js";
 import Anthropic from "@anthropic-ai/sdk";
+import { getAddieBoltApp } from "../addie/bolt-app.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -912,6 +913,35 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
 
       if (!item) {
         return res.status(404).json({ error: "Approval item not found or already processed" });
+      }
+
+      // Execute the approved action (send the message to Slack)
+      const boltApp = getAddieBoltApp();
+      if (boltApp && item.target_channel_id) {
+        try {
+          const contentToSend = final_content || item.proposed_content;
+          const result = await boltApp.client.chat.postMessage({
+            channel: item.target_channel_id,
+            text: contentToSend,
+            thread_ts: item.target_thread_ts || undefined,
+          });
+
+          // Update the item with execution result
+          await addieDb.markExecuted(numericId, {
+            success: true,
+            message_ts: result.ts,
+            channel: result.channel,
+          });
+
+          logger.info({ queueId: numericId, messageTs: result.ts }, "Approved and sent queue item");
+        } catch (sendError) {
+          logger.error({ err: sendError, queueId: numericId }, "Failed to send approved message");
+          // Still return success for approval, but note the send failure
+          await addieDb.markExecuted(numericId, {
+            success: false,
+            error: sendError instanceof Error ? sendError.message : "Unknown error",
+          });
+        }
       }
 
       logger.info({ queueId: numericId }, "Approved queue item");
