@@ -139,8 +139,8 @@ export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRout
         (req as any).rawBody = body;
         req.body = parsed;
         next();
-      } catch {
-        logger.warn('Addie: Invalid JSON in request');
+      } catch (err) {
+        logger.warn({ err }, 'Addie: Invalid JSON in request');
         res.status(400).json({ error: 'Invalid JSON' });
       }
     });

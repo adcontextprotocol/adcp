@@ -161,6 +161,15 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
     logLevel: process.env.NODE_ENV === 'production' ? LogLevel.WARN : LogLevel.DEBUG,
   });
 
+  // Global error handler for Bolt
+  boltApp.error(async (error) => {
+    logger.error({
+      error,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+    }, 'Addie Bolt: Unhandled error');
+  });
+
   // Register the assistant
   boltApp.assistant(assistant);
 
