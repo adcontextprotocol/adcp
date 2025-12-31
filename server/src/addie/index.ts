@@ -13,6 +13,8 @@ export {
   handleAppMention,
 } from './handler.js';
 
+export { isSlackUserAdmin } from './mcp/admin-tools.js';
+
 export type {
   AssistantThreadStartedEvent,
   AssistantThreadContextChangedEvent,

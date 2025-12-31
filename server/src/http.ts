@@ -19,7 +19,7 @@ import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType } from "./types.js";
 import type { Server } from "http";
-import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, type RevenueEvent } from "./billing/stripe-client.js";
+import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, createAndSendInvoice, getInvoiceableProducts, getProductsForCustomer, createCheckoutSession, getPendingInvoices, type RevenueEvent, type InvoiceRequestData, type BillingProduct, type CheckoutSessionData } from "./billing/stripe-client.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -55,6 +55,7 @@ import {
   invalidateUnifiedUsersCache,
   type WorkOSUserInfo,
 } from "./cache/unified-users.js";
+import { createBillingRouter } from "./routes/billing.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 
@@ -171,6 +172,36 @@ function setCachedUser(userId: string, displayName: string): void {
 
 // Cache for unified users endpoint moved to ./cache/unified-users.ts
 
+/**
+ * Build app config object for injection into HTML pages.
+ * This allows nav.js to read config synchronously instead of making an async fetch.
+ */
+function buildAppConfig(user?: { email: string; firstName?: string | null; lastName?: string | null } | null) {
+  let isAdmin = false;
+  if (user) {
+    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+    isAdmin = adminEmails.includes(user.email.toLowerCase());
+  }
+
+  return {
+    authEnabled: AUTH_ENABLED,
+    user: user ? {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      isAdmin,
+    } : null,
+  };
+}
+
+/**
+ * Generate the script tag to inject app config into HTML.
+ */
+function getAppConfigScript(user?: { email: string; firstName?: string | null; lastName?: string | null } | null): string {
+  const config = buildAppConfig(user);
+  return `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
+}
+
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
@@ -264,6 +295,76 @@ export class HTTPServer {
     const publicPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../server/public")
       : path.join(__dirname, "../public");
+
+    // Middleware to inject app config into HTML files
+    // This runs optionalAuth to get user info, then serves HTML with config injected
+    this.app.use(async (req, res, next) => {
+      // Only intercept .html file requests or requests that will resolve to .html
+      const urlPath = req.path;
+      if (!urlPath.endsWith('.html')) {
+        return next();
+      }
+
+      const filePath = path.join(publicPath, urlPath);
+      const fs = await import('fs/promises');
+
+      try {
+        // Check if file exists
+        await fs.access(filePath);
+
+        // Get user from session (if authenticated)
+        let user = null;
+        const sessionCookie = req.cookies?.['wos-session'];
+
+        // Check dev mode first
+        if (isDevModeEnabled()) {
+          const devUser = getDevUser(req);
+          if (devUser) {
+            user = devUser;
+          }
+        }
+
+        // Then check WorkOS session
+        if (!user && sessionCookie && AUTH_ENABLED && workos) {
+          try {
+            const session = await workos.userManagement.loadSealedSession({
+              sessionData: sessionCookie,
+              cookiePassword: WORKOS_COOKIE_PASSWORD,
+            });
+            if (session) {
+              const authResult = await session.authenticate();
+              if (authResult.authenticated && authResult.user) {
+                user = authResult.user;
+              }
+            }
+          } catch {
+            // Session invalid or expired - continue without user
+          }
+        }
+
+        // Read and inject config
+        let html = await fs.readFile(filePath, 'utf-8');
+        const configScript = getAppConfigScript(user);
+
+        // Inject before </head>
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `${configScript}\n</head>`);
+        } else {
+          // Fallback: inject at start of body
+          html = html.replace('<body', `${configScript}\n<body`);
+        }
+
+        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.send(html);
+      } catch {
+        // File doesn't exist, let next middleware handle it
+        next();
+      }
+    });
+
     this.app.use(express.static(publicPath, { index: false }));
   }
 
@@ -310,6 +411,11 @@ export class HTTPServer {
     this.app.use('/api/admin/slack', adminSlackRouter); // Admin Slack: /api/admin/slack/*
     const adminEmailRouter = createAdminEmailRouter();
     this.app.use('/api/admin/email', adminEmailRouter); // Admin Email: /api/admin/email/*
+
+    // Mount billing routes
+    const { pageRouter: billingPageRouter, apiRouter: billingApiRouter } = createBillingRouter();
+    this.app.use('/admin', billingPageRouter);          // Page routes: /admin/products
+    this.app.use('/api/admin', billingApiRouter);       // API routes: /api/admin/products
 
     // UI page routes (serve with environment variables injected)
     // Auth-requiring pages on adcontextprotocol.org redirect to agenticadvertising.org
@@ -6683,6 +6789,255 @@ Disallow: /api/admin/
       }
     });
 
+    // GET /api/billing-products - Get available billing products
+    // Query params:
+    //   customer_type: 'company' | 'individual' - filter by customer type
+    //   revenue_tier: string - filter by revenue tier
+    //   category: string - filter by category (membership, sponsorship, event)
+    //   invoiceable_only: 'true' - only return products that can be invoiced
+    this.app.get('/api/billing-products', async (req, res) => {
+      try {
+        const customerType = req.query.customer_type as 'company' | 'individual' | undefined;
+        const revenueTier = req.query.revenue_tier as string | undefined;
+        const category = req.query.category as string | undefined;
+        const invoiceableOnly = req.query.invoiceable_only === 'true';
+
+        const products = await getProductsForCustomer({
+          customerType,
+          revenueTier,
+          category,
+          invoiceableOnly,
+        });
+
+        // Group by category for easier frontend consumption
+        const grouped: Record<string, BillingProduct[]> = {};
+        for (const product of products) {
+          if (!grouped[product.category]) {
+            grouped[product.category] = [];
+          }
+          grouped[product.category].push(product);
+        }
+
+        res.json({
+          products,
+          by_category: grouped,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Error fetching billing products');
+        res.status(500).json({
+          error: 'Failed to fetch products',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/invoice-request - Request an invoice for a product (public endpoint)
+    this.app.post('/api/invoice-request', async (req, res) => {
+      try {
+        const {
+          companyName,
+          contactName,
+          contactEmail,
+          billingAddress,
+          lookupKey,
+        } = req.body as {
+          companyName: string;
+          contactName: string;
+          contactEmail: string;
+          billingAddress: {
+            line1: string;
+            line2?: string;
+            city: string;
+            state: string;
+            postal_code: string;
+            country: string;
+          };
+          lookupKey: string;
+        };
+
+        // Validate required fields
+        if (!companyName || !contactName || !contactEmail || !billingAddress || !lookupKey) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'Please provide companyName, contactName, contactEmail, billingAddress, and lookupKey',
+          });
+        }
+
+        if (!billingAddress.line1 || !billingAddress.city || !billingAddress.state || !billingAddress.postal_code || !billingAddress.country) {
+          return res.status(400).json({
+            error: 'Incomplete billing address',
+            message: 'Please provide line1, city, state, postal_code, and country',
+          });
+        }
+
+        // Validate lookup key starts with our prefix
+        if (!lookupKey.startsWith('aao_')) {
+          return res.status(400).json({
+            error: 'Invalid product',
+            message: 'Invalid product selection',
+          });
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(contactEmail)) {
+          return res.status(400).json({
+            error: 'Invalid email format',
+            message: 'Please provide a valid email address',
+          });
+        }
+
+        const invoiceData: InvoiceRequestData = {
+          companyName,
+          contactName,
+          contactEmail,
+          billingAddress,
+          lookupKey,
+        };
+
+        const result = await createAndSendInvoice(invoiceData);
+
+        if (!result) {
+          return res.status(500).json({
+            error: 'Failed to create invoice',
+            message: 'Could not create or send invoice. Please contact finance@agenticadvertising.org for assistance.',
+          });
+        }
+
+        // Get product details for the notification
+        const products = await getInvoiceableProducts();
+        const product = products.find(p => p.lookup_key === lookupKey);
+        const productDisplay = product ? `${product.display_name} ($${(product.amount_cents / 100).toLocaleString()})` : lookupKey;
+
+        logger.info({
+          invoiceId: result.invoiceId,
+          companyName,
+          contactEmail,
+          lookupKey,
+        }, 'Invoice request processed successfully');
+
+        // Send Slack notification for invoice request
+        if (process.env.SLACK_WEBHOOK_URL) {
+          fetch(process.env.SLACK_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: `Invoice requested`,
+              blocks: [
+                {
+                  type: 'section',
+                  text: {
+                    type: 'mrkdwn',
+                    text: `*New Invoice Request*\n\n*Company:* ${companyName}\n*Contact:* ${contactName} (${contactEmail})\n*Product:* ${productDisplay}\n*Invoice ID:* ${result.invoiceId}`,
+                  },
+                },
+              ],
+            }),
+          }).catch(err => logger.error({ err }, 'Failed to send Slack notification for invoice request'));
+        }
+
+        res.json({
+          success: true,
+          message: `Invoice sent to ${contactEmail}. Please check your email for payment instructions.`,
+          invoiceId: result.invoiceId,
+          invoiceUrl: result.invoiceUrl,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Invoice request error');
+        res.status(500).json({
+          error: 'Failed to process invoice request',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // POST /api/checkout-session - Create a Stripe Checkout session (requires auth)
+    this.app.post('/api/checkout-session', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { priceId, orgId } = req.body as {
+          priceId: string;
+          orgId: string;
+        };
+
+        if (!priceId || !orgId) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'Please provide priceId and orgId',
+          });
+        }
+
+        // Get organization to check if user has access
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'The specified organization does not exist',
+          });
+        }
+
+        // Dev mode: skip WorkOS membership check for dev orgs
+        const isDevUserCheckout = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && orgId.startsWith('org_dev_');
+        if (!isDevUserCheckout) {
+          // Check user membership in organization
+          const membership = await workos?.userManagement.listOrganizationMemberships({
+            userId: user.id,
+            organizationId: orgId,
+          });
+
+          if (!membership?.data?.length) {
+            return res.status(403).json({
+              error: 'Access denied',
+              message: 'You are not a member of this organization',
+            });
+          }
+        }
+
+        const host = req.get('host');
+        const protocol = req.protocol;
+        const baseUrl = `${protocol}://${host}`;
+
+        const checkoutData: CheckoutSessionData = {
+          priceId,
+          customerId: org.stripe_customer_id || undefined,
+          customerEmail: org.stripe_customer_id ? undefined : user.email,
+          successUrl: `${baseUrl}/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${baseUrl}/dashboard?checkout=cancelled`,
+          workosOrganizationId: orgId,
+          workosUserId: user.id,
+          isPersonalWorkspace: org.is_personal || false,
+        };
+
+        const result = await createCheckoutSession(checkoutData);
+
+        if (!result) {
+          return res.status(500).json({
+            error: 'Failed to create checkout session',
+            message: 'Could not create Stripe checkout session. Please try again.',
+          });
+        }
+
+        logger.info({
+          sessionId: result.sessionId,
+          orgId,
+          userId: user.id,
+          priceId,
+        }, 'Checkout session created');
+
+        res.json({
+          success: true,
+          sessionId: result.sessionId,
+          url: result.url,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Checkout session creation error');
+        res.status(500).json({
+          error: 'Failed to create checkout session',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
     // GET /api/organizations/:orgId/billing - Get billing info
     this.app.get('/api/organizations/:orgId/billing', requireAuth, async (req, res) => {
       try {
@@ -6707,6 +7062,7 @@ Disallow: /api/admin/
               company_type: 'agency',
               revenue_tier: 'startup',
               is_personal: false,
+              pending_invoices: [],
             });
           } else {
             // Non-member dev user - no subscription
@@ -6717,6 +7073,7 @@ Disallow: /api/admin/
               company_type: null,
               revenue_tier: null,
               is_personal: true,
+              pending_invoices: [],
             });
           }
         }
@@ -6809,6 +7166,16 @@ Disallow: /api/admin/
           customerSessionSecret = await createCustomerSession(stripeCustomerId);
         }
 
+        // Get pending invoices if customer exists
+        let pendingInvoices: Awaited<ReturnType<typeof getPendingInvoices>> = [];
+        if (stripeCustomerId) {
+          try {
+            pendingInvoices = await getPendingInvoices(stripeCustomerId);
+          } catch (err) {
+            logger.warn({ err, orgId, stripeCustomerId }, 'Error fetching pending invoices');
+          }
+        }
+
         res.json({
           subscription: subscriptionInfo,
           stripe_customer_id: stripeCustomerId || null,
@@ -6816,11 +7183,89 @@ Disallow: /api/admin/
           company_type: org.company_type || null,
           revenue_tier: org.revenue_tier || null,
           is_personal: org.is_personal || false,
+          pending_invoices: pendingInvoices,
         });
       } catch (error) {
         logger.error({ err: error }, 'Get billing info error:');
         res.status(500).json({
           error: 'Failed to get billing info',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // PUT /api/organizations/:orgId/billing-info - Update org billing info (company_type, revenue_tier)
+    this.app.put('/api/organizations/:orgId/billing-info', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+        const { company_type, revenue_tier } = req.body;
+
+        // Validate inputs
+        const validCompanyTypes = ['brand', 'agency', 'publisher', 'tech_vendor', 'consultant', 'other'];
+        const validRevenueTiers = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
+
+        if (company_type && !validCompanyTypes.includes(company_type)) {
+          return res.status(400).json({
+            error: 'Invalid company_type',
+            message: `company_type must be one of: ${validCompanyTypes.join(', ')}`,
+          });
+        }
+
+        if (revenue_tier && !validRevenueTiers.includes(revenue_tier)) {
+          return res.status(400).json({
+            error: 'Invalid revenue_tier',
+            message: `revenue_tier must be one of: ${validRevenueTiers.join(', ')}`,
+          });
+        }
+
+        // Get organization
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          return res.status(404).json({
+            error: 'Organization not found',
+            message: 'The requested organization does not exist',
+          });
+        }
+
+        // Dev mode: skip membership check for dev orgs
+        const isDevUserBilling = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && orgId.startsWith('org_dev_');
+        if (!isDevUserBilling) {
+          // Verify user is a member of this organization with admin/owner role
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+            organizationId: orgId,
+          });
+
+          if (memberships.data.length === 0) {
+            return res.status(403).json({
+              error: 'Access denied',
+              message: 'You are not a member of this organization',
+            });
+          }
+        }
+
+        // Update org billing info using updateOrganization
+        const updateData: { company_type?: CompanyType; revenue_tier?: RevenueTier } = {};
+        if (company_type) updateData.company_type = company_type as CompanyType;
+        if (revenue_tier) updateData.revenue_tier = revenue_tier as RevenueTier;
+
+        await orgDb.updateOrganization(orgId, updateData);
+
+        logger.info(
+          { orgId, company_type, revenue_tier, userId: user.id },
+          'Updated organization billing info'
+        );
+
+        res.json({
+          success: true,
+          company_type: company_type || org.company_type,
+          revenue_tier: revenue_tier || org.revenue_tier,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Update billing info error:');
+        res.status(500).json({
+          error: 'Failed to update billing info',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -10405,6 +10850,15 @@ Disallow: /api/admin/
       } catch (error) {
         logger.warn({ error }, 'Failed to sync Stripe customers (non-fatal)');
       }
+
+      // Seed dev organizations if dev mode is enabled
+      if (isDevModeEnabled()) {
+        try {
+          await this.seedDevOrganizations(orgDb);
+        } catch (error) {
+          logger.warn({ error }, 'Failed to seed dev organizations (non-fatal)');
+        }
+      }
     }
 
     // Pre-warm caches for all agents in background
@@ -10478,6 +10932,53 @@ Disallow: /api/admin/
     logger.info('Database connection closed');
 
     logger.info('Graceful shutdown complete');
+  }
+
+  /**
+   * Seed dev organizations in the database
+   * Creates organizations for dev users so they can access dashboard without onboarding
+   */
+  private async seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> {
+    const devOrgs = [
+      {
+        id: 'org_dev_company_001',
+        name: 'Dev Company (Member)',
+        is_personal: false,
+        company_type: 'brand' as const,
+        revenue_tier: '5m_50m' as const,
+      },
+      {
+        id: 'org_dev_personal_001',
+        name: 'Dev Personal Workspace',
+        is_personal: true,
+        company_type: null,
+        revenue_tier: null,
+      },
+    ];
+
+    for (const devOrg of devOrgs) {
+      try {
+        // Check if org already exists
+        const existing = await orgDb.getOrganization(devOrg.id);
+        if (!existing) {
+          await orgDb.createOrganization({
+            workos_organization_id: devOrg.id,
+            name: devOrg.name,
+            is_personal: devOrg.is_personal,
+            company_type: devOrg.company_type || undefined,
+            revenue_tier: devOrg.revenue_tier || undefined,
+          });
+          logger.info({ orgId: devOrg.id, name: devOrg.name }, 'Created dev organization');
+        }
+      } catch (error) {
+        // Ignore duplicate key errors (org already exists)
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          logger.debug({ orgId: devOrg.id }, 'Dev organization already exists');
+        } else {
+          throw error;
+        }
+      }
+    }
   }
 
   private async prewarmCaches(agents: any[]): Promise<void> {

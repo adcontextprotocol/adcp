@@ -624,9 +624,145 @@
 
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="closeProspectModal()">Cancel</button>
+          <button type="button" class="btn btn-secondary" id="generateInvoiceBtn" onclick="openInvoiceModal()" style="display: none;">Generate Invoice</button>
+          <button type="button" class="btn btn-secondary" id="getPaymentLinkBtn" onclick="openPaymentLinkModal()" style="display: none;">Get Payment Link</button>
           <button type="submit" class="btn btn-primary" id="saveProspectBtn">Save Prospect</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Generate Invoice Modal -->
+  <div id="invoiceModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2>Generate Invoice</h2>
+        <button class="modal-close" onclick="closeInvoiceModal()">&times;</button>
+      </div>
+
+      <p id="invoiceOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
+
+      <form id="invoiceForm" onsubmit="submitInvoice(event)">
+        <!-- Product Selection -->
+        <div id="invoiceProductSection">
+          <div class="form-group">
+            <label>Select Product</label>
+            <div id="invoiceProducts" style="margin-bottom: var(--space-4);">
+              Loading products...
+            </div>
+          </div>
+        </div>
+
+        <!-- Billing Details (shown after product selection) -->
+        <div id="invoiceBillingSection" style="display: none;">
+          <div class="form-group">
+            <label>Selected Product</label>
+            <div id="selectedProductDisplay" style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-md); margin-bottom: var(--space-3);"></div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Contact Name *</label>
+              <input type="text" id="invoiceContactName" required>
+            </div>
+            <div class="form-group">
+              <label>Contact Email *</label>
+              <input type="email" id="invoiceContactEmail" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Company Name *</label>
+            <input type="text" id="invoiceCompanyName" required>
+          </div>
+
+          <h4 style="margin-top: var(--space-4); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-heading);">Billing Address</h4>
+
+          <div class="form-group">
+            <label>Street Address *</label>
+            <input type="text" id="invoiceAddressLine1" required>
+          </div>
+
+          <div class="form-group">
+            <label>Address Line 2</label>
+            <input type="text" id="invoiceAddressLine2">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>City *</label>
+              <input type="text" id="invoiceCity" required>
+            </div>
+            <div class="form-group">
+              <label>State/Province *</label>
+              <input type="text" id="invoiceState" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Postal Code *</label>
+              <input type="text" id="invoicePostalCode" required>
+            </div>
+            <div class="form-group">
+              <label>Country *</label>
+              <input type="text" id="invoiceCountry" value="US" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Success Message -->
+        <div id="invoiceResult" style="display: none;">
+          <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+            <strong style="color: var(--color-success-700);">Invoice Sent!</strong>
+            <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
+              The invoice has been emailed to the contact. You can also share this link:
+            </p>
+          </div>
+          <div style="display: flex; gap: var(--space-2);">
+            <input type="text" id="invoiceUrl" readonly style="flex: 1; padding: var(--space-2); font-size: var(--text-sm); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+            <button type="button" class="btn btn-primary btn-sm" onclick="copyInvoiceLink()">Copy</button>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeInvoiceModal()">Close</button>
+          <button type="submit" class="btn btn-primary" id="sendInvoiceBtn" style="display: none;">Send Invoice</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Payment Link Modal -->
+  <div id="paymentLinkModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>Generate Payment Link</h2>
+        <button class="modal-close" onclick="closePaymentLinkModal()">&times;</button>
+      </div>
+
+      <p id="paymentLinkOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
+
+      <div id="paymentLinkProducts" style="margin-bottom: var(--space-4);">
+        Loading products...
+      </div>
+
+      <div id="paymentLinkResult" style="display: none;">
+        <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+          <strong style="color: var(--color-success-700);">Payment Link Generated!</strong>
+          <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
+            Copy this link and send it to the prospect:
+          </p>
+        </div>
+        <div style="display: flex; gap: var(--space-2);">
+          <input type="text" id="paymentLinkUrl" readonly style="flex: 1; padding: var(--space-2); font-size: var(--text-sm); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+          <button class="btn btn-primary btn-sm" onclick="copyPaymentLink()">Copy</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closePaymentLinkModal()">Close</button>
+      </div>
     </div>
   </div>
 
@@ -885,6 +1021,8 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       document.getElementById('prospectSource').value = 'aao_launch_list';
       document.getElementById('prospectDomain').disabled = false;
       document.getElementById('prospectName').disabled = false;
+      // Hide payment link button for new prospects
+      document.getElementById('getPaymentLinkBtn').style.display = 'none';
       document.getElementById('prospectModal').style.display = 'block';
     }
 
@@ -909,6 +1047,13 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       document.getElementById('prospectNextAction').value = prospect.prospect_next_action || '';
       document.getElementById('prospectNextActionDate').value = prospect.prospect_next_action_date ? prospect.prospect_next_action_date.split('T')[0] : '';
       document.getElementById('prospectNotes').value = prospect.prospect_notes || '';
+
+      // Show payment link and invoice buttons for non-members
+      const paymentLinkBtn = document.getElementById('getPaymentLinkBtn');
+      const invoiceBtn = document.getElementById('generateInvoiceBtn');
+      const isNotMember = prospect.subscription_status !== 'active';
+      paymentLinkBtn.style.display = isNotMember ? 'inline-block' : 'none';
+      invoiceBtn.style.display = isNotMember ? 'inline-block' : 'none';
 
       document.getElementById('prospectModal').style.display = 'block';
     }
@@ -1152,6 +1297,314 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       if (event.target.classList.contains('modal')) {
         event.target.style.display = 'none';
       }
+    }
+
+    // Payment link functionality
+    let paymentLinkOrgId = null;
+
+    function openPaymentLinkModal() {
+      const orgId = document.getElementById('editOrgId').value;
+      if (!orgId) return;
+
+      paymentLinkOrgId = orgId;
+      const prospect = allProspects.find(p => p.workos_organization_id === orgId);
+
+      document.getElementById('paymentLinkOrgName').textContent = `For: ${prospect?.name || 'Unknown'}`;
+      document.getElementById('paymentLinkProducts').innerHTML = 'Loading products...';
+      document.getElementById('paymentLinkResult').style.display = 'none';
+      document.getElementById('paymentLinkModal').style.display = 'block';
+
+      loadPaymentLinkProducts(orgId);
+    }
+
+    async function loadPaymentLinkProducts(orgId) {
+      try {
+        const response = await fetch(`/api/admin/prospects/${orgId}/payment-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}) // No lookup_key = get product list
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load products');
+        }
+
+        const data = await response.json();
+
+        if (data.needs_selection && data.products) {
+          renderPaymentLinkProducts(data.products);
+        }
+      } catch (error) {
+        console.error('Error loading products:', error);
+        document.getElementById('paymentLinkProducts').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load products. Please try again.</p>';
+      }
+    }
+
+    function renderPaymentLinkProducts(products) {
+      const container = document.getElementById('paymentLinkProducts');
+
+      if (products.length === 0) {
+        container.innerHTML = '<p style="color: var(--color-text-secondary);">No products available for this account type.</p>';
+        return;
+      }
+
+      container.innerHTML = products.map(product => {
+        const price = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD'
+        }).format(product.amount_cents / 100);
+
+        const tiers = product.revenue_tiers?.length > 0
+          ? `<span style="font-size: var(--text-xs); color: var(--color-text-muted);">(${product.revenue_tiers.join(', ')})</span>`
+          : '';
+
+        return `
+          <button class="product-select-btn" onclick="generatePaymentLink('${product.lookup_key}')" style="
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: var(--space-3);
+            margin-bottom: var(--space-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background: var(--color-bg-card);
+            cursor: pointer;
+            transition: var(--transition-all);
+          " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
+            <strong>${product.display_name}</strong> ${tiers}
+            <br>
+            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}/year</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    async function generatePaymentLink(lookupKey) {
+      if (!paymentLinkOrgId) return;
+
+      const container = document.getElementById('paymentLinkProducts');
+      container.innerHTML = '<p>Generating payment link...</p>';
+
+      try {
+        const response = await fetch(`/api/admin/prospects/${paymentLinkOrgId}/payment-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lookup_key: lookupKey })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to generate payment link');
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.payment_url) {
+          container.style.display = 'none';
+          document.getElementById('paymentLinkUrl').value = data.payment_url;
+          document.getElementById('paymentLinkResult').style.display = 'block';
+        } else {
+          throw new Error(data.message || 'Unknown error');
+        }
+      } catch (error) {
+        console.error('Error generating payment link:', error);
+        container.innerHTML = `<p style="color: var(--color-error-600);">Error: ${error.message}</p>`;
+      }
+    }
+
+    function copyPaymentLink() {
+      const input = document.getElementById('paymentLinkUrl');
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => {
+        alert('Payment link copied to clipboard!');
+      }).catch(() => {
+        // Fallback for older browsers
+        document.execCommand('copy');
+        alert('Payment link copied to clipboard!');
+      });
+    }
+
+    function closePaymentLinkModal() {
+      document.getElementById('paymentLinkModal').style.display = 'none';
+      paymentLinkOrgId = null;
+    }
+
+    // Invoice functionality
+    let invoiceOrgId = null;
+    let selectedInvoiceProduct = null;
+
+    function openInvoiceModal() {
+      const orgId = document.getElementById('editOrgId').value;
+      if (!orgId) return;
+
+      invoiceOrgId = orgId;
+      selectedInvoiceProduct = null;
+      const prospect = allProspects.find(p => p.workos_organization_id === orgId);
+
+      document.getElementById('invoiceOrgName').textContent = `For: ${prospect?.name || 'Unknown'}`;
+      document.getElementById('invoiceProducts').innerHTML = 'Loading products...';
+      document.getElementById('invoiceProductSection').style.display = 'block';
+      document.getElementById('invoiceBillingSection').style.display = 'none';
+      document.getElementById('invoiceResult').style.display = 'none';
+      document.getElementById('sendInvoiceBtn').style.display = 'none';
+      document.getElementById('invoiceForm').reset();
+
+      // Pre-fill from prospect data
+      if (prospect) {
+        document.getElementById('invoiceContactName').value = prospect.prospect_contact_name || '';
+        document.getElementById('invoiceContactEmail').value = prospect.prospect_contact_email || '';
+        document.getElementById('invoiceCompanyName').value = prospect.name || '';
+      }
+
+      document.getElementById('invoiceModal').style.display = 'block';
+
+      loadInvoiceProducts();
+    }
+
+    async function loadInvoiceProducts() {
+      try {
+        const response = await fetch('/api/admin/products');
+        if (!response.ok) throw new Error('Failed to load products');
+
+        const data = await response.json();
+        const invoiceableProducts = data.products.filter(p => p.is_invoiceable);
+
+        renderInvoiceProducts(invoiceableProducts);
+      } catch (error) {
+        console.error('Error loading products:', error);
+        document.getElementById('invoiceProducts').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load products. Please try again.</p>';
+      }
+    }
+
+    function renderInvoiceProducts(products) {
+      const container = document.getElementById('invoiceProducts');
+
+      if (products.length === 0) {
+        container.innerHTML = '<p style="color: var(--color-text-secondary);">No invoiceable products available.</p>';
+        return;
+      }
+
+      container.innerHTML = products.map(product => {
+        const price = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD'
+        }).format(product.amount_cents / 100);
+
+        const interval = product.billing_interval ? `/${product.billing_interval}` : '';
+
+        return `
+          <button type="button" class="product-select-btn" onclick="selectInvoiceProduct('${product.lookup_key}', '${product.display_name || product.product_name}', ${product.amount_cents})" style="
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: var(--space-3);
+            margin-bottom: var(--space-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background: var(--color-bg-card);
+            cursor: pointer;
+            transition: var(--transition-all);
+          " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
+            <strong>${product.display_name || product.product_name}</strong>
+            <br>
+            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>
+            ${product.description ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${product.description}</span>` : ''}
+          </button>
+        `;
+      }).join('');
+    }
+
+    function selectInvoiceProduct(lookupKey, productName, amountCents) {
+      selectedInvoiceProduct = { lookupKey, productName, amountCents };
+
+      const price = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD'
+      }).format(amountCents / 100);
+
+      document.getElementById('selectedProductDisplay').innerHTML = `
+        <strong>${productName}</strong> - <span style="color: var(--color-brand);">${price}</span>
+      `;
+
+      document.getElementById('invoiceProductSection').style.display = 'none';
+      document.getElementById('invoiceBillingSection').style.display = 'block';
+      document.getElementById('sendInvoiceBtn').style.display = 'inline-block';
+    }
+
+    async function submitInvoice(event) {
+      event.preventDefault();
+
+      if (!selectedInvoiceProduct || !invoiceOrgId) {
+        alert('Please select a product first');
+        return;
+      }
+
+      const btn = document.getElementById('sendInvoiceBtn');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      const data = {
+        lookup_key: selectedInvoiceProduct.lookupKey,
+        company_name: document.getElementById('invoiceCompanyName').value,
+        contact_name: document.getElementById('invoiceContactName').value,
+        contact_email: document.getElementById('invoiceContactEmail').value,
+        billing_address: {
+          line1: document.getElementById('invoiceAddressLine1').value,
+          line2: document.getElementById('invoiceAddressLine2').value || undefined,
+          city: document.getElementById('invoiceCity').value,
+          state: document.getElementById('invoiceState').value,
+          postal_code: document.getElementById('invoicePostalCode').value,
+          country: document.getElementById('invoiceCountry').value,
+        }
+      };
+
+      try {
+        const response = await fetch(`/api/admin/prospects/${invoiceOrgId}/invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to send invoice');
+        }
+
+        const result = await response.json();
+
+        if (result.success && result.invoice_url) {
+          document.getElementById('invoiceBillingSection').style.display = 'none';
+          document.getElementById('sendInvoiceBtn').style.display = 'none';
+          document.getElementById('invoiceUrl').value = result.invoice_url;
+          document.getElementById('invoiceResult').style.display = 'block';
+        } else {
+          throw new Error(result.message || 'Unknown error');
+        }
+      } catch (error) {
+        console.error('Error sending invoice:', error);
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send Invoice';
+      }
+    }
+
+    function copyInvoiceLink() {
+      const input = document.getElementById('invoiceUrl');
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => {
+        alert('Invoice link copied to clipboard!');
+      }).catch(() => {
+        document.execCommand('copy');
+        alert('Invoice link copied to clipboard!');
+      });
+    }
+
+    function closeInvoiceModal() {
+      document.getElementById('invoiceModal').style.display = 'none';
+      invoiceOrgId = null;
+      selectedInvoiceProduct = null;
     }
 
     // Initialize

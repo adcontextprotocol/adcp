@@ -26,6 +26,10 @@ import {
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from "../addie/mcp/knowledge-search.js";
+import {
+  BILLING_TOOLS,
+  createBillingToolHandlers,
+} from "../addie/mcp/billing-tools.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +61,15 @@ async function initializeChatClient(): Promise<void> {
   const knowledgeHandlers = createKnowledgeToolHandlers();
   for (const tool of KNOWLEDGE_TOOLS) {
     const handler = knowledgeHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register billing tools (for membership signup assistance)
+  const billingHandlers = createBillingToolHandlers();
+  for (const tool of BILLING_TOOLS) {
+    const handler = billingHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }

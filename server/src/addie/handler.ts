@@ -20,6 +20,15 @@ import {
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from './mcp/knowledge-search.js';
+import {
+  BILLING_TOOLS,
+  createBillingToolHandlers,
+} from './mcp/billing-tools.js';
+import {
+  ADMIN_TOOLS,
+  createAdminToolHandlers,
+  isSlackUserAdmin,
+} from './mcp/admin-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
 import type {
@@ -63,6 +72,24 @@ export async function initializeAddie(): Promise<void> {
   const knowledgeHandlers = createKnowledgeToolHandlers();
   for (const tool of KNOWLEDGE_TOOLS) {
     const handler = knowledgeHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register billing tools (for membership signup assistance)
+  const billingHandlers = createBillingToolHandlers();
+  for (const tool of BILLING_TOOLS) {
+    const handler = billingHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register admin tools (available to admin users only - enforced via instructions)
+  const adminHandlers = createAdminToolHandlers();
+  for (const tool of ADMIN_TOOLS) {
+    const handler = adminHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }
@@ -136,8 +163,18 @@ export async function handleAssistantMessage(
   const startTime = Date.now();
   const interactionId = generateInteractionId();
 
+  // Check if user is an admin
+  const isAdmin = await isSlackUserAdmin(event.user);
+  logger.debug({ userId: event.user, isAdmin }, 'Addie: Checked admin status');
+
   // Sanitize input
   const inputValidation = sanitizeInput(event.text);
+
+  // Build message with admin context if applicable
+  let messageWithContext = inputValidation.sanitized;
+  if (isAdmin) {
+    messageWithContext = `[ADMIN USER] ${inputValidation.sanitized}`;
+  }
 
   // Set status to thinking
   try {
@@ -149,7 +186,7 @@ export async function handleAssistantMessage(
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized);
+    response = await claudeClient.processMessage(messageWithContext);
   } catch (error) {
     logger.error({ error }, 'Addie: Error processing message');
     response = {
@@ -226,16 +263,26 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   const startTime = Date.now();
   const interactionId = generateInteractionId();
 
+  // Check if user is an admin
+  const isAdmin = await isSlackUserAdmin(event.user);
+  logger.debug({ userId: event.user, isAdmin }, 'Addie: Checked admin status for mention');
+
   // Strip bot mention
   const rawText = botUserId ? stripBotMention(event.text, botUserId) : event.text;
 
   // Sanitize input
   const inputValidation = sanitizeInput(rawText);
 
+  // Build message with admin context if applicable
+  let messageWithContext = inputValidation.sanitized;
+  if (isAdmin) {
+    messageWithContext = `[ADMIN USER] ${inputValidation.sanitized}`;
+  }
+
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized);
+    response = await claudeClient.processMessage(messageWithContext);
   } catch (error) {
     logger.error({ error }, 'Addie: Error processing mention');
     response = {

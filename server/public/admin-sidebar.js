@@ -30,6 +30,12 @@
         ]
       },
       {
+        label: 'Billing',
+        items: [
+          { href: '/admin/products', label: 'Products', icon: '💳' },
+        ]
+      },
+      {
         label: 'System',
         items: [
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
@@ -45,7 +51,6 @@
   // Sidebar styles
   const SIDEBAR_STYLES = `
     .admin-layout {
-      display: flex;
       min-height: 100vh;
       padding-top: 60px; /* Space for top nav */
     }
@@ -158,9 +163,8 @@
     }
 
     .admin-main {
-      flex: 1;
       margin-left: 260px;
-      min-height: 100vh;
+      min-height: calc(100vh - 60px); /* Full height minus top nav */
       background: var(--color-bg-page);
     }
 
@@ -284,29 +288,34 @@
     const existingMain = document.querySelector('.admin-main');
     if (existingMain) return; // Already wrapped
 
-    // Get all body children except scripts, sidebar elements, nav, and footer
+    // Get all body children except scripts, sidebar elements, nav, and footer/footer placeholder
     const bodyChildren = Array.from(document.body.children).filter(el =>
       el.tagName !== 'SCRIPT' &&
       !el.classList.contains('admin-sidebar') &&
       !el.classList.contains('admin-sidebar-toggle') &&
       !el.classList.contains('admin-sidebar-overlay') &&
       !el.classList.contains('aao-footer') &&
-      el.id !== 'adcp-nav'
+      el.id !== 'adcp-nav' &&
+      el.id !== 'adcp-footer'
     );
 
     // Create main wrapper
     const mainWrapper = document.createElement('main');
     mainWrapper.className = 'admin-main';
 
-    // Move children to wrapper (except footer which stays at body level)
+    // Move children to wrapper
     bodyChildren.forEach(child => {
       mainWrapper.appendChild(child);
     });
 
-    // Insert main wrapper before footer if footer exists, otherwise append to body
-    const footer = document.querySelector('.aao-footer');
-    if (footer) {
-      document.body.insertBefore(mainWrapper, footer);
+    // Find footer placeholder or actual footer to insert before
+    const footerPlaceholder = document.getElementById('adcp-footer');
+    const actualFooter = document.querySelector('.aao-footer');
+    const insertBeforeElement = footerPlaceholder || actualFooter;
+
+    // Insert main wrapper before footer if it exists, otherwise append to body
+    if (insertBeforeElement) {
+      document.body.insertBefore(mainWrapper, insertBeforeElement);
     } else {
       document.body.appendChild(mainWrapper);
     }

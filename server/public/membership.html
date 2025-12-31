@@ -878,12 +878,11 @@
 
   <script>
     // Initialize join CTA component
-    document.addEventListener('DOMContentLoaded', () => {
-      renderJoinCta({
-        containerId: 'join-cta-container',
-        showFoundingNote: true,
-        showContactLine: true
-      });
+    // Script is at end of body, so DOM is already loaded - call directly
+    renderJoinCta({
+      containerId: 'join-cta-container',
+      showFoundingNote: true,
+      showContactLine: true
     });
 
     // Sub-nav active state on scroll
