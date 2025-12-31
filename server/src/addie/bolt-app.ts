@@ -664,6 +664,7 @@ async function handleAppMention({
   const inputValidation = sanitizeInput(rawText);
 
   // Fetch thread context if this mention is in a thread
+  const MAX_THREAD_CONTEXT_MESSAGES = 25;
   let threadContext = '';
   if (isInThread && event.thread_ts) {
     try {
@@ -673,7 +674,8 @@ async function handleAppMention({
         const contextMessages = threadMessages
           .filter(msg => msg.user !== context.botUserId) // Exclude Addie's own messages
           .filter(msg => msg.ts !== event.ts) // Exclude the current mention message
-          .slice(-10) // Limit to last 10 messages for context
+          .filter(msg => (msg.text || '').trim().length > 0) // Filter out empty messages
+          .slice(-MAX_THREAD_CONTEXT_MESSAGES)
           .map(msg => {
             // Strip any bot mentions from historical messages too
             let text = msg.text || '';
@@ -681,8 +683,7 @@ async function handleAppMention({
               text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
             }
             return `- ${text}`;
-          })
-          .filter(text => text.length > 2); // Filter out empty messages
+          });
 
         if (contextMessages.length > 0) {
           threadContext = `\n\n## Thread Context\nThe user is replying in a Slack thread. Here are the previous messages in this thread for context:\n${contextMessages.join('\n')}\n\n---\n`;
@@ -712,9 +713,9 @@ async function handleAppMention({
     inputValidation.sanitized
   );
 
-  // Combine thread context with member context
+  // Prepend thread context if available (member context already includes the user's message)
   const messageWithContext = threadContext
-    ? `${messageWithMemberContext}${threadContext}User's request: ${inputValidation.sanitized}`
+    ? `${threadContext}${messageWithMemberContext}`
     : messageWithMemberContext;
 
   // Log user message to unified thread

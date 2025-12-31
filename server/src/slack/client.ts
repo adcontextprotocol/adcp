@@ -425,9 +425,17 @@ export async function getThreadReplies(
   threadTs: string,
   useAddieToken = false
 ): Promise<SlackThreadMessage[]> {
-  const token = useAddieToken ? (ADDIE_BOT_TOKEN || SLACK_BOT_TOKEN) : SLACK_BOT_TOKEN;
-  if (!token) {
-    throw new Error(useAddieToken ? 'ADDIE_BOT_TOKEN is not configured' : 'SLACK_BOT_TOKEN is not configured');
+  let token: string | undefined;
+  if (useAddieToken) {
+    if (!ADDIE_BOT_TOKEN) {
+      throw new Error('ADDIE_BOT_TOKEN is not configured');
+    }
+    token = ADDIE_BOT_TOKEN;
+  } else {
+    if (!SLACK_BOT_TOKEN) {
+      throw new Error('SLACK_BOT_TOKEN is not configured');
+    }
+    token = SLACK_BOT_TOKEN;
   }
 
   try {
