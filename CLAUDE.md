@@ -65,6 +65,7 @@ Include common fields (like `ext`) inside each variant, not at root level.
 - Core objects: `static/schemas/v1/core/`
 - Enums: `static/schemas/v1/enums/`
 - Registry: `static/schemas/v1/index.json`
+- Local access: `http://localhost:3000/schemas/v1/` when running dev server
 
 ### Protocol vs Task Response Separation
 Task responses contain ONLY domain data. Protocol concerns (message, context_id, task_id, status) are handled by transport layer.
@@ -109,7 +110,9 @@ npm run start
 
 ### Slack Apps
 Two separate apps with independent credentials:
-1. **AgenticAdvertising.org Bot**: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` → `/api/slack/aaobot/events`
+1. **AgenticAdvertising.org Bot**: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`
+   - Events: `/api/slack/aaobot/events`
+   - Commands: `/api/slack/aaobot/commands`
 2. **Addie AI**: `ADDIE_BOT_TOKEN`, `ADDIE_SIGNING_SECRET` → `/api/slack/addie/events`
 
 ### Dev Login
