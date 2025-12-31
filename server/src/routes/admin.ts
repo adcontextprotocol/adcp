@@ -16,6 +16,12 @@ import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
+import {
+  createCheckoutSession,
+  getProductsForCustomer,
+  getPendingInvoices,
+  createAndSendInvoice,
+} from "../billing/stripe-client.js";
 import { getMemberContext, getWebMemberContext } from "../addie/member-context.js";
 import {
   getLushaClient,
@@ -820,6 +826,16 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           engagementReasons.unshift(`Interest: Medium (${engagementSignals.interest_level_set_by || 'admin'})`);
         }
 
+        // Fetch pending invoices if org has a Stripe customer ID
+        let pendingInvoices: Awaited<ReturnType<typeof getPendingInvoices>> = [];
+        if (org.stripe_customer_id) {
+          try {
+            pendingInvoices = await getPendingInvoices(org.stripe_customer_id);
+          } catch (err) {
+            logger.warn({ err, orgId, stripeCustomerId: org.stripe_customer_id }, 'Error fetching pending invoices');
+          }
+        }
+
         res.json({
           ...org,
           member_count: memberCount,
@@ -830,6 +846,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           engagement_level: engagementLevel,
           engagement_reasons: engagementReasons,
           engagement_signals: engagementSignals,
+          pending_invoices: pendingInvoices,
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching organization details");
@@ -2472,6 +2489,250 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch view counts",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // PAYMENT LINK GENERATION FOR PROSPECTS
+  // =========================================================================
+
+  // POST /api/admin/prospects/:orgId/payment-link - Generate a payment link for a prospect
+  apiRouter.post(
+    "/prospects/:orgId/payment-link",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const { lookup_key } = req.body;
+
+        // Get the organization details
+        const pool = getPool();
+        const orgResult = await pool.query(
+          `SELECT workos_organization_id, name, is_personal, prospect_contact_email
+           FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const org = orgResult.rows[0];
+        const customerType = org.is_personal ? "individual" : "company";
+
+        // If no specific lookup_key provided, get available products for this customer type
+        let priceId: string | undefined;
+        let selectedProduct: { lookup_key: string; display_name: string; amount_cents: number } | undefined;
+
+        if (lookup_key) {
+          // Get the specific product
+          const products = await getProductsForCustomer({
+            customerType,
+            category: "membership",
+          });
+          selectedProduct = products.find(p => p.lookup_key === lookup_key);
+          if (!selectedProduct) {
+            return res.status(400).json({
+              error: "Product not found",
+              message: `No product found with lookup key: ${lookup_key}`,
+            });
+          }
+          priceId = selectedProduct.lookup_key;
+        } else {
+          // Return available products for selection
+          const products = await getProductsForCustomer({
+            customerType,
+            category: "membership",
+          });
+
+          return res.json({
+            needs_selection: true,
+            products: products.map(p => ({
+              lookup_key: p.lookup_key,
+              display_name: p.display_name,
+              amount_cents: p.amount_cents,
+              revenue_tiers: p.revenue_tiers,
+            })),
+            message: "Select a product to generate payment link",
+          });
+        }
+
+        // Look up price ID from lookup key
+        const products = await getProductsForCustomer({ category: "membership" });
+        const product = products.find(p => p.lookup_key === lookup_key);
+        if (!product) {
+          return res.status(400).json({
+            error: "Product not found",
+            message: `No product found with lookup key: ${lookup_key}`,
+          });
+        }
+
+        // Create checkout session
+        const baseUrl = process.env.BASE_URL || "https://agenticadvertising.org";
+        const session = await createCheckoutSession({
+          priceId: product.price_id,
+          customerEmail: org.prospect_contact_email || undefined,
+          successUrl: `${baseUrl}/dashboard?payment=success`,
+          cancelUrl: `${baseUrl}/join?payment=cancelled`,
+          workosOrganizationId: orgId,
+          isPersonalWorkspace: org.is_personal,
+        });
+
+        if (!session) {
+          return res.status(500).json({
+            error: "Failed to create payment link",
+            message: "Stripe may not be configured",
+          });
+        }
+
+        logger.info(
+          {
+            orgId,
+            orgName: org.name,
+            lookupKey: lookup_key,
+            adminEmail: req.user!.email,
+          },
+          "Admin generated payment link for prospect"
+        );
+
+        res.json({
+          success: true,
+          payment_url: session.url,
+          product: {
+            display_name: product.display_name,
+            amount_cents: product.amount_cents,
+          },
+          organization: {
+            name: org.name,
+            email: org.prospect_contact_email,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error generating payment link");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to generate payment link",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // INVOICE GENERATION FOR PROSPECTS
+  // =========================================================================
+
+  // POST /api/admin/prospects/:orgId/invoice - Generate and send an invoice for a prospect
+  apiRouter.post(
+    "/prospects/:orgId/invoice",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const {
+          lookup_key,
+          company_name,
+          contact_name,
+          contact_email,
+          billing_address,
+        } = req.body;
+
+        // Validate required fields
+        if (!lookup_key || !company_name || !contact_name || !contact_email || !billing_address) {
+          return res.status(400).json({
+            error: "Missing required fields",
+            message: "lookup_key, company_name, contact_name, contact_email, and billing_address are required",
+          });
+        }
+
+        // Validate billing address
+        if (!billing_address.line1 || !billing_address.city || !billing_address.state ||
+            !billing_address.postal_code || !billing_address.country) {
+          return res.status(400).json({
+            error: "Incomplete billing address",
+            message: "Billing address must include line1, city, state, postal_code, and country",
+          });
+        }
+
+        // Verify the organization exists
+        const pool = getPool();
+        const orgResult = await pool.query(
+          `SELECT workos_organization_id, name FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const org = orgResult.rows[0];
+
+        // Create and send the invoice
+        const result = await createAndSendInvoice({
+          lookupKey: lookup_key,
+          companyName: company_name,
+          contactName: contact_name,
+          contactEmail: contact_email,
+          billingAddress: {
+            line1: billing_address.line1,
+            line2: billing_address.line2,
+            city: billing_address.city,
+            state: billing_address.state,
+            postal_code: billing_address.postal_code,
+            country: billing_address.country,
+          },
+          workosOrganizationId: orgId,
+        });
+
+        if (!result) {
+          return res.status(500).json({
+            error: "Failed to create invoice",
+            message: "Stripe may not be configured or the product was not found",
+          });
+        }
+
+        // Update organization to mark invoice was requested
+        await pool.query(
+          `UPDATE organizations SET
+            invoice_requested_at = NOW(),
+            prospect_contact_name = $1,
+            prospect_contact_email = $2
+           WHERE workos_organization_id = $3`,
+          [contact_name, contact_email, orgId]
+        );
+
+        logger.info(
+          {
+            orgId,
+            orgName: org.name,
+            lookupKey: lookup_key,
+            invoiceId: result.invoiceId,
+            contactEmail: contact_email,
+            adminEmail: req.user!.email,
+          },
+          "Admin sent invoice to prospect"
+        );
+
+        res.json({
+          success: true,
+          invoice_id: result.invoiceId,
+          invoice_url: result.invoiceUrl,
+          organization: {
+            name: org.name,
+          },
+          contact: {
+            name: contact_name,
+            email: contact_email,
+          },
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error sending invoice");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to send invoice",
         });
       }
     }

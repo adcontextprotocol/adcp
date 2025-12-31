@@ -21,14 +21,19 @@ import {
   createKnowledgeToolHandlers,
 } from './mcp/knowledge-search.js';
 import {
-  MEMBER_TOOLS,
-  createMemberToolHandlers,
-} from './mcp/member-tools.js';
+  BILLING_TOOLS,
+  createBillingToolHandlers,
+} from './mcp/billing-tools.js';
 import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
+  isSlackUserAdmin,
   isAdmin,
 } from './mcp/admin-tools.js';
+import {
+  MEMBER_TOOLS,
+  createMemberToolHandlers,
+} from './mcp/member-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
@@ -78,6 +83,24 @@ export async function initializeAddie(): Promise<void> {
     }
   }
 
+  // Register billing tools (for membership signup assistance)
+  const billingHandlers = createBillingToolHandlers();
+  for (const tool of BILLING_TOOLS) {
+    const handler = billingHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register admin tools (available to admin users only - enforced via instructions)
+  const adminHandlers = createAdminToolHandlers();
+  for (const tool of ADMIN_TOOLS) {
+    const handler = adminHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie: Ready');
 }
@@ -116,22 +139,31 @@ export function isAddieReady(): boolean {
  */
 async function buildMessageWithMemberContext(
   userId: string,
-  sanitizedMessage: string
+  sanitizedMessage: string,
+  isAdmin: boolean
 ): Promise<{ message: string; memberContext: MemberContext | null }> {
   try {
     const memberContext = await getMemberContext(userId);
     const memberContextText = formatMemberContextForPrompt(memberContext);
 
+    // Build message with admin prefix if applicable
+    let baseMessage = sanitizedMessage;
+    if (isAdmin) {
+      baseMessage = `[ADMIN USER] ${sanitizedMessage}`;
+    }
+
     if (memberContextText) {
       return {
-        message: `${memberContextText}\n---\n\n${sanitizedMessage}`,
+        message: `${memberContextText}\n---\n\n${baseMessage}`,
         memberContext,
       };
     }
-    return { message: sanitizedMessage, memberContext };
+    return { message: baseMessage, memberContext };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to get member context, continuing without it');
-    return { message: sanitizedMessage, memberContext: null };
+    // Still add admin prefix if applicable
+    const baseMessage = isAdmin ? `[ADMIN USER] ${sanitizedMessage}` : sanitizedMessage;
+    return { message: baseMessage, memberContext: null };
   }
 }
 
@@ -266,6 +298,10 @@ export async function handleAssistantMessage(
   const startTime = Date.now();
   const interactionId = generateInteractionId();
 
+  // Check if user is an admin (for admin-only tools access)
+  const isAdmin = await isSlackUserAdmin(event.user);
+  logger.debug({ userId: event.user, isAdmin }, 'Addie: Checked admin status');
+
   // Sanitize input
   const inputValidation = sanitizeInput(event.text);
 
@@ -276,10 +312,11 @@ export async function handleAssistantMessage(
     // Status update failed, continue anyway
   }
 
-  // Build message with member context for personalization
+  // Build message with member context for personalization (includes admin prefix if admin)
   const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
     event.user,
-    inputValidation.sanitized
+    inputValidation.sanitized,
+    isAdmin
   );
 
   // Create user-scoped tools (these can only operate on behalf of this user)
@@ -366,16 +403,21 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   const startTime = Date.now();
   const interactionId = generateInteractionId();
 
+  // Check if user is an admin (for admin-only tools access)
+  const isAdmin = await isSlackUserAdmin(event.user);
+  logger.debug({ userId: event.user, isAdmin }, 'Addie: Checked admin status for mention');
+
   // Strip bot mention
   const rawText = botUserId ? stripBotMention(event.text, botUserId) : event.text;
 
   // Sanitize input
   const inputValidation = sanitizeInput(rawText);
 
-  // Build message with member context for personalization
+  // Build message with member context for personalization (includes admin prefix if admin)
   const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
     event.user,
-    inputValidation.sanitized
+    inputValidation.sanitized,
+    isAdmin
   );
 
   // Create user-scoped tools (these can only operate on behalf of this user)

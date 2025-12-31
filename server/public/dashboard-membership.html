@@ -253,14 +253,68 @@
       gap: 8px;
     }
 
-    /* Pricing table wrapper */
-    .pricing-wrapper {
-      transition: opacity 0.3s;
+    /* Product cards grid */
+    .products-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-top: 24px;
     }
 
-    .pricing-wrapper.disabled {
+    .product-card {
+      background: var(--color-bg-card);
+      border: 2px solid var(--color-border);
+      border-radius: 12px;
+      padding: 24px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .product-card:hover {
+      border-color: var(--color-brand);
+      box-shadow: var(--shadow-md);
+    }
+
+    .product-card.disabled {
       opacity: 0.5;
       pointer-events: none;
+    }
+
+    .product-card-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 8px;
+    }
+
+    .product-card-description {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .product-card-price {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--color-brand);
+    }
+
+    .product-card-price .period {
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--color-text-muted);
+    }
+
+    .product-card-tier {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      margin-top: 8px;
+    }
+
+    .products-loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-secondary);
     }
 
     .loading {
@@ -344,26 +398,45 @@
 
         <div class="billing-card">
           <div class="billing-card-header">
-            <h2>Membership Agreement</h2>
+            <h2>Choose Your Membership</h2>
           </div>
           <div class="billing-card-body">
-            <div class="agreement-content" id="agreementContent">
-              Loading agreement...
+            <p style="margin: 0 0 16px; color: var(--color-text-secondary);">
+              Select a membership tier to continue. You'll review the membership agreement before checkout.
+            </p>
+            <div id="productsContainer">
+              <div class="products-loading">Loading membership options...</div>
             </div>
-            <label class="agreement-checkbox">
-              <input type="checkbox" id="agreementCheckbox" onchange="toggleAgreement()">
-              <span>I have read and agree to the <strong>AgenticAdvertising.org Membership Agreement</strong></span>
-            </label>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <div id="pricingWrapper" class="pricing-wrapper disabled">
-          <script async src="https://js.stripe.com/v3/pricing-table.js"></script>
-          <div id="pricingTableContainer"></div>
+  <!-- Agreement Modal -->
+  <div id="agreementModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px;">
+    <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 700px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: var(--shadow-xl);">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Membership Agreement</h2>
+        <button onclick="closeAgreementModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+      </div>
+      <div style="padding: 24px; flex: 1; overflow-y: auto;">
+        <p style="margin: 0 0 16px; color: var(--color-text-secondary); font-size: 14px;">
+          Please review and accept the membership agreement to continue with checkout.
+        </p>
+        <div id="modalAgreementContent" style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; max-height: 300px; overflow-y: auto; font-size: 13px; line-height: 1.6; margin-bottom: 20px;">
+          Loading agreement...
         </div>
-
-        <div id="agreementWarning" class="agreement-warning">
-          Please accept the membership agreement above to continue
+        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+          <input type="checkbox" id="modalAgreementCheckbox" style="margin-top: 3px; cursor: pointer;">
+          <span style="font-size: 14px;">I have read and agree to the <strong>AgenticAdvertising.org Membership Agreement</strong></span>
+        </label>
+      </div>
+      <div style="padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+        <div id="selectedProductInfo" style="font-size: 14px; color: var(--color-text-secondary);"></div>
+        <div style="display: flex; gap: 12px;">
+          <button class="btn btn-secondary" onclick="closeAgreementModal()">Cancel</button>
+          <button class="btn btn-primary" id="proceedToCheckoutBtn" onclick="proceedToCheckout()" disabled>Proceed to Checkout</button>
         </div>
       </div>
     </div>
@@ -371,6 +444,8 @@
 
   <script>
     let currentOrg = null;
+    let selectedProduct = null;
+    let membershipProducts = [];
 
     // Get org ID from URL or localStorage
     function getOrgId() {
@@ -379,11 +454,22 @@
     }
 
     // Show toast
-    function showToast(message) {
+    function showToast(message, isError = false) {
       const toast = document.getElementById('toast');
       toast.textContent = message;
+      toast.style.background = isError ? 'var(--color-error-600)' : 'var(--color-success-600)';
       toast.classList.add('show');
       setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // Format currency
+    function formatCurrency(amountCents) {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(amountCents / 100);
     }
 
     // Load billing data
@@ -447,8 +533,7 @@
         subscriptionCard.style.display = 'none';
         agreementsCard.style.display = 'none';
         membershipSection.style.display = 'block';
-        loadAgreement();
-        updatePricingTable();
+        loadProducts();
       }
     }
 
@@ -491,73 +576,175 @@
       `;
     }
 
-    async function loadAgreement() {
+    // Load products from API
+    async function loadProducts() {
+      const container = document.getElementById('productsContainer');
+      const customerType = currentOrg.is_personal ? 'individual' : 'company';
+
       try {
-        const response = await fetch('/api/agreements/membership');
+        const response = await fetch(`/api/billing-products?customer_type=${customerType}&category=membership`);
+        if (!response.ok) throw new Error('Failed to load products');
+
+        const data = await response.json();
+        membershipProducts = data.products || [];
+
+        if (membershipProducts.length === 0) {
+          container.innerHTML = '<p style="color: var(--color-text-secondary);">No membership products available. Please contact support.</p>';
+          return;
+        }
+
+        renderProductCards();
+      } catch (error) {
+        console.error('Error loading products:', error);
+        container.innerHTML = '<p style="color: var(--color-error-500);">Failed to load membership options. Please refresh.</p>';
+      }
+    }
+
+    // Render product cards
+    function renderProductCards() {
+      const container = document.getElementById('productsContainer');
+
+      const cardsHtml = membershipProducts.map(product => {
+        const tierInfo = product.revenue_tiers?.length > 0
+          ? product.revenue_tiers.join(', ')
+          : '';
+
+        return `
+          <div class="product-card" onclick="selectProduct('${product.lookup_key}')" data-lookup-key="${product.lookup_key}">
+            <div class="product-card-name">${escapeHtml(product.display_name)}</div>
+            <div class="product-card-price">
+              ${formatCurrency(product.amount_cents)}
+              <span class="period">/year</span>
+            </div>
+            ${tierInfo ? `<div class="product-card-tier">${escapeHtml(tierInfo)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = `<div class="products-grid">${cardsHtml}</div>`;
+    }
+
+    // Select a product and show agreement modal
+    function selectProduct(lookupKey) {
+      selectedProduct = membershipProducts.find(p => p.lookup_key === lookupKey);
+      if (!selectedProduct) return;
+
+      // Update modal info
+      document.getElementById('selectedProductInfo').textContent =
+        `${selectedProduct.display_name} - ${formatCurrency(selectedProduct.amount_cents)}/year`;
+
+      // Reset checkbox
+      document.getElementById('modalAgreementCheckbox').checked = false;
+      document.getElementById('proceedToCheckoutBtn').disabled = true;
+
+      // Load agreement content if not already loaded
+      loadAgreementContent();
+
+      // Show modal
+      document.getElementById('agreementModal').style.display = 'flex';
+    }
+
+    // Load agreement content for modal
+    async function loadAgreementContent() {
+      const contentEl = document.getElementById('modalAgreementContent');
+
+      try {
+        const response = await fetch('/api/agreement/current?type=membership');
         if (!response.ok) throw new Error('Failed to load agreement');
 
         const data = await response.json();
-        const content = data.agreement?.content || 'Agreement not available.';
+        const content = data.text || 'Agreement not available.';
 
         // Render markdown
         const html = DOMPurify.sanitize(marked.parse(content));
-        document.getElementById('agreementContent').innerHTML = html;
+        contentEl.innerHTML = html;
       } catch (error) {
         console.error('Error loading agreement:', error);
-        document.getElementById('agreementContent').innerHTML = 'Unable to load agreement. Please refresh.';
+        contentEl.innerHTML = 'Unable to load agreement. Please refresh.';
       }
     }
 
-    function toggleAgreement() {
-      const checkbox = document.getElementById('agreementCheckbox');
-      const wrapper = document.getElementById('pricingWrapper');
-      const warning = document.getElementById('agreementWarning');
-
-      if (checkbox.checked) {
-        wrapper.classList.remove('disabled');
-        warning.style.display = 'none';
-      } else {
-        wrapper.classList.add('disabled');
-        warning.style.display = 'block';
-      }
+    // Close agreement modal
+    function closeAgreementModal() {
+      document.getElementById('agreementModal').style.display = 'none';
+      selectedProduct = null;
     }
 
-    function updatePricingTable() {
-      const container = document.getElementById('pricingTableContainer');
-      if (!container) return;
-
-      container.innerHTML = '';
-
-      const pricingTableId = currentOrg.is_personal
-        ? '{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}'
-        : '{{STRIPE_PRICING_TABLE_ID}}';
-
-      const pricingTable = document.createElement('stripe-pricing-table');
-      pricingTable.setAttribute('pricing-table-id', pricingTableId);
-      pricingTable.setAttribute('publishable-key', '{{STRIPE_PUBLISHABLE_KEY}}');
-
-      if (currentOrg.customerSessionSecret) {
-        pricingTable.setAttribute('customer-session-client-secret', currentOrg.customerSessionSecret);
+    // Handle agreement checkbox change
+    document.addEventListener('DOMContentLoaded', function() {
+      const checkbox = document.getElementById('modalAgreementCheckbox');
+      if (checkbox) {
+        checkbox.addEventListener('change', function() {
+          document.getElementById('proceedToCheckoutBtn').disabled = !this.checked;
+        });
       }
 
-      container.appendChild(pricingTable);
+      // Close modal on outside click
+      const modal = document.getElementById('agreementModal');
+      if (modal) {
+        modal.addEventListener('click', function(e) {
+          if (e.target === this) {
+            closeAgreementModal();
+          }
+        });
+      }
+    });
+
+    // Proceed to Stripe checkout
+    async function proceedToCheckout() {
+      if (!selectedProduct || !currentOrg) return;
+
+      const btn = document.getElementById('proceedToCheckoutBtn');
+      btn.disabled = true;
+      btn.textContent = 'Redirecting...';
+
+      try {
+        const response = await fetch('/api/checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            priceId: selectedProduct.price_id,
+            orgId: currentOrg.id,
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to create checkout session');
+        }
+
+        const data = await response.json();
+
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          throw new Error('No checkout URL returned');
+        }
+      } catch (error) {
+        console.error('Checkout error:', error);
+        showToast(error.message || 'Failed to start checkout', true);
+        btn.disabled = false;
+        btn.textContent = 'Proceed to Checkout';
+      }
     }
 
     async function openBillingPortal() {
       try {
-        const response = await fetch(`/api/billing/portal?org=${currentOrg.id}`, {
+        const response = await fetch(`/api/organizations/${currentOrg.id}/billing/portal`, {
+          method: 'POST',
           credentials: 'include'
         });
 
         if (!response.ok) throw new Error('Failed to get billing portal');
 
         const data = await response.json();
-        if (data.url) {
-          window.location.href = data.url;
+        if (data.portal_url) {
+          window.location.href = data.portal_url;
         }
       } catch (error) {
         console.error('Error opening billing portal:', error);
-        showToast('Failed to open billing portal');
+        showToast('Failed to open billing portal', true);
       }
     }
 

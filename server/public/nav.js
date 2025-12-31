@@ -936,24 +936,14 @@
   }
 
   // Insert CSS, navigation, and footer when DOM is ready
-  async function insertNav() {
+  function insertNav() {
     // Add CSS to head first
     document.head.insertAdjacentHTML('beforeend', navCSS);
     document.head.insertAdjacentHTML('beforeend', footerCSS);
 
-    // Fetch config to determine what to show
-    let config = { membershipEnabled: true, authEnabled: false, user: null };
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/config`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        config = await response.json();
-      }
-    } catch (err) {
-      // Config fetch failed, use defaults (membership enabled, auth disabled)
-      console.debug('Nav config fetch failed, using defaults:', err);
-    }
+    // Read config from embedded script (injected by server) - no async fetch needed
+    // Falls back to defaults if config not embedded (e.g., static file serving without middleware)
+    const config = window.__APP_CONFIG__ || { membershipEnabled: true, authEnabled: false, user: null };
 
     const navHTML = buildNavHTML(config);
 

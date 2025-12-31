@@ -10,6 +10,7 @@
     links: [
       { href: '/admin/prospects', label: 'Prospects' },
       { href: '/admin/members', label: 'Members' },
+      { href: '/admin/products', label: 'Products' },
       { href: '/admin/users', label: 'Users' },
       { href: '/admin/working-groups', label: 'Working Groups' },
       { href: '/admin/agreements', label: 'Agreements' },

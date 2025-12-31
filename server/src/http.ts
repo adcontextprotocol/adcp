@@ -19,7 +19,7 @@ import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType } from "./types.js";
 import type { Server } from "http";
-import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, type RevenueEvent } from "./billing/stripe-client.js";
+import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, getSubscriptionInfo, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, CompanyType, RevenueTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -60,6 +60,8 @@ import {
   invalidateUnifiedUsersCache,
   type WorkOSUserInfo,
 } from "./cache/unified-users.js";
+import { createBillingRouter } from "./routes/billing.js";
+import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink, processPendingResources } from "./addie/services/content-curator.js";
@@ -177,6 +179,36 @@ function setCachedUser(userId: string, displayName: string): void {
 
 // Cache for unified users endpoint moved to ./cache/unified-users.ts
 
+/**
+ * Build app config object for injection into HTML pages.
+ * This allows nav.js to read config synchronously instead of making an async fetch.
+ */
+function buildAppConfig(user?: { email: string; firstName?: string | null; lastName?: string | null } | null) {
+  let isAdmin = false;
+  if (user) {
+    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
+    isAdmin = adminEmails.includes(user.email.toLowerCase());
+  }
+
+  return {
+    authEnabled: AUTH_ENABLED,
+    user: user ? {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      isAdmin,
+    } : null,
+  };
+}
+
+/**
+ * Generate the script tag to inject app config into HTML.
+ */
+function getAppConfigScript(user?: { email: string; firstName?: string | null; lastName?: string | null } | null): string {
+  const config = buildAppConfig(user);
+  return `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
+}
+
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
@@ -276,6 +308,76 @@ export class HTTPServer {
     const publicPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../server/public")
       : path.join(__dirname, "../public");
+
+    // Middleware to inject app config into HTML files
+    // This runs optionalAuth to get user info, then serves HTML with config injected
+    this.app.use(async (req, res, next) => {
+      // Only intercept .html file requests or requests that will resolve to .html
+      const urlPath = req.path;
+      if (!urlPath.endsWith('.html')) {
+        return next();
+      }
+
+      const filePath = path.join(publicPath, urlPath);
+      const fs = await import('fs/promises');
+
+      try {
+        // Check if file exists
+        await fs.access(filePath);
+
+        // Get user from session (if authenticated)
+        let user = null;
+        const sessionCookie = req.cookies?.['wos-session'];
+
+        // Check dev mode first
+        if (isDevModeEnabled()) {
+          const devUser = getDevUser(req);
+          if (devUser) {
+            user = devUser;
+          }
+        }
+
+        // Then check WorkOS session
+        if (!user && sessionCookie && AUTH_ENABLED && workos) {
+          try {
+            const session = await workos.userManagement.loadSealedSession({
+              sessionData: sessionCookie,
+              cookiePassword: WORKOS_COOKIE_PASSWORD,
+            });
+            if (session) {
+              const authResult = await session.authenticate();
+              if (authResult.authenticated && authResult.user) {
+                user = authResult.user;
+              }
+            }
+          } catch {
+            // Session invalid or expired - continue without user
+          }
+        }
+
+        // Read and inject config
+        let html = await fs.readFile(filePath, 'utf-8');
+        const configScript = getAppConfigScript(user);
+
+        // Inject before </head>
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `${configScript}\n</head>`);
+        } else {
+          // Fallback: inject at start of body
+          html = html.replace('<body', `${configScript}\n<body`);
+        }
+
+        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.send(html);
+      } catch {
+        // File doesn't exist, let next middleware handle it
+        next();
+      }
+    });
+
     this.app.use(express.static(publicPath, { index: false }));
   }
 
@@ -324,6 +426,15 @@ export class HTTPServer {
     this.app.use('/api/admin/email', adminEmailRouter); // Admin Email: /api/admin/email/*
     const adminFeedsRouter = createAdminFeedsRouter();
     this.app.use('/api/admin/feeds', adminFeedsRouter); // Admin Feeds: /api/admin/feeds/*
+
+    // Mount billing routes (admin)
+    const { pageRouter: billingPageRouter, apiRouter: billingApiRouter } = createBillingRouter();
+    this.app.use('/admin', billingPageRouter);          // Page routes: /admin/products
+    this.app.use('/api/admin', billingApiRouter);       // API routes: /api/admin/products
+
+    // Mount public billing routes
+    const publicBillingRouter = createPublicBillingRouter();
+    this.app.use('/api', publicBillingRouter);          // Public API routes: /api/billing-products, /api/invoice-request, etc.
 
     // Mount webhook routes (external services like Resend, WorkOS)
     const webhooksRouter = createWebhooksRouter();
@@ -6765,149 +6876,6 @@ Disallow: /api/admin/
       }
     });
 
-    // GET /api/organizations/:orgId/billing - Get billing info
-    this.app.get('/api/organizations/:orgId/billing', requireAuth, async (req, res) => {
-      try {
-        const user = req.user!;
-        const { orgId } = req.params;
-
-        // Dev mode: return mock billing data based on dev user type
-        const devUser = isDevModeEnabled() ? getDevUser(req) : null;
-        if (devUser) {
-          // For 'member' and 'admin' dev users, simulate active subscription
-          // For 'nonmember' dev user, simulate no subscription
-          if (devUser.isMember) {
-            return res.json({
-              subscription: {
-                status: 'active',
-                product_name: 'Founding Member',
-                current_period_end: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60), // 30 days from now
-                cancel_at_period_end: false,
-              },
-              stripe_customer_id: 'cus_dev_mock',
-              customer_session_secret: null,
-              company_type: 'agency',
-              revenue_tier: 'startup',
-              is_personal: false,
-            });
-          } else {
-            // Non-member dev user - no subscription
-            return res.json({
-              subscription: null,
-              stripe_customer_id: 'cus_dev_mock',
-              customer_session_secret: null,
-              company_type: null,
-              revenue_tier: null,
-              is_personal: true,
-            });
-          }
-        }
-
-        // Get organization from database
-        let org = await orgDb.getOrganization(orgId);
-        if (!org) {
-          // Dev mode: skip WorkOS sync for dev orgs
-          if (DEV_MODE_ENABLED && orgId.startsWith('org_dev_')) {
-            return res.status(404).json({
-              error: 'Organization not found',
-              message: 'The requested organization does not exist in local database',
-            });
-          }
-          // Organization not in local DB - try to sync from WorkOS on-demand
-          try {
-            const workosOrg = await workos!.organizations.getOrganization(orgId);
-            if (workosOrg) {
-              org = await orgDb.createOrganization({
-                workos_organization_id: workosOrg.id,
-                name: workosOrg.name,
-              });
-              logger.info({ orgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS');
-            }
-          } catch (syncError) {
-            logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS on-demand');
-          }
-        }
-
-        if (!org) {
-          return res.status(404).json({
-            error: 'Organization not found',
-            message: 'The requested organization does not exist',
-          });
-        }
-
-        // Dev mode: skip membership check for dev orgs (dev users own all dev orgs)
-        const isDevUserBilling = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && orgId.startsWith('org_dev_');
-        if (!isDevUserBilling) {
-          // Verify user is a member of this organization
-          const memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-            organizationId: orgId,
-          });
-
-          if (memberships.data.length === 0) {
-            return res.status(403).json({
-              error: 'Access denied',
-              message: 'You are not a member of this organization',
-            });
-          }
-        }
-
-        // Get subscription info - if this fails, we want to know about it
-        const subscriptionInfo = await orgDb.getSubscriptionInfo(orgId);
-
-        if (subscriptionInfo === null) {
-          // Stripe API call failed - this is an error, not "no subscription"
-          return res.status(500).json({
-            error: 'Failed to fetch subscription info from Stripe',
-            message: 'Unable to retrieve billing information. Please try again.',
-          });
-        }
-
-        // Ensure Stripe customer exists before showing pricing table
-        // This is critical: if we don't create the customer first, Stripe Pricing Table
-        // will create one without workos_organization_id metadata, breaking the linkage
-        let stripeCustomerId = org.stripe_customer_id;
-        if (!stripeCustomerId) {
-          logger.info({ orgId, userName: user.email }, 'Creating Stripe customer for pricing table');
-          stripeCustomerId = await createStripeCustomer({
-            email: user.email,
-            name: org.name,
-            metadata: {
-              workos_organization_id: orgId,
-            },
-          });
-
-          if (stripeCustomerId) {
-            await orgDb.setStripeCustomerId(orgId, stripeCustomerId);
-            logger.info({ orgId, stripeCustomerId }, 'Stripe customer created and linked to organization');
-          } else {
-            logger.error({ orgId }, 'Failed to create Stripe customer for pricing table');
-          }
-        }
-
-        // Create customer session for pricing table
-        let customerSessionSecret = null;
-        if (stripeCustomerId) {
-          customerSessionSecret = await createCustomerSession(stripeCustomerId);
-        }
-
-        res.json({
-          subscription: subscriptionInfo,
-          stripe_customer_id: stripeCustomerId || null,
-          customer_session_secret: customerSessionSecret,
-          company_type: org.company_type || null,
-          revenue_tier: org.revenue_tier || null,
-          is_personal: org.is_personal || false,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Get billing info error:');
-        res.status(500).json({
-          error: 'Failed to get billing info',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
     // POST /api/organizations/:orgId/pending-agreement - Store pending agreement info
     // This is called when user checks the agreement checkbox, before payment
     // Actual acceptance is recorded in webhook when payment succeeds
@@ -10511,6 +10479,15 @@ Disallow: /api/admin/
       } catch (error) {
         logger.warn({ error }, 'Failed to sync Stripe customers (non-fatal)');
       }
+
+      // Seed dev organizations if dev mode is enabled
+      if (isDevModeEnabled()) {
+        try {
+          await this.seedDevOrganizations(orgDb);
+        } catch (error) {
+          logger.warn({ error }, 'Failed to seed dev organizations (non-fatal)');
+        }
+      }
     }
 
     // Pre-warm caches for all agents in background
@@ -10756,6 +10733,53 @@ Disallow: /api/admin/
     logger.info('Database connection closed');
 
     logger.info('Graceful shutdown complete');
+  }
+
+  /**
+   * Seed dev organizations in the database
+   * Creates organizations for dev users so they can access dashboard without onboarding
+   */
+  private async seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> {
+    const devOrgs = [
+      {
+        id: 'org_dev_company_001',
+        name: 'Dev Company (Member)',
+        is_personal: false,
+        company_type: 'brand' as const,
+        revenue_tier: '5m_50m' as const,
+      },
+      {
+        id: 'org_dev_personal_001',
+        name: 'Dev Personal Workspace',
+        is_personal: true,
+        company_type: null,
+        revenue_tier: null,
+      },
+    ];
+
+    for (const devOrg of devOrgs) {
+      try {
+        // Check if org already exists
+        const existing = await orgDb.getOrganization(devOrg.id);
+        if (!existing) {
+          await orgDb.createOrganization({
+            workos_organization_id: devOrg.id,
+            name: devOrg.name,
+            is_personal: devOrg.is_personal,
+            company_type: devOrg.company_type || undefined,
+            revenue_tier: devOrg.revenue_tier || undefined,
+          });
+          logger.info({ orgId: devOrg.id, name: devOrg.name }, 'Created dev organization');
+        }
+      } catch (error) {
+        // Ignore duplicate key errors (org already exists)
+        if (error instanceof Error && error.message.includes('duplicate key')) {
+          logger.debug({ orgId: devOrg.id }, 'Dev organization already exists');
+        } else {
+          throw error;
+        }
+      }
+    }
   }
 
   private async prewarmCaches(agents: any[]): Promise<void> {
