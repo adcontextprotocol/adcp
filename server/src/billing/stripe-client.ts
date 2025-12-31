@@ -530,7 +530,7 @@ export async function fetchAllPaidInvoices(
     for await (const invoice of stripe.invoices.list({
       status: 'paid',
       limit: 100,
-      expand: ['data.subscription', 'data.charge'],
+      expand: ['data.subscription', 'data.charge', 'data.lines.data.price.product'],
     })) {
       const customerId = typeof invoice.customer === 'string'
         ? invoice.customer
