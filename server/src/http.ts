@@ -208,6 +208,41 @@ function getAppConfigScript(user?: { email: string; firstName?: string | null; l
   return `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
 }
 
+/**
+ * Get user info from request for HTML config injection.
+ * Checks dev mode first, then WorkOS session.
+ */
+async function getUserFromRequest(req: express.Request): Promise<{ email: string; firstName?: string | null; lastName?: string | null } | null> {
+  // Check dev mode first
+  if (isDevModeEnabled()) {
+    const devUser = getDevUser(req);
+    if (devUser) {
+      return devUser;
+    }
+  }
+
+  // Then check WorkOS session
+  const sessionCookie = req.cookies?.['wos-session'];
+  if (sessionCookie && AUTH_ENABLED && workos) {
+    try {
+      const session = await workos.userManagement.loadSealedSession({
+        sessionData: sessionCookie,
+        cookiePassword: WORKOS_COOKIE_PASSWORD,
+      });
+      if (session) {
+        const authResult = await session.authenticate();
+        if (authResult.authenticated && authResult.user) {
+          return authResult.user;
+        }
+      }
+    } catch {
+      // Session invalid or expired - continue without user
+    }
+  }
+
+  return null;
+}
+
 export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
@@ -324,34 +359,7 @@ export class HTTPServer {
         await fs.access(filePath);
 
         // Get user from session (if authenticated)
-        let user = null;
-        const sessionCookie = req.cookies?.['wos-session'];
-
-        // Check dev mode first
-        if (isDevModeEnabled()) {
-          const devUser = getDevUser(req);
-          if (devUser) {
-            user = devUser;
-          }
-        }
-
-        // Then check WorkOS session
-        if (!user && sessionCookie && AUTH_ENABLED && workos) {
-          try {
-            const session = await workos.userManagement.loadSealedSession({
-              sessionData: sessionCookie,
-              cookiePassword: WORKOS_COOKIE_PASSWORD,
-            });
-            if (session) {
-              const authResult = await session.authenticate();
-              if (authResult.authenticated && authResult.user) {
-                user = authResult.user;
-              }
-            }
-          } catch {
-            // Session invalid or expired - continue without user
-          }
-        }
+        const user = await getUserFromRequest(req);
 
         // Read and inject config
         let html = await fs.readFile(filePath, 'utf-8');
@@ -400,34 +408,7 @@ export class HTTPServer {
 
     try {
       // Get user from session (if authenticated)
-      let user = null;
-      const sessionCookie = req.cookies?.['wos-session'];
-
-      // Check dev mode first
-      if (isDevModeEnabled()) {
-        const devUser = getDevUser(req);
-        if (devUser) {
-          user = devUser;
-        }
-      }
-
-      // Then check WorkOS session
-      if (!user && sessionCookie && AUTH_ENABLED && workos) {
-        try {
-          const session = await workos.userManagement.loadSealedSession({
-            sessionData: sessionCookie,
-            cookiePassword: WORKOS_COOKIE_PASSWORD,
-          });
-          if (session) {
-            const authResult = await session.authenticate();
-            if (authResult.authenticated && authResult.user) {
-              user = authResult.user;
-            }
-          }
-        } catch {
-          // Session invalid or expired - continue without user
-        }
-      }
+      const user = await getUserFromRequest(req);
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
@@ -917,6 +898,13 @@ export class HTTPServer {
           .replace('{{STRIPE_PRICING_TABLE_ID}}', process.env.STRIPE_PRICING_TABLE_ID || '')
           .replace('{{STRIPE_PRICING_TABLE_ID_INDIVIDUAL}}', process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
 
+        // Inject user config for nav.js
+        const user = await getUserFromRequest(req);
+        const configScript = getAppConfigScript(user);
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `${configScript}\n</head>`);
+        }
+
         // Prevent caching to ensure template variables are always fresh
         res.setHeader('Content-Type', 'text/html');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -936,7 +924,6 @@ export class HTTPServer {
         return res.redirect(`https://agenticadvertising.org/dashboard/${filename.replace('dashboard-', '').replace('.html', '')}`);
       }
       try {
-        const fs = await import('fs/promises');
         const pagePath = process.env.NODE_ENV === 'production'
           ? path.join(__dirname, `../server/public/${filename}`)
           : path.join(__dirname, `../public/${filename}`);
@@ -947,6 +934,13 @@ export class HTTPServer {
           .replace(/\{\{STRIPE_PUBLISHABLE_KEY\}\}/g, process.env.STRIPE_PUBLISHABLE_KEY || '')
           .replace(/\{\{STRIPE_PRICING_TABLE_ID\}\}/g, process.env.STRIPE_PRICING_TABLE_ID || '')
           .replace(/\{\{STRIPE_PRICING_TABLE_ID_INDIVIDUAL\}\}/g, process.env.STRIPE_PRICING_TABLE_ID_INDIVIDUAL || process.env.STRIPE_PRICING_TABLE_ID || '');
+
+        // Inject user config for nav.js
+        const user = await getUserFromRequest(req);
+        const configScript = getAppConfigScript(user);
+        if (html.includes('</head>')) {
+          html = html.replace('</head>', `${configScript}\n</head>`);
+        }
 
         res.setHeader('Content-Type', 'text/html');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
