@@ -16,6 +16,8 @@ import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
 import { logger } from '../../logger.js';
 import { AddieDatabase, type KeyInsight } from '../../db/addie-db.js';
+import { getPendingRssPerspectives, type RssPerspective } from '../../db/industry-feeds-db.js';
+import { query } from '../../db/client.js';
 
 const addieDb = new AddieDatabase();
 
@@ -335,4 +337,195 @@ export async function queueWebSearchResult(result: {
       search_query: result.searchQuery,
     },
   });
+}
+
+/**
+ * Process a single RSS perspective - fetch content and generate analysis
+ * Creates/updates the corresponding addie_knowledge entry
+ */
+async function processRssPerspective(perspective: RssPerspective): Promise<boolean> {
+  logger.info({ id: perspective.id, url: perspective.external_url }, 'Processing RSS perspective');
+
+  try {
+    // Fetch content
+    const content = await fetchUrlContent(perspective.external_url);
+
+    if (content.length < 100) {
+      logger.warn({ id: perspective.id }, 'RSS content too short, skipping');
+      // Create a failed entry so we don't retry forever
+      await createOrUpdateRssKnowledge(perspective, {
+        content: '',
+        fetch_status: 'failed',
+        error_message: 'Content too short',
+      });
+      return false;
+    }
+
+    // Generate analysis
+    const analysis = await generateAnalysis(perspective.title, content, perspective.external_url);
+
+    // Create/update knowledge entry
+    await createOrUpdateRssKnowledge(perspective, {
+      content,
+      summary: analysis.summary,
+      key_insights: analysis.key_insights,
+      addie_notes: analysis.addie_notes,
+      relevance_tags: analysis.relevance_tags,
+      quality_score: analysis.quality_score,
+      fetch_status: 'success',
+    });
+
+    logger.info(
+      {
+        id: perspective.id,
+        quality: analysis.quality_score,
+        tags: analysis.relevance_tags,
+      },
+      'Successfully processed RSS perspective'
+    );
+    return true;
+  } catch (error) {
+    logger.error({ error, id: perspective.id }, 'Failed to process RSS perspective');
+    await createOrUpdateRssKnowledge(perspective, {
+      content: '',
+      fetch_status: 'failed',
+      error_message: error instanceof Error ? error.message : 'Unknown error',
+    });
+    return false;
+  }
+}
+
+/**
+ * Create or update addie_knowledge entry for an RSS perspective
+ */
+async function createOrUpdateRssKnowledge(
+  perspective: RssPerspective,
+  data: {
+    content: string;
+    summary?: string;
+    key_insights?: KeyInsight[];
+    addie_notes?: string;
+    relevance_tags?: string[];
+    quality_score?: number | null;
+    fetch_status: 'success' | 'failed';
+    error_message?: string;
+  }
+): Promise<void> {
+  if (data.fetch_status === 'failed') {
+    // Upsert a failed entry
+    await query(
+      `INSERT INTO addie_knowledge (
+        title, category, content, source_url, fetch_url, source_type,
+        fetch_status, last_fetched_at, discovery_source, discovery_context, created_by
+      ) VALUES ($1, $2, '', $3, $3, 'rss', 'failed', NOW(), 'rss_feed', $4, 'system')
+      ON CONFLICT (source_url) DO UPDATE SET
+        fetch_status = 'failed',
+        last_fetched_at = NOW(),
+        updated_at = NOW()`,
+      [
+        perspective.title,
+        perspective.category || 'Industry News',
+        perspective.external_url,
+        JSON.stringify({ perspective_id: perspective.id, feed_id: perspective.feed_id }),
+      ]
+    );
+    return;
+  }
+
+  // Upsert a successful entry with all the analysis data
+  await query(
+    `INSERT INTO addie_knowledge (
+      title, category, content, source_url, fetch_url, source_type,
+      fetch_status, last_fetched_at, summary, key_insights, addie_notes,
+      relevance_tags, quality_score, mentions_agentic, mentions_adcp,
+      discovery_source, discovery_context, created_by
+    ) VALUES (
+      $1, $2, $3, $4, $4, 'rss', 'success', NOW(), $5, $6, $7,
+      $8, $9, $10, $11, 'rss_feed', $12, 'system'
+    )
+    ON CONFLICT (source_url) DO UPDATE SET
+      content = EXCLUDED.content,
+      summary = EXCLUDED.summary,
+      key_insights = EXCLUDED.key_insights,
+      addie_notes = EXCLUDED.addie_notes,
+      relevance_tags = EXCLUDED.relevance_tags,
+      quality_score = EXCLUDED.quality_score,
+      mentions_agentic = EXCLUDED.mentions_agentic,
+      mentions_adcp = EXCLUDED.mentions_adcp,
+      fetch_status = 'success',
+      last_fetched_at = NOW(),
+      updated_at = NOW()`,
+    [
+      perspective.title,
+      perspective.category || 'Industry News',
+      data.content,
+      perspective.external_url,
+      data.summary || '',
+      data.key_insights ? JSON.stringify(data.key_insights) : null,
+      data.addie_notes || '',
+      data.relevance_tags || [],
+      data.quality_score,
+      checkMentionsAgentic(data.content, data.summary || '', data.relevance_tags || []),
+      checkMentionsAdcp(data.content, data.summary || ''),
+      JSON.stringify({ perspective_id: perspective.id, feed_id: perspective.feed_id }),
+    ]
+  );
+}
+
+/**
+ * Check if content mentions agentic AI concepts
+ */
+function checkMentionsAgentic(content: string, summary: string, tags: string[]): boolean {
+  const text = `${content} ${summary}`.toLowerCase();
+  const agenticTerms = ['agentic', 'ai agent', 'ai-agent', 'autonomous agent', 'llm agent'];
+  if (agenticTerms.some(term => text.includes(term))) {
+    return true;
+  }
+  if (tags.some(tag => tag.includes('agent') || tag === 'a2a' || tag === 'mcp')) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Check if content mentions AdCP or AgenticAdvertising
+ */
+function checkMentionsAdcp(content: string, summary: string): boolean {
+  const text = `${content} ${summary}`.toLowerCase();
+  const adcpTerms = ['adcp', 'adcontextprotocol', 'agenticadvertising', 'agentic advertising'];
+  return adcpTerms.some(term => text.includes(term));
+}
+
+/**
+ * Process pending RSS perspectives in batches
+ * Called by background job alongside processPendingResources
+ */
+export async function processRssPerspectives(options: {
+  limit?: number;
+} = {}): Promise<{ processed: number; succeeded: number; failed: number }> {
+  const perspectives = await getPendingRssPerspectives(options.limit ?? 5);
+
+  if (perspectives.length === 0) {
+    logger.debug('No RSS perspectives need processing');
+    return { processed: 0, succeeded: 0, failed: 0 };
+  }
+
+  logger.info({ count: perspectives.length }, 'Processing pending RSS perspectives');
+
+  let succeeded = 0;
+  let failed = 0;
+
+  for (const perspective of perspectives) {
+    const success = await processRssPerspective(perspective);
+    if (success) {
+      succeeded++;
+    } else {
+      failed++;
+    }
+
+    // Small delay between requests to be respectful
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  return { processed: perspectives.length, succeeded, failed };
 }
