@@ -3,7 +3,7 @@ import { HTTPServer } from "./http.js";
 import { validateEnvironment } from "./env-validation.js";
 import { runMigrations } from "./db/migrate.js";
 import { getDatabaseConfig } from "./config.js";
-import { initializeAddie } from "./addie/index.js";
+import { initializeAddieBolt } from "./addie/index.js";
 
 // Validate environment variables before starting server
 validateEnvironment();
@@ -24,11 +24,15 @@ async function main() {
     }
   }
 
-  // Initialize Addie (AAO Community Agent)
+  // Initialize Addie (AAO Community Agent) with Bolt SDK
+  // The router is stored in the Bolt app and retrieved via getAddieBoltRouter()
   try {
-    await initializeAddie();
+    const result = await initializeAddieBolt();
+    if (result) {
+      console.log('Addie Bolt initialized successfully');
+    }
   } catch (error) {
-    console.warn('Addie initialization failed (non-fatal):', error);
+    console.warn('Addie Bolt initialization failed (non-fatal):', error);
     // Don't exit - Addie is optional
   }
 

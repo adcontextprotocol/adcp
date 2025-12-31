@@ -102,6 +102,9 @@ export function sanitizeInput(text: string): ValidationResult {
  * Convert markdown links to Slack mrkdwn format.
  * Markdown: [text](url) -> Slack mrkdwn: <url|text>
  *
+ * @deprecated Claude now outputs the correct link format based on channel context.
+ * This function is kept for backwards compatibility but is no longer used in validation.
+ *
  * Note: URLs with unbalanced parentheses (e.g., Wikipedia links like
  * https://en.wikipedia.org/wiki/Foo_(bar)) may not convert correctly.
  * This is a known limitation of simple regex-based parsing.
@@ -144,8 +147,8 @@ export function validateOutput(text: string): ValidationResult {
     }
   }
 
-  // Convert markdown links to Slack mrkdwn format
-  sanitized = markdownToSlackLinks(sanitized);
+  // Note: Link format conversion removed - Claude now outputs correct format
+  // based on channel context (Slack mrkdwn or web markdown)
 
   return {
     valid: !flagged || (reason?.includes('truncated') ?? false),

@@ -6,12 +6,12 @@
  *
  * Note: There are TWO separate Slack apps:
  * 1. AgenticAdvertising.org Bot - /api/slack/aaobot/*
- * 2. Addie AI Assistant - /api/slack/addie/*
+ * 2. Addie AI Assistant - /api/slack/addie/* (uses Bolt SDK)
  */
 
 import { Router } from 'express';
 import { createLogger } from '../logger.js';
-import { isSlackSigningConfigured, isAddieSigningConfigured } from '../slack/verify.js';
+import { isSlackSigningConfigured } from '../slack/verify.js';
 import { handleSlashCommand } from '../slack/commands.js';
 import { handleSlackEvent } from '../slack/events.js';
 import {
@@ -26,10 +26,13 @@ const logger = createLogger('slack-routes');
 /**
  * Create public Slack routes
  * Returns a router to be mounted at /api/slack with sub-routers for each bot
+ *
+ * @param addieBoltRouter - Optional Bolt router for Addie (if Bolt is initialized)
  */
-export function createSlackRouter(): { aaobotRouter: Router; addieRouter: Router } {
+export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRouter: Router; addieRouter: Router } {
   const aaobotRouter = Router();
-  const addieRouter = Router();
+  // Use Bolt router if available, otherwise create fallback router
+  const addieRouter = addieBoltRouter || Router();
 
   // =========================================================================
   // MAIN AAO BOT ROUTES (mounted at /api/slack/aaobot)
@@ -109,47 +112,26 @@ export function createSlackRouter(): { aaobotRouter: Router; addieRouter: Router
   // =========================================================================
   // ADDIE AI ASSISTANT ROUTES (mounted at /api/slack/addie)
   // =========================================================================
+  //
+  // When Bolt is initialized, the addieRouter IS the Bolt ExpressReceiver router
+  // which handles all events including assistant_thread_started, message.im, etc.
+  //
+  // If Bolt is not initialized (no credentials), we add a fallback handler
+  // that returns 503 Service Unavailable.
 
-  // POST /api/slack/addie/events - Handle Slack Events API for Addie
-  addieRouter.post(
-    '/events',
-    slackJsonParser(),
-    async (req, res) => {
-      try {
-        // Handle URL verification challenge (before signature verification)
-        if (handleUrlVerification(req, res)) {
-          return;
-        }
-
-        // Verify the request is from Slack using Addie's signing secret
-        if (isAddieSigningConfigured()) {
-          const verifier = createSlackSignatureVerifier(
-            process.env.ADDIE_SIGNING_SECRET,
-            'Addie'
-          );
-          // Run verification manually since we already parsed the body
-          const result = await new Promise<boolean>((resolve) => {
-            verifier(req, res, () => resolve(true));
-            // If verifier doesn't call next(), it sent a response
-            setTimeout(() => resolve(false), 0);
-          });
-          if (!result) return;
-        }
-
-        // Handle events asynchronously (don't block response)
-        // Slack requires response within 3 seconds
-        handleSlackEvent(req.body).catch(err => {
-          logger.error({ err }, 'Error handling Addie Slack event');
-        });
-
-        // Always respond with 200 immediately to acknowledge receipt
-        res.status(200).send();
-      } catch (error) {
-        logger.error({ err: error }, 'Addie Slack event error');
-        res.status(500).json({ error: 'Internal error' });
+  if (!addieBoltRouter) {
+    // Fallback handler when Bolt is not available
+    addieRouter.post('/events', slackJsonParser(), async (req, res) => {
+      // Still handle URL verification for initial setup
+      if (handleUrlVerification(req, res)) {
+        return;
       }
-    }
-  );
+
+      logger.warn('Addie Slack event received but Bolt is not initialized');
+      res.status(503).json({ error: 'Addie is not available' });
+    });
+  }
+  // When Bolt IS initialized, its router already handles /events at the configured endpoint
 
   return { aaobotRouter, addieRouter };
 }

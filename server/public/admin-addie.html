@@ -201,6 +201,11 @@
     .badge-inactive { background: var(--color-gray-200); color: var(--color-gray-600); }
     .badge-flagged { background: var(--color-warning-100); color: var(--color-warning-700); }
     .badge-pending { background: var(--color-info-100); color: var(--color-info-700); }
+    /* Channel badges */
+    .badge-web { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .badge-slack { background: #4a154b20; color: #4a154b; }
+    .badge-a2a { background: var(--color-success-100); color: var(--color-success-700); }
+    .badge-email { background: var(--color-gray-200); color: var(--color-gray-700); }
 
     /* Buttons */
     .btn {
@@ -808,8 +813,12 @@
         <div class="stat-label">Knowledge Documents</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" id="stat-interactions">-</div>
-        <div class="stat-label">Interactions (30d)</div>
+        <div class="stat-value" id="stat-threads">-</div>
+        <div class="stat-label">Threads (30d)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-messages">-</div>
+        <div class="stat-label">Messages (30d)</div>
       </div>
       <div class="stat-card">
         <div class="stat-value" id="stat-flagged">-</div>
@@ -826,8 +835,7 @@
       <button class="tab active" data-tab="rules">Rules</button>
       <button class="tab" data-tab="suggestions">Suggestions</button>
       <button class="tab" data-tab="knowledge">Knowledge Base</button>
-      <button class="tab" data-tab="conversations">Conversations</button>
-      <button class="tab" data-tab="interactions">Interactions</button>
+      <button class="tab" data-tab="threads">Threads</button>
       <button class="tab" data-tab="queue">Approval Queue</button>
     </div>
 
@@ -967,20 +975,30 @@
       </div>
     </div>
 
-    <!-- Conversations Tab -->
-    <div class="tab-content" id="tab-conversations">
+    <!-- Threads Tab (unified web + slack + a2a) -->
+    <div class="tab-content" id="tab-threads">
       <div class="card">
         <div class="header-bar">
           <div>
-            <h2 style="margin: 0;">Web Chat Conversations</h2>
+            <h2 style="margin: 0;">Conversation Threads</h2>
             <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
-              Browse conversations and see Addie's execution plan
+              Browse conversations across all channels (Web, Slack, A2A)
             </p>
           </div>
-          <button class="btn btn-secondary" onclick="loadConversations()">Refresh</button>
+          <div class="filter-row">
+            <select id="channel-filter">
+              <option value="">All Channels</option>
+              <option value="web">Web</option>
+              <option value="slack">Slack</option>
+              <option value="a2a">A2A</option>
+            </select>
+            <label><input type="checkbox" id="threads-flagged-only"> Flagged only</label>
+            <label><input type="checkbox" id="threads-unreviewed-only"> Unreviewed only</label>
+            <button class="btn btn-secondary" onclick="loadThreads()">Refresh</button>
+          </div>
         </div>
-        <div class="conversations-stats" id="conversations-stats" style="margin-bottom: var(--space-4);"></div>
-        <div class="conversations-list" id="conversations-list">
+        <div class="threads-stats" id="threads-stats" style="margin-bottom: var(--space-4);"></div>
+        <div class="threads-list" id="threads-list">
           <div class="empty-state">
             <h3>Loading...</h3>
           </div>
@@ -1100,23 +1118,6 @@
         </div>
         <div class="modal-buttons">
           <button class="btn btn-secondary" onclick="closeConversationModal()">Close</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Interactions Tab -->
-    <div class="tab-content" id="tab-interactions">
-      <div class="card">
-        <div class="header-bar">
-          <div class="filter-row">
-            <label><input type="checkbox" id="flagged-only"> Flagged only</label>
-            <label><input type="checkbox" id="unreviewed-only"> Unreviewed only</label>
-          </div>
-        </div>
-        <div class="interactions-list" id="interactions-list">
-          <div class="empty-state">
-            <h3>Loading...</h3>
-          </div>
         </div>
       </div>
     </div>
@@ -1256,20 +1257,21 @@
     // Load stats
     async function loadStats() {
       try {
-        const [knowledgeRes, interactionsRes, queueRes] = await Promise.all([
+        const [knowledgeRes, threadsRes, queueRes] = await Promise.all([
           fetch('/api/admin/addie/knowledge/categories'),
-          fetch('/api/admin/addie/interactions/stats'),
+          fetch('/api/admin/addie/threads/stats'),
           fetch('/api/admin/addie/queue/stats')
         ]);
 
         const knowledge = await knowledgeRes.json();
-        const interactions = await interactionsRes.json();
+        const threads = await threadsRes.json();
         const queue = await queueRes.json();
 
         const totalKnowledge = knowledge.categories?.reduce((sum, c) => sum + c.count, 0) || 0;
         document.getElementById('stat-knowledge').textContent = totalKnowledge;
-        document.getElementById('stat-interactions').textContent = interactions.total || 0;
-        document.getElementById('stat-flagged').textContent = interactions.flagged || 0;
+        document.getElementById('stat-threads').textContent = threads.threads_30d || 0;
+        document.getElementById('stat-messages').textContent = threads.messages_30d || 0;
+        document.getElementById('stat-flagged').textContent = threads.flagged_threads || 0;
         document.getElementById('stat-pending').textContent = queue.pending || 0;
       } catch (error) {
         console.error('Error loading stats:', error);
@@ -1522,50 +1524,91 @@
       }
     }
 
-    // Load interactions
-    async function loadInteractions() {
-      const flaggedOnly = document.getElementById('flagged-only').checked;
-      const unreviewedOnly = document.getElementById('unreviewed-only').checked;
+    // Load unified threads
+    async function loadThreads() {
+      const channel = document.getElementById('channel-filter').value;
+      const flaggedOnly = document.getElementById('threads-flagged-only').checked;
+      const unreviewedOnly = document.getElementById('threads-unreviewed-only').checked;
 
-      let url = '/api/admin/addie/interactions?limit=50';
-      if (flaggedOnly) url += '&flagged_only=true';
-      if (unreviewedOnly) url += '&unreviewed_only=true';
+      const params = new URLSearchParams();
+      params.append('limit', '50');
+      if (channel) params.append('channel', channel);
+      if (flaggedOnly) params.append('flagged_only', 'true');
+      if (unreviewedOnly) params.append('unreviewed_only', 'true');
 
       try {
-        const response = await fetch(url);
-        const data = await response.json();
+        const [threadsRes, statsRes] = await Promise.all([
+          fetch(`/api/admin/addie/threads?${params.toString()}`),
+          fetch('/api/admin/addie/threads/stats')
+        ]);
 
-        const list = document.getElementById('interactions-list');
-        if (!data.interactions || data.interactions.length === 0) {
-          list.innerHTML = '<div class="empty-state"><h3>No interactions found</h3><p>Interactions will appear here once Addie starts chatting.</p></div>';
+        const data = await threadsRes.json();
+        const stats = await statsRes.json();
+
+        // Render channel stats
+        const statsEl = document.getElementById('threads-stats');
+        if (stats.by_channel) {
+          // Format token counts for display
+          const formatTokens = (n) => {
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toString();
+          };
+          const totalTokens = (stats.total_input_tokens || 0) + (stats.total_output_tokens || 0);
+
+          statsEl.innerHTML = `
+            <div class="conversation-stats">
+              ${stats.by_channel.map(ch => `
+                <div class="conversation-stat">
+                  <div class="conversation-stat-value">${ch.thread_count || 0}</div>
+                  <div class="conversation-stat-label">${ch.channel.charAt(0).toUpperCase() + ch.channel.slice(1)} Threads</div>
+                </div>
+              `).join('')}
+              <div class="conversation-stat">
+                <div class="conversation-stat-value">${stats.avg_latency_ms || 0}ms</div>
+                <div class="conversation-stat-label">Avg Latency</div>
+              </div>
+              <div class="conversation-stat">
+                <div class="conversation-stat-value">${formatTokens(totalTokens)}</div>
+                <div class="conversation-stat-label">Total Tokens</div>
+              </div>
+              <div class="conversation-stat">
+                <div class="conversation-stat-value">${formatTokens(stats.total_input_tokens || 0)} / ${formatTokens(stats.total_output_tokens || 0)}</div>
+                <div class="conversation-stat-label">In / Out Tokens</div>
+              </div>
+            </div>
+          `;
+        }
+
+        const list = document.getElementById('threads-list');
+        if (!data.threads || data.threads.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h3>No threads found</h3><p>Threads will appear here once Addie starts chatting.</p></div>';
           return;
         }
 
-        list.innerHTML = data.interactions.map(interaction => `
-          <div class="interaction-item ${interaction.flagged ? 'flagged' : ''}">
-            <div class="interaction-header">
-              <div class="interaction-meta">
-                <span class="badge badge-${interaction.event_type}">${interaction.event_type}</span>
-                ${interaction.flagged ? '<span class="badge badge-flagged">Flagged</span>' : ''}
-                <span>${new Date(interaction.timestamp).toLocaleString()}</span>
-                <span>${interaction.latency_ms}ms</span>
-                ${interaction.tools_used?.length > 0 ? `<span>Tools: ${interaction.tools_used.join(', ')}</span>` : ''}
+        list.innerHTML = data.threads.map(thread => `
+          <div class="conversation-item ${thread.flagged ? 'flagged' : ''}" onclick="viewThread('${thread.thread_id}')">
+            <div class="conversation-header">
+              <div>
+                <span class="badge badge-${thread.channel}">${thread.channel}</span>
+                <strong style="margin-left: var(--space-2);">${escapeHtml(thread.user_display_name || thread.user_id || 'Anonymous')}</strong>
+                <span style="color: var(--color-text-secondary); font-size: var(--text-sm);">
+                  • ${thread.message_count} message${thread.message_count === 1 ? '' : 's'}
+                  ${thread.flagged ? '• <span class="badge badge-flagged">Flagged</span>' : ''}
+                  ${!thread.reviewed ? '• <span class="badge badge-pending">Needs Review</span>' : ''}
+                </span>
               </div>
-              <button class="btn btn-small btn-secondary" onclick="markReviewed('${interaction.id}')">Mark Reviewed</button>
+              <span style="color: var(--color-text-muted); font-size: var(--text-sm);">
+                ${new Date(thread.last_message_at).toLocaleString()}
+              </span>
             </div>
-            <div class="interaction-content">
-              <div class="interaction-label">Input:</div>
-              <div class="interaction-input">${escapeHtml(interaction.input_text)}</div>
-              <div class="interaction-label">Output:</div>
-              <div class="interaction-output">${escapeHtml(interaction.output_text)}</div>
-              ${interaction.flag_reason ? `<div style="color: var(--color-warning-600); font-size: var(--text-sm); margin-top: var(--space-2);"><strong>Flag reason:</strong> ${escapeHtml(interaction.flag_reason)}</div>` : ''}
-            </div>
+            ${thread.first_user_message ? `<div class="conversation-preview">${escapeHtml(thread.first_user_message.substring(0, 150))}${thread.first_user_message.length > 150 ? '...' : ''}</div>` : ''}
           </div>
         `).join('');
       } catch (error) {
-        console.error('Error loading interactions:', error);
-        document.getElementById('interactions-list').innerHTML =
-          '<div class="empty-state"><h3>Error loading interactions</h3></div>';
+        console.error('Error loading threads:', error);
+        document.getElementById('threads-list').innerHTML =
+          '<div class="empty-state"><h3>Error loading threads</h3></div>';
       }
     }
 
@@ -1689,15 +1732,48 @@
       }
     });
 
-    // Mark interaction as reviewed
-    async function markReviewed(id) {
+    // Mark thread as reviewed
+    async function markThreadReviewed(threadId) {
       try {
-        await fetch(`/api/admin/addie/interactions/${id}/review`, { method: 'PUT' });
-        loadInteractions();
+        await fetch(`/api/admin/addie/threads/${threadId}/review`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes: '' })
+        });
+        loadThreads();
         loadStats();
       } catch (error) {
         console.error('Error marking reviewed:', error);
-        alert('Error marking interaction as reviewed');
+        alert('Error marking thread as reviewed');
+      }
+    }
+
+    // Flag/unflag thread
+    async function flagThread(threadId) {
+      const reason = prompt('Reason for flagging (optional):');
+      if (reason === null) return; // User cancelled
+      try {
+        await fetch(`/api/admin/addie/threads/${threadId}/flag`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason })
+        });
+        loadThreads();
+        loadStats();
+      } catch (error) {
+        console.error('Error flagging thread:', error);
+        alert('Error flagging thread');
+      }
+    }
+
+    async function unflagThread(threadId) {
+      try {
+        await fetch(`/api/admin/addie/threads/${threadId}/unflag`, { method: 'PUT' });
+        loadThreads();
+        loadStats();
+      } catch (error) {
+        console.error('Error unflagging thread:', error);
+        alert('Error unflagging thread');
       }
     }
 
@@ -2182,95 +2258,51 @@
     });
 
     // =========================================================================
-    // CONVERSATIONS FUNCTIONS
+    // THREAD FUNCTIONS (unified view for all channels)
     // =========================================================================
 
-    async function loadConversations() {
-      try {
-        const [conversationsRes, statsRes] = await Promise.all([
-          fetch('/api/admin/addie/conversations'),
-          fetch('/api/admin/addie/conversations/stats')
-        ]);
-
-        const convData = await conversationsRes.json();
-        const statsData = await statsRes.json();
-
-        // Render stats
-        const statsEl = document.getElementById('conversations-stats');
-        statsEl.innerHTML = `
-          <div class="conversation-stats">
-            <div class="conversation-stat">
-              <div class="conversation-stat-value">${statsData.total_conversations || 0}</div>
-              <div class="conversation-stat-label">Total Conversations</div>
-            </div>
-            <div class="conversation-stat">
-              <div class="conversation-stat-value">${statsData.total_messages || 0}</div>
-              <div class="conversation-stat-label">Total Messages</div>
-            </div>
-            <div class="conversation-stat">
-              <div class="conversation-stat-value">${statsData.conversations_last_24h || 0}</div>
-              <div class="conversation-stat-label">Last 24h</div>
-            </div>
-            <div class="conversation-stat">
-              <div class="conversation-stat-value">${statsData.avg_latency_ms || 0}ms</div>
-              <div class="conversation-stat-label">Avg Latency</div>
-            </div>
-          </div>
-        `;
-
-        // Render conversations list
-        const list = document.getElementById('conversations-list');
-        if (!convData.conversations || convData.conversations.length === 0) {
-          list.innerHTML = '<div class="empty-state"><h3>No conversations yet</h3><p>Chat with Addie at <a href="/chat">/chat</a> to see conversations here.</p></div>';
-          return;
-        }
-
-        list.innerHTML = convData.conversations.map(conv => `
-          <div class="conversation-item" onclick="viewConversation('${conv.conversation_id}')">
-            <div class="conversation-header">
-              <div>
-                <strong>${escapeHtml(conv.user_name || 'Anonymous')}</strong>
-                <span style="color: var(--color-text-secondary); font-size: var(--text-sm);">
-                  • ${conv.message_count} message${conv.message_count === 1 ? '' : 's'}
-                  ${conv.has_tool_uses ? '• <span style="color: var(--color-brand);">🔧 Tools used</span>' : ''}
-                </span>
-              </div>
-              <span style="color: var(--color-text-muted); font-size: var(--text-sm);">
-                ${new Date(conv.last_message_at).toLocaleString()}
-              </span>
-            </div>
-            <div class="conversation-preview">${escapeHtml(conv.first_message_preview || 'No preview')}</div>
-          </div>
-        `).join('');
-      } catch (error) {
-        console.error('Error loading conversations:', error);
-        document.getElementById('conversations-list').innerHTML =
-          '<div class="empty-state"><h3>Error loading conversations</h3></div>';
-      }
-    }
-
-    // Current conversation data for actions
-    let currentConversationData = null;
+    // Current thread data for actions
+    let currentThreadData = null;
     let extractedLinks = [];
 
-    async function viewConversation(conversationId) {
+    async function viewThread(threadId) {
       try {
-        const response = await fetch(`/api/admin/addie/conversations/${conversationId}`);
+        const response = await fetch(`/api/admin/addie/threads/${threadId}`);
         const data = await response.json();
-        currentConversationData = data;
+        currentThreadData = data;
 
+        const channelLabel = data.channel.charAt(0).toUpperCase() + data.channel.slice(1);
         document.getElementById('conversation-modal-title').textContent =
-          `Conversation with ${data.user_name || 'Anonymous'}`;
+          `${channelLabel} Thread with ${data.user_display_name || data.user_id || 'Anonymous'}`;
 
         const detailEl = document.getElementById('conversation-detail');
-        detailEl.innerHTML = `
-          <div class="message-thread">
-            ${data.messages.map(msg => renderMessage(msg)).join('')}
+
+        // Thread info header
+        const threadInfo = `
+          <div class="thread-info" style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-md);">
+            <div style="display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center;">
+              <span class="badge badge-${data.channel}">${data.channel}</span>
+              ${data.flagged ? `<span class="badge badge-flagged">Flagged: ${escapeHtml(data.flag_reason || 'No reason')}</span>` : ''}
+              ${data.reviewed ? `<span class="badge badge-active">Reviewed by ${escapeHtml(data.reviewed_by || 'admin')}</span>` : '<span class="badge badge-pending">Needs Review</span>'}
+              <span style="color: var(--color-text-muted); font-size: var(--text-sm);">
+                ${data.message_count} messages • Started ${new Date(data.started_at).toLocaleString()}
+              </span>
+            </div>
+            <div style="margin-top: var(--space-2); display: flex; gap: var(--space-2);">
+              ${!data.reviewed ? `<button class="btn btn-small btn-primary" onclick="markThreadReviewed('${data.thread_id}')">Mark Reviewed</button>` : ''}
+              ${!data.flagged ? `<button class="btn btn-small btn-secondary" onclick="flagThread('${data.thread_id}')">Flag</button>` : `<button class="btn btn-small btn-secondary" onclick="unflagThread('${data.thread_id}')">Unflag</button>`}
+            </div>
           </div>
         `;
 
-        // Extract links from conversation
-        extractedLinks = extractLinksFromConversation(data);
+        detailEl.innerHTML = threadInfo + `
+          <div class="message-thread">
+            ${data.messages.map(msg => renderThreadMessage(msg)).join('')}
+          </div>
+        `;
+
+        // Extract links from thread
+        extractedLinks = extractLinksFromThread(data);
 
         // Show actions panel
         const actionsEl = document.getElementById('conversation-actions');
@@ -2300,18 +2332,69 @@
 
         document.getElementById('conversation-modal').style.display = 'flex';
       } catch (error) {
-        console.error('Error loading conversation:', error);
-        alert('Error loading conversation');
+        console.error('Error loading thread:', error);
+        alert('Error loading thread');
       }
     }
 
-    function extractLinksFromConversation(data) {
+    function renderThreadMessage(msg) {
+      const roleLabel = msg.role === 'user' ? 'User' : msg.role === 'assistant' ? 'Addie' : msg.role;
+      const hasToolCalls = msg.tool_calls && msg.tool_calls.length > 0;
+      const hasToolsUsed = msg.tools_used && msg.tools_used.length > 0;
+      const latencyDisplay = msg.latency_ms ? `<span class="message-latency">${msg.latency_ms}ms</span>` : '';
+      const ratingDisplay = msg.rating ? `<span class="message-rating" style="color: var(--color-warning-600);">★ ${msg.rating}/5</span>` : '';
+      // Token display for assistant messages
+      const tokensDisplay = (msg.role === 'assistant' && (msg.tokens_input || msg.tokens_output))
+        ? `<span class="message-latency" title="Input / Output tokens">${msg.tokens_input || 0} / ${msg.tokens_output || 0} tok</span>`
+        : '';
+
+      return `
+        <div class="message-item ${msg.role}">
+          <div class="message-role">${roleLabel}${latencyDisplay}${tokensDisplay}${ratingDisplay}</div>
+          <div class="message-content">${renderMarkdown(msg.content)}</div>
+          ${hasToolsUsed ? `<div class="tools-used" style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Tools: ${msg.tools_used.join(', ')}</div>` : ''}
+          ${hasToolCalls ? renderToolCalls(msg.tool_calls, msg.latency_ms) : ''}
+          ${msg.flagged ? `<div style="color: var(--color-warning-600); font-size: var(--text-sm); margin-top: var(--space-2);"><strong>Flagged:</strong> ${escapeHtml(msg.flag_reason || 'No reason')}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function renderToolCalls(toolCalls, totalLatency) {
+      if (!toolCalls || toolCalls.length === 0) return '';
+
+      const callsHtml = toolCalls.map((call, i) => {
+        const params = typeof call.input === 'string' ? call.input : JSON.stringify(call.input, null, 2);
+        const resultClass = call.is_error ? 'tool-error' : 'tool-result';
+        const resultSummary = call.result_summary || (call.result?.substring ? call.result.substring(0, 100) + '...' : JSON.stringify(call.result).substring(0, 100));
+
+        return `
+          <div class="tool-execution">
+            <div>
+              <span class="tool-name">${i + 1}. ${call.name || call.tool_name}</span>
+              ${call.duration_ms ? `<span class="tool-duration">(${call.duration_ms}ms)</span>` : ''}
+            </div>
+            <div class="tool-params">→ ${escapeHtml(params)}</div>
+            <div class="${resultClass}">← ${escapeHtml(resultSummary)}</div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="execution-plan">
+          <div class="execution-plan-header">Tool Calls</div>
+          ${callsHtml}
+        </div>
+      `;
+    }
+
+    function extractLinksFromThread(data) {
       const links = [];
       const urlRegex = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g;
       const seen = new Set();
 
       // Extract from message content
       for (const msg of data.messages) {
+        if (!msg.content) continue;
         const matches = msg.content.match(urlRegex) || [];
         for (const url of matches) {
           // Clean up URL (remove trailing punctuation)
@@ -2325,22 +2408,23 @@
           }
         }
 
-        // Extract from tool results (web search, docs, slack)
-        if (msg.tool_results) {
-          for (const exec of msg.tool_results) {
-            if (exec.result) {
-              const resultMatches = exec.result.match(urlRegex) || [];
-              for (const url of resultMatches) {
-                const cleanUrl = url.replace(/[.,;:!?)]+$/, '');
-                if (!seen.has(cleanUrl)) {
-                  seen.add(cleanUrl);
-                  links.push({
-                    url: cleanUrl,
-                    source: exec.tool_name === 'search_docs' ? 'Docs' :
-                            exec.tool_name === 'search_slack' ? 'Slack' :
-                            exec.tool_name === 'web_search' ? 'Web search' : exec.tool_name
-                  });
-                }
+        // Extract from tool calls (unified model)
+        const toolCalls = msg.tool_calls || msg.tool_results || [];
+        for (const call of toolCalls) {
+          const result = call.result || '';
+          if (typeof result === 'string') {
+            const resultMatches = result.match(urlRegex) || [];
+            for (const url of resultMatches) {
+              const cleanUrl = url.replace(/[.,;:!?)]+$/, '');
+              if (!seen.has(cleanUrl)) {
+                seen.add(cleanUrl);
+                const toolName = call.name || call.tool_name || 'tool';
+                links.push({
+                  url: cleanUrl,
+                  source: toolName === 'search_docs' ? 'Docs' :
+                          toolName === 'search_slack' ? 'Slack' :
+                          toolName === 'web_search' ? 'Web search' : toolName
+                });
               }
             }
           }
@@ -2612,9 +2696,13 @@
     loadRules();
     loadSuggestions();
     loadKnowledge();
-    loadConversations();
-    loadInteractions();
+    loadThreads();
     loadQueue();
+
+    // Event listeners for thread filters
+    document.getElementById('channel-filter').addEventListener('change', loadThreads);
+    document.getElementById('threads-flagged-only').addEventListener('change', loadThreads);
+    document.getElementById('threads-unreviewed-only').addEventListener('change', loadThreads);
   </script>
 </body>
 </html>

@@ -1793,6 +1793,63 @@ export class AddieDatabase {
     return result.rows;
   }
 
+  // ============== Thread Context Store ==============
+
+  /**
+   * Save thread context for Bolt Assistant
+   * Stores what channel/team the user was viewing when they opened the assistant
+   */
+  async saveThreadContext(data: {
+    channel_id: string;
+    thread_ts: string;
+    context_channel_id: string;
+    context_team_id: string;
+    context_enterprise_id: string | null;
+  }): Promise<void> {
+    await query(
+      `INSERT INTO addie_thread_context (channel_id, thread_ts, context_channel_id, context_team_id, context_enterprise_id)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (channel_id, thread_ts)
+       DO UPDATE SET
+         context_channel_id = EXCLUDED.context_channel_id,
+         context_team_id = EXCLUDED.context_team_id,
+         context_enterprise_id = EXCLUDED.context_enterprise_id,
+         updated_at = NOW()`,
+      [data.channel_id, data.thread_ts, data.context_channel_id, data.context_team_id, data.context_enterprise_id]
+    );
+  }
+
+  /**
+   * Get thread context for Bolt Assistant
+   */
+  async getThreadContext(channelId: string, threadTs: string): Promise<{
+    context_channel_id: string;
+    context_team_id: string;
+    context_enterprise_id: string | null;
+  } | null> {
+    const result = await query<{
+      context_channel_id: string;
+      context_team_id: string;
+      context_enterprise_id: string | null;
+    }>(
+      `SELECT context_channel_id, context_team_id, context_enterprise_id
+       FROM addie_thread_context
+       WHERE channel_id = $1 AND thread_ts = $2`,
+      [channelId, threadTs]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Clean up old thread contexts (older than 7 days)
+   */
+  async cleanupOldThreadContexts(): Promise<number> {
+    const result = await query(
+      `DELETE FROM addie_thread_context WHERE updated_at < NOW() - INTERVAL '7 days'`
+    );
+    return result.rowCount ?? 0;
+  }
+
   /**
    * Get a user's most recent Addie thread within a time window
    * Used for sending proactive messages after account linking

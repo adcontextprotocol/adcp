@@ -28,7 +28,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'validate_adagents',
     description:
-      'Validate an adagents.json file for a domain. Checks that the file exists at /.well-known/adagents.json, has valid structure, and optionally validates the agent cards. Use this when users ask about setting up or debugging their adagents.json configuration.',
+      'Validate an adagents.json file for a domain. Checks that the file exists at /.well-known/adagents.json, has valid structure, and optionally validates the agent cards. Use this when users ask about setting up or debugging their adagents.json configuration. Share the validation results with the user - they contain helpful error messages and links.',
     input_schema: {
       type: 'object',
       properties: {
@@ -214,7 +214,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'get_account_link',
     description:
-      'Get a link to connect the user\'s Slack account with their AgenticAdvertising.org account. Use this when a user\'s accounts are not linked and they want to access member features. The user clicks the link to sign in and their accounts are automatically connected.',
+      'Get a link to connect the user\'s Slack account with their AgenticAdvertising.org account. Use this when a user\'s accounts are not linked and they want to access member features. IMPORTANT: Share the full tool output with the user - it contains the clickable sign-in link they need. The user clicks the link to sign in and their accounts are automatically connected.',
     input_schema: {
       type: 'object',
       properties: {},
@@ -281,7 +281,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'draft_github_issue',
     description:
-      'Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. The user will click the link to create the issue from their own GitHub account. Infer the appropriate repo from context (channel name, conversation topic) - use "adcp" for protocol/docs issues, "aao-server" for website/community issues.',
+      'Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. IMPORTANT: Share the full tool output with the user - it contains the clickable link they need to create the issue. The user will click the link to create the issue from their own GitHub account. Infer the appropriate repo from context (channel name, conversation topic) - use "adcp" for protocol/docs issues, "aao-server" for website/community issues.',
     input_schema: {
       type: 'object',
       properties: {
@@ -747,26 +747,37 @@ export function createMemberToolHandlers(
   // ACCOUNT LINKING
   // ============================================
   handlers.set('get_account_link', async () => {
-    // Check if already linked
+    // Check if already linked/authenticated
     if (memberContext?.workos_user?.workos_user_id) {
-      return '✅ Your Slack account is already linked to your AgenticAdvertising.org account! You have full access to member features.';
+      return '✅ Your account is already linked! You have full access to member features.';
     }
 
-    // Need slack_user_id to generate the link
-    if (!memberContext?.slack_user?.slack_user_id) {
-      return "I couldn't determine your Slack user ID. Please try typing `/aao link` in Slack to get a sign-in link.";
+    // For Slack users, generate a link with their Slack ID for auto-linking
+    if (memberContext?.slack_user?.slack_user_id) {
+      const slackUserId = memberContext.slack_user.slack_user_id;
+      const loginUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
+
+      let response = `## Link Your Account\n\n`;
+      response += `Click the link below to sign in to AgenticAdvertising.org and automatically link your Slack account:\n\n`;
+      response += `**👉 ${loginUrl}**\n\n`;
+      response += `After signing in:\n`;
+      response += `- If you have an account, it will be linked to your Slack\n`;
+      response += `- If you don't have an account, you can create one and it will be automatically linked\n\n`;
+      response += `Once linked, you'll be able to use all member features directly from Slack!`;
+
+      return response;
     }
 
-    const slackUserId = memberContext.slack_user.slack_user_id;
-    const loginUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
-
-    let response = `## Link Your Account\n\n`;
-    response += `Click the link below to sign in to AgenticAdvertising.org and automatically link your Slack account:\n\n`;
+    // For web users (anonymous), just provide the standard login URL
+    const loginUrl = 'https://agenticadvertising.org/auth/login';
+    let response = `## Sign In or Create an Account\n\n`;
+    response += `To access member features, please sign in to AgenticAdvertising.org:\n\n`;
     response += `**👉 ${loginUrl}**\n\n`;
-    response += `After signing in:\n`;
-    response += `- If you have an account, it will be linked to your Slack\n`;
-    response += `- If you don't have an account, you can create one and it will be automatically linked\n\n`;
-    response += `Once linked, you'll be able to use all member features directly from Slack!`;
+    response += `With an account, you can:\n`;
+    response += `- Get personalized recommendations based on your interests\n`;
+    response += `- Join working groups and participate in discussions\n`;
+    response += `- Access member-only content and resources\n`;
+    response += `- Manage your profile and email preferences`;
 
     return response;
   });

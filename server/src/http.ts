@@ -47,7 +47,7 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
-import { sendAccountLinkedMessage, invalidateMemberContextCache } from "./addie/index.js";
+import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter } from "./addie/index.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
@@ -415,9 +415,11 @@ export class HTTPServer {
 
     // Mount Slack routes (public webhook endpoints)
     // All Slack routes under /api/slack/ for consistency
-    const { aaobotRouter, addieRouter: slackAddieRouter } = createSlackRouter();
+    // Addie uses Bolt SDK - get its router if available
+    const addieBoltRouter = getAddieBoltRouter();
+    const { aaobotRouter, addieRouter: slackAddieRouter } = createSlackRouter(addieBoltRouter);
     this.app.use('/api/slack/aaobot', aaobotRouter);    // AAO bot: /api/slack/aaobot/commands, /api/slack/aaobot/events
-    this.app.use('/api/slack/addie', slackAddieRouter); // Addie bot: /api/slack/addie/events
+    this.app.use('/api/slack/addie', slackAddieRouter); // Addie bot: /api/slack/addie/events (Bolt SDK)
 
     // Mount admin Slack, Email, and Feeds routes
     const adminSlackRouter = createAdminSlackRouter();
