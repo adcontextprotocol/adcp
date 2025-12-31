@@ -1,4 +1,4 @@
--- Migration: 055_rename_enrichment_columns.sql
+-- Migration: 059_rename_enrichment_columns.sql
 -- Rename enrichment columns to have enrichment_ prefix for clarity
 -- These columns come from external enrichment services (Lusha, etc.)
 

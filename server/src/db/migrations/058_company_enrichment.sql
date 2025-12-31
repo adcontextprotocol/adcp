@@ -1,4 +1,4 @@
--- Migration: 054_company_enrichment.sql
+-- Migration: 058_company_enrichment.sql
 -- Add company enrichment data from Lusha or similar services
 
 -- Add enrichment columns to organizations table
