@@ -172,7 +172,7 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('full access');
     });
 
-    it('returns error when no slack_user_id available', async () => {
+    it('returns sign-in link for anonymous/unmapped users', async () => {
       const handlers = createMemberToolHandlers({
         is_mapped: false,
         is_member: false,
@@ -181,8 +181,9 @@ describe('createMemberToolHandlers', () => {
       const handler = handlers.get('get_account_link')!;
       const result = await handler({});
 
-      expect(result).toContain("couldn't determine");
-      expect(result).toContain('/aao link');
+      expect(result).toContain('Sign In or Create an Account');
+      expect(result).toContain('https://agenticadvertising.org/auth/login');
+      expect(result).toContain('member features');
     });
 
     it('returns sign-in link when user has slack_user_id but no workos_user_id', async () => {

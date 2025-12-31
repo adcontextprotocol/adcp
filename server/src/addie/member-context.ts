@@ -643,14 +643,25 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
   }
 }
 
-export function formatMemberContextForPrompt(context: MemberContext): string | null {
-  // Only include context if we have meaningful info
-  if (!context.is_mapped) {
-    return null;
-  }
-
+export function formatMemberContextForPrompt(context: MemberContext, channel: 'web' | 'slack' = 'slack'): string | null {
   const lines: string[] = [];
   lines.push('## User Context');
+
+  // Channel indicator - critical for Addie to know how to respond
+  lines.push(`**Channel**: ${channel}`);
+
+  // If user is not authenticated at all
+  if (!context.is_mapped) {
+    if (channel === 'web') {
+      lines.push('**Status**: Anonymous user (not signed in)');
+      lines.push('');
+      lines.push('This user is browsing the web chat without signing in.');
+      lines.push('');
+      return lines.join('\n');
+    }
+    // For Slack, no context means we can't identify them
+    return null;
+  }
 
   // User name
   const userName =

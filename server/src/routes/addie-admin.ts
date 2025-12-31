@@ -13,6 +13,10 @@ import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { AddieDatabase, type RuleType } from "../db/addie-db.js";
 import { analyzeInteractions, previewRuleChange } from "../addie/jobs/rule-analyzer.js";
 import { invalidateAddieRulesCache } from "../addie/handler.js";
+import {
+  getThreadService,
+  type ThreadChannel,
+} from "../addie/thread-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -333,7 +337,227 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // =========================================================================
+  // UNIFIED THREADS API (mounted at /api/admin/addie/threads)
+  // This is the new unified model that replaces both interactions and conversations
+  // =========================================================================
+
+  // GET /api/admin/addie/threads - List all threads (unified view across channels)
+  apiRouter.get("/threads", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const { channel, flagged_only, unreviewed_only, user_id, since, limit, offset } = req.query;
+
+      const threads = await threadService.listThreads({
+        channel: channel as ThreadChannel | undefined,
+        flagged_only: flagged_only === "true",
+        unreviewed_only: unreviewed_only === "true",
+        user_id: user_id as string | undefined,
+        since: since ? new Date(since as string) : undefined,
+        limit: limit ? parseInt(limit as string, 10) : 50,
+        offset: offset ? parseInt(offset as string, 10) : undefined,
+      });
+
+      res.json({
+        threads,
+        total: threads.length,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching threads");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch threads",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/threads/stats - Get unified thread statistics
+  apiRouter.get("/threads/stats", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const stats = await threadService.getStats();
+      const channelStats = await threadService.getChannelStats();
+
+      res.json({
+        ...stats,
+        by_channel: channelStats,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching thread stats");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch thread statistics",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/threads/:id - Get a single thread with messages
+  apiRouter.get("/threads/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const { id } = req.params;
+
+      const thread = await threadService.getThreadWithMessages(id);
+
+      if (!thread) {
+        return res.status(404).json({ error: "Thread not found" });
+      }
+
+      res.json(thread);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching thread");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch thread",
+      });
+    }
+  });
+
+  // PUT /api/admin/addie/threads/:id/review - Mark a thread as reviewed
+  apiRouter.put("/threads/:id/review", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const { id } = req.params;
+      const { notes } = req.body;
+
+      await threadService.reviewThread(id, req.user?.id || "admin", notes);
+
+      logger.info({ threadId: id }, "Marked thread as reviewed");
+      res.json({ success: true, thread_id: id });
+    } catch (error) {
+      logger.error({ err: error }, "Error marking thread as reviewed");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to mark thread as reviewed",
+      });
+    }
+  });
+
+  // PUT /api/admin/addie/threads/:id/flag - Flag a thread
+  apiRouter.put("/threads/:id/flag", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const { id } = req.params;
+      const { reason } = req.body;
+
+      if (!reason || typeof reason !== "string") {
+        return res.status(400).json({ error: "Flag reason is required" });
+      }
+
+      await threadService.flagThread(id, reason);
+
+      logger.info({ threadId: id, reason }, "Flagged thread");
+      res.json({ success: true, thread_id: id });
+    } catch (error) {
+      logger.error({ err: error }, "Error flagging thread");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to flag thread",
+      });
+    }
+  });
+
+  // PUT /api/admin/addie/threads/:id/unflag - Unflag a thread
+  apiRouter.put("/threads/:id/unflag", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const { id } = req.params;
+
+      await threadService.unflagThread(id);
+
+      logger.info({ threadId: id }, "Unflagged thread");
+      res.json({ success: true, thread_id: id });
+    } catch (error) {
+      logger.error({ err: error }, "Error unflagging thread");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to unflag thread",
+      });
+    }
+  });
+
+  // PUT /api/admin/addie/threads/messages/:messageId/feedback - Add feedback to a message
+  apiRouter.put("/threads/messages/:messageId/feedback", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const { messageId } = req.params;
+      const { rating, rating_category, rating_notes, feedback_tags, improvement_suggestion } = req.body;
+
+      if (typeof rating !== "number" || rating < 1 || rating > 5) {
+        return res.status(400).json({ error: "Rating must be a number between 1 and 5" });
+      }
+
+      await threadService.addMessageFeedback(messageId, {
+        rating,
+        rating_category,
+        rating_notes,
+        feedback_tags,
+        improvement_suggestion,
+        rated_by: req.user?.id || "admin",
+      });
+
+      logger.info({ messageId, rating }, "Added feedback to message");
+      res.json({ success: true, message_id: messageId });
+    } catch (error) {
+      logger.error({ err: error }, "Error adding message feedback");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to add message feedback",
+      });
+    }
+  });
+
+  // PUT /api/admin/addie/threads/messages/:messageId/outcome - Set outcome on a message
+  apiRouter.put("/threads/messages/:messageId/outcome", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const { messageId } = req.params;
+      const { outcome, user_sentiment, intent_category } = req.body;
+
+      const validOutcomes = ["resolved", "partially_resolved", "unresolved", "escalated", "unknown"];
+      if (!outcome || !validOutcomes.includes(outcome)) {
+        return res.status(400).json({ error: `Outcome must be one of: ${validOutcomes.join(", ")}` });
+      }
+
+      await threadService.setMessageOutcome(messageId, outcome, user_sentiment, intent_category);
+
+      logger.info({ messageId, outcome }, "Set message outcome");
+      res.json({ success: true, message_id: messageId });
+    } catch (error) {
+      logger.error({ err: error }, "Error setting message outcome");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to set message outcome",
+      });
+    }
+  });
+
+  // PUT /api/admin/addie/threads/messages/:messageId/flag - Flag a message
+  apiRouter.put("/threads/messages/:messageId/flag", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const { messageId } = req.params;
+      const { reason } = req.body;
+
+      if (!reason || typeof reason !== "string") {
+        return res.status(400).json({ error: "Flag reason is required" });
+      }
+
+      await threadService.flagMessage(messageId, reason);
+
+      logger.info({ messageId, reason }, "Flagged message");
+      res.json({ success: true, message_id: messageId });
+    } catch (error) {
+      logger.error({ err: error }, "Error flagging message");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to flag message",
+      });
+    }
+  });
+
+  // =========================================================================
   // WEB CONVERSATIONS API (mounted at /api/admin/addie/conversations)
+  // DEPRECATED: Use /api/admin/addie/threads instead
   // =========================================================================
 
   // GET /api/admin/addie/conversations - List all web conversations

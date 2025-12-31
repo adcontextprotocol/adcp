@@ -1,0 +1,24 @@
+# Dockerfile.playwright
+# Dockerfile for running Playwright E2E tests
+
+FROM mcr.microsoft.com/playwright:v1.49.0-jammy
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Install Playwright browsers
+RUN npx playwright install --with-deps chromium
+
+# Copy source code
+COPY . .
+
+# Build TypeScript
+RUN npm run build
+
+# Default command runs Playwright tests
+CMD ["npx", "playwright", "test"]

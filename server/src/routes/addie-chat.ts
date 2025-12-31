@@ -13,12 +13,10 @@ import { validate as uuidValidate } from "uuid";
 import rateLimit from "express-rate-limit";
 import { createLogger } from "../logger.js";
 import { optionalAuth } from "../middleware/auth.js";
-import { getPool } from "../db/client.js";
 import { AddieClaudeClient } from "../addie/claude-client.js";
 import {
   sanitizeInput,
   validateOutput,
-  generateInteractionId,
 } from "../addie/security.js";
 import {
   initializeKnowledgeSearch,
@@ -34,7 +32,12 @@ import { AddieModelConfig } from "../config/models.js";
 import {
   getWebMemberContext,
   formatMemberContextForPrompt,
+  type MemberContext,
 } from "../addie/member-context.js";
+import {
+  getThreadService,
+  type ThreadContext,
+} from "../addie/thread-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,114 +90,6 @@ async function initializeChatClient(): Promise<void> {
 interface ConversationMessage {
   role: "user" | "assistant";
   content: string;
-}
-
-/**
- * Create a new conversation in the database
- */
-async function createConversation(
-  userId: string | null,
-  userName: string | null,
-  metadata?: Record<string, unknown>,
-  impersonator?: { email: string; reason: string | null }
-): Promise<string> {
-  const pool = getPool();
-  const result = await pool.query(
-    `INSERT INTO addie_conversations (user_id, user_name, channel, metadata, impersonator_email, impersonation_reason)
-     VALUES ($1, $2, 'web', $3, $4, $5)
-     RETURNING conversation_id`,
-    [userId, userName, JSON.stringify(metadata || {}), impersonator?.email || null, impersonator?.reason || null]
-  );
-  return result.rows[0].conversation_id;
-}
-
-/**
- * Get conversation by ID
- */
-async function getConversation(conversationId: string): Promise<{
-  id: number;
-  conversation_id: string;
-  user_id: string | null;
-  user_name: string | null;
-  message_count: number;
-} | null> {
-  const pool = getPool();
-  const result = await pool.query(
-    `SELECT id, conversation_id, user_id, user_name, message_count
-     FROM addie_conversations
-     WHERE conversation_id = $1`,
-    [conversationId]
-  );
-  return result.rows[0] || null;
-}
-
-/**
- * Get conversation messages
- */
-async function getConversationMessages(conversationId: string): Promise<ConversationMessage[]> {
-  const pool = getPool();
-  const result = await pool.query(
-    `SELECT role, content
-     FROM addie_messages
-     WHERE conversation_id = $1
-     ORDER BY created_at ASC`,
-    [conversationId]
-  );
-  return result.rows.map((row) => ({
-    role: row.role as "user" | "assistant",
-    content: row.content,
-  }));
-}
-
-/**
- * Save a message to the conversation
- * Returns the message ID for feedback reference
- */
-async function saveMessage(
-  conversationId: string,
-  role: "user" | "assistant",
-  content: string,
-  options?: {
-    toolUse?: unknown[];
-    toolResults?: unknown[];
-    tokensInput?: number;
-    tokensOutput?: number;
-    model?: string;
-    latencyMs?: number;
-    impersonatorEmail?: string;
-  }
-): Promise<number> {
-  const pool = getPool();
-
-  // Insert message and return ID
-  const result = await pool.query(
-    `INSERT INTO addie_messages (conversation_id, role, content, tool_use, tool_results, tokens_input, tokens_output, model, latency_ms, impersonator_email)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     RETURNING id`,
-    [
-      conversationId,
-      role,
-      content,
-      options?.toolUse ? JSON.stringify(options.toolUse) : null,
-      options?.toolResults ? JSON.stringify(options.toolResults) : null,
-      options?.tokensInput || null,
-      options?.tokensOutput || null,
-      options?.model || null,
-      options?.latencyMs || null,
-      options?.impersonatorEmail || null,
-    ]
-  );
-
-  // Update conversation
-  await pool.query(
-    `UPDATE addie_conversations
-     SET message_count = message_count + 1,
-         last_message_at = NOW()
-     WHERE conversation_id = $1`,
-    [conversationId]
-  );
-
-  return result.rows[0].id;
 }
 
 /**
@@ -253,6 +148,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   // POST /api/addie/chat - Send a message and get a response
   apiRouter.post("/", chatRateLimiter, optionalAuth, async (req, res) => {
     const startTime = Date.now();
+    const threadService = getThreadService();
 
     try {
       if (!initialized || !claudeClient) {
@@ -274,48 +170,73 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         logger.warn({ reason: inputValidation.reason }, "Addie Chat: Input flagged");
       }
 
-      // Get or create conversation
-      let conversationId = conversation_id;
+      // Get or create thread using unified service
+      // For web chat, the external_id is the conversation_id (UUID)
+      // If no conversation_id provided, we'll generate a new one via the thread
       const impersonator = req.user?.impersonator;
-      if (!conversationId) {
-        // Create new conversation
-        const userId = req.user?.id || null;
-        const displayName = user_name || req.user?.firstName || null;
-        conversationId = await createConversation(
-          userId,
-          displayName,
-          {
-            user_agent: req.get("user-agent"),
-            ip_hash: hashIp(req.ip), // Store hashed IP for privacy
-          },
-          impersonator
-        );
+      const userId = req.user?.id || null;
+      const displayName = user_name || req.user?.firstName || null;
+
+      // Build web-specific context
+      const webContext: ThreadContext = {
+        user_agent: req.get("user-agent"),
+        ip_hash: hashIp(req.ip),
+        referrer: req.get("referer"),
+      };
+
+      let thread;
+      let externalId = conversation_id;
+
+      if (!externalId) {
+        // Create new thread - generate a new UUID as external_id
+        externalId = crypto.randomUUID();
+        thread = await threadService.getOrCreateThread({
+          channel: 'web',
+          external_id: externalId,
+          user_type: userId ? 'workos' : 'anonymous',
+          user_id: userId || undefined,
+          user_display_name: displayName || undefined,
+          context: webContext,
+          impersonator_user_id: impersonator?.email,
+          impersonation_reason: impersonator?.reason || undefined,
+        });
 
         // Log impersonated conversation creation
         if (impersonator) {
           logger.info(
-            { conversationId, userId, impersonatorEmail: impersonator.email, reason: impersonator.reason },
-            "Addie Chat: Created impersonated conversation"
+            { threadId: thread.thread_id, userId, impersonatorEmail: impersonator.email, reason: impersonator.reason },
+            "Addie Chat: Created impersonated thread"
           );
         }
       } else {
         // Validate conversation ID format
-        if (!isValidConversationId(conversationId)) {
+        if (!isValidConversationId(externalId)) {
           return res.status(400).json({ error: "Invalid conversation ID format" });
         }
-        // Verify conversation exists
-        const conversation = await getConversation(conversationId);
-        if (!conversation) {
+        // Get existing thread
+        thread = await threadService.getThreadByExternalId('web', externalId);
+        if (!thread) {
           return res.status(404).json({ error: "Conversation not found" });
         }
       }
 
       // Get conversation history for context
-      const history = await getConversationMessages(conversationId);
+      const messages = await threadService.getThreadMessages(thread.thread_id);
+      const history: ConversationMessage[] = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }));
 
       // Save user message
-      await saveMessage(conversationId, "user", message, {
-        impersonatorEmail: impersonator?.email,
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'user',
+        content: message,
+        content_sanitized: inputValidation.sanitized,
+        flagged: inputValidation.flagged,
+        flag_reason: inputValidation.reason,
       });
 
       // Build context from history (last N messages)
@@ -324,12 +245,14 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         text: m.content,
       }));
 
-      // Build message with member context for authenticated users
+      // Build message with member context
+      // For web chat, always include channel context (even for anonymous users)
       let messageToProcess = inputValidation.sanitized;
-      if (req.user?.id) {
-        try {
+      try {
+        if (req.user?.id) {
+          // Authenticated user
           const memberContext = await getWebMemberContext(req.user.id);
-          const memberContextText = formatMemberContextForPrompt(memberContext);
+          const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
           if (memberContextText) {
             messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
             logger.debug(
@@ -337,10 +260,18 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
               "Addie Chat: Added member context to message"
             );
           }
-        } catch (error) {
-          logger.warn({ error, userId: req.user.id }, "Addie Chat: Failed to get member context");
-          // Continue without context - don't fail the request
+        } else {
+          // Anonymous user - still provide channel context
+          const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
+          const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
+          if (memberContextText) {
+            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
+            logger.debug("Addie Chat: Added anonymous web context to message");
+          }
         }
+      } catch (error) {
+        logger.warn({ error, userId: req.user?.id }, "Addie Chat: Failed to get member context");
+        // Continue without context - don't fail the request
       }
 
       // Process with Claude
@@ -364,21 +295,34 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const latencyMs = Date.now() - startTime;
 
       // Save assistant response with full execution details
-      const messageId = await saveMessage(conversationId, "assistant", outputValidation.sanitized, {
-        toolUse: response.tools_used.length > 0 ? response.tools_used : undefined,
-        toolResults: response.tool_executions.length > 0 ? response.tool_executions : undefined,
+      const assistantMessage = await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: outputValidation.sanitized,
+        tools_used: response.tools_used.length > 0 ? response.tools_used : undefined,
+        tool_calls: response.tool_executions.length > 0
+          ? response.tool_executions.map((exec) => ({
+              name: exec.tool_name,
+              input: exec.parameters,
+              result: exec.result,
+            }))
+          : undefined,
         model: AddieModelConfig.chat,
-        latencyMs,
-        impersonatorEmail: impersonator?.email,
+        latency_ms: latencyMs,
+        tokens_input: response.usage?.input_tokens,
+        tokens_output: response.usage?.output_tokens,
+        flagged: outputValidation.flagged || response.flagged,
+        flag_reason: outputValidation.reason || response.flag_reason,
       });
 
       res.json({
         response: outputValidation.sanitized,
-        conversation_id: conversationId,
-        message_id: messageId,  // Include for feedback reference
+        conversation_id: externalId, // Return external_id as conversation_id for API compatibility
+        message_id: assistantMessage.message_id, // Now returns UUID instead of integer
         tools_used: response.tools_used,
         tool_executions: response.tool_executions,
         timing: response.timing,
+        usage: response.usage,
         latency_ms: latencyMs,
       });
     } catch (error) {
@@ -399,8 +343,204 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
     });
   });
 
+  // POST /api/addie/chat/stream - Stream a response using Server-Sent Events
+  // NOTE: This route must come BEFORE /:conversationId to avoid being matched as a conversation ID
+  apiRouter.post("/stream", chatRateLimiter, optionalAuth, async (req, res) => {
+    const startTime = Date.now();
+    const threadService = getThreadService();
+
+    // Set up SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
+    res.flushHeaders();
+
+    // Helper to send SSE events
+    const sendEvent = (event: string, data: unknown) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      if (!initialized || !claudeClient) {
+        sendEvent("error", { error: "Service unavailable", message: "Addie is not configured." });
+        res.end();
+        return;
+      }
+
+      const { message, conversation_id, user_name } = req.body;
+
+      if (!message || typeof message !== "string") {
+        sendEvent("error", { error: "Message is required" });
+        res.end();
+        return;
+      }
+
+      // Sanitize input
+      const inputValidation = sanitizeInput(message);
+      if (inputValidation.flagged) {
+        logger.warn({ reason: inputValidation.reason }, "Addie Chat Stream: Input flagged");
+      }
+
+      // Get or create thread
+      const impersonator = req.user?.impersonator;
+      const userId = req.user?.id || null;
+      const displayName = user_name || req.user?.firstName || null;
+
+      const webContext: ThreadContext = {
+        user_agent: req.get("user-agent"),
+        ip_hash: hashIp(req.ip),
+        referrer: req.get("referer"),
+      };
+
+      let thread;
+      let externalId = conversation_id;
+
+      if (!externalId) {
+        externalId = crypto.randomUUID();
+        thread = await threadService.getOrCreateThread({
+          channel: 'web',
+          external_id: externalId,
+          user_type: userId ? 'workos' : 'anonymous',
+          user_id: userId || undefined,
+          user_display_name: displayName || undefined,
+          context: webContext,
+          impersonator_user_id: impersonator?.email,
+          impersonation_reason: impersonator?.reason || undefined,
+        });
+      } else {
+        if (!isValidConversationId(externalId)) {
+          sendEvent("error", { error: "Invalid conversation ID format" });
+          res.end();
+          return;
+        }
+        thread = await threadService.getThreadByExternalId('web', externalId);
+        if (!thread) {
+          sendEvent("error", { error: "Conversation not found" });
+          res.end();
+          return;
+        }
+      }
+
+      // Send conversation_id immediately so client can track it
+      sendEvent("meta", { conversation_id: externalId });
+
+      // Get conversation history
+      const messages = await threadService.getThreadMessages(thread.thread_id);
+      const history: ConversationMessage[] = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }));
+
+      // Save user message
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'user',
+        content: message,
+        content_sanitized: inputValidation.sanitized,
+        flagged: inputValidation.flagged,
+        flag_reason: inputValidation.reason,
+      });
+
+      // Build context messages
+      const contextMessages = history.slice(-10).map((m) => ({
+        user: m.role === "user" ? "User" : "Addie",
+        text: m.content,
+      }));
+
+      // Build message with member context
+      let messageToProcess = inputValidation.sanitized;
+      try {
+        if (req.user?.id) {
+          const memberContext = await getWebMemberContext(req.user.id);
+          const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
+          if (memberContextText) {
+            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
+          }
+        } else {
+          const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
+          const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
+          if (memberContextText) {
+            messageToProcess = `${memberContextText}\n---\n\n${inputValidation.sanitized}`;
+          }
+        }
+      } catch (error) {
+        logger.warn({ error }, "Addie Chat Stream: Failed to get member context");
+      }
+
+      // Stream the response
+      let fullText = '';
+      let response;
+      const toolsUsed: string[] = [];
+      const toolExecutions: Array<{ name: string; input: Record<string, unknown>; result: string }> = [];
+
+      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages)) {
+        if (event.type === 'text') {
+          fullText += event.text;
+          sendEvent("text", { text: event.text });
+        } else if (event.type === 'tool_start') {
+          toolsUsed.push(event.tool_name);
+          sendEvent("tool_start", { tool_name: event.tool_name });
+        } else if (event.type === 'tool_end') {
+          toolExecutions.push({
+            name: event.tool_name,
+            input: {},
+            result: event.result,
+          });
+          sendEvent("tool_end", { tool_name: event.tool_name, is_error: event.is_error });
+        } else if (event.type === 'done') {
+          response = event.response;
+        } else if (event.type === 'error') {
+          sendEvent("error", { error: event.error });
+          res.end();
+          return;
+        }
+      }
+
+      // Validate output
+      const outputValidation = validateOutput(fullText);
+      const latencyMs = Date.now() - startTime;
+
+      // Save assistant response
+      const assistantMessage = await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: outputValidation.sanitized,
+        tools_used: toolsUsed.length > 0 ? toolsUsed : undefined,
+        tool_calls: toolExecutions.length > 0 ? toolExecutions : undefined,
+        model: AddieModelConfig.chat,
+        latency_ms: latencyMs,
+        tokens_input: response?.usage?.input_tokens,
+        tokens_output: response?.usage?.output_tokens,
+        flagged: outputValidation.flagged || response?.flagged,
+        flag_reason: outputValidation.reason || response?.flag_reason,
+      });
+
+      // Send done event with final metadata
+      sendEvent("done", {
+        conversation_id: externalId,
+        message_id: assistantMessage.message_id,
+        tools_used: toolsUsed,
+        timing: response?.timing,
+        usage: response?.usage,
+        latency_ms: latencyMs,
+      });
+
+      res.end();
+    } catch (error) {
+      logger.error({ err: error }, "Addie Chat Stream: Error handling message");
+      sendEvent("error", { error: "Internal server error" });
+      res.end();
+    }
+  });
+
   // POST /api/addie/chat/:conversationId/feedback - Submit feedback on a message
   apiRouter.post("/:conversationId/feedback", optionalAuth, async (req, res) => {
+    const threadService = getThreadService();
+
     try {
       const { conversationId } = req.params;
 
@@ -418,7 +558,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         improvement_suggestion,
       } = req.body;
 
-      if (!message_id || typeof message_id !== "number") {
+      // message_id is now a UUID string
+      if (!message_id || typeof message_id !== "string") {
         return res.status(400).json({ error: "message_id is required" });
       }
 
@@ -426,40 +567,21 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         return res.status(400).json({ error: "rating must be between 1 and 5" });
       }
 
-      const pool = getPool();
-
-      // Verify message exists and belongs to conversation
-      const messageCheck = await pool.query(
-        `SELECT id FROM addie_messages
-         WHERE id = $1 AND conversation_id = $2`,
-        [message_id, conversationId]
-      );
-
-      if (messageCheck.rows.length === 0) {
-        return res.status(404).json({ error: "Message not found" });
+      // Verify thread exists for this conversation
+      const thread = await threadService.getThreadByExternalId('web', conversationId);
+      if (!thread) {
+        return res.status(404).json({ error: "Conversation not found" });
       }
 
-      // Update message with feedback
-      await pool.query(
-        `UPDATE addie_messages
-         SET rating = $1,
-             rating_category = $2,
-             feedback_text = $3,
-             feedback_tags = $4,
-             improvement_suggestion = $5,
-             rated_by = $6,
-             rated_at = NOW()
-         WHERE id = $7`,
-        [
-          rating,
-          rating_category || null,
-          feedback_text || null,
-          feedback_tags ? JSON.stringify(feedback_tags) : null,
-          improvement_suggestion || null,
-          req.user?.id || "anonymous",
-          message_id,
-        ]
-      );
+      // Add feedback to message using unified service
+      await threadService.addMessageFeedback(message_id, {
+        rating,
+        rating_category: rating_category || undefined,
+        rating_notes: feedback_text || undefined,
+        feedback_tags: feedback_tags || undefined,
+        improvement_suggestion: improvement_suggestion || undefined,
+        rated_by: req.user?.id || "anonymous",
+      });
 
       logger.info(
         { conversationId, message_id, rating, rating_category },
@@ -478,6 +600,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
 
   // GET /api/addie/chat/:conversationId - Get conversation history
   apiRouter.get("/:conversationId", optionalAuth, async (req, res) => {
+    const threadService = getThreadService();
+
     try {
       const { conversationId } = req.params;
 
@@ -486,17 +610,25 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         return res.status(400).json({ error: "Invalid conversation ID format" });
       }
 
-      const conversation = await getConversation(conversationId);
-      if (!conversation) {
+      // Get thread by external_id (which is the conversation_id for web)
+      const thread = await threadService.getThreadByExternalId('web', conversationId);
+      if (!thread) {
         return res.status(404).json({ error: "Conversation not found" });
       }
 
-      const messages = await getConversationMessages(conversationId);
+      // Get messages
+      const threadMessages = await threadService.getThreadMessages(thread.thread_id);
+      const messages: ConversationMessage[] = threadMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }));
 
       res.json({
         conversation_id: conversationId,
-        user_name: conversation.user_name,
-        message_count: conversation.message_count,
+        user_name: thread.user_display_name,
+        message_count: thread.message_count,
         messages,
       });
     } catch (error) {

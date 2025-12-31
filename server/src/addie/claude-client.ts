@@ -51,7 +51,24 @@ export interface AddieResponse {
     total_tool_execution_ms: number;
     iterations: number;
   };
+  /** Token usage from Claude API */
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
+
+/**
+ * Event types emitted during streaming
+ */
+export type StreamEvent =
+  | { type: 'text'; text: string }
+  | { type: 'tool_start'; tool_name: string; parameters: Record<string, unknown> }
+  | { type: 'tool_end'; tool_name: string; result: string; is_error: boolean }
+  | { type: 'done'; response: AddieResponse }
+  | { type: 'error'; error: string };
 
 export class AddieClaudeClient {
   private client: Anthropic;
@@ -154,6 +171,12 @@ export class AddieClaudeClient {
     let totalLlmMs = 0;
     let totalToolExecutionMs = 0;
 
+    // Token usage tracking (aggregated across iterations)
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let totalCacheCreationTokens = 0;
+    let totalCacheReadTokens = 0;
+
     // Get system prompt from database rules (or fallback)
     const promptStart = Date.now();
     const { prompt: systemPrompt, ruleIds } = await this.getSystemPrompt();
@@ -204,12 +227,27 @@ export class AddieClaudeClient {
       const llmDuration = Date.now() - llmStart;
       totalLlmMs += llmDuration;
 
+      // Track token usage from this iteration
+      if (response.usage) {
+        totalInputTokens += response.usage.input_tokens;
+        totalOutputTokens += response.usage.output_tokens;
+        // Cache tokens are optional and may not be present
+        if ('cache_creation_input_tokens' in response.usage) {
+          totalCacheCreationTokens += (response.usage as { cache_creation_input_tokens?: number }).cache_creation_input_tokens || 0;
+        }
+        if ('cache_read_input_tokens' in response.usage) {
+          totalCacheReadTokens += (response.usage as { cache_read_input_tokens?: number }).cache_read_input_tokens || 0;
+        }
+      }
+
       // Log response structure for debugging
       logger.info({
         stopReason: response.stop_reason,
         contentTypes: response.content.map(c => c.type),
         iteration,
         llmDurationMs: llmDuration,
+        inputTokens: response.usage?.input_tokens,
+        outputTokens: response.usage?.output_tokens,
       }, 'Addie: Claude response received');
 
       // Check for web search results in the response (can appear even with end_turn)
@@ -284,6 +322,12 @@ export class AddieClaudeClient {
             total_llm_ms: totalLlmMs,
             total_tool_execution_ms: totalToolExecutionMs,
             iterations: iteration,
+          },
+          usage: {
+            input_tokens: totalInputTokens,
+            output_tokens: totalOutputTokens,
+            ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+            ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
           },
         };
       }
@@ -384,6 +428,12 @@ export class AddieClaudeClient {
               total_llm_ms: totalLlmMs,
               total_tool_execution_ms: totalToolExecutionMs,
               iterations: iteration,
+            },
+            usage: {
+              input_tokens: totalInputTokens,
+              output_tokens: totalOutputTokens,
+              ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+              ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
             },
           };
         }
@@ -488,7 +538,318 @@ export class AddieClaudeClient {
         total_tool_execution_ms: totalToolExecutionMs,
         iterations: maxIterations,
       },
+      usage: {
+        input_tokens: totalInputTokens,
+        output_tokens: totalOutputTokens,
+        ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+        ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
+      },
     };
+  }
+
+  /**
+   * Process a message with streaming - yields events as they occur
+   *
+   * Note: Tool use temporarily pauses text streaming while the tool executes,
+   * then resumes with the response. The final 'done' event includes the complete response.
+   *
+   * @param userMessage - The user's message
+   * @param threadContext - Optional thread history
+   * @param requestTools - Optional per-request tools (e.g., user-scoped member tools)
+   */
+  async *processMessageStream(
+    userMessage: string,
+    threadContext?: Array<{ user: string; text: string }>,
+    requestTools?: RequestTools
+  ): AsyncGenerator<StreamEvent> {
+    const toolsUsed: string[] = [];
+    const toolExecutions: ToolExecution[] = [];
+    let executionSequence = 0;
+    let fullText = '';
+
+    // Timing metrics
+    const timingStart = Date.now();
+    let systemPromptMs = 0;
+    let totalLlmMs = 0;
+    let totalToolExecutionMs = 0;
+
+    // Token usage tracking (aggregated across iterations)
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let totalCacheCreationTokens = 0;
+    let totalCacheReadTokens = 0;
+
+    // Get system prompt from database rules (or fallback)
+    const promptStart = Date.now();
+    const { prompt: systemPrompt, ruleIds } = await this.getSystemPrompt();
+    systemPromptMs = Date.now() - promptStart;
+
+    const contextualMessage = buildContextWithThread(userMessage, threadContext);
+
+    const messages: Anthropic.MessageParam[] = [
+      { role: 'user', content: contextualMessage },
+    ];
+
+    const maxIterations = 10;
+    let iteration = 0;
+
+    // Combine global tools with per-request tools
+    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+
+    try {
+      while (iteration < maxIterations) {
+        iteration++;
+
+        // Build tools array: custom tools + request tools + optional web search
+        const customTools = allTools.map(t => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.input_schema as Anthropic.Tool['input_schema'],
+        }));
+
+        const llmStart = Date.now();
+
+        // Use streaming API
+        const stream = this.client.messages.stream({
+          model: this.model,
+          max_tokens: 4096,
+          system: systemPrompt,
+          tools: customTools,
+          messages,
+        });
+
+        // Collect full response for tool handling
+        let currentResponse: Anthropic.Message | null = null;
+        const textChunks: string[] = [];
+
+        // Process stream events
+        for await (const event of stream) {
+          if (event.type === 'content_block_delta') {
+            const delta = event.delta;
+            if ('text' in delta && delta.text) {
+              textChunks.push(delta.text);
+              fullText += delta.text;
+              yield { type: 'text', text: delta.text };
+            }
+          } else if (event.type === 'message_stop') {
+            // Get the final message
+            currentResponse = await stream.finalMessage();
+          }
+        }
+
+        const llmDuration = Date.now() - llmStart;
+        totalLlmMs += llmDuration;
+
+        if (!currentResponse) {
+          currentResponse = await stream.finalMessage();
+        }
+
+        // Track token usage
+        if (currentResponse.usage) {
+          totalInputTokens += currentResponse.usage.input_tokens;
+          totalOutputTokens += currentResponse.usage.output_tokens;
+          if ('cache_creation_input_tokens' in currentResponse.usage) {
+            totalCacheCreationTokens += (currentResponse.usage as { cache_creation_input_tokens?: number }).cache_creation_input_tokens || 0;
+          }
+          if ('cache_read_input_tokens' in currentResponse.usage) {
+            totalCacheReadTokens += (currentResponse.usage as { cache_read_input_tokens?: number }).cache_read_input_tokens || 0;
+          }
+        }
+
+        logger.info({
+          stopReason: currentResponse.stop_reason,
+          iteration,
+          llmDurationMs: llmDuration,
+          inputTokens: currentResponse.usage?.input_tokens,
+          outputTokens: currentResponse.usage?.output_tokens,
+        }, 'Addie Stream: Claude response received');
+
+        // Done - no tool use
+        if (currentResponse.stop_reason === 'end_turn') {
+          totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
+
+          yield {
+            type: 'done',
+            response: {
+              text: fullText,
+              tools_used: toolsUsed,
+              tool_executions: toolExecutions,
+              flagged: false,
+              active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+              timing: {
+                system_prompt_ms: systemPromptMs,
+                total_llm_ms: totalLlmMs,
+                total_tool_execution_ms: totalToolExecutionMs,
+                iterations: iteration,
+              },
+              usage: {
+                input_tokens: totalInputTokens,
+                output_tokens: totalOutputTokens,
+                ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+                ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
+              },
+            },
+          };
+          return;
+        }
+
+        // Handle tool use
+        if (currentResponse.stop_reason === 'tool_use') {
+          const toolUseBlocks = currentResponse.content.filter((c) => c.type === 'tool_use');
+
+          if (toolUseBlocks.length === 0) {
+            // No tools to execute, return current text
+            totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
+            yield {
+              type: 'done',
+              response: {
+                text: fullText,
+                tools_used: toolsUsed,
+                tool_executions: toolExecutions,
+                flagged: false,
+                active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+                timing: {
+                  system_prompt_ms: systemPromptMs,
+                  total_llm_ms: totalLlmMs,
+                  total_tool_execution_ms: totalToolExecutionMs,
+                  iterations: iteration,
+                },
+                usage: {
+                  input_tokens: totalInputTokens,
+                  output_tokens: totalOutputTokens,
+                  ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+                  ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
+                },
+              },
+            };
+            return;
+          }
+
+          interface ToolResult {
+            tool_use_id: string;
+            content: string;
+            is_error?: boolean;
+          }
+
+          const toolResults: ToolResult[] = [];
+
+          for (const block of toolUseBlocks) {
+            if (block.type !== 'tool_use') continue;
+
+            const toolName = block.name;
+            const toolInput = block.input as Record<string, unknown>;
+            const toolUseId = block.id;
+            const startTime = Date.now();
+
+            logger.debug({ toolName, toolInput }, 'Addie Stream: Calling tool');
+            toolsUsed.push(toolName);
+            executionSequence++;
+
+            // Emit tool start event
+            yield { type: 'tool_start', tool_name: toolName, parameters: toolInput };
+
+            const handler = allHandlers.get(toolName);
+            if (!handler) {
+              const durationMs = Date.now() - startTime;
+              const errorResult = `Error: Unknown tool "${toolName}"`;
+              toolResults.push({
+                tool_use_id: toolUseId,
+                content: errorResult,
+                is_error: true,
+              });
+              toolExecutions.push({
+                tool_name: toolName,
+                parameters: toolInput,
+                result: errorResult,
+                is_error: true,
+                duration_ms: durationMs,
+                sequence: executionSequence,
+              });
+              yield { type: 'tool_end', tool_name: toolName, result: errorResult, is_error: true };
+              continue;
+            }
+
+            try {
+              const result = await handler(toolInput);
+              const durationMs = Date.now() - startTime;
+              toolResults.push({ tool_use_id: toolUseId, content: result });
+              toolExecutions.push({
+                tool_name: toolName,
+                parameters: toolInput,
+                result,
+                result_summary: this.summarizeToolResult(toolName, result),
+                is_error: false,
+                duration_ms: durationMs,
+                sequence: executionSequence,
+              });
+              yield { type: 'tool_end', tool_name: toolName, result, is_error: false };
+            } catch (error) {
+              const durationMs = Date.now() - startTime;
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              const errorResult = `Error: ${errorMessage}`;
+              toolResults.push({
+                tool_use_id: toolUseId,
+                content: errorResult,
+                is_error: true,
+              });
+              toolExecutions.push({
+                tool_name: toolName,
+                parameters: toolInput,
+                result: errorResult,
+                is_error: true,
+                duration_ms: durationMs,
+                sequence: executionSequence,
+              });
+              yield { type: 'tool_end', tool_name: toolName, result: errorResult, is_error: true };
+            }
+          }
+
+          // Continue the conversation with tool results
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          messages.push({ role: 'assistant', content: currentResponse.content as any });
+          messages.push({
+            role: 'user',
+            content: toolResults.map((r) => ({
+              type: 'tool_result' as const,
+              tool_use_id: r.tool_use_id,
+              content: r.content,
+              is_error: r.is_error,
+            })),
+          });
+        }
+      }
+
+      // Max iterations reached
+      logger.warn('Addie Stream: Hit max tool iterations');
+      totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
+      yield {
+        type: 'done',
+        response: {
+          text: fullText || "I'm having trouble completing that request. Could you try rephrasing?",
+          tools_used: toolsUsed,
+          tool_executions: toolExecutions,
+          flagged: true,
+          flag_reason: 'Max tool iterations reached',
+          active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+          timing: {
+            system_prompt_ms: systemPromptMs,
+            total_llm_ms: totalLlmMs,
+            total_tool_execution_ms: totalToolExecutionMs,
+            iterations: maxIterations,
+          },
+          usage: {
+            input_tokens: totalInputTokens,
+            output_tokens: totalOutputTokens,
+            ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+            ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
+          },
+        },
+      };
+    } catch (error) {
+      logger.error({ error }, 'Addie Stream: Error during streaming');
+      yield { type: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   }
 
   /**
