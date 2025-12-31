@@ -109,6 +109,19 @@ export interface CreateMessageInput {
   tokens_cache_creation?: number;
   tokens_cache_read?: number;
   active_rule_ids?: number[];
+  // Router decision metadata (for channel messages routed through Haiku)
+  router_decision?: {
+    action: string;
+    reason: string;
+    decision_method: 'quick_match' | 'llm';
+    tools?: string[];
+    latency_ms?: number;
+    tokens_input?: number;
+    tokens_output?: number;
+    model?: string;
+  };
+  // Configuration version ID (rules + router config snapshot)
+  config_version_id?: number;
 }
 
 export interface ThreadMessage {
@@ -146,6 +159,19 @@ export interface ThreadMessage {
   tokens_cache_creation: number | null;
   tokens_cache_read: number | null;
   active_rule_ids: number[] | null;
+  // Router decision metadata
+  router_decision: {
+    action: string;
+    reason: string;
+    decision_method: 'quick_match' | 'llm';
+    tools?: string[];
+    latency_ms?: number;
+    tokens_input?: number;
+    tokens_output?: number;
+    model?: string;
+  } | null;
+  // Configuration version ID
+  config_version_id: number | null;
 }
 
 export interface ThreadWithMessages extends Thread {
@@ -349,8 +375,9 @@ export class ThreadService {
           knowledge_ids, model, latency_ms, tokens_input, tokens_output,
           flagged, flag_reason, sequence_number,
           timing_system_prompt_ms, timing_total_llm_ms, timing_total_tool_ms,
-          processing_iterations, tokens_cache_creation, tokens_cache_read, active_rule_ids
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+          processing_iterations, tokens_cache_creation, tokens_cache_read, active_rule_ids,
+          router_decision, config_version_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
         RETURNING *`,
         [
           input.thread_id,
@@ -374,6 +401,8 @@ export class ThreadService {
           input.tokens_cache_creation || null,
           input.tokens_cache_read || null,
           input.active_rule_ids || null,
+          input.router_decision ? JSON.stringify(input.router_decision) : null,
+          input.config_version_id || null,
         ]
       );
 

@@ -327,6 +327,16 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         tokens_output: response.usage?.output_tokens,
         flagged: outputValidation.flagged || response.flagged,
         flag_reason: outputValidation.reason || response.flag_reason,
+        timing: response.timing ? {
+          system_prompt_ms: response.timing.system_prompt_ms,
+          total_llm_ms: response.timing.total_llm_ms,
+          total_tool_ms: response.timing.total_tool_execution_ms,
+          iterations: response.timing.iterations,
+        } : undefined,
+        tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+        tokens_cache_read: response.usage?.cache_read_input_tokens,
+        active_rule_ids: response.active_rule_ids,
+        config_version_id: response.config_version_id,
       });
 
       res.json({
@@ -553,6 +563,16 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         tokens_output: response?.usage?.output_tokens,
         flagged: outputValidation.flagged || response?.flagged,
         flag_reason: outputValidation.reason || response?.flag_reason,
+        timing: response?.timing ? {
+          system_prompt_ms: response.timing.system_prompt_ms,
+          total_llm_ms: response.timing.total_llm_ms,
+          total_tool_ms: response.timing.total_tool_execution_ms,
+          iterations: response.timing.iterations,
+        } : undefined,
+        tokens_cache_creation: response?.usage?.cache_creation_input_tokens,
+        tokens_cache_read: response?.usage?.cache_read_input_tokens,
+        active_rule_ids: response?.active_rule_ids,
+        config_version_id: response?.config_version_id,
       });
 
       // Send done event with final metadata

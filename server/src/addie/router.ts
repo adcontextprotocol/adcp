@@ -25,11 +25,24 @@ import type { MemberContext } from './member-context.js';
 /**
  * Execution plan types
  */
-export type ExecutionPlan =
+export type ExecutionPlanBase = {
+  /** How the decision was made: 'quick_match' (pattern) or 'llm' (Claude Haiku) */
+  decision_method: 'quick_match' | 'llm';
+  /** Time spent making the routing decision (ms) */
+  latency_ms?: number;
+  /** Tokens used (only for LLM decisions) */
+  tokens_input?: number;
+  tokens_output?: number;
+  /** Model used (only for LLM decisions) */
+  model?: string;
+};
+
+export type ExecutionPlan = ExecutionPlanBase & (
   | { action: 'ignore'; reason: string }
   | { action: 'react'; emoji: string; reason: string }
   | { action: 'clarify'; question: string; reason: string }
-  | { action: 'respond'; tools: string[]; reason: string };
+  | { action: 'respond'; tools: string[]; reason: string }
+);
 
 /**
  * Context for routing decisions
@@ -215,9 +228,18 @@ Respond with ONLY the JSON object, no other text.`;
 }
 
 /**
- * Parse the router response into an ExecutionPlan
+ * Partial execution plan without metadata (used during parsing)
  */
-function parseRouterResponse(response: string): ExecutionPlan {
+type ParsedPlan =
+  | { action: 'ignore'; reason: string }
+  | { action: 'react'; emoji: string; reason: string }
+  | { action: 'clarify'; question: string; reason: string }
+  | { action: 'respond'; tools: string[]; reason: string };
+
+/**
+ * Parse the router response into a partial ExecutionPlan
+ */
+function parseRouterResponse(response: string): ParsedPlan {
   try {
     // Extract JSON from response (handle markdown code blocks)
     let jsonStr = response.trim();
@@ -299,13 +321,23 @@ export class AddieRouter {
         ? response.content[0].text
         : '';
 
-      const plan = parseRouterResponse(text);
+      const parsedPlan = parseRouterResponse(text);
+      const latencyMs = Date.now() - startTime;
+
+      const plan: ExecutionPlan = {
+        ...parsedPlan,
+        decision_method: 'llm',
+        latency_ms: latencyMs,
+        tokens_input: response.usage?.input_tokens,
+        tokens_output: response.usage?.output_tokens,
+        model: ModelConfig.fast,
+      };
 
       logger.debug({
         source: ctx.source,
         action: plan.action,
         reason: plan.reason,
-        durationMs: Date.now() - startTime,
+        durationMs: latencyMs,
         inputTokens: response.usage?.input_tokens,
         outputTokens: response.usage?.output_tokens,
       }, 'Router: Execution plan generated');
@@ -314,7 +346,13 @@ export class AddieRouter {
     } catch (error) {
       logger.error({ error }, 'Router: Failed to generate execution plan');
       // On error, default to respond (safe fallback - don't miss important messages)
-      return { action: 'respond', tools: [], reason: 'Router error - defaulting to general response' };
+      return {
+        action: 'respond',
+        tools: [],
+        reason: 'Router error - defaulting to general response',
+        decision_method: 'llm',
+        latency_ms: Date.now() - startTime,
+      };
     }
   }
 
@@ -325,12 +363,18 @@ export class AddieRouter {
    * Returns null if no quick match, meaning the full router should run.
    */
   quickMatch(ctx: RoutingContext): ExecutionPlan | null {
+    const startTime = Date.now();
     const text = ctx.message.toLowerCase().trim();
 
     // Check for simple acknowledgments to ignore
     for (const pattern of ROUTING_RULES.ignore.patterns) {
       if (text === pattern || text === pattern + '.') {
-        return { action: 'ignore', reason: 'Simple acknowledgment' };
+        return {
+          action: 'ignore',
+          reason: 'Simple acknowledgment',
+          decision_method: 'quick_match',
+          latency_ms: Date.now() - startTime,
+        };
       }
     }
 
@@ -339,7 +383,13 @@ export class AddieRouter {
       for (const pattern of rule.patterns) {
         // Only match if the message is very short (likely just a greeting)
         if (text.length < 20 && text.includes(pattern.toLowerCase())) {
-          return { action: 'react', emoji: rule.emoji, reason: `Matched ${key} pattern` };
+          return {
+            action: 'react',
+            emoji: rule.emoji,
+            reason: `Matched ${key} pattern`,
+            decision_method: 'quick_match',
+            latency_ms: Date.now() - startTime,
+          };
         }
       }
     }
