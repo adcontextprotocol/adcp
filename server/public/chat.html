@@ -929,8 +929,34 @@
       }
 
       // Append text to streaming message
+      // Render complete paragraphs as markdown, show incomplete paragraph as plain text
       function appendToStreamingMessage(contentDiv, text, fullContent) {
-        contentDiv.innerHTML = renderMessage(fullContent) + '<span class="streaming-cursor">|</span>';
+        // Split on paragraph breaks (double newline)
+        const lastParagraphBreak = fullContent.lastIndexOf('\n\n');
+
+        if (lastParagraphBreak === -1) {
+          // No complete paragraphs yet - show as plain text
+          const escaped = fullContent
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br>');
+          contentDiv.innerHTML = escaped + '<span class="streaming-cursor">|</span>';
+        } else {
+          // Render complete paragraphs as markdown, show remainder as plain text
+          const completeParagraphs = fullContent.substring(0, lastParagraphBreak);
+          const remainder = fullContent.substring(lastParagraphBreak + 2);
+
+          const renderedMarkdown = renderMessage(completeParagraphs);
+          const escapedRemainder = remainder
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br>');
+
+          contentDiv.innerHTML = renderedMarkdown +
+            (escapedRemainder ? '<p>' + escapedRemainder + '<span class="streaming-cursor">|</span></p>' : '<span class="streaming-cursor">|</span>');
+        }
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
       }
 
