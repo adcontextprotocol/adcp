@@ -91,7 +91,7 @@ export interface CreateMessageInput {
   content: string;
   content_sanitized?: string;
   tools_used?: string[];
-  tool_calls?: Array<{ name: string; input: unknown; result: unknown }>;
+  tool_calls?: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean }>;
   knowledge_ids?: number[];
   model?: string;
   latency_ms?: number;
@@ -99,6 +99,16 @@ export interface CreateMessageInput {
   tokens_output?: number;
   flagged?: boolean;
   flag_reason?: string;
+  // Enhanced execution metadata
+  timing?: {
+    system_prompt_ms?: number;
+    total_llm_ms?: number;
+    total_tool_ms?: number;
+    iterations?: number;
+  };
+  tokens_cache_creation?: number;
+  tokens_cache_read?: number;
+  active_rule_ids?: number[];
 }
 
 export interface ThreadMessage {
@@ -108,7 +118,7 @@ export interface ThreadMessage {
   content: string;
   content_sanitized: string | null;
   tools_used: string[] | null;
-  tool_calls: Array<{ name: string; input: unknown; result: unknown }> | null;
+  tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean }> | null;
   knowledge_ids: number[] | null;
   model: string | null;
   latency_ms: number | null;
@@ -128,6 +138,14 @@ export interface ThreadMessage {
   intent_category: string | null;
   sequence_number: number;
   created_at: Date;
+  // Enhanced execution metadata
+  timing_system_prompt_ms: number | null;
+  timing_total_llm_ms: number | null;
+  timing_total_tool_ms: number | null;
+  processing_iterations: number | null;
+  tokens_cache_creation: number | null;
+  tokens_cache_read: number | null;
+  active_rule_ids: number[] | null;
 }
 
 export interface ThreadWithMessages extends Thread {
@@ -324,13 +342,15 @@ export class ThreadService {
       );
       const sequenceNumber = seqResult.rows[0].next_seq;
 
-      // Insert message
+      // Insert message with enhanced execution metadata
       const result = await client.query<ThreadMessage>(
         `INSERT INTO addie_thread_messages (
           thread_id, role, content, content_sanitized, tools_used, tool_calls,
           knowledge_ids, model, latency_ms, tokens_input, tokens_output,
-          flagged, flag_reason, sequence_number
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          flagged, flag_reason, sequence_number,
+          timing_system_prompt_ms, timing_total_llm_ms, timing_total_tool_ms,
+          processing_iterations, tokens_cache_creation, tokens_cache_read, active_rule_ids
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
         RETURNING *`,
         [
           input.thread_id,
@@ -347,6 +367,13 @@ export class ThreadService {
           input.flagged || false,
           input.flag_reason || null,
           sequenceNumber,
+          input.timing?.system_prompt_ms || null,
+          input.timing?.total_llm_ms || null,
+          input.timing?.total_tool_ms || null,
+          input.timing?.iterations || null,
+          input.tokens_cache_creation || null,
+          input.tokens_cache_read || null,
+          input.active_rule_ids || null,
         ]
       );
 

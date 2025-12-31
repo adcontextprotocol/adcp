@@ -11,6 +11,7 @@ import { fileURLToPath } from "url";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { AddieDatabase, type RuleType } from "../db/addie-db.js";
+import { query } from "../db/client.js";
 import { analyzeInteractions, previewRuleChange } from "../addie/jobs/rule-analyzer.js";
 import { invalidateAddieRulesCache } from "../addie/handler.js";
 import {
@@ -570,6 +571,197 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       res.status(500).json({
         error: "Internal server error",
         message: "Unable to flag message",
+      });
+    }
+  });
+
+  // POST /api/admin/addie/threads/:id/diagnose - Get Claude's analysis of a thread
+  apiRouter.post("/threads/:id/diagnose", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const threadService = getThreadService();
+      const { id } = req.params;
+      const { feedback } = req.body;
+
+      // Get thread with messages
+      const thread = await threadService.getThreadWithMessages(id);
+      if (!thread) {
+        return res.status(404).json({ error: "Thread not found" });
+      }
+
+      // Build context for Claude analysis
+      const messagesContext = thread.messages.map(m => {
+        const roleLabel = m.role === 'user' ? 'User' : m.role === 'assistant' ? 'Addie' : m.role;
+        let content = `[${roleLabel}]: ${m.content}`;
+        if (m.tools_used && m.tools_used.length > 0) {
+          content += `\n  Tools used: ${m.tools_used.join(', ')}`;
+        }
+        if (m.latency_ms) {
+          content += `\n  Latency: ${m.latency_ms}ms`;
+        }
+        if (m.rating) {
+          content += `\n  Rating: ${m.rating}/5`;
+          if (m.rating_notes) {
+            content += ` - "${m.rating_notes}"`;
+          }
+        }
+        return content;
+      }).join('\n\n');
+
+      // Call Claude for diagnosis
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+
+      const diagnosisPrompt = `You are analyzing an Addie conversation to help improve our AI assistant. Addie is an AI assistant for the AgenticAdvertising.org community that helps with questions about AdCP (Advertising Context Protocol) and agentic advertising.
+
+Here is the conversation:
+---
+${messagesContext}
+---
+
+${feedback ? `Admin feedback on this conversation: "${feedback}"` : ''}
+
+Please analyze this conversation and provide:
+
+1. **Response Quality Assessment** (1-2 sentences)
+   - Was the response accurate, helpful, and appropriately detailed?
+
+2. **What Worked Well** (bullet points)
+   - Specific strengths of the response
+
+3. **What Could Be Improved** (bullet points)
+   - Specific issues or gaps
+   - Missed opportunities
+
+4. **Suggested Rule Changes** (if any)
+   - Specific behavior rules that could prevent issues like this
+   - Format as actionable prompts/instructions
+
+5. **Training Data Quality**
+   - Is this a good example for training? Why or why not?
+   - What label would you give it? (excellent, good, needs_improvement, poor)
+
+Be specific and actionable. Focus on patterns that could help improve Addie's behavior.`;
+
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: diagnosisPrompt }],
+      });
+
+      const analysis = response.content[0].type === 'text' ? response.content[0].text : '';
+
+      logger.info({ threadId: id }, "Generated Claude diagnosis for thread");
+      res.json({
+        thread_id: id,
+        analysis,
+        tokens_used: response.usage.input_tokens + response.usage.output_tokens,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error generating thread diagnosis");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to generate diagnosis",
+      });
+    }
+  });
+
+  // GET /api/admin/addie/feedback/summary - Get aggregated feedback stats for dashboard
+  apiRouter.get("/feedback/summary", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { days = '30' } = req.query;
+      const daysInt = parseInt(days as string, 10);
+
+      // Get summary stats
+      const summaryResult = await query<{
+        total_responses: string;
+        rated_responses: string;
+        avg_rating: string | null;
+        positive_count: string;
+        negative_count: string;
+        avg_latency_ms: string | null;
+        flagged_count: string;
+      }>(`
+        SELECT
+          COUNT(*) as total_responses,
+          COUNT(*) FILTER (WHERE rating IS NOT NULL) as rated_responses,
+          ROUND(AVG(rating), 2) as avg_rating,
+          COUNT(*) FILTER (WHERE rating >= 4) as positive_count,
+          COUNT(*) FILTER (WHERE rating <= 2) as negative_count,
+          ROUND(AVG(latency_ms), 0) as avg_latency_ms,
+          COUNT(*) FILTER (WHERE flagged) as flagged_count
+        FROM addie_thread_messages
+        WHERE role = 'assistant'
+          AND created_at > NOW() - make_interval(days => $1)
+      `, [daysInt]);
+
+      // Get feedback tags distribution
+      const tagsResult = await query<{ tag: string; count: string }>(`
+        SELECT tag, COUNT(*) as count
+        FROM addie_thread_messages,
+             LATERAL unnest(feedback_tags) as tag
+        WHERE role = 'assistant'
+          AND created_at > NOW() - make_interval(days => $1)
+        GROUP BY tag
+        ORDER BY count DESC
+      `, [daysInt]);
+
+      // Get daily trend
+      const trendResult = await query<{
+        date: string;
+        total: string;
+        rated: string;
+        avg_rating: string | null;
+      }>(`
+        SELECT
+          DATE_TRUNC('day', created_at)::date as date,
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE rating IS NOT NULL) as rated,
+          ROUND(AVG(rating), 2) as avg_rating
+        FROM addie_thread_messages
+        WHERE role = 'assistant'
+          AND created_at > NOW() - make_interval(days => $1)
+        GROUP BY DATE_TRUNC('day', created_at)
+        ORDER BY date DESC
+        LIMIT 30
+      `, [daysInt]);
+
+      // Get low-rated threads for review
+      const lowRatedResult = await query<{
+        thread_id: string;
+        channel: string;
+        rating: number;
+        rating_notes: string | null;
+        content: string;
+        created_at: Date;
+      }>(`
+        SELECT
+          m.thread_id,
+          t.channel,
+          m.rating,
+          m.rating_notes,
+          LEFT(m.content, 200) as content,
+          m.created_at
+        FROM addie_thread_messages m
+        JOIN addie_threads t ON m.thread_id = t.thread_id
+        WHERE m.role = 'assistant'
+          AND m.rating IS NOT NULL
+          AND m.rating <= 2
+          AND m.created_at > NOW() - make_interval(days => $1)
+        ORDER BY m.created_at DESC
+        LIMIT 10
+      `, [daysInt]);
+
+      res.json({
+        summary: summaryResult.rows[0],
+        tags: tagsResult.rows,
+        trend: trendResult.rows,
+        low_rated: lowRatedResult.rows,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching feedback summary");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch feedback summary",
       });
     }
   });

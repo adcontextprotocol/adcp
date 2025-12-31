@@ -976,6 +976,193 @@
       outline: none;
       border-color: var(--color-brand);
     }
+
+    /* Execution diagnostics */
+    .execution-diagnostics {
+      margin-top: var(--space-2);
+      padding-top: var(--space-2);
+      border-top: 1px dashed var(--color-gray-200);
+    }
+    .diagnostics-toggle {
+      background: none;
+      border: none;
+      color: var(--color-text-muted);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      padding: var(--space-1) 0;
+      text-decoration: underline;
+    }
+    .diagnostics-toggle:hover {
+      color: var(--color-brand);
+    }
+    .diagnostics-content {
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
+      font-size: var(--text-xs);
+    }
+    .diagnostics-section {
+      margin-bottom: var(--space-3);
+    }
+    .diagnostics-section:last-child {
+      margin-bottom: 0;
+    }
+    .diagnostics-section strong {
+      display: block;
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+    .timing-bars {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .timing-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 2px var(--space-2);
+      background: var(--color-bg-card);
+      border-radius: var(--radius-sm);
+    }
+    .timing-row span:first-child {
+      color: var(--color-text-secondary);
+    }
+    .timing-row span:last-child {
+      font-family: var(--font-mono);
+      color: var(--color-text-heading);
+    }
+    .rule-ids {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1);
+    }
+    .rule-id-badge {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    /* Diagnosis panel */
+    .diagnosis-content {
+      background: var(--color-bg-subtle);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      line-height: 1.6;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .diagnosis-content h1, .diagnosis-content h2, .diagnosis-content h3,
+    .diagnosis-content h4, .diagnosis-content h5 {
+      font-size: var(--text-sm);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin: var(--space-3) 0 var(--space-2) 0;
+    }
+    .diagnosis-content h1:first-child, .diagnosis-content h2:first-child {
+      margin-top: 0;
+    }
+    .diagnosis-content ul, .diagnosis-content ol {
+      margin: var(--space-2) 0;
+      padding-left: var(--space-4);
+    }
+    .diagnosis-content li {
+      margin-bottom: var(--space-1);
+    }
+    .diagnosis-content strong {
+      color: var(--color-text-heading);
+    }
+    .diagnosis-loading {
+      text-align: center;
+      padding: var(--space-6);
+      color: var(--color-text-muted);
+    }
+
+    /* Evaluation dashboard */
+    .eval-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+    .eval-stat {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      text-align: center;
+    }
+    .eval-stat-value {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+    .eval-stat-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+    .eval-stat-value.positive { color: var(--color-success-600); }
+    .eval-stat-value.negative { color: var(--color-error-600); }
+    .eval-stat-value.warning { color: var(--color-warning-600); }
+    .tags-distribution {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-bottom: var(--space-4);
+    }
+    .tag-stat {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+    }
+    .tag-stat-count {
+      background: var(--color-brand);
+      color: white;
+      padding: 0 var(--space-1);
+      border-radius: var(--radius-sm);
+      font-weight: var(--font-semibold);
+    }
+    .low-rated-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .low-rated-item {
+      padding: var(--space-3);
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-200);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+    }
+    .low-rated-item:hover {
+      background: var(--color-error-100);
+    }
+    .low-rated-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-1);
+    }
+    .low-rated-rating {
+      color: var(--color-error-600);
+      font-weight: var(--font-bold);
+    }
+    .low-rated-content {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -1018,6 +1205,7 @@
       <button class="tab" data-tab="suggestions">Suggestions</button>
       <button class="tab" data-tab="knowledge">Knowledge Base</button>
       <button class="tab" data-tab="threads">Threads</button>
+      <button class="tab" data-tab="evaluation">Evaluation</button>
       <button class="tab" data-tab="performance">Performance</button>
       <button class="tab" data-tab="queue">Approval Queue</button>
     </div>
@@ -1189,6 +1377,68 @@
       </div>
     </div>
 
+    <!-- Evaluation Tab -->
+    <div class="tab-content" id="tab-evaluation">
+      <div class="card">
+        <div class="header-bar">
+          <div>
+            <h2 style="margin: 0;">Evaluation Dashboard</h2>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-top: var(--space-1);">
+              Training data and feedback metrics for evaluating rule changes
+            </p>
+          </div>
+          <div class="filter-row">
+            <select id="eval-days-filter" onchange="loadEvaluationData()">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+            <button class="btn btn-primary btn-small" onclick="loadEvaluationData()">Refresh</button>
+          </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="eval-stats-grid" id="eval-stats">
+          <div class="eval-stat">
+            <div class="eval-stat-value" id="eval-total">-</div>
+            <div class="eval-stat-label">Total Responses</div>
+          </div>
+          <div class="eval-stat">
+            <div class="eval-stat-value" id="eval-rated">-</div>
+            <div class="eval-stat-label">Rated</div>
+          </div>
+          <div class="eval-stat">
+            <div class="eval-stat-value" id="eval-avg-rating">-</div>
+            <div class="eval-stat-label">Avg Rating</div>
+          </div>
+          <div class="eval-stat">
+            <div class="eval-stat-value positive" id="eval-positive">-</div>
+            <div class="eval-stat-label">Positive (4-5)</div>
+          </div>
+          <div class="eval-stat">
+            <div class="eval-stat-value negative" id="eval-negative">-</div>
+            <div class="eval-stat-label">Negative (1-2)</div>
+          </div>
+          <div class="eval-stat">
+            <div class="eval-stat-value warning" id="eval-flagged">-</div>
+            <div class="eval-stat-label">Flagged</div>
+          </div>
+        </div>
+
+        <!-- Feedback Tags Distribution -->
+        <h3 style="font-size: var(--text-base); margin: var(--space-4) 0 var(--space-2) 0;">Feedback Tags</h3>
+        <div class="tags-distribution" id="eval-tags">
+          <span style="color: var(--color-text-muted);">No feedback tags yet</span>
+        </div>
+
+        <!-- Low Rated Threads -->
+        <h3 style="font-size: var(--text-base); margin: var(--space-4) 0 var(--space-2) 0;">Low-Rated Threads (for review)</h3>
+        <div class="low-rated-list" id="eval-low-rated">
+          <span style="color: var(--color-text-muted);">No low-rated threads</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Performance Tab -->
     <div class="tab-content" id="tab-performance">
       <div class="card">
@@ -1338,10 +1588,21 @@
             <button class="btn btn-primary btn-small" onclick="saveThreadFeedback()">Save Feedback</button>
           </div>
         </div>
+        <!-- Claude Diagnosis Panel -->
+        <div id="diagnosis-panel" class="action-form" style="display: none;">
+          <h4>Claude's Analysis</h4>
+          <div id="diagnosis-content" class="diagnosis-content"></div>
+          <div class="form-buttons">
+            <button class="btn btn-secondary" onclick="hideDiagnosisPanel()">Close</button>
+          </div>
+        </div>
         <!-- Conversation Actions -->
         <div id="conversation-actions" class="conversation-actions" style="display: none;">
           <h4>Actions</h4>
           <div class="action-buttons">
+            <button class="btn btn-primary" onclick="diagnoseThread()" id="btn-diagnose">
+              Diagnose with Claude
+            </button>
             <button class="btn btn-secondary" onclick="showPerspectivesForm()" id="btn-add-perspectives">
               📝 Add to Perspectives
             </button>
@@ -1586,6 +1847,7 @@
           loadedTabs.add(tabName);
           if (tabName === 'performance') loadPerformance();
           if (tabName === 'threads') loadThreads();
+          if (tabName === 'evaluation') loadEvaluationData();
           if (tabName === 'knowledge') loadKnowledge();
           if (tabName === 'queue') loadQueue();
           if (tabName === 'suggestions') loadSuggestions();
@@ -2017,6 +2279,56 @@
 
       } catch (error) {
         console.error('Error loading performance:', error);
+      }
+    }
+
+    // Load evaluation dashboard data
+    async function loadEvaluationData() {
+      try {
+        const days = document.getElementById('eval-days-filter')?.value || '30';
+        const response = await fetch(`/api/admin/addie/feedback/summary?days=${days}`);
+        const data = await response.json();
+
+        // Update summary stats
+        const s = data.summary;
+        document.getElementById('eval-total').textContent = s.total_responses || '0';
+        document.getElementById('eval-rated').textContent = s.rated_responses || '0';
+        document.getElementById('eval-avg-rating').textContent = s.avg_rating ? `${s.avg_rating}/5` : '-';
+        document.getElementById('eval-positive').textContent = s.positive_count || '0';
+        document.getElementById('eval-negative').textContent = s.negative_count || '0';
+        document.getElementById('eval-flagged').textContent = s.flagged_count || '0';
+
+        // Update feedback tags
+        const tagsContainer = document.getElementById('eval-tags');
+        if (data.tags && data.tags.length > 0) {
+          tagsContainer.innerHTML = data.tags.map(t => `
+            <div class="tag-stat">
+              <span>${t.tag.replace('_', ' ')}</span>
+              <span class="tag-stat-count">${t.count}</span>
+            </div>
+          `).join('');
+        } else {
+          tagsContainer.innerHTML = '<span style="color: var(--color-text-muted);">No feedback tags yet</span>';
+        }
+
+        // Update low-rated threads
+        const lowRatedContainer = document.getElementById('eval-low-rated');
+        if (data.low_rated && data.low_rated.length > 0) {
+          lowRatedContainer.innerHTML = data.low_rated.map(lr => `
+            <div class="low-rated-item" onclick="viewThread('${lr.thread_id}')">
+              <div class="low-rated-header">
+                <span class="badge badge-${lr.channel}">${lr.channel}</span>
+                <span class="low-rated-rating">${lr.rating}/5</span>
+              </div>
+              <div class="low-rated-content">${escapeHtml(lr.content)}</div>
+              ${lr.rating_notes ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">"${escapeHtml(lr.rating_notes)}"</div>` : ''}
+            </div>
+          `).join('');
+        } else {
+          lowRatedContainer.innerHTML = '<span style="color: var(--color-text-muted);">No low-rated threads</span>';
+        }
+      } catch (error) {
+        console.error('Error loading evaluation data:', error);
       }
     }
 
@@ -2759,6 +3071,44 @@
         ? `<span class="message-latency" title="Input / Output tokens">${msg.tokens_input || 0} / ${msg.tokens_output || 0} tok</span>`
         : '';
 
+      // Execution diagnostics for assistant messages
+      const hasTiming = msg.timing_system_prompt_ms || msg.timing_total_llm_ms || msg.timing_total_tool_ms;
+      const executionDiagnostics = (msg.role === 'assistant' && (hasTiming || msg.processing_iterations || msg.active_rule_ids)) ? `
+        <div class="execution-diagnostics">
+          <button class="diagnostics-toggle" onclick="toggleDiagnostics('${msg.message_id}')">
+            Execution Details
+          </button>
+          <div class="diagnostics-content" id="diagnostics-${msg.message_id}" style="display: none;">
+            ${hasTiming ? `
+              <div class="diagnostics-section">
+                <strong>Timing Breakdown</strong>
+                <div class="timing-bars">
+                  ${msg.timing_system_prompt_ms ? `<div class="timing-row"><span>System prompt:</span> <span>${msg.timing_system_prompt_ms}ms</span></div>` : ''}
+                  ${msg.timing_total_llm_ms ? `<div class="timing-row"><span>LLM processing:</span> <span>${msg.timing_total_llm_ms}ms</span></div>` : ''}
+                  ${msg.timing_total_tool_ms ? `<div class="timing-row"><span>Tool execution:</span> <span>${msg.timing_total_tool_ms}ms</span></div>` : ''}
+                  ${msg.processing_iterations ? `<div class="timing-row"><span>Iterations:</span> <span>${msg.processing_iterations}</span></div>` : ''}
+                </div>
+              </div>
+            ` : ''}
+            ${(msg.tokens_cache_creation || msg.tokens_cache_read) ? `
+              <div class="diagnostics-section">
+                <strong>Cache Performance</strong>
+                <div class="timing-bars">
+                  ${msg.tokens_cache_creation ? `<div class="timing-row"><span>Cache created:</span> <span>${msg.tokens_cache_creation} tokens</span></div>` : ''}
+                  ${msg.tokens_cache_read ? `<div class="timing-row"><span>Cache read:</span> <span>${msg.tokens_cache_read} tokens</span></div>` : ''}
+                </div>
+              </div>
+            ` : ''}
+            ${msg.active_rule_ids && msg.active_rule_ids.length > 0 ? `
+              <div class="diagnostics-section">
+                <strong>Active Rules</strong>
+                <div class="rule-ids">${msg.active_rule_ids.map(id => `<span class="rule-id-badge">#${id}</span>`).join(' ')}</div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      ` : '';
+
       // Show existing feedback if any
       const existingFeedback = msg.rating ? `
         <div class="existing-feedback">
@@ -2801,10 +3151,18 @@
           <div class="message-content">${renderMarkdown(msg.content)}</div>
           ${hasToolsUsed ? `<div class="tools-used" style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Tools: ${msg.tools_used.join(', ')}</div>` : ''}
           ${hasToolCalls ? renderToolCalls(msg.tool_calls, msg.latency_ms) : ''}
+          ${executionDiagnostics}
           ${msg.flagged ? `<div style="color: var(--color-warning-600); font-size: var(--text-sm); margin-top: var(--space-2);"><strong>Flagged:</strong> ${escapeHtml(msg.flag_reason || 'No reason')}</div>` : ''}
           ${feedbackControls}
         </div>
       `;
+    }
+
+    function toggleDiagnostics(messageId) {
+      const el = document.getElementById(`diagnostics-${messageId}`);
+      if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+      }
     }
 
     function renderToolCalls(toolCalls, totalLatency) {
@@ -3237,6 +3595,49 @@
         console.error('Error saving thread feedback:', error);
         alert('Error saving feedback');
       }
+    }
+
+    // =========================================================================
+    // CLAUDE DIAGNOSIS
+    // =========================================================================
+
+    async function diagnoseThread() {
+      if (!currentThreadData) {
+        alert('No thread selected');
+        return;
+      }
+
+      const diagnosisPanel = document.getElementById('diagnosis-panel');
+      const diagnosisContent = document.getElementById('diagnosis-content');
+
+      // Show loading state
+      diagnosisPanel.style.display = 'block';
+      diagnosisContent.innerHTML = '<div class="diagnosis-loading">Analyzing conversation with Claude...</div>';
+
+      // Get any feedback notes as context
+      const feedbackNotes = document.getElementById('thread-feedback-notes').value;
+
+      try {
+        const response = await fetch(`/api/admin/addie/threads/${currentThreadData.thread_id}/diagnose`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feedback: feedbackNotes || undefined })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to get diagnosis');
+        }
+
+        const data = await response.json();
+        diagnosisContent.innerHTML = renderMarkdown(data.analysis);
+      } catch (error) {
+        console.error('Error getting diagnosis:', error);
+        diagnosisContent.innerHTML = '<div style="color: var(--color-error-600);">Error getting diagnosis. Please try again.</div>';
+      }
+    }
+
+    function hideDiagnosisPanel() {
+      document.getElementById('diagnosis-panel').style.display = 'none';
     }
 
     async function submitPerspectivesEntry() {
