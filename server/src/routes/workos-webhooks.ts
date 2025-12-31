@@ -8,11 +8,13 @@
  * - user.created, user.updated, user.deleted
  * - organization.created, organization.updated, organization.deleted
  * - organization_membership.created, organization_membership.updated, organization_membership.deleted
+ * - organization_domain.created, organization_domain.updated, organization_domain.verified
+ * - organization_domain.deleted, organization_domain.verification_failed
  *
  * Setup in WorkOS Dashboard:
  * 1. Go to Developers > Webhooks
  * 2. Add endpoint: https://your-domain/api/webhooks/workos
- * 3. Select events: user.*, organization.*, organization_membership.*
+ * 3. Select events: user.*, organization.*, organization_membership.*, organization_domain.*
  * 4. Copy the signing secret to WORKOS_WEBHOOK_SECRET env var
  */
 
@@ -59,6 +61,17 @@ interface UserData {
 interface OrganizationDomainData {
   domain: string;
   state: 'verified' | 'pending';
+}
+
+/**
+ * WorkOS organization_domain event data
+ * This is the full domain object from organization_domain.* events
+ */
+interface OrganizationDomainEventData {
+  id: string;
+  domain: string;
+  organization_id: string;
+  state: 'verified' | 'pending' | 'failed';
 }
 
 interface OrganizationData {
@@ -351,6 +364,119 @@ async function deleteOrganizationDomains(orgId: string): Promise<void> {
 }
 
 /**
+ * Upsert a single organization domain from organization_domain.* events
+ */
+async function upsertOrganizationDomain(domainData: OrganizationDomainEventData): Promise<void> {
+  const pool = getPool();
+
+  // First check if the organization exists in our database
+  const orgCheck = await pool.query(
+    `SELECT workos_organization_id FROM organizations WHERE workos_organization_id = $1`,
+    [domainData.organization_id]
+  );
+
+  if (orgCheck.rows.length === 0) {
+    logger.debug(
+      { orgId: domainData.organization_id, domain: domainData.domain },
+      'Organization not in our database, skipping domain upsert'
+    );
+    return;
+  }
+
+  await pool.query(
+    `INSERT INTO organization_domains (
+      workos_organization_id, domain, verified, source
+    ) VALUES ($1, $2, $3, 'workos')
+    ON CONFLICT (domain) DO UPDATE SET
+      workos_organization_id = EXCLUDED.workos_organization_id,
+      verified = EXCLUDED.verified,
+      source = 'workos',
+      updated_at = NOW()`,
+    [
+      domainData.organization_id,
+      domainData.domain,
+      domainData.state === 'verified',
+    ]
+  );
+
+  // If this is verified and there's no primary domain yet, make it primary
+  if (domainData.state === 'verified') {
+    const primaryCheck = await pool.query(
+      `SELECT domain FROM organization_domains
+       WHERE workos_organization_id = $1 AND is_primary = true`,
+      [domainData.organization_id]
+    );
+
+    if (primaryCheck.rows.length === 0) {
+      await pool.query(
+        `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+         WHERE workos_organization_id = $1 AND domain = $2`,
+        [domainData.organization_id, domainData.domain]
+      );
+
+      // Also update the email_domain column
+      await pool.query(
+        `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+         WHERE workos_organization_id = $2`,
+        [domainData.domain, domainData.organization_id]
+      );
+    }
+  }
+
+  logger.info({
+    orgId: domainData.organization_id,
+    domain: domainData.domain,
+    verified: domainData.state === 'verified',
+  }, 'Upserted organization domain');
+}
+
+/**
+ * Delete a single organization domain
+ */
+async function deleteSingleOrganizationDomain(domainData: OrganizationDomainEventData): Promise<void> {
+  const pool = getPool();
+
+  const result = await pool.query(
+    `DELETE FROM organization_domains
+     WHERE workos_organization_id = $1 AND domain = $2 AND source = 'workos'`,
+    [domainData.organization_id, domainData.domain]
+  );
+
+  if (result.rowCount && result.rowCount > 0) {
+    // If we deleted the primary domain, clear email_domain or pick another
+    const remaining = await pool.query(
+      `SELECT domain FROM organization_domains
+       WHERE workos_organization_id = $1 AND verified = true
+       ORDER BY is_primary DESC, created_at ASC
+       LIMIT 1`,
+      [domainData.organization_id]
+    );
+
+    const newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
+
+    await pool.query(
+      `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+       WHERE workos_organization_id = $2`,
+      [newPrimary, domainData.organization_id]
+    );
+
+    if (newPrimary) {
+      await pool.query(
+        `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+         WHERE workos_organization_id = $1 AND domain = $2`,
+        [domainData.organization_id, newPrimary]
+      );
+    }
+
+    logger.info({
+      orgId: domainData.organization_id,
+      domain: domainData.domain,
+      newPrimary,
+    }, 'Deleted organization domain');
+  }
+}
+
+/**
  * Create WorkOS webhooks router
  */
 export function createWorkOSWebhooksRouter(): Router {
@@ -442,6 +568,22 @@ export function createWorkOSWebhooksRouter(): Router {
           case 'organization.deleted': {
             const org = event.data as unknown as OrganizationData;
             await deleteOrganizationDomains(org.id);
+            break;
+          }
+
+          // organization_domain.* events for granular domain management
+          case 'organization_domain.created':
+          case 'organization_domain.updated':
+          case 'organization_domain.verified': {
+            const domainData = event.data as unknown as OrganizationDomainEventData;
+            await upsertOrganizationDomain(domainData);
+            break;
+          }
+
+          case 'organization_domain.deleted':
+          case 'organization_domain.verification_failed': {
+            const domainData = event.data as unknown as OrganizationDomainEventData;
+            await deleteSingleOrganizationDomain(domainData);
             break;
           }
 
