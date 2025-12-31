@@ -510,6 +510,8 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               prospect_next_action,
               prospect_next_action_date,
               parent_organization_id,
+              company_type,
+              prospect_owner,
             } = prospect;
 
             if (!name || typeof name !== "string") {
@@ -541,8 +543,10 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               prospect_contact_title,
               prospect_next_action,
               prospect_next_action_date,
-              parent_organization_id
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+              parent_organization_id,
+              company_type,
+              prospect_owner
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING *`,
               [
                 workosOrg.id,
@@ -556,6 +560,8 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 prospect_next_action || null,
                 prospect_next_action_date || null,
                 parent_organization_id || null,
+                company_type || null,
+                prospect_owner || null,
               ]
             );
 
