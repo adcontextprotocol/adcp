@@ -520,10 +520,10 @@ export class ThreadService {
     const result = await query<Thread>(
       `SELECT * FROM addie_threads
        WHERE user_type = $1 AND user_id = $2
-         AND last_message_at > NOW() - INTERVAL '${maxAgeMinutes} minutes'
+         AND last_message_at > NOW() - make_interval(mins => $3)
        ORDER BY last_message_at DESC
        LIMIT 1`,
-      [userType, userId]
+      [userType, userId, maxAgeMinutes]
     );
     return result.rows[0] || null;
   }
@@ -551,6 +551,8 @@ export class ThreadService {
     unique_users: number;
     avg_messages_per_thread: number;
     threads_last_24h: number;
+    threads_30d: number;
+    messages_30d: number;
     flagged_threads: number;
     unreviewed_threads: number;
     avg_rating: number | null;
@@ -564,6 +566,8 @@ export class ThreadService {
       unique_users: string;
       avg_messages_per_thread: string;
       threads_last_24h: string;
+      threads_30d: string;
+      messages_30d: string;
       flagged_threads: string;
       unreviewed_threads: string;
       avg_rating: string | null;
@@ -577,6 +581,8 @@ export class ThreadService {
         COUNT(DISTINCT t.user_id) FILTER (WHERE t.user_id IS NOT NULL) as unique_users,
         ROUND(AVG(t.message_count)::numeric, 1) as avg_messages_per_thread,
         COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '24 hours') as threads_last_24h,
+        COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '30 days') as threads_30d,
+        (SELECT COUNT(*) FROM addie_thread_messages WHERE created_at > NOW() - INTERVAL '30 days') as messages_30d,
         COUNT(*) FILTER (WHERE t.flagged) as flagged_threads,
         COUNT(*) FILTER (WHERE NOT t.reviewed) as unreviewed_threads,
         (SELECT ROUND(AVG(rating)::numeric, 2) FROM addie_thread_messages WHERE rating IS NOT NULL) as avg_rating,
@@ -593,6 +599,8 @@ export class ThreadService {
       unique_users: parseInt(row.unique_users, 10) || 0,
       avg_messages_per_thread: parseFloat(row.avg_messages_per_thread) || 0,
       threads_last_24h: parseInt(row.threads_last_24h, 10) || 0,
+      threads_30d: parseInt(row.threads_30d, 10) || 0,
+      messages_30d: parseInt(row.messages_30d, 10) || 0,
       flagged_threads: parseInt(row.flagged_threads, 10) || 0,
       unreviewed_threads: parseInt(row.unreviewed_threads, 10) || 0,
       avg_rating: row.avg_rating ? parseFloat(row.avg_rating) : null,
@@ -613,7 +621,8 @@ export class ThreadService {
     const result = await query(
       `DELETE FROM addie_threads
        WHERE user_id IS NULL
-         AND updated_at < NOW() - INTERVAL '${olderThanDays} days'`
+         AND updated_at < NOW() - make_interval(days => $1)`,
+      [olderThanDays]
     );
     return result.rowCount ?? 0;
   }

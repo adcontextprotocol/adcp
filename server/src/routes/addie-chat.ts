@@ -356,10 +356,25 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
     res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
     res.flushHeaders();
 
-    // Helper to send SSE events
+    // Track connection state
+    let connectionClosed = false;
+
+    // Handle client disconnect
+    req.on("close", () => {
+      connectionClosed = true;
+      logger.debug("Addie Chat Stream: Client disconnected");
+    });
+
+    // Helper to send SSE events (checks if connection is still open)
     const sendEvent = (event: string, data: unknown) => {
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (connectionClosed) return;
+      try {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (err) {
+        logger.warn({ err }, "Addie Chat Stream: Failed to write to response");
+        connectionClosed = true;
+      }
     };
 
     try {
@@ -478,6 +493,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const toolExecutions: Array<{ name: string; input: Record<string, unknown>; result: string }> = [];
 
       for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages)) {
+        // Break early if client disconnected (still save partial response below)
+        if (connectionClosed) {
+          logger.info("Addie Chat Stream: Breaking loop due to client disconnect");
+          break;
+        }
+
         if (event.type === 'text') {
           fullText += event.text;
           sendEvent("text", { text: event.text });

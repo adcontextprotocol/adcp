@@ -494,7 +494,7 @@ async function handleUserMessage({
       // Stop the stream with feedback buttons attached
       try {
         await streamer.stop({
-          blocks: [buildFeedbackBlock(thread.thread_id)],
+          blocks: [buildFeedbackBlock()],
         });
       } catch (stopError) {
         logger.warn({ stopError }, 'Addie Bolt: Stream stop failed');
@@ -518,7 +518,7 @@ async function handleUserMessage({
                 text: outputValidation.sanitized,
               },
             },
-            buildFeedbackBlock(thread.thread_id),
+            buildFeedbackBlock(),
           ],
         });
       } catch (error) {
@@ -832,7 +832,7 @@ async function handleFeedbackAction({ ack, body, client }: any): Promise<void> {
 /**
  * Build feedback buttons block for assistant responses
  */
-function buildFeedbackBlock(_threadId?: string): {
+function buildFeedbackBlock(): {
   type: 'context_actions';
   elements: Array<{
     type: 'feedback_buttons';

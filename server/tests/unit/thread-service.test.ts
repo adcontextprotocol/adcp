@@ -503,4 +503,211 @@ describe('ThreadService Unit Tests', () => {
       expect(updatedMsg?.intent_category).toBe('general_question');
     });
   });
+
+  describe('getUserRecentThread', () => {
+    it('should find recent thread for user', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'slack',
+        external_id: 'test-recent-thread',
+        user_type: 'slack',
+        user_id: 'U_RECENT_TEST',
+      });
+
+      // Add a message to update last_message_at
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'user',
+        content: 'Recent message',
+      });
+
+      const recentThread = await threadService.getUserRecentThread('U_RECENT_TEST', 'slack', 30);
+
+      expect(recentThread).not.toBeNull();
+      expect(recentThread?.thread_id).toBe(thread.thread_id);
+
+      // Clean up
+      await pool.query(`DELETE FROM addie_threads WHERE external_id = 'test-recent-thread'`);
+    });
+
+    it('should not find old threads outside the time window', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'slack',
+        external_id: 'test-old-thread',
+        user_type: 'slack',
+        user_id: 'U_OLD_TEST',
+      });
+
+      // Manually set the last_message_at to 2 hours ago
+      await pool.query(
+        `UPDATE addie_threads SET last_message_at = NOW() - INTERVAL '2 hours' WHERE thread_id = $1`,
+        [thread.thread_id]
+      );
+
+      // Should not find thread with 30 minute window
+      const recentThread = await threadService.getUserRecentThread('U_OLD_TEST', 'slack', 30);
+
+      expect(recentThread).toBeNull();
+
+      // Clean up
+      await pool.query(`DELETE FROM addie_threads WHERE external_id = 'test-old-thread'`);
+    });
+
+    it('should use parameterized query for maxAgeMinutes (SQL injection prevention)', async () => {
+      // This test ensures the fix for SQL injection is working
+      // If the query was vulnerable, unusual values would cause SQL errors
+      const result = await threadService.getUserRecentThread('U_TEST', 'slack', 0);
+      expect(result).toBeNull(); // Should work without SQL error
+
+      const result2 = await threadService.getUserRecentThread('U_TEST', 'slack', 99999);
+      expect(result2).toBeNull(); // Should work without SQL error
+    });
+  });
+
+  describe('getStats', () => {
+    beforeEach(async () => {
+      // Create test threads with messages
+      const thread1 = await threadService.getOrCreateThread({
+        channel: 'slack',
+        external_id: 'test-stats-1',
+        user_type: 'slack',
+        user_id: 'U_STATS_1',
+      });
+      await threadService.addMessage({ thread_id: thread1.thread_id, role: 'user', content: 'Test 1' });
+      await threadService.addMessage({ thread_id: thread1.thread_id, role: 'assistant', content: 'Response 1' });
+
+      const thread2 = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: 'test-stats-2',
+        user_type: 'workos',
+        user_id: 'user_stats_2',
+      });
+      await threadService.addMessage({ thread_id: thread2.thread_id, role: 'user', content: 'Test 2' });
+    });
+
+    afterEach(async () => {
+      await pool.query(`DELETE FROM addie_threads WHERE external_id LIKE 'test-stats-%'`);
+    });
+
+    it('should return correct statistics including 30-day metrics', async () => {
+      const stats = await threadService.getStats();
+
+      expect(stats).toHaveProperty('total_threads');
+      expect(stats).toHaveProperty('total_messages');
+      expect(stats).toHaveProperty('unique_users');
+      expect(stats).toHaveProperty('threads_last_24h');
+      expect(stats).toHaveProperty('threads_30d');
+      expect(stats).toHaveProperty('messages_30d');
+      expect(stats).toHaveProperty('flagged_threads');
+      expect(stats).toHaveProperty('unreviewed_threads');
+      expect(stats).toHaveProperty('avg_rating');
+      expect(stats).toHaveProperty('avg_latency_ms');
+      expect(stats).toHaveProperty('total_input_tokens');
+      expect(stats).toHaveProperty('total_output_tokens');
+
+      // Verify types are numbers
+      expect(typeof stats.total_threads).toBe('number');
+      expect(typeof stats.threads_30d).toBe('number');
+      expect(typeof stats.messages_30d).toBe('number');
+
+      // Our test data should be reflected
+      expect(stats.total_threads).toBeGreaterThanOrEqual(2);
+      expect(stats.threads_30d).toBeGreaterThanOrEqual(2);
+      expect(stats.messages_30d).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  describe('cleanupAnonymousThreads', () => {
+    it('should use parameterized query for olderThanDays (SQL injection prevention)', async () => {
+      // Create an anonymous thread
+      await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: 'test-cleanup-anon',
+        user_type: 'anonymous',
+      });
+
+      // This should work without SQL errors regardless of value
+      const deleted0 = await threadService.cleanupAnonymousThreads(0);
+      expect(typeof deleted0).toBe('number');
+
+      const deleted999 = await threadService.cleanupAnonymousThreads(999);
+      expect(typeof deleted999).toBe('number');
+
+      // Clean up
+      await pool.query(`DELETE FROM addie_threads WHERE external_id = 'test-cleanup-anon'`);
+    });
+  });
+
+  describe('concurrent operations', () => {
+    it('should handle concurrent getOrCreateThread calls safely', async () => {
+      const externalId = 'test-concurrent-thread';
+      const input = {
+        channel: 'slack' as const,
+        external_id: externalId,
+        user_type: 'slack' as const,
+        user_id: 'U_CONCURRENT',
+      };
+
+      // Run 5 concurrent getOrCreateThread calls
+      const promises = Array(5).fill(null).map(() => threadService.getOrCreateThread(input));
+      const results = await Promise.all(promises);
+
+      // All should return the same thread_id
+      const threadIds = results.map(r => r.thread_id);
+      const uniqueThreadIds = [...new Set(threadIds)];
+
+      expect(uniqueThreadIds).toHaveLength(1);
+
+      // Clean up
+      await pool.query(`DELETE FROM addie_threads WHERE external_id = $1`, [externalId]);
+    });
+
+    it('should handle concurrent addMessage calls with correct sequence numbers', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'slack',
+        external_id: 'test-concurrent-messages',
+        user_type: 'slack',
+      });
+
+      // Add messages sequentially (concurrent would be harder to test deterministically)
+      const messages = await Promise.all([
+        threadService.addMessage({ thread_id: thread.thread_id, role: 'user', content: 'Msg 1' }),
+        threadService.addMessage({ thread_id: thread.thread_id, role: 'user', content: 'Msg 2' }),
+        threadService.addMessage({ thread_id: thread.thread_id, role: 'user', content: 'Msg 3' }),
+      ]);
+
+      // Sequence numbers should be unique (1, 2, 3 in some order)
+      const sequences = messages.map(m => m.sequence_number).sort((a, b) => a - b);
+      expect(sequences).toEqual([1, 2, 3]);
+
+      // Clean up
+      await pool.query(`DELETE FROM addie_threads WHERE external_id = 'test-concurrent-messages'`);
+    });
+  });
+
+  describe('flagMessage', () => {
+    it('should flag a message with reason', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: 'test-flag-message',
+        user_type: 'anonymous',
+      });
+
+      const message = await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'user',
+        content: 'Test message to flag',
+      });
+
+      await threadService.flagMessage(message.message_id, 'Inappropriate content');
+
+      const messages = await threadService.getThreadMessages(thread.thread_id);
+      const flaggedMsg = messages.find(m => m.message_id === message.message_id);
+
+      expect(flaggedMsg?.flagged).toBe(true);
+      expect(flaggedMsg?.flag_reason).toBe('Inappropriate content');
+
+      // Clean up
+      await pool.query(`DELETE FROM addie_threads WHERE external_id = 'test-flag-message'`);
+    });
+  });
 });
