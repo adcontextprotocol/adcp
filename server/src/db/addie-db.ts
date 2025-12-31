@@ -204,7 +204,17 @@ export interface WebConversationStats {
 
 // ============== Rules Types ==============
 
-export type RuleType = 'system_prompt' | 'behavior' | 'knowledge' | 'constraint' | 'response_style' | 'engagement';
+export type RuleType = 'system_prompt' | 'behavior' | 'knowledge' | 'constraint' | 'response_style';
+
+/**
+ * Context determines when a rule is applied:
+ * - null/undefined: Always included in main system prompt
+ * - 'engagement': Only for "should I respond?" channel evaluation
+ * - 'admin': Only when talking to admin users
+ * - 'member': Only when talking to organization members
+ * - 'anonymous': Only when talking to anonymous/unlinked users
+ */
+export type RuleContext = 'engagement' | 'admin' | 'member' | 'anonymous' | null;
 
 export interface AddieRule {
   id: number;
@@ -223,6 +233,8 @@ export interface AddieRule {
   created_by: string | null;
   created_at: Date;
   updated_at: Date;
+  /** Context where this rule applies (null = always in main prompt) */
+  context: RuleContext;
 }
 
 export interface AddieRuleInput {
@@ -232,6 +244,8 @@ export interface AddieRuleInput {
   content: string;
   priority?: number;
   created_by?: string;
+  /** Context where this rule applies (null = always in main prompt) */
+  context?: RuleContext;
 }
 
 // ============== Suggestions Types ==============
@@ -1396,10 +1410,26 @@ export class AddieDatabase {
   }
 
   /**
+   * Get active rules by context
+   * @param context - The context to filter by (null for default/main prompt rules)
+   */
+  async getRulesByContext(context: RuleContext): Promise<AddieRule[]> {
+    const result = await query<AddieRule>(
+      context === null
+        ? `SELECT * FROM addie_rules WHERE is_active = TRUE AND context IS NULL ORDER BY priority DESC, rule_type, name`
+        : `SELECT * FROM addie_rules WHERE is_active = TRUE AND context = $1 ORDER BY priority DESC, rule_type, name`,
+      context === null ? [] : [context]
+    );
+    return result.rows;
+  }
+
+  /**
    * Build system prompt from active rules
+   * Only includes rules with context = NULL (default rules)
    */
   async buildSystemPrompt(): Promise<string> {
-    const rules = await this.getActiveRules();
+    // Only get rules without a specific context (main prompt rules)
+    const rules = await this.getRulesByContext(null);
 
     const sections: Record<RuleType, string[]> = {
       system_prompt: [],
@@ -1407,7 +1437,6 @@ export class AddieDatabase {
       knowledge: [],
       constraint: [],
       response_style: [],
-      engagement: [],
     };
 
     for (const rule of rules) {

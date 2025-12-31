@@ -1000,8 +1000,8 @@ async function handleChannelMessage({
     'Addie Bolt: Evaluating channel message for potential response');
 
   try {
-    // Load engagement rules from database
-    const engagementRules = await addieDb.getRulesByType('engagement');
+    // Load engagement rules from database (rules with context = 'engagement')
+    const engagementRules = await addieDb.getRulesByContext('engagement');
     const rulesContext = engagementRules.length > 0
       ? engagementRules.map(r => r.content).join('\n\n')
       : `Respond to:
