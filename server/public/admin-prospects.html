@@ -901,11 +901,15 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           const domainSet = new Set();
           if (slackRes && slackRes.ok) {
             const data = await slackRes.json();
-            data.filter(d => d.is_new_prospect).forEach(d => domainSet.add(d.domain));
+            // Slack endpoint returns { domains: [...] }
+            const domains = Array.isArray(data) ? data : data.domains || [];
+            domains.filter(d => d.is_new_prospect).forEach(d => domainSet.add(d.domain));
           }
           if (emailRes && emailRes.ok) {
             const data = await emailRes.json();
-            data.filter(d => d.is_new_prospect).forEach(d => domainSet.add(d.domain));
+            // Email endpoint returns array directly
+            const domains = Array.isArray(data) ? data : data.domains || [];
+            domains.filter(d => d.is_new_prospect).forEach(d => domainSet.add(d.domain));
           }
           document.getElementById('count-domain_discovery').textContent = domainSet.size;
         } catch (e) {
