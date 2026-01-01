@@ -3231,10 +3231,12 @@ export class HTTPServer {
         if (customerOrgMap.size === 0) {
           return res.json({
             success: true,
-            message: 'No organizations with Stripe customers found',
-            invoices_imported: 0,
-            refunds_imported: 0,
-            skipped: 0,
+            message: 'No organizations with Stripe customers found. Link customers to orgs first.',
+            invoices_found: 0,
+            refunds_found: 0,
+            processed: 0,
+            subscriptions_synced: 0,
+            subscriptions_failed: 0,
           });
         }
 
