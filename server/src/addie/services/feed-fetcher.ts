@@ -39,7 +39,8 @@ interface FeedItem {
 /**
  * Check if a feed URL is an HTTP/HTTPS URL that can be fetched as RSS
  */
-function isRssFetchable(feedUrl: string): boolean {
+function isRssFetchable(feedUrl: string | null): feedUrl is string {
+  if (!feedUrl) return false;
   try {
     const url = new URL(feedUrl);
     return url.protocol === 'http:' || url.protocol === 'https:';

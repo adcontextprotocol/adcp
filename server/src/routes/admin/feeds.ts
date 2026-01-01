@@ -182,21 +182,41 @@ export function createAdminFeedsRouter(): Router {
   // POST /api/admin/feeds - Create new feed
   router.post('/', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { name, feed_url, category } = req.body;
+      const { name, feed_url, category, enable_email } = req.body;
 
-      if (!name || !feed_url) {
-        return res.status(400).json({ error: 'Name and feed_url are required' });
+      // For email-only feeds, we don't require a feed_url
+      const isEmailOnly = enable_email && !feed_url;
+
+      if (!name) {
+        return res.status(400).json({ error: 'Name is required' });
       }
 
-      // Validate URL
-      try {
-        new URL(feed_url);
-      } catch {
-        return res.status(400).json({ error: 'Invalid feed URL' });
+      if (!isEmailOnly && !feed_url) {
+        return res.status(400).json({ error: 'Feed URL is required for RSS feeds' });
       }
 
-      const feed = await addFeed(name, feed_url, category);
-      logger.info({ feedId: feed.id, name, feed_url }, 'Feed created');
+      // Validate URL if provided
+      if (feed_url) {
+        try {
+          new URL(feed_url);
+        } catch {
+          return res.status(400).json({ error: 'Invalid feed URL' });
+        }
+      }
+
+      // Create the feed (with null feed_url for email-only)
+      const feed = await addFeed(name, feed_url || null, category);
+      logger.info({ feedId: feed.id, name, feed_url, isEmailOnly }, 'Feed created');
+
+      // If email-only, enable email subscription immediately
+      if (isEmailOnly) {
+        const updatedFeed = await enableFeedEmail(feed.id);
+        if (updatedFeed) {
+          logger.info({ feedId: feed.id, emailSlug: updatedFeed.email_slug }, 'Email enabled for new feed');
+          return res.json({ feed: updatedFeed });
+        }
+      }
+
       res.json({ feed });
     } catch (error) {
       logger.error({ err: error }, 'Create feed error');

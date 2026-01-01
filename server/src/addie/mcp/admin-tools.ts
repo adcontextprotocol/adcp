@@ -31,6 +31,12 @@ import {
   mapIndustryToCompanyType,
 } from '../../services/lusha.js';
 import { createProspect } from '../../services/prospect.js';
+import {
+  getAllFeedsWithStats,
+  addFeed,
+  getFeedStats,
+  type FeedWithStats,
+} from '../../db/industry-feeds-db.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -332,6 +338,68 @@ Returns a list of organizations with open or draft invoices.`,
           description: 'Maximum results (default 10)',
         },
       },
+      required: [],
+    },
+  },
+
+  // ============================================
+  // INDUSTRY FEED MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'search_industry_feeds',
+    description:
+      'Search and list RSS industry feeds. Use this to find feeds by name, URL, or category, or to see feeds with errors that need attention.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query - feed name, URL, or category (optional)',
+        },
+        status: {
+          type: 'string',
+          enum: ['all', 'active', 'inactive', 'errors'],
+          description: 'Filter by status: all, active, inactive, or errors (feeds with fetch errors)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default 10)',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'add_industry_feed',
+    description:
+      'Add a new RSS feed to monitor for industry news. Provide the feed URL and a name.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name for the feed (e.g., "AdExchanger", "Digiday")',
+        },
+        feed_url: {
+          type: 'string',
+          description: 'RSS feed URL (e.g., "https://www.adexchanger.com/feed/")',
+        },
+        category: {
+          type: 'string',
+          enum: ['ad-tech', 'advertising', 'marketing', 'media', 'tech'],
+          description: 'Category for the feed',
+        },
+      },
+      required: ['name', 'feed_url'],
+    },
+  },
+  {
+    name: 'get_feed_stats',
+    description:
+      'Get statistics about industry feeds - total feeds, active feeds, articles collected, processing status, etc.',
+    input_schema: {
+      type: 'object',
+      properties: {},
       required: [],
     },
   },
@@ -922,6 +990,168 @@ export function createAdminToolHandlers(
     response += `\n_Use add_prospect to add any of these companies to your prospect list._`;
 
     return response;
+  });
+
+  // ============================================
+  // INDUSTRY FEED MANAGEMENT HANDLERS
+  // ============================================
+
+  // Search industry feeds
+  handlers.set('search_industry_feeds', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const query = (input.query as string)?.toLowerCase().trim() || '';
+    const status = (input.status as string) || 'all';
+    const limit = Math.min(Math.max((input.limit as number) || 10, 1), 50);
+
+    try {
+      const allFeeds = await getAllFeedsWithStats();
+
+      // Filter feeds based on criteria
+      let filtered = allFeeds;
+
+      // Apply status filter
+      if (status === 'active') {
+        filtered = filtered.filter(f => f.is_active);
+      } else if (status === 'inactive') {
+        filtered = filtered.filter(f => !f.is_active);
+      } else if (status === 'errors') {
+        filtered = filtered.filter(f => f.error_count > 0);
+      }
+
+      // Apply search query
+      if (query) {
+        filtered = filtered.filter(f =>
+          f.name.toLowerCase().includes(query) ||
+          (f.feed_url || '').toLowerCase().includes(query) ||
+          (f.category || '').toLowerCase().includes(query)
+        );
+      }
+
+      // Limit results
+      const results = filtered.slice(0, limit);
+
+      if (results.length === 0) {
+        let msg = 'No feeds found';
+        if (query) msg += ` matching "${query}"`;
+        if (status !== 'all') msg += ` with status "${status}"`;
+        return msg + '.';
+      }
+
+      let response = `## Industry Feeds`;
+      if (status !== 'all') response += ` (${status})`;
+      if (query) response += ` matching "${query}"`;
+      response += `\n\n`;
+
+      for (const feed of results) {
+        const statusIcon = feed.is_active ? '✅' : '⏸️';
+        const errorIcon = feed.error_count > 0 ? ' ⚠️' : '';
+
+        response += `${statusIcon}${errorIcon} **${feed.name}**\n`;
+        response += `   URL: ${feed.feed_url}\n`;
+        if (feed.category) response += `   Category: ${feed.category}\n`;
+        response += `   Articles: ${feed.article_count} (${feed.articles_this_week} this week)\n`;
+        if (feed.error_count > 0) {
+          response += `   Errors: ${feed.error_count}`;
+          if (feed.last_error) response += ` - ${feed.last_error}`;
+          response += `\n`;
+        }
+        if (feed.last_fetched_at) {
+          response += `   Last fetched: ${formatDate(new Date(feed.last_fetched_at))}\n`;
+        }
+        response += `\n`;
+      }
+
+      if (filtered.length > limit) {
+        response += `_Showing ${limit} of ${filtered.length} feeds._\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error searching feeds');
+      return '❌ Failed to search feeds. Please try again.';
+    }
+  });
+
+  // Add industry feed
+  handlers.set('add_industry_feed', async (input) => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    const name = (input.name as string)?.trim();
+    const feedUrl = (input.feed_url as string)?.trim();
+    const category = input.category as string | undefined;
+
+    if (!name || name.length < 1) {
+      return '❌ Feed name is required.';
+    }
+    if (name.length > 200) {
+      return '❌ Feed name must be 200 characters or less.';
+    }
+    if (!feedUrl) {
+      return '❌ Feed URL is required.';
+    }
+    if (feedUrl.length > 2000) {
+      return '❌ Feed URL must be 2000 characters or less.';
+    }
+
+    // Validate URL
+    try {
+      new URL(feedUrl);
+    } catch {
+      return `❌ Invalid feed URL: ${feedUrl}`;
+    }
+
+    try {
+      const feed = await addFeed(name, feedUrl, category);
+      logger.info({ feedId: feed.id, name, feedUrl }, 'Feed created via Addie');
+
+      let response = `✅ Added feed **${name}**\n\n`;
+      response += `**URL:** ${feedUrl}\n`;
+      if (category) response += `**Category:** ${category}\n`;
+      response += `**ID:** ${feed.id}\n`;
+      response += `\n_The feed will be fetched on the next scheduled run._`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, name, feedUrl }, 'Error adding feed');
+      if (error instanceof Error && error.message.includes('duplicate')) {
+        return `❌ A feed with this URL already exists.`;
+      }
+      return '❌ Failed to add feed. Please try again.';
+    }
+  });
+
+  // Get feed stats
+  handlers.set('get_feed_stats', async () => {
+    const adminCheck = requireAdminFromContext();
+    if (adminCheck) return adminCheck;
+
+    try {
+      const stats = await getFeedStats();
+
+      let response = `## Industry Feed Statistics\n\n`;
+      response += `**Total Feeds:** ${stats.total_feeds}\n`;
+      response += `**Active Feeds:** ${stats.active_feeds}\n\n`;
+
+      response += `### Articles\n`;
+      response += `**Total Collected:** ${stats.total_rss_perspectives.toLocaleString()}\n`;
+      response += `**Today:** ${stats.rss_perspectives_today}\n\n`;
+
+      response += `### Processing Status\n`;
+      response += `**Pending:** ${stats.pending_processing}\n`;
+      response += `**Processed:** ${stats.processed_success}\n`;
+      if (stats.processed_failed > 0) {
+        response += `**Failed:** ${stats.processed_failed} ⚠️\n`;
+      }
+      response += `**Alerts Sent Today:** ${stats.alerts_sent_today}\n`;
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error getting feed stats');
+      return '❌ Failed to get feed statistics. Please try again.';
+    }
   });
 
   return handlers;
