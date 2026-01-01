@@ -366,8 +366,8 @@ async function handleUserMessage({
   }
 
   // Skip bot messages to prevent loops (Addie talking to herself)
-  if ('bot_id' in event && (event as { bot_id?: string }).bot_id) {
-    logger.debug('Addie Bolt: Ignoring assistant message from bot');
+  if ('bot_id' in event && event.bot_id) {
+    logger.debug({ botId: event.bot_id }, 'Addie Bolt: Ignoring assistant message from bot');
     return;
   }
 
