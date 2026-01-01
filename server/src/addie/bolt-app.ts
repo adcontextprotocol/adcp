@@ -365,6 +365,12 @@ async function handleUserMessage({
     return;
   }
 
+  // Skip bot messages to prevent loops (Addie talking to herself)
+  if ('bot_id' in event && (event as { bot_id?: string }).bot_id) {
+    logger.debug('Addie Bolt: Ignoring assistant message from bot');
+    return;
+  }
+
   // Extract fields safely - not all message events have these fields
   const userId = 'user' in event ? event.user : undefined;
   const messageText = 'text' in event ? event.text : undefined;
@@ -695,6 +701,12 @@ async function handleAppMention({
 }: SlackEventMiddlewareArgs<'app_mention'> & { context: { botUserId?: string } }): Promise<void> {
   if (!claudeClient) {
     logger.warn('Addie Bolt: Claude client not initialized');
+    return;
+  }
+
+  // Skip bot messages to prevent loops (Addie talking to herself)
+  if ('bot_id' in event && event.bot_id) {
+    logger.debug({ botId: event.bot_id }, 'Addie Bolt: Ignoring mention from bot');
     return;
   }
 
