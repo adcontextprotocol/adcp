@@ -254,6 +254,7 @@
 
       .dashboard-main {
         margin-left: 0;
+        width: 100%;
       }
     }
 
