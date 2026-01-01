@@ -1051,6 +1051,54 @@
       font-size: 10px;
     }
 
+    /* Router decision styling */
+    .router-decision {
+      margin-top: var(--space-2);
+      padding-top: var(--space-2);
+      border-top: 1px dashed var(--color-gray-200);
+    }
+    .router-decision-content {
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-md);
+      font-size: var(--text-xs);
+    }
+    .router-action {
+      font-weight: var(--font-semibold);
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+    }
+    .router-action-respond {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .router-action-ignore {
+      background: var(--color-gray-100);
+      color: var(--color-gray-600);
+    }
+    .router-action-react {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .router-action-clarify {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+    .router-tools {
+      color: var(--color-text-muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      margin-left: var(--space-2);
+    }
+    .router-reason {
+      padding: var(--space-2);
+      background: var(--color-bg-card);
+      border-radius: var(--radius-sm);
+      font-style: italic;
+      color: var(--color-text-secondary);
+    }
+
     /* Diagnosis panel */
     .diagnosis-content {
       background: var(--color-bg-subtle);
@@ -3091,6 +3139,35 @@
         ? `<span class="message-latency" title="Input / Output tokens">${msg.tokens_input || 0} / ${msg.tokens_output || 0} tok</span>`
         : '';
 
+      // Router decision for user messages (from Haiku router)
+      const routerDecision = (msg.role === 'user' && msg.router_decision) ? `
+        <div class="router-decision">
+          <button class="diagnostics-toggle" onclick="toggleRouterDecision('${msg.message_id}')">
+            Router Decision: <span class="router-action router-action-${msg.router_decision.action}">${msg.router_decision.action}</span>
+            ${msg.router_decision.tools && msg.router_decision.tools.length > 0 ? `<span class="router-tools">[${msg.router_decision.tools.join(', ')}]</span>` : ''}
+          </button>
+          <div class="router-decision-content" id="router-${msg.message_id}" style="display: none;">
+            <div class="diagnostics-section">
+              <strong>Decision Details</strong>
+              <div class="timing-bars">
+                <div class="timing-row"><span>Action:</span> <span class="router-action router-action-${msg.router_decision.action}">${msg.router_decision.action}</span></div>
+                ${msg.router_decision.tools && msg.router_decision.tools.length > 0 ? `<div class="timing-row"><span>Tools:</span> <span>${msg.router_decision.tools.join(', ')}</span></div>` : ''}
+                <div class="timing-row"><span>Method:</span> <span>${msg.router_decision.decision_method || 'llm'}</span></div>
+                ${msg.router_decision.latency_ms ? `<div class="timing-row"><span>Latency:</span> <span>${msg.router_decision.latency_ms}ms</span></div>` : ''}
+                ${msg.router_decision.model ? `<div class="timing-row"><span>Model:</span> <span>${msg.router_decision.model}</span></div>` : ''}
+                ${msg.router_decision.tokens_input ? `<div class="timing-row"><span>Tokens:</span> <span>${msg.router_decision.tokens_input} in / ${msg.router_decision.tokens_output || 0} out</span></div>` : ''}
+              </div>
+            </div>
+            ${msg.router_decision.reason ? `
+              <div class="diagnostics-section">
+                <strong>Reason</strong>
+                <div class="router-reason">${escapeHtml(msg.router_decision.reason)}</div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      ` : '';
+
       // Execution diagnostics for assistant messages
       const hasTiming = msg.timing_system_prompt_ms || msg.timing_total_llm_ms || msg.timing_total_tool_ms;
       const executionDiagnostics = (msg.role === 'assistant' && (hasTiming || msg.processing_iterations || msg.active_rule_ids)) ? `
@@ -3169,6 +3246,7 @@
         <div class="message-item ${msg.role}">
           <div class="message-role">${roleLabel}${latencyDisplay}${tokensDisplay}${existingFeedback}</div>
           <div class="message-content">${renderMarkdown(msg.content)}</div>
+          ${routerDecision}
           ${hasToolsUsed ? `<div class="tools-used" style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Tools: ${msg.tools_used.join(', ')}</div>` : ''}
           ${hasToolCalls ? renderToolCalls(msg.tool_calls, msg.latency_ms) : ''}
           ${executionDiagnostics}
@@ -3176,6 +3254,13 @@
           ${feedbackControls}
         </div>
       `;
+    }
+
+    function toggleRouterDecision(messageId) {
+      const el = document.getElementById(`router-${messageId}`);
+      if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+      }
     }
 
     function toggleDiagnostics(messageId) {
