@@ -37,6 +37,15 @@
         ]
       },
       {
+        label: 'Insights',
+        items: [
+          { href: '/admin/insights', label: 'Member Insights', icon: '🧠' },
+          { href: '/admin/insight-types', label: 'Insight Types', icon: '🏷️' },
+          { href: '/admin/insight-goals', label: 'Insight Goals', icon: '🎯' },
+          { href: '/admin/outreach', label: 'Outreach', icon: '📣' },
+        ]
+      },
+      {
         label: 'System',
         items: [
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
