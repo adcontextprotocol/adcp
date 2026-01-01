@@ -507,6 +507,41 @@ export async function getThreadReplies(
 }
 
 /**
+ * Open a group DM (multi-person direct message) with multiple users
+ * Slack calls these "mpim" (multi-person instant message)
+ *
+ * @param userIds - Array of 2-8 Slack user IDs (do NOT include the bot's user ID)
+ * @returns The channel ID of the group DM, or null on error
+ */
+export async function openGroupDM(
+  userIds: string[]
+): Promise<{ channelId: string } | null> {
+  if (userIds.length < 2) {
+    logger.warn({ userIds }, 'openGroupDM requires at least 2 users');
+    return null;
+  }
+
+  if (userIds.length > 8) {
+    logger.warn({ userIds, count: userIds.length }, 'openGroupDM supports max 8 users, truncating');
+    userIds = userIds.slice(0, 8);
+  }
+
+  try {
+    // conversations.open with multiple users creates an mpim (group DM)
+    const response = await slackPostRequest<{ channel: { id: string } }>('conversations.open', {
+      users: userIds.join(','),
+    });
+
+    logger.info({ channelId: response.channel.id, userCount: userIds.length }, 'Opened group DM');
+    return { channelId: response.channel.id };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ error: errorMessage, userIds }, 'Failed to open group DM');
+    return null;
+  }
+}
+
+/**
  * Test the Slack connection (auth.test)
  */
 export async function testSlackConnection(): Promise<{

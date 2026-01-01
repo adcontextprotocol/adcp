@@ -1426,11 +1426,29 @@
           `;
         }).join('');
 
+        // Fetch pending join request count (for admins/owners)
+        let pendingCount = 0;
+        try {
+          const pendingResponse = await fetch(`/api/organizations/${orgId}/pending-count`);
+          if (pendingResponse.ok) {
+            const pendingData = await pendingResponse.json();
+            pendingCount = pendingData.count || 0;
+          }
+        } catch (e) {
+          // Ignore errors fetching pending count
+        }
+
+        const pendingBadge = pendingCount > 0
+          ? `<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; background: var(--color-error-500); color: white; border-radius: 10px; font-size: 11px; font-weight: 600; margin-left: 8px;">${pendingCount}</span>`
+          : '';
+
         container.innerHTML = `
           <div style="margin-bottom: 16px;">
             ${membersHtml}
           </div>
-          <a href="/team?org=${orgId}" class="btn btn-primary btn-sm" style="width: 100%;">Manage Team</a>
+          <a href="/team?org=${orgId}" class="btn btn-primary btn-sm" style="width: 100%; display: flex; align-items: center; justify-content: center;">
+            Manage Team${pendingBadge}
+          </a>
         `;
 
         // Remove border from last member item

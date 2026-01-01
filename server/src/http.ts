@@ -64,6 +64,7 @@ import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink, processPendingResources, processRssPerspectives } from "./addie/services/content-curator.js";
+import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1671,7 +1672,40 @@ export class HTTPServer {
                       interval,
                     }).catch(err => logger.error({ err }, 'Failed to send Slack notification'));
 
-// Send welcome email to new member
+                    // Send thank you to org admin group DM (fire-and-forget)
+                    (async () => {
+                      try {
+                        // Get org admins/owners
+                        const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+                          organizationId: org.workos_organization_id,
+                        });
+                        const adminEmails: string[] = [];
+                        for (const membership of orgMemberships.data) {
+                          if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
+                            try {
+                              const adminUser = await workos!.userManagement.getUser(membership.userId);
+                              if (adminUser.email) {
+                                adminEmails.push(adminUser.email);
+                              }
+                            } catch {
+                              // Skip if can't fetch user
+                            }
+                          }
+                        }
+
+                        if (adminEmails.length > 0) {
+                          await notifySubscriptionThankYou({
+                            orgId: org.workos_organization_id,
+                            orgName: org.name || 'Organization',
+                            adminEmails,
+                          });
+                        }
+                      } catch (err) {
+                        logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to send thank you to admin group DM');
+                      }
+                    })();
+
+                    // Send welcome email to new member
                     sendWelcomeEmail({
                       to: userEmail,
                       organizationName: org.name || 'Unknown Organization',
@@ -5978,10 +6012,23 @@ Disallow: /api/admin/
           });
         }
 
+        // Get user's full details from WorkOS for name
+        let firstName: string | undefined;
+        let lastName: string | undefined;
+        try {
+          const workosUser = await workos!.userManagement.getUser(user.id);
+          firstName = workosUser.firstName || undefined;
+          lastName = workosUser.lastName || undefined;
+        } catch (err) {
+          logger.warn({ err, userId: user.id }, 'Failed to get user details from WorkOS');
+        }
+
         // Create the join request
         const request = await joinRequestDb.createRequest({
           workos_user_id: user.id,
           user_email: user.email,
+          first_name: firstName,
+          last_name: lastName,
           workos_organization_id: organization_id,
         });
 
@@ -6009,8 +6056,46 @@ Disallow: /api/admin/
           resource_id: request.id,
           details: {
             user_email: user.email,
+            first_name: firstName,
+            last_name: lastName,
           },
         });
+
+        // Notify org admins via Slack group DM (fire-and-forget)
+        (async () => {
+          try {
+            // Get org admins/owners
+            const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+              organizationId: organization_id,
+            });
+            const adminEmails: string[] = [];
+            for (const membership of orgMemberships.data) {
+              if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
+                try {
+                  const adminUser = await workos!.userManagement.getUser(membership.userId);
+                  if (adminUser.email) {
+                    adminEmails.push(adminUser.email);
+                  }
+                } catch {
+                  // Skip if can't fetch user
+                }
+              }
+            }
+
+            if (adminEmails.length > 0) {
+              await notifyJoinRequest({
+                orgId: organization_id,
+                orgName,
+                adminEmails,
+                requesterEmail: user.email,
+                requesterFirstName: firstName,
+                requesterLastName: lastName,
+              });
+            }
+          } catch (err) {
+            logger.warn({ err, orgId: organization_id }, 'Failed to notify admins of join request');
+          }
+        })();
 
         res.status(201).json({
           success: true,
@@ -6099,6 +6184,8 @@ Disallow: /api/admin/
           requests: requests.map(r => ({
             id: r.id,
             user_email: r.user_email,
+            first_name: r.first_name,
+            last_name: r.last_name,
             status: r.status,
             created_at: r.created_at,
           })),
@@ -6107,6 +6194,182 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get org join requests error:');
         res.status(500).json({
           error: 'Failed to get join requests',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/organizations/:orgId/pending-count - Get count of pending join requests (admin only)
+    this.app.get('/api/organizations/:orgId/pending-count', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+
+        // Verify user is admin/owner of this organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        const userRole = memberships.data[0].role?.slug || 'member';
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.json({ count: 0 }); // Non-admins see 0
+        }
+
+        const joinRequestDb = new JoinRequestDatabase();
+        const count = await joinRequestDb.getPendingRequestCount(orgId);
+
+        res.json({ count });
+      } catch (error) {
+        logger.error({ err: error }, 'Get pending count error:');
+        res.status(500).json({
+          error: 'Failed to get pending count',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/organizations/:orgId/domains - Get verified domains for an org
+    this.app.get('/api/organizations/:orgId/domains', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+
+        // Verify user is a member of this organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        // Get domains from database
+        const pool = getPool();
+        const result = await pool.query(
+          `SELECT domain, verified, is_primary
+           FROM organization_domains
+           WHERE workos_organization_id = $1
+           ORDER BY is_primary DESC, domain ASC`,
+          [orgId]
+        );
+
+        res.json({
+          domains: result.rows.map(r => ({
+            domain: r.domain,
+            verified: r.verified,
+            is_primary: r.is_primary,
+          })),
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Get org domains error:');
+        res.status(500).json({
+          error: 'Failed to get domains',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    });
+
+    // GET /api/organizations/:orgId/domain-users - Get Slack users from verified domains not in org (admin only)
+    this.app.get('/api/organizations/:orgId/domain-users', requireAuth, async (req, res) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+
+        // Verify user is admin/owner of this organization
+        const memberships = await workos!.userManagement.listOrganizationMemberships({
+          userId: user.id,
+          organizationId: orgId,
+        });
+
+        if (memberships.data.length === 0) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+
+        const userRole = memberships.data[0].role?.slug || 'member';
+        if (userRole !== 'admin' && userRole !== 'owner') {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            message: 'Only admins and owners can view domain users',
+          });
+        }
+
+        // Get verified domains for this org
+        const pool = getPool();
+        const domainsResult = await pool.query(
+          `SELECT domain FROM organization_domains WHERE workos_organization_id = $1 AND verified = true`,
+          [orgId]
+        );
+
+        if (domainsResult.rows.length === 0) {
+          return res.json({ users: [] });
+        }
+
+        const domains = domainsResult.rows.map(r => r.domain.toLowerCase());
+
+        // Get current org members' emails
+        const allMemberships = await workos!.userManagement.listOrganizationMemberships({
+          organizationId: orgId,
+        });
+        const memberEmails = new Set<string>();
+        for (const membership of allMemberships.data) {
+          try {
+            const memberUser = await workos!.userManagement.getUser(membership.userId);
+            if (memberUser.email) {
+              memberEmails.add(memberUser.email.toLowerCase());
+            }
+          } catch {
+            // Skip if can't fetch user
+          }
+        }
+
+        // Get Slack users from these domains who aren't members
+        const domainUsers: Array<{
+          slack_email: string;
+          slack_real_name: string | null;
+          slack_display_name: string | null;
+        }> = [];
+
+        const slackUsersResult = await pool.query(
+          `SELECT slack_email, slack_real_name, slack_display_name
+           FROM slack_user_mappings
+           WHERE slack_is_bot = false
+             AND slack_is_deleted = false
+             AND slack_email IS NOT NULL
+             AND LOWER(SPLIT_PART(slack_email, '@', 2)) = ANY($1)
+           ORDER BY slack_real_name NULLS LAST, slack_display_name NULLS LAST`,
+          [domains]
+        );
+
+        for (const row of slackUsersResult.rows) {
+          if (row.slack_email && !memberEmails.has(row.slack_email.toLowerCase())) {
+            domainUsers.push({
+              slack_email: row.slack_email,
+              slack_real_name: row.slack_real_name,
+              slack_display_name: row.slack_display_name,
+            });
+          }
+        }
+
+        res.json({ users: domainUsers });
+      } catch (error) {
+        logger.error({ err: error }, 'Get domain users error:');
+        res.status(500).json({
+          error: 'Failed to get domain users',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -6198,6 +6461,52 @@ Disallow: /api/admin/
             role_assigned: role,
           },
         });
+
+        // Notify org admins via Slack group DM (fire-and-forget)
+        (async () => {
+          try {
+            // Get org name and admin emails
+            let orgName = 'Organization';
+            try {
+              const org = await workos!.organizations.getOrganization(orgId);
+              orgName = org.name;
+            } catch {
+              // Org may not exist
+            }
+
+            // Get org admins/owners
+            const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+              organizationId: orgId,
+            });
+            const adminEmails: string[] = [];
+            for (const membership of orgMemberships.data) {
+              if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
+                try {
+                  const adminUser = await workos!.userManagement.getUser(membership.userId);
+                  if (adminUser.email) {
+                    adminEmails.push(adminUser.email);
+                  }
+                } catch {
+                  // Skip if can't fetch user
+                }
+              }
+            }
+
+            if (adminEmails.length > 0) {
+              await notifyMemberAdded({
+                orgId,
+                orgName,
+                adminEmails,
+                memberEmail: request.user_email,
+                memberFirstName: request.first_name || undefined,
+                memberLastName: request.last_name || undefined,
+                role,
+              });
+            }
+          } catch (err) {
+            logger.warn({ err, orgId }, 'Failed to notify admins of new member');
+          }
+        })();
 
         res.json({
           success: true,
@@ -7267,6 +7576,10 @@ Disallow: /api/admin/
           statuses: ['active', 'pending'],
         });
 
+        // Get all mapped WorkOS user IDs from Slack
+        const slackDb = new SlackDatabase();
+        const mappedWorkosUserIds = await slackDb.getMappedWorkosUserIds();
+
         // Fetch user details for each membership
         const members = await Promise.all(
           memberships.data.map(async (membership) => {
@@ -7281,6 +7594,7 @@ Disallow: /api/admin/
                 role: membership.role?.slug || 'member',
                 status: membership.status,
                 created_at: membership.createdAt,
+                slack_linked: mappedWorkosUserIds.has(membership.userId),
               };
             } catch (error) {
               // User might have been deleted
@@ -7294,6 +7608,7 @@ Disallow: /api/admin/
                 role: membership.role?.slug || 'member',
                 status: membership.status,
                 created_at: membership.createdAt,
+                slack_linked: false,
               };
             }
           })
