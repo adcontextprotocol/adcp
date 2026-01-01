@@ -7,9 +7,13 @@
  *
  * Usage:
  *   npx tsx scripts/migrate-csv-via-api.ts --file <path-to-csv> --api-url <url> --cookie <session-cookie> [--dry-run]
+ *   npx tsx scripts/migrate-csv-via-api.ts --file <path-to-csv> --api-url <url> --api-key <bearer-token> [--dry-run]
  *
  * For local testing:
  *   npx tsx scripts/migrate-csv-via-api.ts --file prospects.csv --api-url http://localhost:3000 --cookie "wos-session=xxx"
+ *
+ * For production with admin API key:
+ *   npx tsx scripts/migrate-csv-via-api.ts --file prospects.csv --api-url https://agenticadvertising.org --api-key "aao_xxx"
  *
  * Supports two formats:
  * 1. Simple format: columns name, company_type, domain, contact_name, contact_email, notes, source
@@ -19,6 +23,7 @@
  *   --file      Path to the CSV file
  *   --api-url   Base URL of the API (e.g., http://localhost:3000 or https://your-app.fly.dev)
  *   --cookie    Session cookie for authentication (must be admin)
+ *   --api-key   Bearer token for admin API key authentication
  *   --dry-run   Show what would be imported without actually importing
  */
 
@@ -1062,7 +1067,7 @@ function parseFile(filePath: string): ParsedRow[] {
  */
 async function createProspectViaAPI(
   apiUrl: string,
-  cookie: string,
+  authHeaders: Record<string, string>,
   prospect: ParsedRow
 ): Promise<{ success: boolean; orgId?: string; alreadyExists?: boolean; error?: string }> {
   // Build notes that include advisory council / steerco priority flags
@@ -1078,7 +1083,7 @@ async function createProspectViaAPI(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Cookie: cookie,
+      ...authHeaders,
     },
     body: JSON.stringify({
       name: prospect.name,
@@ -1114,9 +1119,17 @@ async function createProspectViaAPI(
 async function migrate(options: {
   file: string;
   apiUrl: string;
-  cookie: string;
+  cookie?: string;
+  apiKey?: string;
   dryRun: boolean;
 }): Promise<void> {
+  // Build auth headers based on provided credentials
+  const authHeaders: Record<string, string> = {};
+  if (options.apiKey) {
+    authHeaders['Authorization'] = `Bearer ${options.apiKey}`;
+  } else if (options.cookie) {
+    authHeaders['Cookie'] = options.cookie;
+  }
   console.log('='.repeat(60));
   console.log('CSV Migration via Admin API');
   console.log('='.repeat(60));
@@ -1177,11 +1190,11 @@ async function migrate(options: {
   // Verify API access
   console.log('\nVerifying API access...');
   const testResponse = await fetch(`${options.apiUrl}/api/admin/prospects?limit=1`, {
-    headers: { Cookie: options.cookie },
+    headers: authHeaders,
   });
   if (!testResponse.ok) {
     throw new Error(
-      `API access failed: ${testResponse.status} ${testResponse.statusText}. Make sure you have admin access and the cookie is valid.`
+      `API access failed: ${testResponse.status} ${testResponse.statusText}. Make sure you have admin access and the credentials are valid.`
     );
   }
   console.log('API access verified.\n');
@@ -1195,7 +1208,7 @@ async function migrate(options: {
     process.stdout.write(`\rProcessing ${processed}/${prospects.length}: ${prospect.name.substring(0, 30)}...`);
 
     try {
-      const result = await createProspectViaAPI(options.apiUrl, options.cookie, prospect);
+      const result = await createProspectViaAPI(options.apiUrl, authHeaders, prospect);
 
       if (result.success) {
         results.push({ name: prospect.name, status: 'created', orgId: result.orgId });
@@ -1243,12 +1256,11 @@ async function migrate(options: {
 }
 
 // Parse command line arguments
-function parseArgs(): { file: string; apiUrl: string; cookie: string; dryRun: boolean } {
+function parseArgs(): { file: string; apiUrl: string; cookie?: string; apiKey?: string; dryRun: boolean } {
   const args = process.argv.slice(2);
-  const options = {
+  const options: { file: string; apiUrl: string; cookie?: string; apiKey?: string; dryRun: boolean } = {
     file: '',
     apiUrl: '',
-    cookie: '',
     dryRun: false,
   };
 
@@ -1262,15 +1274,19 @@ function parseArgs(): { file: string; apiUrl: string; cookie: string; dryRun: bo
     } else if (args[i] === '--cookie' && args[i + 1]) {
       options.cookie = args[i + 1];
       i++;
+    } else if (args[i] === '--api-key' && args[i + 1]) {
+      options.apiKey = args[i + 1];
+      i++;
     } else if (args[i] === '--dry-run') {
       options.dryRun = true;
     }
   }
 
   if (!options.file) {
-    console.error('Usage: npx tsx scripts/migrate-csv-via-api.ts --file <path-to-csv> --api-url <url> --cookie <session-cookie> [--dry-run]');
-    console.error('\nExample:');
-    console.error('  npx tsx scripts/migrate-csv-via-api.ts --file prospects.csv --api-url http://localhost:3000 --cookie "wos-session=xxx" --dry-run');
+    console.error('Usage: npx tsx scripts/migrate-csv-via-api.ts --file <path-to-csv> --api-url <url> [--cookie <session-cookie>] [--api-key <bearer-token>] [--dry-run]');
+    console.error('\nExamples:');
+    console.error('  npx tsx scripts/migrate-csv-via-api.ts --file prospects.csv --api-url http://localhost:3000 --cookie "wos-session=xxx"');
+    console.error('  npx tsx scripts/migrate-csv-via-api.ts --file prospects.csv --api-url https://agenticadvertising.org --api-key "aao_xxx"');
     process.exit(1);
   }
 
@@ -1279,8 +1295,8 @@ function parseArgs(): { file: string; apiUrl: string; cookie: string; dryRun: bo
     process.exit(1);
   }
 
-  if (!options.cookie && !options.dryRun) {
-    console.error('Error: --cookie is required (unless using --dry-run)');
+  if (!options.cookie && !options.apiKey && !options.dryRun) {
+    console.error('Error: Either --cookie or --api-key is required (unless using --dry-run)');
     process.exit(1);
   }
 

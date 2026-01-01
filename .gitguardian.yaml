@@ -3,6 +3,10 @@ version: 2
 # GitGuardian configuration for AdCP repository
 # This file configures what GitGuardian should scan and what to ignore
 
+# Paths to ignore - scripts with CLI argument documentation
+paths-ignore:
+  - scripts/migrate-csv-via-api.ts
+
 # Ignore test tokens that are documented and meant to be public
 matches-ignore:
   - name: Test Agent Authentication Token
@@ -11,3 +15,8 @@ matches-ignore:
       This is a documented test token for the public test agent at
       https://test-agent.adcontextprotocol.org/mcp. It's intentionally
       included in documentation examples and has no production access.
+  - name: Documentation API Key Placeholder
+    match: aao_xxx
+    comment: |
+      This is a placeholder API key used in documentation examples.
+      It's not a real credential.
