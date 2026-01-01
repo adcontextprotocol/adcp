@@ -9,6 +9,8 @@ export interface JoinRequest {
   id: string;
   workos_user_id: string;
   user_email: string;
+  first_name: string | null;
+  last_name: string | null;
   workos_organization_id: string;
   status: JoinRequestStatus;
   handled_by_user_id: string | null;
@@ -21,6 +23,8 @@ export interface JoinRequest {
 export interface CreateJoinRequestInput {
   workos_user_id: string;
   user_email: string;
+  first_name?: string;
+  last_name?: string;
   workos_organization_id: string;
 }
 
@@ -33,13 +37,13 @@ export class JoinRequestDatabase {
    */
   async createRequest(input: CreateJoinRequestInput): Promise<JoinRequest> {
     const result = await query<JoinRequest>(
-      `INSERT INTO organization_join_requests (workos_user_id, user_email, workos_organization_id)
-       VALUES ($1, $2, $3)
+      `INSERT INTO organization_join_requests (workos_user_id, user_email, first_name, last_name, workos_organization_id)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (workos_user_id, workos_organization_id, status)
        WHERE status = 'pending'
        DO NOTHING
        RETURNING *`,
-      [input.workos_user_id, input.user_email, input.workos_organization_id]
+      [input.workos_user_id, input.user_email, input.first_name || null, input.last_name || null, input.workos_organization_id]
     );
 
     // If no row was returned, the request already exists
