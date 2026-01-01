@@ -23,6 +23,10 @@ Improve Addie router intelligence and search observability
 - Strengthen GitHub issue drafting instructions - users cannot see tool outputs
 - Add conversation context maintenance guidance to prevent entity substitution
 
+**Bug fixes:**
+- Fix DM Assistant thread context loss - now fetches conversation history from database
+- Previous messages are passed to Claude so it maintains context across turns
+
 **Previous work (already in PR):**
 - Log router decisions to unified thread messages
 - Add config versioning for feedback analysis by configuration

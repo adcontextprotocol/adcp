@@ -467,6 +467,35 @@ async function handleUserMessage({
     context: slackThreadContext,
   });
 
+  // Fetch conversation history from database for context
+  // This ensures Claude has context from previous turns in the DM thread
+  const MAX_HISTORY_MESSAGES = 10;
+  let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  try {
+    const previousMessages = await threadService.getThreadMessages(thread.thread_id);
+    if (previousMessages.length > 0) {
+      // Format previous messages for Claude context
+      // Only include user and assistant messages (skip system/tool)
+      // Exclude the current message (we just logged it below, but it's not there yet)
+      conversationHistory = previousMessages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map(msg => ({
+          user: msg.role === 'user' ? 'User' : 'Addie',
+          text: msg.content_sanitized || msg.content,
+        }));
+
+      if (conversationHistory.length > 0) {
+        logger.debug(
+          { threadId: thread.thread_id, messageCount: conversationHistory.length },
+          'Addie Bolt: Loaded conversation history for DM thread'
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch conversation history');
+  }
+
   // Build message with member context
   const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
     userId,
@@ -514,8 +543,8 @@ async function handleUserMessage({
         thread_ts: threadTs,
       });
 
-      // Process Claude response stream
-      for await (const event of claudeClient.processMessageStream(messageWithContext, undefined, userTools)) {
+      // Process Claude response stream (pass conversation history for context)
+      for await (const event of claudeClient.processMessageStream(messageWithContext, conversationHistory, userTools)) {
         if (event.type === 'text') {
           fullText += event.text;
           // Append text chunk to Slack stream
@@ -556,7 +585,7 @@ async function handleUserMessage({
     } else {
       // Fall back to non-streaming for compatibility
       logger.debug('Addie Bolt: Using non-streaming response (streaming not available)');
-      response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+      response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools);
       fullText = response.text;
 
       // Send response via say() with feedback buttons
