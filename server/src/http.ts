@@ -51,15 +51,9 @@ import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRou
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
-import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter, createAdminNotificationChannelsRouter } from "./routes/admin/index.js";
+import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter, createAdminNotificationChannelsRouter, createAdminUsersRouter } from "./routes/admin/index.js";
 import { processFeedsToFetch } from "./addie/services/feed-fetcher.js";
 import { processAlerts, sendDailyDigest } from "./addie/services/industry-alerts.js";
-import {
-  getUnifiedUsersCache,
-  setUnifiedUsersCache,
-  invalidateUnifiedUsersCache,
-  type WorkOSUserInfo,
-} from "./cache/unified-users.js";
 import { createBillingRouter } from "./routes/billing.js";
 import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
@@ -178,8 +172,6 @@ function setCachedUser(userId: string, displayName: string): void {
     expiresAt: Date.now() + CACHE_TTL_MS,
   });
 }
-
-// Cache for unified users endpoint moved to ./cache/unified-users.ts
 
 /**
  * Build app config object for injection into HTML pages.
@@ -498,6 +490,8 @@ export class HTTPServer {
     this.app.use('/api/admin/feeds', adminFeedsRouter); // Admin Feeds: /api/admin/feeds/*
     const adminNotificationChannelsRouter = createAdminNotificationChannelsRouter();
     this.app.use('/api/admin/notification-channels', adminNotificationChannelsRouter); // Notification Channels: /api/admin/notification-channels/*
+    const adminUsersRouter = createAdminUsersRouter();
+    this.app.use('/api/admin/users', adminUsersRouter); // Admin Users: /api/admin/users/*
 
     // Mount billing routes (admin)
     const { pageRouter: billingPageRouter, apiRouter: billingApiRouter } = createBillingRouter();
@@ -4132,28 +4126,6 @@ export class HTTPServer {
       }
     });
 
-    // POST /api/admin/backfill-memberships - Backfill organization_memberships table from WorkOS
-    // Call this once after setting up the webhook to populate existing data
-    this.app.post('/api/admin/backfill-memberships', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const { backfillOrganizationMemberships } = await import('./routes/workos-webhooks.js');
-        const result = await backfillOrganizationMemberships();
-
-        res.json({
-          success: result.errors.length === 0,
-          orgs_processed: result.orgsProcessed,
-          memberships_created: result.membershipsCreated,
-          errors: result.errors,
-        });
-      } catch (error) {
-        logger.error({ err: error }, 'Backfill memberships error:');
-        res.status(500).json({
-          error: 'Failed to backfill memberships',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
     // GET /api/admin/working-groups/:id/posts - List all posts for a working group
     this.app.get('/api/admin/working-groups/:id/posts', requireAuth, requireAdmin, async (req, res) => {
       try {
@@ -6292,156 +6264,6 @@ Disallow: /api/admin/
         logger.error({ err: error }, 'Get member error');
         res.status(500).json({
           error: 'Failed to get member',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // ========================================
-    // Admin Users API Routes
-    // ========================================
-
-    // GET /api/admin/users - List all users with their working groups
-    this.app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        if (!workos) {
-          return res.status(503).json({ error: 'Authentication not configured' });
-        }
-
-        const wgDb = new WorkingGroupDatabase();
-        const orgDatabase = new OrganizationDatabase();
-        const { search, group, noGroups } = req.query;
-        const searchTerm = typeof search === 'string' ? search.toLowerCase() : '';
-        const filterByGroup = typeof group === 'string' ? group : undefined;
-        const filterNoGroups = noGroups === 'true';
-
-        // Get all working group memberships from our database
-        const allWgMemberships = await wgDb.getAllMemberships();
-
-        // Create a map of user_id -> working groups
-        const userWorkingGroups = new Map<string, Array<{
-          id: string;
-          name: string;
-          slug: string;
-          is_private: boolean;
-        }>>();
-
-        for (const m of allWgMemberships) {
-          const groups = userWorkingGroups.get(m.user_id) || [];
-          groups.push({
-            id: m.working_group_id,
-            name: m.working_group_name,
-            slug: m.working_group_slug || '',
-            is_private: m.is_private || false,
-          });
-          userWorkingGroups.set(m.user_id, groups);
-        }
-
-        // Get all users from WorkOS via org memberships
-        const orgs = await orgDatabase.listOrganizations();
-        const allUsers: Array<{
-          user_id: string;
-          email: string;
-          name: string;
-          org_id: string;
-          org_name: string;
-          working_groups: Array<{
-            id: string;
-            name: string;
-            slug: string;
-            is_private: boolean;
-          }>;
-        }> = [];
-        const seenUserIds = new Set<string>();
-
-        for (const org of orgs) {
-          try {
-            const memberships = await workos.userManagement.listOrganizationMemberships({
-              organizationId: org.workos_organization_id,
-            });
-
-            for (const membership of memberships.data) {
-              if (seenUserIds.has(membership.userId)) continue;
-
-              try {
-                const user = await workos.userManagement.getUser(membership.userId);
-                const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-                const workingGroups = userWorkingGroups.get(user.id) || [];
-
-                // Apply filters
-                if (searchTerm) {
-                  const matches = user.email.toLowerCase().includes(searchTerm) ||
-                                  fullName.toLowerCase().includes(searchTerm) ||
-                                  org.name.toLowerCase().includes(searchTerm);
-                  if (!matches) continue;
-                }
-
-                if (filterByGroup) {
-                  const hasGroup = workingGroups.some(g => g.id === filterByGroup);
-                  if (!hasGroup) continue;
-                }
-
-                if (filterNoGroups && workingGroups.length > 0) {
-                  continue;
-                }
-
-                seenUserIds.add(user.id);
-                allUsers.push({
-                  user_id: user.id,
-                  email: user.email,
-                  name: fullName,
-                  org_id: org.workos_organization_id,
-                  org_name: org.name,
-                  working_groups: workingGroups,
-                });
-              } catch (userErr) {
-                logger.debug({ userId: membership.userId, err: userErr }, 'Failed to fetch user details');
-              }
-            }
-          } catch (orgErr) {
-            logger.debug({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch org memberships');
-          }
-        }
-
-        // Sort by name
-        allUsers.sort((a, b) => a.name.localeCompare(b.name));
-
-        res.json({ users: allUsers });
-      } catch (error) {
-        logger.error({ err: error }, 'Get admin users error');
-        res.status(500).json({
-          error: 'Failed to get users',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/admin/users/memberships - Get all working group memberships (for export)
-    this.app.get('/api/admin/users/memberships', requireAuth, requireAdmin, async (req, res) => {
-      try {
-        const wgDb = new WorkingGroupDatabase();
-        const memberships = await wgDb.getAllMemberships();
-
-        // Check if CSV export is requested
-        const format = req.query.format;
-        if (format === 'csv') {
-          const csv = [
-            'User Name,Email,Organization,Working Group,Joined At',
-            ...memberships.map(m =>
-              `"${m.user_name || ''}","${m.user_email || ''}","${m.user_org_name || ''}","${m.working_group_name}","${m.joined_at ? new Date(m.joined_at).toISOString().split('T')[0] : ''}"`
-            ),
-          ].join('\n');
-
-          res.setHeader('Content-Type', 'text/csv');
-          res.setHeader('Content-Disposition', 'attachment; filename="working-group-memberships.csv"');
-          return res.send(csv);
-        }
-
-        res.json({ memberships });
-      } catch (error) {
-        logger.error({ err: error }, 'Get memberships export error');
-        res.status(500).json({
-          error: 'Failed to get memberships',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
