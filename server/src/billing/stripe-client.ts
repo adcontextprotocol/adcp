@@ -379,7 +379,8 @@ export async function getSubscriptionInfo(
 }
 
 /**
- * Create a Stripe customer for an organization
+ * Find or create a Stripe customer for an organization.
+ * Checks for existing customer by email first to avoid duplicates.
  */
 export async function createStripeCustomer(data: {
   email: string;
@@ -392,12 +393,36 @@ export async function createStripeCustomer(data: {
   }
 
   try {
+    // Check for existing customer with this email
+    const existingCustomers = await stripe.customers.list({
+      email: data.email,
+      limit: 1,
+    });
+
+    if (existingCustomers.data.length > 0) {
+      const existing = existingCustomers.data[0];
+      // Update existing customer with new metadata if provided
+      if (data.metadata) {
+        await stripe.customers.update(existing.id, {
+          name: data.name,
+          metadata: {
+            ...existing.metadata,
+            ...data.metadata,
+          },
+        });
+      }
+      logger.info({ customerId: existing.id, email: data.email }, 'Found existing Stripe customer');
+      return existing.id;
+    }
+
+    // Create new customer
     const customer = await stripe.customers.create({
       email: data.email,
       name: data.name,
       metadata: data.metadata,
     });
 
+    logger.info({ customerId: customer.id, email: data.email }, 'Created new Stripe customer');
     return customer.id;
   } catch (error) {
     logger.error({ err: error }, 'Error creating Stripe customer');

@@ -2,14 +2,16 @@
  * Billing routes module
  *
  * This module contains billing-related admin routes extracted from http.ts.
- * Includes product management for Stripe billing products.
+ * Includes product management, Stripe customer management, and invoice handling.
  */
 
 import { Router } from "express";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
+import { getPool } from "../db/client.js";
 import {
+  stripe,
   getBillingProducts,
   createProduct,
   updateProductMetadata,
@@ -40,6 +42,13 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   pageRouter.get("/products", requireAuth, requireAdmin, (req, res) => {
     serveHtmlWithConfig(req, res, "admin-products.html").catch((err) => {
       logger.error({ err }, "Error serving admin products page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
+  pageRouter.get("/billing", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-billing.html").catch((err) => {
+      logger.error({ err }, "Error serving admin billing page");
       res.status(500).send("Internal server error");
     });
   });
@@ -380,6 +389,290 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       res.status(500).json({
         error: "Failed to delete invoice",
         message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // =========================================================================
+  // STRIPE CUSTOMER MANAGEMENT API (mounted at /api/admin)
+  // =========================================================================
+
+  // GET /api/admin/stripe-customers - List all Stripe customers with link status and payment totals
+  apiRouter.get("/stripe-customers", requireAuth, requireAdmin, async (req, res) => {
+    if (!stripe) {
+      return res.status(400).json({ error: "Stripe not configured" });
+    }
+
+    try {
+      const pool = getPool();
+
+      // Get all orgs with stripe_customer_id
+      const orgsResult = await pool.query(`
+        SELECT workos_organization_id, name, stripe_customer_id
+        FROM organizations
+        WHERE stripe_customer_id IS NOT NULL
+      `);
+      const customerToOrg = new Map(
+        orgsResult.rows.map((o) => [o.stripe_customer_id, { id: o.workos_organization_id, name: o.name }])
+      );
+
+      // Fetch all Stripe customers with their payment totals
+      const customers: Array<{
+        id: string;
+        name: string | null;
+        email: string | null;
+        created: number;
+        total_paid: number;
+        invoice_count: number;
+        open_invoice_count: number;
+        open_invoice_total: number;
+        linked_org: { id: string; name: string } | null;
+        has_payment_method: boolean;
+        active_subscriptions: number;
+        currency: string | null;
+      }> = [];
+
+      for await (const customer of stripe.customers.list({ limit: 100, expand: ["data.subscriptions"] })) {
+        // Get paid invoices for this customer to calculate total paid
+        let totalPaid = 0;
+        let invoiceCount = 0;
+
+        for await (const invoice of stripe.invoices.list({
+          customer: customer.id,
+          status: "paid",
+          limit: 100,
+        })) {
+          totalPaid += invoice.amount_paid;
+          invoiceCount++;
+        }
+
+        // Get open invoices
+        let openInvoiceCount = 0;
+        let openInvoiceTotal = 0;
+
+        for await (const invoice of stripe.invoices.list({
+          customer: customer.id,
+          status: "open",
+          limit: 100,
+        })) {
+          openInvoiceCount++;
+          openInvoiceTotal += invoice.amount_due;
+        }
+
+        // Count active subscriptions
+        const activeSubscriptions =
+          customer.subscriptions?.data.filter((s) => s.status === "active" || s.status === "trialing").length ?? 0;
+
+        customers.push({
+          id: customer.id,
+          name: customer.name ?? null,
+          email: customer.email ?? null,
+          created: customer.created,
+          total_paid: totalPaid,
+          invoice_count: invoiceCount,
+          open_invoice_count: openInvoiceCount,
+          open_invoice_total: openInvoiceTotal,
+          linked_org: customerToOrg.get(customer.id) || null,
+          has_payment_method: !!customer.default_source || !!customer.invoice_settings?.default_payment_method,
+          active_subscriptions: activeSubscriptions,
+          currency: customer.currency ?? null,
+        });
+      }
+
+      // Sort: unlinked with payments first, then by total_paid descending
+      customers.sort((a, b) => {
+        // Unlinked customers with payments come first
+        const aUnlinkedWithPayments = !a.linked_org && a.total_paid > 0;
+        const bUnlinkedWithPayments = !b.linked_org && b.total_paid > 0;
+        if (aUnlinkedWithPayments && !bUnlinkedWithPayments) return -1;
+        if (!aUnlinkedWithPayments && bUnlinkedWithPayments) return 1;
+        // Then by total paid descending
+        return b.total_paid - a.total_paid;
+      });
+
+      const unlinkedCount = customers.filter((c) => !c.linked_org).length;
+      const unlinkedWithPayments = customers.filter((c) => !c.linked_org && c.total_paid > 0).length;
+
+      res.json({
+        customers,
+        total: customers.length,
+        linked: customers.length - unlinkedCount,
+        unlinked: unlinkedCount,
+        unlinked_with_payments: unlinkedWithPayments,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching Stripe customers");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Failed to fetch customers",
+      });
+    }
+  });
+
+  // POST /api/admin/stripe-customers/:customerId/link - Manually link a Stripe customer to an org
+  apiRouter.post("/stripe-customers/:customerId/link", requireAuth, requireAdmin, async (req, res) => {
+    const { customerId } = req.params;
+    const { org_id } = req.body;
+
+    if (!org_id) {
+      return res.status(400).json({ error: "org_id is required" });
+    }
+
+    try {
+      const pool = getPool();
+
+      // Verify org exists
+      const orgResult = await pool.query(
+        "SELECT workos_organization_id, name, stripe_customer_id FROM organizations WHERE workos_organization_id = $1",
+        [org_id]
+      );
+
+      if (orgResult.rows.length === 0) {
+        return res.status(404).json({ error: "Organization not found" });
+      }
+
+      const org = orgResult.rows[0];
+
+      if (org.stripe_customer_id && org.stripe_customer_id !== customerId) {
+        return res.status(400).json({
+          error: "Organization already linked",
+          message: `This organization is already linked to a different Stripe customer (${org.stripe_customer_id})`,
+        });
+      }
+
+      // Check if customer is already linked to another org
+      const existingLink = await pool.query(
+        "SELECT workos_organization_id, name FROM organizations WHERE stripe_customer_id = $1",
+        [customerId]
+      );
+
+      if (existingLink.rows.length > 0 && existingLink.rows[0].workos_organization_id !== org_id) {
+        return res.status(400).json({
+          error: "Customer already linked",
+          message: `This Stripe customer is already linked to "${existingLink.rows[0].name}"`,
+        });
+      }
+
+      // Link the customer
+      await pool.query("UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2", [
+        customerId,
+        org_id,
+      ]);
+
+      logger.info(
+        { customerId, orgId: org_id, orgName: org.name, adminEmail: req.user?.email },
+        "Manually linked Stripe customer to org"
+      );
+
+      res.json({
+        success: true,
+        message: `Linked Stripe customer ${customerId} to "${org.name}"`,
+        customer_id: customerId,
+        org_id,
+        org_name: org.name,
+      });
+    } catch (error) {
+      logger.error({ err: error, customerId, org_id }, "Error linking Stripe customer");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Failed to link customer",
+      });
+    }
+  });
+
+  // GET /api/admin/org-search - Search organizations for linking
+  apiRouter.get("/org-search", requireAuth, requireAdmin, async (req, res) => {
+    const query = req.query.q as string;
+
+    if (!query || query.length < 2) {
+      return res.json({ organizations: [] });
+    }
+
+    try {
+      const pool = getPool();
+      const result = await pool.query(
+        `
+        SELECT workos_organization_id, name, email_domain, stripe_customer_id
+        FROM organizations
+        WHERE is_personal = false
+          AND (name ILIKE $1 OR email_domain ILIKE $1)
+        ORDER BY name
+        LIMIT 20
+      `,
+        [`%${query}%`]
+      );
+
+      res.json({ organizations: result.rows });
+    } catch (error) {
+      logger.error({ err: error }, "Error searching organizations");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Failed to search organizations",
+      });
+    }
+  });
+
+  // DELETE /api/admin/stripe-customers/:customerId - Delete an unlinked Stripe customer
+  apiRouter.delete("/stripe-customers/:customerId", requireAuth, requireAdmin, async (req, res) => {
+    const { customerId } = req.params;
+
+    if (!stripe) {
+      return res.status(400).json({ error: "Stripe not configured" });
+    }
+
+    try {
+      const pool = getPool();
+
+      // Check if customer is linked to any org
+      const linkedOrg = await pool.query(
+        "SELECT workos_organization_id, name FROM organizations WHERE stripe_customer_id = $1",
+        [customerId]
+      );
+
+      if (linkedOrg.rows.length > 0) {
+        return res.status(400).json({
+          error: "Cannot delete linked customer",
+          message: `This customer is linked to "${linkedOrg.rows[0].name}". Unlink it first.`,
+        });
+      }
+
+      // Fetch customer to check for subscriptions and invoices
+      const customer = await stripe.customers.retrieve(customerId, {
+        expand: ["subscriptions"],
+      });
+
+      if (customer.deleted) {
+        return res.status(404).json({ error: "Customer already deleted" });
+      }
+
+      // Check for active subscriptions
+      if (customer.subscriptions && customer.subscriptions.data.length > 0) {
+        const activeSubscriptions = customer.subscriptions.data.filter(
+          (s) => s.status === "active" || s.status === "trialing"
+        );
+        if (activeSubscriptions.length > 0) {
+          return res.status(400).json({
+            error: "Cannot delete customer with active subscriptions",
+            message: `This customer has ${activeSubscriptions.length} active subscription(s). Cancel them in Stripe first.`,
+          });
+        }
+      }
+
+      // Delete the customer in Stripe
+      await stripe.customers.del(customerId);
+
+      logger.info({ customerId, adminEmail: req.user?.email }, "Deleted Stripe customer");
+
+      res.json({
+        success: true,
+        message: `Deleted Stripe customer ${customerId}`,
+        customer_id: customerId,
+      });
+    } catch (error) {
+      logger.error({ err: error, customerId }, "Error deleting Stripe customer");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Failed to delete customer",
       });
     }
   });
