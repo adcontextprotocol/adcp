@@ -515,7 +515,7 @@ export class AdAgentsManager {
       for (const endpoint of cardEndpoints) {
         try {
           const response = await axios.get(endpoint, {
-            timeout: 5000,
+            timeout: 3000, // Keep short for responsive UX
             headers: {
               'Accept': 'application/json',
               'User-Agent': 'AdCP-Testing-Framework/1.0'

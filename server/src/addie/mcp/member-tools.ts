@@ -367,7 +367,7 @@ async function callApi(
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(5000), // Keep short for responsive UX
     });
 
     const data = await response.json().catch(() => ({}));
