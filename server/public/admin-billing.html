@@ -433,7 +433,7 @@
             </td>
             <td>
               ${isLinked
-                ? '<span style="color: var(--color-text-muted);">Linked</span>'
+                ? `<button class="btn btn-secondary" onclick="unlinkCustomer('${customer.id}', '${(customer.linked_org.name || '').replace(/'/g, "\\'")}')">Unlink</button>`
                 : `<div class="link-form">
                     <div class="search-dropdown">
                       <input type="text"
@@ -566,6 +566,36 @@
 
         // Remove from local data and re-render
         allCustomers = allCustomers.filter(c => c.id !== customerId);
+        updateStats();
+        renderCustomers();
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function unlinkCustomer(customerId, orgName) {
+      if (!confirm(`Unlink customer from "${orgName}"? You can re-link it to a different organization afterwards.`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/admin/stripe-customers/${customerId}/unlink`, {
+          method: 'POST',
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to unlink customer');
+        }
+
+        showSuccess(`Unlinked customer from "${orgName}"`);
+
+        // Update local data and re-render
+        const customer = allCustomers.find(c => c.id === customerId);
+        if (customer) {
+          customer.linked_org = null;
+        }
         updateStats();
         renderCustomers();
       } catch (err) {

@@ -580,6 +580,49 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
     }
   });
 
+  // POST /api/admin/stripe-customers/:customerId/unlink - Unlink a Stripe customer from its org
+  apiRouter.post("/stripe-customers/:customerId/unlink", requireAuth, requireAdmin, async (req, res) => {
+    const { customerId } = req.params;
+
+    try {
+      const pool = getPool();
+
+      // Find the org linked to this customer
+      const linkedOrg = await pool.query(
+        "SELECT workos_organization_id, name FROM organizations WHERE stripe_customer_id = $1",
+        [customerId]
+      );
+
+      if (linkedOrg.rows.length === 0) {
+        return res.status(404).json({ error: "Customer is not linked to any organization" });
+      }
+
+      const org = linkedOrg.rows[0];
+
+      // Unlink the customer
+      await pool.query("UPDATE organizations SET stripe_customer_id = NULL WHERE stripe_customer_id = $1", [customerId]);
+
+      logger.info(
+        { customerId, orgId: org.workos_organization_id, orgName: org.name, adminEmail: req.user?.email },
+        "Unlinked Stripe customer from org"
+      );
+
+      res.json({
+        success: true,
+        message: `Unlinked Stripe customer ${customerId} from "${org.name}"`,
+        customer_id: customerId,
+        org_id: org.workos_organization_id,
+        org_name: org.name,
+      });
+    } catch (error) {
+      logger.error({ err: error, customerId }, "Error unlinking Stripe customer");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Failed to unlink customer",
+      });
+    }
+  });
+
   // GET /api/admin/org-search - Search organizations for linking
   apiRouter.get("/org-search", requireAuth, requireAdmin, async (req, res) => {
     const query = req.query.q as string;
