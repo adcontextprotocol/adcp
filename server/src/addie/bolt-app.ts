@@ -1088,7 +1088,7 @@ async function indexChannelMessage(
     );
   } catch (error) {
     // Don't fail the main handler if indexing fails
-    logger.debug({ error, channelId }, 'Addie Bolt: Failed to index message for search');
+    logger.warn({ error, channelId }, 'Addie Bolt: Failed to index message for search');
   }
 }
 

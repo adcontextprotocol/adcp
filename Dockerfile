@@ -19,6 +19,9 @@ RUN npm run build
 # Production stage
 FROM node:20-alpine
 
+# Install git for external repo indexing
+RUN apk add --no-cache git
+
 # Set working directory
 WORKDIR /app
 
@@ -33,6 +36,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server/public ./server/public
 COPY --from=builder /app/server/src/db/migrations ./dist/db/migrations
 COPY --from=builder /app/static ./static
+COPY --from=builder /app/docs ./docs
 
 # Set environment variables
 ENV NODE_ENV=production
