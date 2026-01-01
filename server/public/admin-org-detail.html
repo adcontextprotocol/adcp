@@ -978,7 +978,7 @@
       <form id="addDomainForm" onsubmit="addDomain(event)">
         <div class="form-group">
           <label>Domain *</label>
-          <input type="text" id="domainInput" placeholder="e.g., acme.com" required pattern="^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$">
+          <input type="text" id="domainInput" placeholder="e.g., acme.com" required pattern="^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$">
           <div class="form-hint">Enter the domain without http:// or www.</div>
         </div>
 
@@ -1604,6 +1604,20 @@
     // LINKED DOMAINS
     // ========================================
 
+    // HTML escape to prevent XSS
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Helper to refresh domains list
+    async function refreshDomains() {
+      const domainsResponse = await fetch(`/api/admin/organizations/${orgId}/domains`);
+      domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
+      renderDomains();
+    }
+
     function renderDomains() {
       const container = document.getElementById('domainsList');
 
@@ -1636,25 +1650,46 @@
 
       container.innerHTML = `<ul class="domains-list">
         ${allDomains.map(d => {
+          const escapedDomain = escapeHtml(d.domain);
           const badges = [];
           if (d.is_primary) badges.push('<span class="domain-badge primary">Primary</span>');
           if (d.verified) badges.push('<span class="domain-badge verified">Verified</span>');
-          badges.push(`<span class="domain-badge ${d.source}">${d.source === 'workos' ? 'WorkOS' : 'Manual'}</span>`);
+          badges.push(`<span class="domain-badge ${escapeHtml(d.source)}">${d.source === 'workos' ? 'WorkOS' : 'Manual'}</span>`);
 
           return `
-            <li class="domain-item">
+            <li class="domain-item" data-domain="${escapedDomain}">
               <div class="domain-info">
-                <span class="domain-name">${d.domain}</span>
+                <span class="domain-name">${escapedDomain}</span>
                 ${badges.join(' ')}
               </div>
               <div class="domain-actions">
-                ${!d.is_primary && !d.workos_only ? `<button class="btn btn-sm btn-secondary" onclick="setDomainPrimary('${d.domain}')">Set Primary</button>` : ''}
-                ${d.source !== 'workos' ? `<button class="btn-icon danger" onclick="removeDomain('${d.domain}')" title="Remove domain">&times;</button>` : ''}
+                ${!d.is_primary && !d.workos_only ? `<button class="btn btn-sm btn-secondary" data-action="set-primary">Set Primary</button>` : ''}
+                ${d.source !== 'workos' ? `<button class="btn-icon danger" data-action="remove" title="Remove domain" aria-label="Remove domain ${escapedDomain}">&times;</button>` : ''}
               </div>
             </li>
           `;
         }).join('')}
       </ul>`;
+
+      // Event delegation for domain actions
+      container.addEventListener('click', handleDomainAction);
+    }
+
+    function handleDomainAction(e) {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+
+      const domainItem = btn.closest('[data-domain]');
+      if (!domainItem) return;
+
+      const domain = domainItem.dataset.domain;
+      const action = btn.dataset.action;
+
+      if (action === 'set-primary') {
+        setDomainPrimary(domain, btn);
+      } else if (action === 'remove') {
+        removeDomain(domain, btn);
+      }
     }
 
     function openAddDomainModal() {
@@ -1664,6 +1699,16 @@
 
     function closeAddDomainModal() {
       document.getElementById('addDomainModal').style.display = 'none';
+    }
+
+    // Helper to safely parse error response
+    async function getErrorMessage(response, defaultMsg) {
+      try {
+        const data = await response.json();
+        return data.error || defaultMsg;
+      } catch {
+        return defaultMsg;
+      }
     }
 
     async function addDomain(event) {
@@ -1688,16 +1733,11 @@
             window.AdminNav.redirectToLogin();
             return;
           }
-          const data = await response.json();
-          throw new Error(data.error || 'Failed to add domain');
+          throw new Error(await getErrorMessage(response, 'Failed to add domain'));
         }
 
         closeAddDomainModal();
-
-        // Refresh domains
-        const domainsResponse = await fetch(`/api/admin/organizations/${orgId}/domains`);
-        domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
-        renderDomains();
+        await refreshDomains();
       } catch (error) {
         alert('Error: ' + error.message);
       } finally {
@@ -1706,7 +1746,13 @@
       }
     }
 
-    async function setDomainPrimary(domain) {
+    async function setDomainPrimary(domain, btn) {
+      const originalText = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Setting...';
+      }
+
       try {
         const response = await fetch(`/api/admin/organizations/${orgId}/domains/${encodeURIComponent(domain)}/primary`, {
           method: 'PUT'
@@ -1717,21 +1763,25 @@
             window.AdminNav.redirectToLogin();
             return;
           }
-          const data = await response.json();
-          throw new Error(data.error || 'Failed to set primary domain');
+          throw new Error(await getErrorMessage(response, 'Failed to set primary domain'));
         }
 
-        // Refresh domains
-        const domainsResponse = await fetch(`/api/admin/organizations/${orgId}/domains`);
-        domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
-        renderDomains();
+        await refreshDomains();
       } catch (error) {
         alert('Error: ' + error.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
       }
     }
 
-    async function removeDomain(domain) {
-      if (!confirm(`Remove domain "${domain}" from this organization?`)) return;
+    async function removeDomain(domain, btn) {
+      if (!confirm(`Remove domain "${escapeHtml(domain)}" from this organization?`)) return;
+
+      if (btn) {
+        btn.disabled = true;
+      }
 
       try {
         const response = await fetch(`/api/admin/organizations/${orgId}/domains/${encodeURIComponent(domain)}`, {
@@ -1743,16 +1793,15 @@
             window.AdminNav.redirectToLogin();
             return;
           }
-          const data = await response.json();
-          throw new Error(data.error || 'Failed to remove domain');
+          throw new Error(await getErrorMessage(response, 'Failed to remove domain'));
         }
 
-        // Refresh domains
-        const domainsResponse = await fetch(`/api/admin/organizations/${orgId}/domains`);
-        domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
-        renderDomains();
+        await refreshDomains();
       } catch (error) {
         alert('Error: ' + error.message);
+        if (btn) {
+          btn.disabled = false;
+        }
       }
     }
 
