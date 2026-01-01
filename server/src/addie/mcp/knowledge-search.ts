@@ -152,6 +152,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
     name: 'search_docs',
     description:
       'Search the official AdCP documentation. Returns excerpts with source URLs. IMPORTANT: Use ONE well-crafted search with specific keywords rather than multiple searches. For detailed content, use get_doc with the doc ID from results.',
+    usage_hints: 'use for learning, understanding concepts, "how does X work?", "what is X?", "explain X"',
     input_schema: {
       type: 'object',
       properties: {
@@ -175,6 +176,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
     name: 'get_doc',
     description:
       'Get the full content of a specific documentation page by ID. Use this after search_docs when you need complete details from a document.',
+    usage_hints: 'use after search_docs to read complete doc details',
     input_schema: {
       type: 'object',
       properties: {
@@ -190,6 +192,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
     name: 'search_repos',
     description:
       'Search indexed external GitHub repositories including: AdCP Sales Agent (how to set up and run a sales agent for publishers), AdCP JavaScript Client, and AdCP Python Client. Use this for implementation examples, SDK usage, setup guides, and changelogs for these projects.',
+    usage_hints: 'use for implementation examples, SDK usage, "how do I use the client?", salesagent setup',
     input_schema: {
       type: 'object',
       properties: {
@@ -214,6 +217,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
     name: 'search_slack',
     description:
       'Search Slack messages from public channels in the AAO workspace. Use this when you need community discussions, Q&A threads, or real-world implementation examples. Recent messages are searched instantly from local index; older messages may fall back to live API (slower). Cite the Slack permalink when using information from results.',
+    usage_hints: 'use for community Q&A, "what did someone say about X?", real-world discussions',
     input_schema: {
       type: 'object',
       properties: {
@@ -233,6 +237,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
     name: 'search_resources',
     description:
       'Search curated external resources (articles, blog posts, industry content) that have been indexed with summaries and contextual analysis. Use this for industry trends, competitor info, and external perspectives on agentic advertising.',
+    usage_hints: 'use for industry trends, competitor info, external perspectives on agentic advertising',
     input_schema: {
       type: 'object',
       properties: {
@@ -261,6 +266,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
     name: 'bookmark_resource',
     description:
       'Save a useful web resource to the knowledge base for future reference. Use this when you find valuable external content during web search that would be helpful for future questions. The content will be fetched, summarized, and indexed.',
+    usage_hints: 'use when finding useful external content to save for future reference',
     input_schema: {
       type: 'object',
       properties: {

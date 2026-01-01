@@ -4,7 +4,8 @@
 Improve Addie router intelligence and search observability
 
 **Router improvements:**
-- Add tool descriptions to router prompt so it picks tools based on query intent (not just keywords)
+- Add `usage_hints` field to AddieTool interface for router-specific guidance
+- Router now builds tool descriptions from tool definitions (no duplication)
 - Distinguish "how does X work?" (search_docs) from "validate my X" (validate_adagents)
 - Separate expertise areas for validation vs learning questions
 
@@ -17,6 +18,10 @@ Improve Addie router intelligence and search observability
 - Log all search queries for pattern analysis
 - Track results count, latency, and tool used
 - Enable content gap detection via zero-result query analysis
+
+**Prompt improvements:**
+- Strengthen GitHub issue drafting instructions - users cannot see tool outputs
+- Add conversation context maintenance guidance to prevent entity substitution
 
 **Previous work (already in PR):**
 - Log router decisions to unified thread messages

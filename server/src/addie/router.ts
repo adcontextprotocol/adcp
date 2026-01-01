@@ -21,6 +21,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 import { ModelConfig } from '../config/models.js';
 import type { MemberContext } from './member-context.js';
+import type { AddieTool } from './types.js';
+import { KNOWLEDGE_TOOLS } from './mcp/knowledge-search.js';
+import { MEMBER_TOOLS } from './mcp/member-tools.js';
 
 /**
  * Execution plan types
@@ -67,37 +70,42 @@ export interface RoutingContext {
  * They're kept in code because tool names must match actual implementations
  * and some rules have conditional logic.
  */
+
 /**
- * Tool descriptions for router context
- *
- * These descriptions help the router understand WHEN to use each tool,
- * not just what topics they relate to. This is crucial for distinguishing
- * between "how does X work?" (search_docs) and "validate my X" (validate_adagents).
+ * All available tools for routing context
+ * Combines knowledge tools and member tools
  */
-export const TOOL_DESCRIPTIONS: Record<string, string> = {
-  // Knowledge/Search tools
-  search_docs: 'Search official AdCP documentation - use for learning, understanding concepts, "how does X work?", "what is X?"',
-  get_doc: 'Get full content of a specific doc - use after search_docs to read complete details',
-  search_repos: 'Search GitHub repos (salesagent, client libraries) - use for implementation examples, SDK usage, setup guides',
-  search_slack: 'Search Slack discussions - use for community Q&A, "what did someone say about X?", real-world context',
-  search_resources: 'Search curated external resources - use for industry trends, competitor info, external perspectives',
-  web_search: 'Search the web - use for external protocols (MCP, A2A), current events, things not in our docs',
+const ALL_TOOLS: AddieTool[] = [...KNOWLEDGE_TOOLS, ...MEMBER_TOOLS];
 
-  // Validation/Action tools
-  validate_adagents: 'Validate adagents.json for a domain - use ONLY for "check my setup", "validate example.com", debugging configs',
-  check_agent_health: 'Check if an agent is online - use for "is my agent working?", "test my agent endpoint"',
-  check_publisher_authorization: 'Check if publisher authorized an agent - use for authorization verification questions',
+/**
+ * Build tool descriptions for router from the tool definitions.
+ * Uses usage_hints (for router) combined with description (for context).
+ * This ensures tool descriptions are defined once with the tools themselves.
+ */
+function buildToolDescriptions(): Record<string, string> {
+  const descriptions: Record<string, string> = {};
 
-  // Member tools
-  get_my_profile: 'Get current user profile - use for "what\'s my profile?", account/membership questions',
-  list_working_groups: 'List working groups - use for "what groups exist?", browsing groups',
-  join_working_group: 'Join a working group - use when user explicitly wants to join a group',
-  get_account_link: 'Get account linking URL - use when user needs to connect Slack to their AAO account',
+  for (const tool of ALL_TOOLS) {
+    // Use usage_hints if available, otherwise fall back to first sentence of description
+    if (tool.usage_hints) {
+      descriptions[tool.name] = tool.usage_hints;
+    } else {
+      // Extract first sentence as fallback
+      const firstSentence = tool.description.split('.')[0];
+      descriptions[tool.name] = firstSentence;
+    }
+  }
 
-  // Content tools
-  bookmark_resource: 'Save a web resource for future reference - use when finding useful external content',
-  draft_github_issue: 'Draft a GitHub issue - use when user wants to report a bug or request a feature',
-};
+  // Add web_search which is a built-in Claude tool not in our tool arrays
+  descriptions['web_search'] = 'search the web for external protocols (MCP, A2A), current events, things not in our docs';
+
+  return descriptions;
+}
+
+/**
+ * Tool descriptions for router context - built from tool definitions
+ */
+export const TOOL_DESCRIPTIONS = buildToolDescriptions();
 
 export const ROUTING_RULES = {
   /**
