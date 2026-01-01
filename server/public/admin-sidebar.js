@@ -33,6 +33,7 @@
         label: 'Billing',
         items: [
           { href: '/admin/products', label: 'Products', icon: '💳' },
+          { href: '/admin/billing', label: 'Stripe Linking', icon: '🔗' },
         ]
       },
       {

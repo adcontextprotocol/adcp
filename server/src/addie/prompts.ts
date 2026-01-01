@@ -3,6 +3,10 @@
  */
 
 import type { SuggestedPrompt } from './types.js';
+import type { MemberContext } from './member-context.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('addie-prompts');
 
 export const ADDIE_SYSTEM_PROMPT = `You are Addie, the AI assistant for AgenticAdvertising.org. Your mission is to help the ad tech industry transition from programmatic to agentic advertising.
 
@@ -17,7 +21,7 @@ If the user is NOT authenticated/linked:
 - **For Slack**: Use the get_account_link tool to generate a sign-in link they can click directly
 - In BOTH cases, be gentle and don't push too hard - let them continue if they prefer
 
-IMPORTANT: Never tell users to type "/aao link" - instead, always provide direct clickable links. For web chat, use relative URLs like /auth/login (the user is already on the website).
+IMPORTANT: Never tell users to type any Slack slash commands (like "/aao link", "/aao status", etc.) - the AAO bot commands are deprecated. Instead, always use the get_account_link tool to generate direct clickable sign-in links. For web chat, use relative URLs like /auth/login.
 
 This is your FIRST priority - helping users get connected to the community.
 
@@ -113,7 +117,7 @@ When users set up agents or publishers, walk through the full verification chain
 **Account Linking:**
 - get_account_link: Generate a sign-in link for users who need to authenticate
 
-IMPORTANT: Never tell users to type Slack slash commands like "/aao link" or "/aao status". Instead, always provide direct clickable links.
+IMPORTANT: Never tell users to use Slack slash commands - the AAO bot commands are deprecated. Instead, always use the get_account_link tool to generate direct clickable sign-in links.
 
 **GitHub Issue Drafting:**
 - draft_github_issue: Draft a GitHub issue and generate a pre-filled URL for users to create it
@@ -251,6 +255,91 @@ export const STATUS_MESSAGES = {
   searching: 'Searching documentation...',
   generating: 'Generating response...',
 };
+
+/**
+ * Build dynamic suggested prompts based on user context and role
+ *
+ * @param memberContext - User's member context (or null if lookup failed)
+ * @param isAdmin - Whether the user has admin privileges
+ * @returns Array of suggested prompts tailored to the user
+ */
+export function buildDynamicSuggestedPrompts(
+  memberContext: MemberContext | null,
+  isAdmin: boolean
+): SuggestedPrompt[] {
+  // Not linked - prioritize account setup
+  if (!memberContext?.workos_user?.workos_user_id) {
+    return [
+      {
+        title: 'Link my account',
+        message: 'Help me link my Slack account to AgenticAdvertising.org',
+      },
+      {
+        title: 'Learn about AdCP',
+        message: 'What is AdCP and how does it work?',
+      },
+      {
+        title: 'Why join AgenticAdvertising.org?',
+        message: 'What are the benefits of joining AgenticAdvertising.org?',
+      },
+    ];
+  }
+
+  // Admin users get admin-specific suggestions
+  if (isAdmin) {
+    return [
+      {
+        title: 'Pending invoices',
+        message: 'Show me all organizations with pending invoices',
+      },
+      {
+        title: 'Look up a company',
+        message: 'What is the membership status for [company name]?',
+      },
+      {
+        title: 'Prospect pipeline',
+        message: 'Show me the current prospect pipeline',
+      },
+      {
+        title: 'My working groups',
+        message: "What's happening in my working groups?",
+      },
+    ];
+  }
+
+  // Linked non-admin users - personalized prompts
+  const prompts: SuggestedPrompt[] = [];
+
+  // Show working groups if they have some, otherwise suggest finding one
+  if (memberContext.working_groups && memberContext.working_groups.length > 0) {
+    prompts.push({
+      title: 'My working groups',
+      message: "What's happening in my working groups?",
+    });
+  } else {
+    prompts.push({
+      title: 'Find a working group',
+      message: 'What working groups can I join based on my interests?',
+    });
+  }
+
+  prompts.push({
+    title: 'Test my agent',
+    message: 'Help me verify my AdCP agent is working correctly',
+  });
+
+  prompts.push({
+    title: 'Learn about AdCP',
+    message: 'What is AdCP and how does it work?',
+  });
+
+  prompts.push({
+    title: 'AdCP vs programmatic',
+    message: 'How is agentic advertising different from programmatic?',
+  });
+
+  return prompts.slice(0, 4); // Slack limits to 4 prompts
+}
 
 /**
  * Build context with thread history

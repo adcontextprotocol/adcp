@@ -31,7 +31,9 @@ import {
   getExternalRepoStats,
   getConfiguredRepos,
 } from './external-repos.js';
-import { searchSlackMessages, isSlackConfigured } from '../../slack/client.js';
+// Note: Slack's search.messages API requires a user token (xoxp-), not a bot token (xoxb-).
+// Bot tokens don't support this scope. We rely on local database search instead,
+// which is populated by channel history indexing.
 import { AddieDatabase } from '../../db/addie-db.js';
 import { queueWebSearchResult } from '../services/content-curator.js';
 
@@ -557,35 +559,7 @@ ${excerpt}`;
         return `Found ${localResults.length} Slack messages (from local index):\n\n${formatted}\n\n**Remember to cite the Slack permalink when using this information.**`;
       }
 
-      // If no local results and Slack API is configured, fall back to live API search
-      // Note: This is slow (~5-6 seconds) but covers historical messages not yet indexed
-      if (isSlackConfigured()) {
-        logger.info({ query }, 'No local Slack results, falling back to live API search');
-        const apiResults = await searchSlackMessages(query, { count: limit });
-
-        if (apiResults.matches.length === 0) {
-          return `No Slack discussions found for: "${query}"\n\nTry search_docs for documentation or web_search for external sources.`;
-        }
-
-        const formatted = apiResults.matches
-          .map((match, i) => {
-            // Clean up the text (remove extra whitespace, truncate)
-            const cleanText = match.text
-              .replace(/\s+/g, ' ')
-              .trim()
-              .substring(0, 500);
-            const truncated = cleanText.length < match.text.length ? '...' : '';
-
-            return `### ${i + 1}. #${match.channel.name} - @${match.username}
-"${cleanText}${truncated}"
-
-**Source:** ${match.permalink}`;
-          })
-          .join('\n\n');
-
-        return `Found ${apiResults.total} Slack messages (showing ${apiResults.matches.length}):\n\n${formatted}\n\n**Remember to cite the Slack permalink when using this information.**`;
-      }
-
+      // No local results found
       return `No Slack discussions found for: "${query}"\n\nTry search_docs for documentation or web_search for external sources.`;
     } catch (error) {
       logger.error({ error, query }, 'Addie: Slack search failed');

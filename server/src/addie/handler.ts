@@ -35,7 +35,7 @@ import {
   createMemberToolHandlers,
 } from './mcp/member-tools.js';
 import { AddieDatabase } from '../db/addie-db.js';
-import { SUGGESTED_PROMPTS, STATUS_MESSAGES } from './prompts.js';
+import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import type { RequestTools } from './claude-client.js';
@@ -194,64 +194,13 @@ function createUserScopedTools(memberContext: MemberContext | null): RequestTool
 }
 
 /**
- * Build dynamic suggested prompts based on user context
+ * Get dynamic suggested prompts for a Slack user
  */
-async function buildDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
+async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
   try {
     const memberContext = await getMemberContext(userId);
-
-    // Not linked - prioritize account setup
-    if (!memberContext.workos_user?.workos_user_id) {
-      return [
-        {
-          title: 'Link my account',
-          message: 'Help me link my Slack account to AgenticAdvertising.org',
-        },
-        {
-          title: 'Learn about AdCP',
-          message: 'What is AdCP and how does it work?',
-        },
-        {
-          title: 'Why join AgenticAdvertising.org?',
-          message: 'What are the benefits of joining AgenticAdvertising.org?',
-        },
-      ];
-    }
-
-    // Linked but maybe not a member - suggest getting involved
-    const prompts: SuggestedPrompt[] = [];
-
-    // Personalized: Show working groups if they have some
-    if (memberContext.working_groups && memberContext.working_groups.length > 0) {
-      prompts.push({
-        title: 'My working groups',
-        message: 'What\'s happening in my working groups?',
-      });
-    } else {
-      prompts.push({
-        title: 'Find a working group',
-        message: 'What working groups can I join based on my interests?',
-      });
-    }
-
-    // Add agent testing prompt
-    prompts.push({
-      title: 'Test my agent',
-      message: 'Help me verify my AdCP agent is working correctly',
-    });
-
-    // Standard prompts
-    prompts.push({
-      title: 'Learn about AdCP',
-      message: 'What is AdCP and how does it work?',
-    });
-
-    prompts.push({
-      title: 'AdCP vs programmatic',
-      message: 'How is agentic advertising different from programmatic?',
-    });
-
-    return prompts.slice(0, 4); // Slack limits to 4 prompts
+    const userIsAdmin = await isSlackUserAdmin(userId);
+    return buildDynamicSuggestedPrompts(memberContext, userIsAdmin);
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to build dynamic prompts, using defaults');
     return SUGGESTED_PROMPTS;
@@ -276,7 +225,7 @@ export async function handleAssistantThreadStarted(
 
   // Set dynamic suggested prompts based on user context
   try {
-    const prompts = await buildDynamicSuggestedPrompts(event.assistant_thread.user_id);
+    const prompts = await getDynamicSuggestedPrompts(event.assistant_thread.user_id);
     await setAssistantSuggestedPrompts(event.channel_id, prompts);
   } catch (error) {
     logger.error({ error }, 'Addie: Failed to set suggested prompts');

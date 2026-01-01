@@ -31,45 +31,6 @@
       font-size: var(--text-sm);
       margin-bottom: var(--space-6);
     }
-    .org-selector {
-      margin-bottom: var(--space-6);
-    }
-    .org-selector label {
-      display: block;
-      margin-bottom: var(--space-2);
-      font-weight: 500;
-      color: var(--color-text-heading);
-    }
-    .org-selector select {
-      width: 100%;
-      max-width: 400px;
-      padding: var(--space-2.5) var(--space-3);
-      border: var(--border-1) solid var(--color-gray-200);
-      border-radius: var(--radius-md);
-      font-size: var(--text-sm);
-      background: var(--color-bg-card);
-    }
-    .widget-container {
-      min-height: 400px;
-      border: var(--border-1) solid var(--color-gray-200);
-      border-radius: var(--radius-md);
-      padding: var(--space-4);
-    }
-    .loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 200px;
-      color: var(--color-text-secondary);
-    }
-    .error-message {
-      background: var(--color-error-50);
-      border: var(--border-1) solid var(--color-error-200);
-      color: var(--color-error-700);
-      padding: var(--space-4);
-      border-radius: var(--radius-md);
-      margin-bottom: var(--space-4);
-    }
     .info-box {
       background: var(--color-primary-50);
       border: var(--border-1) solid var(--color-primary-200);
@@ -84,6 +45,35 @@
       padding: var(--space-0.5) var(--space-1);
       border-radius: var(--radius-sm);
       font-family: var(--font-mono);
+    }
+    .code-block {
+      background: var(--color-gray-900);
+      color: var(--color-gray-100);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      overflow-x: auto;
+      margin: var(--space-4) 0;
+    }
+    .code-block .comment {
+      color: var(--color-gray-500);
+    }
+    .code-block .string {
+      color: var(--color-success-400);
+    }
+    .section {
+      margin-bottom: var(--space-6);
+    }
+    .section h2 {
+      font-size: var(--text-lg);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+    }
+    .section p {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      line-height: 1.6;
     }
     .permissions-list {
       margin-top: var(--space-4);
@@ -123,181 +113,63 @@
       <div class="container">
         <div class="card">
           <h1>API Keys</h1>
-          <p class="subtitle">Manage API keys for programmatic access to the admin API</p>
+          <p class="subtitle">Programmatic access to the admin API</p>
 
           <div class="info-box">
             <strong>How API Keys Work:</strong>
             <p style="margin: var(--space-2) 0 0 0;">
-              API keys are organization-scoped and can be used to access the admin API without a browser session.
+              API keys provide programmatic access to admin endpoints without requiring a browser session.
               Use them in the <code>Authorization: Bearer &lt;key&gt;</code> header.
             </p>
-            <div class="permissions-list">
-              <h3>Available Permissions</h3>
-              <ul>
-                <li><code>admin:*</code> - Full admin access (read and write)</li>
-                <li><code>admin:read</code> - Read-only admin access</li>
-              </ul>
+          </div>
+
+          <div class="section">
+            <h2>Admin API Key</h2>
+            <p>
+              Set the <code>ADMIN_API_KEY</code> environment variable to enable programmatic admin access.
+              This key grants full admin permissions to all API endpoints.
+            </p>
+
+            <div class="code-block">
+              <span class="comment"># Generate a secure key</span><br>
+              node -e "console.log('aao_' + require('crypto').randomBytes(32).toString('base64url'))"<br><br>
+              <span class="comment"># Add to .env.local</span><br>
+              ADMIN_API_KEY=<span class="string">aao_your_generated_key</span><br><br>
+              <span class="comment"># Use in API requests</span><br>
+              curl -H <span class="string">"Authorization: Bearer $ADMIN_API_KEY"</span> \<br>
+              &nbsp;&nbsp;https://agenticadvertising.org/api/admin/users
             </div>
           </div>
 
-          <div id="dev-mode-warning" class="error-message" style="display: none; background: var(--color-warning-50); border-color: var(--color-warning-200); color: var(--color-warning-700);">
-            <strong>Dev Mode:</strong> API key management requires WorkOS authentication.
-            In production, go to the <a href="https://dashboard.workos.com" target="_blank" style="color: var(--color-warning-700); font-weight: 600;">WorkOS Dashboard</a> → Organizations → API Keys to create keys.
+          <div class="section">
+            <h2>Usage Examples</h2>
+
+            <div class="code-block">
+              <span class="comment"># List all users</span><br>
+              curl -H <span class="string">"Authorization: Bearer $ADMIN_API_KEY"</span> \<br>
+              &nbsp;&nbsp;/api/admin/users<br><br>
+              <span class="comment"># Get organization details</span><br>
+              curl -H <span class="string">"Authorization: Bearer $ADMIN_API_KEY"</span> \<br>
+              &nbsp;&nbsp;/api/admin/organizations<br><br>
+              <span class="comment"># View analytics</span><br>
+              curl -H <span class="string">"Authorization: Bearer $ADMIN_API_KEY"</span> \<br>
+              &nbsp;&nbsp;/api/admin/analytics/dashboard
+            </div>
           </div>
 
-          <div class="org-selector">
-            <label for="org-select">Select Organization</label>
-            <select id="org-select">
-              <option value="">Loading organizations...</option>
-            </select>
-          </div>
-
-          <div id="widget-error" class="error-message" style="display: none;"></div>
-
-          <div id="widget-container" class="widget-container">
-            <div class="loading">Select an organization to manage API keys</div>
+          <div class="permissions-list">
+            <h3>API Endpoints Available</h3>
+            <ul>
+              <li><code>GET /api/admin/users</code> - List all users</li>
+              <li><code>GET /api/admin/organizations</code> - List organizations</li>
+              <li><code>GET /api/admin/analytics/*</code> - Analytics data</li>
+              <li><code>GET /api/admin/working-groups</code> - Working groups</li>
+              <li><code>POST /api/admin/*</code> - All write operations</li>
+            </ul>
           </div>
         </div>
       </div>
     </main>
   </div>
-
-  <script type="module">
-
-    let widgetToken = null;
-    let currentOrgId = null;
-
-    // Fetch organizations
-    async function loadOrganizations() {
-      try {
-        const response = await fetch('/api/admin/organizations');
-        if (!response.ok) throw new Error('Failed to load organizations');
-        const organizations = await response.json();
-
-        const select = document.getElementById('org-select');
-        select.innerHTML = '<option value="">Select an organization...</option>';
-
-        // API returns array directly
-        const orgList = Array.isArray(organizations) ? organizations : (organizations.organizations || []);
-        orgList.forEach(org => {
-          const option = document.createElement('option');
-          option.value = org.workos_organization_id;
-          option.textContent = org.name;
-          select.appendChild(option);
-        });
-      } catch (error) {
-        console.error('Error loading organizations:', error);
-        document.getElementById('org-select').innerHTML =
-          '<option value="">Error loading organizations</option>';
-      }
-    }
-
-    // Get widget token for selected organization
-    async function getWidgetToken(organizationId) {
-      try {
-        const response = await fetch('/api/admin/widgets/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            organizationId,
-            scope: 'widgets:api-keys:manage'
-          })
-        });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || 'Failed to get widget token');
-        }
-
-        const data = await response.json();
-        return data.token;
-      } catch (error) {
-        console.error('Error getting widget token:', error);
-        throw error;
-      }
-    }
-
-    // Render the API Keys widget
-    async function renderWidget(organizationId) {
-      const container = document.getElementById('widget-container');
-      const errorDiv = document.getElementById('widget-error');
-      const devWarning = document.getElementById('dev-mode-warning');
-
-      errorDiv.style.display = 'none';
-      devWarning.style.display = 'none';
-      container.innerHTML = '<div class="loading">Loading API Keys...</div>';
-
-      try {
-        widgetToken = await getWidgetToken(organizationId);
-        currentOrgId = organizationId;
-
-        // Show success with link to WorkOS dashboard
-        container.innerHTML = `
-          <div style="text-align: center; padding: var(--space-8);">
-            <div style="font-size: 48px; margin-bottom: var(--space-4);">✅</div>
-            <p style="color: var(--color-text-heading); font-weight: 500; margin-bottom: var(--space-4);">
-              Widget token generated successfully!
-            </p>
-            <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">
-              To manage API keys for this organization:
-            </p>
-            <a href="https://dashboard.workos.com/organizations/${organizationId}/api-keys"
-               target="_blank"
-               style="display: inline-block; background: var(--color-brand); color: white; padding: var(--space-3) var(--space-5); border-radius: var(--radius-md); text-decoration: none; font-weight: 500;">
-              Open WorkOS Dashboard →
-            </a>
-            <p style="color: var(--color-text-muted); margin-top: var(--space-6); font-size: var(--text-sm);">
-              Organization ID: <code style="background: var(--color-gray-100); padding: 2px 6px; border-radius: 4px;">${organizationId}</code>
-            </p>
-          </div>
-        `;
-      } catch (error) {
-        // Check if it's a dev mode / user membership error
-        if (error.message.includes('UserOrganizationMembership') || error.message.includes('not found')) {
-          devWarning.style.display = 'block';
-          container.innerHTML = `
-            <div style="text-align: center; padding: var(--space-8);">
-              <div style="font-size: 48px; margin-bottom: var(--space-4);">🔑</div>
-              <p style="color: var(--color-text-heading); font-weight: 500; margin-bottom: var(--space-4);">
-                Create API Keys in WorkOS Dashboard
-              </p>
-              <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4); max-width: 500px; margin-left: auto; margin-right: auto;">
-                API keys are managed through WorkOS. Click below to go to the organization's API keys page.
-              </p>
-              <a href="https://dashboard.workos.com/organizations/${organizationId}/api-keys"
-                 target="_blank"
-                 style="display: inline-block; background: var(--color-brand); color: white; padding: var(--space-3) var(--space-5); border-radius: var(--radius-md); text-decoration: none; font-weight: 500;">
-                Open WorkOS Dashboard →
-              </a>
-              <div style="margin-top: var(--space-6); padding: var(--space-4); background: var(--color-gray-50); border-radius: var(--radius-md); text-align: left; max-width: 500px; margin-left: auto; margin-right: auto;">
-                <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0 0 var(--space-2) 0;"><strong>When creating an API key, add these permissions:</strong></p>
-                <ul style="margin: 0; padding-left: var(--space-5); font-size: var(--text-sm); color: var(--color-text-secondary);">
-                  <li><code>admin:*</code> - Full admin API access</li>
-                  <li><code>admin:read</code> - Read-only admin API access</li>
-                </ul>
-              </div>
-            </div>
-          `;
-        } else {
-          errorDiv.textContent = error.message;
-          errorDiv.style.display = 'block';
-          container.innerHTML = '<div class="loading">Failed to load widget</div>';
-        }
-      }
-    }
-
-    // Event listeners
-    document.getElementById('org-select').addEventListener('change', (e) => {
-      if (e.target.value) {
-        renderWidget(e.target.value);
-      } else {
-        document.getElementById('widget-container').innerHTML =
-          '<div class="loading">Select an organization to manage API keys</div>';
-      }
-    });
-
-    // Initialize
-    loadOrganizations();
-  </script>
 </body>
 </html>

@@ -6,10 +6,9 @@
  */
 
 import { Router } from "express";
-import path from "path";
-import { fileURLToPath } from "url";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
+import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieDatabase, type RuleType } from "../db/addie-db.js";
 import { query } from "../db/client.js";
 import { analyzeInteractions, previewRuleChange } from "../addie/jobs/rule-analyzer.js";
@@ -22,9 +21,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getAddieBoltApp } from "../addie/bolt-app.js";
 import { AddieRouter, type RoutingContext } from "../addie/router.js";
 import { sanitizeInput } from "../addie/security.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -64,11 +60,10 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
 
   // Main Addie dashboard
   pageRouter.get("/", requireAuth, requireAdmin, (req, res) => {
-    const dashboardPath =
-      process.env.NODE_ENV === "production"
-        ? path.join(__dirname, "../../server/public/admin-addie.html")
-        : path.join(__dirname, "../../public/admin-addie.html");
-    res.sendFile(dashboardPath);
+    serveHtmlWithConfig(req, res, "admin-addie.html").catch((err) => {
+      logger.error({ err }, "Error serving Addie admin page");
+      res.status(500).send("Internal server error");
+    });
   });
 
   // =========================================================================

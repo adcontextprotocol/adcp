@@ -8,12 +8,11 @@
  */
 
 import { Router } from "express";
-import path from "path";
-import { fileURLToPath } from "url";
 import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
+import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import {
@@ -42,9 +41,6 @@ import {
 
 const slackDb = new SlackDatabase();
 const orgDb = new OrganizationDatabase();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const logger = createLogger("admin-routes");
 
@@ -75,19 +71,17 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // =========================================================================
 
   pageRouter.get("/prospects", requireAuth, requireAdmin, (req, res) => {
-    const prospectsPath =
-      process.env.NODE_ENV === "production"
-        ? path.join(__dirname, "../../server/public/admin-prospects.html")
-        : path.join(__dirname, "../../public/admin-prospects.html");
-    res.sendFile(prospectsPath);
+    serveHtmlWithConfig(req, res, "admin-prospects.html").catch((err) => {
+      logger.error({ err }, "Error serving admin prospects page");
+      res.status(500).send("Internal server error");
+    });
   });
 
   pageRouter.get("/api-keys", requireAuth, requireAdmin, (req, res) => {
-    const apiKeysPath =
-      process.env.NODE_ENV === "production"
-        ? path.join(__dirname, "../../server/public/admin-api-keys.html")
-        : path.join(__dirname, "../../public/admin-api-keys.html");
-    res.sendFile(apiKeysPath);
+    serveHtmlWithConfig(req, res, "admin-api-keys.html").catch((err) => {
+      logger.error({ err }, "Error serving admin API keys page");
+      res.status(500).send("Internal server error");
+    });
   });
 
   // =========================================================================
@@ -672,11 +666,10 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     requireAuth,
     requireAdmin,
     (req, res) => {
-      const detailPath =
-        process.env.NODE_ENV === "production"
-          ? path.join(__dirname, "../../server/public/admin-org-detail.html")
-          : path.join(__dirname, "../../public/admin-org-detail.html");
-      res.sendFile(detailPath);
+      serveHtmlWithConfig(req, res, "admin-org-detail.html").catch((err) => {
+        logger.error({ err }, "Error serving admin org detail page");
+        res.status(500).send("Internal server error");
+      });
     }
   );
 
@@ -1368,43 +1361,69 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         });
 
         // Check which domains already have organizations
+        // First do a bulk lookup from our local organization_domains table (fast)
         const pool = getPool();
-        const enrichedDomains = await Promise.all(
-          domains.map(async (domain) => {
-            // Check if this domain is already associated with an org
-            // by checking WorkOS organization domains
-            let existingOrg = null;
-            try {
-              if (workos) {
-                // Search for orgs with this domain
+        const domainList = domains.map((d) => d.domain);
+
+        // Query all matching domains at once
+        const localDomainsResult = await pool.query(
+          `SELECT od.domain, o.workos_organization_id, o.name
+           FROM organization_domains od
+           JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+           WHERE od.domain = ANY($1)`,
+          [domainList]
+        );
+
+        // Build a map of domain -> org for fast lookup
+        const domainToOrgMap = new Map<string, { id: string; name: string }>();
+        for (const row of localDomainsResult.rows) {
+          domainToOrgMap.set(row.domain, {
+            id: row.workos_organization_id,
+            name: row.name,
+          });
+        }
+
+        // For domains not found locally, check WorkOS (slower, but catches domains
+        // that exist in WorkOS but haven't been synced to our table yet)
+        const missingDomains = domainList.filter((d) => !domainToOrgMap.has(d));
+
+        if (missingDomains.length > 0 && workos) {
+          // Check WorkOS for each missing domain (in parallel, limited batch)
+          await Promise.all(
+            missingDomains.slice(0, 20).map(async (domainName) => {
+              try {
                 const orgs = await workos.organizations.listOrganizations({
                   limit: 1,
-                  domains: [domain.domain],
+                  domains: [domainName],
                 });
                 if (orgs.data.length > 0) {
                   const orgResult = await pool.query(
-                    `SELECT name, workos_organization_id FROM organizations WHERE workos_organization_id = $1`,
+                    `SELECT name FROM organizations WHERE workos_organization_id = $1`,
                     [orgs.data[0].id]
                   );
                   if (orgResult.rows.length > 0) {
-                    existingOrg = {
+                    domainToOrgMap.set(domainName, {
                       id: orgs.data[0].id,
                       name: orgResult.rows[0].name,
-                    };
+                    });
                   }
                 }
+              } catch {
+                // Ignore WorkOS lookup errors
               }
-            } catch {
-              // Ignore lookup errors
-            }
+            })
+          );
+        }
 
-            return {
-              ...domain,
-              existing_org: existingOrg,
-              is_new_prospect: !existingOrg,
-            };
-          })
-        );
+        // Enrich domains with org info
+        const enrichedDomains = domains.map((domain) => {
+          const existingOrg = domainToOrgMap.get(domain.domain) || null;
+          return {
+            ...domain,
+            existing_org: existingOrg,
+            is_new_prospect: !existingOrg,
+          };
+        });
 
         res.json({
           domains: enrichedDomains,
@@ -1740,6 +1759,248 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to create prospect",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // EMAIL CONTACT MANAGEMENT
+  // =========================================================================
+
+  // GET /api/admin/email/contacts - Search and list email contacts
+  apiRouter.get(
+    "/email/contacts",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const { search, domain, status, limit: limitParam, offset: offsetParam } = req.query;
+        const resultLimit = limitParam ? parseInt(limitParam as string, 10) : 50;
+        const resultOffset = offsetParam ? parseInt(offsetParam as string, 10) : 0;
+
+        const params: (string | number)[] = [];
+        const conditions: string[] = [];
+
+        if (search && typeof search === 'string') {
+          params.push(`%${search.toLowerCase()}%`);
+          conditions.push(`(LOWER(email) LIKE $${params.length} OR LOWER(display_name) LIKE $${params.length})`);
+        }
+
+        if (domain && typeof domain === 'string') {
+          params.push(domain.toLowerCase());
+          conditions.push(`LOWER(domain) = $${params.length}`);
+        }
+
+        if (status && typeof status === 'string') {
+          params.push(status);
+          conditions.push(`mapping_status = $${params.length}`);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        // Get total count
+        const countResult = await pool.query(
+          `SELECT COUNT(*) FROM email_contacts ${whereClause}`,
+          params
+        );
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        // Get contacts with their activity count
+        params.push(resultLimit, resultOffset);
+        const contactsResult = await pool.query(
+          `SELECT
+            ec.id,
+            ec.email,
+            ec.display_name,
+            ec.domain,
+            ec.workos_user_id,
+            ec.organization_id,
+            ec.mapping_status,
+            ec.mapping_source,
+            ec.first_seen_at,
+            ec.last_seen_at,
+            ec.email_count,
+            ec.created_at,
+            ec.updated_at,
+            o.name as organization_name,
+            (SELECT COUNT(*) FROM email_activity_contacts eac WHERE eac.contact_id = ec.id) as activity_count
+          FROM email_contacts ec
+          LEFT JOIN organizations o ON ec.organization_id = o.workos_organization_id
+          ${whereClause}
+          ORDER BY ec.last_seen_at DESC NULLS LAST
+          LIMIT $${params.length - 1} OFFSET $${params.length}`,
+          params
+        );
+
+        res.json({
+          contacts: contactsResult.rows,
+          total,
+          limit: resultLimit,
+          offset: resultOffset,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching email contacts");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch email contacts",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/email/contacts/:id - Get contact details with activity history
+  apiRouter.get(
+    "/email/contacts/:id",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const { id } = req.params;
+
+        // Get contact details
+        const contactResult = await pool.query(
+          `SELECT
+            ec.id,
+            ec.email,
+            ec.display_name,
+            ec.domain,
+            ec.workos_user_id,
+            ec.organization_id,
+            ec.mapping_status,
+            ec.mapping_source,
+            ec.first_seen_at,
+            ec.last_seen_at,
+            ec.email_count,
+            ec.mapped_at,
+            ec.mapped_by_user_id,
+            ec.created_at,
+            ec.updated_at,
+            o.name as organization_name,
+            o.company_type as organization_type,
+            o.prospect_status as organization_prospect_status
+          FROM email_contacts ec
+          LEFT JOIN organizations o ON ec.organization_id = o.workos_organization_id
+          WHERE ec.id = $1`,
+          [id]
+        );
+
+        if (contactResult.rows.length === 0) {
+          return res.status(404).json({ error: "Contact not found" });
+        }
+
+        const contact = contactResult.rows[0];
+
+        // Get activity history for this contact
+        const activitiesResult = await pool.query(
+          `SELECT
+            eca.id as activity_id,
+            eca.email_id,
+            eca.message_id,
+            eca.subject,
+            eca.direction,
+            eca.insights,
+            eca.metadata,
+            eca.email_date,
+            eca.created_at,
+            eac.role,
+            eac.is_primary
+          FROM email_contact_activities eca
+          INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
+          WHERE eac.contact_id = $1
+          ORDER BY eca.email_date DESC`,
+          [id]
+        );
+
+        res.json({
+          ...contact,
+          activities: activitiesResult.rows,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching email contact details");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch email contact details",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/email/contacts/by-email/:email - Lookup contact by email address
+  apiRouter.get(
+    "/email/contacts/by-email/:email",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const { email } = req.params;
+
+        // Get contact by email
+        const contactResult = await pool.query(
+          `SELECT
+            ec.id,
+            ec.email,
+            ec.display_name,
+            ec.domain,
+            ec.workos_user_id,
+            ec.organization_id,
+            ec.mapping_status,
+            ec.mapping_source,
+            ec.first_seen_at,
+            ec.last_seen_at,
+            ec.email_count,
+            ec.mapped_at,
+            ec.mapped_by_user_id,
+            ec.created_at,
+            ec.updated_at,
+            o.name as organization_name,
+            o.company_type as organization_type,
+            o.prospect_status as organization_prospect_status
+          FROM email_contacts ec
+          LEFT JOIN organizations o ON ec.organization_id = o.workos_organization_id
+          WHERE LOWER(ec.email) = LOWER($1)`,
+          [email]
+        );
+
+        if (contactResult.rows.length === 0) {
+          return res.status(404).json({ error: "Contact not found" });
+        }
+
+        const contact = contactResult.rows[0];
+
+        // Get activity history for this contact
+        const activitiesResult = await pool.query(
+          `SELECT
+            eca.id as activity_id,
+            eca.email_id,
+            eca.message_id,
+            eca.subject,
+            eca.direction,
+            eca.insights,
+            eca.metadata,
+            eca.email_date,
+            eca.created_at,
+            eac.role,
+            eac.is_primary
+          FROM email_contact_activities eca
+          INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
+          WHERE eac.contact_id = $1
+          ORDER BY eca.email_date DESC`,
+          [contact.id]
+        );
+
+        res.json({
+          ...contact,
+          activities: activitiesResult.rows,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching email contact by email");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch email contact",
         });
       }
     }
@@ -2351,6 +2612,316 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         res.status(500).json({
           error: "Internal server error",
           message: "Unable to fetch organization Slack activity",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
+  // ORGANIZATION DOMAINS API
+  // =========================================================================
+
+  // GET /api/admin/organizations/:orgId/domains - List domains for an organization
+  apiRouter.get(
+    "/organizations/:orgId/domains",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const pool = getPool();
+
+        // Get org info
+        const orgResult = await pool.query(
+          `SELECT name, email_domain FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        // Get all domains from our local table
+        const domainsResult = await pool.query(
+          `SELECT domain, is_primary, verified, source, created_at
+           FROM organization_domains
+           WHERE workos_organization_id = $1
+           ORDER BY is_primary DESC, created_at ASC`,
+          [orgId]
+        );
+
+        // Also get domains from WorkOS for comparison
+        let workOSDomains: Array<{ domain: string; state: string }> = [];
+        if (workos) {
+          try {
+            const workOSOrg = await workos.organizations.getOrganization(orgId);
+            workOSDomains = workOSOrg.domains.map((d) => ({
+              domain: d.domain,
+              state: d.state,
+            }));
+          } catch {
+            // Org might not exist in WorkOS
+          }
+        }
+
+        res.json({
+          organization_id: orgId,
+          organization_name: orgResult.rows[0].name,
+          primary_domain: orgResult.rows[0].email_domain,
+          domains: domainsResult.rows,
+          workos_domains: workOSDomains,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching organization domains");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch organization domains",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/organizations/:orgId/domains - Add a domain to an organization
+  apiRouter.post(
+    "/organizations/:orgId/domains",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const { domain, is_primary, sync_to_workos } = req.body;
+
+        if (!domain) {
+          return res.status(400).json({ error: "domain is required" });
+        }
+
+        const normalizedDomain = domain.toLowerCase().trim();
+        const pool = getPool();
+
+        // Verify org exists
+        const orgResult = await pool.query(
+          `SELECT name FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        // Check if domain is already claimed by another org
+        const existingResult = await pool.query(
+          `SELECT od.workos_organization_id, o.name as org_name
+           FROM organization_domains od
+           JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+           WHERE od.domain = $1`,
+          [normalizedDomain]
+        );
+
+        if (existingResult.rows.length > 0) {
+          const existingOrg = existingResult.rows[0];
+          if (existingOrg.workos_organization_id !== orgId) {
+            return res.status(409).json({
+              error: "Domain already claimed",
+              message: `Domain ${normalizedDomain} is already associated with ${existingOrg.org_name}`,
+              existing_organization_id: existingOrg.workos_organization_id,
+            });
+          }
+          // Domain already belongs to this org
+          return res.json({
+            success: true,
+            message: "Domain already associated with this organization",
+            domain: normalizedDomain,
+          });
+        }
+
+        // If setting as primary, clear existing primary first
+        if (is_primary) {
+          await pool.query(
+            `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
+             WHERE workos_organization_id = $1 AND is_primary = true`,
+            [orgId]
+          );
+        }
+
+        // Insert the domain
+        await pool.query(
+          `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+           VALUES ($1, $2, $3, false, 'manual')`,
+          [orgId, normalizedDomain, is_primary || false]
+        );
+
+        // If primary, also update the email_domain column
+        if (is_primary) {
+          await pool.query(
+            `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+             WHERE workos_organization_id = $2`,
+            [normalizedDomain, orgId]
+          );
+        }
+
+        // Optionally sync to WorkOS
+        if (sync_to_workos && workos) {
+          try {
+            await workos.organizations.updateOrganization({
+              organization: orgId,
+              domainData: [{ domain: normalizedDomain, state: DomainDataState.Verified }],
+            });
+            // Mark as verified since we added it to WorkOS
+            await pool.query(
+              `UPDATE organization_domains SET verified = true, source = 'workos', updated_at = NOW()
+               WHERE workos_organization_id = $1 AND domain = $2`,
+              [orgId, normalizedDomain]
+            );
+          } catch (workosErr) {
+            logger.warn({ err: workosErr, domain: normalizedDomain }, "Failed to sync domain to WorkOS");
+          }
+        }
+
+        logger.info({ orgId, domain: normalizedDomain, isPrimary: is_primary }, "Added domain to organization");
+
+        res.json({
+          success: true,
+          domain: normalizedDomain,
+          is_primary: is_primary || false,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error adding organization domain");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to add organization domain",
+        });
+      }
+    }
+  );
+
+  // DELETE /api/admin/organizations/:orgId/domains/:domain - Remove a domain from an organization
+  apiRouter.delete(
+    "/organizations/:orgId/domains/:domain",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId, domain } = req.params;
+        const normalizedDomain = domain.toLowerCase().trim();
+        const pool = getPool();
+
+        // Get domain info before deletion
+        const domainResult = await pool.query(
+          `SELECT is_primary, source FROM organization_domains
+           WHERE workos_organization_id = $1 AND domain = $2`,
+          [orgId, normalizedDomain]
+        );
+
+        if (domainResult.rows.length === 0) {
+          return res.status(404).json({ error: "Domain not found for this organization" });
+        }
+
+        const wasPrimary = domainResult.rows[0].is_primary;
+
+        // Delete the domain
+        await pool.query(
+          `DELETE FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
+          [orgId, normalizedDomain]
+        );
+
+        // If we deleted the primary domain, pick a new one
+        if (wasPrimary) {
+          const remaining = await pool.query(
+            `SELECT domain FROM organization_domains
+             WHERE workos_organization_id = $1
+             ORDER BY verified DESC, created_at ASC
+             LIMIT 1`,
+            [orgId]
+          );
+
+          const newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
+
+          if (newPrimary) {
+            await pool.query(
+              `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+               WHERE workos_organization_id = $1 AND domain = $2`,
+              [orgId, newPrimary]
+            );
+          }
+
+          await pool.query(
+            `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+             WHERE workos_organization_id = $2`,
+            [newPrimary, orgId]
+          );
+        }
+
+        logger.info({ orgId, domain: normalizedDomain, wasPrimary }, "Removed domain from organization");
+
+        res.json({
+          success: true,
+          domain: normalizedDomain,
+          was_primary: wasPrimary,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error removing organization domain");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to remove organization domain",
+        });
+      }
+    }
+  );
+
+  // PUT /api/admin/organizations/:orgId/domains/:domain/primary - Set a domain as primary
+  apiRouter.put(
+    "/organizations/:orgId/domains/:domain/primary",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId, domain } = req.params;
+        const normalizedDomain = domain.toLowerCase().trim();
+        const pool = getPool();
+
+        // Verify domain belongs to this org
+        const domainResult = await pool.query(
+          `SELECT domain FROM organization_domains
+           WHERE workos_organization_id = $1 AND domain = $2`,
+          [orgId, normalizedDomain]
+        );
+
+        if (domainResult.rows.length === 0) {
+          return res.status(404).json({ error: "Domain not found for this organization" });
+        }
+
+        // Clear existing primary
+        await pool.query(
+          `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
+           WHERE workos_organization_id = $1 AND is_primary = true`,
+          [orgId]
+        );
+
+        // Set new primary
+        await pool.query(
+          `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+           WHERE workos_organization_id = $1 AND domain = $2`,
+          [orgId, normalizedDomain]
+        );
+
+        // Update organizations.email_domain
+        await pool.query(
+          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+           WHERE workos_organization_id = $2`,
+          [normalizedDomain, orgId]
+        );
+
+        logger.info({ orgId, domain: normalizedDomain }, "Set primary domain for organization");
+
+        res.json({
+          success: true,
+          primary_domain: normalizedDomain,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error setting primary domain");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to set primary domain",
         });
       }
     }

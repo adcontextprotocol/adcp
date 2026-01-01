@@ -103,9 +103,22 @@ function verifyWorkOSWebhook(
 
   try {
     // Validate timestamp is recent (within 5 minutes) to prevent replay attacks
-    const timestampAge = Math.abs(Date.now() / 1000 - parseInt(timestamp, 10));
+    // WorkOS sends timestamp in milliseconds, so convert to seconds
+    const nowSeconds = Date.now() / 1000;
+    const parsedTimestampMs = parseInt(timestamp, 10);
+    const parsedTimestampSeconds = parsedTimestampMs / 1000;
+    const timestampAge = Math.abs(nowSeconds - parsedTimestampSeconds);
+
+    logger.debug({
+      nowSeconds,
+      parsedTimestampMs,
+      parsedTimestampSeconds,
+      timestampAge,
+      rawTimestamp: timestamp,
+    }, 'WorkOS timestamp validation');
+
     if (timestampAge > 300) {
-      logger.warn({ timestampAge }, 'WorkOS webhook timestamp too old (potential replay attack)');
+      logger.warn({ timestampAge, nowSeconds, parsedTimestampSeconds }, 'WorkOS webhook timestamp too old (potential replay attack)');
       return false;
     }
 
@@ -561,7 +574,12 @@ export function createWorkOSWebhooksRouter(): Router {
         const signature = req.headers['workos-signature'] as string | undefined;
         const timestamp = signature?.match(/t=(\d+)/)?.[1];
 
-        logger.info({ bodyLength: rawBody.length, event: req.body?.event }, 'Received WorkOS webhook');
+        logger.info({
+          bodyLength: rawBody.length,
+          event: req.body?.event,
+          signature: signature?.substring(0, 50), // Log first 50 chars of signature
+          extractedTimestamp: timestamp,
+        }, 'Received WorkOS webhook');
 
         if (!verifyWorkOSWebhook(rawBody, signature, timestamp)) {
           logger.warn('Rejecting WorkOS webhook: invalid signature');

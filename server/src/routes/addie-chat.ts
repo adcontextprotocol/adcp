@@ -145,14 +145,9 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   // PAGE ROUTES (mounted at /chat)
   // =========================================================================
 
-  // Chat page
-  pageRouter.get("/", (req, res) => {
-    const chatPath =
-      process.env.NODE_ENV === "production"
-        ? path.join(__dirname, "../../server/public/chat.html")
-        : path.join(__dirname, "../../public/chat.html");
-    res.sendFile(chatPath);
-  });
+  // Note: The chat page (/chat -> chat.html) is served by the global middleware
+  // in http.ts that handles extensionless paths. This middleware injects the
+  // user config needed for the navigation bar. No explicit route needed here.
 
   // =========================================================================
   // API ROUTES (mounted at /api/addie/chat)

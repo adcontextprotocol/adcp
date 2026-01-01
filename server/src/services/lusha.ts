@@ -185,6 +185,7 @@ export class LushaClient {
   async enrichCompanyByDomain(domain: string): Promise<CompanyEnrichmentResult> {
     try {
       // Use the v2 bulk API with a single company
+      // Each company needs a unique `id` string to correlate request/response
       const response = await fetch(`${LUSHA_API_BASE}/bulk/company/v2`, {
         method: 'POST',
         headers: {
@@ -192,8 +193,7 @@ export class LushaClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          requestId: `enrich-${domain}-${Date.now()}`,
-          companies: [{ domain }],
+          companies: [{ id: '1', domain }],
         }),
       });
 
@@ -220,21 +220,23 @@ export class LushaClient {
       // Log the raw response for debugging
       logger.debug({ domain, responseKeys: Object.keys(responseData) }, 'Lusha API raw response');
 
-      // v2 bulk API may return results in different formats:
-      // 1. { data: { companies: { [id]: company } } } - MCP-style indexed by ID
-      // 2. { data: [...] } or { results: [...] } - array format
-      // 3. Direct array response
+      // v2 bulk API returns results indexed by the request ID we provided
+      // Format: { "1": { id, name, ... }, "2": { ... }, ... }
+      // The key matches the `id` field we sent in the request
       let data: Record<string, unknown> | null = null;
 
-      if (responseData.data?.companies) {
-        // MCP-style: companies indexed by ID
+      // Check if response is directly indexed by our request ID
+      if (responseData['1']) {
+        data = responseData['1'];
+      } else if (responseData.data?.companies) {
+        // Fallback: MCP-style companies indexed by ID
         const companies = responseData.data.companies;
         const companyIds = Object.keys(companies);
         if (companyIds.length > 0) {
           data = companies[companyIds[0]];
         }
       } else {
-        // Array-style response
+        // Fallback: Array-style response
         const results = responseData.data || responseData.results || responseData;
         const companyResults = Array.isArray(results) ? results : [results];
         if (companyResults.length > 0) {
@@ -251,35 +253,74 @@ export class LushaClient {
         return { success: false, error: String(data.error) || 'Company not found' };
       }
 
-      // Map Lusha response to our interface
-      // The v2 API may nest company data or return it flat
+      // Map Lusha v2 bulk API response to our interface
+      // Response format example:
+      // { id, lushaCompanyId, name, companySize: [min, max], revenueRange: [min, max],
+      //   fqdn, founded, description, logoUrl, linkedin, mainIndustry, subIndustry,
+      //   city, state, country, countryIso2, continent, rawLocation, specialities }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const companyInfo = (data.company || data) as any;
 
+      // Parse employee count from companySize array [min, max]
+      let employeeCount: number | undefined;
+      let employeeCountRange: string | undefined;
+      if (Array.isArray(companyInfo.companySize) && companyInfo.companySize.length >= 2) {
+        const [min, max] = companyInfo.companySize;
+        employeeCount = min; // Use min as primary count
+        employeeCountRange = `${min}-${max}`;
+      } else if (companyInfo.employeeCount) {
+        employeeCount = companyInfo.employeeCount;
+        employeeCountRange = companyInfo.employeeCountRange;
+      }
+
+      // Parse revenue from revenueRange array [min, max]
+      let revenue: number | undefined;
+      let revenueRange: string | undefined;
+      if (Array.isArray(companyInfo.revenueRange) && companyInfo.revenueRange.length >= 2) {
+        const [min, max] = companyInfo.revenueRange;
+        revenue = min; // Use min as primary revenue
+        revenueRange = `$${(min / 1000000).toFixed(0)}M-$${(max / 1000000).toFixed(0)}M`;
+      } else if (companyInfo.revenue) {
+        revenue = companyInfo.revenue;
+        revenueRange = companyInfo.revenueRange;
+      }
+
+      // Parse founded year (may be string like "1995")
+      let foundedYear: number | undefined;
+      if (companyInfo.founded) {
+        const parsed = parseInt(String(companyInfo.founded), 10);
+        if (!isNaN(parsed)) foundedYear = parsed;
+      } else if (companyInfo.foundedYear) {
+        foundedYear = companyInfo.foundedYear;
+      }
+
+      // Get domain from fqdn (may include www.)
+      const domainValue = companyInfo.fqdn?.replace(/^www\./, '') || companyInfo.domain || domain;
+
       const companyData: LushaCompanyData = {
-        companyId: String(companyInfo.companyId || companyInfo.id || ''),
-        companyName: String(companyInfo.companyName || companyInfo.name || ''),
-        domain: String(companyInfo.domain || domain),
+        companyId: String(companyInfo.lushaCompanyId || companyInfo.companyId || companyInfo.id || ''),
+        companyName: String(companyInfo.name || companyInfo.companyName || ''),
+        domain: domainValue,
         description: companyInfo.description as string | undefined,
-        employeeCount: (companyInfo.employeeCount || companyInfo.employees || companyInfo.numberOfEmployees) as number | undefined,
-        employeeCountRange: (companyInfo.employeeCountRange || companyInfo.employeesRange || companyInfo.employeeRange) as string | undefined,
-        revenue: companyInfo.revenue as number | undefined,
-        revenueRange: (companyInfo.revenueRange || companyInfo.estimatedRevenue) as string | undefined,
-        mainIndustry: (companyInfo.mainIndustry || companyInfo.industry) as string | undefined,
+        employeeCount,
+        employeeCountRange,
+        revenue,
+        revenueRange,
+        mainIndustry: companyInfo.mainIndustry as string | undefined,
         subIndustry: companyInfo.subIndustry as string | undefined,
-        foundedYear: (companyInfo.foundedYear || companyInfo.founded || companyInfo.yearFounded) as number | undefined,
-        country: (companyInfo.country || companyInfo.location?.country) as string | undefined,
+        foundedYear,
+        country: companyInfo.country as string | undefined,
         countryIso2: companyInfo.countryIso2 as string | undefined,
-        city: (companyInfo.city || companyInfo.location?.city) as string | undefined,
-        state: (companyInfo.state || companyInfo.location?.state) as string | undefined,
-        fullAddress: (companyInfo.fullAddress || companyInfo.address || companyInfo.location?.address) as string | undefined,
+        city: companyInfo.city as string | undefined,
+        state: companyInfo.state as string | undefined,
+        fullAddress: companyInfo.rawLocation as string | undefined,
         continent: companyInfo.continent as string | undefined,
-        linkedinUrl: (companyInfo.linkedinUrl || companyInfo.linkedin || companyInfo.socialLinks?.linkedin) as string | undefined,
-        specialties: companyInfo.specialties as string[] | undefined,
-        sicsCode: companyInfo.sicsCode as string | undefined,
-        sicsDescription: companyInfo.sicsDescription as string | undefined,
-        naicsCode: companyInfo.naicsCode as string | undefined,
-        naicsDescription: companyInfo.naicsDescription as string | undefined,
+        linkedinUrl: companyInfo.linkedin as string | undefined,
+        specialties: (companyInfo.specialities || companyInfo.specialties) as string[] | undefined,
+        sicsCode: companyInfo.industryPrimaryGroupDetails?.sics?.[0]?.sic?.toString() as string | undefined,
+        sicsDescription: companyInfo.industryPrimaryGroupDetails?.sics?.[0]?.description as string | undefined,
+        naicsCode: companyInfo.industryPrimaryGroupDetails?.naics?.[0]?.naics?.toString() as string | undefined,
+        naicsDescription: companyInfo.industryPrimaryGroupDetails?.naics?.[0]?.description as string | undefined,
       };
 
       logger.info(
