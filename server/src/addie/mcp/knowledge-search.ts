@@ -405,11 +405,25 @@ export function createKnowledgeToolHandlers(): Map<
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
   handlers.set('search_docs', async (input) => {
+    const startTime = Date.now();
     const query = input.query as string;
     const category = input.category as string | undefined;
     const limit = Math.min((input.limit as number) || 3, 5);
 
     const results = searchDocsContent(query, { category, limit });
+    const latencyMs = Date.now() - startTime;
+
+    // Log search for pattern analysis (async, don't block response)
+    addieDb.logSearch({
+      query,
+      tool_name: 'search_docs',
+      category,
+      limit_requested: limit,
+      results_count: results.length,
+      result_ids: results.map(r => r.id),
+      search_latency_ms: latencyMs,
+      channel: 'tool',
+    }).catch(err => logger.warn({ err }, 'Failed to log search'));
 
     if (results.length === 0) {
       return `No documentation found for: "${query}"${category ? ` in category: ${category}` : ''}\n\nTry using web_search for external sources or search_slack for community discussions.`;
@@ -462,6 +476,7 @@ ${content}`;
   });
 
   handlers.set('search_repos', async (input) => {
+    const startTime = Date.now();
     const query = input.query as string;
     const repoId = input.repo_id as string | undefined;
     const limit = Math.min((input.limit as number) || 3, 5);
@@ -471,6 +486,19 @@ ${content}`;
     }
 
     const results = searchExternalDocs(query, { repoId, limit });
+    const latencyMs = Date.now() - startTime;
+
+    // Log search for pattern analysis
+    addieDb.logSearch({
+      query,
+      tool_name: 'search_repos',
+      category: repoId,
+      limit_requested: limit,
+      results_count: results.length,
+      result_ids: results.map(r => r.id),
+      search_latency_ms: latencyMs,
+      channel: 'tool',
+    }).catch(err => logger.warn({ err }, 'Failed to log search'));
 
     if (results.length === 0) {
       const repos = getConfiguredRepos();

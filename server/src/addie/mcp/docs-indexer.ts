@@ -32,9 +32,150 @@ export interface IndexedDoc {
   sourceUrl: string;
 }
 
-// In-memory index of docs
+/**
+ * Indexed heading - a section within a doc, searchable by itself
+ * Enables deep linking directly to specific sections
+ */
+export interface IndexedHeading {
+  id: string;              // e.g., "doc:media-buy/targeting#geographic-targeting"
+  doc_id: string;          // parent doc ID
+  anchor: string;          // e.g., "geographic-targeting"
+  title: string;           // heading text
+  level: number;           // 2, 3 (we skip level 1 - that's the doc title)
+  parent_headings: string[]; // breadcrumb path: ["Targeting", "Geographic Targeting"]
+  content: string;         // content under this heading until next same-level heading
+  sourceUrl: string;       // with anchor: ".../targeting#geographic-targeting"
+}
+
+// In-memory indices
 let docsIndex: IndexedDoc[] = [];
+let headingsIndex: IndexedHeading[] = [];
 let initialized = false;
+
+/**
+ * Generate a URL-safe anchor slug from heading text
+ * Follows Mintlify/GitHub conventions for heading anchors
+ */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
+    .replace(/\s+/g, '-')          // Spaces to hyphens
+    .replace(/-+/g, '-')           // Collapse multiple hyphens
+    .replace(/^-|-$/g, '');        // Trim leading/trailing hyphens
+}
+
+/**
+ * Extract headings from markdown content with their content sections
+ */
+function extractHeadings(
+  content: string,
+  docId: string,
+  docTitle: string,
+  baseUrl: string
+): IndexedHeading[] {
+  const headings: IndexedHeading[] = [];
+  const lines = content.split('\n');
+
+  // Track the parent heading stack for breadcrumbs
+  const parentStack: Array<{ level: number; title: string }> = [];
+
+  let currentHeading: {
+    level: number;
+    title: string;
+    anchor: string;
+    startLine: number;
+    parentHeadings: string[];
+  } | null = null;
+
+  let contentLines: string[] = [];
+  let inCodeBlock = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Track code blocks to avoid extracting headings from code examples
+    if (line.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      if (currentHeading) contentLines.push(line);
+      continue;
+    }
+
+    // Skip processing inside code blocks
+    if (inCodeBlock) {
+      if (currentHeading) contentLines.push(line);
+      continue;
+    }
+
+    // Match ## or ### headings (skip # which is the doc title)
+    const headingMatch = line.match(/^(#{2,3})\s+(.+)$/);
+
+    if (headingMatch) {
+      // Save previous heading if exists
+      if (currentHeading) {
+        const headingContent = contentLines.join('\n').trim();
+        if (headingContent.length > 20) { // Only index headings with meaningful content
+          headings.push({
+            id: `${docId}#${currentHeading.anchor}`,
+            doc_id: docId,
+            anchor: currentHeading.anchor,
+            title: currentHeading.title,
+            level: currentHeading.level,
+            parent_headings: currentHeading.parentHeadings,
+            content: headingContent,
+            sourceUrl: `${baseUrl}#${currentHeading.anchor}`,
+          });
+        }
+      }
+
+      const level = headingMatch[1].length;
+      const title = headingMatch[2].trim();
+      const anchor = slugify(title);
+
+      // Update parent stack - pop any headings at same or lower level
+      while (parentStack.length > 0 && parentStack[parentStack.length - 1].level >= level) {
+        parentStack.pop();
+      }
+
+      // Build breadcrumb from stack + current
+      const parentHeadings = [docTitle, ...parentStack.map(p => p.title)];
+
+      // Push current heading onto stack
+      parentStack.push({ level, title });
+
+      currentHeading = {
+        level,
+        title,
+        anchor,
+        startLine: i,
+        parentHeadings,
+      };
+
+      contentLines = [];
+    } else if (currentHeading) {
+      contentLines.push(line);
+    }
+  }
+
+  // Don't forget the last heading
+  if (currentHeading) {
+    const headingContent = contentLines.join('\n').trim();
+    if (headingContent.length > 20) {
+      headings.push({
+        id: `${docId}#${currentHeading.anchor}`,
+        doc_id: docId,
+        anchor: currentHeading.anchor,
+        title: currentHeading.title,
+        level: currentHeading.level,
+        parent_headings: currentHeading.parentHeadings,
+        content: headingContent,
+        sourceUrl: `${baseUrl}#${currentHeading.anchor}`,
+      });
+    }
+  }
+
+  return headings;
+}
 
 /**
  * Extract title from markdown frontmatter or first heading
@@ -333,6 +474,7 @@ export async function initializeDocsIndex(): Promise<void> {
   }
 
   docsIndex = [];
+  headingsIndex = [];
 
   // Index markdown docs
   if (docsRoot) {
@@ -356,6 +498,7 @@ export async function initializeDocsIndex(): Promise<void> {
         // Create a unique ID from the path
         const relativePath = path.relative(docsRoot, filePath);
         const id = `doc:${relativePath.replace(/\\/g, '/').replace(/\.(md|mdx)$/, '')}`;
+        const sourceUrl = buildSourceUrl(filePath, docsRoot);
 
         docsIndex.push({
           id,
@@ -363,8 +506,12 @@ export async function initializeDocsIndex(): Promise<void> {
           category,
           path: relativePath,
           content: cleanedContent,
-          sourceUrl: buildSourceUrl(filePath, docsRoot),
+          sourceUrl,
         });
+
+        // Extract and index headings from this doc
+        const docHeadings = extractHeadings(cleanedContent, id, title, sourceUrl);
+        headingsIndex.push(...docHeadings);
       } catch (error) {
         logger.warn({ error, filePath }, 'Addie Docs: Failed to index file');
       }
@@ -390,6 +537,7 @@ export async function initializeDocsIndex(): Promise<void> {
   logger.info(
     {
       totalDocs: docsIndex.length,
+      totalHeadings: headingsIndex.length,
       websitePages: websiteCount,
       categories: categories.join(', '),
     },
@@ -491,4 +639,84 @@ export function getDocCategories(): Array<{ category: string; count: number }> {
  */
 export function getDocCount(): number {
   return docsIndex.length;
+}
+
+/**
+ * Get total heading count
+ */
+export function getHeadingCount(): number {
+  return headingsIndex.length;
+}
+
+/**
+ * Search indexed headings
+ * Returns headings that match the query, with scores
+ */
+export function searchHeadings(
+  query: string,
+  options: { docId?: string; limit?: number } = {}
+): IndexedHeading[] {
+  if (!initialized || headingsIndex.length === 0) {
+    return [];
+  }
+
+  const limit = options.limit ?? 5;
+  const queryLower = query.toLowerCase();
+  const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
+
+  // Score each heading
+  const scored = headingsIndex
+    .filter((heading) => {
+      // Filter by doc if specified
+      if (options.docId && heading.doc_id !== options.docId) {
+        return false;
+      }
+      return true;
+    })
+    .map((heading) => {
+      const titleLower = heading.title.toLowerCase();
+      const contentLower = heading.content.toLowerCase();
+
+      let score = 0;
+
+      // Exact query match in title (highest weight)
+      if (titleLower.includes(queryLower)) {
+        score += 150;
+      }
+
+      // Exact title match (bonus)
+      if (titleLower === queryLower) {
+        score += 100;
+      }
+
+      // Exact query match in content
+      if (contentLower.includes(queryLower)) {
+        score += 30;
+      }
+
+      // Individual word matches
+      for (const word of queryWords) {
+        if (titleLower.includes(word)) {
+          score += 25;
+        }
+        // Count occurrences in content (limited to avoid huge scores)
+        const occurrences = Math.min((contentLower.match(new RegExp(word, 'g')) || []).length, 5);
+        score += occurrences * 2;
+      }
+
+      return { heading, score };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ heading }) => heading);
+
+  return scored;
+}
+
+/**
+ * Get a heading by ID (doc_id#anchor format)
+ */
+export function getHeadingById(id: string): IndexedHeading | null {
+  return headingsIndex.find((h) => h.id === id) || null;
 }

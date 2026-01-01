@@ -67,15 +67,47 @@ export interface RoutingContext {
  * They're kept in code because tool names must match actual implementations
  * and some rules have conditional logic.
  */
+/**
+ * Tool descriptions for router context
+ *
+ * These descriptions help the router understand WHEN to use each tool,
+ * not just what topics they relate to. This is crucial for distinguishing
+ * between "how does X work?" (search_docs) and "validate my X" (validate_adagents).
+ */
+export const TOOL_DESCRIPTIONS: Record<string, string> = {
+  // Knowledge/Search tools
+  search_docs: 'Search official AdCP documentation - use for learning, understanding concepts, "how does X work?", "what is X?"',
+  get_doc: 'Get full content of a specific doc - use after search_docs to read complete details',
+  search_repos: 'Search GitHub repos (salesagent, client libraries) - use for implementation examples, SDK usage, setup guides',
+  search_slack: 'Search Slack discussions - use for community Q&A, "what did someone say about X?", real-world context',
+  search_resources: 'Search curated external resources - use for industry trends, competitor info, external perspectives',
+  web_search: 'Search the web - use for external protocols (MCP, A2A), current events, things not in our docs',
+
+  // Validation/Action tools
+  validate_adagents: 'Validate adagents.json for a domain - use ONLY for "check my setup", "validate example.com", debugging configs',
+  check_agent_health: 'Check if an agent is online - use for "is my agent working?", "test my agent endpoint"',
+  check_publisher_authorization: 'Check if publisher authorized an agent - use for authorization verification questions',
+
+  // Member tools
+  get_my_profile: 'Get current user profile - use for "what\'s my profile?", account/membership questions',
+  list_working_groups: 'List working groups - use for "what groups exist?", browsing groups',
+  join_working_group: 'Join a working group - use when user explicitly wants to join a group',
+  get_account_link: 'Get account linking URL - use when user needs to connect Slack to their AAO account',
+
+  // Content tools
+  bookmark_resource: 'Save a web resource for future reference - use when finding useful external content',
+  draft_github_issue: 'Draft a GitHub issue - use when user wants to report a bug or request a feature',
+};
+
 export const ROUTING_RULES = {
   /**
    * Topics Addie can help with (and the tools to use)
    */
   expertise: {
     adcp_protocol: {
-      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative'],
-      tools: ['search_docs', 'validate_adagents'],
-      description: 'AdCP protocol questions',
+      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief'],
+      tools: ['search_docs'],
+      description: 'AdCP protocol questions - understanding how things work',
     },
     salesagent: {
       patterns: ['salesagent', 'sales agent', 'open source agent', 'reference implementation'],
@@ -87,10 +119,15 @@ export const ROUTING_RULES = {
       tools: ['search_repos', 'search_docs'],
       description: 'Client library usage',
     },
+    adagents_validation: {
+      patterns: ['validate', 'check my', 'debug', 'test my', 'verify'],
+      tools: ['validate_adagents', 'check_agent_health', 'check_publisher_authorization'],
+      description: 'Validation and debugging requests - checking setups, testing configs',
+    },
     adagents_json: {
-      patterns: ['adagents.json', 'agent manifest', 'agent configuration'],
-      tools: ['validate_adagents', 'search_docs'],
-      description: 'Agent manifest validation',
+      patterns: ['adagents.json', 'agent manifest', 'agent configuration', 'well-known'],
+      tools: ['search_docs', 'validate_adagents'],
+      description: 'Learning about adagents.json format and setup',
     },
     membership: {
       patterns: ['member', 'join', 'signup', 'account', 'profile', 'working group'],
@@ -157,9 +194,9 @@ function buildRoutingPrompt(ctx: RoutingContext): string {
   const isMember = !!ctx.memberContext?.workos_user?.workos_user_id;
   const isLinked = isMember;
 
-  // Build expertise section
-  const expertiseList = Object.entries(ROUTING_RULES.expertise)
-    .map(([key, rule]) => `- ${rule.description}: tools=[${rule.tools.join(', ')}]`)
+  // Build tool descriptions section - this is key for proper tool selection
+  const toolsSection = Object.entries(TOOL_DESCRIPTIONS)
+    .map(([name, desc]) => `- **${name}**: ${desc}`)
     .join('\n');
 
   // Build react patterns
@@ -191,8 +228,17 @@ The user is an ADMIN.
 - In thread: ${ctx.isThread ?? false}
 ${conditionalRules}
 
-## Topics Addie Can Help With (and tools to use)
-${expertiseList}
+## Available Tools (with when to use each)
+${toolsSection}
+
+## Tool Selection Guidelines
+IMPORTANT: Choose tools based on the user's INTENT, not just keywords:
+- "How does X work?" / "What is X?" / "Explain X" → search_docs (learning/understanding)
+- "Validate my adagents.json" / "Check example.com" / "Debug my setup" → validate_adagents (action/validation)
+- "How do I use the SDK?" / "Salesagent setup" → search_repos (implementation help)
+- "What did someone say about X?" → search_slack (community discussions)
+- Questions about MCP, A2A, external protocols → web_search (external info)
+- "Is my agent working?" / "Test my endpoint" → check_agent_health (testing)
 
 ## Messages to React To (emoji only, no response)
 ${reactList}
@@ -221,7 +267,7 @@ Respond with a JSON object for the execution plan. Choose ONE action:
 
 4. {"action": "respond", "tools": ["tool1", "tool2"], "reason": "brief reason"}
    - When you can help and know which tools to use
-   - List specific tools from the expertise list above
+   - Select tools from the Available Tools list based on user intent
    - Empty array [] means respond without tools (general knowledge)
 
 Respond with ONLY the JSON object, no other text.`;
