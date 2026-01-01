@@ -103,19 +103,22 @@ function verifyWorkOSWebhook(
 
   try {
     // Validate timestamp is recent (within 5 minutes) to prevent replay attacks
+    // WorkOS sends timestamp in milliseconds, so convert to seconds
     const nowSeconds = Date.now() / 1000;
-    const parsedTimestamp = parseInt(timestamp, 10);
-    const timestampAge = Math.abs(nowSeconds - parsedTimestamp);
+    const parsedTimestampMs = parseInt(timestamp, 10);
+    const parsedTimestampSeconds = parsedTimestampMs / 1000;
+    const timestampAge = Math.abs(nowSeconds - parsedTimestampSeconds);
 
     logger.debug({
       nowSeconds,
-      parsedTimestamp,
+      parsedTimestampMs,
+      parsedTimestampSeconds,
       timestampAge,
       rawTimestamp: timestamp,
     }, 'WorkOS timestamp validation');
 
     if (timestampAge > 300) {
-      logger.warn({ timestampAge, nowSeconds, parsedTimestamp }, 'WorkOS webhook timestamp too old (potential replay attack)');
+      logger.warn({ timestampAge, nowSeconds, parsedTimestampSeconds }, 'WorkOS webhook timestamp too old (potential replay attack)');
       return false;
     }
 
