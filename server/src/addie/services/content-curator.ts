@@ -18,6 +18,7 @@ import { logger } from '../../logger.js';
 import { AddieDatabase, type KeyInsight } from '../../db/addie-db.js';
 import { getPendingRssPerspectives, type RssPerspective } from '../../db/industry-feeds-db.js';
 import { query } from '../../db/client.js';
+import { getActiveChannels, type NotificationChannel } from '../../db/notification-channels-db.js';
 
 const addieDb = new AddieDatabase();
 
@@ -79,18 +80,30 @@ async function fetchUrlContent(url: string): Promise<string> {
 }
 
 /**
+ * Channel info for routing decisions
+ */
+interface ChannelForRouting {
+  slack_channel_id: string;
+  name: string;
+  description: string;
+}
+
+/**
  * Generate summary and insights using Claude
+ * Optionally includes notification channel routing if channels are provided
  */
 async function generateAnalysis(
   title: string,
   content: string,
-  url: string
+  url: string,
+  channels?: ChannelForRouting[]
 ): Promise<{
   summary: string;
   key_insights: KeyInsight[];
   addie_notes: string;
   relevance_tags: string[];
   quality_score: number | null;
+  notification_channels: string[];
 }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -98,6 +111,20 @@ async function generateAnalysis(
   }
 
   const client = new Anthropic({ apiKey });
+
+  // Build channel routing section if channels are provided
+  const channelRoutingSection = channels && channels.length > 0
+    ? `
+
+**Notification Channel Routing:**
+Based on the article content, decide which Slack channels should receive an alert about this article.
+Choose channels where the topic strongly aligns with the channel's purpose. If unsure or the article doesn't strongly match any channel, return an empty array.
+
+Available channels:
+${channels.map(ch => `- "${ch.slack_channel_id}": ${ch.name} - ${ch.description}`).join('\n')}
+
+Add "notification_channels": ["channel_id", ...] to your JSON response with the IDs of channels that should receive this article.`
+    : '';
 
   const response = await client.messages.create({
     model: CURATOR_MODEL,
@@ -122,7 +149,7 @@ Provide your analysis as JSON with this structure:
   ],
   "addie_notes": "1-2 sentences explaining how this connects to agentic AI, advertising technology, or topics our community cares about. If the content isn't directly about ad tech, explain what broader lessons or context it provides.",
   "relevance_tags": ["tag1", "tag2"],
-  "quality_score": 1-5
+  "quality_score": 1-5${channels && channels.length > 0 ? ',\n  "notification_channels": []' : ''}
 }
 
 **Relevance tags - choose tags that accurately describe the content:**
@@ -150,6 +177,7 @@ Use 2-5 tags that best describe what the content is actually about. Do NOT force
 - 3: Good quality, useful context for understanding AI or tech landscape
 - 2: Decent content but limited relevance to our focus areas
 - 1: Low quality or not useful for our community
+${channelRoutingSection}
 
 Return ONLY the JSON, no markdown formatting.`,
       },
@@ -172,6 +200,9 @@ Return ONLY the JSON, no markdown formatting.`,
       quality_score: parsed.quality_score
         ? Math.min(5, Math.max(1, parsed.quality_score))
         : null,
+      notification_channels: Array.isArray(parsed.notification_channels)
+        ? parsed.notification_channels
+        : [],
     };
   } catch {
     // If JSON parsing fails, extract what we can
@@ -183,6 +214,7 @@ Return ONLY the JSON, no markdown formatting.`,
       addie_notes: '',
       relevance_tags: [],
       quality_score: null,
+      notification_channels: [],
     };
   }
 }
@@ -343,8 +375,11 @@ export async function queueWebSearchResult(result: {
  * Process a single RSS perspective - fetch content and generate analysis
  * Creates/updates the corresponding addie_knowledge entry
  */
-async function processRssPerspective(perspective: RssPerspective): Promise<boolean> {
-  logger.info({ id: perspective.id, url: perspective.external_url }, 'Processing RSS perspective');
+async function processRssPerspective(
+  perspective: RssPerspective,
+  channels: ChannelForRouting[]
+): Promise<boolean> {
+  logger.debug({ id: perspective.id, url: perspective.external_url }, 'Processing RSS perspective');
 
   try {
     // Fetch content
@@ -361,8 +396,8 @@ async function processRssPerspective(perspective: RssPerspective): Promise<boole
       return false;
     }
 
-    // Generate analysis
-    const analysis = await generateAnalysis(perspective.title, content, perspective.external_url);
+    // Generate analysis with channel routing
+    const analysis = await generateAnalysis(perspective.title, content, perspective.external_url, channels);
 
     // Create/update knowledge entry
     await createOrUpdateRssKnowledge(perspective, {
@@ -372,14 +407,16 @@ async function processRssPerspective(perspective: RssPerspective): Promise<boole
       addie_notes: analysis.addie_notes,
       relevance_tags: analysis.relevance_tags,
       quality_score: analysis.quality_score,
+      notification_channel_ids: analysis.notification_channels,
       fetch_status: 'success',
     });
 
-    logger.info(
+    logger.debug(
       {
         id: perspective.id,
         quality: analysis.quality_score,
         tags: analysis.relevance_tags,
+        channels: analysis.notification_channels,
       },
       'Successfully processed RSS perspective'
     );
@@ -407,6 +444,7 @@ async function createOrUpdateRssKnowledge(
     addie_notes?: string;
     relevance_tags?: string[];
     quality_score?: number | null;
+    notification_channel_ids?: string[];
     fetch_status: 'success' | 'failed';
     error_message?: string;
   }
@@ -438,10 +476,10 @@ async function createOrUpdateRssKnowledge(
       title, category, content, source_url, fetch_url, source_type,
       fetch_status, last_fetched_at, summary, key_insights, addie_notes,
       relevance_tags, quality_score, mentions_agentic, mentions_adcp,
-      discovery_source, discovery_context, created_by
+      notification_channel_ids, discovery_source, discovery_context, created_by
     ) VALUES (
       $1, $2, $3, $4, $4, 'rss', 'success', NOW(), $5, $6, $7,
-      $8, $9, $10, $11, 'rss_feed', $12, 'system'
+      $8, $9, $10, $11, $12, 'rss_feed', $13, 'system'
     )
     ON CONFLICT (source_url) DO UPDATE SET
       content = EXCLUDED.content,
@@ -452,6 +490,7 @@ async function createOrUpdateRssKnowledge(
       quality_score = EXCLUDED.quality_score,
       mentions_agentic = EXCLUDED.mentions_agentic,
       mentions_adcp = EXCLUDED.mentions_adcp,
+      notification_channel_ids = EXCLUDED.notification_channel_ids,
       fetch_status = 'success',
       last_fetched_at = NOW(),
       updated_at = NOW()`,
@@ -467,6 +506,7 @@ async function createOrUpdateRssKnowledge(
       data.quality_score,
       checkMentionsAgentic(data.content, data.summary || '', data.relevance_tags || []),
       checkMentionsAdcp(data.content, data.summary || ''),
+      data.notification_channel_ids || [],
       JSON.stringify({ perspective_id: perspective.id, feed_id: perspective.feed_id }),
     ]
   );
@@ -510,13 +550,21 @@ export async function processRssPerspectives(options: {
     return { processed: 0, succeeded: 0, failed: 0 };
   }
 
-  logger.info({ count: perspectives.length }, 'Processing pending RSS perspectives');
+  logger.debug({ count: perspectives.length }, 'Processing pending RSS perspectives');
+
+  // Fetch active notification channels for routing decisions
+  const activeChannels = await getActiveChannels();
+  const channelsForRouting: ChannelForRouting[] = activeChannels.map(ch => ({
+    slack_channel_id: ch.slack_channel_id,
+    name: ch.name,
+    description: ch.description,
+  }));
 
   let succeeded = 0;
   let failed = 0;
 
   for (const perspective of perspectives) {
-    const success = await processRssPerspective(perspective);
+    const success = await processRssPerspective(perspective, channelsForRouting);
     if (success) {
       succeeded++;
     } else {

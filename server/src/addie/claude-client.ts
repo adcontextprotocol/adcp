@@ -239,8 +239,7 @@ export class AddieClaudeClient {
         }
       }
 
-      // Log response structure for debugging
-      logger.info({
+      logger.debug({
         stopReason: response.stop_reason,
         contentTypes: response.content.map(c => c.type),
         iteration,
@@ -656,7 +655,7 @@ export class AddieClaudeClient {
           }
         }
 
-        logger.info({
+        logger.debug({
           stopReason: currentResponse.stop_reason,
           iteration,
           llmDurationMs: llmDuration,

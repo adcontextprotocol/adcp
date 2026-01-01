@@ -297,7 +297,7 @@ async function handleThreadStarted({
   const userId = event.assistant_thread.user_id;
   const context = event.assistant_thread.context;
 
-  logger.info(
+  logger.debug(
     { userId, channelId: context.channel_id },
     'Addie Bolt: Thread started'
   );

@@ -25,14 +25,17 @@ function extractChannelAndThread(args: AllAssistantMiddlewareArgs): { channelId:
   const payload = args.payload;
 
   // For assistant_thread_started and assistant_thread_context_changed events
+  // The channel_id and thread_ts are inside the assistant_thread object
   if ('assistant_thread' in payload && payload.assistant_thread) {
-    // The channel_id in these events is the DM channel
-    // The thread context contains what channel they're viewing
-    const channel = 'channel' in args.event ? args.event.channel : undefined;
-    const threadTs = 'thread_ts' in args.event ? args.event.thread_ts : undefined;
-
-    if (channel && threadTs) {
-      return { channelId: channel, threadTs };
+    const assistantThread = payload.assistant_thread as {
+      channel_id?: string;
+      thread_ts?: string;
+    };
+    if (assistantThread.channel_id && assistantThread.thread_ts) {
+      return {
+        channelId: assistantThread.channel_id,
+        threadTs: assistantThread.thread_ts,
+      };
     }
   }
 
@@ -60,7 +63,7 @@ export class DatabaseThreadContextStore implements AssistantThreadContextStore {
   async get(args: AllAssistantMiddlewareArgs): Promise<AssistantThreadContext> {
     const ids = extractChannelAndThread(args);
     if (!ids) {
-      logger.warn('ThreadContextStore: Could not extract channel/thread from args');
+      logger.debug('ThreadContextStore: Could not extract channel/thread from args');
       return {};
     }
 
@@ -88,7 +91,7 @@ export class DatabaseThreadContextStore implements AssistantThreadContextStore {
   async save(args: AllAssistantMiddlewareArgs): Promise<void> {
     const ids = extractChannelAndThread(args);
     if (!ids) {
-      logger.warn('ThreadContextStore: Could not extract channel/thread from args for save');
+      logger.debug('ThreadContextStore: Could not extract channel/thread from args for save');
       return;
     }
 

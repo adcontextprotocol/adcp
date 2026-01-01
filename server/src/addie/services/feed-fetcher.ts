@@ -58,7 +58,7 @@ async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
     return [];
   }
 
-  logger.info({ feedId: feed.id, name: feed.name, url: feed.feed_url }, 'Fetching RSS feed');
+  logger.debug({ feedId: feed.id, name: feed.name, url: feed.feed_url }, 'Fetching RSS feed');
 
   const parsed = await parser.parseURL(feed.feed_url);
 
@@ -108,7 +108,7 @@ async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
     });
   }
 
-  logger.info({ feedId: feed.id, articlesFound: articles.length }, 'Parsed RSS feed');
+  logger.debug({ feedId: feed.id, articlesFound: articles.length }, 'Parsed RSS feed');
   return articles;
 }
 
@@ -127,7 +127,7 @@ export async function processFeedsToFetch(): Promise<{
     return { feedsProcessed: 0, newPerspectives: 0, errors: 0 };
   }
 
-  logger.info({ feedCount: feeds.length }, 'Processing RSS feeds');
+  logger.debug({ feedCount: feeds.length }, 'Processing RSS feeds');
 
   let totalNewPerspectives = 0;
   let errorCount = 0;
@@ -140,7 +140,7 @@ export async function processFeedsToFetch(): Promise<{
         // Create perspectives from RSS articles
         const created = await createRssPerspectivesBatch(articles);
         totalNewPerspectives += created;
-        logger.info({ feedId: feed.id, created }, 'Created perspectives from RSS');
+        logger.debug({ feedId: feed.id, created }, 'Created perspectives from RSS');
       }
 
       await updateFeedStatus(feed.id, true);
