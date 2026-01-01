@@ -161,6 +161,18 @@
     .btn-secondary:hover {
       background: var(--color-gray-300);
     }
+    .btn-danger {
+      background: var(--color-error-100);
+      color: var(--color-error-700);
+    }
+    .btn-danger:hover {
+      background: var(--color-error-200);
+    }
+    .btn-danger:disabled {
+      background: var(--color-gray-100);
+      color: var(--color-gray-400);
+      cursor: not-allowed;
+    }
 
     .search-dropdown {
       position: relative;
@@ -314,8 +326,8 @@
           <tr>
             <th>Customer</th>
             <th>Email</th>
+            <th>Billing Info</th>
             <th>Total Paid</th>
-            <th>Invoices</th>
             <th>Linked To</th>
             <th>Actions</th>
           </tr>
@@ -386,15 +398,33 @@
         const hasPayments = customer.total_paid > 0;
         const rowClass = isLinked ? 'linked' : (hasPayments ? 'unlinked-with-payments' : '');
 
+        // Build billing info indicators
+        const billingBadges = [];
+        if (customer.open_invoice_count > 0) {
+          billingBadges.push(`<span class="badge badge-warning" title="Open invoices: ${formatCurrency(customer.open_invoice_total)}">${customer.open_invoice_count} open</span>`);
+        }
+        if (customer.has_payment_method) {
+          billingBadges.push('<span class="badge badge-success" title="Has payment method on file">Card</span>');
+        }
+        if (customer.active_subscriptions > 0) {
+          billingBadges.push(`<span class="badge badge-success" title="Active subscriptions">${customer.active_subscriptions} sub${customer.active_subscriptions > 1 ? 's' : ''}</span>`);
+        }
+        if (customer.invoice_count > 0) {
+          billingBadges.push(`<span class="badge badge-gray" title="Paid invoices">${customer.invoice_count} paid</span>`);
+        }
+
         return `
           <tr class="${rowClass}" data-customer-id="${customer.id}">
             <td>
               <div><strong>${customer.name || 'No name'}</strong></div>
               <div style="font-size: 11px; color: var(--color-text-muted);">${customer.id}</div>
+              <div style="font-size: 10px; color: var(--color-text-muted);">Created ${formatDate(customer.created)}</div>
             </td>
             <td>${customer.email || '-'}</td>
+            <td style="white-space: nowrap;">
+              ${billingBadges.length > 0 ? billingBadges.join(' ') : '<span style="color: var(--color-text-muted);">None</span>'}
+            </td>
             <td>${hasPayments ? formatCurrency(customer.total_paid) : '-'}</td>
-            <td>${customer.invoice_count || '-'}</td>
             <td>
               ${isLinked
                 ? `<span class="badge badge-success">${customer.linked_org.name}</span>`
@@ -415,6 +445,7 @@
                       <div class="search-results" id="results-${customer.id}"></div>
                     </div>
                     <button class="btn btn-primary" id="link-btn-${customer.id}" disabled onclick="linkCustomer('${customer.id}')">Link</button>
+                    <button class="btn btn-danger" onclick="deleteCustomer('${customer.id}', '${(customer.email || '').replace(/'/g, "\\'")}', ${customer.total_paid})" title="Delete from Stripe">Delete</button>
                   </div>`
               }
             </td>
@@ -508,6 +539,37 @@
         showError(err.message);
         btn.disabled = false;
         btn.textContent = 'Link';
+      }
+    }
+
+    async function deleteCustomer(customerId, email, totalPaid) {
+      const warningMsg = totalPaid > 0
+        ? `This customer (${email}) has ${formatCurrency(totalPaid)} in payments. Are you sure you want to delete them from Stripe?`
+        : `Delete customer ${email} from Stripe?`;
+
+      if (!confirm(warningMsg)) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/admin/stripe-customers/${customerId}`, {
+          method: 'DELETE',
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to delete customer');
+        }
+
+        showSuccess(`Deleted customer ${email}`);
+
+        // Remove from local data and re-render
+        allCustomers = allCustomers.filter(c => c.id !== customerId);
+        updateStats();
+        renderCustomers();
+      } catch (err) {
+        showError(err.message);
       }
     }
 
