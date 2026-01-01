@@ -5,8 +5,10 @@
 import type { SuggestedPrompt } from './types.js';
 import type { MemberContext } from './member-context.js';
 import { createLogger } from '../logger.js';
+import { InsightsDatabase } from '../db/insights-db.js';
 
 const logger = createLogger('addie-prompts');
+const insightsDb = new InsightsDatabase();
 
 export const ADDIE_SYSTEM_PROMPT = `You are Addie, the AI assistant for AgenticAdvertising.org. Your mission is to help the ad tech industry transition from programmatic to agentic advertising.
 
@@ -251,32 +253,57 @@ export const STATUS_MESSAGES = {
 };
 
 /**
- * Build dynamic suggested prompts based on user context and role
+ * Build dynamic suggested prompts based on user context, role, and active goals
  *
  * @param memberContext - User's member context (or null if lookup failed)
  * @param isAdmin - Whether the user has admin privileges
  * @returns Array of suggested prompts tailored to the user
  */
-export function buildDynamicSuggestedPrompts(
+export async function buildDynamicSuggestedPrompts(
   memberContext: MemberContext | null,
   isAdmin: boolean
-): SuggestedPrompt[] {
+): Promise<SuggestedPrompt[]> {
+  const isMapped = !!memberContext?.workos_user?.workos_user_id;
+
+  // Fetch active insight goals with suggested prompts
+  let goalPrompts: SuggestedPrompt[] = [];
+  try {
+    const goals = await insightsDb.getActiveGoalsForUser(isMapped);
+    goalPrompts = goals
+      .filter(g => g.suggested_prompt_title && g.suggested_prompt_message)
+      .sort((a, b) => b.priority - a.priority)
+      .slice(0, 2) // Take top 2 goals
+      .map(g => ({
+        title: g.suggested_prompt_title!,
+        message: g.suggested_prompt_message!,
+      }));
+  } catch (error) {
+    logger.warn({ error }, 'Failed to fetch insight goals for suggested prompts');
+  }
+
   // Not linked - prioritize account setup
-  if (!memberContext?.workos_user?.workos_user_id) {
-    return [
+  if (!isMapped) {
+    const prompts: SuggestedPrompt[] = [
       {
         title: 'Link my account',
         message: 'Help me link my Slack account to AgenticAdvertising.org',
       },
-      {
-        title: 'Learn about AdCP',
-        message: 'What is AdCP and how does it work?',
-      },
-      {
-        title: 'Why join AgenticAdvertising.org?',
-        message: 'What are the benefits of joining AgenticAdvertising.org?',
-      },
     ];
+
+    // Add goal prompts (e.g., surveys that apply to unmapped users)
+    prompts.push(...goalPrompts);
+
+    prompts.push({
+      title: 'Learn about AdCP',
+      message: 'What is AdCP and how does it work?',
+    });
+
+    prompts.push({
+      title: 'Why join AgenticAdvertising.org?',
+      message: 'What are the benefits of joining AgenticAdvertising.org?',
+    });
+
+    return prompts.slice(0, 4); // Slack limits to 4 prompts
   }
 
   // Admin users get admin-specific suggestions
@@ -303,6 +330,9 @@ export function buildDynamicSuggestedPrompts(
 
   // Linked non-admin users - personalized prompts
   const prompts: SuggestedPrompt[] = [];
+
+  // Add goal prompts first (highest priority)
+  prompts.push(...goalPrompts);
 
   // Show working groups if they have some, otherwise suggest finding one
   if (memberContext.working_groups && memberContext.working_groups.length > 0) {

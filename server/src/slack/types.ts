@@ -26,6 +26,10 @@ export interface SlackUserMapping {
   last_slack_activity_at: Date | null;
   mapped_at: Date | null;
   mapped_by_user_id: string | null;
+  // Proactive outreach tracking (from migration 070)
+  last_outreach_at: Date | null;
+  outreach_opt_out: boolean;
+  outreach_opt_out_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
