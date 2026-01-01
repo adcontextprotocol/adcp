@@ -324,7 +324,7 @@
           </div>
           <div class="actions">
             <button class="btn btn-secondary" onclick="exportToCSV()">Export to CSV</button>
-            <button class="btn btn-primary" onclick="refreshMembers()">Refresh</button>
+            <button class="btn btn-primary" onclick="syncAllFromStripe()" id="syncAllBtn">Sync from Stripe</button>
           </div>
         </div>
 
@@ -460,8 +460,7 @@
 
         allMembers = await response.json();
         console.log('[admin-members] Loaded', allMembers.length, 'members');
-        filteredMembers = allMembers;
-        renderMembers();
+        applyFilters();
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -686,10 +685,41 @@
       URL.revokeObjectURL(url);
     }
 
-    function refreshMembers() {
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('content').style.display = 'none';
-      loadMembers();
+    async function syncAllFromStripe() {
+      const btn = document.getElementById('syncAllBtn');
+      const originalText = btn.textContent;
+
+      btn.disabled = true;
+      btn.textContent = 'Syncing...';
+
+      try {
+        const response = await fetch('/api/admin/backfill-revenue', {
+          method: 'POST',
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          const errorData = await response.json().catch(() => ({ message: response.statusText }));
+          throw new Error(errorData.message || `Sync failed (${response.status})`);
+        }
+
+        const result = await response.json();
+        console.log('[admin-members] Sync result:', result);
+
+        // Reload members to show updated data
+        await loadMembers();
+
+        alert(`Sync complete: ${result.subscriptions_synced || 0} subscriptions updated`);
+      } catch (error) {
+        console.error('[admin-members] Sync error:', error);
+        alert('Failed to sync from Stripe: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
     }
 
     async function syncMember(orgId) {
