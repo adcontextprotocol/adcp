@@ -1765,6 +1765,248 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   );
 
   // =========================================================================
+  // EMAIL CONTACT MANAGEMENT
+  // =========================================================================
+
+  // GET /api/admin/email/contacts - Search and list email contacts
+  apiRouter.get(
+    "/email/contacts",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const { search, domain, status, limit: limitParam, offset: offsetParam } = req.query;
+        const resultLimit = limitParam ? parseInt(limitParam as string, 10) : 50;
+        const resultOffset = offsetParam ? parseInt(offsetParam as string, 10) : 0;
+
+        const params: (string | number)[] = [];
+        const conditions: string[] = [];
+
+        if (search && typeof search === 'string') {
+          params.push(`%${search.toLowerCase()}%`);
+          conditions.push(`(LOWER(email) LIKE $${params.length} OR LOWER(display_name) LIKE $${params.length})`);
+        }
+
+        if (domain && typeof domain === 'string') {
+          params.push(domain.toLowerCase());
+          conditions.push(`LOWER(domain) = $${params.length}`);
+        }
+
+        if (status && typeof status === 'string') {
+          params.push(status);
+          conditions.push(`mapping_status = $${params.length}`);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        // Get total count
+        const countResult = await pool.query(
+          `SELECT COUNT(*) FROM email_contacts ${whereClause}`,
+          params
+        );
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        // Get contacts with their activity count
+        params.push(resultLimit, resultOffset);
+        const contactsResult = await pool.query(
+          `SELECT
+            ec.id,
+            ec.email,
+            ec.display_name,
+            ec.domain,
+            ec.workos_user_id,
+            ec.organization_id,
+            ec.mapping_status,
+            ec.mapping_source,
+            ec.first_seen_at,
+            ec.last_seen_at,
+            ec.email_count,
+            ec.created_at,
+            ec.updated_at,
+            o.name as organization_name,
+            (SELECT COUNT(*) FROM email_activity_contacts eac WHERE eac.contact_id = ec.id) as activity_count
+          FROM email_contacts ec
+          LEFT JOIN organizations o ON ec.organization_id = o.workos_organization_id
+          ${whereClause}
+          ORDER BY ec.last_seen_at DESC NULLS LAST
+          LIMIT $${params.length - 1} OFFSET $${params.length}`,
+          params
+        );
+
+        res.json({
+          contacts: contactsResult.rows,
+          total,
+          limit: resultLimit,
+          offset: resultOffset,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching email contacts");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch email contacts",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/email/contacts/:id - Get contact details with activity history
+  apiRouter.get(
+    "/email/contacts/:id",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const { id } = req.params;
+
+        // Get contact details
+        const contactResult = await pool.query(
+          `SELECT
+            ec.id,
+            ec.email,
+            ec.display_name,
+            ec.domain,
+            ec.workos_user_id,
+            ec.organization_id,
+            ec.mapping_status,
+            ec.mapping_source,
+            ec.first_seen_at,
+            ec.last_seen_at,
+            ec.email_count,
+            ec.mapped_at,
+            ec.mapped_by_user_id,
+            ec.created_at,
+            ec.updated_at,
+            o.name as organization_name,
+            o.company_type as organization_type,
+            o.prospect_status as organization_prospect_status
+          FROM email_contacts ec
+          LEFT JOIN organizations o ON ec.organization_id = o.workos_organization_id
+          WHERE ec.id = $1`,
+          [id]
+        );
+
+        if (contactResult.rows.length === 0) {
+          return res.status(404).json({ error: "Contact not found" });
+        }
+
+        const contact = contactResult.rows[0];
+
+        // Get activity history for this contact
+        const activitiesResult = await pool.query(
+          `SELECT
+            eca.id as activity_id,
+            eca.email_id,
+            eca.message_id,
+            eca.subject,
+            eca.direction,
+            eca.insights,
+            eca.metadata,
+            eca.email_date,
+            eca.created_at,
+            eac.role,
+            eac.is_primary
+          FROM email_contact_activities eca
+          INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
+          WHERE eac.contact_id = $1
+          ORDER BY eca.email_date DESC`,
+          [id]
+        );
+
+        res.json({
+          ...contact,
+          activities: activitiesResult.rows,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching email contact details");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch email contact details",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/email/contacts/by-email/:email - Lookup contact by email address
+  apiRouter.get(
+    "/email/contacts/by-email/:email",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const pool = getPool();
+        const { email } = req.params;
+
+        // Get contact by email
+        const contactResult = await pool.query(
+          `SELECT
+            ec.id,
+            ec.email,
+            ec.display_name,
+            ec.domain,
+            ec.workos_user_id,
+            ec.organization_id,
+            ec.mapping_status,
+            ec.mapping_source,
+            ec.first_seen_at,
+            ec.last_seen_at,
+            ec.email_count,
+            ec.mapped_at,
+            ec.mapped_by_user_id,
+            ec.created_at,
+            ec.updated_at,
+            o.name as organization_name,
+            o.company_type as organization_type,
+            o.prospect_status as organization_prospect_status
+          FROM email_contacts ec
+          LEFT JOIN organizations o ON ec.organization_id = o.workos_organization_id
+          WHERE LOWER(ec.email) = LOWER($1)`,
+          [email]
+        );
+
+        if (contactResult.rows.length === 0) {
+          return res.status(404).json({ error: "Contact not found" });
+        }
+
+        const contact = contactResult.rows[0];
+
+        // Get activity history for this contact
+        const activitiesResult = await pool.query(
+          `SELECT
+            eca.id as activity_id,
+            eca.email_id,
+            eca.message_id,
+            eca.subject,
+            eca.direction,
+            eca.insights,
+            eca.metadata,
+            eca.email_date,
+            eca.created_at,
+            eac.role,
+            eac.is_primary
+          FROM email_contact_activities eca
+          INNER JOIN email_activity_contacts eac ON eac.activity_id = eca.id
+          WHERE eac.contact_id = $1
+          ORDER BY eca.email_date DESC`,
+          [contact.id]
+        );
+
+        res.json({
+          ...contact,
+          activities: activitiesResult.rows,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching email contact by email");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch email contact",
+        });
+      }
+    }
+  );
+
+  // =========================================================================
   // COMPANY ENRICHMENT (Lusha API)
   // =========================================================================
 
