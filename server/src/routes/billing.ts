@@ -6,10 +6,9 @@
  */
 
 import { Router } from "express";
-import path from "path";
-import { fileURLToPath } from "url";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
+import { serveHtmlWithConfig } from "../utils/html-config.js";
 import {
   getBillingProducts,
   createProduct,
@@ -23,9 +22,6 @@ import {
   type UpdateProductInput,
   type PendingInvoice,
 } from "../billing/stripe-client.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const logger = createLogger("billing-routes");
 
@@ -42,11 +38,10 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   // =========================================================================
 
   pageRouter.get("/products", requireAuth, requireAdmin, (req, res) => {
-    const productsPath =
-      process.env.NODE_ENV === "production"
-        ? path.join(__dirname, "../../server/public/admin-products.html")
-        : path.join(__dirname, "../../public/admin-products.html");
-    res.sendFile(productsPath);
+    serveHtmlWithConfig(req, res, "admin-products.html").catch((err) => {
+      logger.error({ err }, "Error serving admin products page");
+      res.status(500).send("Internal server error");
+    });
   });
 
   // =========================================================================

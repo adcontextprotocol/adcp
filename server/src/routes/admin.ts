@@ -8,12 +8,11 @@
  */
 
 import { Router } from "express";
-import path from "path";
-import { fileURLToPath } from "url";
 import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
+import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import {
@@ -42,9 +41,6 @@ import {
 
 const slackDb = new SlackDatabase();
 const orgDb = new OrganizationDatabase();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const logger = createLogger("admin-routes");
 
@@ -75,19 +71,17 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // =========================================================================
 
   pageRouter.get("/prospects", requireAuth, requireAdmin, (req, res) => {
-    const prospectsPath =
-      process.env.NODE_ENV === "production"
-        ? path.join(__dirname, "../../server/public/admin-prospects.html")
-        : path.join(__dirname, "../../public/admin-prospects.html");
-    res.sendFile(prospectsPath);
+    serveHtmlWithConfig(req, res, "admin-prospects.html").catch((err) => {
+      logger.error({ err }, "Error serving admin prospects page");
+      res.status(500).send("Internal server error");
+    });
   });
 
   pageRouter.get("/api-keys", requireAuth, requireAdmin, (req, res) => {
-    const apiKeysPath =
-      process.env.NODE_ENV === "production"
-        ? path.join(__dirname, "../../server/public/admin-api-keys.html")
-        : path.join(__dirname, "../../public/admin-api-keys.html");
-    res.sendFile(apiKeysPath);
+    serveHtmlWithConfig(req, res, "admin-api-keys.html").catch((err) => {
+      logger.error({ err }, "Error serving admin API keys page");
+      res.status(500).send("Internal server error");
+    });
   });
 
   // =========================================================================
@@ -672,11 +666,10 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     requireAuth,
     requireAdmin,
     (req, res) => {
-      const detailPath =
-        process.env.NODE_ENV === "production"
-          ? path.join(__dirname, "../../server/public/admin-org-detail.html")
-          : path.join(__dirname, "../../public/admin-org-detail.html");
-      res.sendFile(detailPath);
+      serveHtmlWithConfig(req, res, "admin-org-detail.html").catch((err) => {
+        logger.error({ err }, "Error serving admin org detail page");
+        res.status(500).send("Internal server error");
+      });
     }
   );
 

@@ -347,14 +347,21 @@ export class HTTPServer {
 
     // Middleware to inject app config into HTML files
     // This runs optionalAuth to get user info, then serves HTML with config injected
+    // Intercepts both .html requests and extensionless paths that map to .html files
     this.app.use(async (req, res, next) => {
-      // Only intercept .html file requests or requests that will resolve to .html
       const urlPath = req.path;
-      if (!urlPath.endsWith('.html')) {
+
+      // Determine the file path to check
+      let filePath: string;
+      if (urlPath.endsWith('.html')) {
+        filePath = path.join(publicPath, urlPath);
+      } else if (!urlPath.includes('.')) {
+        // Extensionless path - check if .html version exists
+        filePath = path.join(publicPath, urlPath + '.html');
+      } else {
+        // Has an extension but not .html - skip
         return next();
       }
-
-      const filePath = path.join(publicPath, urlPath);
 
       try {
         // Check if file exists
