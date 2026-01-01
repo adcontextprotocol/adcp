@@ -2475,7 +2475,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
         // Check if domain is already claimed by another org
         const existingResult = await pool.query(
-          `SELECT workos_organization_id, o.name as org_name
+          `SELECT od.workos_organization_id, o.name as org_name
            FROM organization_domains od
            JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
            WHERE od.domain = $1`,
