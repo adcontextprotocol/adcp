@@ -3503,8 +3503,8 @@ export class HTTPServer {
       }
     });
 
-    // GET /api/admin/organizations/search - Search organizations for linking
-    this.app.get('/api/admin/organizations/search', requireAuth, requireAdmin, async (req, res) => {
+    // GET /api/admin/org-search - Search organizations for linking
+    this.app.get('/api/admin/org-search', requireAuth, requireAdmin, async (req, res) => {
       const query = req.query.q as string;
 
       if (!query || query.length < 2) {

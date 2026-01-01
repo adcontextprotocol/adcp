@@ -442,7 +442,7 @@
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(async () => {
         try {
-          const response = await fetch(`/api/admin/organizations/search?q=${encodeURIComponent(query)}`);
+          const response = await fetch(`/api/admin/org-search?q=${encodeURIComponent(query)}`);
           const data = await response.json();
 
           if (data.organizations.length === 0) {
