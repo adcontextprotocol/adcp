@@ -21,6 +21,7 @@ const AUTH_ENABLED = !!(
 );
 
 interface AppUser {
+  id?: string;
   email: string;
   firstName?: string | null;
   lastName?: string | null;
@@ -32,7 +33,7 @@ interface AppUser {
  */
 export function buildAppConfig(user?: AppUser | null): {
   authEnabled: boolean;
-  user: { email: string; firstName?: string | null; lastName?: string | null; isAdmin: boolean } | null;
+  user: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isAdmin: boolean } | null;
 } {
   let isAdmin = false;
   if (user) {
@@ -43,6 +44,7 @@ export function buildAppConfig(user?: AppUser | null): {
   return {
     authEnabled: AUTH_ENABLED,
     user: user ? {
+      id: user.id,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
