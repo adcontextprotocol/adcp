@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS org_admin_group_dms (
   -- Which organization this group DM is for
   workos_organization_id VARCHAR(255) NOT NULL UNIQUE REFERENCES organizations(workos_organization_id) ON DELETE CASCADE,
 
-  -- The Slack channel ID for the group DM
-  slack_channel_id VARCHAR(20) NOT NULL,
+  -- The Slack channel ID for the group DM (Slack IDs are typically 11 chars but using 50 for future-proofing)
+  slack_channel_id VARCHAR(50) NOT NULL,
 
   -- The Slack user IDs of admins in this group DM
   -- Used to detect when admins change and we need to create a new group DM

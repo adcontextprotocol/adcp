@@ -12,6 +12,9 @@ import type { SlackBlockMessage } from './types.js';
 
 const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 
+// Slack group DMs require at least 2 users (excluding the bot)
+const MIN_GROUP_DM_USERS = 2;
+
 interface OrgAdminGroupDM {
   id: string;
   workos_organization_id: string;
@@ -110,10 +113,10 @@ export async function getOrCreateOrgAdminGroupDM(
     // Get Slack user IDs for admins
     const adminSlackUserIds = await getAdminSlackUserIds(adminEmails);
 
-    if (adminSlackUserIds.length < 2) {
+    if (adminSlackUserIds.length < MIN_GROUP_DM_USERS) {
       logger.info(
-        { orgId, adminEmailCount: adminEmails.length, slackUserCount: adminSlackUserIds.length },
-        'Not enough admins with Slack mappings to create group DM (need at least 2)'
+        { orgId, adminEmailCount: adminEmails.length, slackUserCount: adminSlackUserIds.length, minRequired: MIN_GROUP_DM_USERS },
+        `Not enough admins with Slack mappings to create group DM (need at least ${MIN_GROUP_DM_USERS})`
       );
       return null;
     }

@@ -1438,8 +1438,10 @@
           // Ignore errors fetching pending count
         }
 
-        const pendingBadge = pendingCount > 0
-          ? `<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; background: var(--color-error-500); color: white; border-radius: 10px; font-size: 11px; font-weight: 600; margin-left: 8px;">${pendingCount}</span>`
+        // Ensure pendingCount is a safe integer to prevent XSS
+        const safePendingCount = parseInt(pendingCount, 10) || 0;
+        const pendingBadge = safePendingCount > 0
+          ? `<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; background: var(--color-error-500); color: white; border-radius: 10px; font-size: 11px; font-weight: 600; margin-left: 8px;">${safePendingCount}</span>`
           : '';
 
         container.innerHTML = `
