@@ -513,6 +513,73 @@
     .btn-danger:hover {
       background: var(--color-error-200);
     }
+
+    /* Domain list */
+    .domains-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .domain-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-2) 0;
+      border-bottom: var(--border-1) solid var(--color-gray-100);
+      font-size: var(--text-sm);
+    }
+    .domain-item:last-child {
+      border-bottom: none;
+    }
+    .domain-info {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .domain-name {
+      font-family: var(--font-mono);
+    }
+    .domain-badge {
+      display: inline-block;
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .domain-badge.primary {
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+    }
+    .domain-badge.verified {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .domain-badge.workos {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+    .domain-badge.manual {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+    }
+    .domain-actions {
+      display: flex;
+      gap: var(--space-1);
+    }
+    .btn-icon {
+      padding: var(--space-1);
+      font-size: var(--text-xs);
+      background: transparent;
+      border: none;
+      color: var(--color-text-muted);
+      cursor: pointer;
+    }
+    .btn-icon:hover {
+      color: var(--color-text-heading);
+    }
+    .btn-icon.danger:hover {
+      color: var(--color-error-600);
+    }
   </style>
 </head>
 <body>
@@ -657,6 +724,17 @@
             <h2>Working Groups</h2>
             <div id="workingGroupsList" class="empty-state">
               Not in any working groups
+            </div>
+          </div>
+
+          <!-- Linked Domains -->
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+              <h2 style="margin-bottom: 0;">Linked Domains</h2>
+              <button class="btn btn-secondary btn-sm" onclick="openAddDomainModal()">+ Add Domain</button>
+            </div>
+            <div id="domainsList" class="empty-state">
+              No domains linked
             </div>
           </div>
 
@@ -890,18 +968,50 @@
     </div>
   </div>
 
+  <!-- Add Domain Modal -->
+  <div id="addDomainModal" class="modal">
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h2>Add Domain</h2>
+        <button class="modal-close" onclick="closeAddDomainModal()">&times;</button>
+      </div>
+      <form id="addDomainForm" onsubmit="addDomain(event)">
+        <div class="form-group">
+          <label>Domain *</label>
+          <input type="text" id="domainInput" placeholder="e.g., acme.com" required pattern="^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z]{2,}$">
+          <div class="form-hint">Enter the domain without http:// or www.</div>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="domainIsPrimary">
+            Set as primary domain
+          </label>
+          <div class="form-hint">Primary domain is used for enrichment lookups.</div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeAddDomainModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="addDomainBtn">Add Domain</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     let orgData = null;
     let stakeholders = [];
+    let domainsData = null;
     let currentUserId = null;
     const orgId = window.location.pathname.split('/').pop();
 
     async function loadOrganization() {
       try {
-        // Load org data and stakeholders in parallel
-        const [orgResponse, stakeholdersResponse] = await Promise.all([
+        // Load org data, stakeholders, and domains in parallel
+        const [orgResponse, stakeholdersResponse, domainsResponse] = await Promise.all([
           fetch(`/api/admin/organizations/${orgId}`),
-          fetch(`/api/admin/organizations/${orgId}/stakeholders`)
+          fetch(`/api/admin/organizations/${orgId}/stakeholders`),
+          fetch(`/api/admin/organizations/${orgId}/domains`)
         ]);
 
         if (!orgResponse.ok) {
@@ -919,6 +1029,7 @@
 
         orgData = await orgResponse.json();
         stakeholders = stakeholdersResponse.ok ? await stakeholdersResponse.json() : [];
+        domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
 
         // Get current user ID from AdminNav if available
         if (window.AdminNav && window.AdminNav.user) {
@@ -927,6 +1038,7 @@
 
         renderOrganization();
         renderStakeholders();
+        renderDomains();
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -1483,6 +1595,162 @@
         const stakeholdersResponse = await fetch(`/api/admin/organizations/${orgId}/stakeholders`);
         stakeholders = stakeholdersResponse.ok ? await stakeholdersResponse.json() : [];
         renderStakeholders();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // ========================================
+    // LINKED DOMAINS
+    // ========================================
+
+    function renderDomains() {
+      const container = document.getElementById('domainsList');
+
+      if (!domainsData || (domainsData.domains.length === 0 && domainsData.workos_domains.length === 0)) {
+        container.innerHTML = '<div class="empty-state">No domains linked</div>';
+        return;
+      }
+
+      // Combine local domains with any WorkOS-only domains
+      const allDomains = [...domainsData.domains];
+      const localDomainNames = new Set(allDomains.map(d => d.domain.toLowerCase()));
+
+      // Add WorkOS domains that aren't in our local DB yet
+      for (const wosDomain of domainsData.workos_domains) {
+        if (!localDomainNames.has(wosDomain.domain.toLowerCase())) {
+          allDomains.push({
+            domain: wosDomain.domain,
+            is_primary: false,
+            verified: wosDomain.state === 'verified',
+            source: 'workos',
+            workos_only: true
+          });
+        }
+      }
+
+      if (allDomains.length === 0) {
+        container.innerHTML = '<div class="empty-state">No domains linked</div>';
+        return;
+      }
+
+      container.innerHTML = `<ul class="domains-list">
+        ${allDomains.map(d => {
+          const badges = [];
+          if (d.is_primary) badges.push('<span class="domain-badge primary">Primary</span>');
+          if (d.verified) badges.push('<span class="domain-badge verified">Verified</span>');
+          badges.push(`<span class="domain-badge ${d.source}">${d.source === 'workos' ? 'WorkOS' : 'Manual'}</span>`);
+
+          return `
+            <li class="domain-item">
+              <div class="domain-info">
+                <span class="domain-name">${d.domain}</span>
+                ${badges.join(' ')}
+              </div>
+              <div class="domain-actions">
+                ${!d.is_primary && !d.workos_only ? `<button class="btn btn-sm btn-secondary" onclick="setDomainPrimary('${d.domain}')">Set Primary</button>` : ''}
+                ${d.source !== 'workos' ? `<button class="btn-icon danger" onclick="removeDomain('${d.domain}')" title="Remove domain">&times;</button>` : ''}
+              </div>
+            </li>
+          `;
+        }).join('')}
+      </ul>`;
+    }
+
+    function openAddDomainModal() {
+      document.getElementById('addDomainForm').reset();
+      document.getElementById('addDomainModal').style.display = 'block';
+    }
+
+    function closeAddDomainModal() {
+      document.getElementById('addDomainModal').style.display = 'none';
+    }
+
+    async function addDomain(event) {
+      event.preventDefault();
+
+      const domain = document.getElementById('domainInput').value.trim().toLowerCase();
+      const isPrimary = document.getElementById('domainIsPrimary').checked;
+
+      const btn = document.getElementById('addDomainBtn');
+      btn.disabled = true;
+      btn.textContent = 'Adding...';
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${orgId}/domains`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain, is_primary: isPrimary })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to add domain');
+        }
+
+        closeAddDomainModal();
+
+        // Refresh domains
+        const domainsResponse = await fetch(`/api/admin/organizations/${orgId}/domains`);
+        domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
+        renderDomains();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Add Domain';
+      }
+    }
+
+    async function setDomainPrimary(domain) {
+      try {
+        const response = await fetch(`/api/admin/organizations/${orgId}/domains/${encodeURIComponent(domain)}/primary`, {
+          method: 'PUT'
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to set primary domain');
+        }
+
+        // Refresh domains
+        const domainsResponse = await fetch(`/api/admin/organizations/${orgId}/domains`);
+        domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
+        renderDomains();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function removeDomain(domain) {
+      if (!confirm(`Remove domain "${domain}" from this organization?`)) return;
+
+      try {
+        const response = await fetch(`/api/admin/organizations/${orgId}/domains/${encodeURIComponent(domain)}`, {
+          method: 'DELETE'
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.AdminNav.redirectToLogin();
+            return;
+          }
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to remove domain');
+        }
+
+        // Refresh domains
+        const domainsResponse = await fetch(`/api/admin/organizations/${orgId}/domains`);
+        domainsData = domainsResponse.ok ? await domainsResponse.json() : { domains: [], workos_domains: [] };
+        renderDomains();
       } catch (error) {
         alert('Error: ' + error.message);
       }
