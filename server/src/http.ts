@@ -2828,14 +2828,16 @@ export class HTTPServer {
                   // Update organization with fresh subscription data
                   await pool.query(
                     `UPDATE organizations
-                     SET subscription_amount = $1,
-                         subscription_interval = $2,
-                         subscription_currency = $3,
-                         subscription_current_period_end = $4,
-                         subscription_canceled_at = $5,
+                     SET subscription_status = $1,
+                         subscription_amount = $2,
+                         subscription_interval = $3,
+                         subscription_currency = $4,
+                         subscription_current_period_end = $5,
+                         subscription_canceled_at = $6,
                          updated_at = NOW()
-                     WHERE workos_organization_id = $6`,
+                     WHERE workos_organization_id = $7`,
                     [
+                      subscription.status,
                       priceData?.unit_amount || null,
                       priceData?.recurring?.interval || null,
                       priceData?.currency || 'usd',
@@ -3353,17 +3355,19 @@ export class HTTPServer {
               // Update organization with subscription details
               await pool.query(
                 `UPDATE organizations
-                 SET subscription_amount = $1,
-                     subscription_interval = $2,
-                     subscription_currency = $3,
-                     subscription_current_period_end = $4,
-                     subscription_canceled_at = $5,
-                     subscription_product_id = $6,
-                     subscription_product_name = $7,
-                     subscription_price_id = $8,
+                 SET subscription_status = $1,
+                     subscription_amount = $2,
+                     subscription_interval = $3,
+                     subscription_currency = $4,
+                     subscription_current_period_end = $5,
+                     subscription_canceled_at = $6,
+                     subscription_product_id = $7,
+                     subscription_product_name = $8,
+                     subscription_price_id = $9,
                      updated_at = NOW()
-                 WHERE workos_organization_id = $9`,
+                 WHERE workos_organization_id = $10`,
                 [
+                  subscription.status,
                   amount,
                   interval,
                   price?.currency || 'usd',
