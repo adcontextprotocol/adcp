@@ -514,6 +514,10 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
     const { customerId } = req.params;
     const { org_id } = req.body;
 
+    if (!customerId || !customerId.startsWith("cus_")) {
+      return res.status(400).json({ error: "Invalid customer ID format" });
+    }
+
     if (!org_id) {
       return res.status(400).json({ error: "org_id is required" });
     }
@@ -584,6 +588,10 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   apiRouter.post("/stripe-customers/:customerId/unlink", requireAuth, requireAdmin, async (req, res) => {
     const { customerId } = req.params;
 
+    if (!customerId || !customerId.startsWith("cus_")) {
+      return res.status(400).json({ error: "Invalid customer ID format" });
+    }
+
     try {
       const pool = getPool();
 
@@ -633,6 +641,8 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
     try {
       const pool = getPool();
+      // Escape LIKE special characters to prevent pattern injection
+      const escapedQuery = query.replace(/[%_\\]/g, "\\$&");
       const result = await pool.query(
         `
         SELECT workos_organization_id, name, email_domain, stripe_customer_id
@@ -642,7 +652,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         ORDER BY name
         LIMIT 20
       `,
-        [`%${query}%`]
+        [`%${escapedQuery}%`]
       );
 
       res.json({ organizations: result.rows });
@@ -658,6 +668,10 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   // DELETE /api/admin/stripe-customers/:customerId - Delete an unlinked Stripe customer
   apiRouter.delete("/stripe-customers/:customerId", requireAuth, requireAdmin, async (req, res) => {
     const { customerId } = req.params;
+
+    if (!customerId || !customerId.startsWith("cus_")) {
+      return res.status(400).json({ error: "Invalid customer ID format" });
+    }
 
     if (!stripe) {
       return res.status(400).json({ error: "Stripe not configured" });
