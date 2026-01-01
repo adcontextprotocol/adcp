@@ -3246,60 +3246,65 @@ export class HTTPServer {
 
         const allEvents = [...invoices, ...refunds];
 
-        // Import events, skipping duplicates
+        // Import events, updating existing records with fresh data from Stripe
         let imported = 0;
-        let skipped = 0;
 
         for (const event of allEvents) {
-          try {
-            await pool.query(
-              `INSERT INTO revenue_events (
-                workos_organization_id,
-                stripe_invoice_id,
-                stripe_subscription_id,
-                stripe_payment_intent_id,
-                stripe_charge_id,
-                amount_paid,
-                currency,
-                revenue_type,
-                billing_reason,
-                product_id,
-                product_name,
-                price_id,
-                billing_interval,
-                paid_at,
-                period_start,
-                period_end
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-              ON CONFLICT (stripe_invoice_id) DO NOTHING`,
-              [
-                event.workos_organization_id,
-                event.stripe_invoice_id,
-                event.stripe_subscription_id,
-                event.stripe_payment_intent_id,
-                event.stripe_charge_id,
-                event.amount_paid,
-                event.currency,
-                event.revenue_type,
-                event.billing_reason,
-                event.product_id,
-                event.product_name,
-                event.price_id,
-                event.billing_interval,
-                event.paid_at,
-                event.period_start,
-                event.period_end,
-              ]
-            );
-            imported++;
-          } catch (err: unknown) {
-            // Check for unique constraint violation
-            if ((err as { code?: string }).code === '23505') {
-              skipped++;
-            } else {
-              throw err;
-            }
-          }
+          await pool.query(
+            `INSERT INTO revenue_events (
+              workos_organization_id,
+              stripe_invoice_id,
+              stripe_subscription_id,
+              stripe_payment_intent_id,
+              stripe_charge_id,
+              amount_paid,
+              currency,
+              revenue_type,
+              billing_reason,
+              product_id,
+              product_name,
+              price_id,
+              billing_interval,
+              paid_at,
+              period_start,
+              period_end
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            ON CONFLICT (stripe_invoice_id) DO UPDATE SET
+              workos_organization_id = EXCLUDED.workos_organization_id,
+              stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+              stripe_payment_intent_id = EXCLUDED.stripe_payment_intent_id,
+              stripe_charge_id = EXCLUDED.stripe_charge_id,
+              amount_paid = EXCLUDED.amount_paid,
+              currency = EXCLUDED.currency,
+              revenue_type = EXCLUDED.revenue_type,
+              billing_reason = EXCLUDED.billing_reason,
+              product_id = EXCLUDED.product_id,
+              product_name = EXCLUDED.product_name,
+              price_id = EXCLUDED.price_id,
+              billing_interval = EXCLUDED.billing_interval,
+              paid_at = EXCLUDED.paid_at,
+              period_start = EXCLUDED.period_start,
+              period_end = EXCLUDED.period_end`,
+            [
+              event.workos_organization_id,
+              event.stripe_invoice_id,
+              event.stripe_subscription_id,
+              event.stripe_payment_intent_id,
+              event.stripe_charge_id,
+              event.amount_paid,
+              event.currency,
+              event.revenue_type,
+              event.billing_reason,
+              event.product_id,
+              event.product_name,
+              event.price_id,
+              event.billing_interval,
+              event.paid_at,
+              event.period_start,
+              event.period_end,
+            ]
+          );
+          imported++;
         }
 
         // Sync subscription data to organizations for MRR calculation
@@ -3379,19 +3384,17 @@ export class HTTPServer {
         logger.info({
           invoices: invoices.length,
           refunds: refunds.length,
-          imported,
-          skipped,
+          processed: imported,
           subscriptionsSynced,
           subscriptionsFailed,
         }, 'Revenue backfill completed');
 
         res.json({
           success: true,
-          message: `Backfill completed`,
+          message: `Sync completed: ${imported} records processed`,
           invoices_found: invoices.length,
           refunds_found: refunds.length,
-          imported,
-          skipped,
+          processed: imported,
           subscriptions_synced: subscriptionsSynced,
           subscriptions_failed: subscriptionsFailed,
         });
