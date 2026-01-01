@@ -16,6 +16,143 @@
       background: var(--color-bg-page);
     }
 
+    /* Profile collection modal */
+    .profile-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--color-surface-overlay);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .profile-modal {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      max-width: 500px;
+      width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow-xl);
+    }
+
+    .profile-modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .profile-modal-header h2 {
+      margin: 0;
+      font-size: 18px;
+      color: var(--color-text-heading);
+    }
+
+    .profile-modal-header p {
+      margin: 8px 0 0 0;
+      font-size: 14px;
+      color: var(--color-text-secondary);
+    }
+
+    .profile-modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .profile-form-group {
+      margin-bottom: 20px;
+    }
+
+    .profile-form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .profile-form-group label {
+      display: block;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .profile-form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--color-text-primary);
+      background: var(--color-bg-card);
+      cursor: pointer;
+    }
+
+    .profile-form-group select:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+
+    .profile-modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .radio-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .radio-option:hover {
+      border-color: var(--color-brand);
+      background: var(--color-primary-50);
+    }
+
+    .radio-option.selected {
+      border-color: var(--color-brand);
+      background: var(--color-primary-100);
+    }
+
+    .radio-option input[type="radio"] {
+      margin-top: 2px;
+      cursor: pointer;
+    }
+
+    .radio-option-content {
+      flex: 1;
+    }
+
+    .radio-option-title {
+      font-weight: 500;
+      color: var(--color-text-heading);
+      font-size: 14px;
+    }
+
+    .radio-option-desc {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
+
     .page-header {
       padding: 32px 40px 24px;
       border-bottom: 1px solid var(--color-border);
@@ -267,7 +404,8 @@
       border-radius: 12px;
       padding: 24px;
       transition: all 0.2s ease;
-      cursor: pointer;
+      display: flex;
+      flex-direction: column;
     }
 
     .product-card:hover {
@@ -311,6 +449,18 @@
       margin-top: 8px;
     }
 
+    .product-card-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .product-card-actions .btn {
+      flex: 1;
+      padding: 10px 16px;
+      font-size: 14px;
+    }
+
     .products-loading {
       text-align: center;
       padding: 40px;
@@ -349,6 +499,104 @@
   <div id="adcp-nav"></div>
 
   <div id="toast" class="toast"></div>
+
+  <!-- Profile Collection Modal -->
+  <div id="profileModal" class="profile-modal-overlay" style="display: none;">
+    <div class="profile-modal">
+      <div class="profile-modal-header">
+        <h2>Tell Us About Your Organization</h2>
+        <p>Help us show you the right membership options by providing a few details.</p>
+      </div>
+      <div class="profile-modal-body">
+        <div class="profile-form-group">
+          <label>What type of organization are you?</label>
+          <div class="radio-options" id="companyTypeOptions">
+            <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'brand')">
+              <input type="radio" name="companyType" value="brand">
+              <div class="radio-option-content">
+                <div class="radio-option-title">Brand / Advertiser</div>
+                <div class="radio-option-desc">Companies that advertise products or services</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'publisher')">
+              <input type="radio" name="companyType" value="publisher">
+              <div class="radio-option-content">
+                <div class="radio-option-title">Publisher / Media Network</div>
+                <div class="radio-option-desc">Media owners and networks that sell advertising inventory</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'agency')">
+              <input type="radio" name="companyType" value="agency">
+              <div class="radio-option-content">
+                <div class="radio-option-title">Agency</div>
+                <div class="radio-option-desc">Advertising, media, or creative agencies</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'adtech')">
+              <input type="radio" name="companyType" value="adtech">
+              <div class="radio-option-content">
+                <div class="radio-option-title">Technology Provider</div>
+                <div class="radio-option-desc">AdTech platforms, data providers, and service providers</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'companyType', 'other')">
+              <input type="radio" name="companyType" value="other">
+              <div class="radio-option-content">
+                <div class="radio-option-title">Other</div>
+                <div class="radio-option-desc">Other industry participants</div>
+              </div>
+            </label>
+          </div>
+        </div>
+        <div class="profile-form-group">
+          <label>Annual Revenue</label>
+          <div class="radio-options" id="revenueTierOptions">
+            <label class="radio-option" onclick="selectRadioOption(this, 'revenueTier', 'under_1m')">
+              <input type="radio" name="revenueTier" value="under_1m">
+              <div class="radio-option-content">
+                <div class="radio-option-title">Under $1M</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'revenueTier', '1m_5m')">
+              <input type="radio" name="revenueTier" value="1m_5m">
+              <div class="radio-option-content">
+                <div class="radio-option-title">$1M - $5M</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'revenueTier', '5m_50m')">
+              <input type="radio" name="revenueTier" value="5m_50m">
+              <div class="radio-option-content">
+                <div class="radio-option-title">$5M - $50M</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'revenueTier', '50m_250m')">
+              <input type="radio" name="revenueTier" value="50m_250m">
+              <div class="radio-option-content">
+                <div class="radio-option-title">$50M - $250M</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'revenueTier', '250m_1b')">
+              <input type="radio" name="revenueTier" value="250m_1b">
+              <div class="radio-option-content">
+                <div class="radio-option-title">$250M - $1B</div>
+              </div>
+            </label>
+            <label class="radio-option" onclick="selectRadioOption(this, 'revenueTier', '1b_plus')">
+              <input type="radio" name="revenueTier" value="1b_plus">
+              <div class="radio-option-content">
+                <div class="radio-option-title">$1B+</div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="profile-modal-footer">
+        <button id="saveProfileBtn" class="btn btn-primary" onclick="saveOrgProfile()" disabled>
+          Continue to Membership
+        </button>
+      </div>
+    </div>
+  </div>
 
   <div class="page-header">
     <h1>Membership</h1>
@@ -413,6 +661,80 @@
     </div>
   </div>
 
+  <!-- Invoice Request Modal -->
+  <div id="invoiceRequestModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+    <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-xl);">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Request an Invoice</h2>
+        <button onclick="closeInvoiceRequestModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+      </div>
+      <form id="invoiceRequestForm" onsubmit="submitInvoiceRequest(event)">
+        <div style="padding: 24px;">
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Company Name *</label>
+            <input type="text" id="invoice-company" name="companyName" required placeholder="Acme Corporation" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Contact Name *</label>
+              <input type="text" id="invoice-contact" name="contactName" required placeholder="John Smith" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing Email *</label>
+              <input type="email" id="invoice-email" name="contactEmail" required placeholder="billing@acme.com" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Product *</label>
+            <select id="invoice-product" name="lookupKey" required style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; background: white;">
+              <option value="">Select a product...</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing Address Line 1 *</label>
+            <input type="text" id="invoice-address1" name="line1" required placeholder="123 Main Street" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing Address Line 2</label>
+            <input type="text" id="invoice-address2" name="line2" placeholder="Suite 100" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">City *</label>
+              <input type="text" id="invoice-city" name="city" required placeholder="San Francisco" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">State/Province *</label>
+              <input type="text" id="invoice-state" name="state" required placeholder="CA" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Postal Code *</label>
+              <input type="text" id="invoice-postal" name="postal_code" required placeholder="94105" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Country *</label>
+              <input type="text" id="invoice-country" name="country" required value="US" placeholder="US" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+          </div>
+
+          <div id="invoiceFormError" style="display: none; color: var(--color-error-600); font-size: 14px; margin-bottom: 16px; padding: 12px; background: var(--color-error-50); border-radius: 8px;"></div>
+        </div>
+        <div style="padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; gap: 12px; justify-content: flex-end;">
+          <button type="button" class="btn btn-secondary" onclick="closeInvoiceRequestModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="invoiceSubmitBtn">Send Invoice</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Agreement Modal -->
   <div id="agreementModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px;">
     <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 700px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: var(--shadow-xl);">
@@ -446,6 +768,8 @@
     let currentOrg = null;
     let selectedProduct = null;
     let membershipProducts = [];
+    let selectedCompanyType = null;
+    let selectedRevenueTier = null;
 
     // Get org ID from URL or localStorage
     function getOrgId() {
@@ -493,6 +817,24 @@
           return;
         }
 
+        // Fetch billing info to get company_type, revenue_tier, and subscription status
+        try {
+          const billingResponse = await fetch(`/api/organizations/${currentOrg.id}/billing`, { credentials: 'include' });
+          if (billingResponse.ok) {
+            const billingData = await billingResponse.json();
+            currentOrg.billing = {
+              ...billingData.subscription,
+              company_type: billingData.company_type,
+              revenue_tier: billingData.revenue_tier,
+              is_personal: billingData.is_personal,
+              suggested_company_type: billingData.suggested_company_type,
+              suggested_revenue_tier: billingData.suggested_revenue_tier,
+            };
+          }
+        } catch (billingError) {
+          console.error('Error loading billing info:', billingError);
+        }
+
         // Initialize sidebar
         DashboardNav.init({
           showOrgSwitcher: data.organizations?.length > 1,
@@ -505,6 +847,15 @@
             localStorage.setItem('selectedOrgId', newOrgId);
             window.location.href = '/dashboard/membership?org=' + newOrgId;
           });
+        }
+
+        // Check if we need to show the profile collection modal
+        // Only for non-personal organizations that don't have company_type or revenue_tier
+        const isPersonal = currentOrg.is_personal || currentOrg.billing?.is_personal;
+        const needsProfile = !isPersonal && (!currentOrg.billing?.company_type || !currentOrg.billing?.revenue_tier);
+
+        if (needsProfile) {
+          showProfileModal();
         }
 
         renderBilling();
@@ -579,10 +930,19 @@
     // Load products from API
     async function loadProducts() {
       const container = document.getElementById('productsContainer');
-      const customerType = currentOrg.is_personal ? 'individual' : 'company';
+      const isPersonal = currentOrg.is_personal || currentOrg.billing?.is_personal;
+      const customerType = isPersonal ? 'individual' : 'company';
+      const revenueTier = currentOrg.billing?.revenue_tier || '';
 
       try {
-        const response = await fetch(`/api/billing-products?customer_type=${customerType}&category=membership`);
+        const url = new URL('/api/billing-products', window.location.origin);
+        url.searchParams.set('customer_type', customerType);
+        url.searchParams.set('category', 'membership');
+        if (revenueTier) {
+          url.searchParams.set('revenue_tier', revenueTier);
+        }
+
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to load products');
 
         const data = await response.json();
@@ -610,13 +970,17 @@
           : '';
 
         return `
-          <div class="product-card" onclick="selectProduct('${product.lookup_key}')" data-lookup-key="${product.lookup_key}">
+          <div class="product-card" data-lookup-key="${product.lookup_key}">
             <div class="product-card-name">${escapeHtml(product.display_name)}</div>
             <div class="product-card-price">
               ${formatCurrency(product.amount_cents)}
               <span class="period">/year</span>
             </div>
             ${tierInfo ? `<div class="product-card-tier">${escapeHtml(tierInfo)}</div>` : ''}
+            <div class="product-card-actions">
+              <button class="btn btn-primary" onclick="selectProduct('${product.lookup_key}')">Pay Now</button>
+              <button class="btn btn-secondary" onclick="openInvoiceRequestForProduct('${product.lookup_key}')">Request Invoice</button>
+            </div>
           </div>
         `;
       }).join('');
@@ -688,6 +1052,18 @@
           }
         });
       }
+
+      // Handle profile modal radio inputs (for when radio is clicked directly)
+      document.querySelectorAll('#profileModal input[type="radio"]').forEach(input => {
+        input.addEventListener('change', function() {
+          const label = this.closest('.radio-option');
+          const group = this.name;
+          const value = this.value;
+          if (label) {
+            selectRadioOption(label, group, value);
+          }
+        });
+      });
     });
 
     // Proceed to Stripe checkout
@@ -726,6 +1102,117 @@
         showToast(error.message || 'Failed to start checkout', true);
         btn.disabled = false;
         btn.textContent = 'Proceed to Checkout';
+      }
+    }
+
+    // Invoice Request Modal Functions
+    function openInvoiceRequestForProduct(lookupKey) {
+      // Open invoice modal with a specific product pre-selected
+      openInvoiceRequestModal(lookupKey);
+    }
+
+    function openInvoiceRequestModal(preSelectedLookupKey = null) {
+      const modal = document.getElementById('invoiceRequestModal');
+      const productSelect = document.getElementById('invoice-product');
+
+      // Populate product dropdown with available membership products
+      productSelect.innerHTML = '<option value="">Select a product...</option>';
+      if (membershipProducts && membershipProducts.length > 0) {
+        membershipProducts.forEach(product => {
+          const price = formatCurrency(product.amount_cents);
+          productSelect.innerHTML += `<option value="${product.lookup_key}">${escapeHtml(product.display_name)} - ${price}/year</option>`;
+        });
+      }
+
+      // Pre-select product if specified
+      if (preSelectedLookupKey) {
+        productSelect.value = preSelectedLookupKey;
+      }
+
+      // Pre-fill company name from org if available
+      const companyInput = document.getElementById('invoice-company');
+      if (currentOrg && currentOrg.name && !companyInput.value) {
+        companyInput.value = currentOrg.name;
+      }
+
+      modal.style.display = 'flex';
+      document.getElementById('invoice-company').focus();
+    }
+
+    function closeInvoiceRequestModal() {
+      document.getElementById('invoiceRequestModal').style.display = 'none';
+      document.getElementById('invoiceFormError').style.display = 'none';
+      // Reset form and button state
+      document.getElementById('invoiceRequestForm').reset();
+      const submitBtn = document.getElementById('invoiceSubmitBtn');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send Invoice';
+    }
+
+    async function submitInvoiceRequest(event) {
+      event.preventDefault();
+
+      const form = event.target;
+      const submitBtn = document.getElementById('invoiceSubmitBtn');
+      const errorDiv = document.getElementById('invoiceFormError');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending...';
+      errorDiv.style.display = 'none';
+
+      const formData = new FormData(form);
+
+      const requestData = {
+        companyName: formData.get('companyName'),
+        contactName: formData.get('contactName'),
+        contactEmail: formData.get('contactEmail'),
+        lookupKey: formData.get('lookupKey'),
+        billingAddress: {
+          line1: formData.get('line1'),
+          line2: formData.get('line2') || undefined,
+          city: formData.get('city'),
+          state: formData.get('state'),
+          postal_code: formData.get('postal_code'),
+          country: formData.get('country'),
+        },
+      };
+
+      try {
+        const response = await fetch('/api/invoice-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(requestData),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.message || 'Failed to send invoice');
+        }
+
+        // Show success state
+        const modalBody = form.querySelector('div:first-child');
+        const modalFooter = form.querySelector('div:last-child');
+
+        modalBody.innerHTML = `
+          <div style="text-align: center; padding: 24px;">
+            <div style="font-size: 48px; margin-bottom: 16px;">✅</div>
+            <h3 style="color: var(--color-success-600); margin-bottom: 8px;">Invoice Sent!</h3>
+            <p style="color: var(--color-text-secondary); margin-bottom: 16px;">We've sent an invoice to <strong>${escapeHtml(requestData.contactEmail)}</strong>. Please check your email for payment instructions.</p>
+            <p style="font-size: 14px; color: var(--color-text-muted);">The invoice is due within 30 days. You can pay online via the link in the email.</p>
+          </div>
+        `;
+
+        modalFooter.innerHTML = `
+          <button type="button" class="btn btn-primary" onclick="closeInvoiceRequestModal()">Done</button>
+        `;
+
+      } catch (error) {
+        errorDiv.textContent = error.message || 'Something went wrong. Please try again or contact finance@agenticadvertising.org';
+        errorDiv.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send Invoice';
       }
     }
 
@@ -841,6 +1328,123 @@
     // View an agreement
     function viewAgreement(type) {
       window.open(`/api/agreement?type=${encodeURIComponent(type)}`, '_blank');
+    }
+
+    // Profile modal functions
+    const VALID_COMPANY_TYPES = ['brand', 'publisher', 'agency', 'adtech', 'other'];
+    const VALID_REVENUE_TIERS = ['under_1m', '1m_5m', '5m_50m', '50m_250m', '250m_1b', '1b_plus'];
+
+    function showProfileModal() {
+      // Prefill with enrichment-suggested values if available
+      const suggestedCompanyType = currentOrg?.billing?.suggested_company_type;
+      const suggestedRevenueTier = currentOrg?.billing?.suggested_revenue_tier;
+
+      // Validate suggested values before using in selector to prevent injection
+      if (suggestedCompanyType && VALID_COMPANY_TYPES.includes(suggestedCompanyType)) {
+        const companyTypeOption = document.querySelector(
+          `#companyTypeOptions .radio-option input[value="${suggestedCompanyType}"]`
+        );
+        if (companyTypeOption) {
+          const label = companyTypeOption.closest('.radio-option');
+          if (label) {
+            selectRadioOption(label, 'companyType', suggestedCompanyType);
+            companyTypeOption.checked = true;
+          }
+        }
+      }
+
+      // Validate suggested values before using in selector to prevent injection
+      if (suggestedRevenueTier && VALID_REVENUE_TIERS.includes(suggestedRevenueTier)) {
+        const revenueTierOption = document.querySelector(
+          `#revenueTierOptions .radio-option input[value="${suggestedRevenueTier}"]`
+        );
+        if (revenueTierOption) {
+          const label = revenueTierOption.closest('.radio-option');
+          if (label) {
+            selectRadioOption(label, 'revenueTier', suggestedRevenueTier);
+            revenueTierOption.checked = true;
+          }
+        }
+      }
+
+      document.getElementById('profileModal').style.display = 'flex';
+    }
+
+    function hideProfileModal() {
+      document.getElementById('profileModal').style.display = 'none';
+    }
+
+    function selectRadioOption(element, group, value) {
+      // Update selected state for styling
+      const container = element.closest('.radio-options');
+      container.querySelectorAll('.radio-option').forEach(opt => opt.classList.remove('selected'));
+      element.classList.add('selected');
+
+      // Store the selected value
+      if (group === 'companyType') {
+        selectedCompanyType = value;
+      } else if (group === 'revenueTier') {
+        selectedRevenueTier = value;
+      }
+
+      // Enable the save button if both fields are selected
+      updateSaveProfileButton();
+    }
+
+    function updateSaveProfileButton() {
+      const btn = document.getElementById('saveProfileBtn');
+      btn.disabled = !(selectedCompanyType && selectedRevenueTier);
+    }
+
+    async function saveOrgProfile() {
+      if (!selectedCompanyType || !selectedRevenueTier) return;
+
+      const btn = document.getElementById('saveProfileBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}/billing-info`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            company_type: selectedCompanyType,
+            revenue_tier: selectedRevenueTier
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to save organization info');
+        }
+
+        // Update local org data
+        if (currentOrg.billing) {
+          currentOrg.billing.company_type = selectedCompanyType;
+          currentOrg.billing.revenue_tier = selectedRevenueTier;
+        } else {
+          currentOrg.billing = {
+            company_type: selectedCompanyType,
+            revenue_tier: selectedRevenueTier
+          };
+        }
+
+        // Hide the modal and reload products with the new tier info
+        hideProfileModal();
+        showToast('Organization info saved');
+
+        // Reload products now that we have revenue tier
+        if (!currentOrg.billing?.status || currentOrg.billing.status !== 'active') {
+          loadProducts();
+        }
+
+      } catch (error) {
+        console.error('Error saving org profile:', error);
+        showToast(error.message || 'Failed to save organization info', true);
+        btn.disabled = false;
+        btn.textContent = 'Continue to Membership';
+      }
     }
 
     // Initialize

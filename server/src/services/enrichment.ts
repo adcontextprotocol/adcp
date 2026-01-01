@@ -12,6 +12,7 @@ import {
   getLushaClient,
   isLushaConfigured,
   mapIndustryToCompanyType,
+  mapRevenueToTier,
   formatRevenueRange,
   type LushaCompanyData,
 } from './lusha.js';
@@ -64,6 +65,7 @@ async function saveEnrichmentToOrg(
   );
   const revenueRange =
     enrichmentData.revenueRange || formatRevenueRange(enrichmentData.revenue);
+  const suggestedRevenueTier = mapRevenueToTier(enrichmentData.revenue);
 
   await pool.query(
     `UPDATE organizations SET
@@ -82,8 +84,9 @@ async function saveEnrichmentToOrg(
       enrichment_linkedin_url = $11,
       enrichment_description = $12,
       company_type = COALESCE(company_type, $13),
+      revenue_tier = COALESCE(revenue_tier, $14),
       updated_at = NOW()
-    WHERE workos_organization_id = $14`,
+    WHERE workos_organization_id = $15`,
     [
       JSON.stringify(enrichmentData),
       enrichmentData.revenue || null,
@@ -98,12 +101,13 @@ async function saveEnrichmentToOrg(
       enrichmentData.linkedinUrl || null,
       enrichmentData.description || null,
       suggestedCompanyType,
+      suggestedRevenueTier,
       orgId,
     ]
   );
 
   logger.info(
-    { orgId, companyName: enrichmentData.companyName },
+    { orgId, companyName: enrichmentData.companyName, suggestedCompanyType, suggestedRevenueTier },
     'Saved enrichment data to organization'
   );
 }

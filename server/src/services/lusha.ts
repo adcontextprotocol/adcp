@@ -169,6 +169,61 @@ export function formatRevenueRange(revenue: number | undefined): string | null {
 }
 
 /**
+ * Maps enrichment revenue (numeric) to revenue_tier enum value
+ * Returns null if revenue is not available or can't be mapped
+ */
+export function mapRevenueToTier(revenue: number | undefined | null): string | null {
+  if (!revenue) return null;
+
+  if (revenue < 1_000_000) return 'under_1m';
+  if (revenue < 5_000_000) return '1m_5m';
+  if (revenue < 50_000_000) return '5m_50m';
+  if (revenue < 250_000_000) return '50m_250m';
+  if (revenue < 1_000_000_000) return '250m_1b';
+  return '1b_plus';
+}
+
+/**
+ * Maps enrichment_revenue_range string to revenue_tier enum value
+ * Handles various formats from Lusha data
+ */
+export function mapRevenueRangeToTier(revenueRange: string | undefined | null): string | null {
+  if (!revenueRange) return null;
+
+  const range = revenueRange.toLowerCase();
+
+  // Direct matches for common Lusha revenue range values
+  if (range.includes('under') && range.includes('1m')) return 'under_1m';
+  if (range.includes('<') && range.includes('1')) return 'under_1m';
+
+  // $1M - $5M ranges
+  if ((range.includes('1m') || range.includes('1 m')) && (range.includes('5m') || range.includes('5 m') || range.includes('10m'))) {
+    return '1m_5m';
+  }
+
+  // $5M - $50M ranges
+  if ((range.includes('5m') || range.includes('10m')) && (range.includes('50m') || range.includes('100m'))) {
+    return '5m_50m';
+  }
+
+  // $50M - $250M ranges
+  if ((range.includes('50m') || range.includes('100m')) && (range.includes('250m') || range.includes('500m'))) {
+    return '50m_250m';
+  }
+
+  // $250M - $1B ranges
+  if ((range.includes('250m') || range.includes('500m')) && (range.includes('1b') || range.includes('billion'))) {
+    return '250m_1b';
+  }
+
+  // $1B+ ranges
+  if (range.includes('over') && (range.includes('1b') || range.includes('billion'))) return '1b_plus';
+  if (range.includes('>') && range.includes('1b')) return '1b_plus';
+
+  return null;
+}
+
+/**
  * Lusha API client
  */
 export class LushaClient {
