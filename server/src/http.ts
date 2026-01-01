@@ -185,7 +185,7 @@ function setCachedUser(userId: string, displayName: string): void {
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
-function buildAppConfig(user?: { email: string; firstName?: string | null; lastName?: string | null } | null) {
+function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null } | null) {
   let isAdmin = false;
   if (user) {
     const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
@@ -195,6 +195,7 @@ function buildAppConfig(user?: { email: string; firstName?: string | null; lastN
   return {
     authEnabled: AUTH_ENABLED,
     user: user ? {
+      id: user.id,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
@@ -206,7 +207,7 @@ function buildAppConfig(user?: { email: string; firstName?: string | null; lastN
 /**
  * Generate the script tag to inject app config into HTML.
  */
-function getAppConfigScript(user?: { email: string; firstName?: string | null; lastName?: string | null } | null): string {
+function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null } | null): string {
   const config = buildAppConfig(user);
   return `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
 }
@@ -215,7 +216,7 @@ function getAppConfigScript(user?: { email: string; firstName?: string | null; l
  * Get user info from request for HTML config injection.
  * Checks dev mode first, then WorkOS session.
  */
-async function getUserFromRequest(req: express.Request): Promise<{ email: string; firstName?: string | null; lastName?: string | null } | null> {
+async function getUserFromRequest(req: express.Request): Promise<{ id?: string; email: string; firstName?: string | null; lastName?: string | null } | null> {
   // Check dev mode first
   if (isDevModeEnabled()) {
     const devUser = getDevUser(req);
