@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Member Insights - AgenticAdvertising.org</title>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .page-header h1 {
+      color: var(--color-text-heading);
+      font-size: 24px;
+    }
+    .page-header p {
+      color: var(--color-text-secondary);
+      margin-top: 4px;
+    }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+    }
+    .stat-card .label {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stat-card .value {
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-top: 4px;
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+    }
+    .filters {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .search-box {
+      flex: 1;
+      min-width: 200px;
+    }
+    .search-box input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .filter-select {
+      padding: 10px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+    .btn-secondary {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+    }
+    .btn-secondary:hover {
+      background: var(--color-gray-300);
+    }
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+    .btn-danger {
+      background: var(--color-danger);
+      color: white;
+    }
+    .btn-danger:hover {
+      background: var(--color-danger-hover);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    th {
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    td {
+      color: var(--color-text-primary);
+    }
+    .member-name {
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+    .member-email {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+    .insight-count {
+      font-weight: 600;
+      color: var(--color-brand);
+    }
+    .badge {
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge-success {
+      background: var(--color-success-light);
+      color: var(--color-success);
+    }
+    .badge-warning {
+      background: var(--color-warning-light);
+      color: var(--color-warning-dark);
+    }
+    .badge-info {
+      background: var(--color-info-light);
+      color: var(--color-info);
+    }
+    .insight-types {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .insight-type-tag {
+      background: var(--color-gray-100);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+    .clickable-row {
+      cursor: pointer;
+    }
+    .clickable-row:hover {
+      background: var(--color-gray-50);
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--color-surface-overlay);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 800px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      margin-bottom: 20px;
+      color: var(--color-text-heading);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+    .modal-header h2 {
+      margin-bottom: 0;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: var(--color-text-secondary);
+    }
+    .member-detail {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .member-detail h3 {
+      color: var(--color-text-heading);
+      margin-bottom: 8px;
+    }
+    .member-detail p {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+    }
+    .insights-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .insight-item {
+      background: var(--color-gray-50);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .insight-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .insight-item-type {
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+    .insight-item-value {
+      color: var(--color-text-primary);
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .insight-item-meta {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .confidence-high { color: var(--color-success); }
+    .confidence-medium { color: var(--color-warning-dark); }
+    .confidence-low { color: var(--color-danger); }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .form-group textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+    .form-group small {
+      color: var(--color-text-muted);
+      font-size: 12px;
+      margin-top: 4px;
+      display: block;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-secondary);
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--color-text-muted);
+    }
+    .error-message {
+      background: var(--color-danger-light);
+      color: var(--color-danger);
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    .no-insights {
+      text-align: center;
+      padding: 24px;
+      color: var(--color-text-secondary);
+    }
+    .section-header {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin: 20px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-header .count {
+      background: var(--color-gray-200);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .email-insight-item {
+      background: var(--color-info-light);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .email-insight-subject {
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 8px;
+    }
+    .email-insight-text {
+      color: var(--color-text-primary);
+      font-size: 14px;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+    .email-insight-meta {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      margin-top: 8px;
+      display: flex;
+      gap: 16px;
+    }
+    .identity-badges {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .identity-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      background: var(--color-gray-100);
+      color: var(--color-text-secondary);
+    }
+    .identity-badge.slack {
+      background: #4A154B20;
+      color: #4A154B;
+    }
+    .identity-badge.email {
+      background: #1a73e820;
+      color: #1a73e8;
+    }
+    .identity-badge.workos {
+      background: var(--color-success-light);
+      color: var(--color-success);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <div>
+        <h1>Member Insights</h1>
+        <p>View insights collected about community members</p>
+      </div>
+      <button class="btn btn-primary" onclick="openAddInsightModal()">+ Add Insight</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="label">Members with Insights</div>
+        <div class="value" id="stat-members">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total Insights</div>
+        <div class="value" id="stat-total">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">From Conversations</div>
+        <div class="value" id="stat-conversation">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Manual Entries</div>
+        <div class="value" id="stat-manual">—</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="filters">
+        <div class="search-box">
+          <input type="text" id="search" placeholder="Search by name or email..." oninput="debounceSearch()">
+        </div>
+        <select class="filter-select" id="filter-insights" onchange="loadMembers()">
+          <option value="">All members</option>
+          <option value="true">With insights only</option>
+          <option value="false">Without insights</option>
+        </select>
+      </div>
+
+      <div id="loading" class="loading">Loading member insights...</div>
+      <div id="error" class="error-message" style="display: none;"></div>
+      <table id="members-table" style="display: none;">
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>Status</th>
+            <th>Insights</th>
+            <th>Insight Types</th>
+            <th>Last Insight</th>
+          </tr>
+        </thead>
+        <tbody id="members-body"></tbody>
+      </table>
+      <div id="empty" class="empty-state" style="display: none;">
+        <p>No members found matching your criteria.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Member Detail Modal -->
+  <div id="detail-modal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="detail-modal-title">Member Insights</h2>
+        <button class="close-btn" onclick="closeDetailModal()">&times;</button>
+      </div>
+      <div class="member-detail" id="member-detail">
+        <!-- Populated by JavaScript -->
+      </div>
+      <div id="member-insights-loading" class="loading">Loading insights...</div>
+      <div id="member-insights-list" class="insights-list" style="display: none;">
+        <!-- Populated by JavaScript -->
+      </div>
+      <div id="member-insights-empty" class="no-insights" style="display: none;">
+        No insights collected for this member yet.
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Insight Modal -->
+  <div id="add-modal" class="modal-overlay">
+    <div class="modal">
+      <h2>Add Manual Insight</h2>
+      <div id="add-modal-error" class="error-message" style="display: none;"></div>
+      <form id="add-insight-form" onsubmit="handleAddInsight(event)">
+        <div class="form-group">
+          <label for="add-slack-id">Slack User ID *</label>
+          <input type="text" id="add-slack-id" required placeholder="e.g., U12345678">
+          <small>The Slack user ID of the member</small>
+        </div>
+        <div class="form-group">
+          <label for="add-type">Insight Type *</label>
+          <select id="add-type" required>
+            <!-- Populated by JavaScript -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="add-value">Value *</label>
+          <textarea id="add-value" required placeholder="The insight value..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="add-confidence">Confidence</label>
+          <select id="add-confidence">
+            <option value="high">High - explicitly stated</option>
+            <option value="medium" selected>Medium - strong implication</option>
+            <option value="low">Low - weak implication</option>
+          </select>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" onclick="closeAddModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Insight</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    let members = [];
+    let insightTypes = [];
+    let searchTimeout = null;
+
+    // Load data on page load
+    async function loadMembers() {
+      const loading = document.getElementById('loading');
+      const error = document.getElementById('error');
+      const table = document.getElementById('members-table');
+      const empty = document.getElementById('empty');
+
+      loading.style.display = 'block';
+      error.style.display = 'none';
+      table.style.display = 'none';
+      empty.style.display = 'none';
+
+      try {
+        const search = document.getElementById('search').value.trim();
+        const hasInsights = document.getElementById('filter-insights').value;
+
+        const params = new URLSearchParams();
+        if (search) params.set('search', search);
+        if (hasInsights) params.set('hasInsights', hasInsights);
+        params.set('limit', '100');
+
+        const response = await fetch(`/api/admin/insights/members?${params}`);
+        if (!response.ok) {
+          if (response.status === 401) {
+            AdminSidebar.redirectToLogin();
+            return;
+          }
+          throw new Error('Failed to load members');
+        }
+
+        members = await response.json();
+        loading.style.display = 'none';
+
+        if (members.length === 0) {
+          empty.style.display = 'block';
+        } else {
+          table.style.display = 'table';
+          renderMembers();
+        }
+
+        // Update stats
+        updateStats();
+      } catch (err) {
+        loading.style.display = 'none';
+        error.textContent = err.message;
+        error.style.display = 'block';
+      }
+    }
+
+    async function updateStats() {
+      try {
+        const response = await fetch('/api/admin/insights/stats');
+        if (!response.ok) return;
+
+        const stats = await response.json();
+        document.getElementById('stat-members').textContent = stats.members_with_insights || 0;
+        document.getElementById('stat-total').textContent = stats.total_insights || 0;
+        document.getElementById('stat-conversation').textContent = stats.from_conversation || 0;
+        document.getElementById('stat-manual').textContent = stats.from_manual || 0;
+      } catch (err) {
+        console.error('Failed to load stats:', err);
+      }
+    }
+
+    async function loadInsightTypes() {
+      try {
+        const response = await fetch('/api/admin/insight-types');
+        if (response.ok) {
+          insightTypes = await response.json();
+          populateTypeDropdown();
+        }
+      } catch (err) {
+        console.error('Failed to load insight types:', err);
+      }
+    }
+
+    function populateTypeDropdown() {
+      const select = document.getElementById('add-type');
+      select.innerHTML = '<option value="">Select a type...</option>' +
+        insightTypes
+          .filter(t => t.is_active)
+          .map(t => `<option value="${t.id}">${escapeHtml(t.name)} - ${escapeHtml(t.description || '')}</option>`)
+          .join('');
+    }
+
+    function renderMembers() {
+      const tbody = document.getElementById('members-body');
+      tbody.innerHTML = members.map(member => `
+        <tr class="clickable-row" onclick="openDetailModal('${escapeHtml(member.slack_user_id)}')">
+          <td>
+            <div class="member-name">${escapeHtml(member.slack_real_name || member.slack_display_name || 'Unknown')}</div>
+            <div class="member-email">${escapeHtml(member.slack_email || member.slack_user_id)}</div>
+          </td>
+          <td>
+            <span class="badge ${member.workos_user_id ? 'badge-success' : 'badge-warning'}">
+              ${member.workos_user_id ? 'Mapped' : 'Unmapped'}
+            </span>
+          </td>
+          <td class="insight-count">${member.insight_count || 0}</td>
+          <td>
+            ${member.insight_types && member.insight_types.length > 0 ? `
+              <div class="insight-types">
+                ${member.insight_types.filter(Boolean).slice(0, 4).map(t =>
+                  `<span class="insight-type-tag">${escapeHtml(t)}</span>`
+                ).join('')}
+                ${member.insight_types.filter(Boolean).length > 4 ?
+                  `<span class="insight-type-tag">+${member.insight_types.filter(Boolean).length - 4}</span>` : ''}
+              </div>
+            ` : '—'}
+          </td>
+          <td>${member.last_insight_at ? formatDate(member.last_insight_at) : '—'}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function openDetailModal(slackUserId) {
+      const modal = document.getElementById('detail-modal');
+      const loading = document.getElementById('member-insights-loading');
+      const list = document.getElementById('member-insights-list');
+      const empty = document.getElementById('member-insights-empty');
+      const detail = document.getElementById('member-detail');
+
+      // Find member in cached data
+      const member = members.find(m => m.slack_user_id === slackUserId);
+
+      // Update header
+      document.getElementById('detail-modal-title').textContent =
+        member?.slack_real_name || member?.slack_display_name || 'Member Insights';
+
+      // Update member detail (basic info while loading)
+      detail.innerHTML = `
+        <h3>${escapeHtml(member?.slack_real_name || member?.slack_display_name || 'Unknown')}</h3>
+        <p>
+          <strong>Email:</strong> ${escapeHtml(member?.slack_email || '—')}<br>
+          <strong>Slack ID:</strong> ${escapeHtml(slackUserId)}<br>
+          <strong>Status:</strong> ${member?.workos_user_id ? 'Mapped to account' : 'Not linked'}
+        </p>
+      `;
+
+      // Show modal and loading state
+      modal.style.display = 'flex';
+      loading.style.display = 'block';
+      list.style.display = 'none';
+      empty.style.display = 'none';
+
+      try {
+        // Use unified API to get insights from both Slack and email
+        const response = await fetch(`/api/admin/insights/unified/slack/${slackUserId}`);
+        if (!response.ok) throw new Error('Failed to load insights');
+
+        const unified = await response.json();
+        loading.style.display = 'none';
+
+        // Update member detail with unified info
+        const identityBadges = [];
+        if (unified.slack_user_id) identityBadges.push('<span class="identity-badge slack">Slack</span>');
+        if (unified.email_contact_id) identityBadges.push('<span class="identity-badge email">Email</span>');
+        if (unified.workos_user_id) identityBadges.push('<span class="identity-badge workos">Linked</span>');
+
+        detail.innerHTML = `
+          <h3>${escapeHtml(unified.display_name || 'Unknown')}</h3>
+          <p>
+            <strong>Email:</strong> ${escapeHtml(unified.email || '—')}<br>
+            ${unified.organization_name ? `<strong>Organization:</strong> ${escapeHtml(unified.organization_name)}<br>` : ''}
+            ${unified.first_seen_at ? `<strong>First seen:</strong> ${formatDate(unified.first_seen_at)}<br>` : ''}
+            ${unified.last_activity_at ? `<strong>Last activity:</strong> ${formatDate(unified.last_activity_at)}` : ''}
+          </p>
+          <div class="identity-badges">${identityBadges.join('')}</div>
+        `;
+
+        const hasSlackInsights = unified.slack_insights && unified.slack_insights.length > 0;
+        const hasEmailInsights = unified.email_insights && unified.email_insights.length > 0;
+
+        if (!hasSlackInsights && !hasEmailInsights) {
+          empty.style.display = 'block';
+        } else {
+          list.style.display = 'flex';
+          let html = '';
+
+          // Slack insights section
+          if (hasSlackInsights) {
+            html += `<div class="section-header">Conversation Insights <span class="count">${unified.slack_insights.length}</span></div>`;
+            html += unified.slack_insights.map(insight => `
+              <div class="insight-item">
+                <div class="insight-item-header">
+                  <span class="insight-item-type">${escapeHtml(insight.insight_type_name || 'Unknown type')}</span>
+                  <span class="badge ${
+                    insight.confidence === 'high' ? 'badge-success' :
+                    insight.confidence === 'medium' ? 'badge-warning' : 'badge-info'
+                  }">${insight.confidence}</span>
+                </div>
+                <div class="insight-item-value">${escapeHtml(insight.value)}</div>
+                <div class="insight-item-meta">
+                  <span>Source: ${insight.source_type}</span>
+                  <span>Added: ${formatDate(insight.created_at)}</span>
+                  ${insight.extracted_from ? `<span title="${escapeHtml(insight.extracted_from)}">From: "${escapeHtml(insight.extracted_from.substring(0, 50))}${insight.extracted_from.length > 50 ? '...' : ''}"</span>` : ''}
+                </div>
+              </div>
+            `).join('');
+          }
+
+          // Email insights section
+          if (hasEmailInsights) {
+            html += `<div class="section-header">Email Correspondence <span class="count">${unified.email_insights.length}</span></div>`;
+            html += unified.email_insights.map(insight => `
+              <div class="email-insight-item">
+                <div class="email-insight-subject">${escapeHtml(insight.subject || 'No subject')}</div>
+                ${insight.insights ? `<div class="email-insight-text">${escapeHtml(insight.insights)}</div>` : '<div class="email-insight-text" style="color: var(--color-text-muted);">No insights extracted</div>'}
+                <div class="email-insight-meta">
+                  <span>Role: ${insight.role}</span>
+                  <span>Direction: ${insight.direction}</span>
+                  ${insight.email_date ? `<span>Date: ${formatDate(insight.email_date)}</span>` : ''}
+                </div>
+              </div>
+            `).join('');
+          }
+
+          list.innerHTML = html;
+        }
+      } catch (err) {
+        loading.style.display = 'none';
+        empty.textContent = 'Error loading insights: ' + err.message;
+        empty.style.display = 'block';
+      }
+    }
+
+    function closeDetailModal() {
+      document.getElementById('detail-modal').style.display = 'none';
+    }
+
+    function openAddInsightModal() {
+      document.getElementById('add-insight-form').reset();
+      document.getElementById('add-modal-error').style.display = 'none';
+      document.getElementById('add-modal').style.display = 'flex';
+    }
+
+    function closeAddModal() {
+      document.getElementById('add-modal').style.display = 'none';
+    }
+
+    async function handleAddInsight(event) {
+      event.preventDefault();
+      const errorEl = document.getElementById('add-modal-error');
+      errorEl.style.display = 'none';
+
+      const slackUserId = document.getElementById('add-slack-id').value.trim();
+      const typeId = document.getElementById('add-type').value;
+      const value = document.getElementById('add-value').value.trim();
+      const confidence = document.getElementById('add-confidence').value;
+
+      try {
+        const response = await fetch('/api/admin/insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            slack_user_id: slackUserId,
+            insight_type_id: parseInt(typeId, 10),
+            value,
+            confidence,
+            source_type: 'manual',
+          }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Failed to add insight');
+        }
+
+        closeAddModal();
+        loadMembers();
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+      }
+    }
+
+    function debounceSearch() {
+      if (searchTimeout) clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(loadMembers, 300);
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '—';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    loadMembers();
+    loadInsightTypes();
+  </script>
+</body>
+</html>

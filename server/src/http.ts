@@ -44,6 +44,7 @@ import {
   notifyWorkingGroupPost,
 } from "./notifications/slack.js";
 import { createAdminRouter } from "./routes/admin.js";
+import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter } from "./addie/index.js";
@@ -463,6 +464,11 @@ export class HTTPServer {
     const { pageRouter, apiRouter } = createAdminRouter();
     this.app.use('/admin', pageRouter);      // Page routes: /admin/prospects
     this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/prospects
+
+    // Mount admin insights routes (member insights, goals, outreach)
+    const { pageRouter: insightsPageRouter, apiRouter: insightsApiRouter } = createAdminInsightsRouter();
+    this.app.use('/admin', insightsPageRouter);      // Page routes: /admin/insights, /admin/insight-types, etc.
+    this.app.use('/api/admin', insightsApiRouter);   // API routes: /api/admin/insights, /api/admin/insight-types, etc.
 
     // Mount Addie admin routes
     const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();

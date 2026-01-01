@@ -38,6 +38,11 @@ import { AddieDatabase } from '../db/addie-db.js';
 import { SUGGESTED_PROMPTS, STATUS_MESSAGES, buildDynamicSuggestedPrompts } from './prompts.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
+import {
+  extractInsights,
+  checkAndMarkOutreachResponse,
+  type ExtractionContext,
+} from './services/insight-extractor.js';
 import type { RequestTools } from './claude-client.js';
 import type {
   AssistantThreadStartedEvent,
@@ -338,6 +343,24 @@ export async function handleAssistantMessage(
       logger.error({ error }, 'Addie: Failed to log interaction to database');
     }
   }
+
+  // Extract insights from the user's message (async, don't block response)
+  const extractionContext: ExtractionContext = {
+    slackUserId: event.user,
+    workosUserId: memberContext?.workos_user?.workos_user_id,
+    threadId: event.thread_ts,
+    isMapped: memberContext?.is_mapped ?? false,
+  };
+  extractInsights(inputValidation.sanitized, extractionContext)
+    .then(result => {
+      if (!result.skipped && (result.insights.length > 0 || result.goal_responses.length > 0)) {
+        // Check if this was a response to proactive outreach
+        checkAndMarkOutreachResponse(event.user, result.insights.length > 0);
+      }
+    })
+    .catch(error => {
+      logger.error({ error }, 'Addie: Error during insight extraction');
+    });
 }
 
 /**
@@ -432,6 +455,24 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
       logger.error({ error }, 'Addie: Failed to log interaction to database');
     }
   }
+
+  // Extract insights from the user's message (async, don't block response)
+  const mentionExtractionContext: ExtractionContext = {
+    slackUserId: event.user,
+    workosUserId: memberContext?.workos_user?.workos_user_id,
+    threadId: event.thread_ts || event.ts,
+    isMapped: memberContext?.is_mapped ?? false,
+  };
+  extractInsights(inputValidation.sanitized, mentionExtractionContext)
+    .then(result => {
+      if (!result.skipped && (result.insights.length > 0 || result.goal_responses.length > 0)) {
+        // Check if this was a response to proactive outreach
+        checkAndMarkOutreachResponse(event.user, result.insights.length > 0);
+      }
+    })
+    .catch(error => {
+      logger.error({ error }, 'Addie: Error during insight extraction (mention)');
+    });
 }
 
 /**
