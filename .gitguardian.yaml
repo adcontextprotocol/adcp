@@ -3,6 +3,10 @@ version: 2
 # GitGuardian configuration for AdCP repository
 # This file configures what GitGuardian should scan and what to ignore
 
+# Paths to ignore - scripts with CLI argument documentation
+paths-ignore:
+  - scripts/migrate-csv-via-api.ts
+
 # Ignore test tokens that are documented and meant to be public
 matches-ignore:
   - name: Test Agent Authentication Token
