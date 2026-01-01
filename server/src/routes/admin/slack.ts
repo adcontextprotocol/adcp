@@ -6,80 +6,40 @@
  * - User sync
  * - User mapping (link/unlink)
  * - Auto-link suggestions
- * - Unified users view
  */
 
 import { Router } from 'express';
-import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../../logger.js';
 import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { SlackDatabase } from '../../db/slack-db.js';
-import { OrganizationDatabase } from '../../db/organization-db.js';
-import { WorkingGroupDatabase } from '../../db/working-group-db.js';
+import { getPool } from '../../db/client.js';
 import { isSlackConfigured, testSlackConnection } from '../../slack/client.js';
 import { syncSlackUsers, getSyncStatus } from '../../slack/sync.js';
-import {
-  getUnifiedUsersCache,
-  setUnifiedUsersCache,
-  invalidateUnifiedUsersCache,
-  type WorkOSUserInfo,
-} from '../../cache/unified-users.js';
+import { invalidateUnifiedUsersCache } from '../../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../../addie/index.js';
 
 const logger = createLogger('admin-slack-routes');
 
 const slackDb = new SlackDatabase();
 
-// Initialize WorkOS client only if authentication is enabled
-const AUTH_ENABLED = !!(
-  process.env.WORKOS_API_KEY &&
-  process.env.WORKOS_CLIENT_ID &&
-  process.env.WORKOS_COOKIE_PASSWORD &&
-  process.env.WORKOS_COOKIE_PASSWORD.length >= 32
-);
-
-const workos = AUTH_ENABLED
-  ? new WorkOS(process.env.WORKOS_API_KEY!, {
-      clientId: process.env.WORKOS_CLIENT_ID!,
-    })
-  : null;
-
 /**
  * Build a map of AAO user emails to WorkOS user IDs
+ * Uses local organization_memberships table (synced from WorkOS via webhooks)
  * Used by both GET and POST auto-link-suggested endpoints
  */
 async function buildAaoEmailToUserIdMap(): Promise<Map<string, string>> {
+  const pool = getPool();
   const aaoEmailToUserId = new Map<string, string>();
 
-  if (!workos) {
-    return aaoEmailToUserId;
-  }
+  // Query local organization_memberships table instead of calling WorkOS API
+  const result = await pool.query<{ email: string; workos_user_id: string }>(`
+    SELECT DISTINCT email, workos_user_id
+    FROM organization_memberships
+    WHERE email IS NOT NULL
+  `);
 
-  const orgDatabase = new OrganizationDatabase();
-  const orgs = await orgDatabase.listOrganizations();
-
-  // Use listUsers with organizationId filter - returns email directly
-  for (const org of orgs) {
-    try {
-      let after: string | undefined;
-      do {
-        const usersResponse = await workos.userManagement.listUsers({
-          organizationId: org.workos_organization_id,
-          limit: 100,
-          after,
-        });
-
-        for (const user of usersResponse.data) {
-          if (user.email) {
-            aaoEmailToUserId.set(user.email.toLowerCase(), user.id);
-          }
-        }
-
-        after = usersResponse.listMetadata?.after || undefined;
-      } while (after);
-    } catch (orgErr) {
-      logger.warn({ err: orgErr, orgId: org.workos_organization_id }, 'Failed to fetch users for organization');
-    }
+  for (const row of result.rows) {
+    aaoEmailToUserId.set(row.email.toLowerCase(), row.workos_user_id);
   }
 
   return aaoEmailToUserId;
@@ -292,295 +252,6 @@ export function createAdminSlackRouter(): Router {
       logger.error({ err: error }, 'Get unmapped Slack users error');
       res.status(500).json({
         error: 'Failed to get unmapped users',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  // GET /api/admin/slack/unified - Get unified view of all AAO users + all Slack users
-  router.get('/unified', requireAuth, requireAdmin, async (req, res) => {
-    const startTime = Date.now();
-    try {
-      if (!workos) {
-        return res.status(503).json({ error: 'Authentication not configured' });
-      }
-
-      const { search, status, group } = req.query;
-      const searchTerm = typeof search === 'string' ? search.toLowerCase() : '';
-      const statusFilter = typeof status === 'string' ? status : '';
-      const filterByGroup = typeof group === 'string' ? group : undefined;
-
-      logger.info({ search, status, group }, 'Unified users endpoint: starting');
-
-      const orgDatabase = new OrganizationDatabase();
-      const wgDb = new WorkingGroupDatabase();
-
-      // Get all working group memberships from our database
-      const allWgMemberships = await wgDb.getAllMemberships();
-
-      // Create a map of user_id -> working groups
-      const userWorkingGroups = new Map<string, Array<{
-        id: string;
-        name: string;
-        slug: string;
-        is_private: boolean;
-      }>>();
-
-      for (const m of allWgMemberships) {
-        const groups = userWorkingGroups.get(m.user_id) || [];
-        groups.push({
-          id: m.working_group_id,
-          name: m.working_group_name,
-          slug: m.working_group_slug || '',
-          is_private: m.is_private || false,
-        });
-        userWorkingGroups.set(m.user_id, groups);
-      }
-
-      // Get all Slack users from our mapping table
-      const slackMappings = await slackDb.getAllMappings({
-        includeBots: false,
-        includeDeleted: false,
-      });
-      const slackByWorkosId = new Map(
-        slackMappings
-          .filter(m => m.workos_user_id)
-          .map(m => [m.workos_user_id!, m])
-      );
-      const slackByEmail = new Map(
-        slackMappings
-          .filter(m => m.slack_email)
-          .map(m => [m.slack_email!.toLowerCase(), m])
-      );
-
-      // Build unified user list
-      type UnifiedUser = {
-        workos_user_id: string | null;
-        email: string | null;
-        name: string | null;
-        org_id: string | null;
-        org_name: string | null;
-        slack_user_id: string | null;
-        slack_email: string | null;
-        slack_display_name: string | null;
-        slack_real_name: string | null;
-        mapping_status: 'mapped' | 'slack_only' | 'aao_only' | 'suggested_match';
-        mapping_source: string | null;
-        working_groups: Array<{
-          id: string;
-          name: string;
-          slug: string;
-          is_private: boolean;
-        }>;
-      };
-
-      const unifiedUsers: UnifiedUser[] = [];
-      const processedSlackIds = new Set<string>();
-
-      // Get all AAO users from WorkOS
-      const orgs = await orgDatabase.listOrganizations();
-      const seenUserIds = new Set<string>();
-
-      // Check cache first
-      let cachedUsersByOrg = getUnifiedUsersCache();
-      let cacheHit = cachedUsersByOrg !== null;
-
-      if (!cachedUsersByOrg) {
-        // Build cache - fetch all users from WorkOS
-        cachedUsersByOrg = new Map<string, WorkOSUserInfo[]>();
-
-        for (const org of orgs) {
-          try {
-            const orgUsers: WorkOSUserInfo[] = [];
-            let after: string | undefined;
-            do {
-              const usersResponse = await workos.userManagement.listUsers({
-                organizationId: org.workos_organization_id,
-                limit: 100,
-                after,
-              });
-
-              for (const user of usersResponse.data) {
-                orgUsers.push({
-                  id: user.id,
-                  email: user.email,
-                  firstName: user.firstName,
-                  lastName: user.lastName,
-                });
-              }
-
-              after = usersResponse.listMetadata?.after || undefined;
-            } while (after);
-
-            cachedUsersByOrg.set(org.workos_organization_id, orgUsers);
-          } catch (orgErr) {
-            logger.warn({ orgId: org.workos_organization_id, err: orgErr }, 'Failed to fetch users for org from WorkOS');
-          }
-        }
-
-        setUnifiedUsersCache(cachedUsersByOrg);
-      }
-
-      logger.info({ cacheHit, orgCount: orgs.length }, 'Unified users: WorkOS user fetch');
-
-      // Process cached users
-      for (const org of orgs) {
-        const orgUsers = cachedUsersByOrg.get(org.workos_organization_id) || [];
-
-        for (const user of orgUsers) {
-          if (seenUserIds.has(user.id)) continue;
-          const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
-
-          // Check if user has Slack mapping
-          const slackMapping = slackByWorkosId.get(user.id);
-          const suggestedSlack = !slackMapping ? slackByEmail.get(user.email.toLowerCase()) : null;
-
-          let mappingStatus: UnifiedUser['mapping_status'] = 'aao_only';
-          let slackInfo = {
-            slack_user_id: null as string | null,
-            slack_email: null as string | null,
-            slack_display_name: null as string | null,
-            slack_real_name: null as string | null,
-          };
-
-          if (slackMapping) {
-            mappingStatus = 'mapped';
-            slackInfo = {
-              slack_user_id: slackMapping.slack_user_id,
-              slack_email: slackMapping.slack_email,
-              slack_display_name: slackMapping.slack_display_name,
-              slack_real_name: slackMapping.slack_real_name,
-            };
-            processedSlackIds.add(slackMapping.slack_user_id);
-          } else if (suggestedSlack && suggestedSlack.mapping_status === 'unmapped') {
-            mappingStatus = 'suggested_match';
-            slackInfo = {
-              slack_user_id: suggestedSlack.slack_user_id,
-              slack_email: suggestedSlack.slack_email,
-              slack_display_name: suggestedSlack.slack_display_name,
-              slack_real_name: suggestedSlack.slack_real_name,
-            };
-          }
-
-          // Get working groups for this user
-          const workingGroups = userWorkingGroups.get(user.id) || [];
-
-          // Apply group filter
-          if (filterByGroup) {
-            const hasGroup = workingGroups.some(g => g.id === filterByGroup);
-            if (!hasGroup) continue;
-          }
-
-          // Apply search filter
-          if (searchTerm) {
-            const matches =
-              user.email.toLowerCase().includes(searchTerm) ||
-              fullName.toLowerCase().includes(searchTerm) ||
-              org.name.toLowerCase().includes(searchTerm) ||
-              (slackInfo.slack_email?.toLowerCase().includes(searchTerm)) ||
-              (slackInfo.slack_display_name?.toLowerCase().includes(searchTerm)) ||
-              (slackInfo.slack_real_name?.toLowerCase().includes(searchTerm));
-            if (!matches) continue;
-          }
-
-          seenUserIds.add(user.id);
-          unifiedUsers.push({
-            workos_user_id: user.id,
-            email: user.email,
-            name: fullName || user.email,
-            org_id: org.workos_organization_id,
-            org_name: org.name,
-            ...slackInfo,
-            mapping_status: mappingStatus,
-            mapping_source: slackMapping?.mapping_source || null,
-            working_groups: workingGroups,
-          });
-        }
-      }
-
-      logger.info({
-        totalOrgs: orgs.length,
-        uniqueUsers: seenUserIds.size,
-        slackMappings: slackMappings.length,
-      }, 'Unified users endpoint: completed WorkOS data fetch');
-
-      // Add Slack-only users
-      for (const slackUser of slackMappings) {
-        if (processedSlackIds.has(slackUser.slack_user_id)) continue;
-        if (slackUser.workos_user_id) continue;
-
-        if (slackUser.slack_email && slackByEmail.has(slackUser.slack_email.toLowerCase())) {
-          const wasProcessed = [...seenUserIds].some(userId => {
-            const mapping = slackByWorkosId.get(userId);
-            return mapping?.slack_user_id === slackUser.slack_user_id;
-          });
-          if (wasProcessed) continue;
-        }
-
-        if (filterByGroup) continue;
-
-        if (searchTerm) {
-          const matches =
-            (slackUser.slack_email?.toLowerCase().includes(searchTerm)) ||
-            (slackUser.slack_display_name?.toLowerCase().includes(searchTerm)) ||
-            (slackUser.slack_real_name?.toLowerCase().includes(searchTerm));
-          if (!matches) continue;
-        }
-
-        unifiedUsers.push({
-          workos_user_id: null,
-          email: null,
-          name: null,
-          org_id: null,
-          org_name: null,
-          slack_user_id: slackUser.slack_user_id,
-          slack_email: slackUser.slack_email,
-          slack_display_name: slackUser.slack_display_name,
-          slack_real_name: slackUser.slack_real_name,
-          mapping_status: 'slack_only',
-          mapping_source: null,
-          working_groups: [],
-        });
-      }
-
-      // Get stats
-      const stats = {
-        total: unifiedUsers.length,
-        mapped: unifiedUsers.filter(u => u.mapping_status === 'mapped').length,
-        suggested: unifiedUsers.filter(u => u.mapping_status === 'suggested_match').length,
-        aao_only: unifiedUsers.filter(u => u.mapping_status === 'aao_only').length,
-        slack_only: unifiedUsers.filter(u => u.mapping_status === 'slack_only').length,
-      };
-
-      // Apply status filter
-      let filteredUsers = unifiedUsers;
-      if (statusFilter) {
-        filteredUsers = unifiedUsers.filter(u => u.mapping_status === statusFilter);
-      }
-
-      // Sort
-      const statusOrder = { mapped: 0, suggested_match: 1, aao_only: 2, slack_only: 3 };
-      filteredUsers.sort((a, b) => {
-        const statusDiff = statusOrder[a.mapping_status] - statusOrder[b.mapping_status];
-        if (statusDiff !== 0) return statusDiff;
-        const aName = a.name || a.slack_real_name || a.slack_display_name || a.email || a.slack_email || '';
-        const bName = b.name || b.slack_real_name || b.slack_display_name || b.email || b.slack_email || '';
-        return aName.localeCompare(bName);
-      });
-
-      const duration = Date.now() - startTime;
-      logger.info({
-        totalUsers: filteredUsers.length,
-        stats,
-        durationMs: duration,
-      }, 'Unified users endpoint: completed');
-
-      res.json({ users: filteredUsers, stats });
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      logger.error({ err: error, durationMs: duration }, 'Get unified Slack/AAO users error');
-      res.status(500).json({
-        error: 'Failed to get unified users',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

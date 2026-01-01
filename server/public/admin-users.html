@@ -456,6 +456,15 @@
             <p class="subtitle">Unified view of AAO members and Slack workspace users</p>
           </div>
           <div style="display: flex; gap: var(--space-2);">
+            <button id="syncWorkosBtn" class="btn btn-outline" onclick="syncWorkosUsers()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              Sync WorkOS
+            </button>
             <button id="syncBtn" class="btn btn-outline" onclick="syncSlackUsers()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 11-9-9"/>
@@ -648,6 +657,35 @@
       }
     }
 
+    async function syncWorkosUsers() {
+      const btn = document.getElementById('syncWorkosBtn');
+      btn.disabled = true;
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21 12a9 9 0 11-9-9"/></svg> Syncing...';
+
+      try {
+        const response = await fetch('/api/admin/users/sync-workos', { method: 'POST' });
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            alert(`Synced users from WorkOS:\n• ${result.orgs_processed} organizations processed\n• ${result.memberships_created} user memberships synced`);
+          } else {
+            alert(`Sync completed with errors:\n• ${result.orgs_processed} organizations processed\n• ${result.memberships_created} memberships created\n• ${result.errors.length} errors`);
+          }
+          await loadUsers();
+        } else {
+          const error = await response.json().catch(() => ({}));
+          alert('Failed to sync WorkOS users: ' + (error.message || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Error syncing WorkOS users:', error);
+        alert('Error syncing WorkOS users');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    }
+
     async function syncSlackUsers() {
       const btn = document.getElementById('syncBtn');
       btn.disabled = true;
@@ -714,16 +752,13 @@
       const statusFilter = document.getElementById('statusFilter').value;
       const groupFilter = document.getElementById('groupFilter').value;
 
-      // Use unified endpoint if Slack is configured
-      const endpoint = slackConfigured ? '/api/admin/slack/unified' : '/api/admin/users';
-
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (statusFilter) params.append('status', statusFilter);
       if (groupFilter) params.append('group', groupFilter);
 
       try {
-        const response = await fetch(`${endpoint}?${params}`);
+        const response = await fetch(`/api/admin/users?${params}`);
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           throw new Error(errorData.message || `HTTP ${response.status}`);
