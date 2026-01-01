@@ -3352,6 +3352,186 @@ export class HTTPServer {
       }
     });
 
+    // GET /api/admin/stripe-customers - List all Stripe customers with link status and payment totals
+    this.app.get('/api/admin/stripe-customers', requireAuth, requireAdmin, async (req, res) => {
+      if (!stripe) {
+        return res.status(400).json({ error: 'Stripe not configured' });
+      }
+
+      try {
+        const pool = getPool();
+
+        // Get all orgs with stripe_customer_id
+        const orgsResult = await pool.query(`
+          SELECT workos_organization_id, name, stripe_customer_id
+          FROM organizations
+          WHERE stripe_customer_id IS NOT NULL
+        `);
+        const customerToOrg = new Map(orgsResult.rows.map(o => [o.stripe_customer_id, { id: o.workos_organization_id, name: o.name }]));
+
+        // Fetch all Stripe customers with their payment totals
+        const customers: Array<{
+          id: string;
+          name: string | null;
+          email: string | null;
+          created: number;
+          total_paid: number;
+          invoice_count: number;
+          linked_org: { id: string; name: string } | null;
+        }> = [];
+
+        for await (const customer of stripe.customers.list({ limit: 100, expand: ['data.subscriptions'] })) {
+          // Get invoices for this customer to calculate total paid
+          let totalPaid = 0;
+          let invoiceCount = 0;
+
+          for await (const invoice of stripe.invoices.list({
+            customer: customer.id,
+            status: 'paid',
+            limit: 100,
+          })) {
+            totalPaid += invoice.amount_paid;
+            invoiceCount++;
+          }
+
+          customers.push({
+            id: customer.id,
+            name: customer.name ?? null,
+            email: customer.email ?? null,
+            created: customer.created,
+            total_paid: totalPaid,
+            invoice_count: invoiceCount,
+            linked_org: customerToOrg.get(customer.id) || null,
+          });
+        }
+
+        // Sort: unlinked with payments first, then by total_paid descending
+        customers.sort((a, b) => {
+          // Unlinked customers with payments come first
+          const aUnlinkedWithPayments = !a.linked_org && a.total_paid > 0;
+          const bUnlinkedWithPayments = !b.linked_org && b.total_paid > 0;
+          if (aUnlinkedWithPayments && !bUnlinkedWithPayments) return -1;
+          if (!aUnlinkedWithPayments && bUnlinkedWithPayments) return 1;
+          // Then by total paid descending
+          return b.total_paid - a.total_paid;
+        });
+
+        const unlinkedCount = customers.filter(c => !c.linked_org).length;
+        const unlinkedWithPayments = customers.filter(c => !c.linked_org && c.total_paid > 0).length;
+
+        res.json({
+          customers,
+          total: customers.length,
+          linked: customers.length - unlinkedCount,
+          unlinked: unlinkedCount,
+          unlinked_with_payments: unlinkedWithPayments,
+        });
+      } catch (error) {
+        logger.error({ err: error }, 'Error fetching Stripe customers');
+        res.status(500).json({
+          error: 'Internal server error',
+          message: error instanceof Error ? error.message : 'Failed to fetch customers',
+        });
+      }
+    });
+
+    // POST /api/admin/stripe-customers/:customerId/link - Manually link a Stripe customer to an org
+    this.app.post('/api/admin/stripe-customers/:customerId/link', requireAuth, requireAdmin, async (req, res) => {
+      const { customerId } = req.params;
+      const { org_id } = req.body;
+
+      if (!org_id) {
+        return res.status(400).json({ error: 'org_id is required' });
+      }
+
+      try {
+        const pool = getPool();
+
+        // Verify org exists
+        const orgResult = await pool.query(
+          'SELECT workos_organization_id, name, stripe_customer_id FROM organizations WHERE workos_organization_id = $1',
+          [org_id]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: 'Organization not found' });
+        }
+
+        const org = orgResult.rows[0];
+
+        if (org.stripe_customer_id && org.stripe_customer_id !== customerId) {
+          return res.status(400).json({
+            error: 'Organization already linked',
+            message: `This organization is already linked to a different Stripe customer (${org.stripe_customer_id})`,
+          });
+        }
+
+        // Check if customer is already linked to another org
+        const existingLink = await pool.query(
+          'SELECT workos_organization_id, name FROM organizations WHERE stripe_customer_id = $1',
+          [customerId]
+        );
+
+        if (existingLink.rows.length > 0 && existingLink.rows[0].workos_organization_id !== org_id) {
+          return res.status(400).json({
+            error: 'Customer already linked',
+            message: `This Stripe customer is already linked to "${existingLink.rows[0].name}"`,
+          });
+        }
+
+        // Link the customer
+        await pool.query(
+          'UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2',
+          [customerId, org_id]
+        );
+
+        logger.info({ customerId, orgId: org_id, orgName: org.name, adminEmail: req.user?.email }, 'Manually linked Stripe customer to org');
+
+        res.json({
+          success: true,
+          message: `Linked Stripe customer ${customerId} to "${org.name}"`,
+          customer_id: customerId,
+          org_id,
+          org_name: org.name,
+        });
+      } catch (error) {
+        logger.error({ err: error, customerId, org_id }, 'Error linking Stripe customer');
+        res.status(500).json({
+          error: 'Internal server error',
+          message: error instanceof Error ? error.message : 'Failed to link customer',
+        });
+      }
+    });
+
+    // GET /api/admin/organizations/search - Search organizations for linking
+    this.app.get('/api/admin/organizations/search', requireAuth, requireAdmin, async (req, res) => {
+      const query = req.query.q as string;
+
+      if (!query || query.length < 2) {
+        return res.json({ organizations: [] });
+      }
+
+      try {
+        const pool = getPool();
+        const result = await pool.query(`
+          SELECT workos_organization_id, name, email_domain, stripe_customer_id
+          FROM organizations
+          WHERE is_personal = false
+            AND (name ILIKE $1 OR email_domain ILIKE $1)
+          ORDER BY name
+          LIMIT 20
+        `, [`%${query}%`]);
+
+        res.json({ organizations: result.rows });
+      } catch (error) {
+        logger.error({ err: error }, 'Error searching organizations');
+        res.status(500).json({
+          error: 'Internal server error',
+          message: error instanceof Error ? error.message : 'Failed to search organizations',
+        });
+      }
+    });
+
     // ========================================
     // Perspectives Admin Routes
     // ========================================
@@ -4378,6 +4558,10 @@ Disallow: /api/admin/
 
     this.app.get('/admin/audit', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-audit.html');
+    });
+
+    this.app.get('/admin/billing', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-billing.html');
     });
 
     this.app.get('/admin/perspectives', requireAuth, requireAdmin, async (req, res) => {
