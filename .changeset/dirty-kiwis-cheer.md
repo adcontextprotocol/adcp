@@ -27,6 +27,20 @@ Improve Addie router intelligence and search observability
 - Fix DM Assistant thread context loss - now fetches conversation history from database
 - Previous messages are passed to Claude so it maintains context across turns
 
+**Member insights integration:**
+- Router now uses member insights (role, interests, pain points) for smarter tool selection
+- Fetch member context and insights in parallel for better performance
+- Add in-memory cache with 30-minute TTL (long since we invalidate on writes)
+- Prefetch insights when user opens Addie (before first message)
+- Auto-invalidate cache when new insights are extracted or added via admin API
+
+**Performance optimizations:**
+- Add 30-minute cache for admin status checks (isSlackUserAdmin)
+- Admin status rarely changes and was being checked multiple times per conversation
+- Add 30-minute cache for active insight goals (only 2 possible variants: mapped/unmapped)
+- Auto-invalidate goals cache on goal create/update/delete via admin API
+- Add 30-minute cache for Slack channel info (names/purposes rarely change)
+
 **Previous work (already in PR):**
 - Log router decisions to unified thread messages
 - Add config versioning for feedback analysis by configuration

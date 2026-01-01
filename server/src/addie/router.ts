@@ -24,6 +24,7 @@ import type { MemberContext } from './member-context.js';
 import type { AddieTool } from './types.js';
 import { KNOWLEDGE_TOOLS } from './mcp/knowledge-search.js';
 import { MEMBER_TOOLS } from './mcp/member-tools.js';
+import { InsightsDatabase, type MemberInsight } from '../db/insights-db.js';
 
 /**
  * Execution plan types
@@ -61,6 +62,8 @@ export interface RoutingContext {
   isThread?: boolean;
   /** Channel name (if available) */
   channelName?: string;
+  /** Member insights (what we know about this user from past conversations) */
+  memberInsights?: MemberInsight[];
 }
 
 /**
@@ -195,6 +198,30 @@ export const ROUTING_RULES = {
 } as const;
 
 /**
+ * Format member insights for the routing prompt
+ */
+function formatMemberInsights(insights: MemberInsight[] | undefined): string {
+  if (!insights || insights.length === 0) {
+    return '';
+  }
+
+  const insightLines = insights.map(i => {
+    const typeName = i.insight_type_name || `type_${i.insight_type_id}`;
+    return `- ${typeName}: ${i.value} (confidence: ${i.confidence})`;
+  });
+
+  return `
+## What We Know About This User
+These insights were gleaned from previous conversations:
+${insightLines.join('\n')}
+
+Use these insights to:
+- Tailor tool selection to their role/expertise level
+- Skip basic explanations if they're clearly technical
+- Prioritize tools relevant to what they're building`;
+}
+
+/**
  * Build the routing prompt based on context
  */
 function buildRoutingPrompt(ctx: RoutingContext): string {
@@ -211,6 +238,9 @@ function buildRoutingPrompt(ctx: RoutingContext): string {
   const reactList = Object.entries(ROUTING_RULES.reactWith)
     .map(([key, rule]) => `- ${key}: emoji=${rule.emoji}`)
     .join('\n');
+
+  // Format member insights for context
+  const insightsSection = formatMemberInsights(ctx.memberInsights);
 
   // Conditional rules based on user context
   let conditionalRules = '';
@@ -235,6 +265,7 @@ The user is an ADMIN.
 - Is admin: ${isAdmin}
 - In thread: ${ctx.isThread ?? false}
 ${conditionalRules}
+${insightsSection}
 
 ## Available Tools (with when to use each)
 ${toolsSection}

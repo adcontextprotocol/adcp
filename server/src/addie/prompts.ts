@@ -5,10 +5,9 @@
 import type { SuggestedPrompt } from './types.js';
 import type { MemberContext } from './member-context.js';
 import { createLogger } from '../logger.js';
-import { InsightsDatabase } from '../db/insights-db.js';
+import { getCachedActiveGoals } from './insights-cache.js';
 
 const logger = createLogger('addie-prompts');
-const insightsDb = new InsightsDatabase();
 
 export const ADDIE_SYSTEM_PROMPT = `You are Addie, the AI assistant for AgenticAdvertising.org. Your mission is to help the ad tech industry transition from programmatic to agentic advertising.
 
@@ -271,10 +270,10 @@ export async function buildDynamicSuggestedPrompts(
 ): Promise<SuggestedPrompt[]> {
   const isMapped = !!memberContext?.workos_user?.workos_user_id;
 
-  // Fetch active insight goals with suggested prompts
+  // Fetch active insight goals with suggested prompts (cached)
   let goalPrompts: SuggestedPrompt[] = [];
   try {
-    const goals = await insightsDb.getActiveGoalsForUser(isMapped);
+    const goals = await getCachedActiveGoals(isMapped);
     goalPrompts = goals
       .filter(g => g.suggested_prompt_title && g.suggested_prompt_message)
       .sort((a, b) => b.priority - a.priority)

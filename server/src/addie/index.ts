@@ -27,7 +27,7 @@ export {
   invalidateAddieRulesCache as invalidateAddieRulesCacheLegacy,
 } from './handler.js';
 
-export { isSlackUserAdmin } from './mcp/admin-tools.js';
+export { isSlackUserAdmin, invalidateAdminStatusCache } from './mcp/admin-tools.js';
 
 export { invalidateMemberContextCache } from './member-context.js';
 

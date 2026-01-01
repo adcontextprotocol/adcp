@@ -55,6 +55,7 @@ import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
 import { getThreadReplies, getSlackUserWithAddieToken, getChannelInfo } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
+import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -301,6 +302,9 @@ async function handleThreadStarted({
     { userId, channelId: context.channel_id },
     'Addie Bolt: Thread started'
   );
+
+  // Prefetch member insights in background (warms cache before first message)
+  prefetchInsights(userId);
 
   // Save the initial context
   try {
@@ -1101,8 +1105,19 @@ async function handleChannelMessage({
     'Addie Bolt: Evaluating channel message for potential response');
 
   try {
-    // Get member context for routing decisions
-    const memberContext = await getMemberContext(userId);
+    // Fetch member context and insights in parallel (both are independent)
+    // Insights use a cache with 5-minute TTL to reduce DB load
+    const [memberContext, memberInsights] = await Promise.all([
+      getMemberContext(userId),
+      getCachedInsights(userId),
+    ]);
+
+    if (memberInsights && memberInsights.length > 0) {
+      logger.debug(
+        { userId, insightCount: memberInsights.length, types: memberInsights.map(i => i.insight_type_name) },
+        'Addie Bolt: Found member insights for routing'
+      );
+    }
 
     // Build routing context
     const routingCtx: RoutingContext = {
@@ -1110,6 +1125,7 @@ async function handleChannelMessage({
       source: 'channel',
       memberContext,
       isThread: isInThread,
+      memberInsights,
     };
 
     // Quick match first (no API call for obvious cases)
