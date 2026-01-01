@@ -51,7 +51,7 @@ import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRou
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
-import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter } from "./routes/admin/index.js";
+import { createAdminSlackRouter, createAdminEmailRouter, createAdminFeedsRouter, createAdminNotificationChannelsRouter } from "./routes/admin/index.js";
 import { processFeedsToFetch } from "./addie/services/feed-fetcher.js";
 import { processAlerts, sendDailyDigest } from "./addie/services/industry-alerts.js";
 import {
@@ -488,13 +488,15 @@ export class HTTPServer {
     this.app.use('/api/slack/aaobot', aaobotRouter);    // AAO bot: /api/slack/aaobot/commands, /api/slack/aaobot/events
     this.app.use('/api/slack/addie', slackAddieRouter); // Addie bot: /api/slack/addie/events (Bolt SDK)
 
-    // Mount admin Slack, Email, and Feeds routes
+    // Mount admin Slack, Email, Feeds, and Notification Channels routes
     const adminSlackRouter = createAdminSlackRouter();
     this.app.use('/api/admin/slack', adminSlackRouter); // Admin Slack: /api/admin/slack/*
     const adminEmailRouter = createAdminEmailRouter();
     this.app.use('/api/admin/email', adminEmailRouter); // Admin Email: /api/admin/email/*
     const adminFeedsRouter = createAdminFeedsRouter();
     this.app.use('/api/admin/feeds', adminFeedsRouter); // Admin Feeds: /api/admin/feeds/*
+    const adminNotificationChannelsRouter = createAdminNotificationChannelsRouter();
+    this.app.use('/api/admin/notification-channels', adminNotificationChannelsRouter); // Notification Channels: /api/admin/notification-channels/*
 
     // Mount billing routes (admin)
     const { pageRouter: billingPageRouter, apiRouter: billingApiRouter } = createBillingRouter();
@@ -4634,6 +4636,10 @@ Disallow: /api/admin/
 
     this.app.get('/admin/feeds', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-feeds.html');
+    });
+
+    this.app.get('/admin/notification-channels', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-notification-channels.html');
     });
 
     // Registry API endpoints (consolidated agents, publishers, lookups)

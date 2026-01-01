@@ -4,6 +4,7 @@
  */
 
 import { query } from './client.js';
+import { logger } from '../logger.js';
 
 // ============== Types ==============
 
@@ -195,35 +196,59 @@ export async function rssArticleExists(feedId: number, guid: string): Promise<bo
  * Returns the perspective ID if created, null if it already exists
  */
 export async function createRssPerspective(article: RssArticleInput): Promise<string | null> {
-  const slug = generateSlug(article.title, article.guid);
+  // First check if we already have this article (by guid)
+  const existing = await rssArticleExists(article.feed_id, article.guid);
+  if (existing) {
+    return null;
+  }
 
-  const result = await query<{ id: string }>(
-    `INSERT INTO perspectives (
-       slug, content_type, title, category, excerpt,
-       external_url, external_site_name, author_name,
-       status, published_at, source_type, feed_id, guid, tags
-     ) VALUES (
-       $1, 'link', $2, $3, $4,
-       $5, $6, $7,
-       'published', $8, 'rss', $9, $10, ARRAY['rss-feed']::TEXT[]
-     )
-     ON CONFLICT (feed_id, guid) WHERE guid IS NOT NULL DO NOTHING
-     RETURNING id`,
-    [
-      slug,
-      article.title,
-      article.category || 'Industry News',
-      article.description?.substring(0, 500),
-      article.link,
-      article.feed_name,
-      article.author,
-      article.published_at || new Date(),
-      article.feed_id,
-      article.guid,
-    ]
-  );
+  // Generate slug, with retry on collision
+  let slug = generateSlug(article.title, article.guid);
+  let attempts = 0;
+  const maxAttempts = 3;
 
-  return result.rows[0]?.id || null;
+  while (attempts < maxAttempts) {
+    try {
+      const result = await query<{ id: string }>(
+        `INSERT INTO perspectives (
+           slug, content_type, title, category, excerpt,
+           external_url, external_site_name, author_name,
+           status, published_at, source_type, feed_id, guid, tags
+         ) VALUES (
+           $1, 'link', $2, $3, $4,
+           $5, $6, $7,
+           'published', $8, 'rss', $9, $10, ARRAY['rss-feed']::TEXT[]
+         )
+         RETURNING id`,
+        [
+          slug,
+          article.title,
+          article.category || 'Industry News',
+          article.description?.substring(0, 500),
+          article.link,
+          article.feed_name,
+          article.author,
+          article.published_at || new Date(),
+          article.feed_id,
+          article.guid,
+        ]
+      );
+      return result.rows[0]?.id || null;
+    } catch (error) {
+      // Handle slug collision by appending random suffix
+      if (error instanceof Error && error.message.includes('perspectives_slug_key')) {
+        attempts++;
+        const suffix = Math.random().toString(36).substring(2, 6);
+        slug = `${generateSlug(article.title, article.guid)}-${suffix}`;
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  // If we exhausted retries, log and skip this article
+  logger.warn({ title: article.title, guid: article.guid }, 'Failed to create RSS perspective after slug collision retries');
+  return null;
 }
 
 /**
