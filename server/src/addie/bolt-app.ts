@@ -1055,6 +1055,60 @@ function buildRouterDecision(plan: ExecutionPlan): {
 }
 
 /**
+ * Index a channel message for local full-text search
+ * Stores in addie_knowledge for the search_slack tool
+ */
+async function indexChannelMessage(
+  channelId: string,
+  userId: string,
+  messageText: string,
+  ts: string
+): Promise<void> {
+  // Only index messages with substantial content
+  if (messageText.length < 20) {
+    return;
+  }
+
+  try {
+    // Fetch user and channel info
+    const [user, channel] = await Promise.all([
+      getSlackUserWithAddieToken(userId),
+      getChannelInfo(channelId),
+    ]);
+
+    if (!user || !channel) {
+      logger.debug(
+        { userId, channelId },
+        'Addie Bolt: Skipping message index - could not fetch user or channel info'
+      );
+      return;
+    }
+
+    // Construct permalink
+    const tsForLink = ts.replace('.', '');
+    const permalink = `https://agenticads.slack.com/archives/${channelId}/p${tsForLink}`;
+
+    await addieDb?.indexSlackMessage({
+      channel_id: channelId,
+      channel_name: channel.name || 'unknown',
+      user_id: userId,
+      username: user.profile?.display_name || user.profile?.real_name || user.name || 'unknown',
+      ts,
+      text: messageText,
+      permalink,
+    });
+
+    logger.debug(
+      { channelName: channel.name, username: user.name },
+      'Addie Bolt: Indexed channel message for search'
+    );
+  } catch (error) {
+    // Don't fail the main handler if indexing fails
+    logger.warn({ error, channelId }, 'Addie Bolt: Failed to index message for search');
+  }
+}
+
+/**
  * Handle channel messages (not mentions) for HITL proposed responses
  *
  * When Addie sees a message in a channel it's in, it uses the router to
@@ -1100,6 +1154,11 @@ async function handleChannelMessage({
   const isInThread = !!('thread_ts' in event && event.thread_ts);
   const startTime = Date.now();
   const threadService = getThreadService();
+
+  // Index message for local search (async, don't await)
+  indexChannelMessage(channelId, userId, messageText, event.ts).catch(() => {
+    // Errors already logged in indexChannelMessage
+  });
 
   logger.debug({ channelId, userId, isInThread },
     'Addie Bolt: Evaluating channel message for potential response');
