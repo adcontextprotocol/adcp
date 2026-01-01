@@ -9,8 +9,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 import type { AddieTool } from './types.js';
 import { ADDIE_SYSTEM_PROMPT, buildContextWithThread } from './prompts.js';
-import { AddieDatabase } from '../db/addie-db.js';
+import { AddieDatabase, type AddieRule } from '../db/addie-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
+import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -44,6 +45,8 @@ export interface AddieResponse {
   flag_reason?: string;
   /** Rule IDs that were active for this interaction (for logging/analysis) */
   active_rule_ids?: number[];
+  /** Configuration version ID for this interaction */
+  config_version_id?: number;
   /** Timing breakdown for each phase of processing */
   timing?: {
     system_prompt_ms: number;
@@ -78,6 +81,7 @@ export class AddieClaudeClient {
   private addieDb: AddieDatabase;
   private cachedSystemPrompt: string | null = null;
   private cachedRuleIds: number[] = [];
+  private cachedRulesSnapshot: RuleSnapshot[] = [];
   private cacheExpiry: number = 0;
   private readonly CACHE_TTL_MS = 300000; // Cache rules for 5 minutes (rules change rarely)
   private webSearchEnabled: boolean = true; // Enable web search for external questions
@@ -96,15 +100,32 @@ export class AddieClaudeClient {
   }
 
   /**
+   * Convert AddieRule to RuleSnapshot for config versioning
+   */
+  private ruleToSnapshot(rule: AddieRule): RuleSnapshot {
+    return {
+      id: rule.id,
+      rule_type: rule.rule_type,
+      name: rule.name,
+      content: rule.content,
+      priority: rule.priority,
+    };
+  }
+
+  /**
    * Get the system prompt, either from database rules or fallback to hardcoded
    * Caches the prompt for CACHE_TTL_MS to avoid database hits on every message
    */
-  private async getSystemPrompt(): Promise<{ prompt: string; ruleIds: number[] }> {
+  private async getSystemPrompt(): Promise<{ prompt: string; ruleIds: number[]; rulesSnapshot: RuleSnapshot[] }> {
     const now = Date.now();
 
     // Return cached prompt if still valid
     if (this.cachedSystemPrompt && now < this.cacheExpiry) {
-      return { prompt: this.cachedSystemPrompt, ruleIds: this.cachedRuleIds };
+      return {
+        prompt: this.cachedSystemPrompt,
+        ruleIds: this.cachedRuleIds,
+        rulesSnapshot: this.cachedRulesSnapshot,
+      };
     }
 
     try {
@@ -114,20 +135,22 @@ export class AddieClaudeClient {
       if (rules.length > 0) {
         const prompt = await this.addieDb.buildSystemPrompt();
         const ruleIds = rules.map(r => r.id);
+        const rulesSnapshot = rules.map(r => this.ruleToSnapshot(r));
 
         this.cachedSystemPrompt = prompt;
         this.cachedRuleIds = ruleIds;
+        this.cachedRulesSnapshot = rulesSnapshot;
         this.cacheExpiry = now + this.CACHE_TTL_MS;
 
         logger.debug({ ruleCount: rules.length }, 'Addie: Built system prompt from database rules');
-        return { prompt, ruleIds };
+        return { prompt, ruleIds, rulesSnapshot };
       }
     } catch (error) {
       logger.warn({ error }, 'Addie: Failed to load rules from database, using fallback prompt');
     }
 
     // Fallback to hardcoded prompt if database unavailable or empty
-    return { prompt: ADDIE_SYSTEM_PROMPT, ruleIds: [] };
+    return { prompt: ADDIE_SYSTEM_PROMPT, ruleIds: [], rulesSnapshot: [] };
   }
 
   /**
@@ -136,6 +159,7 @@ export class AddieClaudeClient {
   invalidateCache(): void {
     this.cachedSystemPrompt = null;
     this.cachedRuleIds = [];
+    this.cachedRulesSnapshot = [];
     this.cacheExpiry = 0;
   }
 
@@ -178,8 +202,11 @@ export class AddieClaudeClient {
 
     // Get system prompt from database rules (or fallback)
     const promptStart = Date.now();
-    const { prompt: systemPrompt, ruleIds } = await this.getSystemPrompt();
+    const { prompt: systemPrompt, ruleIds, rulesSnapshot } = await this.getSystemPrompt();
     systemPromptMs = Date.now() - promptStart;
+
+    // Get config version ID for this interaction (for tracking/analysis)
+    const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
     const contextualMessage = buildContextWithThread(userMessage, threadContext);
 
@@ -315,6 +342,7 @@ export class AddieClaudeClient {
           tool_executions: toolExecutions,
           flagged: false,
           active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+          config_version_id: configVersionId ?? undefined,
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
@@ -421,6 +449,7 @@ export class AddieClaudeClient {
             tool_executions: toolExecutions,
             flagged: false,
             active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+            config_version_id: configVersionId ?? undefined,
             timing: {
               system_prompt_ms: systemPromptMs,
               total_llm_ms: totalLlmMs,
@@ -530,6 +559,7 @@ export class AddieClaudeClient {
       flagged: true,
       flag_reason: 'Max tool iterations reached',
       active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+      config_version_id: configVersionId ?? undefined,
       timing: {
         system_prompt_ms: systemPromptMs,
         total_llm_ms: totalLlmMs,
@@ -579,8 +609,11 @@ export class AddieClaudeClient {
 
     // Get system prompt from database rules (or fallback)
     const promptStart = Date.now();
-    const { prompt: systemPrompt, ruleIds } = await this.getSystemPrompt();
+    const { prompt: systemPrompt, ruleIds, rulesSnapshot } = await this.getSystemPrompt();
     systemPromptMs = Date.now() - promptStart;
+
+    // Get config version ID for this interaction (for tracking/analysis)
+    const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
     const contextualMessage = buildContextWithThread(userMessage, threadContext);
 
@@ -675,6 +708,7 @@ export class AddieClaudeClient {
               tool_executions: toolExecutions,
               flagged: false,
               active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+              config_version_id: configVersionId ?? undefined,
               timing: {
                 system_prompt_ms: systemPromptMs,
                 total_llm_ms: totalLlmMs,
@@ -707,6 +741,7 @@ export class AddieClaudeClient {
                 tool_executions: toolExecutions,
                 flagged: false,
                 active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+                config_version_id: configVersionId ?? undefined,
                 timing: {
                   system_prompt_ms: systemPromptMs,
                   total_llm_ms: totalLlmMs,
@@ -830,6 +865,7 @@ export class AddieClaudeClient {
           flagged: true,
           flag_reason: 'Max tool iterations reached',
           active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
+          config_version_id: configVersionId ?? undefined,
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,

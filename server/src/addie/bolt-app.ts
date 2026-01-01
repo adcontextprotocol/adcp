@@ -54,7 +54,8 @@ import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
 import { getThreadReplies, getSlackUserWithAddieToken, getChannelInfo } from '../slack/client.js';
-import { AddieRouter, type RoutingContext } from './router.js';
+import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
+import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 
 let boltApp: InstanceType<typeof App> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -302,6 +303,9 @@ async function handleThreadStarted({
     'Addie Bolt: Thread started'
   );
 
+  // Prefetch member insights in background (warms cache before first message)
+  prefetchInsights(userId);
+
   // Save the initial context
   try {
     await saveThreadContext();
@@ -429,6 +433,35 @@ async function handleUserMessage({
     context: slackThreadContext,
   });
 
+  // Fetch conversation history from database for context
+  // This ensures Claude has context from previous turns in the DM thread
+  const MAX_HISTORY_MESSAGES = 10;
+  let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  try {
+    const previousMessages = await threadService.getThreadMessages(thread.thread_id);
+    if (previousMessages.length > 0) {
+      // Format previous messages for Claude context
+      // Only include user and assistant messages (skip system/tool)
+      // Exclude the current message (we just logged it below, but it's not there yet)
+      conversationHistory = previousMessages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map(msg => ({
+          user: msg.role === 'user' ? 'User' : 'Addie',
+          text: msg.content_sanitized || msg.content,
+        }));
+
+      if (conversationHistory.length > 0) {
+        logger.debug(
+          { threadId: thread.thread_id, messageCount: conversationHistory.length },
+          'Addie Bolt: Loaded conversation history for DM thread'
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch conversation history');
+  }
+
   // Build message with member context
   const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
     userId,
@@ -476,8 +509,8 @@ async function handleUserMessage({
         thread_ts: threadTs,
       });
 
-      // Process Claude response stream
-      for await (const event of claudeClient.processMessageStream(messageWithContext, undefined, userTools)) {
+      // Process Claude response stream (pass conversation history for context)
+      for await (const event of claudeClient.processMessageStream(messageWithContext, conversationHistory, userTools)) {
         if (event.type === 'text') {
           fullText += event.text;
           // Append text chunk to Slack stream
@@ -518,7 +551,7 @@ async function handleUserMessage({
     } else {
       // Fall back to non-streaming for compatibility
       logger.debug('Addie Bolt: Using non-streaming response (streaming not available)');
-      response = await claudeClient.processMessage(messageWithContext, undefined, userTools);
+      response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools);
       fullText = response.text;
 
       // Send response via say() with feedback buttons
@@ -992,6 +1025,36 @@ function buildFeedbackBlock(): {
 }
 
 /**
+ * Build router_decision metadata from an ExecutionPlan
+ */
+function buildRouterDecision(plan: ExecutionPlan): {
+  action: string;
+  reason: string;
+  decision_method: 'quick_match' | 'llm';
+  tools?: string[];
+  latency_ms?: number;
+  tokens_input?: number;
+  tokens_output?: number;
+  model?: string;
+} {
+  const base = {
+    action: plan.action,
+    reason: plan.reason,
+    decision_method: plan.decision_method,
+    latency_ms: plan.latency_ms,
+    tokens_input: plan.tokens_input,
+    tokens_output: plan.tokens_output,
+    model: plan.model,
+  };
+
+  if (plan.action === 'respond') {
+    return { ...base, tools: plan.tools };
+  }
+
+  return base;
+}
+
+/**
  * Handle channel messages (not mentions) for HITL proposed responses
  *
  * When Addie sees a message in a channel it's in, it uses the router to
@@ -1035,13 +1098,26 @@ async function handleChannelMessage({
   const messageText = event.text;
   const threadTs = ('thread_ts' in event ? event.thread_ts : undefined) || event.ts;
   const isInThread = !!('thread_ts' in event && event.thread_ts);
+  const startTime = Date.now();
+  const threadService = getThreadService();
 
   logger.debug({ channelId, userId, isInThread },
     'Addie Bolt: Evaluating channel message for potential response');
 
   try {
-    // Get member context for routing decisions
-    const memberContext = await getMemberContext(userId);
+    // Fetch member context and insights in parallel (both are independent)
+    // Insights use a cache with 5-minute TTL to reduce DB load
+    const [memberContext, memberInsights] = await Promise.all([
+      getMemberContext(userId),
+      getCachedInsights(userId),
+    ]);
+
+    if (memberInsights && memberInsights.length > 0) {
+      logger.debug(
+        { userId, insightCount: memberInsights.length, types: memberInsights.map(i => i.insight_type_name) },
+        'Addie Bolt: Found member insights for routing'
+      );
+    }
 
     // Build routing context
     const routingCtx: RoutingContext = {
@@ -1049,6 +1125,7 @@ async function handleChannelMessage({
       source: 'channel',
       memberContext,
       isThread: isInThread,
+      memberInsights,
     };
 
     // Quick match first (no API call for obvious cases)
@@ -1062,8 +1139,38 @@ async function handleChannelMessage({
     logger.debug({ channelId, action: plan.action, reason: plan.reason },
       'Addie Bolt: Router decision for channel message');
 
+    // Build external ID for Slack channel messages: channel_id:thread_ts
+    const externalId = `${channelId}:${threadTs}`;
+
+    // Get or create unified thread for this channel message
+    const thread = await threadService.getOrCreateThread({
+      channel: 'slack',
+      external_id: externalId,
+      user_type: 'slack',
+      user_id: userId,
+      context: {
+        channel_id: channelId,
+        message_type: 'channel_message',
+      },
+    });
+
+    // Sanitize input for logging
+    const inputValidation = sanitizeInput(messageText);
+
+    // Log user message to unified thread with router decision
+    await threadService.addMessage({
+      thread_id: thread.thread_id,
+      role: 'user',
+      content: messageText,
+      content_sanitized: inputValidation.sanitized,
+      flagged: inputValidation.flagged,
+      flag_reason: inputValidation.reason || undefined,
+      router_decision: buildRouterDecision(plan),
+    });
+
     // Handle based on execution plan
     if (plan.action === 'ignore') {
+      logger.debug({ channelId, userId, reason: plan.reason }, 'Addie Bolt: Ignoring channel message');
       return;
     }
 
@@ -1095,6 +1202,8 @@ async function handleChannelMessage({
           user_display_name: memberContext?.slack_user?.display_name || undefined,
           is_clarifying_question: true,
           router_reason: plan.reason,
+          router_decision_method: plan.decision_method,
+          router_latency_ms: plan.latency_ms,
         },
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
       });
@@ -1128,6 +1237,36 @@ async function handleChannelMessage({
       return;
     }
 
+    // Log assistant response to unified thread (even though it's pending approval)
+    await threadService.addMessage({
+      thread_id: thread.thread_id,
+      role: 'assistant',
+      content: outputValidation.sanitized,
+      tools_used: response.tools_used,
+      tool_calls: response.tool_executions?.map(exec => ({
+        name: exec.tool_name,
+        input: exec.parameters,
+        result: exec.result,
+        duration_ms: exec.duration_ms,
+        is_error: exec.is_error,
+      })),
+      model: AddieModelConfig.chat,
+      latency_ms: Date.now() - startTime,
+      tokens_input: response.usage?.input_tokens,
+      tokens_output: response.usage?.output_tokens,
+      timing: response.timing ? {
+        system_prompt_ms: response.timing.system_prompt_ms,
+        total_llm_ms: response.timing.total_llm_ms,
+        total_tool_ms: response.timing.total_tool_execution_ms,
+        iterations: response.timing.iterations,
+      } : undefined,
+      tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+      tokens_cache_read: response.usage?.cache_read_input_tokens,
+      active_rule_ids: response.active_rule_ids,
+      config_version_id: response.config_version_id,
+      router_decision: buildRouterDecision(plan),
+    });
+
     // Queue the response for admin approval
     await addieDb.queueForApproval({
       action_type: 'reply',
@@ -1142,6 +1281,11 @@ async function handleChannelMessage({
         tools_used: response.tools_used,
         router_tools: plan.tools,
         router_reason: plan.reason,
+        router_decision_method: plan.decision_method,
+        router_latency_ms: plan.latency_ms,
+        router_tokens_input: plan.tokens_input,
+        router_tokens_output: plan.tokens_output,
+        router_model: plan.model,
       },
       expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });

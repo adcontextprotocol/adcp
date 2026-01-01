@@ -2175,4 +2175,144 @@ export class AddieDatabase {
       tool_usage: toolUsage,
     };
   }
+
+  // ============== Search Tracking ==============
+
+  /**
+   * Log a search query for pattern analysis
+   */
+  async logSearch(params: {
+    query: string;
+    tool_name: string;
+    category?: string;
+    limit_requested?: number;
+    results_count: number;
+    result_ids?: string[];
+    top_result_score?: number;
+    thread_id?: string;
+    channel?: string;
+    search_latency_ms?: number;
+  }): Promise<number> {
+    // Truncate query to prevent storage bloat
+    const truncatedQuery = params.query.slice(0, 1000);
+
+    const result = await query<{ id: number }>(
+      `INSERT INTO addie_search_logs (
+        query, tool_name, category, limit_requested,
+        results_count, result_ids, top_result_score,
+        thread_id, channel, search_latency_ms
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id`,
+      [
+        truncatedQuery,
+        params.tool_name,
+        params.category || null,
+        params.limit_requested || null,
+        params.results_count,
+        params.result_ids || null,
+        params.top_result_score || null,
+        params.thread_id || null,
+        params.channel || null,
+        params.search_latency_ms || null,
+      ]
+    );
+    return result.rows[0]?.id ?? 0;
+  }
+
+  /**
+   * Get search analytics for a time period
+   */
+  async getSearchAnalytics(days: number = 7): Promise<{
+    total_searches: number;
+    zero_result_rate: number;
+    avg_results: number;
+    avg_latency_ms: number;
+    top_queries: Array<{ query: string; count: number }>;
+    by_tool: Record<string, number>;
+  }> {
+    // Get overall stats
+    const statsResult = await query<{
+      total: string;
+      zero_results: string;
+      avg_results: string;
+      avg_latency: string;
+    }>(
+      `SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE results_count = 0) as zero_results,
+        ROUND(AVG(results_count), 1) as avg_results,
+        ROUND(AVG(search_latency_ms), 0) as avg_latency
+       FROM addie_search_logs
+       WHERE created_at > NOW() - $1 * INTERVAL '1 day'`,
+      [days]
+    );
+
+    // Get top queries
+    const topQueriesResult = await query<{ query: string; count: string }>(
+      `SELECT query, COUNT(*) as count
+       FROM addie_search_logs
+       WHERE created_at > NOW() - $1 * INTERVAL '1 day'
+       GROUP BY query
+       ORDER BY count DESC
+       LIMIT 20`,
+      [days]
+    );
+
+    // Get by tool
+    const byToolResult = await query<{ tool_name: string; count: string }>(
+      `SELECT tool_name, COUNT(*) as count
+       FROM addie_search_logs
+       WHERE created_at > NOW() - $1 * INTERVAL '1 day'
+       GROUP BY tool_name
+       ORDER BY count DESC`,
+      [days]
+    );
+
+    const stats = statsResult.rows[0];
+    const total = parseInt(stats.total, 10) || 0;
+    const zeroResults = parseInt(stats.zero_results, 10) || 0;
+
+    const byTool: Record<string, number> = {};
+    for (const row of byToolResult.rows) {
+      byTool[row.tool_name] = parseInt(row.count, 10);
+    }
+
+    return {
+      total_searches: total,
+      zero_result_rate: total > 0 ? zeroResults / total : 0,
+      avg_results: parseFloat(stats.avg_results) || 0,
+      avg_latency_ms: parseInt(stats.avg_latency, 10) || 0,
+      top_queries: topQueriesResult.rows.map(r => ({
+        query: r.query,
+        count: parseInt(r.count, 10),
+      })),
+      by_tool: byTool,
+    };
+  }
+
+  /**
+   * Get queries with zero results (content gaps)
+   */
+  async getZeroResultQueries(limit: number = 50): Promise<Array<{
+    query: string;
+    count: number;
+    last_seen: Date;
+  }>> {
+    const result = await query<{ query: string; count: string; last_seen: Date }>(
+      `SELECT query, COUNT(*) as count, MAX(created_at) as last_seen
+       FROM addie_search_logs
+       WHERE results_count = 0
+         AND created_at > NOW() - INTERVAL '30 days'
+       GROUP BY query
+       ORDER BY count DESC
+       LIMIT $1`,
+      [limit]
+    );
+
+    return result.rows.map(r => ({
+      query: r.query,
+      count: parseInt(r.count, 10),
+      last_seen: r.last_seen,
+    }));
+  }
 }

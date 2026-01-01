@@ -21,15 +21,32 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
 import { ModelConfig } from '../config/models.js';
 import type { MemberContext } from './member-context.js';
+import type { AddieTool } from './types.js';
+import { KNOWLEDGE_TOOLS } from './mcp/knowledge-search.js';
+import { MEMBER_TOOLS } from './mcp/member-tools.js';
+import { InsightsDatabase, type MemberInsight } from '../db/insights-db.js';
 
 /**
  * Execution plan types
  */
-export type ExecutionPlan =
+export type ExecutionPlanBase = {
+  /** How the decision was made: 'quick_match' (pattern) or 'llm' (Claude Haiku) */
+  decision_method: 'quick_match' | 'llm';
+  /** Time spent making the routing decision (ms) */
+  latency_ms?: number;
+  /** Tokens used (only for LLM decisions) */
+  tokens_input?: number;
+  tokens_output?: number;
+  /** Model used (only for LLM decisions) */
+  model?: string;
+};
+
+export type ExecutionPlan = ExecutionPlanBase & (
   | { action: 'ignore'; reason: string }
   | { action: 'react'; emoji: string; reason: string }
   | { action: 'clarify'; question: string; reason: string }
-  | { action: 'respond'; tools: string[]; reason: string };
+  | { action: 'respond'; tools: string[]; reason: string }
+);
 
 /**
  * Context for routing decisions
@@ -45,6 +62,8 @@ export interface RoutingContext {
   isThread?: boolean;
   /** Channel name (if available) */
   channelName?: string;
+  /** Member insights (what we know about this user from past conversations) */
+  memberInsights?: MemberInsight[];
 }
 
 /**
@@ -54,15 +73,52 @@ export interface RoutingContext {
  * They're kept in code because tool names must match actual implementations
  * and some rules have conditional logic.
  */
+
+/**
+ * All available tools for routing context
+ * Combines knowledge tools and member tools
+ */
+const ALL_TOOLS: AddieTool[] = [...KNOWLEDGE_TOOLS, ...MEMBER_TOOLS];
+
+/**
+ * Build tool descriptions for router from the tool definitions.
+ * Uses usage_hints (for router) combined with description (for context).
+ * This ensures tool descriptions are defined once with the tools themselves.
+ */
+function buildToolDescriptions(): Record<string, string> {
+  const descriptions: Record<string, string> = {};
+
+  for (const tool of ALL_TOOLS) {
+    // Use usage_hints if available, otherwise fall back to first sentence of description
+    if (tool.usage_hints) {
+      descriptions[tool.name] = tool.usage_hints;
+    } else {
+      // Extract first sentence as fallback
+      const firstSentence = tool.description.split('.')[0];
+      descriptions[tool.name] = firstSentence;
+    }
+  }
+
+  // Add web_search which is a built-in Claude tool not in our tool arrays
+  descriptions['web_search'] = 'search the web for external protocols (MCP, A2A), current events, things not in our docs';
+
+  return descriptions;
+}
+
+/**
+ * Tool descriptions for router context - built from tool definitions
+ */
+export const TOOL_DESCRIPTIONS = buildToolDescriptions();
+
 export const ROUTING_RULES = {
   /**
    * Topics Addie can help with (and the tools to use)
    */
   expertise: {
     adcp_protocol: {
-      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative'],
-      tools: ['search_docs', 'validate_adagents'],
-      description: 'AdCP protocol questions',
+      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief'],
+      tools: ['search_docs'],
+      description: 'AdCP protocol questions - understanding how things work',
     },
     salesagent: {
       patterns: ['salesagent', 'sales agent', 'open source agent', 'reference implementation'],
@@ -74,10 +130,15 @@ export const ROUTING_RULES = {
       tools: ['search_repos', 'search_docs'],
       description: 'Client library usage',
     },
+    adagents_validation: {
+      patterns: ['validate', 'check my', 'debug', 'test my', 'verify'],
+      tools: ['validate_adagents', 'check_agent_health', 'check_publisher_authorization'],
+      description: 'Validation and debugging requests - checking setups, testing configs',
+    },
     adagents_json: {
-      patterns: ['adagents.json', 'agent manifest', 'agent configuration'],
-      tools: ['validate_adagents', 'search_docs'],
-      description: 'Agent manifest validation',
+      patterns: ['adagents.json', 'agent manifest', 'agent configuration', 'well-known'],
+      tools: ['search_docs', 'validate_adagents'],
+      description: 'Learning about adagents.json format and setup',
     },
     membership: {
       patterns: ['member', 'join', 'signup', 'account', 'profile', 'working group'],
@@ -137,6 +198,30 @@ export const ROUTING_RULES = {
 } as const;
 
 /**
+ * Format member insights for the routing prompt
+ */
+function formatMemberInsights(insights: MemberInsight[] | undefined): string {
+  if (!insights || insights.length === 0) {
+    return '';
+  }
+
+  const insightLines = insights.map(i => {
+    const typeName = i.insight_type_name || `type_${i.insight_type_id}`;
+    return `- ${typeName}: ${i.value} (confidence: ${i.confidence})`;
+  });
+
+  return `
+## What We Know About This User
+These insights were gleaned from previous conversations:
+${insightLines.join('\n')}
+
+Use these insights to:
+- Tailor tool selection to their role/expertise level
+- Skip basic explanations if they're clearly technical
+- Prioritize tools relevant to what they're building`;
+}
+
+/**
  * Build the routing prompt based on context
  */
 function buildRoutingPrompt(ctx: RoutingContext): string {
@@ -144,15 +229,18 @@ function buildRoutingPrompt(ctx: RoutingContext): string {
   const isMember = !!ctx.memberContext?.workos_user?.workos_user_id;
   const isLinked = isMember;
 
-  // Build expertise section
-  const expertiseList = Object.entries(ROUTING_RULES.expertise)
-    .map(([key, rule]) => `- ${rule.description}: tools=[${rule.tools.join(', ')}]`)
+  // Build tool descriptions section - this is key for proper tool selection
+  const toolsSection = Object.entries(TOOL_DESCRIPTIONS)
+    .map(([name, desc]) => `- **${name}**: ${desc}`)
     .join('\n');
 
   // Build react patterns
   const reactList = Object.entries(ROUTING_RULES.reactWith)
     .map(([key, rule]) => `- ${key}: emoji=${rule.emoji}`)
     .join('\n');
+
+  // Format member insights for context
+  const insightsSection = formatMemberInsights(ctx.memberInsights);
 
   // Conditional rules based on user context
   let conditionalRules = '';
@@ -177,9 +265,19 @@ The user is an ADMIN.
 - Is admin: ${isAdmin}
 - In thread: ${ctx.isThread ?? false}
 ${conditionalRules}
+${insightsSection}
 
-## Topics Addie Can Help With (and tools to use)
-${expertiseList}
+## Available Tools (with when to use each)
+${toolsSection}
+
+## Tool Selection Guidelines
+IMPORTANT: Choose tools based on the user's INTENT, not just keywords:
+- "How does X work?" / "What is X?" / "Explain X" → search_docs (learning/understanding)
+- "Validate my adagents.json" / "Check example.com" / "Debug my setup" → validate_adagents (action/validation)
+- "How do I use the SDK?" / "Salesagent setup" → search_repos (implementation help)
+- "What did someone say about X?" → search_slack (community discussions)
+- Questions about MCP, A2A, external protocols → web_search (external info)
+- "Is my agent working?" / "Test my endpoint" → check_agent_health (testing)
 
 ## Messages to React To (emoji only, no response)
 ${reactList}
@@ -208,16 +306,25 @@ Respond with a JSON object for the execution plan. Choose ONE action:
 
 4. {"action": "respond", "tools": ["tool1", "tool2"], "reason": "brief reason"}
    - When you can help and know which tools to use
-   - List specific tools from the expertise list above
+   - Select tools from the Available Tools list based on user intent
    - Empty array [] means respond without tools (general knowledge)
 
 Respond with ONLY the JSON object, no other text.`;
 }
 
 /**
- * Parse the router response into an ExecutionPlan
+ * Partial execution plan without metadata (used during parsing)
  */
-function parseRouterResponse(response: string): ExecutionPlan {
+type ParsedPlan =
+  | { action: 'ignore'; reason: string }
+  | { action: 'react'; emoji: string; reason: string }
+  | { action: 'clarify'; question: string; reason: string }
+  | { action: 'respond'; tools: string[]; reason: string };
+
+/**
+ * Parse the router response into a partial ExecutionPlan
+ */
+function parseRouterResponse(response: string): ParsedPlan {
   try {
     // Extract JSON from response (handle markdown code blocks)
     let jsonStr = response.trim();
@@ -299,13 +406,23 @@ export class AddieRouter {
         ? response.content[0].text
         : '';
 
-      const plan = parseRouterResponse(text);
+      const parsedPlan = parseRouterResponse(text);
+      const latencyMs = Date.now() - startTime;
+
+      const plan: ExecutionPlan = {
+        ...parsedPlan,
+        decision_method: 'llm',
+        latency_ms: latencyMs,
+        tokens_input: response.usage?.input_tokens,
+        tokens_output: response.usage?.output_tokens,
+        model: ModelConfig.fast,
+      };
 
       logger.debug({
         source: ctx.source,
         action: plan.action,
         reason: plan.reason,
-        durationMs: Date.now() - startTime,
+        durationMs: latencyMs,
         inputTokens: response.usage?.input_tokens,
         outputTokens: response.usage?.output_tokens,
       }, 'Router: Execution plan generated');
@@ -314,7 +431,13 @@ export class AddieRouter {
     } catch (error) {
       logger.error({ error }, 'Router: Failed to generate execution plan');
       // On error, default to respond (safe fallback - don't miss important messages)
-      return { action: 'respond', tools: [], reason: 'Router error - defaulting to general response' };
+      return {
+        action: 'respond',
+        tools: [],
+        reason: 'Router error - defaulting to general response',
+        decision_method: 'llm',
+        latency_ms: Date.now() - startTime,
+      };
     }
   }
 
@@ -325,12 +448,18 @@ export class AddieRouter {
    * Returns null if no quick match, meaning the full router should run.
    */
   quickMatch(ctx: RoutingContext): ExecutionPlan | null {
+    const startTime = Date.now();
     const text = ctx.message.toLowerCase().trim();
 
     // Check for simple acknowledgments to ignore
     for (const pattern of ROUTING_RULES.ignore.patterns) {
       if (text === pattern || text === pattern + '.') {
-        return { action: 'ignore', reason: 'Simple acknowledgment' };
+        return {
+          action: 'ignore',
+          reason: 'Simple acknowledgment',
+          decision_method: 'quick_match',
+          latency_ms: Date.now() - startTime,
+        };
       }
     }
 
@@ -339,7 +468,13 @@ export class AddieRouter {
       for (const pattern of rule.patterns) {
         // Only match if the message is very short (likely just a greeting)
         if (text.length < 20 && text.includes(pattern.toLowerCase())) {
-          return { action: 'react', emoji: rule.emoji, reason: `Matched ${key} pattern` };
+          return {
+            action: 'react',
+            emoji: rule.emoji,
+            reason: `Matched ${key} pattern`,
+            decision_method: 'quick_match',
+            latency_ms: Date.now() - startTime,
+          };
         }
       }
     }

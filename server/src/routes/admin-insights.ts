@@ -19,6 +19,7 @@ import {
   getOutreachMode,
   canContactUser,
 } from '../addie/services/proactive-outreach.js';
+import { invalidateInsightsCache, invalidateGoalsCache } from '../addie/insights-cache.js';
 
 const logger = createLogger('admin-insights-routes');
 const insightsDb = new InsightsDatabase();
@@ -258,6 +259,9 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
         created_by: req.user?.id,
       });
 
+      // Invalidate goals cache so routing uses fresh goal data
+      invalidateGoalsCache();
+
       logger.info({ goalId: goal.id, name }, 'Created insight goal');
       res.status(201).json(goal);
     } catch (error) {
@@ -280,6 +284,9 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
         return res.status(404).json({ error: 'Insight goal not found' });
       }
 
+      // Invalidate goals cache so routing uses fresh goal data
+      invalidateGoalsCache();
+
       logger.info({ goalId: goal.id }, 'Updated insight goal');
       res.json(goal);
     } catch (error) {
@@ -300,6 +307,9 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
       if (!deleted) {
         return res.status(404).json({ error: 'Insight goal not found' });
       }
+
+      // Invalidate goals cache so routing uses fresh goal data
+      invalidateGoalsCache();
 
       logger.info({ goalId: id }, 'Deleted insight goal');
       res.json({ success: true });
@@ -444,6 +454,9 @@ export function createAdminInsightsRouter(): { pageRouter: Router; apiRouter: Ro
         source_type: 'manual',
         created_by: req.user?.id,
       });
+
+      // Invalidate cache so routing uses fresh insights
+      invalidateInsightsCache(slack_user_id);
 
       logger.info({ insightId: insight.id, slackUserId: slack_user_id }, 'Added manual insight');
       res.status(201).json(insight);

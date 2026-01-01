@@ -119,7 +119,14 @@ export interface SearchResult {
  */
 export interface AddieTool {
   name: string;
+  /** Description of what the tool does (shown to Claude when using the tool) */
   description: string;
+  /**
+   * Usage hints for the router - explains WHEN to use this tool.
+   * Example: 'use for "how does X work?", understanding concepts'
+   * This helps the router distinguish intent (learning vs validation).
+   */
+  usage_hints?: string;
   input_schema: {
     type: 'object';
     properties: Record<string, unknown>;

@@ -40,17 +40,29 @@ const wgDb = new WorkingGroupDatabase();
 // The slug for the AAO admin working group
 const AAO_ADMIN_WORKING_GROUP_SLUG = 'aao-admin';
 
+// Cache for admin status checks - admin status rarely changes
+const ADMIN_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const adminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
+
 /**
  * Check if a Slack user is an admin
  * Looks up their WorkOS user ID via Slack mapping and checks membership in aao-admin working group
+ * Results are cached for 30 minutes to reduce DB load
  */
 export async function isSlackUserAdmin(slackUserId: string): Promise<boolean> {
+  // Check cache first
+  const cached = adminStatusCache.get(slackUserId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.isAdmin;
+  }
+
   try {
     // Look up the Slack user mapping to get their WorkOS user ID
     const mapping = await slackDb.getBySlackUserId(slackUserId);
 
     if (!mapping?.workos_user_id) {
       logger.debug({ slackUserId }, 'No WorkOS mapping for Slack user');
+      adminStatusCache.set(slackUserId, { isAdmin: false, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
       return false;
     }
 
@@ -65,11 +77,25 @@ export async function isSlackUserAdmin(slackUserId: string): Promise<boolean> {
     // Check if the user is a member of the admin working group
     const isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
 
+    // Cache the result
+    adminStatusCache.set(slackUserId, { isAdmin, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+
     logger.debug({ slackUserId, workosUserId: mapping.workos_user_id, isAdmin }, 'Checked admin status');
     return isAdmin;
   } catch (error) {
     logger.error({ error, slackUserId }, 'Error checking if Slack user is admin');
     return false;
+  }
+}
+
+/**
+ * Invalidate admin status cache for a user (call when admin membership changes)
+ */
+export function invalidateAdminStatusCache(slackUserId?: string): void {
+  if (slackUserId) {
+    adminStatusCache.delete(slackUserId);
+  } else {
+    adminStatusCache.clear();
   }
 }
 

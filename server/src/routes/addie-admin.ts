@@ -19,9 +19,24 @@ import {
 } from "../addie/thread-service.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { getAddieBoltApp } from "../addie/bolt-app.js";
+import { AddieRouter, type RoutingContext } from "../addie/router.js";
+import { sanitizeInput } from "../addie/security.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
+
+// Lazy-initialized router (needs API key from env)
+let addieRouter: AddieRouter | null = null;
+function getAddieRouter(): AddieRouter {
+  if (!addieRouter) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error("ANTHROPIC_API_KEY not configured");
+    }
+    addieRouter = new AddieRouter(apiKey);
+  }
+  return addieRouter;
+}
 
 /**
  * Helper to parse and validate a numeric ID parameter
@@ -1694,6 +1709,106 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       res.status(500).json({
         error: "Internal server error",
         message: error instanceof Error ? error.message : "Unable to preview rule changes",
+      });
+    }
+  });
+
+  // =========================================================================
+  // ROUTER TEST API (for testing router decisions without Slack)
+  // =========================================================================
+
+  /**
+   * POST /api/admin/addie/test-router - Test the Haiku router with a simulated message
+   *
+   * This endpoint simulates a Slack channel message to test the router decision logic
+   * and verify router_decision metadata is being logged correctly.
+   *
+   * Body: { message: string, source?: 'channel' | 'dm' | 'mention', isThread?: boolean }
+   */
+  apiRouter.post("/test-router", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { message, source = 'channel', isThread = false } = req.body;
+
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ error: "message is required" });
+      }
+
+      const threadService = getThreadService();
+
+      // Build routing context (simulating a channel message)
+      const routingCtx: RoutingContext = {
+        message,
+        source: source as 'channel' | 'dm' | 'mention',
+        isThread,
+        memberContext: null, // Anonymous test user
+      };
+
+      const router = getAddieRouter();
+
+      // Try quick match first
+      let plan = router.quickMatch(routingCtx);
+
+      // If no quick match, use the full LLM router
+      if (!plan) {
+        plan = await router.route(routingCtx);
+      }
+
+      // Build router decision metadata (same structure as bolt-app.ts)
+      const routerDecision = {
+        action: plan.action,
+        reason: plan.reason,
+        decision_method: plan.decision_method,
+        latency_ms: plan.latency_ms,
+        tokens_input: plan.tokens_input,
+        tokens_output: plan.tokens_output,
+        model: plan.model,
+        ...(plan.action === 'respond' ? { tools: plan.tools } : {}),
+      };
+
+      // Create a test thread and log the message with router decision
+      const testExternalId = `test-router:${Date.now()}`;
+      const thread = await threadService.getOrCreateThread({
+        channel: 'slack',
+        external_id: testExternalId,
+        user_type: 'slack',
+        user_id: 'test-user',
+        context: {
+          channel_id: 'test-channel',
+          message_type: 'test_router_simulation',
+        },
+      });
+
+      // Sanitize input
+      const inputValidation = sanitizeInput(message);
+
+      // Log the user message with router decision
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'user',
+        content: message,
+        content_sanitized: inputValidation.sanitized,
+        flagged: inputValidation.flagged,
+        flag_reason: inputValidation.reason || undefined,
+        router_decision: routerDecision,
+      });
+
+      logger.info({
+        action: plan.action,
+        decision_method: plan.decision_method,
+        latency_ms: plan.latency_ms
+      }, "Test router: Decision logged");
+
+      res.json({
+        success: true,
+        thread_id: thread.thread_id,
+        router_decision: routerDecision,
+        execution_plan: plan,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "Error testing router");
+      res.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unable to test router",
       });
     }
   });

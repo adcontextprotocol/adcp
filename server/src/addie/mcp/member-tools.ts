@@ -29,6 +29,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'validate_adagents',
     description:
       'Validate an adagents.json file for a domain. Checks that the file exists at /.well-known/adagents.json, has valid structure, and optionally validates the agent cards. Use this when users ask about setting up or debugging their adagents.json configuration. Share the validation results with the user - they contain helpful error messages and links.',
+    usage_hints: 'use ONLY for "check my setup", "validate example.com", debugging configs - NOT for learning about adagents.json',
     input_schema: {
       type: 'object',
       properties: {
@@ -54,6 +55,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'list_working_groups',
     description:
       'List active working groups in AgenticAdvertising.org. Shows public groups to everyone, and includes private groups for members. Use this to help users find groups that match their interests.',
+    usage_hints: 'use for "what groups exist?", browsing available groups',
     input_schema: {
       type: 'object',
       properties: {
@@ -69,6 +71,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'get_working_group',
     description:
       'Get details about a specific working group including its description, leaders, member count, and recent posts. Use the group slug (URL-friendly name).',
+    usage_hints: 'use for "tell me about X group", getting specific group details',
     input_schema: {
       type: 'object',
       properties: {
@@ -84,6 +87,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'join_working_group',
     description:
       'Join a public working group on behalf of the current user. Only works for public groups - private groups require an invitation. The user must be a member of AgenticAdvertising.org.',
+    usage_hints: 'use when user explicitly wants to join a group',
     input_schema: {
       type: 'object',
       properties: {
@@ -99,6 +103,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'get_my_working_groups',
     description:
       "Get the current user's working group memberships. Shows which groups they belong to and their role in each.",
+    usage_hints: 'use for "what groups am I in?", checking user\'s memberships',
     input_schema: {
       type: 'object',
       properties: {},
@@ -113,6 +118,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'get_my_profile',
     description:
       "Get the current user's member profile. Shows their public profile information, organization details, and any published agents or properties.",
+    usage_hints: 'use for "what\'s my profile?", account/membership questions',
     input_schema: {
       type: 'object',
       properties: {},
@@ -123,6 +129,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'update_my_profile',
     description:
       "Update the current user's member profile. Can update headline, bio, focus areas, website, LinkedIn, and other profile fields. Only updates fields that are provided - omitted fields are unchanged.",
+    usage_hints: 'use when user wants to update their profile information',
     input_schema: {
       type: 'object',
       properties: {
@@ -164,6 +171,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'list_perspectives',
     description:
       'List published perspectives (articles/posts) from AgenticAdvertising.org members. These are public articles shared by the community.',
+    usage_hints: 'use for "show me perspectives", browsing member articles',
     input_schema: {
       type: 'object',
       properties: {
@@ -179,6 +187,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'create_working_group_post',
     description:
       'Create a post in a working group on behalf of the current user. The user must be a member of the working group. Supports article, link, and discussion post types.',
+    usage_hints: 'use when user wants to create a post in a working group',
     input_schema: {
       type: 'object',
       properties: {
@@ -215,6 +224,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'get_account_link',
     description:
       'Get a link to connect the user\'s Slack account with their AgenticAdvertising.org account. Use this when a user\'s accounts are not linked and they want to access member features. IMPORTANT: Share the full tool output with the user - it contains the clickable sign-in link they need. The user clicks the link to sign in and their accounts are automatically connected.',
+    usage_hints: 'use when user needs to connect Slack to their AAO account',
     input_schema: {
       type: 'object',
       properties: {},
@@ -229,6 +239,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'check_agent_health',
     description:
       'Check if an AdCP agent is online and responding. Tests the agent\'s endpoint and returns health status, response time, and available tools. Use this when users want to verify their agent is working before adding it to their profile or authorizing it.',
+    usage_hints: 'use for "is my agent working?", "test my agent endpoint"',
     input_schema: {
       type: 'object',
       properties: {
@@ -244,6 +255,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'check_publisher_authorization',
     description:
       'Check if a publisher domain has authorized a specific agent. Validates the publisher\'s adagents.json and confirms the agent is listed. Use this when users want to verify their publisher setup before testing integrations.',
+    usage_hints: 'use for authorization verification, "is my agent authorized?"',
     input_schema: {
       type: 'object',
       properties: {
@@ -263,6 +275,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'get_agent_capabilities',
     description:
       'Get detailed capabilities of an AdCP agent including available tools and supported operations. Use this to help users understand what an agent can do before using it.',
+    usage_hints: 'use for "what can this agent do?", inspecting agent tools',
     input_schema: {
       type: 'object',
       properties: {
@@ -281,7 +294,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'draft_github_issue',
     description:
-      'Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. IMPORTANT: Share the full tool output with the user - it contains the clickable link they need to create the issue. The user will click the link to create the issue from their own GitHub account. Infer the appropriate repo from context (channel name, conversation topic) - use "adcp" for protocol/docs issues, "aao-server" for website/community issues.',
+      'Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. CRITICAL: Users CANNOT see tool outputs - you MUST copy this tool\'s entire output (the GitHub link, title, body preview) into your response. Never say "click the link above" without including the actual link. The user will click the link to create the issue from their own GitHub account. Infer the appropriate repo from context (channel name, conversation topic) - use "adcp" for protocol/docs issues, "aao-server" for website/community issues.',
+    usage_hints: 'use when user wants to report a bug or request a feature - MUST include full output in response',
     input_schema: {
       type: 'object',
       properties: {

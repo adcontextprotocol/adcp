@@ -20,6 +20,20 @@ const SLACK_API_BASE = 'https://slack.com/api';
 // Rate limiting: Slack's tier 2 methods allow ~20 requests per minute
 const RATE_LIMIT_DELAY_MS = 100; // Small delay between requests
 
+// =====================================================
+// CHANNEL INFO CACHE
+// Channel names/purposes rarely change, so cache for 30 minutes
+// =====================================================
+const CHANNEL_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_CHANNEL_CACHE_SIZE = 500;
+
+interface ChannelCacheEntry {
+  channel: SlackChannel;
+  expiresAt: number;
+}
+
+const channelCache = new Map<string, ChannelCacheEntry>();
+
 /**
  * Make an authenticated request to the Slack API
  */
@@ -346,13 +360,36 @@ export async function getSlackChannels(
 }
 
 /**
- * Get channel info by ID
+ * Get channel info by ID (cached for 30 minutes)
  */
 export async function getChannelInfo(channelId: string): Promise<SlackChannel | null> {
+  const now = Date.now();
+
+  // Check cache
+  const cached = channelCache.get(channelId);
+  if (cached && cached.expiresAt > now) {
+    return cached.channel;
+  }
+
   try {
     const response = await slackRequest<{ channel: SlackChannel }>('conversations.info', {
       channel: channelId,
     });
+
+    // Evict oldest entry if cache is full
+    if (channelCache.size >= MAX_CHANNEL_CACHE_SIZE) {
+      const oldestKey = channelCache.keys().next().value;
+      if (oldestKey) {
+        channelCache.delete(oldestKey);
+      }
+    }
+
+    // Cache the result
+    channelCache.set(channelId, {
+      channel: response.channel,
+      expiresAt: now + CHANNEL_CACHE_TTL_MS,
+    });
+
     return response.channel;
   } catch (error) {
     logger.error({ error, channelId }, 'Failed to get channel info');

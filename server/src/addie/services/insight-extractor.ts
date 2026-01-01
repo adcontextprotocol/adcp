@@ -20,6 +20,7 @@ import {
   type InsightConfidence,
 } from '../../db/insights-db.js';
 import { ModelConfig } from '../../config/models.js';
+import { invalidateInsightsCache } from '../insights-cache.js';
 
 const insightsDb = new InsightsDatabase();
 
@@ -314,6 +315,11 @@ export async function extractInsights(
       } catch (error) {
         logger.error({ error, goalResponse }, 'Insight extractor: Failed to process goal response');
       }
+    }
+
+    // Invalidate insights cache if we stored any new insights
+    if (storedInsights.length > 0 || storedGoalResponses.length > 0) {
+      invalidateInsightsCache(context.slackUserId);
     }
 
     logger.info(
