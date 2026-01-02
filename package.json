@@ -47,6 +47,7 @@
     "@workos-inc/widgets": "^1.6.1",
     "axios": "^1.13.2",
     "cookie-parser": "^1.4.7",
+    "csv-parse": "^6.1.0",
     "dotenv": "^17.2.3",
     "express": "^4.22.1",
     "express-rate-limit": "^8.2.1",
