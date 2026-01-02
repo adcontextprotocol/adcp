@@ -30,7 +30,7 @@ export async function syncSlackUsers(): Promise<SyncSlackUsersResult> {
       new_users: 0,
       updated_users: 0,
       auto_mapped: 0,
-      errors: ['Slack is not configured (SLACK_BOT_TOKEN missing)'],
+      errors: ['Slack is not configured (ADDIE_BOT_TOKEN missing)'],
     };
   }
 
@@ -197,7 +197,7 @@ export async function syncWorkingGroupMembersFromSlack(
       members_added: 0,
       members_already_in_group: 0,
       unmapped_slack_users: 0,
-      errors: ['Slack is not configured (SLACK_BOT_TOKEN missing)'],
+      errors: ['Slack is not configured (ADDIE_BOT_TOKEN missing)'],
     };
   }
 

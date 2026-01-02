@@ -63,7 +63,7 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
-import { getThreadReplies, getSlackUserWithAddieToken, getChannelInfo } from '../slack/client.js';
+import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import { getCachedInsights, prefetchInsights } from './insights-cache.js';
 
@@ -803,7 +803,7 @@ async function handleAppMention({
   let threadContext = '';
   if (isInThread && event.thread_ts) {
     try {
-      const threadMessages = await getThreadReplies(channelId, event.thread_ts, true);
+      const threadMessages = await getThreadReplies(channelId, event.thread_ts);
       if (threadMessages.length > 0) {
         // Filter out Addie's own messages and format the thread history
         const filteredMessages = threadMessages
@@ -828,7 +828,7 @@ async function handleAppMention({
         if (mentionedUserIds.size > 0) {
           const lookups = await Promise.all(
             Array.from(mentionedUserIds).map(async (uid) => {
-              const user = await getSlackUserWithAddieToken(uid);
+              const user = await getSlackUser(uid);
               return { uid, name: user?.profile?.display_name || user?.real_name || user?.name || null };
             })
           );
@@ -1150,7 +1150,7 @@ async function indexChannelMessage(
   try {
     // Fetch user and channel info
     const [user, channel] = await Promise.all([
-      getSlackUserWithAddieToken(userId),
+      getSlackUser(userId),
       getChannelInfo(channelId),
     ]);
 
