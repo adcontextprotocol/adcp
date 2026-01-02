@@ -24,6 +24,7 @@ import { setupOrganizationRoutes } from "./admin/organizations.js";
 import { setupEnrichmentRoutes } from "./admin/enrichment.js";
 import { setupDomainRoutes } from "./admin/domains.js";
 import { setupCleanupRoutes } from "./admin/cleanup.js";
+import { setupStatsRoutes } from "./admin/stats.js";
 
 const logger = createLogger("admin-routes");
 
@@ -85,6 +86,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Prospect cleanup routes
   setupCleanupRoutes(apiRouter);
+
+  // Dashboard stats routes
+  setupStatsRoutes(apiRouter);
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)
