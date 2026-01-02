@@ -123,7 +123,7 @@ SELECT
   'email_only' as contact_type,
   NULL as workos_user_id,
   ec.email,
-  COALESCE(ec.name, SPLIT_PART(ec.email, '@', 1)) as full_name,
+  COALESCE(ec.display_name, SPLIT_PART(ec.email, '@', 1)) as full_name,
   NULL as first_name,
   NULL as last_name,
 
