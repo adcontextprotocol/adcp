@@ -387,12 +387,21 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   apiRouter.get("/threads/stats", requireAuth, requireAdmin, async (req, res) => {
     try {
       const threadService = getThreadService();
-      const stats = await threadService.getStats();
-      const channelStats = await threadService.getChannelStats();
+      const { timeframe } = req.query;
+
+      // Validate timeframe parameter
+      const validTimeframes = ['24h', '7d', '30d', 'all'] as const;
+      const tf = validTimeframes.includes(timeframe as typeof validTimeframes[number])
+        ? (timeframe as '24h' | '7d' | '30d' | 'all')
+        : 'all';
+
+      const stats = await threadService.getStats(tf);
+      const channelStats = await threadService.getChannelStats(tf);
 
       res.json({
         ...stats,
         by_channel: channelStats,
+        timeframe: tf,
       });
     } catch (error) {
       logger.error({ err: error }, "Error fetching thread stats");

@@ -1419,6 +1419,12 @@
             </p>
           </div>
           <div class="filter-row">
+            <select id="stats-timeframe">
+              <option value="7d" selected>This Week</option>
+              <option value="24h">Last 24 Hours</option>
+              <option value="30d">Last 30 Days</option>
+              <option value="all">All Time</option>
+            </select>
             <select id="channel-filter">
               <option value="">All Channels</option>
               <option value="web">Web</option>
@@ -2200,6 +2206,7 @@
       const channel = document.getElementById('channel-filter').value;
       const flaggedOnly = document.getElementById('threads-flagged-only').checked;
       const unreviewedOnly = document.getElementById('threads-unreviewed-only').checked;
+      const timeframe = document.getElementById('stats-timeframe').value;
 
       const params = new URLSearchParams();
       params.append('limit', '50');
@@ -2207,10 +2214,26 @@
       if (flaggedOnly) params.append('flagged_only', 'true');
       if (unreviewedOnly) params.append('unreviewed_only', 'true');
 
+      // Add timeframe filter to threads query
+      if (timeframe !== 'all') {
+        const now = new Date();
+        let since;
+        if (timeframe === '24h') {
+          since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        } else if (timeframe === '7d') {
+          since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        } else if (timeframe === '30d') {
+          since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        }
+        if (since) {
+          params.append('since', since.toISOString());
+        }
+      }
+
       try {
         const [threadsRes, statsRes] = await Promise.all([
           fetch(`/api/admin/addie/threads?${params.toString()}`),
-          fetch('/api/admin/addie/threads/stats')
+          fetch(`/api/admin/addie/threads/stats?timeframe=${timeframe}`)
         ]);
 
         const data = await threadsRes.json();
@@ -2227,12 +2250,27 @@
           };
           const totalTokens = (stats.total_input_tokens || 0) + (stats.total_output_tokens || 0);
 
+          // Get thread count based on timeframe
+          const getThreadCount = (ch) => {
+            if (timeframe === '24h') return ch.threads_last_24h || 0;
+            if (timeframe === '7d') return ch.threads_last_7d || 0;
+            return ch.total_threads || 0;
+          };
+
+          // Get timeframe label
+          const timeframeLabel = {
+            '24h': '(24h)',
+            '7d': '(7d)',
+            '30d': '(30d)',
+            'all': ''
+          }[timeframe];
+
           statsEl.innerHTML = `
             <div class="conversation-stats">
               ${stats.by_channel.map(ch => `
                 <div class="conversation-stat">
-                  <div class="conversation-stat-value">${ch.thread_count || 0}</div>
-                  <div class="conversation-stat-label">${ch.channel.charAt(0).toUpperCase() + ch.channel.slice(1)} Threads</div>
+                  <div class="conversation-stat-value">${getThreadCount(ch)}</div>
+                  <div class="conversation-stat-label">${ch.channel.charAt(0).toUpperCase() + ch.channel.slice(1)} Threads ${timeframeLabel}</div>
                 </div>
               `).join('')}
               <div class="conversation-stat">
@@ -3570,6 +3608,7 @@
 
       // Need at least a rating
       if (!feedback.rating) {
+        alert('Please select thumbs up or thumbs down');
         return;
       }
 
@@ -3591,20 +3630,29 @@
             msg.rating = feedback.rating;
             msg.rating_notes = feedback.rating_notes;
             msg.feedback_tags = feedback.feedback_tags;
+            msg.rating_source = 'admin';
           }
         }
 
         // Clear pending feedback for this message
         delete pendingMessageFeedback[messageId];
 
-        // Show brief success indicator
-        const feedbackEl = document.querySelector(`.message-feedback[data-message-id="${messageId}"]`);
-        if (feedbackEl) {
-          const savedIndicator = document.createElement('span');
-          savedIndicator.textContent = 'Saved';
-          savedIndicator.style.cssText = 'color: var(--color-success-600); font-size: var(--text-xs); margin-left: var(--space-2);';
-          feedbackEl.appendChild(savedIndicator);
-          setTimeout(() => savedIndicator.remove(), 2000);
+        // Re-render the message to show updated feedback state
+        if (currentThreadData && currentThreadData.messages) {
+          const msg = currentThreadData.messages.find(m => m.message_id === messageId);
+          if (msg) {
+            // Find the message element and replace it with re-rendered version
+            const assistantMessages = document.querySelectorAll('.message-item.assistant');
+            for (const el of assistantMessages) {
+              const feedbackEl = el.querySelector(`.message-feedback[data-message-id="${messageId}"]`);
+              if (feedbackEl) {
+                // Re-render this message
+                const newHtml = renderThreadMessage(msg);
+                el.outerHTML = newHtml;
+                break;
+              }
+            }
+          }
         }
       } catch (error) {
         console.error('Error saving message feedback:', error);
@@ -3880,6 +3928,7 @@
     loadQueue();
 
     // Event listeners for thread filters
+    document.getElementById('stats-timeframe').addEventListener('change', loadThreads);
     document.getElementById('channel-filter').addEventListener('change', loadThreads);
     document.getElementById('threads-flagged-only').addEventListener('change', loadThreads);
     document.getElementById('threads-unreviewed-only').addEventListener('change', loadThreads);

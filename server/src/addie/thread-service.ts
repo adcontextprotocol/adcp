@@ -597,19 +597,47 @@ export class ThreadService {
   // =====================================================
 
   /**
-   * Get stats by channel
+   * Get stats by channel (optionally filtered by timeframe)
+   * @param timeframe - '24h', '7d', '30d', or 'all'
    */
-  async getChannelStats(): Promise<ChannelStats[]> {
-    const result = await query<ChannelStats>(
-      `SELECT * FROM addie_channel_stats`
-    );
+  async getChannelStats(timeframe: '24h' | '7d' | '30d' | 'all' = 'all'): Promise<ChannelStats[]> {
+    // For 'all', use the view which has pre-computed stats
+    if (timeframe === 'all') {
+      const result = await query<ChannelStats>(
+        `SELECT * FROM addie_channel_stats`
+      );
+      return result.rows;
+    }
+
+    // Use explicit SQL for each timeframe to avoid string interpolation (security)
+    const baseQuery = `SELECT
+        channel,
+        COUNT(DISTINCT thread_id) as total_threads,
+        COUNT(DISTINCT user_id) as unique_users,
+        SUM(message_count) as total_messages,
+        COUNT(*) FILTER (WHERE flagged) as flagged_threads,
+        COUNT(*) FILTER (WHERE reviewed) as reviewed_threads,
+        COUNT(*) FILTER (WHERE started_at > NOW() - INTERVAL '24 hours') as threads_last_24h,
+        COUNT(*) FILTER (WHERE started_at > NOW() - INTERVAL '7 days') as threads_last_7d
+      FROM addie_threads`;
+
+    let result;
+    if (timeframe === '24h') {
+      result = await query<ChannelStats>(`${baseQuery} WHERE started_at > NOW() - INTERVAL '24 hours' GROUP BY channel`);
+    } else if (timeframe === '7d') {
+      result = await query<ChannelStats>(`${baseQuery} WHERE started_at > NOW() - INTERVAL '7 days' GROUP BY channel`);
+    } else {
+      // 30d
+      result = await query<ChannelStats>(`${baseQuery} WHERE started_at > NOW() - INTERVAL '30 days' GROUP BY channel`);
+    }
     return result.rows;
   }
 
   /**
-   * Get overall stats
+   * Get overall stats (optionally filtered by timeframe)
+   * @param timeframe - '24h', '7d', '30d', or 'all'
    */
-  async getStats(): Promise<{
+  async getStats(timeframe: '24h' | '7d' | '30d' | 'all' = 'all'): Promise<{
     total_threads: number;
     total_messages: number;
     unique_users: number;
@@ -624,7 +652,8 @@ export class ThreadService {
     total_input_tokens: number;
     total_output_tokens: number;
   }> {
-    const result = await query<{
+    // Use explicit SQL for each timeframe to avoid string interpolation (security)
+    type StatsRow = {
       total_threads: string;
       total_messages: string;
       unique_users: string;
@@ -638,23 +667,84 @@ export class ThreadService {
       avg_latency_ms: string | null;
       total_input_tokens: string;
       total_output_tokens: string;
-    }>(
-      `SELECT
-        COUNT(DISTINCT t.thread_id) as total_threads,
-        (SELECT COUNT(*) FROM addie_thread_messages) as total_messages,
-        COUNT(DISTINCT t.user_id) FILTER (WHERE t.user_id IS NOT NULL) as unique_users,
-        ROUND(AVG(t.message_count)::numeric, 1) as avg_messages_per_thread,
-        COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '24 hours') as threads_last_24h,
-        COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '30 days') as threads_30d,
-        (SELECT COUNT(*) FROM addie_thread_messages WHERE created_at > NOW() - INTERVAL '30 days') as messages_30d,
-        COUNT(*) FILTER (WHERE t.flagged) as flagged_threads,
-        COUNT(*) FILTER (WHERE NOT t.reviewed) as unreviewed_threads,
-        (SELECT ROUND(AVG(rating)::numeric, 2) FROM addie_thread_messages WHERE rating IS NOT NULL) as avg_rating,
-        (SELECT ROUND(AVG(latency_ms)::numeric, 0) FROM addie_thread_messages WHERE latency_ms IS NOT NULL) as avg_latency_ms,
-        (SELECT COALESCE(SUM(tokens_input), 0) FROM addie_thread_messages WHERE tokens_input IS NOT NULL) as total_input_tokens,
-        (SELECT COALESCE(SUM(tokens_output), 0) FROM addie_thread_messages WHERE tokens_output IS NOT NULL) as total_output_tokens
-      FROM addie_threads t`
-    );
+    };
+
+    // Build query based on timeframe - using explicit SQL to avoid injection
+    let result;
+    if (timeframe === 'all') {
+      result = await query<StatsRow>(
+        `SELECT
+          COUNT(DISTINCT t.thread_id) as total_threads,
+          (SELECT COUNT(*) FROM addie_thread_messages) as total_messages,
+          COUNT(DISTINCT t.user_id) FILTER (WHERE t.user_id IS NOT NULL) as unique_users,
+          ROUND(AVG(t.message_count)::numeric, 1) as avg_messages_per_thread,
+          COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '24 hours') as threads_last_24h,
+          COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '30 days') as threads_30d,
+          (SELECT COUNT(*) FROM addie_thread_messages WHERE created_at > NOW() - INTERVAL '30 days') as messages_30d,
+          COUNT(*) FILTER (WHERE t.flagged) as flagged_threads,
+          COUNT(*) FILTER (WHERE NOT t.reviewed) as unreviewed_threads,
+          (SELECT ROUND(AVG(rating)::numeric, 2) FROM addie_thread_messages WHERE rating IS NOT NULL) as avg_rating,
+          (SELECT ROUND(AVG(latency_ms)::numeric, 0) FROM addie_thread_messages WHERE latency_ms IS NOT NULL) as avg_latency_ms,
+          (SELECT COALESCE(SUM(tokens_input), 0) FROM addie_thread_messages WHERE tokens_input IS NOT NULL) as total_input_tokens,
+          (SELECT COALESCE(SUM(tokens_output), 0) FROM addie_thread_messages WHERE tokens_output IS NOT NULL) as total_output_tokens
+        FROM addie_threads t`
+      );
+    } else if (timeframe === '24h') {
+      result = await query<StatsRow>(
+        `SELECT
+          COUNT(DISTINCT t.thread_id) as total_threads,
+          (SELECT COUNT(*) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '24 hours') as total_messages,
+          COUNT(DISTINCT t.user_id) FILTER (WHERE t.user_id IS NOT NULL) as unique_users,
+          ROUND(AVG(t.message_count)::numeric, 1) as avg_messages_per_thread,
+          COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '24 hours') as threads_last_24h,
+          COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '30 days') as threads_30d,
+          (SELECT COUNT(*) FROM addie_thread_messages WHERE created_at > NOW() - INTERVAL '30 days') as messages_30d,
+          COUNT(*) FILTER (WHERE t.flagged) as flagged_threads,
+          COUNT(*) FILTER (WHERE NOT t.reviewed) as unreviewed_threads,
+          (SELECT ROUND(AVG(rating)::numeric, 2) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '24 hours' AND rating IS NOT NULL) as avg_rating,
+          (SELECT ROUND(AVG(latency_ms)::numeric, 0) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '24 hours' AND latency_ms IS NOT NULL) as avg_latency_ms,
+          (SELECT COALESCE(SUM(tokens_input), 0) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '24 hours' AND tokens_input IS NOT NULL) as total_input_tokens,
+          (SELECT COALESCE(SUM(tokens_output), 0) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '24 hours' AND tokens_output IS NOT NULL) as total_output_tokens
+        FROM addie_threads t WHERE t.started_at > NOW() - INTERVAL '24 hours'`
+      );
+    } else if (timeframe === '7d') {
+      result = await query<StatsRow>(
+        `SELECT
+          COUNT(DISTINCT t.thread_id) as total_threads,
+          (SELECT COUNT(*) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '7 days') as total_messages,
+          COUNT(DISTINCT t.user_id) FILTER (WHERE t.user_id IS NOT NULL) as unique_users,
+          ROUND(AVG(t.message_count)::numeric, 1) as avg_messages_per_thread,
+          COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '24 hours') as threads_last_24h,
+          COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '30 days') as threads_30d,
+          (SELECT COUNT(*) FROM addie_thread_messages WHERE created_at > NOW() - INTERVAL '30 days') as messages_30d,
+          COUNT(*) FILTER (WHERE t.flagged) as flagged_threads,
+          COUNT(*) FILTER (WHERE NOT t.reviewed) as unreviewed_threads,
+          (SELECT ROUND(AVG(rating)::numeric, 2) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '7 days' AND rating IS NOT NULL) as avg_rating,
+          (SELECT ROUND(AVG(latency_ms)::numeric, 0) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '7 days' AND latency_ms IS NOT NULL) as avg_latency_ms,
+          (SELECT COALESCE(SUM(tokens_input), 0) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '7 days' AND tokens_input IS NOT NULL) as total_input_tokens,
+          (SELECT COALESCE(SUM(tokens_output), 0) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '7 days' AND tokens_output IS NOT NULL) as total_output_tokens
+        FROM addie_threads t WHERE t.started_at > NOW() - INTERVAL '7 days'`
+      );
+    } else {
+      // 30d
+      result = await query<StatsRow>(
+        `SELECT
+          COUNT(DISTINCT t.thread_id) as total_threads,
+          (SELECT COUNT(*) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '30 days') as total_messages,
+          COUNT(DISTINCT t.user_id) FILTER (WHERE t.user_id IS NOT NULL) as unique_users,
+          ROUND(AVG(t.message_count)::numeric, 1) as avg_messages_per_thread,
+          COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '24 hours') as threads_last_24h,
+          COUNT(*) FILTER (WHERE t.started_at > NOW() - INTERVAL '30 days') as threads_30d,
+          (SELECT COUNT(*) FROM addie_thread_messages WHERE created_at > NOW() - INTERVAL '30 days') as messages_30d,
+          COUNT(*) FILTER (WHERE t.flagged) as flagged_threads,
+          COUNT(*) FILTER (WHERE NOT t.reviewed) as unreviewed_threads,
+          (SELECT ROUND(AVG(rating)::numeric, 2) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '30 days' AND rating IS NOT NULL) as avg_rating,
+          (SELECT ROUND(AVG(latency_ms)::numeric, 0) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '30 days' AND latency_ms IS NOT NULL) as avg_latency_ms,
+          (SELECT COALESCE(SUM(tokens_input), 0) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '30 days' AND tokens_input IS NOT NULL) as total_input_tokens,
+          (SELECT COALESCE(SUM(tokens_output), 0) FROM addie_thread_messages m WHERE m.created_at > NOW() - INTERVAL '30 days' AND tokens_output IS NOT NULL) as total_output_tokens
+        FROM addie_threads t WHERE t.started_at > NOW() - INTERVAL '30 days'`
+      );
+    }
 
     const row = result.rows[0];
     return {
