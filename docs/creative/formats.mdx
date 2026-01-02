@@ -267,6 +267,21 @@ Formats are JSON objects with the following key fields:
         "description": "Third-party impression tracking pixel URL"
       }
     }
+  ],
+
+  // DEPRECATED: Use "assets" above instead. Kept for backward compatibility.
+  "assets_required": [
+    {
+      "item_type": "individual",
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "asset_role": "hero_video",
+      "requirements": {
+        "duration": "30s",
+        "format": ["MP4"],
+        "resolution": ["1920x1080", "1280x720"]
+      }
+    }
   ]
 }
 ```

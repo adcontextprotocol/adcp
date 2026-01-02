@@ -372,6 +372,22 @@ Creative formats specify their assets using the `assets` array. Each asset has a
         "description": "Third-party impression tracking pixel URL"
       }
     }
+  ],
+
+  // DEPRECATED: Use "assets" above instead. Kept for backward compatibility.
+  "assets_required": [
+    {
+      "item_type": "individual",
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "requirements": {
+        "duration_seconds": 15,
+        "acceptable_formats": ["mp4"],
+        "acceptable_codecs": ["h264"],
+        "acceptable_resolutions": ["1920x1080", "1280x720"],
+        "max_file_size_mb": 30
+      }
+    }
   ]
 }
 ```
