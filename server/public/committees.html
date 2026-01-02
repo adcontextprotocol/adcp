@@ -3,24 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Regional Chapters | AgenticAdvertising.org</title>
-  <meta name="description" content="Regional chapters connecting local communities of agentic advertising practitioners and enthusiasts.">
+  <title id="pageTitle">Committees | AgenticAdvertising.org</title>
+  <meta name="description" id="pageDescription" content="Collaborative committees driving the future of agentic advertising standards.">
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
-  <link rel="canonical" href="https://agenticadvertising.org/chapters">
+  <link rel="canonical" id="canonicalUrl" href="https://agenticadvertising.org/committees">
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://agenticadvertising.org/chapters">
-  <meta property="og:title" content="Regional Chapters | AgenticAdvertising.org">
-  <meta property="og:description" content="Regional chapters connecting local communities of agentic advertising practitioners.">
+  <meta property="og:url" id="ogUrl" content="https://agenticadvertising.org/committees">
+  <meta property="og:title" id="ogTitle" content="Committees | AgenticAdvertising.org">
+  <meta property="og:description" id="ogDescription" content="Collaborative committees driving the future of agentic advertising standards.">
   <meta property="og:image" content="https://agenticadvertising.org/AAo-social.png">
   <meta property="og:site_name" content="AgenticAdvertising.org">
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:url" content="https://agenticadvertising.org/chapters">
-  <meta name="twitter:title" content="Regional Chapters | AgenticAdvertising.org">
-  <meta name="twitter:description" content="Regional chapters connecting local communities of agentic advertising practitioners.">
+  <meta name="twitter:url" id="twitterUrl" content="https://agenticadvertising.org/committees">
+  <meta name="twitter:title" id="twitterTitle" content="Committees | AgenticAdvertising.org">
+  <meta name="twitter:description" id="twitterDescription" content="Collaborative committees driving the future of agentic advertising standards.">
   <meta name="twitter:image" content="https://agenticadvertising.org/AAo-social.png">
 
   <link rel="stylesheet" href="/design-system.css">
@@ -51,6 +51,38 @@
       max-width: var(--container-xl);
       margin: 0 auto;
       padding: var(--space-8) var(--space-4);
+    }
+
+    /* Type Tabs */
+    .type-tabs {
+      display: flex;
+      justify-content: center;
+      gap: var(--space-2);
+      margin-bottom: var(--space-8);
+      flex-wrap: wrap;
+    }
+
+    .type-tab {
+      padding: var(--space-2) var(--space-6);
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      transition: var(--transition-all);
+    }
+
+    .type-tab:hover {
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+
+    .type-tab.active {
+      background: var(--color-brand);
+      border-color: var(--color-brand);
+      color: white;
     }
 
     /* Groups Grid */
@@ -235,6 +267,50 @@
       margin-bottom: var(--space-2);
     }
 
+    /* User's Groups Section */
+    .my-groups-section {
+      background: var(--color-primary-50);
+      border: var(--border-1) solid var(--color-primary-200);
+      border-radius: var(--card-radius);
+      padding: var(--space-6);
+      margin-bottom: var(--space-8);
+    }
+
+    .my-groups-section h2 {
+      font-size: var(--text-xl);
+      color: var(--color-brand);
+      margin-bottom: var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .my-groups-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+    }
+
+    .my-group-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-4);
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-primary-300);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      color: var(--color-brand);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+      transition: var(--transition-all);
+    }
+
+    .my-group-tag:hover {
+      background: var(--color-primary-100);
+      border-color: var(--color-brand);
+    }
+
     /* Section Headers */
     .section-header {
       margin-bottom: var(--space-6);
@@ -294,26 +370,6 @@
       }
     }
   </style>
-
-  <!-- JSON-LD Structured Data -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "CollectionPage",
-    "name": "Regional Chapters",
-    "description": "Regional chapters connecting local communities of agentic advertising practitioners and enthusiasts.",
-    "url": "https://agenticadvertising.org/chapters",
-    "publisher": {
-      "@type": "Organization",
-      "name": "AgenticAdvertising.org",
-      "url": "https://agenticadvertising.org",
-      "logo": {
-        "@type": "ImageObject",
-        "url": "https://agenticadvertising.org/AAo.svg"
-      }
-    }
-  }
-  </script>
 </head>
 <body>
   <!-- Navigation -->
@@ -322,27 +378,51 @@
 
   <!-- Header -->
   <div class="header">
-    <h1>Regional Chapters</h1>
-    <p class="subtitle">Connect with local communities of agentic advertising practitioners</p>
+    <h1 id="headerTitle">Committees</h1>
+    <p id="headerSubtitle" class="subtitle">Collaborate with industry leaders to shape the future of agentic advertising</p>
   </div>
 
   <div class="container">
+    <!-- Type Tabs -->
+    <div class="type-tabs">
+      <a href="/committees" class="type-tab" id="tab-all">All Committees</a>
+      <a href="/committees?type=working_group" class="type-tab" id="tab-working_group">Working Groups</a>
+      <a href="/committees?type=council" class="type-tab" id="tab-council">Industry Councils</a>
+      <a href="/committees?type=chapter" class="type-tab" id="tab-chapter">Regional Chapters</a>
+    </div>
+
+    <!-- User's Groups (shown when logged in and member of groups) -->
+    <div id="my-groups-section" class="my-groups-section" style="display: none;">
+      <h2>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        <span id="myGroupsTitle">Your Committees</span>
+      </h2>
+      <div id="my-groups-list" class="my-groups-list">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+
     <!-- Loading State -->
     <div id="loading" class="loading-state">
-      Loading chapters...
+      Loading committees...
     </div>
 
     <!-- Empty State -->
     <div id="empty-state" class="empty-state" style="display: none;">
-      <h3>No Chapters Yet</h3>
-      <p>Regional chapters are being established. Check back soon!</p>
+      <h3 id="emptyTitle">No Committees Yet</h3>
+      <p id="emptyMessage">Committees are being set up. Check back soon!</p>
     </div>
 
-    <!-- All Chapters Section -->
+    <!-- All Groups Section -->
     <section id="all-groups-section" style="display: none;">
       <div class="section-header">
-        <h2>All Regional Chapters</h2>
-        <p>Regional chapters bring together local communities to network, learn, and collaborate on agentic advertising.</p>
+        <h2 id="sectionTitle">All Committees</h2>
+        <p id="sectionDescription">Join a committee to contribute to standards development and connect with peers.</p>
       </div>
 
       <div id="groups-grid" class="groups-grid">
@@ -353,7 +433,7 @@
     <!-- Join CTA (for non-members) -->
     <div id="join-cta" class="join-cta" style="display: none;">
       <h2>Want to Get Involved?</h2>
-      <p>Become an AAO member to join regional chapters and connect with practitioners in your area.</p>
+      <p id="joinCtaMessage">Become an AAO member to join committees and help shape industry standards.</p>
       <a href="/membership" class="join-cta-btn">Learn About Membership</a>
     </div>
   </div>
@@ -373,12 +453,117 @@
   </footer>
 
   <script>
+    // Committee type configurations
+    const TYPE_CONFIG = {
+      all: {
+        title: 'Committees',
+        pageTitle: 'Committees | AgenticAdvertising.org',
+        subtitle: 'Collaborate with industry leaders to shape the future of agentic advertising',
+        sectionTitle: 'All Committees',
+        sectionDesc: 'Join a committee to contribute to standards development and connect with peers.',
+        emptyTitle: 'No Committees Yet',
+        emptyMessage: 'Committees are being set up. Check back soon!',
+        myGroupsTitle: 'Your Committees',
+        joinCta: 'Become an AAO member to join committees and help shape industry standards.',
+        viewButton: 'View',
+        apiType: null // Fetch all non-governance types
+      },
+      working_group: {
+        title: 'Working Groups',
+        pageTitle: 'Working Groups | AgenticAdvertising.org',
+        subtitle: 'Collaborate with industry leaders to shape the future of agentic advertising',
+        sectionTitle: 'All Working Groups',
+        sectionDesc: 'Join a working group to contribute to standards development and connect with peers.',
+        emptyTitle: 'No Working Groups Yet',
+        emptyMessage: 'Working groups are being set up. Check back soon!',
+        myGroupsTitle: 'Your Working Groups',
+        joinCta: 'Become an AAO member to join working groups and help shape industry standards.',
+        viewButton: 'View Group',
+        apiType: 'working_group'
+      },
+      council: {
+        title: 'Industry Councils',
+        pageTitle: 'Industry Councils | AgenticAdvertising.org',
+        subtitle: 'Driving agentic advertising adoption across industry verticals',
+        sectionTitle: 'All Industry Councils',
+        sectionDesc: 'Industry councils convene stakeholders from specific advertising verticals to accelerate adoption of agentic advertising standards.',
+        emptyTitle: 'No Councils Yet',
+        emptyMessage: 'Industry councils are being established. Check back soon!',
+        myGroupsTitle: 'Your Councils',
+        joinCta: 'Become an AAO member to join industry councils and help shape your vertical\'s approach to agentic advertising.',
+        viewButton: 'View Council',
+        apiType: 'council'
+      },
+      chapter: {
+        title: 'Regional Chapters',
+        pageTitle: 'Regional Chapters | AgenticAdvertising.org',
+        subtitle: 'Connect with local communities of agentic advertising practitioners',
+        sectionTitle: 'All Regional Chapters',
+        sectionDesc: 'Regional chapters bring together local communities to network, learn, and collaborate on agentic advertising.',
+        emptyTitle: 'No Chapters Yet',
+        emptyMessage: 'Regional chapters are being established. Check back soon!',
+        myGroupsTitle: 'Your Chapters',
+        joinCta: 'Become an AAO member to join regional chapters and connect with practitioners in your area.',
+        viewButton: 'View Chapter',
+        apiType: 'chapter'
+      }
+    };
+
     let currentUser = null;
+    let userGroups = [];
     let allGroups = [];
+    let currentType = 'all';
 
     async function init() {
+      // Get type from query param
+      const params = new URLSearchParams(window.location.search);
+      const typeParam = params.get('type');
+      currentType = TYPE_CONFIG[typeParam] ? typeParam : 'all';
+
+      // Update page content based on type
+      updatePageContent();
+
+      // Check auth and load data
       await checkAuth();
-      await loadChapters();
+      await loadCommittees();
+
+      if (currentUser) {
+        await loadUserGroups();
+      }
+    }
+
+    function updatePageContent() {
+      const config = TYPE_CONFIG[currentType];
+
+      // Update page title and meta
+      document.getElementById('pageTitle').textContent = config.pageTitle;
+      document.getElementById('pageDescription').content = config.sectionDesc;
+
+      // Update header
+      document.getElementById('headerTitle').textContent = config.title;
+      document.getElementById('headerSubtitle').textContent = config.subtitle;
+
+      // Update section
+      document.getElementById('sectionTitle').textContent = config.sectionTitle;
+      document.getElementById('sectionDescription').textContent = config.sectionDesc;
+
+      // Update empty state
+      document.getElementById('emptyTitle').textContent = config.emptyTitle;
+      document.getElementById('emptyMessage').textContent = config.emptyMessage;
+
+      // Update my groups section
+      document.getElementById('myGroupsTitle').textContent = config.myGroupsTitle;
+
+      // Update join CTA
+      document.getElementById('joinCtaMessage').textContent = config.joinCta;
+
+      // Update loading text
+      document.getElementById('loading').textContent = `Loading ${config.title.toLowerCase()}...`;
+
+      // Update active tab
+      document.querySelectorAll('.type-tab').forEach(tab => tab.classList.remove('active'));
+      const activeTab = document.getElementById(`tab-${currentType}`);
+      if (activeTab) activeTab.classList.add('active');
     }
 
     async function checkAuth() {
@@ -393,7 +578,7 @@
       }
     }
 
-    async function loadChapters() {
+    async function loadCommittees() {
       const loadingEl = document.getElementById('loading');
       const emptyEl = document.getElementById('empty-state');
       const sectionEl = document.getElementById('all-groups-section');
@@ -401,8 +586,14 @@
       const joinCtaEl = document.getElementById('join-cta');
 
       try {
-        const response = await fetch('/api/working-groups?type=chapter');
-        if (!response.ok) throw new Error('Failed to load chapters');
+        const config = TYPE_CONFIG[currentType];
+        let url = '/api/working-groups';
+        if (config.apiType) {
+          url += `?type=${config.apiType}`;
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load committees');
 
         const data = await response.json();
         allGroups = data.working_groups || [];
@@ -422,14 +613,54 @@
         }
 
       } catch (error) {
-        console.error('Error loading chapters:', error);
-        loadingEl.innerHTML = '<p style="color: var(--color-error-600);">Failed to load chapters. Please refresh the page.</p>';
+        console.error('Error loading committees:', error);
+        loadingEl.innerHTML = '<p style="color: var(--color-error-600);">Failed to load committees. Please refresh the page.</p>';
+      }
+    }
+
+    async function loadUserGroups() {
+      const sectionEl = document.getElementById('my-groups-section');
+      const listEl = document.getElementById('my-groups-list');
+
+      try {
+        const response = await fetch('/api/me/working-groups', { credentials: 'include' });
+        if (!response.ok) return;
+
+        const data = await response.json();
+        let groups = data.working_groups || [];
+
+        // Filter to current type if not showing all
+        const config = TYPE_CONFIG[currentType];
+        if (config.apiType) {
+          groups = groups.filter(g => g.committee_type === config.apiType);
+        }
+
+        if (groups.length === 0) return;
+
+        userGroups = groups;
+        sectionEl.style.display = 'block';
+        listEl.innerHTML = userGroups.map(group => `
+          <a href="/working-groups/${escapeHtml(group.slug)}" class="my-group-tag">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            ${escapeHtml(group.name)}
+          </a>
+        `).join('');
+
+      } catch (error) {
+        console.error('Error loading user groups:', error);
       }
     }
 
     function renderGroupCard(group) {
+      const config = TYPE_CONFIG[currentType];
       const hasLeadership = group.leaders && group.leaders.length > 0;
-      const regionDisplay = group.region ? `<div class="region-badge">📍 ${escapeHtml(group.region)}</div>` : '';
+      const showRegion = group.committee_type === 'chapter' && group.region;
+      const regionDisplay = showRegion ? `<div class="region-badge">📍 ${escapeHtml(group.region)}</div>` : '';
 
       return `
         <a href="/working-groups/${escapeHtml(group.slug)}" class="group-card">
@@ -470,7 +701,7 @@
               ${group.member_count || 0} member${group.member_count !== 1 ? 's' : ''}
             </span>
             <span class="view-group-btn">
-              View Chapter
+              ${config.viewButton}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M9 18l6-6-6-6"/>
               </svg>

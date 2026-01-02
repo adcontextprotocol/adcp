@@ -159,11 +159,12 @@
       ? `<a href="${perspectivesUrl}" class="navbar__link ${currentPath.startsWith('/perspectives') ? 'active' : ''}">Perspectives</a>`
       : '';
 
-    // Build committees dropdown (replaces working groups link)
-    const workingGroupsUrl = isLocal ? '/working-groups' : 'https://agenticadvertising.org/working-groups';
-    const councilsUrl = isLocal ? '/councils' : 'https://agenticadvertising.org/councils';
-    const chaptersUrl = isLocal ? '/chapters' : 'https://agenticadvertising.org/chapters';
-    const isCommitteesActive = currentPath.startsWith('/working-groups') || currentPath === '/councils' || currentPath === '/chapters';
+    // Build committees dropdown
+    const committeesBaseUrl = isLocal ? '/committees' : 'https://agenticadvertising.org/committees';
+    const workingGroupsUrl = `${committeesBaseUrl}?type=working_group`;
+    const councilsUrl = `${committeesBaseUrl}?type=council`;
+    const chaptersUrl = `${committeesBaseUrl}?type=chapter`;
+    const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups');
     const committeesDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isCommitteesActive ? 'active' : ''}">
@@ -173,9 +174,10 @@
             </svg>
           </button>
           <div class="navbar__dropdown navbar__dropdown--nav">
-            <a href="${workingGroupsUrl}" class="navbar__dropdown-item ${currentPath.startsWith('/working-groups') ? 'active' : ''}">Working Groups</a>
-            <a href="${councilsUrl}" class="navbar__dropdown-item ${currentPath === '/councils' ? 'active' : ''}">Industry Councils</a>
-            <a href="${chaptersUrl}" class="navbar__dropdown-item ${currentPath === '/chapters' ? 'active' : ''}">Regional Chapters</a>
+            <a href="${committeesBaseUrl}" class="navbar__dropdown-item ${currentPath === '/committees' ? 'active' : ''}">All Committees</a>
+            <a href="${workingGroupsUrl}" class="navbar__dropdown-item">Working Groups</a>
+            <a href="${councilsUrl}" class="navbar__dropdown-item">Industry Councils</a>
+            <a href="${chaptersUrl}" class="navbar__dropdown-item">Regional Chapters</a>
           </div>
         </div>`
       : '';
@@ -229,9 +231,10 @@
           <a href="${propertiesUrl}" class="navbar__link navbar__link--indent ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
           ${perspectivesLink}
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Committees</span>` : ''}
-          ${membershipEnabled ? `<a href="${workingGroupsUrl}" class="navbar__link navbar__link--indent ${currentPath.startsWith('/working-groups') ? 'active' : ''}">Working Groups</a>` : ''}
-          ${membershipEnabled ? `<a href="${councilsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/councils' ? 'active' : ''}">Industry Councils</a>` : ''}
-          ${membershipEnabled ? `<a href="${chaptersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/chapters' ? 'active' : ''}">Regional Chapters</a>` : ''}
+          ${membershipEnabled ? `<a href="${committeesBaseUrl}" class="navbar__link navbar__link--indent ${currentPath === '/committees' ? 'active' : ''}">All Committees</a>` : ''}
+          ${membershipEnabled ? `<a href="${workingGroupsUrl}" class="navbar__link navbar__link--indent">Working Groups</a>` : ''}
+          ${membershipEnabled ? `<a href="${councilsUrl}" class="navbar__link navbar__link--indent">Industry Councils</a>` : ''}
+          ${membershipEnabled ? `<a href="${chaptersUrl}" class="navbar__link navbar__link--indent">Regional Chapters</a>` : ''}
           <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
           <a href="${governanceUrl}" class="navbar__link navbar__link--indent ${currentPath === '/governance' ? 'active' : ''}">Governance</a>

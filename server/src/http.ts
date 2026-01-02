@@ -1340,14 +1340,18 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'working-groups.html');
     });
 
-    // Industry Councils page
-    this.app.get("/councils", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'councils.html');
+    // Committees page (unified view for working groups, councils, chapters)
+    this.app.get("/committees", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'committees.html');
     });
 
-    // Regional Chapters page
-    this.app.get("/chapters", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'chapters.html');
+    // Legacy routes - redirect to committees page with type filter
+    this.app.get("/councils", (req, res) => {
+      res.redirect(301, '/committees?type=council');
+    });
+
+    this.app.get("/chapters", (req, res) => {
+      res.redirect(301, '/committees?type=chapter');
     });
 
     this.app.get("/working-groups/:slug", async (req, res) => {
