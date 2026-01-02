@@ -111,6 +111,23 @@
       border-radius: var(--radius-md);
     }
 
+    .metric-card.clickable {
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .metric-card.clickable:hover,
+    .metric-card.clickable:focus {
+      background: var(--color-gray-100);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .metric-card.clickable:focus {
+      outline: 2px solid var(--color-brand);
+      outline-offset: 2px;
+    }
+
     .metric-value {
       font-size: var(--text-2xl);
       font-weight: var(--font-bold);
@@ -161,6 +178,74 @@
 
     .hero-metric .metric-trend {
       color: rgba(255, 255, 255, 0.9);
+    }
+
+    .hero-metric.clickable {
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .hero-metric.clickable:hover,
+    .hero-metric.clickable:focus {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+      filter: brightness(1.05);
+    }
+
+    .hero-metric.clickable:focus {
+      outline: 2px solid white;
+      outline-offset: 2px;
+    }
+
+    /* Clickable goal header */
+    .goal-header.clickable {
+      cursor: pointer;
+      transition: all 0.15s ease;
+      margin: calc(-1 * var(--space-5));
+      margin-bottom: var(--space-4);
+      padding: var(--space-5);
+      padding-bottom: var(--space-3);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    }
+
+    .goal-header.clickable:hover,
+    .goal-header.clickable:focus {
+      background: var(--color-bg-subtle);
+    }
+
+    .goal-header.clickable:focus {
+      outline: 2px solid var(--color-brand);
+      outline-offset: -2px;
+    }
+
+    .goal-header.clickable .goal-title-group::after {
+      content: '→';
+      margin-left: var(--space-2);
+      color: var(--color-text-muted);
+      transition: transform 0.15s ease;
+    }
+
+    .goal-header.clickable:hover .goal-title-group::after,
+    .goal-header.clickable:focus .goal-title-group::after {
+      transform: translateX(4px);
+      color: var(--color-brand);
+    }
+
+    /* Clickable funnel stages */
+    .funnel-stage.clickable {
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .funnel-stage.clickable:hover,
+    .funnel-stage.clickable:focus {
+      background: var(--color-gray-100);
+      transform: translateY(-2px);
+    }
+
+    .funnel-stage.clickable:focus {
+      outline: 2px solid var(--color-brand);
+      outline-offset: 2px;
     }
 
     /* Chart section */
@@ -300,6 +385,23 @@
       font-size: var(--text-sm);
       color: var(--color-primary-800);
     }
+
+    .insight-box.clickable {
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .insight-box.clickable:hover,
+    .insight-box.clickable:focus {
+      background: var(--color-primary-100);
+      border-color: var(--color-primary-300);
+      transform: translateY(-1px);
+    }
+
+    .insight-box.clickable:focus {
+      outline: 2px solid var(--color-brand);
+      outline-offset: 2px;
+    }
   </style>
 </head>
 <body>
@@ -318,7 +420,7 @@
 
       <!-- GOAL 1: ENGAGEMENT -->
       <div class="goal-section">
-        <div class="goal-header">
+        <div class="goal-header clickable" onclick="window.location.href='/admin/insights'">
           <div class="goal-title-group">
             <span class="goal-icon">💬</span>
             <div>
@@ -333,21 +435,21 @@
         </div>
 
         <div class="metrics-grid">
-          <div class="metric-card">
+          <div class="metric-card clickable" onclick="window.location.href='/admin/users'">
             <div class="metric-value" id="activeUsers30d">-</div>
             <div class="metric-label">Active Users (30d)</div>
             <div class="metric-trend" id="activeUsersTrend">-</div>
           </div>
-          <div class="metric-card">
+          <div class="metric-card clickable" onclick="window.location.href='/admin/analytics'">
             <div class="metric-value" id="messages30d">-</div>
             <div class="metric-label">Messages (30d)</div>
             <div class="metric-trend" id="messagesTrend">-</div>
           </div>
-          <div class="metric-card">
+          <div class="metric-card clickable" onclick="window.location.href='/admin/insights'">
             <div class="metric-value" id="avgEngagement">-</div>
             <div class="metric-label">Avg Engagement Score</div>
           </div>
-          <div class="metric-card">
+          <div class="metric-card clickable" onclick="window.location.href='/admin/insights'">
             <div class="metric-value" id="champions">-</div>
             <div class="metric-label">Champions</div>
           </div>
@@ -358,7 +460,7 @@
           <div class="bar-chart" id="slackChart"></div>
         </div>
 
-        <div class="insight-box">
+        <div class="insight-box clickable" onclick="window.location.href='/admin/addie'">
           <div class="insight-label">Addie Impact</div>
           <div class="insight-text">
             <span id="addieThreads30d">-</span> conversations this month
@@ -370,7 +472,7 @@
 
       <!-- GOAL 2: FUNNEL -->
       <div class="goal-section">
-        <div class="goal-header">
+        <div class="goal-header clickable" onclick="window.location.href='/admin/prospects'">
           <div class="goal-title-group">
             <span class="goal-icon">📊</span>
             <div>
@@ -381,38 +483,38 @@
         </div>
 
         <div class="funnel">
-          <div class="funnel-stage">
+          <div class="funnel-stage clickable" onclick="window.location.href='/admin/members'">
             <div class="funnel-value" id="totalOrgs">-</div>
             <div class="funnel-label">Total Orgs</div>
           </div>
           <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage">
+          <div class="funnel-stage clickable" onclick="window.location.href='/admin/prospects'">
             <div class="funnel-value" id="prospects">-</div>
             <div class="funnel-label">Prospects</div>
           </div>
           <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage">
+          <div class="funnel-stage clickable" onclick="window.location.href='/admin/prospects?filter=engaged'">
             <div class="funnel-value" id="engagedProspects">-</div>
             <div class="funnel-label">Engaged</div>
           </div>
           <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage">
+          <div class="funnel-stage clickable" onclick="window.location.href='/admin/prospects?filter=trial'">
             <div class="funnel-value" id="trials">-</div>
             <div class="funnel-label">Trials</div>
           </div>
           <span class="funnel-arrow" aria-hidden="true">→</span>
-          <div class="funnel-stage active">
+          <div class="funnel-stage active clickable" onclick="window.location.href='/admin/members?filter=paying'">
             <div class="funnel-value" id="payingOrgs">-</div>
             <div class="funnel-label">Paying</div>
           </div>
         </div>
 
         <div class="two-col" style="margin-top: var(--space-4);">
-          <div class="metric-card">
+          <div class="metric-card clickable" onclick="window.location.href='/admin/users'">
             <div class="metric-value" id="totalUsers">-</div>
             <div class="metric-label">Total Users</div>
           </div>
-          <div class="metric-card">
+          <div class="metric-card clickable" onclick="window.location.href='/admin/billing'">
             <div class="metric-value" id="activeSubscriptions">-</div>
             <div class="metric-label">Active Subscriptions</div>
           </div>
@@ -421,7 +523,7 @@
 
       <!-- GOAL 3: REVENUE -->
       <div class="goal-section">
-        <div class="goal-header">
+        <div class="goal-header clickable" onclick="window.location.href='/admin/billing'">
           <div class="goal-title-group">
             <span class="goal-icon">💰</span>
             <div>
@@ -436,20 +538,20 @@
         </div>
 
         <div class="metrics-grid">
-          <div class="hero-metric">
+          <div class="hero-metric clickable" onclick="window.location.href='/admin/billing'">
             <div class="metric-value" id="arr">-</div>
             <div class="metric-label">Annual Recurring Revenue</div>
           </div>
-          <div class="metric-card">
+          <div class="metric-card clickable" onclick="window.location.href='/admin/billing'">
             <div class="metric-value" id="mrr">-</div>
             <div class="metric-label">Monthly Recurring</div>
           </div>
-          <div class="metric-card">
+          <div class="metric-card clickable" onclick="window.location.href='/admin/products'">
             <div class="metric-value" id="bookings30d">-</div>
             <div class="metric-label">Bookings (30d)</div>
             <div class="metric-trend" id="bookingsCount">-</div>
           </div>
-          <div class="metric-card">
+          <div class="metric-card clickable" onclick="window.location.href='/admin/analytics'">
             <div class="metric-value" id="monthlyRevenue">-</div>
             <div class="metric-label">This Month</div>
             <div class="metric-trend" id="monthlyTrend">-</div>
@@ -465,6 +567,20 @@
   </div>
 
   <script>
+    // Initialize keyboard accessibility for all clickable elements
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.clickable[onclick]').forEach(function(el) {
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('role', 'link');
+        el.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            el.click();
+          }
+        });
+      });
+    });
+
     function formatNumber(num) {
       if (!num && num !== 0) return '-';
       return num.toLocaleString();

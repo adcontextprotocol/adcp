@@ -84,10 +84,10 @@ export function setupStatsRoutes(apiRouter: Router): void {
               WHEN revenue_type != 'refund'
                 AND revenue_type != 'payment_failed'
                 AND paid_at >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
-                AND paid_at < date_trunc('month', CURRENT_DATE)
+                AND paid_at < date_trunc('month', CURRENT_DATE - INTERVAL '1 month') + (CURRENT_DATE - date_trunc('month', CURRENT_DATE))
               THEN amount_paid
               ELSE 0
-            END), 0) as last_month_revenue,
+            END), 0) as last_month_mtd_revenue,
             COALESCE(SUM(CASE
               WHEN revenue_type = 'subscription_recurring'
               THEN amount_paid
@@ -101,20 +101,26 @@ export function setupStatsRoutes(apiRouter: Router): void {
           FROM revenue_events
         `),
 
-        // MRR from active subscriptions
+        // MRR from active subscriptions (based on most recent payment per subscription)
         pool.query(`
+          WITH active_subscriptions AS (
+            SELECT DISTINCT ON (stripe_subscription_id)
+              stripe_subscription_id,
+              amount_paid,
+              billing_interval
+            FROM revenue_events
+            WHERE stripe_subscription_id IS NOT NULL
+              AND revenue_type IN ('subscription_recurring', 'subscription_initial')
+              AND period_end > NOW()
+            ORDER BY stripe_subscription_id, paid_at DESC
+          )
           SELECT
             COALESCE(SUM(CASE
-              WHEN subscription_interval = 'month'
-              THEN subscription_amount
-              WHEN subscription_interval = 'year'
-              THEN subscription_amount / 12.0
+              WHEN billing_interval = 'month' THEN amount_paid
+              WHEN billing_interval = 'year' THEN amount_paid / 12.0
               ELSE 0
             END), 0) as mrr
-          FROM organizations
-          WHERE subscription_amount IS NOT NULL
-            AND subscription_current_period_end > NOW()
-            AND subscription_canceled_at IS NULL
+          FROM active_subscriptions
         `),
 
         // Revenue by product
@@ -268,7 +274,7 @@ export function setupStatsRoutes(apiRouter: Router): void {
         total_refunds: formatCurrency(parseInt(revenue.total_refunds) || 0),
         current_month_revenue: formatCurrency(parseInt(revenue.current_month_revenue) || 0),
         monthly_revenue: formatCurrency(parseInt(revenue.current_month_revenue) || 0), // Alias for dashboard
-        last_month_revenue: formatCurrency(parseInt(revenue.last_month_revenue) || 0),
+        last_month_mtd_revenue: formatCurrency(parseInt(revenue.last_month_mtd_revenue) || 0),
         recurring_revenue: formatCurrency(parseInt(revenue.recurring_revenue) || 0),
         one_time_revenue: formatCurrency(parseInt(revenue.one_time_revenue) || 0),
 
@@ -349,7 +355,7 @@ export function setupStatsRoutes(apiRouter: Router): void {
           },
           revenue: {
             current: parseInt(revenue.current_month_revenue) || 0,
-            previous: parseInt(revenue.last_month_revenue) || 0,
+            previous: parseInt(revenue.last_month_mtd_revenue) || 0,
           },
         },
       });
