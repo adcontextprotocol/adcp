@@ -7,6 +7,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { parse as parseCsvLib } from "csv-parse/sync";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
@@ -26,7 +27,83 @@ import type {
   EventStatus,
   EventType,
   EventFormat,
+  RegistrationStatus,
 } from "../types.js";
+
+/**
+ * Luma CSV row structure
+ */
+interface LumaCsvRow {
+  api_id: string;
+  name: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone_number: string;
+  created_at: string;
+  approval_status: string;
+  checked_in_at: string;
+  custom_source: string;
+  qr_code_url: string;
+  amount: string;
+  amount_tax: string;
+  amount_discount: string;
+  currency: string;
+  coupon_code: string;
+  eth_address: string;
+  solana_address: string;
+  survey_response_rating: string;
+  survey_response_feedback: string;
+  ticket_type_id: string;
+  ticket_name: string;
+}
+
+// Max CSV size: 5MB
+const MAX_CSV_SIZE = 5 * 1024 * 1024;
+
+/**
+ * Parse CSV string into rows using proper CSV library
+ */
+function parseCsv(csvContent: string): LumaCsvRow[] {
+  const records = parseCsvLib(csvContent, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    bom: true,
+  });
+  return records as LumaCsvRow[];
+}
+
+/**
+ * Parse date string, returning undefined for invalid dates
+ */
+function parseDate(dateStr: string | undefined): Date | undefined {
+  if (!dateStr) return undefined;
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) {
+    return undefined;
+  }
+  return date;
+}
+
+/**
+ * Map Luma approval_status to our registration_status
+ */
+function mapLumaStatus(lumaStatus: string): RegistrationStatus {
+  switch (lumaStatus.toLowerCase()) {
+    case 'approved':
+      return 'registered';
+    case 'pending_approval':
+      return 'registered'; // Treat pending as registered for historical imports
+    case 'waitlist':
+      return 'waitlisted';
+    case 'declined':
+    case 'cancelled':
+      return 'cancelled';
+    default:
+      return 'registered';
+  }
+}
 
 const orgDb = new OrganizationDatabase();
 
@@ -494,6 +571,156 @@ export function createEventsRouter(): {
         logger.error({ err: error }, "Error getting sponsorships");
         res.status(500).json({
           error: "Failed to get sponsorships",
+          message: "An unexpected error occurred",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/events/:id/import-luma - Import registrations from Luma CSV
+  adminApiRouter.post(
+    "/:id/import-luma",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const { csv_content } = req.body;
+
+        if (!csv_content || typeof csv_content !== 'string') {
+          return res.status(400).json({
+            error: "Missing CSV content",
+            message: "Please provide csv_content in the request body",
+          });
+        }
+
+        // Check CSV size limit
+        if (csv_content.length > MAX_CSV_SIZE) {
+          return res.status(400).json({
+            error: "CSV too large",
+            message: `CSV must be smaller than ${MAX_CSV_SIZE / 1024 / 1024}MB`,
+          });
+        }
+
+        // Verify event exists
+        const event = await eventsDb.getEventById(id);
+        if (!event) {
+          return res.status(404).json({
+            error: "Event not found",
+            message: "No event found with that ID",
+          });
+        }
+
+        // Parse CSV
+        const rows = parseCsv(csv_content);
+        if (rows.length === 0) {
+          return res.status(400).json({
+            error: "Invalid CSV",
+            message: "CSV must have a header row and at least one data row",
+          });
+        }
+
+        // Get existing registrations by luma_guest_id for deduplication
+        const existingRegistrations = await eventsDb.getEventRegistrations(id);
+        const existingByLumaId = new Map(
+          existingRegistrations
+            .filter(r => r.luma_guest_id)
+            .map(r => [r.luma_guest_id, r])
+        );
+        const existingByEmail = new Map(
+          existingRegistrations
+            .filter(r => r.email)
+            .map(r => [r.email!.toLowerCase(), r])
+        );
+
+        let created = 0;
+        let updated = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+
+        for (const row of rows) {
+          try {
+            if (!row.email) {
+              skipped++;
+              continue;
+            }
+
+            const email = row.email.toLowerCase();
+            const name = row.name || `${row.first_name || ''} ${row.last_name || ''}`.trim();
+            const registrationStatus = mapLumaStatus(row.approval_status);
+            const checkedInAt = parseDate(row.checked_in_at);
+            const attended = !!checkedInAt;
+
+            // Check for existing registration
+            const existingByLuma = existingByLumaId.get(row.api_id);
+            const existingByEmailReg = existingByEmail.get(email);
+            const existing = existingByLuma || existingByEmailReg;
+
+            if (existing) {
+              // Update existing registration with attendance info
+              if (attended && !existing.attended) {
+                await eventsDb.updateRegistration(existing.id, {
+                  attended: true,
+                  checked_in_at: checkedInAt,
+                  luma_guest_id: row.api_id,
+                  registration_status: registrationStatus,
+                });
+                updated++;
+              } else {
+                skipped++;
+              }
+            } else {
+              // Create new registration
+              const newReg = await eventsDb.createRegistration({
+                event_id: id,
+                email,
+                name: name || undefined,
+                registration_status: registrationStatus,
+                registration_source: 'import',
+                luma_guest_id: row.api_id,
+                ticket_type: row.ticket_name || 'general',
+                registration_data: {
+                  luma_created_at: row.created_at,
+                  luma_approval_status: row.approval_status,
+                  imported_at: new Date().toISOString(),
+                },
+              });
+
+              // If they checked in, update attendance using returned registration ID
+              if (attended && newReg) {
+                await eventsDb.updateRegistration(newReg.id, {
+                  attended: true,
+                  checked_in_at: checkedInAt,
+                });
+              }
+
+              created++;
+            }
+          } catch (rowError) {
+            errors.push(`Row ${row.email}: ${rowError instanceof Error ? rowError.message : 'Unknown error'}`);
+          }
+        }
+
+        logger.info(
+          { eventId: id, created, updated, skipped, errors: errors.length },
+          "Luma CSV import completed"
+        );
+
+        res.json({
+          success: true,
+          summary: {
+            total_rows: rows.length,
+            created,
+            updated,
+            skipped,
+            errors: errors.length,
+          },
+          errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error importing Luma CSV");
+        res.status(500).json({
+          error: "Failed to import",
           message: "An unexpected error occurred",
         });
       }

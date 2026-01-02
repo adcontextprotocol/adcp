@@ -11,6 +11,7 @@ import type {
   EventWithCounts,
   EventSponsorDisplay,
   SponsorshipTier,
+  RegistrationStatus,
 } from '../types.js';
 
 /**
@@ -428,6 +429,52 @@ export class EventsDatabase {
   }
 
   /**
+   * Update registration (for imports and admin updates)
+   */
+  async updateRegistration(
+    registrationId: string,
+    updates: {
+      attended?: boolean;
+      checked_in_at?: Date;
+      registration_status?: RegistrationStatus;
+      luma_guest_id?: string;
+    }
+  ): Promise<EventRegistration | null> {
+    const setClauses: string[] = ['updated_at = NOW()'];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    if (updates.attended !== undefined) {
+      setClauses.push(`attended = $${paramIndex++}`);
+      params.push(updates.attended);
+    }
+    if (updates.checked_in_at !== undefined) {
+      setClauses.push(`checked_in_at = $${paramIndex++}`);
+      params.push(updates.checked_in_at);
+    }
+    if (updates.registration_status !== undefined) {
+      setClauses.push(`registration_status = $${paramIndex++}`);
+      params.push(updates.registration_status);
+    }
+    if (updates.luma_guest_id !== undefined) {
+      setClauses.push(`luma_guest_id = $${paramIndex++}`);
+      params.push(updates.luma_guest_id);
+    }
+
+    params.push(registrationId);
+
+    const result = await query<EventRegistration>(
+      `UPDATE event_registrations
+       SET ${setClauses.join(', ')}
+       WHERE id = $${paramIndex}
+       RETURNING *`,
+      params
+    );
+
+    return result.rows[0] ? this.deserializeRegistration(result.rows[0]) : null;
+  }
+
+  /**
    * Generate unique ticket code
    */
   private generateTicketCode(): string {
@@ -583,6 +630,69 @@ export class EventsDatabase {
       [eventId, tierId]
     );
     return parseInt(result.rows[0]?.count || '0', 10);
+  }
+
+  // =====================================================
+  // EVENT CONTENT (PERSPECTIVES)
+  // =====================================================
+
+  /**
+   * Get perspectives linked to an event (recaps, photos, etc.)
+   */
+  async getEventContent(eventId: string): Promise<{
+    id: string;
+    slug: string;
+    content_type: string;
+    title: string;
+    excerpt: string | null;
+    external_url: string | null;
+    featured_image_url: string | null;
+    published_at: Date | null;
+    category: string | null;
+  }[]> {
+    const result = await query<{
+      id: string;
+      slug: string;
+      content_type: string;
+      title: string;
+      excerpt: string | null;
+      external_url: string | null;
+      featured_image_url: string | null;
+      published_at: Date | null;
+      category: string | null;
+    }>(
+      `SELECT id, slug, content_type, title, excerpt, external_url,
+              featured_image_url, published_at, category
+       FROM perspectives
+       WHERE event_id = $1 AND status = 'published'
+       ORDER BY published_at DESC`,
+      [eventId]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Link a perspective to an event
+   */
+  async linkPerspectiveToEvent(perspectiveId: string, eventId: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE perspectives SET event_id = $2, updated_at = NOW()
+       WHERE id = $1`,
+      [perspectiveId, eventId]
+    );
+    return (result.rowCount || 0) > 0;
+  }
+
+  /**
+   * Unlink a perspective from an event
+   */
+  async unlinkPerspectiveFromEvent(perspectiveId: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE perspectives SET event_id = NULL, updated_at = NOW()
+       WHERE id = $1`,
+      [perspectiveId]
+    );
+    return (result.rowCount || 0) > 0;
   }
 
   // =====================================================
