@@ -150,9 +150,13 @@ CREATE TABLE IF NOT EXISTS event_registrations (
 
   -- Unique constraints
   CONSTRAINT unique_event_user UNIQUE (event_id, workos_user_id),
-  CONSTRAINT unique_event_email_contact UNIQUE (event_id, email_contact_id),
-  CONSTRAINT unique_event_email UNIQUE (event_id, email) WHERE workos_user_id IS NULL AND email_contact_id IS NULL
+  CONSTRAINT unique_event_email_contact UNIQUE (event_id, email_contact_id)
 );
+
+-- Partial unique index for email-only registrations (where no user_id or email_contact_id)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_event_registrations_unique_email
+  ON event_registrations(event_id, email)
+  WHERE workos_user_id IS NULL AND email_contact_id IS NULL;
 
 -- Indexes for registrations
 CREATE INDEX IF NOT EXISTS idx_event_registrations_event ON event_registrations(event_id);
@@ -287,7 +291,7 @@ SELECT
   COUNT(*) FILTER (WHERE er.attended = TRUE) as total_attended,
   MAX(e.start_time) as last_event_date,
   ARRAY_AGG(DISTINCT e.event_type) as event_types_attended,
-  ARRAY_AGG(DISTINCT e.id ORDER BY e.start_time DESC) as event_ids
+  ARRAY_AGG(e.id ORDER BY e.start_time DESC) as event_ids
 FROM event_registrations er
 JOIN events e ON e.id = er.event_id
 WHERE er.registration_status = 'registered'
@@ -306,10 +310,10 @@ SELECT
   o.workos_organization_id as organization_id,
   o.name as organization_name,
   COALESCE(mp.logo_url, es.logo_url) as display_logo_url,
-  mp.website_url as organization_website
+  mp.contact_website as organization_website
 FROM event_sponsorships es
 JOIN organizations o ON o.workos_organization_id = es.organization_id
-LEFT JOIN member_profiles mp ON mp.organization_id = o.workos_organization_id
+LEFT JOIN member_profiles mp ON mp.workos_organization_id = o.workos_organization_id
 WHERE es.payment_status = 'paid'
   AND es.show_logo = TRUE
 ORDER BY es.display_order ASC, es.paid_at ASC;

@@ -15,6 +15,11 @@ import {
   getFeedByEmailSlug,
   createEmailPerspective,
 } from '../db/industry-feeds-db.js';
+import {
+  parseWebhookPayload as parseLumaWebhook,
+  type LumaWebhookPayload,
+} from '../luma/client.js';
+import { eventsDb } from '../db/events-db.js';
 
 const logger = createLogger('webhooks');
 
@@ -863,11 +868,215 @@ async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<
   }, 'Received unrouted email (no context) - logging only');
 }
 
+// ============================================================================
+// Luma Webhook Handlers
+// ============================================================================
+
+/**
+ * Handle Luma guest.created webhook
+ * Syncs new registrations from Luma to our database
+ */
+async function handleLumaGuestCreated(payload: LumaWebhookPayload): Promise<void> {
+  const guest = payload.data.guest;
+  if (!guest) {
+    logger.warn({ payload }, 'Luma guest.created webhook missing guest data');
+    return;
+  }
+
+  // Find our event by Luma event ID
+  const pool = getPool();
+  const eventResult = await pool.query(
+    `SELECT id, title FROM events WHERE luma_event_id = $1`,
+    [guest.event_api_id]
+  );
+
+  if (eventResult.rows.length === 0) {
+    logger.debug({ lumaEventId: guest.event_api_id }, 'Luma webhook for unknown event, ignoring');
+    return;
+  }
+
+  const event = eventResult.rows[0];
+
+  // Check if registration already exists
+  const existingResult = await pool.query(
+    `SELECT id FROM event_registrations WHERE luma_guest_id = $1`,
+    [guest.api_id]
+  );
+
+  if (existingResult.rows.length > 0) {
+    logger.debug({ lumaGuestId: guest.api_id }, 'Luma guest already synced');
+    return;
+  }
+
+  // Create registration
+  await eventsDb.createRegistration({
+    event_id: event.id,
+    email: guest.user_email,
+    name: guest.user_name || undefined,
+    registration_source: 'luma',
+    luma_guest_id: guest.api_id,
+  });
+
+  logger.info({
+    eventId: event.id,
+    eventTitle: event.title,
+    lumaGuestId: guest.api_id,
+    email: guest.user_email,
+  }, 'Synced Luma registration to database');
+}
+
+/**
+ * Handle Luma guest.updated webhook
+ * Updates registration status (approved, declined, checked-in)
+ */
+async function handleLumaGuestUpdated(payload: LumaWebhookPayload): Promise<void> {
+  const guest = payload.data.guest;
+  if (!guest) {
+    logger.warn({ payload }, 'Luma guest.updated webhook missing guest data');
+    return;
+  }
+
+  const pool = getPool();
+
+  // Find our registration by Luma guest ID
+  const regResult = await pool.query(
+    `SELECT id, event_id FROM event_registrations WHERE luma_guest_id = $1`,
+    [guest.api_id]
+  );
+
+  if (regResult.rows.length === 0) {
+    // Registration doesn't exist, create it
+    logger.debug({ lumaGuestId: guest.api_id }, 'Luma guest.updated for unknown registration, creating');
+    await handleLumaGuestCreated(payload);
+    return;
+  }
+
+  const registration = regResult.rows[0];
+
+  // Update based on approval status
+  if (guest.approval_status === 'declined') {
+    await pool.query(
+      `UPDATE event_registrations SET registration_status = 'cancelled' WHERE id = $1`,
+      [registration.id]
+    );
+    logger.info({ registrationId: registration.id, lumaGuestId: guest.api_id }, 'Registration cancelled via Luma');
+  }
+
+  // Update check-in status
+  if (guest.checked_in_at) {
+    await eventsDb.checkInAttendee(registration.id);
+    logger.info({ registrationId: registration.id, lumaGuestId: guest.api_id }, 'Attendee checked in via Luma');
+  }
+}
+
+/**
+ * Handle Luma event.updated webhook
+ * Syncs event changes from Luma to our database
+ */
+async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void> {
+  const lumaEvent = payload.data.event;
+  if (!lumaEvent) {
+    logger.warn({ payload }, 'Luma event.updated webhook missing event data');
+    return;
+  }
+
+  const pool = getPool();
+
+  // Find our event by Luma event ID
+  const eventResult = await pool.query(
+    `SELECT id FROM events WHERE luma_event_id = $1`,
+    [lumaEvent.api_id]
+  );
+
+  if (eventResult.rows.length === 0) {
+    logger.debug({ lumaEventId: lumaEvent.api_id }, 'Luma event.updated for unknown event, ignoring');
+    return;
+  }
+
+  const eventId = eventResult.rows[0].id;
+
+  // Update our event with Luma changes
+  await eventsDb.updateEvent(eventId, {
+    title: lumaEvent.name,
+    description: lumaEvent.description || undefined,
+    start_time: new Date(lumaEvent.start_at),
+    end_time: new Date(lumaEvent.end_at),
+    timezone: lumaEvent.timezone,
+    venue_name: lumaEvent.geo_address_json?.description || undefined,
+    venue_address: lumaEvent.geo_address_json?.full_address || undefined,
+    venue_city: lumaEvent.geo_address_json?.city || undefined,
+    venue_country: lumaEvent.geo_address_json?.country || undefined,
+    virtual_url: lumaEvent.meeting_url || lumaEvent.zoom_meeting_url || undefined,
+    featured_image_url: lumaEvent.cover_url || undefined,
+  });
+
+  logger.info({ eventId, lumaEventId: lumaEvent.api_id }, 'Updated event from Luma webhook');
+}
+
 /**
  * Create webhook routes router
  */
 export function createWebhooksRouter(): Router {
   const router = Router();
+
+  // =========================================================================
+  // Luma Webhooks
+  // =========================================================================
+
+  router.post('/luma', async (req: Request, res: Response) => {
+    const requestStartTime = Date.now();
+
+    try {
+      logger.info({ body: req.body }, 'Received Luma webhook');
+
+      const payload = parseLumaWebhook(req.body);
+      if (!payload) {
+        logger.warn({ body: req.body }, 'Invalid Luma webhook payload');
+        return res.status(400).json({ error: 'Invalid payload' });
+      }
+
+      logger.info({
+        action: payload.action,
+        apiId: payload.data.api_id,
+      }, 'Processing Luma webhook');
+
+      switch (payload.action) {
+        case 'guest.created':
+          await handleLumaGuestCreated(payload);
+          break;
+        case 'guest.updated':
+          await handleLumaGuestUpdated(payload);
+          break;
+        case 'event.updated':
+          await handleLumaEventUpdated(payload);
+          break;
+        case 'event.created':
+          // Events created via Luma directly are logged but not auto-synced
+          // (we create events from AAO, not vice versa)
+          logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.created webhook (not synced)');
+          break;
+        case 'event.deleted':
+          // Log but don't auto-delete our events
+          logger.info({ lumaEventId: payload.data.api_id }, 'Luma event.deleted webhook (not synced)');
+          break;
+        default:
+          logger.warn({ action: payload.action }, 'Unknown Luma webhook action');
+      }
+
+      const totalDurationMs = Date.now() - requestStartTime;
+      logger.info({ action: payload.action, totalDurationMs }, 'Processed Luma webhook');
+
+      return res.status(200).json({ ok: true });
+    } catch (error) {
+      const totalDurationMs = Date.now() - requestStartTime;
+      logger.error({ error, totalDurationMs }, 'Error processing Luma webhook');
+      return res.status(500).json({ error: 'Internal error' });
+    }
+  });
+
+  // =========================================================================
+  // Resend Webhooks
+  // =========================================================================
 
   router.post(
     '/resend-inbound',

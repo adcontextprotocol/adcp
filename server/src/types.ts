@@ -645,6 +645,7 @@ export interface CreateEventRegistrationInput {
   organization_id?: string;
   ticket_type?: string;
   registration_data?: Record<string, unknown>;
+  luma_guest_id?: string;  // Luma guest ID if synced from Luma
 }
 
 export interface EventSponsorship {

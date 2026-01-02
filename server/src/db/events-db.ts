@@ -307,8 +307,8 @@ export class EventsDatabase {
       `INSERT INTO event_registrations (
         event_id, workos_user_id, email_contact_id, email, name,
         registration_status, registration_source, organization_id,
-        ticket_type, ticket_code, registration_data
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ticket_type, ticket_code, registration_data, luma_guest_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
       [
         input.event_id,
@@ -322,6 +322,7 @@ export class EventsDatabase {
         input.ticket_type || 'general',
         ticketCode,
         JSON.stringify(input.registration_data || {}),
+        input.luma_guest_id || null,
       ]
     );
 
